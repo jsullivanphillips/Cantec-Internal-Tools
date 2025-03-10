@@ -4,10 +4,24 @@ from datetime import datetime, timedelta, time
 import time as time_module
 from dotenv import load_dotenv
 import os
+import logging
+from logging.handlers import RotatingFileHandler
 
 load_dotenv()
 app = Flask(__name__)
 app.secret_key = "your_secret_key_here"  # Replace with a strong secret key
+
+# Configure logging
+handler = RotatingFileHandler('app.log', maxBytes=10000, backupCount=3)
+handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+handler.setFormatter(formatter)
+app.logger.addHandler(handler)
+
+# Log every incoming request
+@app.before_request
+def log_request_info():
+    app.logger.info("Access: %s %s from %s", request.method, request.url, request.remote_addr)
 
 SERVICE_TRADE_USERNAME = os.getenv("SERVICE_TRADE_USERNAME")
 SERVICE_TRADE_PASSWORD = os.getenv("SERVICE_TRADE_PASSWORD")
@@ -26,10 +40,12 @@ def authenticate_api():
     api_session = requests.Session()
     auth_url = "https://api.servicetrade.com/api/auth"
     payload = {"username": SERVICE_TRADE_USERNAME, "password": SERVICE_TRADE_PASSWORD}
-    response = api_session.post(auth_url, json=payload)
-    if response.status_code == 200:
+    try:
+        response = api_session.post(auth_url, json=payload)
+        response.raise_for_status()
         return api_session
-    else:
+    except Exception as e:
+        app.logger.error("Authentication error: %s", e)
         return None
 
 def get_working_hours_for_day(date_obj, custom_start_time=None):
@@ -145,12 +161,10 @@ def find_candidate_dates(appointments_data, absences_data, allowable_techs, requ
                 free_hours = max_free_interval(busy_intervals, working_start, working_end)
                 available_info[tech] = round(free_hours, 2)
             
-            # Now, check category-specific requirements.
-            # First, build a count of available techs per category.
+            # Check category-specific requirements.
             category_counts = {cat: 0 for cat in TECH_CATEGORIES}
             for tech, free_hours in available_info.items():
                 if free_hours >= required_hours:
-                    # Find which category the tech belongs to.
                     for cat, tech_list in TECH_CATEGORIES.items():
                         if tech in tech_list:
                             category_counts[cat] += 1
@@ -162,13 +176,11 @@ def find_candidate_dates(appointments_data, absences_data, allowable_techs, requ
                         meets_category_requirements = False
                         break
             else:
-                # If no category-specific requirements, enforce overall available tech count.
                 total_available = sum(1 for free in available_info.values() if free >= required_hours)
                 if total_available < num_techs_needed:
                     meets_category_requirements = False
 
             if meets_category_requirements:
-                # Include only techs meeting the free hours requirement.
                 filtered_info = {tech: hrs for tech, hrs in available_info.items() if hrs >= required_hours}
                 candidate_results.append((current_date, filtered_info))
         current_date += timedelta(days=1)
@@ -187,15 +199,17 @@ def login():
         user_session = requests.Session()
         auth_url = "https://api.servicetrade.com/api/auth"
         payload = {"username": username, "password": password}
-        auth_response = user_session.post(auth_url, json=payload)
-        if auth_response.status_code == 200:
-            session['authenticated'] = True
-            session['username'] = username
-            session['password'] = password
-            return redirect(url_for('find_schedule'))
-        else:
-            error = f"Authentication failed (HTTP {auth_response.status_code}): {auth_response.text}"
+        try:
+            auth_response = user_session.post(auth_url, json=payload)
+            auth_response.raise_for_status()
+        except Exception as e:
+            app.logger.error("Login authentication error: %s", e)
+            error = f"Authentication failed: {e}"
             return render_template('login.html', error=error)
+        session['authenticated'] = True
+        session['username'] = username
+        session['password'] = password
+        return redirect(url_for('find_schedule'))
     return render_template('login.html')
 
 @app.route('/find_schedule', methods=['GET', 'POST'])
@@ -217,21 +231,18 @@ def find_schedule():
         allowable_techs = request.form.getlist("allowable_techs")
         include_rrsc = request.form.get("rrsc") == "on"
 
-        # Get selected weekdays (values "0" to "4")
         weekday_values = request.form.getlist("weekdays")
         if weekday_values:
             selected_weekdays = [int(val) for val in weekday_values]
         else:
             selected_weekdays = [0, 1, 2, 3, 4]
 
-        # Get custom start time (format "HH:MM")
         start_time_str = request.form.get("start_time")
         try:
             custom_start_time = datetime.strptime(start_time_str, "%H:%M").time()
         except (ValueError, TypeError):
             custom_start_time = time(8, 30)
 
-        # Read category-specific requirements; if empty, assume 0.
         def get_req(field):
             val = request.form.get(field)
             return int(val) if val and val.strip().isdigit() else 0
@@ -252,13 +263,15 @@ def find_schedule():
         api_session = requests.Session()
         auth_url = "https://api.servicetrade.com/api/auth"
         payload = {"username": session.get('username'), "password": session.get('password')}
-        auth_response = api_session.post(auth_url, json=payload)
-        if auth_response.status_code != 200:
+        try:
+            auth_response = api_session.post(auth_url, json=payload)
+            auth_response.raise_for_status()
+        except Exception as e:
+            app.logger.error("Session authentication error: %s", e)
             error = "Session authentication failed. Please log in again."
             session.clear()
             return redirect(url_for('login'))
 
-        # Retrieve appointments data
         query_params = {
             "windowBeginsAfter": scheduleDateFrom,
             "windowEndsBefore": scheduleDateTo,
@@ -266,17 +279,22 @@ def find_schedule():
             "limit": 2000
         }
         appointments_url = "https://api.servicetrade.com/api/appointment/"
-        appointments_response = api_session.get(appointments_url, params=query_params)
-        if appointments_response.status_code != 200:
-            error_message = f"Error {appointments_response.status_code}: {appointments_response.text}"
+        try:
+            appointments_response = api_session.get(appointments_url, params=query_params)
+            appointments_response.raise_for_status()
+        except Exception as e:
+            app.logger.error("Error retrieving appointments: %s", e)
+            error_message = f"Error retrieving appointments: {e}"
             return render_template("schedule_result.html", error=error_message)
         appointments_data = appointments_response.json().get("data", {}).get("appointments", [])
 
-        # Retrieve absences data (for all technicians)
         absences_url = "https://api.servicetrade.com/api/user/absence"
-        absences_response = api_session.get(absences_url)
-        if absences_response.status_code != 200:
-            error_message = f"Error retrieving absences (HTTP {absences_response.status_code}): {absences_response.text}"
+        try:
+            absences_response = api_session.get(absences_url)
+            absences_response.raise_for_status()
+        except Exception as e:
+            app.logger.error("Error retrieving absences: %s", e)
+            error_message = f"Error retrieving absences: {e}"
             return render_template("schedule_result.html", error=error_message)
         absences_data = absences_response.json().get("data", {}).get("userAbsences", [])
 
@@ -284,7 +302,7 @@ def find_schedule():
             appointments_data, absences_data, allowable_techs, required_hours, num_techs_needed,
             include_rrsc, selected_weekdays, custom_start_time, required_by_category
         )
-        print(candidate_results)
+        app.logger.info("Found %d candidate results", len(candidate_results))
         return render_template("schedule_result.html", candidate_results=candidate_results)
 
     return render_template("jobs_form.html")
@@ -295,4 +313,4 @@ def logout():
     return redirect(url_for('login'))
 
 if __name__ == '__main__':
-    app.run(debug=True, host="0.0.0.0")
+    app.run(debug=False, host="0.0.0.0")
