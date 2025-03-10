@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Home - Scheduling App</title>
+</head>
+<body>
+    <h1>Welcome to the Scheduling App</h1>
+    <p>This is the home page. Click the button below to access the Scheduling Assistant.</p>
+    <a href="{{ url_for('scheduling.find_schedule') }}">
+        <button type="button">Scheduling Assistant</button>
+    </a>
+    <p><a href="{{ url_for('auth.logout') }}">Logout</a></p>
+</body>
+</html>

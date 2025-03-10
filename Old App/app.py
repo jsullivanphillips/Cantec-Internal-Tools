@@ -186,9 +186,21 @@ def find_candidate_dates(appointments_data, absences_data, allowable_techs, requ
         current_date += timedelta(days=1)
     return candidate_results
 
+# Change the root route to redirect to login if not authenticated.
 @app.route('/')
-def home():
+def index():
     return redirect(url_for('login'))
+
+# New Home route placed between login and scheduling assistant.
+@app.route('/home', methods=['GET', 'POST'])
+def home():
+    if not session.get('authenticated'):
+        return redirect(url_for('login'))
+
+    if request.method == 'POST':
+        something = request.form.get('name')
+        print(something)
+    return render_template('home.html')
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -209,7 +221,8 @@ def login():
         session['authenticated'] = True
         session['username'] = username
         session['password'] = password
-        return redirect(url_for('find_schedule'))
+        # Redirect to the new Home page after login.
+        return redirect(url_for('home'))
     return render_template('login.html')
 
 @app.route('/find_schedule', methods=['GET', 'POST'])
@@ -278,6 +291,7 @@ def find_schedule():
             "status": "scheduled",
             "limit": 2000
         }
+
         appointments_url = "https://api.servicetrade.com/api/appointment/"
         try:
             appointments_response = api_session.get(appointments_url, params=query_params)
