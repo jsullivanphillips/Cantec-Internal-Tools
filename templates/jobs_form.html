@@ -1,207 +1,54 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Schedule Assist</title>
-  <style>
-    body {
-      font-family: 'Calibri', sans-serif;
-    }
-  </style>
-  <script>
-    // Mapping technician names to categories.
-    const techCategories = {
-      "senior": ["Adam Bendorffe", "Craig Shepherd", "Jonathan Graves", "James Martyn"],
-      "mid": ["Alex Turko", "Austin Rasmussen", "Kyler Dickey", "Crosby Stewart", "Eric Turko"],
-      "junior": ["Jonathan Palahicky", "Mariah Grier", "Seth Ealing"],
-      "trainee": ["William Daniel", "Kevin Gao", "Hannah Feness", "James McNeil"],
-      "sprinkler": ["Justin Walker", "Colin Peterson"]
-    };
-
-    // Toggle all technician checkboxes for a given category based on the category checkbox state.
-    function toggleCategory(category, checkboxElem) {
-      const techNames = techCategories[category];
-      techNames.forEach(function(name) {
-        const techCheckbox = document.querySelector("input[name='allowable_techs'][value='" + name + "']");
-        if (techCheckbox) {
-          techCheckbox.checked = checkboxElem.checked;
-        }
-      });
-    }
-
-    // Update the total number of technicians required based on category inputs.
-    function updateTotalTechs() {
-      const senior = parseInt(document.getElementById("required_senior").value) || 0;
-      const mid = parseInt(document.getElementById("required_mid").value) || 0;
-      const junior = parseInt(document.getElementById("required_junior").value) || 0;
-      const trainee = parseInt(document.getElementById("required_trainee").value) || 0;
-      const sprinkler = parseInt(document.getElementById("required_sprinkler").value) || 0;
-      const total = senior + mid + junior + trainee + sprinkler;
-      document.getElementById("num_techs").value = total;
-    }
-
-    window.addEventListener('DOMContentLoaded', function() {
-      const fields = ["required_senior", "required_mid", "required_junior", "required_trainee", "required_sprinkler"];
-      fields.forEach(function(id) {
-        document.getElementById(id).addEventListener('input', updateTotalTechs);
-      });
-    });
-
-    // Validate that for any category with a required number > 0 at least one checkbox is checked.
-    function validateCategories(event) {
-      let valid = true;
-      let warnings = [];
-      for (let category in techCategories) {
-        let reqField = document.getElementById("required_" + category);
-        if (reqField) {
-          let requiredValue = parseInt(reqField.value) || 0;
-          if (requiredValue > 0) {
-            let techs = techCategories[category];
-            let checkedCount = 0;
-            techs.forEach(function(name) {
-              let checkbox = document.querySelector("input[name='allowable_techs'][value='" + name + "']");
-              if (checkbox && checkbox.checked) {
-                checkedCount++;
-              }
-            });
-            if (checkedCount === 0) {
-              warnings.push("You have required " + requiredValue + " " + category + " tech(s) but none are selected.");
-              valid = false;
-            }
-          }
-        }
-      }
-      if (!valid) {
-        alert(warnings.join("\n"));
-        event.preventDefault();
-      }
-      return valid;
-    }
-
-    window.addEventListener('DOMContentLoaded', function() {
-      document.querySelector("form").addEventListener("submit", validateCategories);
-    });
-  </script>
+  <title>ScheduleAssist</title>
+  <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-  <h1>SCHEDULE ASSIST</h1>
-  <p>NOTE: Only searches for available dates within the next 3 months</p>
-  {% if error %}
-    <p style="color: red;">{{ error }}</p>
-  {% endif %}
-  <form method="post">
-    <!-- Weekday selection -->
-    <fieldset>
-      <legend>Select Weekdays to Consider (default all selected):</legend>
-      <input type="checkbox" name="weekdays" value="0" id="mon" checked>
-      <label for="mon">Monday</label>
-      <input type="checkbox" name="weekdays" value="1" id="tue" checked>
-      <label for="tue">Tuesday</label>
-      <input type="checkbox" name="weekdays" value="2" id="wed" checked>
-      <label for="wed">Wednesday</label>
-      <input type="checkbox" name="weekdays" value="3" id="thu" checked>
-      <label for="thu">Thursday</label>
-      <input type="checkbox" name="weekdays" value="4" id="fri" checked>
-      <label for="fri">Friday</label>
-    </fieldset>
-    <br>
-    
-    <!-- Start time selection -->
-    <label for="start_time"><strong>Start Time:</strong></label>
-    <input type="time" name="start_time" id="start_time" min="08:30" max="16:30" value="08:30" required><br><br>
-    
-    <!-- RRSC checkbox added immediately below Start Time -->
-    <input type="checkbox" name="rrsc" id="rrsc">
-    <label for="rrsc">Include RRSC Jobs as Free Time</label><br><br>
-    
-    <h2><strong>Allowable Technicians</strong></h2>
-    
-    <!-- Senior Techs Section -->
-    <h3>Senior Techs</h3>
-    <input type="checkbox" id="senior_category" onchange="toggleCategory('senior', this)">
-    <label for="senior_category">Toggle All Senior Techs</label>
-    &nbsp; Required: <input type="number" name="required_senior" id="required_senior" min="0" style="width:50px;"><br>
-    <div style="margin-left: 20px;">
-      <input type="checkbox" name="allowable_techs" value="Adam Bendorffe" id="tech_adam_bendorffe">
-      <label for="tech_adam_bendorffe">Adam Bendorffe</label><br>
-      <input type="checkbox" name="allowable_techs" value="Craig Shepherd" id="tech_craig_shepherd">
-      <label for="tech_craig_shepherd">Craig Shepherd</label><br>
-      <input type="checkbox" name="allowable_techs" value="Jonathan Graves" id="tech_jonathan_graves">
-      <label for="tech_jonathan_graves">Jonathan Graves</label><br>
-      <input type="checkbox" name="allowable_techs" value="James Martyn" id="tech_james_martyn">
-      <label for="tech_james_martyn">James Martyn</label><br>
-    </div>
-    
-    <!-- Mid level Techs Section -->
-    <h3>Mid level Techs</h3>
-    <input type="checkbox" id="mid_category" onchange="toggleCategory('mid', this)">
-    <label for="mid_category">Toggle All Mid level Techs</label>
-    &nbsp; Required: <input type="number" name="required_mid" id="required_mid" min="0" style="width:50px;"><br>
-    <div style="margin-left: 20px;">
-      <input type="checkbox" name="allowable_techs" value="Alex Turko" id="tech_alex_turko">
-      <label for="tech_alex_turko">Alex Turko</label><br>
-      <input type="checkbox" name="allowable_techs" value="Austin Rasmussen" id="tech_austin_rasmussen">
-      <label for="tech_austin_rasmussen">Austin Rasmussen</label><br>
-      <input type="checkbox" name="allowable_techs" value="Kyler Dickey" id="tech_kyler_dickey">
-      <label for="tech_kyler_dickey">Kyler Dickey</label><br>
-      <input type="checkbox" name="allowable_techs" value="Crosby Stewart" id="tech_crosby_stewart">
-      <label for="tech_crosby_stewart">Crosby Stewart</label><br>
-      <input type="checkbox" name="allowable_techs" value="Eric Turko" id="tech_eric_turko">
-      <label for="tech_eric_turko">Eric Turko</label><br>
-    </div>
-    
-    <!-- Junior Techs Section -->
-    <h3>Junior Techs</h3>
-    <input type="checkbox" id="junior_category" onchange="toggleCategory('junior', this)">
-    <label for="junior_category">Toggle All Junior Techs</label>
-    &nbsp; Required: <input type="number" name="required_junior" id="required_junior" min="0" style="width:50px;"><br>
-    <div style="margin-left: 20px;">
-      <input type="checkbox" name="allowable_techs" value="Jonathan Palahicky" id="tech_jonathan_palahicky">
-      <label for="tech_jonathan_palahicky">Jonathan Palahicky</label><br>
-      <input type="checkbox" name="allowable_techs" value="Mariah Grier" id="tech_mariah_grier">
-      <label for="tech_mariah_grier">Mariah Grier</label><br>
-      <input type="checkbox" name="allowable_techs" value="Seth Ealing" id="tech_seth_ealing">
-      <label for="tech_seth_ealing">Seth Ealing</label><br>
-    </div>
-    
-    <!-- Trainee Techs Section -->
-    <h3>Trainee Techs</h3>
-    <input type="checkbox" id="trainee_category" onchange="toggleCategory('trainee', this)">
-    <label for="trainee_category">Toggle All Trainee Techs</label>
-    &nbsp; Required: <input type="number" name="required_trainee" id="required_trainee" min="0" style="width:50px;"><br>
-    <div style="margin-left: 20px;">
-      <input type="checkbox" name="allowable_techs" value="William Daniel" id="tech_william_daniel">
-      <label for="tech_william_daniel">William Daniel</label><br>
-      <input type="checkbox" name="allowable_techs" value="Kevin Gao" id="tech_kevin_gao">
-      <label for="tech_kevin_gao">Kevin Gao</label><br>
-      <input type="checkbox" name="allowable_techs" value="Hannah Feness" id="tech_hannah_feness">
-      <label for="tech_hannah_feness">Hannah Feness</label><br>
-      <input type="checkbox" name="allowable_techs" value="James McNeil" id="tech_james_mcneil">
-      <label for="tech_james_mcneil">James McNeil</label><br>
-    </div>
-    
-    <!-- Sprinkler Techs Section -->
-    <h3>Sprinkler Techs</h3>
-    <input type="checkbox" id="sprinkler_category" onchange="toggleCategory('sprinkler', this)">
-    <label for="sprinkler_category">Toggle All Sprinkler Techs</label>
-    &nbsp; Required: <input type="number" name="required_sprinkler" id="required_sprinkler" min="0" style="width:50px;"><br>
-    <div style="margin-left: 20px;">
-      <input type="checkbox" name="allowable_techs" value="Justin Walker" id="tech_justin_walker">
-      <label for="tech_justin_walker">Justin Walker</label><br>
-      <input type="checkbox" name="allowable_techs" value="Colin Peterson" id="tech_colin_peterson">
-      <label for="tech_colin_peterson">Colin Peterson</label><br>
-    </div>
-    
-    <!-- Overall fields moved just above the submit button -->
-    <br>
-    <label for="num_techs">Total Number of Technicians Needed (if no category requirements are provided):</label>
-    <input type="number" name="num_techs" id="num_techs" min="1" required><br><br>
-    
-    <label for="hours_needed">Hours Needed Free (within selected start time – 4:30PM):</label>
-    <input type="number" name="hours_needed" id="hours_needed" min="0.5" step="0.5" required><br><br>
-    
-    <button type="submit">Find Schedule</button>
-  </form>
-  <br>
-  <a href="{{ url_for('auth.logout') }}">Logout</a>
+  <!-- Back button at top left -->
+  <a href="{{ url_for('home.home') }}" class="back-button">Back</a>
+  
+  <div class="container">
+    <!-- Title -->
+    <div class="title">ScheduleAssist</div>
+
+    <form method="post" id="scheduleForm">
+      <!-- Dynamic Tech Rows Section -->
+      <div id="techRowsContainer">
+        <!-- Initially, no tech row. User can click plus to add. -->
+      </div>
+      <button type="button" id="addTechRowButton">+ Add Tech Row</button>
+      <br><br>
+      
+      <!-- Weekday selection -->
+      <div id="weekdaysContainer">
+        <button type="button" class="weekday-button weekday-true" data-day="0">Mon</button>
+        <button type="button" class="weekday-button weekday-true" data-day="1">Tue</button>
+        <button type="button" class="weekday-button weekday-true" data-day="2">Wed</button>
+        <button type="button" class="weekday-button weekday-true" data-day="3">Thu</button>
+        <button type="button" class="weekday-button weekday-true" data-day="4">Fri</button>
+      </div>
+      <br>
+      
+      <!-- Start Time Input and include_rrsc Checkbox -->
+      <div style="display: inline-block; vertical-align: middle;">
+        <label for="start_time">Start time after:</label>
+        <input type="time" id="start_time" name="start_time" min="08:30" max="16:30" value="08:30" required>
+      </div>
+      <div style="display: inline-block; vertical-align: middle; margin-left: 20px;">
+        <label for="rrsc">Include RRSC</label>
+        <input type="checkbox" id="rrsc" name="rrsc">
+      </div>
+      <br><br>
+      
+      <!-- Hidden container for dynamically added hidden inputs (e.g., weekdays) -->
+      <div id="hiddenInputsContainer"></div>
+      
+      <!-- FIND DATES Button -->
+      <button type="submit" id="findDatesButton">FIND DATES</button>
+    </form>
+  </div>
+  
+  <script src="{{ url_for('static', filename='js/jobs_form.js') }}"></script>
 </body>
 </html>

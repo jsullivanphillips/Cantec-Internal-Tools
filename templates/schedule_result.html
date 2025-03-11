@@ -2,11 +2,7 @@
 <html>
 <head>
   <title>Schedule Results</title>
-  <style>
-    body {
-      font-family: 'Calibri', sans-serif;
-    }
-  </style>
+  <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
   <h1>Available Schedule Dates</h1>
@@ -15,35 +11,32 @@
   {% else %}
     {% if candidate_results %}
       <p>First {{ candidate_results|length }} available dates meeting the criteria:</p>
-      {% set categories = {
-          'Senior Techs': ['Adam Bendorffe', 'Craig Shepherd', 'Jonathan Graves', 'James Martyn'],
-          'Mid level Techs': ['Alex Turko', 'Austin Rasmussen', 'Kyler Dickey', 'Crosby Stewart', 'Eric Turko'],
-          'Junior Techs': ['Jonathan Palahicky', 'Mariah Grier', 'Seth Ealing'],
-          'Trainee Techs': ['William Daniel', 'Kevin Gao', 'Hannah Feness', 'James McNeil'],
-          'Sprinkler Techs': ['Justin Walker', 'Colin Peterson']
-      } %}
-      <ul>
+      <ul style="list-style: none; padding-left: 0; text-align: center;">
         {% for result in candidate_results %}
           <li>
-            <h4>{{ result[0].strftime("%B") }} {{ result[0].day }}, {{ result[0].year }}</h4>
-            <ul>
-              {% for cat, tech_list in categories.items() %}
-                {% set ns = namespace(techs_in_cat=[]) %}
-                {% for tech in tech_list %}
-                  {% if tech in result[1] %}
-                    {% set ns.techs_in_cat = ns.techs_in_cat + [{'name': tech, 'hours': result[1][tech]}] %}
-                  {% endif %}
-                {% endfor %}
-                {% if ns.techs_in_cat|length > 0 %}
-                  <li>
-                    <strong>{{ cat }}:</strong>
-                    <ul>
-                      {% for item in ns.techs_in_cat %}
-                        <li>{{ item.name }}: {{ item.hours }} hours available</li>
-                      {% endfor %}
-                    </ul>
-                  </li>
+            <br> {# Added break above the date #}
+            <h3 class="date-header">{{ result[0].strftime("%B") }} {{ result[0].day }}, {{ result[0].year }}</h3>
+            <ul class="tech-list">
+              {# Group available technicians by type #}
+              {% set grouped = {} %}
+              {% for tech, info in result[1].items() %}
+                {% set tech_type = info.type %}
+                {% if tech_type in grouped %}
+                  {% set _ = grouped[tech_type].append({'name': tech, 'hours': info.free_hours}) %}
+                {% else %}
+                  {% set _ = grouped.__setitem__(tech_type, [{'name': tech, 'hours': info.free_hours}]) %}
                 {% endif %}
+              {% endfor %}
+              
+              {% for tech_type, techs in grouped.items() %}
+                <li>
+                  <strong>{{ tech_type }}s:</strong>
+                  <ul style="list-style: none; padding-left: 0;">
+                    {% for item in techs %}
+                      <li>{{ item.name }}: {{ item.hours }} hours available</li>
+                    {% endfor %}
+                  </ul>
+                </li>
               {% endfor %}
             </ul>
           </li>

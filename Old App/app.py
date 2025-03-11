@@ -1,52 +1,6 @@
-from flask import Flask, render_template, request, redirect, url_for, session
-import requests
+# app/services/scheduling_service.py
 from datetime import datetime, timedelta, time
-import time as time_module
-from dotenv import load_dotenv
-import os
-import logging
-from logging.handlers import RotatingFileHandler
-
-load_dotenv()
-app = Flask(__name__)
-app.secret_key = "your_secret_key_here"  # Replace with a strong secret key
-
-# Configure logging
-handler = RotatingFileHandler('app.log', maxBytes=10000, backupCount=3)
-handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-handler.setFormatter(formatter)
-app.logger.addHandler(handler)
-
-# Log every incoming request
-@app.before_request
-def log_request_info():
-    app.logger.info("Access: %s %s from %s", request.method, request.url, request.remote_addr)
-
-SERVICE_TRADE_USERNAME = os.getenv("SERVICE_TRADE_USERNAME")
-SERVICE_TRADE_PASSWORD = os.getenv("SERVICE_TRADE_PASSWORD")
-
-# Mapping of technician categories (should match the one used in the HTML)
-TECH_CATEGORIES = {
-    "senior": ["Adam Bendorffe", "Craig Shepherd", "Jonathan Graves", "James Martyn"],
-    "mid": ["Alex Turko", "Austin Rasmussen", "Kyler Dickey", "Crosby Stewart", "Eric Turko"],
-    "junior": ["Jonathan Palahicky", "Mariah Grier", "Seth Ealing"],
-    "trainee": ["William Daniel", "Kevin Gao", "Hannah Feness", "James McNeil"],
-    "sprinkler": ["Justin Walker", "Colin Peterson"]
-}
-
-def authenticate_api():
-    """Authenticate with the ServiceTrade API and return an authenticated requests.Session."""
-    api_session = requests.Session()
-    auth_url = "https://api.servicetrade.com/api/auth"
-    payload = {"username": SERVICE_TRADE_USERNAME, "password": SERVICE_TRADE_PASSWORD}
-    try:
-        response = api_session.post(auth_url, json=payload)
-        response.raise_for_status()
-        return api_session
-    except Exception as e:
-        app.logger.error("Authentication error: %s", e)
-        return None
+from app.constants import TECH_CATEGORIES
 
 def get_working_hours_for_day(date_obj, custom_start_time=None):
     """
@@ -92,7 +46,8 @@ def max_free_interval(busy_intervals, working_start, working_end):
             max_free = duration
     return max_free
 
-def find_candidate_dates(appointments_data, absences_data, allowable_techs, required_hours, num_techs_needed, include_rrsc, selected_weekdays, custom_start_time, required_by_category):
+def find_candidate_dates(appointments_data, absences_data, allowable_techs, include_rrsc, 
+                         selected_weekdays, custom_start_time, tech_rows):
     """
     For each candidate date from tomorrow through the next 3 months, if the day's weekday is in selected_weekdays,
     compute the maximum contiguous free time available (within the working period defined by custom_start_time to 4:30PM)
@@ -102,11 +57,15 @@ def find_candidate_dates(appointments_data, absences_data, allowable_techs, requ
     Appointments with a job.name of "RRSC AGENT" are skipped if include_rrsc is True.
     For appointments (and absences) that start before working_start, the actual start is used so the full busy time is captured.
     
-    Once free time is computed per technician (available_info), we group available techs by category.
-    If any required count in required_by_category is > 0, then for each such category the count of techs (with free hours >= required_hours)
-    must be at least that required number.
+    For each candidate date, the available free hours for each technician (available_info) is computed.
+    Then, for each dynamic tech row (passed in as a dictionary with keys:
+        - "tech_count": required number of techs,
+        - "tech_types": list of acceptable tech types,
+        - "tech_hours": required free hours),
+    we check that the number of technicians (from the allowable_techs list) whose free time is at least tech_hours and 
+    whose name is in the selected tech_types is at least equal to tech_count.
     
-    Otherwise (if all required_by_category values are 0), we require that the overall number of available techs is >= num_techs_needed.
+    If all tech rows are satisfied, the candidate date is accepted.
     
     Returns the first 5 candidate dates that meet the criteria.
     """
@@ -132,10 +91,7 @@ def find_candidate_dates(appointments_data, absences_data, allowable_techs, requ
                         if appt_window_start.date() <= current_date <= appt_window_end.date():
                             day_start = datetime.combine(current_date, time(7, 0))
                             day_end = datetime.combine(current_date, time(17, 0))
-                            if appt_window_start < working_start:
-                                effective_start = appt_window_start
-                            else:
-                                effective_start = working_start
+                            effective_start = appt_window_start if appt_window_start < working_start else working_start
                             effective_end = min(appt_window_end, day_end, working_end)
                             if effective_start < effective_end:
                                 techs = appt.get("techs", [])
@@ -161,170 +117,22 @@ def find_candidate_dates(appointments_data, absences_data, allowable_techs, requ
                 free_hours = max_free_interval(busy_intervals, working_start, working_end)
                 available_info[tech] = round(free_hours, 2)
             
-            # Check category-specific requirements.
-            category_counts = {cat: 0 for cat in TECH_CATEGORIES}
-            for tech, free_hours in available_info.items():
-                if free_hours >= required_hours:
-                    for cat, tech_list in TECH_CATEGORIES.items():
-                        if tech in tech_list:
-                            category_counts[cat] += 1
-                            break
-            meets_category_requirements = True
-            if sum(required_by_category.values()) > 0:
-                for cat, req in required_by_category.items():
-                    if req > 0 and category_counts.get(cat, 0) < req:
-                        meets_category_requirements = False
-                        break
-            else:
-                total_available = sum(1 for free in available_info.values() if free >= required_hours)
-                if total_available < num_techs_needed:
-                    meets_category_requirements = False
-
-            if meets_category_requirements:
-                filtered_info = {tech: hrs for tech, hrs in available_info.items() if hrs >= required_hours}
-                candidate_results.append((current_date, filtered_info))
+            # Now check the dynamic tech row requirements.
+            meets_all_requirements = True
+            for row in tech_rows:
+                required_count = int(row.get("tech_count", 0))
+                required_hours = float(row.get("tech_hours", 0))
+                tech_types = row.get("tech_types", [])
+                # Count available techs that match one of the acceptable types and have free hours >= required_hours.
+                count = 0
+                for tech, free in available_info.items():
+                    if free >= required_hours and tech in tech_types:
+                        count += 1
+                if count < required_count:
+                    meets_all_requirements = False
+                    break
+            
+            if meets_all_requirements:
+                candidate_results.append((current_date, available_info))
         current_date += timedelta(days=1)
     return candidate_results
-
-# Change the root route to redirect to login if not authenticated.
-@app.route('/')
-def index():
-    return redirect(url_for('login'))
-
-# New Home route placed between login and scheduling assistant.
-@app.route('/home', methods=['GET', 'POST'])
-def home():
-    if not session.get('authenticated'):
-        return redirect(url_for('login'))
-
-    if request.method == 'POST':
-        something = request.form.get('name')
-        print(something)
-    return render_template('home.html')
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    """Display login form and authenticate ServiceTrade credentials using the Appointment API."""
-    if request.method == 'POST':
-        username = request.form.get('username')
-        password = request.form.get('password')
-        user_session = requests.Session()
-        auth_url = "https://api.servicetrade.com/api/auth"
-        payload = {"username": username, "password": password}
-        try:
-            auth_response = user_session.post(auth_url, json=payload)
-            auth_response.raise_for_status()
-        except Exception as e:
-            app.logger.error("Login authentication error: %s", e)
-            error = f"Authentication failed: {e}"
-            return render_template('login.html', error=error)
-        session['authenticated'] = True
-        session['username'] = username
-        session['password'] = password
-        # Redirect to the new Home page after login.
-        return redirect(url_for('home'))
-    return render_template('login.html')
-
-@app.route('/find_schedule', methods=['GET', 'POST'])
-def find_schedule():
-    """
-    Display a form to gather:
-      - Total number of technicians needed (if no category requirements provided)
-      - Allowable technicians (via checkboxes)
-      - Required free hours (within working hours)
-      - Whether scheduling a "Return or Repair" job (checkbox)
-      - Weekdays to consider (Monday-Friday; all selected by default)
-      - A custom start time (between 8:30 and 4:30)
-      - For each technician category, an integer input for how many techs of that level are required.
-    Then search for candidate dates in the next 3 months using the Appointment API.
-    """
-    if request.method == 'POST':
-        num_techs_needed = int(request.form.get("num_techs"))
-        required_hours = float(request.form.get("hours_needed"))
-        allowable_techs = request.form.getlist("allowable_techs")
-        include_rrsc = request.form.get("rrsc") == "on"
-
-        weekday_values = request.form.getlist("weekdays")
-        if weekday_values:
-            selected_weekdays = [int(val) for val in weekday_values]
-        else:
-            selected_weekdays = [0, 1, 2, 3, 4]
-
-        start_time_str = request.form.get("start_time")
-        try:
-            custom_start_time = datetime.strptime(start_time_str, "%H:%M").time()
-        except (ValueError, TypeError):
-            custom_start_time = time(8, 30)
-
-        def get_req(field):
-            val = request.form.get(field)
-            return int(val) if val and val.strip().isdigit() else 0
-
-        required_by_category = {
-            "senior": get_req("required_senior"),
-            "mid": get_req("required_mid"),
-            "junior": get_req("required_junior"),
-            "trainee": get_req("required_trainee"),
-            "sprinkler": get_req("required_sprinkler")
-        }
-
-        today = datetime.today().date()
-        end_date = today + timedelta(days=90)
-        scheduleDateFrom = int(time_module.mktime(datetime.combine(today, datetime.min.time()).timetuple()))
-        scheduleDateTo = int(time_module.mktime(datetime.combine(end_date, datetime.min.time()).timetuple()))
-
-        api_session = requests.Session()
-        auth_url = "https://api.servicetrade.com/api/auth"
-        payload = {"username": session.get('username'), "password": session.get('password')}
-        try:
-            auth_response = api_session.post(auth_url, json=payload)
-            auth_response.raise_for_status()
-        except Exception as e:
-            app.logger.error("Session authentication error: %s", e)
-            error = "Session authentication failed. Please log in again."
-            session.clear()
-            return redirect(url_for('login'))
-
-        query_params = {
-            "windowBeginsAfter": scheduleDateFrom,
-            "windowEndsBefore": scheduleDateTo,
-            "status": "scheduled",
-            "limit": 2000
-        }
-
-        appointments_url = "https://api.servicetrade.com/api/appointment/"
-        try:
-            appointments_response = api_session.get(appointments_url, params=query_params)
-            appointments_response.raise_for_status()
-        except Exception as e:
-            app.logger.error("Error retrieving appointments: %s", e)
-            error_message = f"Error retrieving appointments: {e}"
-            return render_template("schedule_result.html", error=error_message)
-        appointments_data = appointments_response.json().get("data", {}).get("appointments", [])
-
-        absences_url = "https://api.servicetrade.com/api/user/absence"
-        try:
-            absences_response = api_session.get(absences_url)
-            absences_response.raise_for_status()
-        except Exception as e:
-            app.logger.error("Error retrieving absences: %s", e)
-            error_message = f"Error retrieving absences: {e}"
-            return render_template("schedule_result.html", error=error_message)
-        absences_data = absences_response.json().get("data", {}).get("userAbsences", [])
-
-        candidate_results = find_candidate_dates(
-            appointments_data, absences_data, allowable_techs, required_hours, num_techs_needed,
-            include_rrsc, selected_weekdays, custom_start_time, required_by_category
-        )
-        app.logger.info("Found %d candidate results", len(candidate_results))
-        return render_template("schedule_result.html", candidate_results=candidate_results)
-
-    return render_template("jobs_form.html")
-
-@app.route('/logout')
-def logout():
-    session.clear()
-    return redirect(url_for('login'))
-
-if __name__ == '__main__':
-    app.run(debug=False, host="0.0.0.0")

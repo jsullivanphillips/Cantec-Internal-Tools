@@ -46,7 +46,10 @@ def max_free_interval(busy_intervals, working_start, working_end):
             max_free = duration
     return max_free
 
-def find_candidate_dates(appointments_data, absences_data, allowable_techs, required_hours, num_techs_needed, include_rrsc, selected_weekdays, custom_start_time, required_by_category):
+
+
+def find_candidate_dates(appointments_data, absences_data, allowable_techs, include_rrsc, 
+                         selected_weekdays, custom_start_time, tech_rows):
     """
     For each candidate date from tomorrow through the next 3 months, if the day's weekday is in selected_weekdays,
     compute the maximum contiguous free time available (within the working period defined by custom_start_time to 4:30PM)
@@ -56,14 +59,28 @@ def find_candidate_dates(appointments_data, absences_data, allowable_techs, requ
     Appointments with a job.name of "RRSC AGENT" are skipped if include_rrsc is True.
     For appointments (and absences) that start before working_start, the actual start is used so the full busy time is captured.
     
-    Once free time is computed per technician (available_info), we group available techs by category.
-    If any required count in required_by_category is > 0, then for each such category the count of techs (with free hours >= required_hours)
-    must be at least that required number.
+    For each candidate date, the available free hours for each technician is computed.
+    Then, for each dynamic tech row (a dictionary with keys:
+        - "tech_count": required number of techs,
+        - "tech_types": list of acceptable tech types,
+        - "tech_hours": required free hours),
+    we attempt to allocate distinct technicians from allowable_techs. The allocation uses only technicians
+    with free time ≥ tech_hours and whose type is in the acceptable list, and we prioritize using the lowest
+    seniority level possible. Once a technician is allocated to one requirement, they cannot be reused for another.
     
-    Otherwise (if all required_by_category values are 0), we require that the overall number of available techs is >= num_techs_needed.
-    
-    Returns the first 5 candidate dates that meet the criteria.
+    Returns the first 5 candidate dates that meet all the criteria.
     """
+    from datetime import datetime, timedelta, time
+
+    # Define a ranking for technician types (lower value means lower seniority)
+    tech_rank = {
+        "Trainee Tech": 1,
+        "Junior Tech": 2,
+        "Mid-Level Tech": 3,
+        "Senior Tech": 4,
+        "Sprinkler Tech": 5
+    }
+
     candidate_results = []
     today = datetime.today().date()
     current_date = today + timedelta(days=1)
@@ -71,11 +88,17 @@ def find_candidate_dates(appointments_data, absences_data, allowable_techs, requ
     
     while current_date <= end_date and len(candidate_results) < 5:
         if current_date.weekday() in selected_weekdays:
+            # Determine working hours for the day
             working_start, working_end = get_working_hours_for_day(current_date, custom_start_time)
-            available_info = {}  # tech name -> free hours
+            
+            # Build available_info: a dict mapping tech name to a dictionary containing free_hours and type.
+            available_info = {}
             for tech in allowable_techs:
+                tech_name = tech.get("name", "").strip()
+                tech_type = tech.get("type", "").strip()
                 busy_intervals = []
-                # Process appointments
+                
+                # Process appointments for this technician.
                 for appt in appointments_data:
                     job_info = appt.get("job", {})
                     if include_rrsc and job_info.get("name", "").strip() == "RRSC AGENT":
@@ -86,22 +109,20 @@ def find_candidate_dates(appointments_data, absences_data, allowable_techs, requ
                         if appt_window_start.date() <= current_date <= appt_window_end.date():
                             day_start = datetime.combine(current_date, time(7, 0))
                             day_end = datetime.combine(current_date, time(17, 0))
-                            if appt_window_start < working_start:
-                                effective_start = appt_window_start
-                            else:
-                                effective_start = working_start
+                            effective_start = appt_window_start if appt_window_start < working_start else working_start
                             effective_end = min(appt_window_end, day_end, working_end)
                             if effective_start < effective_end:
                                 techs = appt.get("techs", [])
+                                # Check if this appointment involves our technician (match on name, case-insensitive)
                                 for tech_obj in techs:
-                                    tech_name = tech_obj.get("name", "")
-                                    if tech_name.lower() == tech.lower():
+                                    if tech_obj.get("name", "").strip().lower() == tech_name.lower():
                                         busy_intervals.append((effective_start, effective_end))
                                         break
-                # Process absences similarly
+                
+                # Process absences for this technician.
                 for absence in absences_data:
                     absence_user = absence.get("user", {})
-                    if absence_user.get("name", "").lower() != tech.lower():
+                    if absence_user.get("name", "").strip().lower() != tech_name.lower():
                         continue
                     absence_start = datetime.fromtimestamp(int(absence["windowStart"]))
                     absence_end = datetime.fromtimestamp(int(absence["windowEnd"]))
@@ -112,30 +133,52 @@ def find_candidate_dates(appointments_data, absences_data, allowable_techs, requ
                         effective_end = min(absence_end, day_end, working_end)
                         if effective_start < effective_end:
                             busy_intervals.append((effective_start, effective_end))
+                
+                # Compute the maximum free interval in hours
                 free_hours = max_free_interval(busy_intervals, working_start, working_end)
-                available_info[tech] = round(free_hours, 2)
+                available_info[tech_name] = {"free_hours": round(free_hours, 2), "type": tech_type}
             
-            # Check category-specific requirements.
-            category_counts = {cat: 0 for cat in TECH_CATEGORIES}
-            for tech, free_hours in available_info.items():
-                if free_hours >= required_hours:
-                    for cat, tech_list in TECH_CATEGORIES.items():
-                        if tech in tech_list:
-                            category_counts[cat] += 1
-                            break
-            meets_category_requirements = True
-            if sum(required_by_category.values()) > 0:
-                for cat, req in required_by_category.items():
-                    if req > 0 and category_counts.get(cat, 0) < req:
-                        meets_category_requirements = False
-                        break
-            else:
-                total_available = sum(1 for free in available_info.values() if free >= required_hours)
-                if total_available < num_techs_needed:
-                    meets_category_requirements = False
-
-            if meets_category_requirements:
-                filtered_info = {tech: hrs for tech, hrs in available_info.items() if hrs >= required_hours}
-                candidate_results.append((current_date, filtered_info))
+            # Now attempt to allocate technicians to satisfy all dynamic tech rows.
+            # Create a set to track allocated technicians (by their name)
+            allocated_techs = set()
+            allocation_possible = True
+            
+            # For each tech row requirement, try to allocate distinct technicians.
+            for row in tech_rows:
+                required_count = int(row.get("tech_count", 0))
+                required_hours = float(row.get("tech_hours", 0))
+                acceptable_types = row.get("tech_types", [])
+                
+                # Build a list of eligible technicians (not already allocated) who have sufficient free hours
+                # and whose type is acceptable.
+                eligible = []
+                for tech in allowable_techs:
+                    tech_name = tech.get("name", "").strip()
+                    if tech_name in allocated_techs:
+                        continue
+                    info = available_info.get(tech_name, {})
+                    if not info:
+                        continue
+                    if info.get("free_hours", 0) >= required_hours and tech.get("type", "") in acceptable_types:
+                        # Append a tuple (tech, rank) for sorting
+                        rank = tech_rank.get(tech.get("type", ""), 999)
+                        eligible.append((tech_name, rank))
+                
+                # Sort eligible technicians by their rank (lowest first)
+                eligible.sort(key=lambda x: x[1])
+                
+                if len(eligible) < required_count:
+                    allocation_possible = False
+                    break
+                else:
+                    # Allocate the first 'required_count' eligible technicians.
+                    for i in range(required_count):
+                        allocated_techs.add(eligible[i][0])
+            
+            if allocation_possible:
+                allocated_info = {tech: available_info[tech] for tech in allocated_techs if tech in available_info}
+                candidate_results.append((current_date, allocated_info))
         current_date += timedelta(days=1)
+    
     return candidate_results
+

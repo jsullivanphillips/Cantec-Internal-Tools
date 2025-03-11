@@ -1,0 +1,129 @@
+/* static/css/style.css */
+:root {
+  --page_background: #fcf3e3;
+  --dark_color: #013d6a;
+  --light_neutral: #bdd3ce;
+  --highlight: #708c69;
+  --contrast: #f4a258;
+  --selected: #b4bd62;
+  --unselected : #d7c9ae
+}
+
+ul {
+  list-style: none;
+  padding-left: 0;
+  text-align: center;
+}
+
+/* Remove extra spacing from h4 and inner ul */
+.date-header {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+.tech-list {
+  margin-top: 0;
+}
+
+body {
+  font-family: 'Calibri', sans-serif;
+  text-align: center;
+  margin: 0;
+  padding: 0;
+  color: 000000;
+  background-color: var(--page_background);
+}
+
+/* Back button at top left */
+.back-button {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  text-decoration: none;
+  font-size: 16px;
+  color: #000;
+  border: 1px solid #000;
+  padding: 5px 10px;
+  border-radius: 3px;
+}
+
+/* Title in bubble letters */
+.title {
+  font-size: 3em;
+  margin-top: 60px;
+  margin-bottom: 20px;
+}
+
+/* Container for form elements */
+.container {
+  max-width: 800px;
+  margin: auto;
+}
+
+/* Tech row styling */
+.tech-row {
+  margin: 10px 0;
+  padding: 10px;
+  border: 1px solid var(--dark_color);
+  border-radius: 5px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Dropdown styling for tech types */
+.dropdown {
+  position: relative;
+  display: inline-block;
+}
+.dropdown-content {
+  display: none;
+  position: absolute;
+  background-color: #f9f9f9;
+  min-width: 200px;
+  box-shadow: 0px 8px 16px rgba(0,0,0,0.2);
+  padding: 5px;
+  z-index: 1;
+  text-align: left;
+}
+.dropdown-content label {
+  display: block;
+  padding: 3px 5px;
+}
+
+/* Weekday buttons */
+.weekday-button {
+  width: 80px;
+  height: 40px;
+  border: none;
+  border-radius: 5px;
+  margin: 5px;
+  font-size: 1em;
+  cursor: pointer;
+  color: #fff;
+}
+.weekday-true {
+  background-color: var(--selected);
+}
+.weekday-false {
+  background-color: var(--unselected);
+}
+
+/* Plus button styling */
+#addTechRowButton {
+  margin: 10px 0;
+  padding: 5px 10px;
+  font-size: 1em;
+  cursor: pointer;
+  color: #f9f9f9;
+  background-color: var(--dark_color);
+  border-radius: 5px;
+}
+
+/* FIND DATES button styling */
+#findDatesButton {
+  padding: 10px 20px;
+  font-size: 1.2em;
+  margin-top: 20px;
+  cursor: pointer;
+}

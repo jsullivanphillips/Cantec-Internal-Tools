@@ -1,8 +1,8 @@
 # app/constants.py
 TECH_CATEGORIES = {
-    "senior": ["Adam Bendorffe", "Craig Shepherd", "Jonathan Graves", "James Martyn"],
-    "mid": ["Alex Turko", "Austin Rasmussen", "Kyler Dickey", "Crosby Stewart", "Eric Turko"],
-    "junior": ["Jonathan Palahicky", "Mariah Grier", "Seth Ealing"],
-    "trainee": ["William Daniel", "Kevin Gao", "Hannah Feness", "James McNeil"],
-    "sprinkler": ["Justin Walker", "Colin Peterson"]
+    "Senior Tech": ["Adam Bendorffe", "Craig Shepherd", "Jonathan Graves", "James Martyn"],
+    "Mid-Level Tech": ["Alex Turko", "Austin Rasmussen", "Kyler Dickey", "Crosby Stewart", "Eric Turko"],
+    "Junior Tech": ["Jonathan Palahicky", "Mariah Grier", "Seth Ealing"],
+    "Trainee Tech": ["William Daniel", "Kevin Gao", "Hannah Feness", "James McNeil"],
+    "Sprinkler Tech": ["Justin Walker", "Colin Peterson"]
 }

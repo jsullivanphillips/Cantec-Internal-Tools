@@ -8,7 +8,12 @@ from app.utils.logger import setup_logging
 def create_app():
     basedir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
     template_path = os.path.join(basedir, 'templates')
-    app = Flask(__name__, template_folder=template_path)
+    static_path = os.path.join(basedir, 'static')
+    
+    # Explicitly set static_folder and static_url_path
+    app = Flask(__name__,
+                template_folder=template_path,
+                static_folder=static_path)
     app.config.from_object(Config)
     app.secret_key = Config.SECRET_KEY
 
