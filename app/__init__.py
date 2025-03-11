@@ -19,4 +19,5 @@ def create_app():
 
     setup_logging(app)
     register_blueprints(app)
+
     return app
