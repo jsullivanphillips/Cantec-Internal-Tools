@@ -5,48 +5,46 @@
   <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-  <h1>Available Schedule Dates</h1>
-  {% if error %}
-    <p style="color: red;">{{ error }}</p>
-  {% else %}
-    {% if candidate_results %}
-      <p>First {{ candidate_results|length }} available dates meeting the criteria:</p>
-      <ul style="list-style: none; padding-left: 0; text-align: center;">
-        {% for result in candidate_results %}
-          <li>
-            <br> {# Added break above the date #}
-            <h3 class="date-header">{{ result[0].strftime("%B") }} {{ result[0].day }}, {{ result[0].year }}</h3>
-            <ul class="tech-list">
-              {# Group available technicians by type #}
-              {% set grouped = {} %}
-              {% for tech, info in result[1].items() %}
-                {% set tech_type = info.type %}
-                {% if tech_type in grouped %}
-                  {% set _ = grouped[tech_type].append({'name': tech, 'hours': info.free_hours}) %}
-                {% else %}
-                  {% set _ = grouped.__setitem__(tech_type, [{'name': tech, 'hours': info.free_hours}]) %}
-                {% endif %}
-              {% endfor %}
-              
-              {% for tech_type, techs in grouped.items() %}
-                <li>
-                  <strong>{{ tech_type }}s:</strong>
-                  <ul style="list-style: none; padding-left: 0;">
-                    {% for item in techs %}
-                      <li>{{ item.name }}: {{ item.hours }} hours available</li>
-                    {% endfor %}
-                  </ul>
-                </li>
-              {% endfor %}
-            </ul>
-          </li>
-        {% endfor %}
-      </ul>
+  <a href="{{ url_for('scheduling.find_schedule') }}" class="back-button">Back</a>
+  <div class="main-container">
+    <h1 class="page-title">Available Schedule Blocks</h1>
+    {% if error %}
+      <p style="color: red;">{{ error }}</p>
     {% else %}
-      <p>No available dates found that meet the criteria.</p>
+      {% if candidate_blocks %}
+        <p>Found {{ candidate_blocks|length }} candidate block(s) meeting the criteria:</p>
+        {% for block in candidate_blocks %}
+          <div class="block-container">
+            <h2 class="block-title">
+              Option {{ loop.index }} 
+              ({{ block.start_date.strftime("%B %d, %Y") }} 
+               - {{ block.end_date.strftime("%B %d, %Y") }})
+            </h2>
+            {% for row_index, assignments in block.assignments.items() %}
+              <div class="tech-row-assignment">
+                <h3 class="tech-row-title">
+                  {{ tech_rows[row_index].tech_types|join(', ') }}
+                </h3>
+                <ul class="assignment-list">
+                  {% for assignment in assignments %}
+                    <li class="assignment-item">
+                      <strong>{{ assignment.tech }}</strong>
+                      <ul class="days-list">
+                        {% for day in assignment.span_dates %}
+                          <li>{{ day.strftime("%b %d") }}: {{ assignment.daily_hours[day] }} hours</li>
+                        {% endfor %}
+                      </ul>
+                    </li>
+                  {% endfor %}
+                </ul>
+              </div>
+            {% endfor %}
+          </div>
+        {% endfor %}
+      {% else %}
+        <p>No candidate blocks found that meet the criteria.</p>
+      {% endif %}
     {% endif %}
-  {% endif %}
-  <br>
-  <a href="{{ url_for('scheduling.find_schedule') }}">Back</a>
+  </div>
 </body>
 </html>

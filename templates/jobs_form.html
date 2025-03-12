@@ -2,53 +2,65 @@
 <html>
 <head>
   <title>ScheduleAssist</title>
+  <!-- Link to your external stylesheet -->
   <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-  <!-- Back button at top left -->
-  <a href="{{ url_for('home.home') }}" class="back-button">Back</a>
-  
-  <div class="container">
-    <!-- Title -->
-    <div class="title">ScheduleAssist</div>
 
+  <!-- Back button (if needed) -->
+  <a href="{{ url_for('home.home') }}" class="back-button">Back</a>
+
+  <!-- Main container for your page content -->
+  <div class="main-container">
+
+    <!-- Page header -->
+    <h1 class="page-title">ScheduleAssist</h1>
+
+    <!-- Tech rows form -->
     <form method="post" id="scheduleForm">
+
       <!-- Dynamic Tech Rows Section -->
       <div id="techRowsContainer">
-        <!-- Initially, no tech row. User can click plus to add. -->
+        <!-- Tech rows (cards) will be added dynamically here via jobs_form.js -->
       </div>
-      <button type="button" id="addTechRowButton">+ Add Tech Row</button>
-      <br><br>
-      
-      <!-- Weekday selection -->
-      <div id="weekdaysContainer">
-        <button type="button" class="weekday-button weekday-true" data-day="0">Mon</button>
-        <button type="button" class="weekday-button weekday-true" data-day="1">Tue</button>
-        <button type="button" class="weekday-button weekday-true" data-day="2">Wed</button>
-        <button type="button" class="weekday-button weekday-true" data-day="3">Thu</button>
-        <button type="button" class="weekday-button weekday-true" data-day="4">Fri</button>
+
+      <!-- Add Tech Row button -->
+      <button type="button" id="addTechRowButton" class="primary-btn">+ Add Tech Row</button>
+
+      <!-- Weekday selection container -->
+      <div class="weekday-container">
+        <label class="weekday-label">Select Weekdays:</label>
+        <div id="weekdaysContainer">
+          <button type="button" class="weekday-button weekday-true" data-day="0">Mon</button>
+          <button type="button" class="weekday-button weekday-true" data-day="1">Tue</button>
+          <button type="button" class="weekday-button weekday-true" data-day="2">Wed</button>
+          <button type="button" class="weekday-button weekday-true" data-day="3">Thu</button>
+          <button type="button" class="weekday-button weekday-true" data-day="4">Fri</button>
+        </div>
       </div>
-      <br>
-      
-      <!-- Start Time Input and include_rrsc Checkbox -->
-      <div style="display: inline-block; vertical-align: middle;">
+
+      <!-- Global settings row -->
+      <div class="global-settings">
         <label for="start_time">Start time after:</label>
         <input type="time" id="start_time" name="start_time" min="08:30" max="16:30" value="08:30" required>
+
+        <label class="rrsc-label">
+          <input type="checkbox" id="rrsc" name="rrsc">
+          Include RRSC
+        </label>
       </div>
-      <div style="display: inline-block; vertical-align: middle; margin-left: 20px;">
-        <label for="rrsc">Include RRSC</label>
-        <input type="checkbox" id="rrsc" name="rrsc">
-      </div>
-      <br><br>
-      
-      <!-- Hidden container for dynamically added hidden inputs (e.g., weekdays) -->
+
+      <!-- Hidden container for dynamically added hidden inputs (weekdays) -->
       <div id="hiddenInputsContainer"></div>
-      
-      <!-- FIND DATES Button -->
-      <button type="submit" id="findDatesButton">FIND DATES</button>
+
+      <!-- Submit button -->
+      <button type="submit" id="findDatesButton" class="primary-btn">Find Dates</button>
+
     </form>
+
   </div>
-  
+
+  <!-- Link to your external JavaScript -->
   <script src="{{ url_for('static', filename='js/jobs_form.js') }}"></script>
 </body>
 </html>

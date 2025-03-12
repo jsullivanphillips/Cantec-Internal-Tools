@@ -3,8 +3,8 @@ from flask import Blueprint, render_template, request, session, redirect, url_fo
 from datetime import datetime, timedelta, time
 import requests
 import time as time_module
-from app.services.scheduling_service import find_candidate_dates
-from app.constants import TECH_CATEGORIES  # import our constant
+from app.services.scheduling_service import find_candidate_dates, find_candidate_blocks
+from app.constants import TECH_CATEGORIES  # for global tech list
 
 scheduling_bp = Blueprint('scheduling', __name__)
 
@@ -13,25 +13,31 @@ def find_schedule():
     if request.method == 'POST':
         # Build dynamic tech rows from the form arrays.
         tech_counts = request.form.getlist("tech_count[]")
-        tech_hours_list = request.form.getlist("tech_hours[]")
         tech_rows = []
         for i in range(len(tech_counts)):
             try:
                 tech_count_val = int(tech_counts[i])
             except (TypeError, ValueError):
                 tech_count_val = 0
-            try:
-                tech_hours_val = float(tech_hours_list[i])
-            except (TypeError, ValueError):
-                tech_hours_val = 0.0
+            # Retrieve the selected tech types for this row.
             tech_types = request.form.getlist("tech_types_" + str(i) + "[]")
+            # Retrieve the dynamic day hours for this row.
+            day_hours_raw = request.form.getlist("tech_day_hours_" + str(i) + "[]")
+            day_hours = []
+            for dh in day_hours_raw:
+                try:
+                    day_hours.append(float(dh))
+                except (TypeError, ValueError):
+                    day_hours.append(0.0)
             tech_rows.append({
                 "tech_count": tech_count_val,
-                "tech_hours": tech_hours_val,
-                "tech_types": tech_types
+                "tech_types": tech_types,
+                "day_hours": day_hours  # A list of required hours for each consecutive day.
             })
+
+        print("Parsed tech rows: %s", tech_rows)
         current_app.logger.info("Parsed tech rows: %s", tech_rows)
-        
+
         include_rrsc = request.form.get("rrsc") == "on"
 
         weekday_values = request.form.getlist("weekdays")
@@ -51,8 +57,10 @@ def find_schedule():
         scheduleDateFrom = int(time_module.mktime(datetime.combine(today, datetime.min.time()).timetuple()))
         scheduleDateTo = int(time_module.mktime(datetime.combine(end_date, datetime.min.time()).timetuple()))
 
-        # Authenticate with the ServiceTrade API.
+        # Initialize API session.
         api_session = requests.Session()
+
+        # Authenticate with the API.
         auth_url = "https://api.servicetrade.com/api/auth"
         payload = {"username": session.get('username'), "password": session.get('password')}
         try:
@@ -63,6 +71,7 @@ def find_schedule():
             session.clear()
             return redirect(url_for('auth.login'))
 
+        # Define query parameters for appointments.
         query_params = {
             "windowBeginsAfter": scheduleDateFrom,
             "windowEndsBefore": scheduleDateTo,
@@ -70,6 +79,7 @@ def find_schedule():
             "limit": 2000
         }
 
+        # Retrieve appointments.
         appointments_url = "https://api.servicetrade.com/api/appointment/"
         try:
             appointments_response = api_session.get(appointments_url, params=query_params)
@@ -80,6 +90,7 @@ def find_schedule():
             return render_template("schedule_result.html", error=error_message)
         appointments_data = appointments_response.json().get("data", {}).get("appointments", [])
 
+        # Retrieve absences.
         absences_url = "https://api.servicetrade.com/api/user/absence"
         try:
             absences_response = api_session.get(absences_url)
@@ -90,18 +101,21 @@ def find_schedule():
             return render_template("schedule_result.html", error=error_message)
         absences_data = absences_response.json().get("data", {}).get("userAbsences", [])
 
-        # Build the list of allowable technicians from TECH_CATEGORIES.
+        # Build the global list of allowable technicians from TECH_CATEGORIES.
         allowable_techs = []
         for tech_type, names in TECH_CATEGORIES.items():
             for name in names:
                 allowable_techs.append({"name": name, "type": tech_type})
-        
-        # Call the scheduling service with the dynamic tech rows.
-        candidate_results = find_candidate_dates(
+
+        # Get daily candidate results.
+        daily_candidates = find_candidate_dates(
             appointments_data, absences_data, allowable_techs,
             include_rrsc, selected_weekdays, custom_start_time, tech_rows
         )
-        current_app.logger.info("Found %d candidate results", len(candidate_results))
-        return render_template("schedule_result.html", candidate_results=candidate_results)
+
+        # Post-process daily candidate results into multi-day candidate blocks.
+        candidate_blocks = find_candidate_blocks(daily_candidates, tech_rows, allowable_techs)
+        current_app.logger.info("Found %d candidate blocks", len(candidate_blocks))
+        return render_template("schedule_result.html", candidate_blocks=candidate_blocks, tech_rows=tech_rows)
 
     return render_template("jobs_form.html")

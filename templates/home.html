@@ -1,16 +1,31 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <title>Home - Scheduling App</title>
-    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/style.css') }}">
+  <title>Welcome to the Scheduling App</title>
+  <!-- Link to your existing stylesheet -->
+  <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-    <h1>Welcome to the Scheduling App</h1>
-    <p>This is the home page. Click the button below to access the Scheduling Assistant.</p>
-    <a href="{{ url_for('scheduling.find_schedule') }}">
-        <button type="button">Scheduling Assistant</button>
-    </a>
-    <p><a href="{{ url_for('auth.logout') }}">Logout</a></p>
+
+  <!-- Main container for the homepage content -->
+  <div class="main-container">
+
+    <!-- Page Title -->
+    <h1 class="page-title">Welcome to the Scheduling App</h1>
+
+    <!-- Optional description or instructions -->
+    <p style="text-align: center; margin-bottom: 20px;">
+      This is the home page. Use the button below to access the Scheduling Assistant and begin scheduling.
+    </p>
+
+    <!-- Center the navigation link as a primary button -->
+    <div style="text-align: center;">
+      <a href="{{ url_for('scheduling.find_schedule') }}" class="primary-btn">
+        Scheduling Assistant
+      </a>
+    </div>
+
+  </div>
+
 </body>
 </html>
