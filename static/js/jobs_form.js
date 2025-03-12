@@ -3,7 +3,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const addTechRowButton = document.getElementById('addTechRowButton');
     const hiddenInputsContainer = document.getElementById('hiddenInputsContainer');
     
-    // Define the available tech types.
+    // Example array of available tech types (update as needed).
     const techTypes = [
       "Senior Tech",
       "Mid-Level Tech",
@@ -13,19 +13,20 @@ document.addEventListener('DOMContentLoaded', function() {
     ];
     
     let techRowCount = 0;
-    
+  
     // Function to create a new tech row.
     function createTechRow() {
-      // Create a container for the entire tech row.
+      // Container for the entire tech row (styled as a card in your CSS).
       const rowContainer = document.createElement('div');
       rowContainer.classList.add('row-container');
-      // You can style rowContainer in your CSS with .row-container { ... }
+      // rowContainer could have background-color, border-radius, etc. in style.css
   
-      // The grid row that holds main row, day section, and remove row.
+      // The grid row that holds: main row, day section, remove row.
       const row = document.createElement('div');
       row.classList.add('tech-row');
       row.setAttribute('data-row-index', techRowCount);
-      // Example grid layout (3 columns)
+  
+      // Example CSS Grid layout: 3 columns => left (main row), middle (days), right (remove).
       row.style.display = 'grid';
       row.style.gridTemplateColumns = 'auto 1fr auto';
       row.style.alignItems = 'center';
@@ -38,13 +39,15 @@ document.addEventListener('DOMContentLoaded', function() {
       mainRow.style.flexWrap = 'nowrap';
       mainRow.style.alignItems = 'center';
       mainRow.style.gap = '10px';
-      mainRow.style.justifySelf = 'end'; // right align in the grid cell
+      mainRow.style.justifySelf = 'end'; // right-align in its grid cell
   
       // Tech count input
       const techCountInput = document.createElement('input');
       techCountInput.type = 'number';
       techCountInput.name = 'tech_count[]';
       techCountInput.min = '1';
+      techCountInput.step = '1';
+      techCountInput.value = '1'; // default to 1
       techCountInput.placeholder = '# Techs';
       techCountInput.style.width = '60px';
       techCountInput.style.textAlign = 'center';
@@ -55,19 +58,25 @@ document.addEventListener('DOMContentLoaded', function() {
   
       // Dropdown container
       const dropdownContainer = document.createElement('div');
-      dropdownContainer.classList.add('dropdown');
       dropdownContainer.style.display = 'inline-block';
       dropdownContainer.style.position = 'relative';
   
-      // Dropdown button
+      // Dropdown button (themed to match your accent color, or a secondary style)
       const dropdownButton = document.createElement('button');
       dropdownButton.type = 'button';
-      dropdownButton.classList.add('dropdown-button');
       dropdownButton.textContent = 'Select Tech Types';
+      // Example styling (using a .secondary-btn class or inline)
+      dropdownButton.classList.add('secondary-btn');
+      // Or inline styles if you prefer:
+      // dropdownButton.style.backgroundColor = '#0C62A6';
+      // dropdownButton.style.color = '#fff';
+      // dropdownButton.style.border = 'none';
+      // dropdownButton.style.borderRadius = '4px';
+      // dropdownButton.style.padding = '6px 10px';
+      // dropdownButton.style.cursor = 'pointer';
   
       // Dropdown content container
       const dropdownContent = document.createElement('div');
-      dropdownContent.classList.add('dropdown-content');
       dropdownContent.style.display = 'none';
       dropdownContent.style.position = 'absolute';
       dropdownContent.style.backgroundColor = '#f9f9f9';
@@ -91,9 +100,9 @@ document.addEventListener('DOMContentLoaded', function() {
         dropdownContent.appendChild(label);
       });
   
-      // Toggle dropdown display on button click
+      // Toggle dropdown on button click
       dropdownButton.addEventListener('click', function(event) {
-        event.stopPropagation(); // prevent the global click from closing it immediately
+        event.stopPropagation();
         dropdownContent.style.display = (dropdownContent.style.display === 'block') ? 'none' : 'block';
       });
   
@@ -120,6 +129,7 @@ document.addEventListener('DOMContentLoaded', function() {
       dayContainer.classList.add('day-container');
       dayContainer.style.display = 'block'; // stack day entries vertically
   
+      // Function to add a day entry
       function addDayEntry() {
         const dayEntry = document.createElement('div');
         dayEntry.classList.add('day-entry');
@@ -136,6 +146,7 @@ document.addEventListener('DOMContentLoaded', function() {
         dayHoursInput.name = 'tech_day_hours_' + row.getAttribute('data-row-index') + '[]';
         dayHoursInput.min = '0';
         dayHoursInput.step = '0.5';
+        dayHoursInput.placeholder = 'Hours';
         dayHoursInput.style.width = '60px';
         dayHoursInput.style.textAlign = 'center';
   
@@ -161,7 +172,7 @@ document.addEventListener('DOMContentLoaded', function() {
   
         const removeDayLabel = document.createElement('span');
         removeDayLabel.textContent = " remove day";
-        removeDayLabel.style.color = '#cf4655'; // updated color
+        removeDayLabel.style.color = '#cf4655';
   
         dayEntry.appendChild(dayLabel);
         dayEntry.appendChild(dayHoursInput);
@@ -178,6 +189,16 @@ document.addEventListener('DOMContentLoaded', function() {
       const addDayButton = document.createElement('button');
       addDayButton.type = 'button';
       addDayButton.textContent = '+ Add Day';
+      // Style it similarly to your theme (primary or secondary)
+      addDayButton.classList.add('secondary-btn');
+      // Or inline styles if you prefer:
+      // addDayButton.style.backgroundColor = '#0C62A6';
+      // addDayButton.style.color = '#fff';
+      // addDayButton.style.border = 'none';
+      // addDayButton.style.borderRadius = '4px';
+      // addDayButton.style.padding = '6px 10px';
+      // addDayButton.style.cursor = 'pointer';
+  
       addDayButton.addEventListener('click', function() {
         addDayEntry();
       });
@@ -213,31 +234,30 @@ document.addEventListener('DOMContentLoaded', function() {
   
       const removeRowLabel = document.createElement('span');
       removeRowLabel.textContent = " remove row";
-      removeRowLabel.style.color = '#cf4655'; // updated color
+      removeRowLabel.style.color = '#cf4655';
   
       removeRowContainer.appendChild(removeButton);
       removeRowContainer.appendChild(removeRowLabel);
   
       // Append columns to row
-      row.appendChild(mainRow);      // Left column
-      row.appendChild(daySection);   // Middle column
-      row.appendChild(removeRowContainer); // Right column
+      row.appendChild(mainRow);
+      row.appendChild(daySection);
+      row.appendChild(removeRowContainer);
   
       // Put the row in the row container
-      rowContainer.classList.add('row-container');
       rowContainer.appendChild(row);
       techRowsContainer.appendChild(rowContainer);
   
       techRowCount++;
     }
   
-    // Add Tech Row button
+    // When the user clicks "+ Add Tech Row"
     addTechRowButton.addEventListener('click', createTechRow);
   
     // If you want a default row on page load, uncomment:
     // createTechRow();
   
-    // Weekday toggle
+    // Toggle weekday buttons
     const weekdayButtons = document.querySelectorAll('.weekday-button');
     weekdayButtons.forEach(function(button) {
       button.addEventListener('click', function() {
@@ -271,11 +291,8 @@ document.addEventListener('DOMContentLoaded', function() {
       // For each dropdown content
       const allDropdowns = document.querySelectorAll('.dropdown-content');
       allDropdowns.forEach(function(dropdown) {
-        // If the dropdown is open
         if (dropdown.style.display === 'block') {
-          // Check if the click is outside the dropdown and its button
-          // The button is the sibling or parent of dropdown => parentNode or previousSibling
-          const button = dropdown.previousElementSibling; // The .dropdown-button
+          const button = dropdown.previousElementSibling; // the .dropdown-button
           if (!dropdown.contains(event.target) && !button.contains(event.target)) {
             dropdown.style.display = 'none';
           }
@@ -295,7 +312,7 @@ document.addEventListener('DOMContentLoaded', function() {
       button.textContent = selected.length > 0 ? selected.join(', ') : 'Select Tech Types';
     }
   
-    // Utility function to reindex the day entries if needed
+    // Utility function to reindex day entries after removal or reordering
     function reindexDayEntries(row, rowIndex) {
       const dayContainer = row.querySelector('.day-container');
       const dayEntries = dayContainer.querySelectorAll('.day-entry');
@@ -307,17 +324,17 @@ document.addEventListener('DOMContentLoaded', function() {
       });
     }
   
-    // Utility function to reindex tech rows
+    // Utility function to reindex tech rows after a row is removed
     function reindexTechRows() {
       const rows = techRowsContainer.querySelectorAll('.row-container');
       rows.forEach(function(container, index) {
         const row = container.querySelector('.tech-row');
         row.setAttribute('data-row-index', index);
   
-        // Update the day entries
+        // Update day entries
         reindexDayEntries(row, index);
   
-        // Update the dropdown checkboxes
+        // Update dropdown checkboxes
         const checkboxes = row.querySelectorAll('.dropdown-content input[type="checkbox"]');
         checkboxes.forEach(function(checkbox) {
           checkbox.name = 'tech_types_' + index + '[]';

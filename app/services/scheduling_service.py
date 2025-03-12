@@ -58,7 +58,7 @@ def find_candidate_dates(appointments_data, absences_data, allowable_techs, incl
     candidate_results = []
     today = datetime.today().date()
     current_date = today + timedelta(days=1)
-    end_date = today + timedelta(days=90)
+    end_date = today + timedelta(days=120)
     
     while current_date <= end_date:
         if current_date.weekday() in selected_weekdays:
@@ -177,32 +177,33 @@ def find_candidate_blocks(daily_candidates, tech_rows, allowable_techs):
                 continue  # Skip if no day requirements.
             
             best_window_total = -1
-            best_window_qualified = None  # Will hold the selected assignments for this row.
+            best_window_qualified = None  # This will hold the selected assignments for this row.
             
             if L == 1:
-                # For a single-day requirement, check each day individually in order.
-                for window_start in range(0, block_length):
-                    window = [block[window_start]]  # Single day window.
-                    qualified = []
-                    for tech in allowable_techs:
-                        if tech.get("type") not in row.get("tech_types", []):
-                            continue
-                        date, avail_info = window[0]
-                        tech_name = tech.get("name")
-                        if tech_name in avail_info and (required_day_hours[0] == 0 or avail_info[tech_name]["free_hours"] >= required_day_hours[0]):
-                            qualified.append({
-                                'tech': tech.get("name"),
-                                'span': [date],
-                                'daily_hours': { date: avail_info[tech_name]["free_hours"] },
-                                'total_hours': avail_info[tech_name]["free_hours"],
-                                'ranking': tech_rank.get(tech.get("type"), 999)
-                            })
-                    if len(qualified) >= required_count:
-                        # Since daily_candidates are sorted, the first qualifying day is the earliest.
-                        qualified.sort(key=lambda x: (x['ranking'], -x['total_hours']))
-                        best_window_qualified = qualified[:required_count]
-                        best_window_total = sum(q['total_hours'] for q in best_window_qualified)
-                        break  # Use the earliest qualifying day.
+                # For a single-day requirement, always use the first day of the candidate block.
+                let_window = [block[0]]  # Always take the earliest day.
+                qualified = []
+                for tech in allowable_techs:
+                    if tech.get("type") not in row.get("tech_types", []):
+                        continue
+                    date, avail_info = let_window[0]
+                    tech_name = tech.get("name")
+                    if tech_name in avail_info and avail_info[tech_name]["free_hours"] >= required_day_hours[0]:
+                        qualified.append({
+                            'tech': tech.get("name"),
+                            'span': [date],
+                            'daily_hours': { date: avail_info[tech_name]["free_hours"] },
+                            'total_hours': avail_info[tech_name]["free_hours"],
+                            'ranking': tech_rank.get(tech.get("type"), 999)
+                        })
+                if len(qualified) >= required_count:
+                    # Sort by ranking then by total_hours descending.
+                    qualified.sort(key=lambda x: (x['ranking'], -x['total_hours']))
+                    best_window_qualified = qualified[:required_count]
+                    best_window_total = sum(q['total_hours'] for q in best_window_qualified)
+                else:
+                    block_valid = False
+                    break
             else:
                 # For multi-day requirements, slide a window of length L.
                 for window_start in range(0, block_length - L + 1):
@@ -216,7 +217,7 @@ def find_candidate_blocks(daily_candidates, tech_rows, allowable_techs):
                         for k in range(L):
                             date, avail_info = window[k]
                             tech_name = tech.get("name")
-                            if tech_name in avail_info and (required_day_hours[k] == 0 or avail_info[tech_name]["free_hours"] >= required_day_hours[k]):
+                            if tech_name in avail_info and avail_info[tech_name]["free_hours"] >= required_day_hours[k]:
                                 window_hours.append(avail_info[tech_name]["free_hours"])
                             else:
                                 qualifies = False
@@ -252,12 +253,10 @@ def find_candidate_blocks(daily_candidates, tech_rows, allowable_techs):
                     })
         # End for each tech row.
         
-        # Enforce that all tech row assignments have at least one overlapping day.
+        # Optional: enforce that all tech row assignments have at least one overlapping day.
         if block_valid and assignments:
             common_days = None
             for row_index, assignment_list in assignments.items():
-                # We assume all assignments for a given row share the same span;
-                # use the span_dates from the first assignment.
                 row_span = set(assignment_list[0]['span_dates'])
                 if common_days is None:
                     common_days = row_span
