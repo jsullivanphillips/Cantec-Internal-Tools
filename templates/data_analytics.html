@@ -36,40 +36,100 @@
   <!-- Main Container -->
   <div class="container mt-4">
     <h1 class="text-center mb-4">Data Analytics</h1>
-    <!-- Responsive row with two columns for side-by-side cards -->
-    <div class="row row-cols-1 row-cols-md-2 g-4">
-      <!-- Card 1: Top Companies by Invoice Amount -->
-      <div class="col">
-        <div class="card h-100 shadow-sm">
-          <div class="card-body analytics-card">
-            <h2 class="card-title">Top Companies by Invoice Amount</h2>
-            <!-- Date Range Form -->
-            <div class="date-range-form mb-3">
-              <label for="dateAfter">Start Date:</label>
-              <input type="date" id="dateAfter">
-              <label for="dateBefore" style="margin-left:10px;">End Date:</label>
-              <input type="date" id="dateBefore">
-              <button id="updateDateRange" class="primary-btn" style="margin-left:10px;">Update</button>
-            </div>
-            <div id="companyResults">
-              <p class="card-text">Loading data...</p>
-            </div>
-          </div>
-        </div>
+    
+    <!-- Financials Section (existing) -->
+    <div class="card shadow-sm">
+      <div class="card-header" id="financialsHeading">
+        <h2 class="mb-0">
+          <button class="btn btn-link text-decoration-none" type="button" data-bs-toggle="collapse" data-bs-target="#financialsCollapse" aria-expanded="true" aria-controls="financialsCollapse">
+            Financials
+          </button>
+        </h2>
       </div>
-      <!-- Card 2: Chart -->
-      <div class="col">
-        <div class="card h-100 shadow-sm">
-          <div class="card-body">
-            <!-- Canvas for the Chart.js bar chart -->
-            <canvas id="chartCanvas" style="max-height: 400px;"></canvas>
+      <div id="financialsCollapse" class="collapse show" aria-labelledby="financialsHeading">
+        <div class="card-body">
+          <!-- Row with two cards for Metric 1: Top Companies by Invoice Amount -->
+          <div class="row row-cols-1 row-cols-md-2 g-4">
+            <!-- Card 1: Top Companies by Invoice Amount (Text & Date Range) -->
+            <div class="col">
+              <div class="card h-100 shadow-sm">
+                <div class="card-body analytics-card">
+                  <h2 class="card-title">Top Companies by Invoice Amount</h2>
+                  <!-- Date Range Form -->
+                  <div class="date-range-form mb-3">
+                    <label for="dateAfter">Start Date:</label>
+                    <input type="date" id="dateAfter">
+                    <label for="dateBefore" style="margin-left:10px;">End Date:</label>
+                    <input type="date" id="dateBefore">
+                    <button id="updateDateRange" class="primary-btn" style="margin-left:10px;">Update</button>
+                  </div>
+                  <div id="companyResults">
+                    <p class="card-text">Loading data...</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <!-- Card 2: Chart for Top Companies -->
+            <div class="col">
+              <div class="card h-100 shadow-sm">
+                <div class="card-body">
+                  <canvas id="chartCanvas" style="max-height: 400px;"></canvas>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
+          
+          <!-- Row for Metric 2: Monthly Invoice Totals -->
+          <div class="row mt-4">
+            <div class="col">
+              <div class="card shadow-sm">
+                <div class="card-body" id="monthlyTotalsCard">
+                  <h2 class="card-title">Monthly Invoice Totals (Last Year)</h2>
+                  <!-- List for monthly totals -->
+                  <div id="monthlyTotalsList">
+                    <p class="card-text">Loading data...</p>
+                  </div>
+                  <!-- Bar Chart for Monthly Totals -->
+                  <canvas id="monthlyChartCanvas" style="max-height: 400px; margin-top:20px;"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+        </div> <!-- end card-body for Financials -->
       </div>
     </div>
-  </div>
+    
+    <!-- New Service Section -->
+    <div class="card shadow-sm mt-4">
+      <div class="card-header" id="serviceHeading">
+        <h2 class="mb-0">
+          <button class="btn btn-link text-decoration-none" type="button" data-bs-toggle="collapse" data-bs-target="#serviceCollapse" aria-expanded="true" aria-controls="serviceCollapse">
+            Service
+          </button>
+        </h2>
+      </div>
+      <div id="serviceCollapse" class="collapse show" aria-labelledby="serviceHeading">
+        <div class="card-body">
+          <!-- Card for Metric 3: Scheduled Jobs per Month (Last 6 Months) -->
+          <div class="card shadow-sm">
+            <div class="card-body" id="serviceMetricCard">
+              <h2 class="card-title">Scheduled Jobs (Last 6 Months)</h2>
+              <!-- List for monthly scheduled jobs -->
+              <div id="serviceMetricList">
+                <p class="card-text">Loading data...</p>
+              </div>
+              <!-- Bar Chart for Scheduled Jobs -->
+              <canvas id="serviceChartCanvas" style="max-height: 400px; margin-top:20px;"></canvas>
+            </div>
+          </div>
+        </div> <!-- end card-body for Service section -->
+      </div>
+    </div>
+    
+  </div> <!-- end container -->
 
-  <!-- Inline script to set default date values -->
+  <!-- Inline script to set default date values for Metric 1 -->
   <script>
     function formatDate(date) {
       const year = date.getFullYear();
