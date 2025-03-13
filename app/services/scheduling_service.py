@@ -53,8 +53,6 @@ def find_candidate_dates(appointments_data, absences_data, allowable_techs, incl
     where available_info is a dict mapping technician name to a dict containing:
        {"free_hours": float, "type": str}
     """
-    from datetime import datetime, timedelta, time
-
     candidate_results = []
     today = datetime.today().date()
     current_date = today + timedelta(days=1)
@@ -101,19 +99,14 @@ def find_candidate_dates(appointments_data, absences_data, allowable_techs, incl
                         effective_end = min(absence_end, day_end, working_end)
                         if effective_start < effective_end:
                             busy_intervals.append((effective_start, effective_end))
-                # Compute free hours (assume max_free_interval is defined elsewhere).
                 free_hours = max_free_interval(busy_intervals, working_start, working_end)
                 available_info[tech_name] = {"free_hours": round(free_hours, 2), "type": tech_type}
             
             candidate_results.append((current_date, available_info))
-            
                 
         current_date += timedelta(days=1)
     
     return candidate_results
-
-
-
 
 def group_consecutive_days(daily_candidates):
     """
@@ -152,7 +145,9 @@ def process_single_day_candidate(date, available_info, tech_rows, allowable_tech
             continue
         qualified = []
         for tech in allowable_techs:
-            if tech.get("type") not in row.get("tech_types", []):
+            # Updated check for nested tech selections:
+            row_techs = row.get("tech_types", {})
+            if tech.get("type") not in row_techs or tech.get("name") not in row_techs[tech.get("type")]:
                 continue
             tech_name = tech.get("name")
             if tech_name in available_info and available_info[tech_name]["free_hours"] >= required_day_hours[0]:
@@ -201,7 +196,9 @@ def process_multi_day_block(block, tech_rows, allowable_techs, tech_rank):
                 window = [block[window_start]]  # Single-day window
                 qualified = []
                 for tech in allowable_techs:
-                    if tech.get("type") not in row.get("tech_types", []):
+                    # Updated check for nested tech selections:
+                    row_techs = row.get("tech_types", {})
+                    if tech.get("type") not in row_techs or tech.get("name") not in row_techs[tech.get("type")]:
                         continue
                     date, avail_info = window[0]
                     tech_name = tech.get("name")
@@ -223,7 +220,9 @@ def process_multi_day_block(block, tech_rows, allowable_techs, tech_rank):
                 window = block[window_start: window_start + L]  # List of L tuples (date, available_info)
                 qualified = []
                 for tech in allowable_techs:
-                    if tech.get("type") not in row.get("tech_types", []):
+                    # Updated check for nested tech selections:
+                    row_techs = row.get("tech_types", {})
+                    if tech.get("type") not in row_techs or tech.get("name") not in row_techs[tech.get("type")]:
                         continue
                     qualifies = True
                     window_hours = []
@@ -275,7 +274,6 @@ def process_multi_day_block(block, tech_rows, allowable_techs, tech_rank):
         if not common_days:
             block_valid = False
     if block_valid:
-        # Return the assignments and the first and last day in the block.
         return assignments, (block_dates[0], block_dates[-1])
     else:
         return None, None
@@ -285,7 +283,7 @@ def find_candidate_blocks(daily_candidates, tech_rows, allowable_techs):
     daily_candidates: list of tuples (date, available_info)
     tech_rows: list of dicts, each with keys:
        - "tech_count": int
-       - "tech_types": list of acceptable tech types
+       - "tech_types": dict mapping group -> list of technician names
        - "day_hours": list of required free hours per consecutive day
     allowable_techs: list of dicts, each with keys "name" and "type"
 
@@ -345,10 +343,3 @@ def find_candidate_blocks(daily_candidates, tech_rows, allowable_techs):
                 })
         valid_blocks.sort(key=lambda b: b['start_date'])
         return valid_blocks[:3]
-
-
-
-
-
-
-

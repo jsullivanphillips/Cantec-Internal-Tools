@@ -1,6 +1,7 @@
 # app/routes/scheduling.py
 from flask import Blueprint, render_template, request, session, redirect, url_for, current_app
 from datetime import datetime, timedelta, time
+from zoneinfo import ZoneInfo
 import requests
 import time as time_module
 from app.services.scheduling_service import find_candidate_dates, find_candidate_blocks
@@ -19,8 +20,26 @@ def find_schedule():
                 tech_count_val = int(tech_counts[i])
             except (TypeError, ValueError):
                 tech_count_val = 0
+
             # Retrieve the selected tech types for this row.
-            tech_types = request.form.getlist("tech_types_" + str(i) + "[]")
+            # Values can be either "Group" (e.g., "Senior Tech") or "Group:Name" (e.g., "Senior Tech:Adam Bendorffe")
+            raw_selections = request.form.getlist("tech_types_" + str(i) + "[]")
+            # Process the raw selections into a dictionary: { group: [list of technicians] }
+            selected_techs = {}
+            for item in raw_selections:
+                if ':' in item:
+                    group, tech_name = item.split(':', 1)
+                    if group not in selected_techs:
+                        selected_techs[group] = set()
+                    selected_techs[group].add(tech_name)
+                else:
+                    # If only the group is selected, add all technicians from that group
+                    group = item
+                    selected_techs[group] = set(TECH_CATEGORIES.get(group, []))
+            # Convert sets to lists
+            for group in selected_techs:
+                selected_techs[group] = list(selected_techs[group])
+
             # Retrieve the dynamic day hours for this row.
             day_hours_raw = request.form.getlist("tech_day_hours_" + str(i) + "[]")
             day_hours = []
@@ -29,13 +48,13 @@ def find_schedule():
                     day_hours.append(float(dh))
                 except (TypeError, ValueError):
                     day_hours.append(0.0)
+
             tech_rows.append({
                 "tech_count": tech_count_val,
-                "tech_types": tech_types,
+                "tech_types": selected_techs,
                 "day_hours": day_hours  # A list of required hours for each consecutive day.
             })
 
-        print("Parsed tech rows: %s", tech_rows)
         current_app.logger.info("Parsed tech rows: %s", tech_rows)
 
         include_rrsc = request.form.get("rrsc") == "on"
@@ -52,7 +71,9 @@ def find_schedule():
         except (ValueError, TypeError):
             custom_start_time = time(8, 30)
 
-        today = datetime.today().date()
+        # Use the ServiceTrade account timezone from the session (default to UTC if not available)
+        account_timezone = session.get("account_timezone", "UTC")
+        today = datetime.now(ZoneInfo(account_timezone)).date()
         end_date = today + timedelta(days=90)
         scheduleDateFrom = int(time_module.mktime(datetime.combine(today, datetime.min.time()).timetuple()))
         scheduleDateTo = int(time_module.mktime(datetime.combine(end_date, datetime.min.time()).timetuple()))
