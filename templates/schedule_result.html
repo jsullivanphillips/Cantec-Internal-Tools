@@ -12,13 +12,21 @@
       <p style="color: red;">{{ error }}</p>
     {% else %}
       {% if candidate_blocks %}
-        <p>Found {{ candidate_blocks|length }} candidate block(s) meeting the criteria:</p>
+        <p>Found {{ candidate_blocks|length }} date(s) meeting the criteria:</p>
         {% for block in candidate_blocks %}
+          {# Convert assignments dictionary to a sorted list and extract the first assignment of the first tech row #}
+          {% set sorted_assignments = block.assignments|dictsort %}
+          {% set first_assignment = sorted_assignments[0][1][0] %}
+          {% set firstDate = first_assignment.span_dates[0] %}
+          {% set lastDate = first_assignment.span_dates[-1] %}
           <div class="block-container">
             <h2 class="block-title">
-              Option {{ loop.index }} 
-              ({{ block.start_date.strftime("%B %d, %Y") }} 
-               - {{ block.end_date.strftime("%B %d, %Y") }})
+              Option {{ loop.index }} (
+              {{ firstDate.strftime("%B %d, %Y") }}
+              {% if lastDate != firstDate %}
+                - {{ lastDate.strftime("%B %d, %Y") }}
+              {% endif %}
+              )
             </h2>
             {% for row_index, assignments in block.assignments.items() %}
               <div class="tech-row-assignment">
@@ -31,7 +39,7 @@
                       <strong>{{ assignment.tech }}</strong>
                       <ul class="days-list">
                         {% for day in assignment.span_dates %}
-                          <li>{{ day.strftime("%b %d") }}: {{ assignment.daily_hours[day] }} hours</li>
+                          <li>{{ day.strftime("%b %d") }}: {{ assignment.daily_hours[day] }} hours free</li>
                         {% endfor %}
                       </ul>
                     </li>
@@ -42,7 +50,7 @@
           </div>
         {% endfor %}
       {% else %}
-        <p>No candidate blocks found that meet the criteria.</p>
+        <p>No dates found that meet the criteria.</p>
       {% endif %}
     {% endif %}
   </div>
