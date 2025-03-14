@@ -341,7 +341,8 @@ const fetchMetric4 = (range) => {
     console.log("Date range:", { start, end });  // Debug: Check date range
 
     // Show loading indicator and hide the chart
-    document.getElementById("processingMetricList").innerHTML = "<p class='card-text'>Loading data...</p>";
+    document.getElementById('processingTableContainer').style.display = 'none';
+    document.getElementById('processingMetricList').innerHTML = '<p class="card-text">Loading data...</p>';
     document.getElementById("processingChartCanvas").style.display = "none";  // Hide chart during loading
 
     fetch(`/data-analytics/metric4?dateAfter=${start}&dateBefore=${end}&range=${range}`)

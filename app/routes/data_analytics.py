@@ -1,6 +1,7 @@
 from flask import Blueprint, render_template, jsonify, session, request, current_app
 import requests
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from dateutil.relativedelta import relativedelta
 from flask_caching import Cache
 
@@ -279,52 +280,60 @@ def metric3():
 
 
 @data_analytics_bp.route('/metric4')
-@cache.cached(timeout=300, query_string=True)  # Cache for 5 minutes (300 seconds)
+@cache.cached(timeout=300, query_string=True)  # Cache for 5 minutes
 def metric4():
-    print("Starting Metric 4 calculation")  # Debug statement
-
-    # Initialize API session and authenticate
+    """
+    Jobs completed after scheduling, grouped by intervals depending on the range.
+    For 1week, show Mon -> today in local time, labeled by weekday names.
+    """
+    # 1) AUTHENTICATION
     api_session = requests.Session()
     auth_url = "https://api.servicetrade.com/api/auth"
     payload = {"username": session.get('username'), "password": session.get('password')}
+
     try:
-        print("Authenticating with ServiceTrade API...")  # Debug statement
         auth_response = api_session.post(auth_url, json=payload)
         auth_response.raise_for_status()
-        print("Authentication successful")  # Debug statement
     except Exception as e:
-        print(f"Authentication error: {e}")  # Debug statement
+        current_app.logger.error(f"Authentication error: {e}")
         return jsonify({"error": "Authentication failed"}), 401
 
-    # Parse date range from query parameters
+    # 2) DETERMINE TIME ZONE FROM SESSION
+    #    Defaults to UTC if not set
+    account_timezone = session.get("account_timezone", "UTC")
+    local_tz = ZoneInfo(account_timezone)
+
+    # 3) PARSE RANGE TYPE
     range_type = request.args.get('range', '1week')
+    # We'll define end_date in local time
+    now_local = datetime.now(tz=local_tz)
 
-    # Define the date range based on the range_type
-    end_date = datetime.now()
+    # 4) SET START_DATE AND END_DATE (LOCAL TIME)
     if range_type == "1week":
-        start_date = end_date - timedelta(days=7)  # Last 7 days
+        # For 1week, we only want Monday of this current week up to *today*
+        # (No need to extend to Sunday, because we only want up to now_local)
+        end_date_local = now_local
+        monday_of_this_week = now_local - timedelta(days=now_local.weekday())
+        start_date_local = monday_of_this_week.replace(hour=0, minute=0, second=0, microsecond=0)
     elif range_type == "4weeks":
-        start_date = end_date - timedelta(days=28)  # Last 4 weeks
+        end_date_local = now_local + timedelta(days=(6 - now_local.weekday()))  # end on Sunday
+        start_date_local = end_date_local - timedelta(days=28)
     elif range_type == "3months":
-        start_date = end_date - timedelta(days=90)  # Last 3 months
+        end_date_local = now_local + timedelta(days=(6 - now_local.weekday()))
+        start_date_local = end_date_local - timedelta(days=90)
     elif range_type == "6months":
-        start_date = end_date - timedelta(days=180)  # Last 6 months
+        end_date_local = now_local + timedelta(days=(6 - now_local.weekday()))
+        start_date_local = end_date_local - timedelta(days=180)
     else:
-        start_date = end_date - timedelta(days=180)  # Default to last 6 months
+        # default to 6months if something unexpected
+        end_date_local = now_local + timedelta(days=(6 - now_local.weekday()))
+        start_date_local = end_date_local - timedelta(days=180)
 
-    # Align the start and end dates with full weeks (Monday to Sunday)
-    start_date = start_date - timedelta(days=start_date.weekday())  # Start of the week (Monday)
-    end_date = end_date + timedelta(days=(6 - end_date.weekday()))  # End of the week (Sunday)
+    # Convert to UNIX timestamps for the API call (ServiceTrade expects UTC-based timestamps)
+    completed_on_begin = int(start_date_local.timestamp())
+    completed_on_end = int(end_date_local.timestamp())
 
-    # Convert dates to UNIX timestamps
-    completed_on_begin = int(start_date.timestamp())
-    completed_on_end = int(end_date.timestamp())
-
-    # Log the timestamps
-    print(f"Completed On Begin (Unix): {completed_on_begin}")  # Debug statement
-    print(f"Completed On End (Unix): {completed_on_end}")  # Debug statement
-
-    # Query the Job API for all jobs within the specified date range
+    # 5) FETCH JOBS
     job_url = "https://api.servicetrade.com/api/job"
     job_params = {
         "completedOnBegin": completed_on_begin,
@@ -337,65 +346,95 @@ def metric4():
     jobs_list = []
     while True:
         try:
-            print(f"Fetching jobs (Page {job_params['page']})...")  # Debug statement
             job_response = api_session.get(job_url, params=job_params)
             job_response.raise_for_status()
-            print(f"Jobs fetched successfully (Page {job_params['page']})")  # Debug statement
         except Exception as e:
-            print(f"Job API error: {e}")  # Debug statement
+            current_app.logger.error(f"Job API error: {e}")
             return jsonify({"error": "Job API error", "details": str(e)}), 500
 
         jobs_data = job_response.json().get("data", {})
-        jobs_list.extend(jobs_data.get("jobs", []))
+        jobs_page = jobs_data.get("jobs", [])
+        jobs_list.extend(jobs_page)
 
-        # Log the number of jobs fetched
-        print(f"Jobs fetched on Page {job_params['page']}: {len(jobs_data.get('jobs', []))}")  # Debug statement
-
-        # Check if there are more pages
         total_pages = jobs_data.get("totalPages", 1)
         if job_params["page"] >= total_pages:
-            print("No more pages to fetch")  # Debug statement
             break
         job_params["page"] += 1
 
-    # Log the total number of jobs fetched
-    print(f"Total Jobs Fetched: {len(jobs_list)}")  # Debug statement
+    # 6) GROUP THE JOBS BY INTERVAL (DEPENDS ON range_type)
+    if range_type == "1week":
+        # Pre-populate Monday through Friday of the *current* week with 0
+        # in correct order. We only fill up to 'today_local'.
+        # If it's Friday, we fill Monday, Tuesday, Wednesday, Thursday, Friday.
+        # If it's Wednesday, we fill Monday, Tuesday, Wednesday, etc.
+        # We'll store them in a dict day_name -> count
+        day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+        grouped_jobs = {dn: 0 for dn in day_names}
 
-    # Group jobs by interval based on the range type
-    grouped_jobs = {}
-    for job in jobs_list:
-        completed_date = datetime.fromtimestamp(job.get("completedOn"))
+        # Tally up jobs only if they fall between start_date_local & end_date_local
+        # (in local time) and only if Monday–Friday.
+        for job in jobs_list:
+            # Convert from UTC to local time
+            # The job "completedOn" is a Unix timestamp in UTC
+            completed_utc = datetime.utcfromtimestamp(job.get("completedOn"))
+            completed_local = completed_utc.replace(tzinfo=ZoneInfo("UTC")).astimezone(local_tz)
 
-        if range_type == "1week":
-            # For 1 week, group by day (Monday to Friday)
-            if completed_date.weekday() < 5:  # Only include Monday to Friday
-                interval_key = completed_date.strftime("%Y-%m-%d")  # Daily intervals
-            else:
-                continue  # Skip weekends
-        elif range_type in ["4weeks", "3months"]:
-            # For 4 weeks and 3 months, group into Monday-Friday segments
-            week_start = (completed_date - timedelta(days=completed_date.weekday())).strftime("%Y-%m-%d")
-            interval_key = f"Week of {week_start}"  # Weekly intervals
-        elif range_type == "6months":
-            # For 6 months, group by month (1st to last day of the month)
-            interval_key = completed_date.strftime("%Y-%m")  # Monthly intervals
-        else:
-            interval_key = "Unknown"
+            if start_date_local.date() <= completed_local.date() <= end_date_local.date():
+                # completed_local.weekday() < 5 means Monday=0 to Friday=4
+                if 0 <= completed_local.weekday() < 5:
+                    day_str = completed_local.strftime("%A")  # e.g. "Monday"
+                    grouped_jobs[day_str] += 1
 
-        if interval_key not in grouped_jobs:
-            grouped_jobs[interval_key] = 0
-        grouped_jobs[interval_key] += 1
+        # Build final array in chronological order, only up to "today"
+        # For example, if today is Wednesday, we skip Thursday/Friday
+        jobs_completed = []
+        for i, day_str in enumerate(day_names):
+            # The local date for this i-th weekday (starting from Monday)
+            day_date = start_date_local + timedelta(days=i)
+            if day_date.date() <= end_date_local.date():
+                jobs_completed.append({
+                    "interval": day_str,
+                    "jobs_completed": grouped_jobs[day_str]
+                })
 
-    # Format the response
-    jobs_completed = [
-        {"interval": interval, "jobs_completed": count}
-        for interval, count in grouped_jobs.items()
-    ]
+    elif range_type in ["4weeks", "3months"]:
+        # Group by "Week of YYYY-MM-DD" (Mon-Sun).
+        grouped_jobs = {}
+        for job in jobs_list:
+            # Convert to local time
+            completed_utc = datetime.utcfromtimestamp(job.get("completedOn"))
+            completed_local = completed_utc.replace(tzinfo=ZoneInfo("UTC")).astimezone(local_tz)
 
-    # Sort by interval
-    jobs_completed.sort(key=lambda x: x["interval"])
+            # Find the Monday of that job's week
+            week_start_local = completed_local - timedelta(days=completed_local.weekday())
+            week_key = f"Week of {week_start_local.strftime('%Y-%m-%d')}"
+            grouped_jobs[week_key] = grouped_jobs.get(week_key, 0) + 1
 
-    # Log the final result
-    print(f"Jobs Completed: {jobs_completed}")  # Debug statement
+        # Turn into a list of dicts
+        jobs_completed = [
+            {"interval": wk, "jobs_completed": ct}
+            for wk, ct in grouped_jobs.items()
+        ]
+        # Sort them by the actual date in the key (strip off "Week of ")
+        jobs_completed.sort(key=lambda x: x["interval"].replace("Week of ", ""))
+
+    elif range_type == "6months":
+        # Group by month (YYYY-MM)
+        grouped_jobs = {}
+        for job in jobs_list:
+            completed_utc = datetime.utcfromtimestamp(job.get("completedOn"))
+            completed_local = completed_utc.replace(tzinfo=ZoneInfo("UTC")).astimezone(local_tz)
+            month_key = completed_local.strftime("%Y-%m")
+            grouped_jobs[month_key] = grouped_jobs.get(month_key, 0) + 1
+
+        jobs_completed = [
+            {"interval": mk, "jobs_completed": ct}
+            for mk, ct in grouped_jobs.items()
+        ]
+        # Sort by year-month string
+        jobs_completed.sort(key=lambda x: x["interval"])
+    else:
+        # Fallback / default if an unknown range is provided
+        jobs_completed = []
 
     return jsonify({"jobsCompleted": jobs_completed})
