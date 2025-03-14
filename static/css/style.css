@@ -331,3 +331,55 @@ body {
   margin: 15px 0;
   box-shadow: 0 2px 5px rgba(0,0,0,0.1);
 }
+
+.btn-group .primary-btn {
+  text-align: center;
+  background-color: #0C62A6;
+  color: #fff;
+  padding: 8px 14px;
+  border-radius: 4px;
+  border: 1px solid #0C62A6;
+  transition: background-color 0.3s ease;
+  height: 35px; /* Consistent height for all buttons */
+}
+
+.btn-group .primary-btn:hover {
+  text-align: center;
+  background-color: #0a538b;
+  color: #fff;
+}
+
+.btn-group .primary-btn.active {
+  text-align: center;
+  background-color: #084b7c;
+  color: #fff;
+  border-color: #084b7c;
+  font-weight: bold;
+}
+
+
+/* Add this to your existing CSS file */
+.table-striped tbody tr:nth-of-type(odd) {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.table-bordered {
+  border: 1px solid #dee2e6;
+}
+
+.table-bordered th,
+.table-bordered td {
+  border: 1px solid #dee2e6;
+}
+
+.table th,
+.table td {
+  padding: 12px;
+  text-align: left;
+}
+
+.table th {
+  background-color: #f8f9fa;
+  font-weight: 600;
+}
+
