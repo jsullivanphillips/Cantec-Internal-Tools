@@ -1,0 +1,45 @@
+/* life_of_a_job.css */
+body {
+  font-family: Arial, sans-serif;
+  margin: 20px;
+}
+
+h1, h2 {
+  text-align: center;
+}
+
+form {
+  max-width: 600px;
+  margin: 0 auto 20px;
+  padding: 10px;
+  text-align: center;
+}
+
+form input[type="text"] {
+  width: 70%;
+  padding: 8px;
+  margin-right: 10px;
+}
+
+form button {
+  padding: 8px 12px;
+}
+
+.error {
+  color: red;
+  text-align: center;
+}
+
+#jobIntervals {
+  max-width: 600px;
+  margin: 20px auto;
+}
+
+#jobIntervals ul {
+  list-style-type: none;
+  padding: 0;
+}
+
+#jobIntervals li {
+  padding: 4px 0;
+}

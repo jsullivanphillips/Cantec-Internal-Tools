@@ -13,8 +13,207 @@ body {
   padding: 0;
 }
 
+/* ----- Custom Navbar Background ----- */
+.bg-custom {
+  background-color: #0C62A6 !important;
+}
+
+/* ----- Buttons ----- */
+button {
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.primary-btn {
+  background-color: #0C62A6;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 14px;
+  margin: 10px 0;
+  text-decoration: none;
+  display: inline-block;
+}
+.primary-btn:hover {
+  background-color: #0a538b;
+}
+
+/* ----- Main Container ----- */
+.container {
+  margin-bottom: 40px;
+}
+
+/* ----- Page Title ----- */
+.page-title {
+  font-size: 28px;
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+/* ----- Analytics Card ----- */
+.analytics-card {
+  padding: 1rem;
+}
+
+/* ----- Example Additional Card/Block Styles ----- */
+.block-container {
+  background-color: #fdfdfd;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  padding: 15px;
+  margin: 15px 0;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.btn-group .primary-btn {
+  text-align: center;
+  background-color: #0C62A6;
+  color: #fff;
+  padding: 8px 14px;
+  border-radius: 4px;
+  border: 1px solid #0C62A6;
+  transition: background-color 0.3s ease;
+  height: 35px;
+}
+.btn-group .primary-btn:hover {
+  text-align: center;
+  background-color: #0a538b;
+  color: #fff;
+}
+.btn-group .primary-btn.active {
+  text-align: center;
+  background-color: #084b7c;
+  color: #fff;
+  border-color: #084b7c;
+  font-weight: bold;
+}
+
+.table-striped tbody tr:nth-of-type(odd) {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.table-bordered {
+  border: 1px solid #dee2e6;
+}
+.table-bordered th,
+.table-bordered td {
+  border: 1px solid #dee2e6;
+}
+.table th,
+.table td {
+  padding: 12px;
+  text-align: left;
+}
+.table th {
+  background-color: #f8f9fa;
+  font-weight: 600;
+}
+
+/* ----- Login Page Styles ----- */
+.login-container {
+  width: 100%;
+  padding: 20px;
+  display: flex;
+  justify-content: center;
+}
+
+.login-card {
+  background: #fff;
+  width: 100%;
+  max-width: 400px;
+  padding: 40px 30px;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  text-align: center;
+}
+
+.login-title {
+  font-size: 24px;
+  margin-bottom: 10px;
+  color: #0C62A6;
+}
+
+.login-subtitle {
+  font-size: 14px;
+  margin-bottom: 25px;
+  color: #666;
+}
+
+.form-group {
+  margin-bottom: 20px;
+  text-align: left;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: 600;
+  color: #555;
+}
+
+.form-input {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 14px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  transition: border 0.2s ease-in-out;
+}
+
+.form-input:focus {
+  border-color: #0C62A6;
+  outline: none;
+}
+
+/* ----- Timeline & Legend ----- */
+#visualization {
+  width: 100%;
+  border: 1px solid lightgray;
+  margin-bottom: 0;
+}
+
+.vis-timeline {
+  min-height: 50px;
+  margin-bottom: 0;
+}
+
+#timelineLegend {
+  margin-top: 0.5rem;
+}
+
+/* ----- Intervals Alert ----- */
+#jobIntervals {
+  white-space: normal;
+}
+
+/* ----- Spinner (Loading) ----- */
+.spinner-border {
+  width: 1.5rem;
+  height: 1.5rem;
+  margin-right: 0.5rem;
+  vertical-align: text-bottom;
+}
+
+/* ----- Legend Color Box ----- */
+.legend-color {
+  display: inline-block;
+  width: 20px;
+  height: 12px;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+/* ----- Error Message ----- */
+#errorMessage {
+  color: red;
+  margin-bottom: 10px;
+}
+
+/* ----- Extra Styles from First File (Priority to Second) ----- */
+
+/* Back Button */
 .back-button {
-  background-color: #0C62A6;  /* primary theme color */
+  background-color: #0C62A6;
   position: absolute;
   top: 10px;
   left: 10px;
@@ -26,13 +225,12 @@ body {
   border-radius: 3px;
   transition: background-color 0.3s, border-color 0.3s;
 }
-
 .back-button:hover {
-  background-color: #0a538b;  /* slightly darker hover color */
+  background-color: #0a538b;
   border-color: #0a538b;
 }
 
-/* ----- Main Container ----- */
+/* Main Container specific for some pages */
 .main-container {
   max-width: 900px;
   margin: 60px auto 40px auto;
@@ -42,33 +240,7 @@ body {
   box-shadow: 0 2px 5px rgba(0,0,0,0.1);
 }
 
-/* ----- Page Title ----- */
-.page-title {
-  font-size: 28px;
-  text-align: center;
-  margin-bottom: 20px;
-}
-
-/* ----- Buttons ----- */
-button {
-  cursor: pointer;
-  font-size: 14px;
-}
-
-.primary-btn {
-  background-color: #0C62A6; /* Updated accent color */
-  color: #fff;
-  border: none;
-  border-radius: 4px;
-  padding: 8px 14px;
-  margin: 10px 0;
-}
-
-.primary-btn:hover {
-  background-color: #0a538b; /* Slightly darker shade on hover */
-}
-
-/* ----- Weekday Container ----- */
+/* Weekday Styles */
 .weekday-container {
   margin: 20px 0;
   text-align: center;
@@ -89,11 +261,11 @@ button {
   font-size: 14px;
   cursor: pointer;
   color: #fff;
-  background-color: #28a745; /* green by default */
+  background-color: #28a745;
 }
 
 .weekday-button.weekday-false {
-  background-color: #dc3545; /* red if toggled off */
+  background-color: #dc3545;
 }
 
 .weekday-button.weekday-true:hover {
@@ -104,7 +276,7 @@ button {
   background-color: rgb(167, 33, 47);
 }
 
-/* ----- Global Settings (Start time & RRSC) ----- */
+/* Global Settings */
 .global-settings {
   display: flex;
   align-items: center;
@@ -123,7 +295,7 @@ button {
   gap: 5px;
 }
 
-/* ----- Row Container (Each Tech Row) ----- */
+/* Row Container (Each Tech Row) */
 .row-container {
   background-color: #fdfdfd;
   border: 1px solid #ddd;
@@ -132,7 +304,7 @@ button {
   margin: 15px 0;
 }
 
-/* The grid that organizes main row, day section, and remove row. */
+/* Tech Row Grid */
 .tech-row {
   display: grid;
   grid-template-columns: auto 1fr auto;
@@ -141,16 +313,16 @@ button {
   width: 100%;
 }
 
-/* ----- Main Row ----- */
+/* Main Row */
 .tech-row .main-row {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
   gap: 10px;
-  justify-self: end; /* align right in the grid cell */
+  justify-self: end;
 }
 
-/* ----- Day Section ----- */
+/* Day Section */
 .day-container {
   display: block;
 }
@@ -168,14 +340,14 @@ button {
   justify-self: center;
 }
 
-/* ----- Remove Row (Right Column) ----- */
+/* Remove Row */
 .remove-row-container {
   display: flex;
   align-items: center;
   justify-content: start;
 }
 
-/* ----- Additional Styles for Buttons/Labels in the Tech Row ----- */
+/* Day Entry Buttons & Spans */
 .day-entry button {
   margin-left: 5px;
   color: red;
@@ -190,6 +362,7 @@ button {
   margin-right: 5px;
 }
 
+/* Block Container for content blocks */
 .block-container {
   background-color: #fdfdfd;
   border: 1px solid #ddd;
@@ -214,6 +387,7 @@ button {
   color: #0C62A6;
 }
 
+/* Secondary Button */
 .secondary-btn {
   background-color: #0C62A6;
   color: #fff;
@@ -227,6 +401,7 @@ button {
   background-color: #0a538b;
 }
 
+/* Assignment List */
 .assignment-list {
   list-style: none;
   margin: 0;
@@ -236,7 +411,7 @@ button {
 .assignment-item {
   margin-bottom: 10px;
   padding-left: 10px;
-  border-left: 2px solid #0C62A6; /* optional visual separator */
+  border-left: 2px solid #0C62A6;
 }
 
 .days-list {
@@ -245,141 +420,3 @@ button {
   padding: 0;
   font-size: 14px;
 }
-
-.form-group {
-  margin-bottom: 15px;
-  display: flex;
-  flex-direction: column;
-}
-
-.form-label {
-  font-weight: 600;
-  margin-bottom: 5px;
-}
-
-.form-input {
-  padding: 8px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  font-size: 14px;
-}
-
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
-
-body {
-  font-family: 'Open Sans', Arial, sans-serif;
-  background-color: #f5f7fa;
-  color: #333;
-  margin: 0;
-  padding: 0;
-}
-
-/* ----- Custom Navbar Background ----- */
-.bg-custom {
-  background-color: #0C62A6 !important;
-}
-
-/* If you'd like to ensure navbar text is white, you can rely on .navbar-dark or add:
-.navbar-dark .navbar-nav .nav-link,
-.navbar-dark .navbar-brand {
-  color: #fff !important;
-}
-*/
-
-/* ----- Buttons ----- */
-.primary-btn {
-  background-color: #0C62A6;
-  color: #fff;
-  border: none;
-  border-radius: 4px;
-  padding: 8px 14px;
-  margin: 10px 0;
-  text-decoration: none;
-  display: inline-block;
-}
-.primary-btn:hover {
-  background-color: #0a538b;
-}
-
-/* ----- Main Container ----- */
-.container {
-  margin-bottom: 40px; /* optional extra spacing at the bottom */
-}
-
-/* ----- Page Title ----- */
-.page-title {
-  font-size: 28px;
-  text-align: center;
-  margin-bottom: 20px;
-}
-
-/* ----- Analytics Card ----- */
-.analytics-card {
-  padding: 1rem; /* Slightly increase spacing inside the card */
-}
-
-/* ----- Example Additional Card/Block Styles ----- */
-.block-container {
-  background-color: #fdfdfd;
-  border: 1px solid #ddd;
-  border-radius: 5px;
-  padding: 15px;
-  margin: 15px 0;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-}
-
-.btn-group .primary-btn {
-  text-align: center;
-  background-color: #0C62A6;
-  color: #fff;
-  padding: 8px 14px;
-  border-radius: 4px;
-  border: 1px solid #0C62A6;
-  transition: background-color 0.3s ease;
-  height: 35px; /* Consistent height for all buttons */
-}
-
-.btn-group .primary-btn:hover {
-  text-align: center;
-  background-color: #0a538b;
-  color: #fff;
-}
-
-.btn-group .primary-btn.active {
-  text-align: center;
-  background-color: #084b7c;
-  color: #fff;
-  border-color: #084b7c;
-  font-weight: bold;
-}
-
-
-/* Add this to your existing CSS file */
-.table-striped tbody tr:nth-of-type(odd) {
-  background-color: rgba(0, 0, 0, 0.05);
-}
-
-.table-bordered {
-  border: 1px solid #dee2e6;
-}
-
-.table-bordered th,
-.table-bordered td {
-  border: 1px solid #dee2e6;
-}
-
-.table th,
-.table td {
-  padding: 12px;
-  text-align: left;
-}
-
-.table th {
-  background-color: #f8f9fa;
-  font-weight: 600;
-}
-
