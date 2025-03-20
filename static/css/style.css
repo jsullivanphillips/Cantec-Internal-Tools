@@ -420,3 +420,75 @@ button {
   padding: 0;
   font-size: 14px;
 }
+
+/* Use a CSS Grid layout for the cards container */
+.cards-container.processing-attack {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px; /* space between cards */
+}
+
+@media (max-width: 768px) {
+  .processing-attack .cards-container {
+    grid-template-columns: 1fr; /* single column on smaller screens */
+  }
+}
+
+/* Add padding above and below the week select input */
+.processing-attack-container .week-selection {
+  padding: 20px 0;
+}
+
+/* Generic card styling remains similar */
+.processing-attack .card {
+  background-color: #fdfdfd;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  padding: 15px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+/* The first four cards occupy one cell each in the 2×2 grid */
+.processing-attack .card.half {
+
+}
+
+/* The bar graph card should span both columns to be full-width */
+.processing-attack .card.full {
+  grid-column: 1 / span 2; /* Span across 2 columns */
+  min-height: 300px;       /* Taller for the bar graph */
+}
+
+.processing-attack .card.full.short {
+  grid-column: 1 / span 2; /* Span across 2 columns */
+  min-height: 100px;       /* Taller for the bar graph */
+}
+
+/* Card header and body styling */
+.processing-attack .card-header {
+  background-color: #e9ecef;
+  padding: 8px;
+  border-bottom: 1px solid #ddd;
+  font-size: 16px;
+  font-weight: 600;
+  text-align: left;
+  margin-bottom: 10px; /* keep or adjust as needed */
+}
+
+.processing-attack .card-body {
+  display: flex;
+  flex-direction: column;  /* Stack children vertically */
+  justify-content: center; /* Center vertically */
+  align-items: center;     /* Center horizontally */
+  text-align: center;
+  font-size: 26px;
+  color: #0C62A6;
+  font-weight: bold;
+}
+
+
+.processing-attack .card:hover {
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+
