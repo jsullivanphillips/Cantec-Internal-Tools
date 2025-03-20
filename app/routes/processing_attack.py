@@ -210,7 +210,6 @@ def get_jobs_to_be_marked_complete():
         if job_id in jobs_to_be_marked_complete:
             i += 1
             jobs_to_be_marked_complete.pop(job_id, None)
-    print("removed ", i, " jobs with unscheduled appointments")
 
 
     jobs_to_remove = []
@@ -223,7 +222,6 @@ def get_jobs_to_be_marked_complete():
         if job_id in jobs_to_be_marked_complete:
             i += 1
             jobs_to_be_marked_complete.pop(job_id, None)
-    print("removed ", i, " admin jobs")
 
     #3. Get appointments in the future
     today = datetime.now()  
@@ -254,7 +252,6 @@ def get_jobs_to_be_marked_complete():
         if job_id in jobs_to_be_marked_complete:
             i += 1
             jobs_to_be_marked_complete.pop(job_id, None)
-    print("removed ", i, " jobs with appointments in the future")
     
     oldest_job_id = next(iter(jobs_to_be_marked_complete))
 

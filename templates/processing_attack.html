@@ -42,6 +42,7 @@
     </nav>
     <br>
     <div class="container processing-attack-container">  
+        <div class="section-header processing-attack">Processing Status</div>
         <!-- Cards container -->
         <div class="cards-container processing-attack">
         <!-- 2×2 Grid Cards -->
@@ -49,34 +50,37 @@
             <div class="card half">
                 <div class="card-header">Jobs To Be Marked Complete</div>
                 <div class="card-body">
-                    <strong id="jobsToBeMarkedComplete">123</strong>
+                    <strong id="jobsToBeMarkedComplete">..</strong>
                 </div>
             </div>
             <!-- Oldest Job -->
             <div class="card half">
                 <div class="card-header">Oldest Job To Be Marked Complete</div>
                 <div class="card-body">
-                    <strong id="oldestJobToBeMarkedCompleteDate">2022-01-15</strong>
-                    <strong id="oldestJobToBeMarkedCompleteAddress">444 William</strong>
-                    <strong id="oldestJobToBeMarkedCompleteType">Inspection</strong>
+                    <strong id="oldestJobToBeMarkedCompleteDate"></strong>
+                    <strong id="oldestJobToBeMarkedCompleteAddress">..</strong>
+                    <strong id="oldestJobToBeMarkedCompleteType"></strong>
                 </div>
             </div>
             <!-- Full-width short pink folder card -->
             <div class="card full short">
                 <div class="card-header">Number of Pink Folder Jobs</div>
                 <div class="card-body">
-                    <strong id="numberOfPinkFolderJobs">1</strong>
+                    <strong id="numberOfPinkFolderJobs">..</strong>
                 </div>
             </div>
         
             <!-- Full-width bar graph card -->
             <div class="card full">
                 <div class="card-header">Jobs To Be Marked Complete By Job Type</div>
-                    <div class="card-body">
+                    <div class="card-body" id="jobsBarGraphContainer">
                         <canvas id="jobsBarGraph" width="800" height="400"></canvas>
                     </div>
                 </div>
             </div>
+        </div>
+        <div class="container weekly-summary-container">  
+            <div class="section-header processing-attack">Weekly Summary</div>
             <!-- Week Selection Input (with submit button) -->
             <div class="week-selection">
                 <label for="week-select">Select Week:</label>
@@ -87,13 +91,13 @@
                 <div class="card half">
                     <div class="card-header">Total Jobs Processed</div>
                     <div class="card-body">
-                        <strong id="totalJobsProcessed">456</strong>
+                        <strong id="totalJobsProcessed">..</strong>
                     </div>
                 </div>
                 <div class="card half">
-                    <div class="card-header">Total Tech Hours Processed</div>
+                    <div class="card-header">Total On-Site Tech Hours Processed</div>
                     <div class="card-body">
-                        <strong id="totalTechHoursProcessed">78</strong>
+                        <strong id="totalTechHoursProcessed">..</strong>
                     </div>
                 </div>
             </div>

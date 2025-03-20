@@ -426,6 +426,7 @@ button {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 20px; /* space between cards */
+  padding-top: 15px;
 }
 
 @media (max-width: 768px) {
@@ -471,6 +472,26 @@ button {
   border-bottom: 1px solid #ddd;
   font-size: 16px;
   font-weight: 600;
+  text-align: left;
+  margin-bottom: 10px; /* keep or adjust as needed */
+}
+
+.processing-attack-container .section-header {
+  padding: 8px;
+  border-bottom: 1px solid #ddd;
+  font-size: 24px;
+  font-weight: 600;
+  color : #0C62A6;
+  text-align: left;
+  margin-bottom: 10px; /* keep or adjust as needed */
+}
+
+.weekly-summary-container .section-header {
+  padding: 8px;
+  border-bottom: 1px solid #ddd;
+  font-size: 24px;
+  font-weight: 600;
+  color : #0C62A6;
   text-align: left;
   margin-bottom: 10px; /* keep or adjust as needed */
 }

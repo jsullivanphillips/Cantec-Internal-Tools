@@ -67,11 +67,28 @@ function generateWorkWeekOptions() {
 // Load the complete jobs data (only on page load)
 function loadCompleteJobs(selectedMonday) {
   // Set loading messages for complete jobs section.
-  document.getElementById("jobsToBeMarkedComplete").textContent = "Loading...";
-  document.getElementById("oldestJobToBeMarkedCompleteDate").textContent = "Loading...";
-  document.getElementById("oldestJobToBeMarkedCompleteAddress").textContent = "Loading...";
-  document.getElementById("oldestJobToBeMarkedCompleteType").textContent = "Loading...";
-  
+  document.getElementById("jobsToBeMarkedComplete").innerHTML = `
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            Fetching jobs to be marked complete...
+        `;
+  document.getElementById("oldestJobToBeMarkedCompleteDate").textContent = "";
+  document.getElementById("oldestJobToBeMarkedCompleteAddress").innerHTML = `
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        Fetching oldest job...
+        `;
+  document.getElementById("oldestJobToBeMarkedCompleteType").textContent = "";
+  document.getElementById("numberOfPinkFolderJobs").innerHTML = `
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        Fetching pink folder jobs...
+        `;
+
+
   fetch("/processing_attack/complete_jobs", {
     method: "POST",
     headers: {
@@ -88,12 +105,13 @@ function loadCompleteJobs(selectedMonday) {
     document.getElementById("oldestJobToBeMarkedCompleteType").textContent = data.oldest_job_type;
     document.getElementById("numberOfPinkFolderJobs").textContent = data.number_of_pink_folder_jobs;
     // Update the bar chart with the job type counts.
+    
     if (data.job_type_count) {
-      const labels = Object.keys(data.job_type_count);
-      const counts = Object.values(data.job_type_count);
-      jobsChart.data.labels = labels;
-      jobsChart.data.datasets[0].data = counts;
-      jobsChart.update();
+        const labels = Object.keys(data.job_type_count);
+        const counts = Object.values(data.job_type_count);
+        jobsChart.data.labels = labels;
+        jobsChart.data.datasets[0].data = counts;
+        jobsChart.update();
     }
   })
   .catch(error => {
@@ -104,8 +122,18 @@ function loadCompleteJobs(selectedMonday) {
 // Load the processed data (total jobs processed and tech hours processed)
 function loadProcessedData(selectedMonday) {
   // Set loading messages for processed data.
-  document.getElementById("totalJobsProcessed").textContent = "Loading...";
-  document.getElementById("totalTechHoursProcessed").textContent = "Loading...";
+  document.getElementById("totalJobsProcessed").innerHTML = `
+                <div class="spinner-border text-primary" role="status">
+                  <span class="visually-hidden">Loading...</span>
+                </div>
+                Fetching jobs processed...
+            `;
+  document.getElementById("totalTechHoursProcessed").innerHTML = `
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                Fetching tech hours processed...
+            `;
   
   fetch("/processing_attack/processed_data", {
     method: "POST",
