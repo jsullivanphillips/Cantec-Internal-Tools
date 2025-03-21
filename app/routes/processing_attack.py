@@ -26,7 +26,6 @@ def authenticate():
         auth_response = api_session.post(auth_url, json=payload)
         auth_response.raise_for_status()
     except Exception as e:
-        current_app.logger.error("Authentication error: %s", e)
         return jsonify({"error": "Authentication failed"}), 401
 
 
@@ -91,7 +90,6 @@ def get_number_of_pink_folder_jobs():
         response = api_session.get(job_endpoint, params=job_params)
         response.raise_for_status()
     except requests.RequestException as e:
-        current_app.logger.error("ServiceTrade API error: %s", e)
         # If desired, you could return default values here.
         return None, None, None
 
@@ -110,7 +108,6 @@ def get_oldest_job_data(oldest_job_id):
         response = api_session.get(job_endpoint, params=job_params)
         response.raise_for_status()
     except requests.RequestException as e:
-        current_app.logger.error("ServiceTrade API error: %s", e)
         # If desired, you could return default values here.
         return None, None, None
 
@@ -125,7 +122,6 @@ def get_oldest_job_data(oldest_job_id):
         response = api_session.get(appointment_endpoint, params=appointment_params)
         response.raise_for_status()
     except requests.RequestException as e:
-        current_app.logger.error("ServiceTrade API error: %s", e)
         # If desired, you could return default values here.
         return None, None, None
 
@@ -163,7 +159,6 @@ def get_jobs_to_be_marked_complete():
         response = api_session.get(appointment_endpoint, params=appointment_params)
         response.raise_for_status()
     except requests.RequestException as e:
-        current_app.logger.error("ServiceTrade API error: %s", e)
         return {}
 
     complete_appointments_data = response.json().get("data", {})
@@ -196,7 +191,6 @@ def get_jobs_to_be_marked_complete():
         response = api_session.get(appointment_endpoint, params=appointment_params)
         response.raise_for_status()
     except requests.RequestException as e:
-        current_app.logger.error("ServiceTrade API error: %s", e)
         return jobs_to_be_marked_complete
 
     
@@ -240,7 +234,6 @@ def get_jobs_to_be_marked_complete():
         response = api_session.get(appointment_endpoint, params=appointment_params)
         response.raise_for_status()
     except requests.RequestException as e:
-        current_app.logger.error("ServiceTrade API error: %s", e)
         return {}
 
     future_appointments_data = response.json().get("data", {})
@@ -307,7 +300,6 @@ def get_jobs_processed(selected_monday):
         response = api_session.get(job_endpoint, params=job_params)
         response.raise_for_status()
     except requests.RequestException as e:
-        current_app.logger.error("ServiceTrade API error: %s", e)
         return 0, 0, None
 
     jobs_data = response.json().get("data", {})
@@ -317,7 +309,6 @@ def get_jobs_processed(selected_monday):
     total_tech_hours_processed = 0
     for job in jobs:
         job_id = job.get("id")
-        current_app.logger.info("Calculating clock events for job %s", job_id)
         clock_endpoint = f"{SERVICE_TRADE_API_BASE}/job/{job_id}/clockevent"
         clock_params = {
             "activity": "onsite"
@@ -327,7 +318,6 @@ def get_jobs_processed(selected_monday):
             response = api_session.get(clock_endpoint, params=clock_params)
             response.raise_for_status()
         except requests.RequestException as e:
-            current_app.logger.error("ServiceTrade API error: %s", e)
             continue
 
         clock_events_data = response.json().get("data", {})

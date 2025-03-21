@@ -165,8 +165,6 @@ function loadProcessedData(selectedMonday) {
     if (weekSelect.value) {
       const selectedMonday = weekSelect.value;
       loadCompleteJobs(selectedMonday);
-      loadProcessedData(selectedMonday);
-      renderAverageJobCards(selectedMonday);
     }
     
     // 3) Listen for the Submit button click to load processed data (and update average life charts).
@@ -175,6 +173,7 @@ function loadProcessedData(selectedMonday) {
       const selectedMonday = weekSelect.value;
       console.log("Selected Monday:", selectedMonday);
       loadProcessedData(selectedMonday);
+      renderAverageJobCards(selectedMonday);
     });
     
     // 4) Initialize the bar chart with default (dummy) data.
@@ -253,6 +252,11 @@ const jobTypes = [
     return card;
   }
   
+  document.getElementById("averageLifeHeader").addEventListener("click", function () {
+    const output = document.getElementById("averageJobOutput");
+    // Toggle between block and none
+    output.style.display = output.style.display === "none" ? "block" : "none";
+  });
   
   /**
    * Renders the average life cards for all job types.
@@ -274,6 +278,7 @@ const jobTypes = [
       loadAverageJobForType(jobType, weekStart, card);
     });
   }
+  
   
   /**
    * Helper function to clean and format strings.
@@ -334,7 +339,7 @@ const jobTypes = [
     const mapping = {
       "created_to_scheduled": "Time to Schedule",
       "scheduled_to_appointment": "How Far Out Booking Was",
-      "tech_time": "Technician Time Spent",
+      "tech_time": "Time between First and Last Appointment",
       "completed_to_processed": "Time to Process",
       "processed_to_invoiced": "Time to Invoice",
       "pink_folder": "Time Spent in Pink Folder"
@@ -343,7 +348,7 @@ const jobTypes = [
     const eventColors = {
       "Time to Schedule": "rgba(54, 162, 235, 0.6)",    
       "How Far Out Booking Was": "rgba(75, 192, 192, 0.6)",
-      "Technician Time Spent": "rgba(255, 205, 86, 0.6)",
+      "Time between First and Last Appointment": "rgba(255, 205, 86, 0.6)",
       "Time to Process": "rgba(255, 159, 64, 0.6)",
       "Time to Invoice": "rgba(153, 102, 255, 0.6)",
       "Time Spent in Pink Folder": "rgba(255, 105, 180, 0.6)"
@@ -382,23 +387,23 @@ const jobTypes = [
       }
     }
   
-    // Determine overall end date.
-    let overallEnd = baseDate;
-    items.forEach(item => {
-      if (item.end > overallEnd) overallEnd = item.end;
-    });
+    // Instead of computing overallEnd based on items, fix the scale to 30 days from baseDate.
+    const fixedEnd = new Date(baseDate.getTime() + 30 * 24 * 60 * 60 * 1000);
   
     const options = {
       stack: false,
       moveable: false,
       zoomable: false,
       start: baseDate,
-      end: overallEnd,
+      end: fixedEnd,
+      showMajorLabels: false,        // Hide major labels (e.g., "Jan 1970")
+      showMinorLabels: false,     // Uncomment if you also want to hide the minor labels
       format: {
         minorLabels: { day: 'D' },
         majorLabels: { day: 'MMM D, YYYY' }
       }
     };
+    
   
     // Use a unique id for the timeline container by including the jobType.
     const timelineId = `averageTimeline-${jobType}`;
@@ -412,6 +417,7 @@ const jobTypes = [
       new vis.DataSet(groups),
       options
     );
-  }
+}
+
   
   

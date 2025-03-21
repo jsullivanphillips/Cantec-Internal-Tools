@@ -513,3 +513,29 @@ button {
 }
 
 
+.average-life-container {
+  border: 1px solid #dee2e6;       /* Light border */
+  border-radius: 4px;              /* Rounded corners */
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1); /* Subtle shadow */
+  overflow: hidden;                /* Ensure inner elements don't spill over rounded corners */
+  background-color: #fff;          /* Card background */
+  margin-bottom: 20px;             /* Spacing from other content */
+}
+
+#averageLifeHeader {
+  background-color: #f8f9fa;
+  padding: 12px 16px;
+  cursor: pointer;
+  border-bottom: 1px solid #dee2e6;  /* Separate header from body */
+  transition: background-color 0.3s, transform 0.3s;
+}
+
+#averageLifeHeader:hover {
+  background-color: #e9ecef;
+  transform: scale(1.02);
+}
+
+.average-life-cards {
+  padding: 16px;  /* Inner padding for the card body */
+}
+
