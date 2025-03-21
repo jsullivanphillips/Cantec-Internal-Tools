@@ -180,9 +180,10 @@ def get_jobs_to_be_marked_complete():
 
     #2.  Get unscheduled appointments to remove jobs with incomplete appointments.
     appointment_params = {
-        "windowBeginsAfter": scheduleDateFrom,
-        "windowEndsBefore": scheduleDateTo,
+        # "windowBeginsAfter": scheduleDateFrom,
+        # "windowEndsBefore": scheduleDateTo,
         "appointmentWith" : "incompleteServices",
+        "status" : "unscheduled",
         "jobStatus": "scheduled",
         "sortOrder": "windowStart"
     }
