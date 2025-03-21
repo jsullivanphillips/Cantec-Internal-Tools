@@ -65,6 +65,8 @@ def life_of_a_job():
     created_date = datetime
     date_released = datetime
     job_complete_date = datetime
+    appointmentDates = {}
+    pinkFolderIds = []
     earliestAppointmentStartDate = None
     latestAppointmentEndDate = None
     pinkFolderStartDate = None
@@ -77,8 +79,6 @@ def life_of_a_job():
     for event in histories:
         # Assuming each history has a "properties" key which is a dict.
         type = event["type"]
-        # print(json.dumps(event, indent=4))
-        # print("------------")
         match type:
             case "appointment.changed":
                 id = event["entity"]["id"]
@@ -100,19 +100,11 @@ def life_of_a_job():
                 if "status" in event["properties"] and event["properties"]["status"] == "Completed":
                     appointments[id]["dateCompleted"] = parse_date(event["properties"]["eventTime"]["date"])
                     
-                    # "Tech Time" for a job is from the earliest appointment start time to the latest appointment end time
-                    # Find earliest appointment startTime and latest appointment endTime from when techs attended
                     date_completed = parse_date(event["properties"]["eventTime"]["date"])
-                    if earliestAppointmentStartDate is None:
-                        earliestAppointmentStartDate = date_completed
-                    elif date_completed < earliestAppointmentStartDate:
-                        earliestAppointmentStartDate = date_completed
-                    
-                    if latestAppointmentEndDate is None:
-                        latestAppointmentEndDate = date_completed
-                    elif date_completed > latestAppointmentEndDate:
-                        latestAppointmentEndDate = date_completed
             
+                    appointmentDates[id] = date_completed
+            
+
             # Date when job was created
             case "job.created":
                 created_date = parse_date(event["properties"]["eventTime"]["date"])
@@ -127,7 +119,6 @@ def life_of_a_job():
             case "job.service.added":
                 if event["properties"]["serviceLineName"] == "Office Clerical":
                     added_date = parse_date(event["properties"]["eventTime"]["date"])
-                    print("Pink folder job added on ", added_date)
                     if pinkFolderStartDate is None:
                         pinkFolderStartDate = added_date
                     elif added_date < pinkFolderStartDate:
@@ -137,15 +128,38 @@ def life_of_a_job():
             case "service.changed":
                 if "statusChange" in event["properties"] and  event["properties"]["statusChange"] == "Closed" and event["properties"]["serviceLineName"] == "Office Clerical":
                     completed_date = parse_date(event["properties"]["eventTime"]["date"])
-                    print("Pink folder job completed on ", completed_date)
+                    if event["entity"]["id"] is not None:
+                        id = event["entity"]["id"]
+                        print("adding id [", id, "] to pink Folder Ids")
+                        pinkFolderIds.append(id)
+                    else:
+                        print("NO ID IN SERVICE CHANGE")
+
                     if pinkFolderEndDate is None:
                         pinkFolderEndDate = completed_date
                     elif completed_date > pinkFolderEndDate:
                         pinkFolderEndDate = completed_date
-                    if pinkFolderEndDate > latestAppointmentEndDate:
-                        latestAppointmentEndDate = pinkFolderEndDate
+                    
+                    
 
-    
+    for id in pinkFolderIds:
+        if id in appointmentDates.keys():
+            print("removing pink folder date from tech appts")
+            del appointmentDates[id]
+
+
+
+    for id in appointmentDates:
+        date = appointmentDates[id]
+        if earliestAppointmentStartDate is None:
+            earliestAppointmentStartDate = date
+        elif date < earliestAppointmentStartDate:
+            earliestAppointmentStartDate = date
+        
+        if latestAppointmentEndDate is None:
+            latestAppointmentEndDate = date
+        elif date > latestAppointmentEndDate:
+            latestAppointmentEndDate = date
     
     # Released date is from when the earliest appointment was released
     date_released = None
@@ -182,8 +196,6 @@ def life_of_a_job():
 
 
 
-    
-
     # Putting it all together
     intervals["created_to_scheduled"] = calculate_interval(created_date, date_released)
     intervals["scheduled_to_appointment"] = calculate_interval(date_released, earliestAppointmentStartDate)
@@ -191,7 +203,6 @@ def life_of_a_job():
     intervals["completed_to_processed"] = calculate_interval(latestAppointmentEndDate, job_complete_date)
     intervals["processed_to_invoiced"] = calculate_interval(job_complete_date, invoice_date)
     intervals["pink_folder"] = calculate_interval(pinkFolderStartDate, pinkFolderEndDate)
-    print("Pink folder window: ", intervals["pink_folder"], " days")
 
     job_data = {}
     job_data["date_created"] = created_date.isoformat()
@@ -288,7 +299,6 @@ def average_life_of_job():
                 pink_folder_jobs += 1
 
     average_intervals = calculate_average_intervals(events)
-    print("Averages:", average_intervals)
 
     return jsonify({"intervals": average_intervals, "total_jobs": total, "pink_folder_jobs": pink_folder_jobs })
 
@@ -327,11 +337,12 @@ def get_job_events(job_id):
     created_date = datetime
     date_released = datetime
     job_complete_date = datetime
+    appointmentDates = {}
+    pinkFolderDates = []
     earliestAppointmentStartDate = None
     latestAppointmentEndDate = None
     pinkFolderStartDate = None
     pinkFolderEndDate = None
-    tech_time = 0
     
     intervals = {}
     appointments = {}
@@ -340,8 +351,6 @@ def get_job_events(job_id):
     for event in histories:
         # Assuming each history has a "properties" key which is a dict.
         type = event["type"]
-        # print(json.dumps(event, indent=4))
-        # print("------------")
         match type:
             case "appointment.changed":
                 id = event["entity"]["id"]
@@ -356,29 +365,18 @@ def get_job_events(job_id):
                 
                 # Appointment start and end time
                 if event["properties"]["windowStart"] is not None and event["properties"]["windowEnd"] is not None:
-                    start = datetime.fromtimestamp(event["properties"]["windowStart"])
-                    end = datetime.fromtimestamp(event["properties"]["windowEnd"])
-                    appointments[id]["startTime"] = start
-                    appointments[id]["endTime"] = end
-                    tech_time += (end - start).total_seconds() / 86400
+                    appointments[id]["startTime"] = datetime.fromtimestamp(event["properties"]["windowStart"])
+                    appointments[id]["endTime"] = datetime.fromtimestamp(event["properties"]["windowEnd"])
                 
                 # Appointment Complete by Tech
                 if "status" in event["properties"] and event["properties"]["status"] == "Completed":
                     appointments[id]["dateCompleted"] = parse_date(event["properties"]["eventTime"]["date"])
                     
-                    # "Tech Time" for a job is from the earliest appointment start time to the latest appointment end time
-                    # Find earliest appointment startTime and latest appointment endTime from when techs attended
                     date_completed = parse_date(event["properties"]["eventTime"]["date"])
-                    if earliestAppointmentStartDate is None:
-                        earliestAppointmentStartDate = date_completed
-                    elif date_completed < earliestAppointmentStartDate:
-                        earliestAppointmentStartDate = date_completed
-                    
-                    if latestAppointmentEndDate is None:
-                        latestAppointmentEndDate = date_completed
-                    elif date_completed > latestAppointmentEndDate:
-                        latestAppointmentEndDate = date_completed
             
+                    appointmentDates[id] = date_completed
+            
+
             # Date when job was created
             case "job.created":
                 created_date = parse_date(event["properties"]["eventTime"]["date"])
@@ -393,7 +391,6 @@ def get_job_events(job_id):
             case "job.service.added":
                 if event["properties"]["serviceLineName"] == "Office Clerical":
                     added_date = parse_date(event["properties"]["eventTime"]["date"])
-                    print("Pink folder job added on ", added_date)
                     if pinkFolderStartDate is None:
                         pinkFolderStartDate = added_date
                     elif added_date < pinkFolderStartDate:
@@ -403,13 +400,36 @@ def get_job_events(job_id):
             case "service.changed":
                 if "statusChange" in event["properties"] and  event["properties"]["statusChange"] == "Closed" and event["properties"]["serviceLineName"] == "Office Clerical":
                     completed_date = parse_date(event["properties"]["eventTime"]["date"])
-                    print("Pink folder job completed on ", completed_date)
+                    pinkFolderDates.append(completed_date)
+                    
                     if pinkFolderEndDate is None:
                         pinkFolderEndDate = completed_date
                     elif completed_date > pinkFolderEndDate:
                         pinkFolderEndDate = completed_date
-
+                    
+    ids_to_delete = []
+    for pf_date in pinkFolderDates:
+        for appt_id in appointmentDates:
+            if appointmentDates[appt_id] >= pf_date:
+                ids_to_delete.append(appt_id)
     
+    for appt_id in ids_to_delete:
+        if appt_id in appointmentDates.keys():
+            print("removing pf date from tech dates")
+            del appointmentDates[appt_id]
+
+
+    for appt_id in appointmentDates:
+        date = appointmentDates[appt_id]
+        if earliestAppointmentStartDate is None:
+            earliestAppointmentStartDate = date
+        elif date < earliestAppointmentStartDate:
+            earliestAppointmentStartDate = date
+        
+        if latestAppointmentEndDate is None:
+            latestAppointmentEndDate = date
+        elif date > latestAppointmentEndDate:
+            latestAppointmentEndDate = date
     
     # Released date is from when the earliest appointment was released
     date_released = None
@@ -447,13 +467,12 @@ def get_job_events(job_id):
     # Putting it all together
     intervals["created_to_scheduled"] = calculate_interval(created_date, date_released)
     intervals["scheduled_to_appointment"] = calculate_interval(date_released, earliestAppointmentStartDate)
-    intervals["tech_time"] = tech_time
+    intervals["tech_time"] = calculate_interval(earliestAppointmentStartDate, latestAppointmentEndDate)
     intervals["completed_to_processed"] = calculate_interval(latestAppointmentEndDate, job_complete_date)
     intervals["processed_to_invoiced"] = calculate_interval(job_complete_date, invoice_date)
     intervals["pink_folder"] = calculate_interval(pinkFolderStartDate, pinkFolderEndDate)
 
-    # For now, just return an empty intervals object (or you can return the debug info)
-    print("history for ", job_id, " processed")
+    # For now, just return an empty intervals object (or you can return the debug info
     return intervals
 
 
