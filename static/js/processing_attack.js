@@ -339,7 +339,7 @@ const jobTypes = [
     const mapping = {
       "created_to_scheduled": "Time to Schedule",
       "scheduled_to_appointment": "How Far Out Booking Was",
-      "tech_time": "Time between First and Last Appointment",
+      "tech_time": "Time between First and Last On-Site Clock Event",
       "completed_to_processed": "Time to Process",
       "processed_to_invoiced": "Time to Invoice",
       "pink_folder": "Time Spent in Pink Folder"
@@ -348,7 +348,7 @@ const jobTypes = [
     const eventColors = {
       "Time to Schedule": "rgba(54, 162, 235, 0.6)",    
       "How Far Out Booking Was": "rgba(75, 192, 192, 0.6)",
-      "Time between First and Last Appointment": "rgba(255, 205, 86, 0.6)",
+      "Time between First and Last On-Site Clock Event": "rgba(255, 205, 86, 0.6)",
       "Time to Process": "rgba(255, 159, 64, 0.6)",
       "Time to Invoice": "rgba(153, 102, 255, 0.6)",
       "Time Spent in Pink Folder": "rgba(255, 105, 180, 0.6)"
