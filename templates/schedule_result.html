@@ -8,7 +8,8 @@
 </head>
 <body>
   <!-- Navbar -->
-  <nav class="navbar navbar-expand-lg navbar-dark bg-custom">
+   <!-- Navbar -->
+   <nav class="navbar navbar-expand-lg navbar-dark bg-custom">
     <div class="container">
       <a class="navbar-brand" href="{{ url_for('home.home') }}">MyApp</a>
       <button class="navbar-toggler" type="button" data-bs-toggle="collapse" 
@@ -22,12 +23,6 @@
             <a class="nav-link" href="{{ url_for('scheduling.find_schedule') }}">Scheduling Assistant</a>
           </li>
           <li class="nav-item">
-            <a class="nav-link" href="{{ url_for('data_analytics.index') }}">Data Analytics</a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="{{ url_for('life_of_a_job.life_of_a_job') }}">Life of a Job</a>
-          </li>
-          <li class="nav-item">
             <a class="nav-link" href="{{ url_for('processing_attack.processing_attack') }}">Processing Attack</a>
           </li>
         </ul>
@@ -35,7 +30,6 @@
     </div>
   </nav>
   
-  <a href="{{ url_for('scheduling.find_schedule') }}" class="back-button">Back</a>
   <div class="main-container">
     <h1 class="page-title">Available Schedule Blocks</h1>
     {% if error %}
