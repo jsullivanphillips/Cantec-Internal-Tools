@@ -9,9 +9,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://unpkg.com/vis-timeline@latest/standalone/umd/vis-timeline-graph2d.min.js"></script>
-<link href="https://unpkg.com/vis-timeline@latest/styles/vis-timeline-graph2d.min.css" rel="stylesheet" type="text/css" />
-
-
+  <link href="https://unpkg.com/vis-timeline@latest/styles/vis-timeline-graph2d.min.css" rel="stylesheet" type="text/css" />
 </head>
 <body>
     <!-- Navbar -->
@@ -40,78 +38,77 @@
         </ul>
       </div>
     </div>
-    </nav>
-    <br>
-    <div class="container processing-attack-container">  
-        <div class="section-header processing-attack">Processing Status</div>
-        <!-- Cards container -->
-        <div class="cards-container processing-attack">
-        <!-- 2×2 Grid Cards -->
-        <!-- Jobs to be marked complete -->
-            <div class="card half">
-                <div class="card-header">Jobs To Be Marked Complete</div>
-                <div class="card-body">
-                    <strong id="jobsToBeMarkedComplete">..</strong>
-                </div>
-            </div>
-            <!-- Oldest Job -->
-            <div class="card half">
-                <div class="card-header">Oldest Job To Be Marked Complete</div>
-                <div class="card-body">
-                    <strong id="oldestJobToBeMarkedCompleteDate"></strong>
-                    <strong id="oldestJobToBeMarkedCompleteAddress">..</strong>
-                    <strong id="oldestJobToBeMarkedCompleteType"></strong>
-                </div>
-            </div>
-            <!-- Full-width short pink folder card -->
-            <div class="card full short">
-                <div class="card-header">Number of Pink Folder Jobs</div>
-                <div class="card-body">
-                    <strong id="numberOfPinkFolderJobs">..</strong>
-                </div>
-            </div>
-        
-            <!-- Full-width bar graph card -->
-            <div class="card full">
-                <div class="card-header">Jobs To Be Marked Complete By Job Type</div>
-                    <div class="card-body" id="jobsBarGraphContainer">
-                        <canvas id="jobsBarGraph" width="800" height="400"></canvas>
-                    </div>
-                </div>
-            </div>
+  </nav>
+  <br>
+  <div class="container processing-attack-container">  
+    <div class="section-header processing-attack">Processing Status</div>
+    <!-- Cards container -->
+    <div class="cards-container processing-attack">
+      <!-- 2×2 Grid Cards -->
+      <!-- Jobs to be marked complete -->
+      <div class="card half">
+        <div class="card-header">Jobs To Be Marked Complete. <span style="color: #27a532;">Goal: Less than 50</span></div>
+        <div class="card-body">
+          <strong id="jobsToBeMarkedComplete">..</strong>
         </div>
-        <div class="container weekly-summary-container">  
-            <div class="section-header processing-attack">Weekly Summary</div>
-            <!-- Week Selection Input (with submit button) -->
-            <div class="week-selection">
-                <label for="week-select">Select Week:</label>
-                <select id="week-select"></select>
-                <button id="submitWeekBtn" class="primary-btn">Submit</button>
-            </div>
-            <div class="cards-container processing-attack">
-                <div class="card half">
-                    <div class="card-header">Jobs Processed</div>
-                    <div class="card-body">
-                        <strong id="totalJobsProcessed">..</strong>
-                    </div>
-                </div>
-                <div class="card half">
-                    <div class="card-header">On-Site Tech Hours Processed</div>
-                    <div class="card-body">
-                        <strong id="totalTechHoursProcessed">..</strong>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="container average-life-container">
-      <div id="averageLifeHeader" class="section-header processing-attack">
-        Average Life of a Job by Job Type
       </div>
-      <div id="averageJobOutput" class="cards-container average-life-cards collapse show"></div>
+      <!-- Oldest Job -->
+      <div class="card half">
+        <div class="card-header">
+          Oldest Job To Be Marked Complete. 
+          <span style="color: #27a532;">Goal: No Job Older than 1 Month</span>
+        </div>
+        <div class="card-body">
+          <strong id="oldestJobToBeMarkedCompleteDate"></strong>
+          <strong id="oldestJobToBeMarkedCompleteAddress">..</strong>
+          <strong id="oldestJobToBeMarkedCompleteType"></strong>
+        </div>
+      </div>
+      <!-- Full-width short pink folder card -->
+      <div class="card full short">
+        <div class="card-header">Number of Pink Folder Jobs. <span style="color: #27a532;">Goal: Less than 10</span></div>
+        <div class="card-body">
+          <strong id="numberOfPinkFolderJobs">..</strong>
+        </div>
+      </div>
+      <!-- Full-width bar graph card -->
+      <div class="card full">
+        <div class="card-header">Jobs To Be Marked Complete By Job Type</div>
+        <div class="card-body" id="jobsBarGraphContainer">
+          <canvas id="jobsBarGraph" width="800" height="400"></canvas>
+        </div>
+      </div>
     </div>
-    
-    
+  </div>
+  <div class="container weekly-summary-container">  
+    <div class="section-header processing-attack">Weekly Summary</div>
+    <!-- Week Selection Input (with submit button) -->
+    <div class="week-selection">
+      <label for="week-select">Select Week:</label>
+      <select id="week-select"></select>
+      <button id="submitWeekBtn" class="primary-btn">Submit</button>
+    </div>
+    <div class="cards-container processing-attack">
+      <div class="card half">
+        <div class="card-header">Jobs Processed</div>
+        <div class="card-body">
+          <strong id="totalJobsProcessed">..</strong>
+        </div>
+      </div>
+      <div class="card half">
+        <div class="card-header">On-Site Tech Hours Processed</div>
+        <div class="card-body">
+          <strong id="totalTechHoursProcessed">..</strong>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="container average-life-container">
+    <div id="averageLifeHeader" class="section-header processing-attack">
+      Average Life of a Job by Job Type
+    </div>
+    <div id="averageJobOutput" class="cards-container average-life-cards collapse show"></div>
+  </div>
   <!-- Include the JavaScript file -->
   <script src="/static/js/processing_attack.js"></script>
 </body>
