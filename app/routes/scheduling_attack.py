@@ -58,21 +58,31 @@ def parse_fa_timing_tag(tag_str):
     tag_str = tag_str.strip()
     # If the tag contains "day" (in any case), process it as a day format.
     if re.search(r"day", tag_str, re.IGNORECASE):
-        # Regex: capture the numeric portion before "Day" or "Days"
-        # and optionally capture an additional fraction after a "t"
-        m = re.match(r"^(\d+(?:_\d+)?)[dD]ay(?:s)?(?:t(\d+(?:_\d+)?))?$", tag_str)
+        # Updated regex to capture:
+        #   Group 1: the day part (e.g. "1" or "1_5")
+        #   Group 2: an optional hour adjustment (e.g. "-2" from "-2Hours")
+        #   Group 3: an optional trailing fraction after 't' (e.g. "0_5" from "t0_5")
+        m = re.match(
+            r"^(\d+(?:_\d+)?)[dD]ay(?:s)?(?:(-?\d+(?:_\d+)?)[Hh]our(?:s)?)?(?:t(\d+(?:_\d+)?))?$",
+            tag_str
+        )
         if m:
             day_part = m.group(1).replace('_', '.')
-            additional = m.group(2)
-            # If the day part is already fractional, we ignore the additional part.
+            # If the day part is already fractional, ignore the trailing fraction.
             if '.' in day_part:
                 total_days = float(day_part)
             else:
                 total_days = float(day_part)
-                if additional:
-                    additional = additional.replace('_', '.')
+                if m.group(3):
+                    additional = m.group(3).replace('_', '.')
                     total_days += float(additional)
-            return total_days * 8
+            # Convert days to hours.
+            hours = total_days * 8
+            # Apply hour adjustment if present.
+            if m.group(2):
+                hour_adjustment = float(m.group(2).replace('_', '.'))
+                hours += hour_adjustment
+            return hours
         else:
             return 0.0
     else:
@@ -394,7 +404,6 @@ def scheduled_jobs():
                     fa_tech_count = int(tag_str.split("_tech")[0])
                 except ValueError:
                     fa_tech_count = 0
-            # Otherwise, if it contains "t", assume it is the timing tag
             elif re.fullmatch(pattern, tag_str):
                 fa_time = parse_fa_timing_tag(tag_str)
         
@@ -410,6 +419,8 @@ def scheduled_jobs():
             num_fa_tech_hours_released += total_fa_hours
             fa_job_counted = True
 
+    spr_jobs_scheduled = {}
+    fa_jobs_scheduled = {}
     # Process scheduled_jobs similarly
     for location_id in scheduled_jobs.keys():
         location = next((loc for loc in all_locations if loc.get("id") == location_id), None)
@@ -426,14 +437,16 @@ def scheduled_jobs():
             # Process sprinkler-related tags
             if ("Spr_Cantec" in tag_str or "Backflow_Testing_Cantec" in tag_str):
                 if not sprinkler_job_counted:
-                    num_spr_jobs_released += 1
+                    num_spr_jobs_scheduled += 1
+                    spr_jobs_scheduled[location_id] = {"address": location.get("address").get("street")}
                     sprinkler_job_counted = True
             elif tag_str.startswith("Spr_") and ("Spr_Cantec" not in tag_str and "Backflow_Testing_Cantec" not in tag_str):
                 if not sprinkler_job_counted:
-                    num_spr_jobs_released += 1
+                    num_spr_jobs_scheduled += 1
+                    spr_jobs_scheduled[location_id] = {"address": location.get("address").get("street")}
                     sprinkler_job_counted = True
                 num_tech, hours = parse_spr_tag(tag_str)
-                num_spr_tech_hours_released += num_tech * hours
+                num_spr_tech_hours_scheduled += num_tech * hours
             # Process FA tags (skip any tag starting with "Spr_")
             elif tag_str.endswith("_tech") and "Spr_" not in tag_str:
                 try:
@@ -452,9 +465,18 @@ def scheduled_jobs():
                 total_fa_hours = fa_time
         if total_fa_hours > 0 and not fa_job_counted:
             num_fa_jobs_scheduled += 1
+            fa_jobs_scheduled[location_id] = {"address": location.get("address").get("street")}
             num_fa_tech_hours_scheduled += total_fa_hours
             fa_job_counted = True
 
+    print("\n--job ONLY in spr_sched:")
+    for job in spr_jobs_scheduled.items():
+        if job not in fa_jobs_scheduled.items():
+            print(job)
+
+
+    spr_jobs_to_be_scheduled = {}
+    fa_jobs_to_be_scheduled = {}
     # Process jobs_to_be_scheduled similarly
     for location_id in jobs_to_be_scheduled.keys():
         location = next((loc for loc in all_locations if loc.get("id") == location_id), None)
@@ -471,14 +493,16 @@ def scheduled_jobs():
             # Process sprinkler-related tags
             if ("Spr_Cantec" in tag_str or "Backflow_Testing_Cantec" in tag_str):
                 if not sprinkler_job_counted:
-                    num_spr_jobs_released += 1
+                    num_spr_jobs_to_be_scheduled += 1
+                    spr_jobs_to_be_scheduled[location_id] = {"address": location.get("address").get("street")}
                     sprinkler_job_counted = True
             elif tag_str.startswith("Spr_") and ("Spr_Cantec" not in tag_str and "Backflow_Testing_Cantec" not in tag_str):
                 if not sprinkler_job_counted:
-                    num_spr_jobs_released += 1
+                    num_spr_jobs_to_be_scheduled += 1
+                    spr_jobs_to_be_scheduled[location_id] = {"address": location.get("address").get("street")}
                     sprinkler_job_counted = True
                 num_tech, hours = parse_spr_tag(tag_str)
-                num_spr_tech_hours_released += num_tech * hours
+                num_spr_tech_hours_to_be_scheduled += num_tech * hours
             # Process FA tags (skip any tag starting with "Spr_")
             elif tag_str.endswith("_tech") and "Spr_" not in tag_str:
                 try:
@@ -497,23 +521,30 @@ def scheduled_jobs():
                 total_fa_hours = fa_time
         if total_fa_hours > 0 and not fa_job_counted:
             num_fa_jobs_to_be_scheduled += 1
-            
+            fa_jobs_to_be_scheduled[location_id] = {"address": location.get("address").get("street")}
             num_fa_tech_hours_to_be_scheduled += total_fa_hours
-            fa_job_counted = True
+
         elif total_fa_hours <= 0:
             print(f"{jobs_to_be_scheduled[location_id]} total fa hours not greater than 0 so not counted")
             not_counted_fa_locations[location_id] = jobs_to_be_scheduled[location_id]
 
+    print("\n--job ONLY in spr_to_be_sched:")
+    for job in spr_jobs_to_be_scheduled.items():
+        if job not in fa_jobs_to_be_scheduled.items():
+            print(job)
 
 
     # Print out the computed metrics
-    print("RELEASED JOBS\nReleased FA jobs:", num_fa_jobs_to_be_scheduled, "\nReleased FA tech hours:", num_fa_tech_hours_released)
+    print("RELEASED JOBS\nReleased FA jobs:", num_fa_jobs_released, "\nReleased FA tech hours:", num_fa_tech_hours_released)
     print("Released Sprinkler jobs:", num_spr_jobs_released, "\nReleased Sprinkler tech hours:", num_spr_tech_hours_released)
     print("SCHEDULED JOBS\nScheduled FA jobs:", num_fa_jobs_scheduled, "\nScheduled FA tech hours:", num_fa_tech_hours_scheduled)
     print("Scheduled Sprinkler jobs:", num_spr_jobs_scheduled, "\ncheduled Sprinkler tech hours:", num_spr_tech_hours_scheduled)
     print("TO BE SCHEDULED\nTo be Scheduled FA jobs:", num_fa_jobs_to_be_scheduled, "\nTo be Scheduled FA tech hours:", num_fa_tech_hours_to_be_scheduled)
     print("To be Scheduled Sprinkler jobs:", num_spr_jobs_to_be_scheduled, "\nTo be Scheduled Sprinkler tech hours:", num_spr_tech_hours_to_be_scheduled)
 
+    print("\n\n--JOBS TO BE SCHEDULED:")
+    for job in jobs_to_be_scheduled.items():
+        print(job[1].get("address"))
 
     response_data = {
         "released_fa_jobs": num_fa_jobs_released,
