@@ -539,3 +539,46 @@ button {
   padding: 16px;  /* Inner padding for the card body */
 }
 
+/* Flexbox layout for cards container */
+.cards-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+/* Each half card takes about half the width (with a gap) */
+.card.half {
+  flex: 1 1 calc(50% - 1rem);
+}
+/* Full-width card */
+.card.full {
+  flex: 1 1 100%;
+  margin-top: 20px; /* match the gap or desired spacing */
+}
+
+/* Specific styling for Scheduling Attack page to center content and match processing_attack margins/padding */
+.scheduling-attack-container {
+  max-width: 900px;
+  margin: 60px auto 40px auto;
+  padding: 20px;
+  background-color: #fff;
+  border-radius: 5px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.small-card {
+  font-size: 0.9rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+.small-card .card-header {
+  background-color: #f8f9fa;
+  padding: 0.5rem 1rem;
+  font-weight: 600;
+}
+.small-card .card-body {
+  padding: 0.5rem 1rem;
+}
+
+.month-selection {
+  margin-top: 20px;
+}
