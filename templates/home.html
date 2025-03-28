@@ -19,16 +19,15 @@
       </button>
       <div class="collapse navbar-collapse" id="navbarNav">
         <ul class="navbar-nav ms-auto">
-          <div class="collapse navbar-collapse" id="navbarNav">
-            <ul class="navbar-nav ms-auto">
-              <li class="nav-item">
-                <a class="nav-link" href="{{ url_for('scheduling.find_schedule') }}">Scheduling Assistant</a>
-              </li>
-              <li class="nav-item">
-                <a class="nav-link" href="{{ url_for('processing_attack.processing_attack') }}">Processing Attack</a>
-              </li>
-            </ul>
-          </div>
+          <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('scheduling.find_schedule') }}">Scheduling Assistant</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('processing_attack.processing_attack') }}">Processing Attack</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('scheduling_attack.scheduling_attack') }}">Scheduling Attack</a>
+          </li>
         </ul>
       </div>
     </div>
