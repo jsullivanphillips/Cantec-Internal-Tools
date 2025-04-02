@@ -451,35 +451,40 @@ button {
 
 /* The first four cards occupy one cell each in the 2×2 grid */
 .processing-attack .card.half {
-
+  box-shadow: 2px 4px 10px rgba(0, 0, 0, 0.1);
 }
 
 /* The bar graph card should span both columns to be full-width */
 .processing-attack .card.full {
   grid-column: 1 / span 2; /* Span across 2 columns */
   min-height: 300px;       /* Taller for the bar graph */
+  box-shadow: 2px 4px 10px rgba(0, 0, 0, 0.1);
+  margin-bottom: 20px;
 }
 
 .processing-attack .card.full.short {
   grid-column: 1 / span 2; /* Span across 2 columns */
   min-height: 100px;       /* Taller for the bar graph */
+  box-shadow: 2px 4px 10px rgba(0, 0, 0, 0.1);
+  margin-bottom: 20px;
 }
 
 /* Card header and body styling */
 .processing-attack .card-header {
-  background-color: #e9ecef;
+  background-color: #f3f3f3;
   padding: 8px;
   border-bottom: 1px solid #ddd;
-  font-size: 16px;
+  font-size: 20px;
   font-weight: 600;
-  text-align: left;
+  font-family: 'Poppins', sans-serif;
+  text-align: center;
   margin-bottom: 10px; /* keep or adjust as needed */
 }
 
 .processing-attack-container .section-header {
   padding: 8px;
   border-bottom: 1px solid #ddd;
-  font-size: 24px;
+  font-size: 30px;
   font-weight: 600;
   color : #0C62A6;
   text-align: left;
@@ -489,10 +494,21 @@ button {
 .weekly-summary-container .section-header {
   padding: 8px;
   border-bottom: 1px solid #ddd;
-  font-size: 24px;
+  font-size: 30px;
   font-weight: 600;
   color : #0C62A6;
   text-align: left;
+  margin-bottom: 10px; /* keep or adjust as needed */
+}
+
+.weekly-summary-container .card-header {
+  background-color: #f3f3f3;
+  padding: 8px;
+  border-bottom: 1px solid #ddd;
+  font-size: 20px;
+  font-weight: 600;
+  font-family: 'Poppins', sans-serif;
+  text-align: center;
   margin-bottom: 10px; /* keep or adjust as needed */
 }
 
@@ -504,7 +520,6 @@ button {
   text-align: center;
   font-size: 26px;
   color: #0C62A6;
-  font-weight: bold;
 }
 
 

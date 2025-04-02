@@ -84,19 +84,47 @@ function generateWorkWeekOptions() {
 // Function to update KPI colors based on performance thresholds.
 function updateKPIs(data) {
   // Jobs to be marked complete (goal: under 50)
-  const jobsElem = document.getElementById("jobsToBeMarkedComplete");
+  const jobsElem = document.getElementById("jobsToBeMarkedCompleteCard");
+  const jobsElemText = document.getElementById("jobsToBeMarkedComplete");
   if (parseInt(data.jobs_to_be_marked_complete) < 50) {
-    jobsElem.style.color = "#27a532";
+    jobsElemText.style.color = "#27a532"; // Green text
+    jobsElem.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(229, 248, 225))";
+    jobsElem.style.borderTop = "5px solid #27a532"; // Green top border
+    jobsElem.style.padding = "10px"; // Better spacing
+    jobsElem.style.borderRadius = "8px"; // Rounded corners
+    jobsElem.style.boxShadow = "2px 4px 10px rgba(0, 0, 0, 0.1)"; // Soft shadow
+    jobsElem.style.textAlign = "center"; // Center text
+    jobsElemText.style.fontWeight = "bold"; // Bold text
   } else {
-    jobsElem.style.color = "#b92525";
+    jobsElemText.style.color = "#b92525"; // Red text
+    jobsElem.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(248, 225, 227))";
+    jobsElem.style.borderTop = "5px solid #b92525"; // Red top border
+    jobsElem.style.padding = "10px";
+    jobsElem.style.borderRadius = "8px";
+    jobsElem.style.boxShadow = "2px 4px 10px rgba(0, 0, 0, 0.1)";
+    jobsElem.style.textAlign = "center";
+    jobsElemText.style.fontWeight = "bold";
   }
   
-  // Number of Pink Folder jobs (goal: under 10)
+  // Number of Pink Folder jobs (goal: under 15)
   const pinkElem = document.getElementById("numberOfPinkFolderJobs");
-  if (parseInt(data.number_of_pink_folder_jobs) < 10) {
+  const pinkElemCard = document.getElementById("numberOfPinkFolderJobsCard");
+  if (parseInt(data.number_of_pink_folder_jobs) < 15) {
     pinkElem.style.color = "#27a532";
+    pinkElemCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(229, 248, 225))";
+    pinkElemCard.style.borderTop = "5px solid #27a532"; // Green top border
+    pinkElemCard.style.padding = "10px"; // Better spacing
+    pinkElemCard.style.borderRadius = "8px"; // Rounded corners
+    pinkElemCard.style.boxShadow = "2px 4px 10px rgba(0, 0, 0, 0.1)"; // Soft shadow
+    pinkElemCard.style.textAlign = "center"; // Center text
   } else {
     pinkElem.style.color = "#b92525";
+    pinkElemCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(248, 225, 227))";
+    pinkElemCard.style.borderTop = "5px solid #b92525"; // Red top border
+    pinkElemCard.style.padding = "10px";
+    pinkElemCard.style.borderRadius = "8px";
+    pinkElemCard.style.boxShadow = "2px 4px 10px rgba(0, 0, 0, 0.1)";
+    pinkElemCard.style.textAlign = "center";
   }
   
   // Oldest Job to be marked complete: should not be older than 1 month.
@@ -104,6 +132,7 @@ function updateKPIs(data) {
   const oldestElem = document.getElementById("oldestJobToBeMarkedCompleteDate");
   const oldestElem1 = document.getElementById("oldestJobToBeMarkedCompleteAddress");
   const oldestElem2 = document.getElementById("oldestJobToBeMarkedCompleteType");
+  const oldestElemCard = document.getElementById("oldestJobToBeMarkedCompleteCard");
   const oldestDate = new Date(data.oldest_job_date);
   const currentDate = new Date();
   const diffDays = (currentDate - oldestDate) / (1000 * 60 * 60 * 24);
@@ -111,26 +140,51 @@ function updateKPIs(data) {
     oldestElem.style.color = "#27a532";
     oldestElem1.style.color = "#27a532";
     oldestElem2.style.color = "#27a532";
+    oldestElemCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(229, 248, 225))";
+    oldestElemCard.style.borderTop = "5px solid #27a532"; // Green top border
+    oldestElemCard.style.padding = "10px"; // Better spacing
+    oldestElemCard.style.borderRadius = "8px"; // Rounded corners
+    oldestElemCard.style.boxShadow = "2px 4px 10px rgba(0, 0, 0, 0.1)"; // Soft shadow
+    oldestElemCard.style.textAlign = "center"; // Center text
   } else { // Red
     oldestElem.style.color = "#b92525";
     oldestElem1.style.color = "#b92525";
     oldestElem2.style.color = "#b92525";
+    oldestElemCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(248, 225, 227))";
+    oldestElemCard.style.borderTop = "5px solid #b92525"; // Red top border
+    oldestElemCard.style.padding = "10px";
+    oldestElemCard.style.borderRadius = "8px";
+    oldestElemCard.style.boxShadow = "2px 4px 10px rgba(0, 0, 0, 0.1)";
+    oldestElemCard.style.textAlign = "center";
   }
 
   // Oldest inspection
   const oldestInspElem = document.getElementById("oldestInspectionToBeMarkedCompleteDate");
   const oldestInspElem1 = document.getElementById("oldestInspectionToBeMarkedCompleteAddress");
   const oldestInspElem2 = document.getElementById("oldestInspectionToBeMarkedCompleteType");
+  const oldestInspCard = document.getElementById("oldestInspectionToBeMarkedCard");
   const oldestInspDate = new Date(data.oldest_inspection_date);
   const inspDiffDays = (currentDate - oldestInspDate) / (1000 * 60 * 60 * 24);
   if (inspDiffDays <= 30) { // Green
     oldestInspElem.style.color = "#27a532";
     oldestInspElem1.style.color = "#27a532";
     oldestInspElem2.style.color = "#27a532";
+    oldestInspCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(229, 248, 225))";
+    oldestInspCard.style.borderTop = "5px solid #27a532"; // Green top border
+    oldestInspCard.style.padding = "10px"; // Better spacing
+    oldestInspCard.style.borderRadius = "8px"; // Rounded corners
+    oldestInspCard.style.boxShadow = "2px 4px 10px rgba(0, 0, 0, 0.1)"; // Soft shadow
+    oldestInspCard.style.textAlign = "center"; // Center text
   } else { // Red
     oldestInspElem.style.color = "#b92525";
     oldestInspElem1.style.color = "#b92525";
     oldestInspElem2.style.color = "#b92525";
+    oldestInspCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(248, 225, 227))";
+    oldestInspCard.style.borderTop = "5px solid #b92525"; // Red top border
+    oldestInspCard.style.padding = "10px";
+    oldestInspCard.style.borderRadius = "8px";
+    oldestInspCard.style.boxShadow = "2px 4px 10px rgba(0, 0, 0, 0.1)";
+    oldestInspCard.style.textAlign = "center";
   }
 }
 
@@ -143,22 +197,22 @@ function loadCompleteJobs(selectedMonday) {
             </div>
             Fetching jobs to be marked complete...
         `;
-  document.getElementById("oldestJobToBeMarkedCompleteDate").textContent = "";
-  document.getElementById("oldestJobToBeMarkedCompleteAddress").innerHTML = `
-        <div class="spinner-border text-primary" role="status">
+  document.getElementById("oldestJobToBeMarkedCompleteDate").innerHTML = `
+  <div class="spinner-border text-primary" role="status">
             <span class="visually-hidden">Loading...</span>
         </div>
         Fetching oldest job...
         `;
+  document.getElementById("oldestJobToBeMarkedCompleteAddress").textContent = "";
   document.getElementById("oldestJobToBeMarkedCompleteType").textContent = "";
-  document.getElementById("oldestInspectionToBeMarkedCompleteDate").textContent = "";
-  document.getElementById("oldestInspectionToBeMarkedCompleteAddress").innerHTML = `
+  document.getElementById("oldestInspectionToBeMarkedCompleteDate").innerHTML = `
         <div class="spinner-border text-primary" role="status">
             <span class="visually-hidden">Loading...</span>
         </div>
-        Fetching oldest inspection...
+        Fetching pink folder jobs...
         `;
-  document.getElementById("oldestInspectionToBeMarkedCompleteType").textContent = "";
+  document.getElementById("oldestInspectionToBeMarkedCompleteAddress").textContent = ""
+  document.getElementById("oldestInspectionToBeMarkedCompleteType").textContent = ""
   document.getElementById("numberOfPinkFolderJobs").innerHTML = `
         <div class="spinner-border text-primary" role="status">
             <span class="visually-hidden">Loading...</span>
@@ -201,14 +255,12 @@ function loadCompleteJobs(selectedMonday) {
       const labels = Object.keys(data.job_type_count);
       const counts = Object.values(data.job_type_count);
 
-      // Generate dynamic colors
-      const backgroundColors = counts.map(count => 
-        interpolateColor("#5cc2fd", "#E63900", 0, 30, count)
-      );
-
       jobsChart.data.labels = labels;
       jobsChart.data.datasets[0].data = counts;
-      jobsChart.data.datasets[0].backgroundColor = backgroundColors; // Update bar colors
+      jobsChart.data.datasets[0].backgroundColor = 'rgba(12, 98, 166, 0.7)'; // Update bar colors
+      jobsChart.data.datasets[0].borderColor = 'rgba(12, 98, 166, 1)';
+      jobsChart.data.datasets[0].borderWidth = 2;
+      jobsChart.data.datasets[0].borderRadius = 8;
       jobsChart.update();
     }
     // Update KPI colors based on performance thresholds.
@@ -247,20 +299,22 @@ function loadProcessedData(selectedMonday) {
       console.log("Processed data:", data);
       document.getElementById("totalJobsProcessed").textContent = data.total_jobs_processed;
       document.getElementById("totalTechHoursProcessed").textContent = data.total_tech_hours_processed;
-      if (data.job_type_count) {
-      const labels = Object.keys(data.jobs_by_type);
-      const counts = Object.values(data.jobs_by_type);
+      if (data.jobs_by_type) {
+        const labels = Object.keys(data.jobs_by_type);
+        const counts = Object.values(data.jobs_by_type);
 
-      // Generate dynamic colors
-      const backgroundColors = counts.map(count => 
-        interpolateColor("#5cc2fd", "#E63900", 0, 30, count)
-      );
+        const backgroundColors = counts.map(count => 
+          interpolateColor("#e9ecef", "#5cc2fd", 0, 10, count)
+        );
 
-      jobsProcessedChart.data.labels = labels;
-      jobsProcessedChart.data.datasets[0].data = counts;
-      jobsProcessedChart.data.datasets[0].backgroundColor = backgroundColors; // Update bar colors
-      jobsProcessedChart.update();
-    }
+        jobsProcessedChart.data.labels = labels;
+        jobsProcessedChart.data.datasets[0].data = counts;
+        jobsProcessedChart.data.datasets[0].backgroundColor = 'rgba(12, 98, 166, 0.7)';
+        jobsProcessedChart.data.datasets[0].borderColor = 'rgba(12, 98, 166, 1)';
+        jobsProcessedChart.data.datasets[0].borderWidth = 2
+        jobsProcessedChart.data.datasets[0].borderRadius = 8;
+        jobsProcessedChart.update();
+      }
     })
     .catch(error => {
       console.error("Error loading processed data:", error);
