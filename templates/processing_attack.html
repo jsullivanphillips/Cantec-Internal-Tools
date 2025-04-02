@@ -62,10 +62,22 @@
         </div>
       </div>
       <!-- Full-width short pink folder card -->
-      <div class="card full short">
+      <div class="card half">
         <div class="card-header">Number of Pink Folder Jobs. <span style="color: #27a532;">Goal: Less than 10</span></div>
         <div class="card-body">
           <strong id="numberOfPinkFolderJobs">..</strong>
+        </div>
+      </div>
+      <!-- Oldest Inspection -->
+      <div class="card half">
+        <div class="card-header">
+          Oldest Inspection To Be Marked Complete. 
+          <span style="color: #27a532;">Goal: No Inspection Older than 1 Month</span>
+        </div>
+        <div class="card-body">
+          <strong id="oldestInspectionToBeMarkedCompleteDate"></strong>
+          <strong id="oldestInspectionToBeMarkedCompleteAddress">..</strong>
+          <strong id="oldestInspectionToBeMarkedCompleteType"></strong>
         </div>
       </div>
       <!-- Full-width bar graph card -->
@@ -99,12 +111,19 @@
         </div>
       </div>
     </div>
+    <!-- Full-width bar graph card -->
+    <div class="card full">
+      <div class="card-header">Jobs Processed By Job Type</div>
+      <div class="card-body" id="jobsProcessedBarGraphContainer">
+        <canvas id="jobsProcessedBarGraph" width="800" height="400"></canvas>
+      </div>
+    </div>
   </div>
   <div class="container average-life-container">
     <div id="averageLifeHeader" class="section-header processing-attack">
       Average Life of a Job by Job Type
     </div>
-    <div id="averageJobOutput" class="cards-container average-life-cards collapse show"></div>
+    <div id="averageJobOutput" class="cards-container average-life-cards collapse hide"></div>
   </div>
   <!-- Include the JavaScript file -->
   <script src="/static/js/processing_attack.js"></script>

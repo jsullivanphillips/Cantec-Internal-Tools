@@ -2,6 +2,23 @@
 
 // Global chart variable
 let jobsChart;
+let jobsProcessedChart;
+
+
+
+function interpolateColor(minColor, maxColor, minValue, maxValue, value) {
+  const hexToRgb = hex => hex.match(/\w\w/g).map(x => parseInt(x, 16));
+  const rgbToHex = rgb => `#${rgb.map(x => x.toString(16).padStart(2, "0")).join("")}`;
+
+  const minRgb = hexToRgb(minColor);
+  const maxRgb = hexToRgb(maxColor);
+
+  const ratio = Math.min(1, Math.max(0, (value - minValue) / (maxValue - minValue))); // Normalize between 0 and 1
+
+  const interpolatedRgb = minRgb.map((min, i) => Math.round(min + ratio * (maxRgb[i] - min)));
+
+  return rgbToHex(interpolatedRgb);
+}
 
 // Generate work week options for the past year.
 function generateWorkWeekOptions() {
@@ -99,6 +116,22 @@ function updateKPIs(data) {
     oldestElem1.style.color = "#b92525";
     oldestElem2.style.color = "#b92525";
   }
+
+  // Oldest inspection
+  const oldestInspElem = document.getElementById("oldestInspectionToBeMarkedCompleteDate");
+  const oldestInspElem1 = document.getElementById("oldestInspectionToBeMarkedCompleteAddress");
+  const oldestInspElem2 = document.getElementById("oldestInspectionToBeMarkedCompleteType");
+  const oldestInspDate = new Date(data.oldest_inspection_date);
+  const inspDiffDays = (currentDate - oldestInspDate) / (1000 * 60 * 60 * 24);
+  if (inspDiffDays <= 30) { // Green
+    oldestInspElem.style.color = "#27a532";
+    oldestInspElem1.style.color = "#27a532";
+    oldestInspElem2.style.color = "#27a532";
+  } else { // Red
+    oldestInspElem.style.color = "#b92525";
+    oldestInspElem1.style.color = "#b92525";
+    oldestInspElem2.style.color = "#b92525";
+  }
 }
 
 // Load the complete jobs data (only on page load)
@@ -118,6 +151,14 @@ function loadCompleteJobs(selectedMonday) {
         Fetching oldest job...
         `;
   document.getElementById("oldestJobToBeMarkedCompleteType").textContent = "";
+  document.getElementById("oldestInspectionToBeMarkedCompleteDate").textContent = "";
+  document.getElementById("oldestInspectionToBeMarkedCompleteAddress").innerHTML = `
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        Fetching oldest inspection...
+        `;
+  document.getElementById("oldestInspectionToBeMarkedCompleteType").textContent = "";
   document.getElementById("numberOfPinkFolderJobs").innerHTML = `
         <div class="spinner-border text-primary" role="status">
             <span class="visually-hidden">Loading...</span>
@@ -144,14 +185,31 @@ function loadCompleteJobs(selectedMonday) {
     });
     document.getElementById("oldestJobToBeMarkedCompleteAddress").textContent = data.oldest_job_address;
     document.getElementById("oldestJobToBeMarkedCompleteType").textContent = data.oldest_job_type;
+
+    const oldestInspectionDate = new Date(data.oldest_inspection_date);
+    document.getElementById("oldestInspectionToBeMarkedCompleteDate").textContent = oldestInspectionDate.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+    document.getElementById("oldestInspectionToBeMarkedCompleteAddress").textContent = data.oldest_inspection_address;
+    document.getElementById("oldestInspectionToBeMarkedCompleteType").textContent = "Inspection";
+
     document.getElementById("numberOfPinkFolderJobs").textContent = data.number_of_pink_folder_jobs;
     // Update the bar chart with the job type counts.
     if (data.job_type_count) {
-        const labels = Object.keys(data.job_type_count);
-        const counts = Object.values(data.job_type_count);
-        jobsChart.data.labels = labels;
-        jobsChart.data.datasets[0].data = counts;
-        jobsChart.update();
+      const labels = Object.keys(data.job_type_count);
+      const counts = Object.values(data.job_type_count);
+
+      // Generate dynamic colors
+      const backgroundColors = counts.map(count => 
+        interpolateColor("#5cc2fd", "#E63900", 0, 30, count)
+      );
+
+      jobsChart.data.labels = labels;
+      jobsChart.data.datasets[0].data = counts;
+      jobsChart.data.datasets[0].backgroundColor = backgroundColors; // Update bar colors
+      jobsChart.update();
     }
     // Update KPI colors based on performance thresholds.
     updateKPIs(data);
@@ -189,6 +247,20 @@ function loadProcessedData(selectedMonday) {
       console.log("Processed data:", data);
       document.getElementById("totalJobsProcessed").textContent = data.total_jobs_processed;
       document.getElementById("totalTechHoursProcessed").textContent = data.total_tech_hours_processed;
+      if (data.job_type_count) {
+      const labels = Object.keys(data.jobs_by_type);
+      const counts = Object.values(data.jobs_by_type);
+
+      // Generate dynamic colors
+      const backgroundColors = counts.map(count => 
+        interpolateColor("#5cc2fd", "#E63900", 0, 30, count)
+      );
+
+      jobsProcessedChart.data.labels = labels;
+      jobsProcessedChart.data.datasets[0].data = counts;
+      jobsProcessedChart.data.datasets[0].backgroundColor = backgroundColors; // Update bar colors
+      jobsProcessedChart.update();
+    }
     })
     .catch(error => {
       console.error("Error loading processed data:", error);
@@ -205,6 +277,7 @@ document.addEventListener("DOMContentLoaded", function () {
   if (weekSelect.value) {
     const selectedMonday = weekSelect.value;
     loadCompleteJobs(selectedMonday);
+    loadProcessedData(selectedMonday);
   }
   
   // 3) Listen for the Submit button click to load processed data (and update average life charts).
@@ -241,6 +314,32 @@ document.addEventListener("DOMContentLoaded", function () {
     type: "bar",
     data: chartData,
     options: chartOptions
+  });
+
+  const ctx2 = document.getElementById("jobsProcessedBarGraph").getContext("2d");
+  const initialLabels2 = []; // Empty initial labels
+  const initialData2 = [];   // Empty initial dataset
+  const chartData2 = {
+    labels: initialLabels2,
+    datasets: [{
+      label: "Jobs Processed",
+      data: initialData2,
+      backgroundColor: "rgba(54, 162, 235, 0.6)",
+      borderColor: "rgba(54, 162, 235, 1)",
+      borderWidth: 1
+    }]
+  };
+  const chartOptions2 = {
+    scales: {
+      y: {
+        beginAtZero: true
+      }
+    }
+  };
+  jobsProcessedChart = new Chart(ctx2, {
+    type: "bar",
+    data: chartData2,
+    options: chartOptions2
   });
 });
 

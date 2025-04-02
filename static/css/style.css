@@ -565,6 +565,7 @@ button {
   box-shadow: 0 2px 5px rgba(0,0,0,0.1);
 }
 
+
 .small-card {
   font-size: 0.9rem;
   border: 1px solid #ddd;
@@ -581,4 +582,8 @@ button {
 
 .month-selection {
   margin-top: 20px;
+}
+
+.info-text {
+  padding: 0.25rem; /* Or use px, like 16px */
 }

@@ -32,6 +32,7 @@ def authenticate():
 # -------------------------------------------------------
 # JOBS TO BE MARKED COMPLETE & OLDEST JOB & PINK FOLDER JOBS
 # -------------------------------------------------------
+## TODO: Check if job has ALL appointments completes
 @processing_attack_bp.route('/processing_attack/complete_jobs', methods=['POST'])
 def processing_attack_complete_jobs():
     """
@@ -41,9 +42,10 @@ def processing_attack_complete_jobs():
     """
     authenticate()
    
-    jobs_to_be_marked_complete, oldest_job_id = get_jobs_to_be_marked_complete()
+    jobs_to_be_marked_complete, oldest_job_id, oldest_inspection_job_id = get_jobs_to_be_marked_complete()
     if jobs_to_be_marked_complete:
         oldest_job_date, oldest_job_address, oldest_job_type = get_oldest_job_data(oldest_job_id)
+        oldest_inspection_date, oldest_inspection_address, _ = get_oldest_job_data(oldest_inspection_job_id)
     else:
         oldest_job_date, oldest_job_address, oldest_job_type = None, None, None
 
@@ -57,7 +59,9 @@ def processing_attack_complete_jobs():
         "oldest_job_address": oldest_job_address,
         "oldest_job_type": proper_format(oldest_job_type) if oldest_job_type else None,
         "job_type_count": jobs_by_job_type,
-        "number_of_pink_folder_jobs" : number_of_pink_folder_jobs
+        "number_of_pink_folder_jobs" : number_of_pink_folder_jobs,
+        "oldest_inspection_date": oldest_inspection_date if oldest_inspection_date else None,
+        "oldest_inspection_address" : oldest_inspection_address
     }
     return jsonify(response_data)
 
@@ -200,30 +204,29 @@ def get_jobs_to_be_marked_complete():
     jobs_to_remove = {appt.get("job").get("id") for appt in unsched_appointments}
 
 
-    i = 0
+    # Remove jobs with incomplete services
     for job_id in jobs_to_remove:
         if job_id in jobs_to_be_marked_complete:
-            i += 1
             jobs_to_be_marked_complete.pop(job_id, None)
 
 
+    # Remove administrative jobs
     jobs_to_remove = []
     for job_id in jobs_to_be_marked_complete:
         if jobs_to_be_marked_complete[job_id].get("type") == "administrative":
+            print("removing administrative job: ", jobs_to_be_marked_complete[job_id].get("name"))
             jobs_to_remove.append(job_id)
-
-    i = 0
+    
     for job_id in jobs_to_remove:
-        if job_id in jobs_to_be_marked_complete:
-            i += 1
-            jobs_to_be_marked_complete.pop(job_id, None)
+        del jobs_to_be_marked_complete[job_id]
+
 
     #3. Get appointments in the future
     today = datetime.now()  
     scheduleDateFrom = int(today.timestamp())
     scheduleDateTo = int(three_months_forward.timestamp())
 
-    # Get appointments that are complete
+    # Get appointments that are scheduled in the future
     appointment_endpoint = f"{SERVICE_TRADE_API_BASE}/appointment"
     appointment_params = {
         "windowBeginsAfter": scheduleDateFrom,
@@ -241,15 +244,20 @@ def get_jobs_to_be_marked_complete():
     future_appointments = future_appointments_data.get("appointments", [])
     jobs_to_remove = {appt.get("job").get("id") for appt in future_appointments}
 
-    i = 0
+    # remove jobs that have appointments scheduled in the future
     for job_id in jobs_to_remove:
         if job_id in jobs_to_be_marked_complete:
-            i += 1
             jobs_to_be_marked_complete.pop(job_id, None)
     
     oldest_job_id = next(iter(jobs_to_be_marked_complete))
 
-    return jobs_to_be_marked_complete, oldest_job_id
+    oldest_inspection_job_id = 0
+    for job_id in jobs_to_be_marked_complete:
+        if jobs_to_be_marked_complete[job_id].get("type") == "inspection":
+            oldest_inspection_job_id = job_id
+            break
+
+    return jobs_to_be_marked_complete, oldest_job_id, oldest_inspection_job_id
 
 
 
@@ -267,13 +275,15 @@ def processing_attack_processed_data():
 
     data = request.get_json()
     selected_monday = data.get('selectedMonday', None)
-    total_jobs_processed, total_tech_hours_processed = get_jobs_processed(selected_monday)
+    total_jobs_processed, total_tech_hours_processed, jobs_by_type = get_jobs_processed(selected_monday)
 
     response_data = {
          "total_jobs_processed": total_jobs_processed,
-         "total_tech_hours_processed": total_tech_hours_processed
+         "total_tech_hours_processed": total_tech_hours_processed,
+         "jobs_by_type": jobs_by_type
     }
     return jsonify(response_data)
+
 
 
 def get_jobs_processed(selected_monday):
@@ -307,6 +317,14 @@ def get_jobs_processed(selected_monday):
     jobs = jobs_data.get("jobs", [])
     total_jobs_processed = len(jobs)
 
+    # Get jobs by type
+    jobs_by_type = {}
+    for job in jobs:
+        job_type = job.get("type")
+        if job_type:
+            jobs_by_type[job_type] = jobs_by_type.get(job_type, 0) + 1
+
+
     total_tech_hours_processed = 0
     for job in jobs:
         job_id = job.get("id")
@@ -330,4 +348,4 @@ def get_jobs_processed(selected_monday):
             hours_difference = delta.total_seconds() / 3600
             total_tech_hours_processed += hours_difference
 
-    return total_jobs_processed, round(total_tech_hours_processed, 2)
+    return total_jobs_processed, round(total_tech_hours_processed, 2), jobs_by_type

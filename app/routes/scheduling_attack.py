@@ -119,6 +119,47 @@ def parse_spr_tag(tag_str):
     return num_techs, hours
     
 
+def get_service_recurrences_in_month(start_of_month):
+    recurrence_endpoint = f"{SERVICE_TRADE_API_BASE}/servicerecurrence"
+    safe_max = datetime(3000, 1, 1)
+    max_timestamp = safe_max.timestamp()
+    start_dt = datetime.fromtimestamp(start_of_month)
+    page = 1
+    locations_in_month = {}
+    while True:
+        recurrence_params = {
+                "endsOnAfter" : max_timestamp,
+                "limit" : 250,
+                "page" : page
+            }
+        try:
+            response = api_session.get(recurrence_endpoint, params=recurrence_params)
+            response.raise_for_status()
+        except requests.RequestException as e:
+            print("Request error:", e)
+        data = response.json().get("data", {})
+        service_recurrences = data.get("serviceRecurrences", [])
+        print(f"page {page} of {data.get("totalPages")}")
+        for thing in service_recurrences:
+            if thing is not None:
+                first_start = datetime.fromtimestamp(thing.get("firstStart"))
+                location_id = thing.get("location").get("id")
+                service_line_id = thing.get("serviceLine").get("id")
+                service_line_name = thing.get("serviceLine").get("name")
+                is_location_active = thing.get("location").get("status")
+                frequency = thing.get("frequency")
+                if start_dt.month == first_start.month and is_location_active == "active" and frequency == "yearly":
+                    locations_in_month[location_id] = {"location": thing.get("location"), "serviceLineName" : service_line_name, "serviceLineId" : service_line_id}
+
+        page +=1 
+        if data.get("page") >= data.get("totalPages"):
+            break
+    
+    return locations_in_month
+
+    
+
+
 ## -----
 ## Routes
 ## ------
@@ -130,52 +171,23 @@ def scheduling_attack():
 @scheduling_attack_bp.route('/scheduling_attack/metrics', methods=['POST'])
 def scheduled_jobs():
     authenticate()
+
     # Extract the month (format: "YYYY-MM") from the POST data.
     data = request.get_json()
     month_str = data.get('month', datetime.now().strftime("%Y-%m"))
-    start_of_month, end_of_month = convert_month_to_unix_timestamp(month_str)
-    year, month = map(int, month_str.split('-'))
-    month_name = datetime(year, month, 1).strftime("%B")
+    start_of_month, _ = convert_month_to_unix_timestamp(month_str)
+    # locations_in_month[location_id] = {"location": location, "serviceLineName" : service_line_name, "serviceLineId" : service_line_id}
+    locations_in_month = get_service_recurrences_in_month(start_of_month)
 
-    # Get all locations with the tag of the passed month
-    location_endpoint = f"{SERVICE_TRADE_API_BASE}/location"
-    all_locations = []
-    page = 1
-    while True:
-        location_params = {
-            "page" : page,
-            "tag" : month_name,
-            "status" : "active",
-            "limit" : 500
-        }
-
-        try:
-            response = api_session.get(location_endpoint, params=location_params)
-            response.raise_for_status()
-        except requests.RequestException as e:
-            print("Request error:", e)
-            break
-        data = response.json().get("data", {})
-        print(f"page : {data.get("page")} of {data.get("totalPages")}")
-        location_data = data.get("locations")
-        
-        
-        all_locations.extend(location_data)
-        page +=1 
-        if data.get("page") == data.get("totalPages"):
-            break
-
-    print(f"number of locations with inspections in {month_name}: {len(all_locations)}")
-    
     # get a list of all locations id's
-    location_ids_str = ",".join(str(location.get("id")) for location in all_locations)
+    location_ids_str = ",".join(str(location_id) for location_id in locations_in_month.keys())
 
     job_endpoint = f"{SERVICE_TRADE_API_BASE}/job"
     all_jobs = []
     all_jobs_by_location_id = {}
     page = 1
     now = datetime.now()
-    current_year = now.year
+
     # January 1st of the current year at midnight
     scheduleDateFrom = int((now - relativedelta(months=3)).timestamp())
     # Three months ahead of today
@@ -198,7 +210,6 @@ def scheduled_jobs():
             print("Request error:", e)
             break
         data = response.json().get("data", {})
-        print(f"page : {data.get("page")} of {data.get("totalPages")}")
         jobs_data = data.get("jobs", [])
         
         for job in jobs_data:
@@ -210,19 +221,18 @@ def scheduled_jobs():
         if data.get("page") == data.get("totalPages"):
             break
 
-    print(f"number of jobs found from the locations: {len(all_jobs)}")
     # Initialize dictionaries to hold locations for each category.
     released_jobs = {}
     scheduled_jobs = {}
     all_jobs_to_be_scheduled = {}
 
-    for location in all_locations:
-        location_id = location.get("id")
-        location_address = location.get("address", {}).get("street")
+    for location_id in locations_in_month:
+        location_address = locations_in_month[location_id].get("location").get("address").get("street")
         location_url = f"https://app.servicetrade.com/locations/{location_id}"
         if location_id not in all_jobs_to_be_scheduled:
             all_jobs_to_be_scheduled[location_id] = {"address": location_address, "url":location_url}
 
+    print(f"all jobs to be scheduled length: {len(all_jobs_to_be_scheduled)}")
 
     for job in all_jobs:
         location = job.get("location", {})
@@ -251,34 +261,12 @@ def scheduled_jobs():
         if loc_id not in released_jobs and loc_id not in scheduled_jobs:
             jobs_to_be_scheduled[loc_id] = loc_info
 
-
-
-    # ## Remove any locations that don't have services
-    # location_ids_str = ",".join(str(location_id) for location_id in jobs_to_be_scheduled.keys())
-    # services_endpoint = f"{SERVICE_TRADE_API_BASE}/servicerecurrence"
-    # services_params = {
-    #         "locationId" : location_ids_str,
-    #         "limit" : 2000,
-    #     }
-    # try:
-    #     response = api_session.get(services_endpoint, params=services_params)
-    #     response.raise_for_status()
-    # except requests.RequestException as e:
-    #     print("Request error:", e)
-        
-    # data = response.json().get("data", {})
-    # services = data.get("serviceRecurrences")
-    
-    # # Build a set of all service location IDs
-    # service_location_ids = {service.get("location", {}).get("id") for service in services if service.get("location")}
-    # # Remove locations with no services from jobs_to_be_scheduled
-    # for location_id in list(jobs_to_be_scheduled.keys()):
-    #     if location_id not in service_location_ids:
-    #         jobs_to_be_scheduled.pop(location_id)
-
-    # print("Jobs To Be Scheduled Locations after removing no service locations:", len(jobs_to_be_scheduled))
+    print(f"number of released_jobs: {len(released_jobs)}")
+    print(f"number of scheduled_jobs: {len(scheduled_jobs)}")
+    print(f"number of jobs_to_be_scheduled: {len(jobs_to_be_scheduled)}")
 
     location_ids_str = ",".join(str(location_id) for location_id in jobs_to_be_scheduled.keys())
+    print("location_id_strings--\n", location_ids_str)
     # Remove any locations that have had their most recent annual inspection cancelled
     job_endpoint = f"{SERVICE_TRADE_API_BASE}/job"
     job_params = {
@@ -342,8 +330,31 @@ def scheduled_jobs():
                 location_id = job.get("location").get("id")
                 if location_id in jobs_to_be_scheduled:
                     jobs_to_be_scheduled.pop(location_id)
-                    print("Popping ", job.get("name"), " due to projects job")
+                    
+    
+    location_ids_str = ",".join(str(location_id) for location_id in locations_in_month.keys())
+    print("location strings ", location_ids_str)
+    all_locations_by_id = {}
+    locations_endpoint = f"{SERVICE_TRADE_API_BASE}/location"
+    location_params = {
+            "locationId" : location_ids_str,
+            "limit" : 2000,
+        }
+    try:
+        response = api_session.get(locations_endpoint, params=location_params)
+        response.raise_for_status()
+    except requests.RequestException as e:
+        print("Request error:", e)
+        response = None
+    if response:
+        # Get the list of jobs from the response
+        location_data = response.json().get("data", {})
+        locations = location_data.get("locations", [])
+        for location in locations:
+            location_id = location.get("id")
+            all_locations_by_id[location_id] = location
 
+    print("length of all locations ", len(all_jobs_by_location_id))
     # 'tag formula':
     #   "x_tech" : x = number of techs required for FA part of job
     #   "x_ytz_w" : x_y = number of hours in format 3_5 as in 3.5 hours. If there is only an x, then its just the hour.
@@ -373,13 +384,23 @@ def scheduled_jobs():
 
 
     not_counted_fa_locations = {}
+    print(f"number of released_jobs: {len(released_jobs)}")
+    print(f"number of scheduled_jobs: {len(scheduled_jobs)}")
+    print(f"number of jobs_to_be_scheduled: {len(jobs_to_be_scheduled)}")
 
     # Process released_jobs
     for location_id in released_jobs.keys():
-        location = next((loc for loc in all_locations if loc.get("id") == location_id), None)
+        # locations_in_month[location_id] = {"location": location, "serviceLineName" : service_line_name, "serviceLineId" : service_line_id}
+        # Basically, if the location isn't in "all locations by id" the job hasn't been scheduled? TODO: Investigate more
+        if location_id in all_locations_by_id.keys():
+            location = all_locations_by_id[location_id]
+        else:
+            print(f"{location_id} not in all all locations_by_id")
+            location = None
         if not location:
             continue
         tags = location.get("tags", [])
+        print(f"Tags for {location.get("address").get("street")}: {tags}")
         sprinkler_job_counted = False
         fa_job_counted = False
         fa_tech_count = 0  # from the "x_tech" tag
@@ -423,7 +444,11 @@ def scheduled_jobs():
     fa_jobs_scheduled = {}
     # Process scheduled_jobs similarly
     for location_id in scheduled_jobs.keys():
-        location = next((loc for loc in all_locations if loc.get("id") == location_id), None)
+        if location_id in all_locations_by_id.keys():
+            location = all_locations_by_id[location_id]
+        else:
+            print(f"{location_id} not in all all locations_by_id")
+            location = None
         if not location:
             continue
         tags = location.get("tags", [])
@@ -469,17 +494,16 @@ def scheduled_jobs():
             num_fa_tech_hours_scheduled += total_fa_hours
             fa_job_counted = True
 
-    print("\n--job ONLY in spr_sched:")
-    for job in spr_jobs_scheduled.items():
-        if job not in fa_jobs_scheduled.items():
-            print(job)
-
 
     spr_jobs_to_be_scheduled = {}
     fa_jobs_to_be_scheduled = {}
     # Process jobs_to_be_scheduled similarly
     for location_id in jobs_to_be_scheduled.keys():
-        location = next((loc for loc in all_locations if loc.get("id") == location_id), None)
+        if location_id in all_locations_by_id.keys():
+            location = all_locations_by_id[location_id]
+        else:
+            print(f"{location_id} not in all all locations_by_id")
+            location = None
         if not location:
             continue
         tags = location.get("tags", [])
@@ -525,26 +549,7 @@ def scheduled_jobs():
             num_fa_tech_hours_to_be_scheduled += total_fa_hours
 
         elif total_fa_hours <= 0:
-            print(f"{jobs_to_be_scheduled[location_id]} total fa hours not greater than 0 so not counted")
             not_counted_fa_locations[location_id] = jobs_to_be_scheduled[location_id]
-
-    print("\n--job ONLY in spr_to_be_sched:")
-    for job in spr_jobs_to_be_scheduled.items():
-        if job not in fa_jobs_to_be_scheduled.items():
-            print(job)
-
-
-    # Print out the computed metrics
-    print("RELEASED JOBS\nReleased FA jobs:", num_fa_jobs_released, "\nReleased FA tech hours:", num_fa_tech_hours_released)
-    print("Released Sprinkler jobs:", num_spr_jobs_released, "\nReleased Sprinkler tech hours:", num_spr_tech_hours_released)
-    print("SCHEDULED JOBS\nScheduled FA jobs:", num_fa_jobs_scheduled, "\nScheduled FA tech hours:", num_fa_tech_hours_scheduled)
-    print("Scheduled Sprinkler jobs:", num_spr_jobs_scheduled, "\ncheduled Sprinkler tech hours:", num_spr_tech_hours_scheduled)
-    print("TO BE SCHEDULED\nTo be Scheduled FA jobs:", num_fa_jobs_to_be_scheduled, "\nTo be Scheduled FA tech hours:", num_fa_tech_hours_to_be_scheduled)
-    print("To be Scheduled Sprinkler jobs:", num_spr_jobs_to_be_scheduled, "\nTo be Scheduled Sprinkler tech hours:", num_spr_tech_hours_to_be_scheduled)
-
-    print("\n\n--JOBS TO BE SCHEDULED:")
-    for job in jobs_to_be_scheduled.items():
-        print(job[1].get("address"))
 
     response_data = {
         "released_fa_jobs": num_fa_jobs_released,
