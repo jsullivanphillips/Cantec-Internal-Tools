@@ -5,12 +5,15 @@ from app.config import Config
 from app.routes import register_blueprints
 from app.utils.logger import setup_logging
 from app.models import db
+from dotenv import load_dotenv
+
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '.env'))
+print("DATABASE_URL:", os.environ.get("DATABASE_URL"))
 
 def create_app():
     basedir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
     template_path = os.path.join(basedir, 'templates')
     static_path = os.path.join(basedir, 'static')
-    
     # Explicitly set static_folder and static_url_path
     app = Flask(__name__,
                 template_folder=template_path,
