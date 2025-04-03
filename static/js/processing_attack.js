@@ -286,6 +286,9 @@ function loadProcessedData(selectedMonday) {
       </div>
       Fetching tech hours processed...
     `;
+
+    document.getElementById("jobsProcessedTrend").textContent = ""
+    document.getElementById("techHoursTrend").textContent = ""
     
     fetch("/processing_attack/processed_data", {
       method: "POST",
@@ -297,8 +300,51 @@ function loadProcessedData(selectedMonday) {
     .then(response => response.json())
     .then(data => {
       console.log("Processed data:", data);
-      document.getElementById("totalJobsProcessed").textContent = data.total_jobs_processed;
-      document.getElementById("totalTechHoursProcessed").textContent = data.total_tech_hours_processed;
+
+      const thisWeekJobs = data.total_jobs_processed;
+      const lastWeekJobs = data.total_jobs_processed_previous_week;
+
+      const thisWeekHours = data.total_tech_hours_processed;
+      const lastWeekHours = data.total_tech_hours_processed_previous_week;
+
+      document.getElementById("totalJobsProcessed").textContent = thisWeekJobs;
+      document.getElementById("totalTechHoursProcessed").textContent = thisWeekHours;
+
+      // Jobs processed trend metric
+      const jobsTrend = document.getElementById("jobsProcessedTrend");
+
+      const jobChange = thisWeekJobs - lastWeekJobs;
+      const jobPercent = ((jobChange / lastWeekJobs) * 100).toFixed(1);
+
+      if (jobChange > 0) {
+        jobsTrend.textContent = `↑ ${jobPercent}% from previous week`;
+        jobsTrend.className = "summary-trend up";
+      } else if (jobChange < 0) {
+        jobsTrend.textContent = `↓ ${Math.abs(jobPercent)}% from previous week`;
+        jobsTrend.className = "summary-trend down";
+      } else {
+        jobsTrend.textContent = `No change from previous week`;
+        jobsTrend.className = "summary-trend";
+      }
+
+      // Tech hours processed trend metric
+      const techTrend = document.getElementById("techHoursTrend");
+
+      const change = thisWeekHours - lastWeekHours;
+      const percentChange = ((change / lastWeekHours) * 100).toFixed(1);
+
+      if (change > 0) {
+        techTrend.textContent = `↑ ${percentChange}% from previous week`;
+        techTrend.className = "summary-trend up";
+      } else if (change < 0) {
+        techTrend.textContent = `↓ ${Math.abs(percentChange)}% from previous week`;
+        techTrend.className = "summary-trend down";
+      } else {
+        techTrend.textContent = `No change from previous week`;
+        techTrend.className = "summary-trend";
+      }
+
+
       if (data.jobs_by_type) {
         const labels = Object.keys(data.jobs_by_type);
         const counts = Object.values(data.jobs_by_type);
@@ -307,7 +353,7 @@ function loadProcessedData(selectedMonday) {
           interpolateColor("#e9ecef", "#5cc2fd", 0, 10, count)
         );
 
-        jobsProcessedChart.data.labels = labels;
+        jobsProcessedChart.data.labels = labels.map(properFormat);
         jobsProcessedChart.data.datasets[0].data = counts;
         jobsProcessedChart.data.datasets[0].backgroundColor = 'rgba(12, 98, 166, 0.7)';
         jobsProcessedChart.data.datasets[0].borderColor = 'rgba(12, 98, 166, 1)';
@@ -332,6 +378,26 @@ document.addEventListener("DOMContentLoaded", function () {
     const selectedMonday = weekSelect.value;
     loadCompleteJobs(selectedMonday);
     loadProcessedData(selectedMonday);
+
+    const display = document.getElementById("selected-week-display");
+    const selectedMondayParts = weekSelect.value.split("-"); // ["2025", "03", "24"]
+    const selectedMondayDate = new Date(
+      selectedMondayParts[0],  // year
+      selectedMondayParts[1] - 1,  // month (0-indexed!)
+      selectedMondayParts[2]   // day
+    );
+
+    const selectedFridayDate = new Date(selectedMondayDate);    // copy the Monday date
+    selectedFridayDate.setDate(selectedFridayDate.getDate() + 4); // move 4 days forward
+
+    const optionsMonthDay = { month: "long", day: "numeric" };
+    const optionsDayOnly = { day: "numeric" };
+
+    const mondayStr = selectedMondayDate.toLocaleDateString("en-US", optionsMonthDay);
+    const fridayStr = selectedFridayDate.toLocaleDateString("en-US", optionsDayOnly);
+
+    display.textContent = `Week of ${mondayStr} - ${fridayStr}`;
+
   }
   
   // 3) Listen for the Submit button click to load processed data (and update average life charts).
@@ -341,6 +407,24 @@ document.addEventListener("DOMContentLoaded", function () {
     console.log("Selected Monday:", selectedMonday);
     loadProcessedData(selectedMonday);
     renderAverageJobCards(selectedMonday);
+    const display = document.getElementById("selected-week-display");
+    const selectedMondayParts = weekSelect.value.split("-"); // ["2025", "03", "24"]
+    const selectedMondayDate = new Date(
+      selectedMondayParts[0],  // year
+      selectedMondayParts[1] - 1,  // month (0-indexed!)
+      selectedMondayParts[2]   // day
+    );
+
+    const selectedFridayDate = new Date(selectedMondayDate);    // copy the Monday date
+    selectedFridayDate.setDate(selectedFridayDate.getDate() + 4); // move 4 days forward
+
+    const optionsMonthDay = { month: "long", day: "numeric" };
+    const optionsDayOnly = { day: "numeric" };
+
+    const mondayStr = selectedMondayDate.toLocaleDateString("en-US", optionsMonthDay);
+    const fridayStr = selectedFridayDate.toLocaleDateString("en-US", optionsDayOnly);
+
+    display.textContent = `Week of ${mondayStr} - ${fridayStr}`;
   });
   
   // 4) Initialize the bar chart with default (dummy) data.
@@ -359,8 +443,25 @@ document.addEventListener("DOMContentLoaded", function () {
   };
   const chartOptions = {
     scales: {
+      x: {
+        grid: {
+          color: '#eee'
+        },
+        ticks: {
+          font: {
+            size: 12
+          }
+        }
+      },
       y: {
-        beginAtZero: true
+        grid: {
+          color: '#eee'
+        },
+        ticks: {
+          font: {
+            size: 12
+          }
+        }
       }
     }
   };
@@ -384,12 +485,36 @@ document.addEventListener("DOMContentLoaded", function () {
     }]
   };
   const chartOptions2 = {
+    plugins: {
+      legend: {
+        display: true,
+        position: 'top'
+      }
+    },
     scales: {
+      x: {
+        grid: {
+          color: '#eee'
+        },
+        ticks: {
+          font: {
+            size: 12
+          }
+        }
+      },
       y: {
-        beginAtZero: true
+        grid: {
+          color: '#eee'
+        },
+        ticks: {
+          font: {
+            size: 12
+          }
+        }
       }
     }
   };
+  
   jobsProcessedChart = new Chart(ctx2, {
     type: "bar",
     data: chartData2,
@@ -473,8 +598,11 @@ function renderAverageJobCards(weekStart) {
  * Helper function to clean and format strings.
  */
 function properFormat(s) {
-  return s.replace("_", " ").replace(/\b\w/g, char => char.toUpperCase());
+  return s
+    .replace(/_/g, " ") // replaces ALL underscores
+    .replace(/\b\w/g, char => char.toUpperCase()); // capitalizes first letter of each word
 }
+
 
 function loadAverageJobForType(jobType, weekStart, card) {
   // Find the card for this job type.

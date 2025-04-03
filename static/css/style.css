@@ -437,7 +437,11 @@ button {
 
 /* Add padding above and below the week select input */
 .processing-attack-container .week-selection {
-  padding: 20px 0;
+  display: flex;
+  align-items: center;
+  gap: 12px; /* space between label, select, button, and display */
+  flex-wrap: wrap; /* optional: allows wrapping on small screens */
+  margin-bottom: 1rem;
 }
 
 /* Generic card styling remains similar */
@@ -458,7 +462,7 @@ button {
 .processing-attack .card.full {
   grid-column: 1 / span 2; /* Span across 2 columns */
   min-height: 300px;       /* Taller for the bar graph */
-  box-shadow: 2px 4px 10px rgba(0, 0, 0, 0.1);
+  box-shadow: 2px 4px 10px rgba(0, 0, 0, 0.2);
   margin-bottom: 20px;
 }
 
@@ -602,3 +606,32 @@ button {
 .info-text {
   padding: 0.25rem; /* Or use px, like 16px */
 }
+
+.selected-week-display {
+  font-size: 1.25rem;
+  font-weight: bold;
+  color: #0d6efd;
+  display: inline-block;
+  margin-left: 16px; /* <- adds spacing after the button */
+}
+
+.summary-metric {
+  text-align: center;
+}
+
+.summary-trend {
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-top: 4px;
+}
+
+.summary-trend.up {
+  color: green;
+}
+
+.summary-trend.down {
+  color: red;
+}
+
+
+

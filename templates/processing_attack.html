@@ -93,27 +93,36 @@
     <div class="week-selection">
       <label for="week-select">Select Week:</label>
       <select id="week-select"></select>
-      <button id="submitWeekBtn" class="primary-btn">Submit</button>
+      <button id="submitWeekBtn" class="primary-btn">Submit</button><span id="selected-week-display" class="selected-week-display"></span>
     </div>
+    
     <div class="cards-container processing-attack">
       <div class="card half">
-        <div class="card-header">Jobs Processed</div>
+        <div class="card-header">✅ Jobs Processed</div>
         <div class="card-body">
-          <strong id="totalJobsProcessed">..</strong>
+          <div class="summary-metric">
+            <strong id="totalJobsProcessed">..</strong>
+            <div id="jobsProcessedTrend" class="summary-trend"></div>
+          </div>
         </div>
       </div>
       <div class="card half">
-        <div class="card-header">On-Site Tech Hours Processed</div>
+        <div class="card-header">⏱️ On-Site Tech Hours Processed</div>
         <div class="card-body">
-          <strong id="totalTechHoursProcessed">..</strong>
+          <div class="summary-metric">
+            <strong id="totalTechHoursProcessed">..</strong>
+            <div id="techHoursTrend" class="summary-trend"></div>
+          </div>
         </div>
       </div>
-    </div>
-    <!-- Full-width bar graph card -->
-    <div class="card full">
-      <div class="card-header">Jobs Processed By Job Type</div>
-      <div class="card-body" id="jobsProcessedBarGraphContainer">
-        <canvas id="jobsProcessedBarGraph" width="800" height="400"></canvas>
+      
+
+      <!-- Full-width bar graph card -->
+      <div class="card full">
+        <div class="card-header">Jobs Processed By Job Type</div>
+        <div class="jobsProcessedBarGraphContainer">
+            <canvas id="jobsProcessedBarGraph" width="800" height="400"></canvas>
+        </div>
       </div>
     </div>
   </div>

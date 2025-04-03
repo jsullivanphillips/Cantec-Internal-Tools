@@ -70,8 +70,6 @@ def proper_format(s):
     return s.replace("_", " ").title()
 
 
-
-
 def organize_jobs_by_job_type(jobs_to_be_marked_complete):
     # Extract and clean job types from each job
     job_types = [
@@ -274,13 +272,22 @@ def processing_attack_processed_data():
     authenticate()
 
     data = request.get_json()
-    selected_monday = data.get('selectedMonday', None)
-    total_jobs_processed, total_tech_hours_processed, jobs_by_type = get_jobs_processed(selected_monday)
+    selected_monday_str = data.get('selectedMonday', None)
+    if selected_monday_str:
+        selected_monday = datetime.strptime(selected_monday_str, "%Y-%m-%d").date()
+        previous_monday = selected_monday - timedelta(days=7)
+        previous_monday_str = previous_monday.strftime("%Y-%m-%d")  # Convert back to string
+
+        # Fetch data using string inputs
+        total_jobs_processed, total_tech_hours_processed, jobs_by_type = get_jobs_processed(selected_monday_str)
+        total_jobs_processed_previous_week, total_tech_hours_processed_previous_week, _ = get_jobs_processed(previous_monday_str)
 
     response_data = {
          "total_jobs_processed": total_jobs_processed,
          "total_tech_hours_processed": total_tech_hours_processed,
-         "jobs_by_type": jobs_by_type
+         "jobs_by_type": jobs_by_type,
+         "total_jobs_processed_previous_week": total_jobs_processed_previous_week,
+         "total_tech_hours_processed_previous_week": total_tech_hours_processed_previous_week,
     }
     return jsonify(response_data)
 
