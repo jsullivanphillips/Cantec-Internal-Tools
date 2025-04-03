@@ -12,29 +12,27 @@ load_dotenv()
 app = create_app()
 
 def update_job_summary_for_week(week_start_str):
-    total_jobs_processed, total_tech_hours_processed, jobs_by_type, hours_by_type = get_jobs_processed(week_start_str)
     week_start_date = datetime.strptime(week_start_str, "%Y-%m-%d").date()
-    now_utc = datetime.now(timezone.utc)  # Use timezone-aware datetime
-
     summary = JobSummary.query.filter_by(week_start=week_start_date).first()
     if summary:
-        summary.total_jobs_processed = total_jobs_processed
-        summary.total_tech_hours_processed = total_tech_hours_processed
-        summary.jobs_by_type = jobs_by_type
-        summary.hours_by_type = hours_by_type
-        summary.updated_at = now_utc
-    else:
-        summary = JobSummary(
-            week_start=week_start_date,
-            total_jobs_processed=total_jobs_processed,
-            total_tech_hours_processed=total_tech_hours_processed,
-            jobs_by_type=jobs_by_type,
-            hours_by_type=hours_by_type,
-            updated_at=now_utc
-        )
-        db.session.add(summary)
+        print(f"Entry for week {week_start_str} already exists. Skipping update.")
+        return  # Exit the function if the record exists
+
+    # Otherwise, gather the data and create a new record.
+    total_jobs_processed, total_tech_hours_processed, jobs_by_type, hours_by_type = get_jobs_processed(week_start_str)
+    now_utc = datetime.now(timezone.utc)
+    summary = JobSummary(
+        week_start=week_start_date,
+        total_jobs_processed=total_jobs_processed,
+        total_tech_hours_processed=total_tech_hours_processed,
+        jobs_by_type=jobs_by_type,
+        hours_by_type=hours_by_type,
+        updated_at=now_utc
+    )
+    db.session.add(summary)
     db.session.commit()
     print(f"Updated JobSummary for week starting {week_start_str}")
+
 
 def should_run_today():
     # Monday is represented by 0
@@ -73,6 +71,7 @@ def update_past_year():
             print("Old records deleted.")
 
 if __name__ == '__main__':
+    update_past_year()
     if should_run_today():
         update_past_year()
     else:
