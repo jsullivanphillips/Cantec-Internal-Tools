@@ -4,6 +4,7 @@ import json
 from datetime import datetime, timedelta
 from dateutil import parser  # Use dateutil for flexible datetime parsing
 from collections import Counter
+from app.models import db, JobSummary
 
 processing_attack_bp = Blueprint('processing_attack', __name__, template_folder='templates')
 api_session = requests.Session()
@@ -268,31 +269,40 @@ def processing_attack_processed_data():
     Returns:
       - Total jobs processed.
       - Total tech hours processed.
+      - Jobs processed by type and hours by type.
+    This version queries the database for the given week and the previous week,
+    relying on background updates to have precomputed the data.
     """
-    authenticate()
 
     data = request.get_json()
-    selected_monday_str = data.get('selectedMonday', None)
-    if selected_monday_str:
-        selected_monday = datetime.strptime(selected_monday_str, "%Y-%m-%d").date()
-        previous_monday = selected_monday - timedelta(days=7)
-        previous_monday_str = previous_monday.strftime("%Y-%m-%d")  # Convert back to string
+    selected_monday_str = data.get('selectedMonday')
+    if not selected_monday_str:
+        return jsonify({"error": "selectedMonday is required"}), 400
 
-        # Fetch data using string inputs
-        total_jobs_processed, total_tech_hours_processed, jobs_by_type, hours_by_type = get_jobs_processed(selected_monday_str)
-        total_jobs_processed_previous_week, total_tech_hours_processed_previous_week, _, _ = get_jobs_processed(previous_monday_str)
+    # Convert the selected Monday string to a date object.
+    selected_monday_date = datetime.strptime(selected_monday_str, "%Y-%m-%d").date()
+    previous_monday_date = selected_monday_date - timedelta(days=7)
+
+    # Query for precomputed data for the current week.
+    current_summary = JobSummary.query.filter_by(week_start=selected_monday_date).first()
+    # Query for precomputed data for the previous week.
+    prev_summary = JobSummary.query.filter_by(week_start=previous_monday_date).first()
+
+    # If either record is missing, return an error.
+    if not current_summary or not prev_summary:
+        return jsonify({
+            "error": "Data for the selected week is not yet available. Please try again later."
+        }), 404
 
     response_data = {
-         "total_jobs_processed": total_jobs_processed,
-         "total_tech_hours_processed": total_tech_hours_processed,
-         "jobs_by_type": jobs_by_type,
-         "total_jobs_processed_previous_week": total_jobs_processed_previous_week,
-         "total_tech_hours_processed_previous_week": total_tech_hours_processed_previous_week,
-         "hours_by_type": hours_by_type
+        "total_jobs_processed": current_summary.total_jobs_processed,
+        "total_tech_hours_processed": current_summary.total_tech_hours_processed,
+        "jobs_by_type": current_summary.jobs_by_type,
+        "total_jobs_processed_previous_week": prev_summary.total_jobs_processed,
+        "total_tech_hours_processed_previous_week": prev_summary.total_tech_hours_processed,
+        "hours_by_type": current_summary.hours_by_type
     }
     return jsonify(response_data)
-
-
 
 
 
@@ -300,6 +310,8 @@ def get_jobs_processed(selected_monday):
     """
     Returns total jobs processed, total tech hours processed, and the oldest job id.
     """
+    print("Get Jobs Processed!!!!--")
+    authenticate()
     monday_date = datetime.strptime(selected_monday, "%Y-%m-%d")
     monday_start = datetime.combine(monday_date, datetime.min.time())
     friday_date = monday_date + timedelta(days=4)

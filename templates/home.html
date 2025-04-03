@@ -57,6 +57,31 @@
     </div>
   </div>
 
+  <!-- New Button for Database Update Test -->
+  <div style="text-align: center; margin-top: 20px;">
+    <button id="updateDbBtn" class="primary-btn">Update Database</button>
+    <div id="updateDbOutput" style="margin-top: 10px; font-weight: bold;"></div>
+  </div>
+
+  <script>
+    document.getElementById("updateDbBtn").addEventListener("click", function () {
+      fetch('/update_db', {
+        method: 'POST',
+        headers: { 
+          "Content-Type": "application/json" 
+        },
+        body: JSON.stringify({})  // send an empty JSON payload, or include data if needed
+      })
+      .then(response => response.json())
+      .then(data => {
+        document.getElementById("updateDbOutput").textContent = data.message;
+      })
+      .catch(error => console.error('Error updating DB:', error));
+    });
+  </script>
+  
+  
+
   <!-- Bootstrap 5 JS Bundle -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
