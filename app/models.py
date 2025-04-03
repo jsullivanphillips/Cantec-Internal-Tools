@@ -21,3 +21,13 @@ class JobSummary(db.Model):
         return f'<JobSummary {self.week_start}: {self.total_jobs_processed} jobs>'
 
 # If you need to add more models, you can do so here.
+class ProcessorMetrics(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    week_start = db.Column(db.Date, nullable=False)
+    processor_name = db.Column(db.String(255), nullable=False)
+    jobs_processed = db.Column(db.Integer, default=0)
+    hours_processed = db.Column(db.Float, default=0.0)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (db.UniqueConstraint('week_start', 'processor_name', name='unique_week_processor'),)
+

@@ -4,7 +4,8 @@ import json
 from datetime import datetime, timedelta
 from dateutil import parser  # Use dateutil for flexible datetime parsing
 from collections import Counter
-from app.models import db, JobSummary
+from app.models import db, JobSummary, ProcessorMetrics
+import sys
 
 processing_attack_bp = Blueprint('processing_attack', __name__, template_folder='templates')
 api_session = requests.Session()
@@ -383,39 +384,53 @@ def get_jobs_processed(selected_monday):
 def processing_attack_processed_data_by_processor():
     """
     Returns:
-      - Total jobs processed.
-      - Total tech hours processed.
+      - Total jobs processed by processor.
+      - Total hours processed by processor.
     """
     authenticate()
-
     data = request.get_json()
     selected_monday_str = data.get('selectedMonday', None)
     if selected_monday_str:
         selected_monday = datetime.strptime(selected_monday_str, "%Y-%m-%d").date()
         previous_monday = selected_monday - timedelta(days=7)
-        previous_monday_str = previous_monday.strftime("%Y-%m-%d")  # Convert back to string
+        previous_monday_str = previous_monday.strftime("%Y-%m-%d")
 
-        jobs_processed_by_processor, hours_by_processor = get_jobs_processed_by_processor(selected_monday_str)
-        jobs_processed_by_processor_previous_week, hours_by_processor_previous_week = get_jobs_processed_by_processor(previous_monday_str)
-        print(jobs_processed_by_processor)
-        print(jobs_processed_by_processor_previous_week)
+        jobs_by_processor, hours_by_processor = get_processor_metrics_for_week(selected_monday_str)
+        jobs_by_processor_prev, hours_by_processor_prev = get_processor_metrics_for_week(previous_monday_str)
     response_data = {
-        "jobs_processed_by_processor": jobs_processed_by_processor,
-        "jobs_processed_by_processor_previous_week": jobs_processed_by_processor_previous_week,
+        "jobs_processed_by_processor": jobs_by_processor,
+        "jobs_processed_by_processor_previous_week": jobs_by_processor_prev,
         "hours_processed_by_processor": hours_by_processor,
-        "hours_processed_by_processor_previous_week": hours_by_processor_previous_week
+        "hours_processed_by_processor_previous_week": hours_by_processor_prev
     }
     return jsonify(response_data)
+
+
+def get_processor_metrics_for_week(selected_monday):
+    """
+    Reads stored processor metrics from the database for the given week.
+    """
+    week_start_date = datetime.strptime(selected_monday, "%Y-%m-%d").date()
+    records = ProcessorMetrics.query.filter_by(week_start=week_start_date).all()
+    jobs_by_processor = {}
+    hours_by_processor = {}
+    for record in records:
+        jobs_by_processor[record.processor_name] = record.jobs_processed
+        hours_by_processor[record.processor_name] = record.hours_processed
+    return jobs_by_processor, hours_by_processor
 
 
 def get_jobs_processed_by_processor(selected_monday):
     """
     Returns total jobs processed by processor
     """
+    authenticate()
     monday_date = datetime.strptime(selected_monday, "%Y-%m-%d")
     monday_start = datetime.combine(monday_date, datetime.min.time())
     friday_date = monday_date + timedelta(days=4)
     friday_end = datetime.combine(friday_date, datetime.max.time()).replace(microsecond=0)
+
+    print("processing week of ", monday_date, "-", friday_date)
 
     monday_timestamp = int(monday_start.timestamp())
     friday_timestamp = int(friday_end.timestamp())
@@ -433,13 +448,18 @@ def get_jobs_processed_by_processor(selected_monday):
         response = api_session.get(job_endpoint, params=job_params)
         response.raise_for_status()
     except requests.RequestException as e:
-        return 0, 0, None
+        return 0, 0
 
+    
     jobs_data = response.json().get("data", {})
     jobs = jobs_data.get("jobs", [])
     jobs_completed_by_processor = {}
     hours_by_processor = {}
+    i = 0
+    num_of_jobs = len(jobs)
+    print("# jobs to process: ", num_of_jobs)
     for job in jobs:
+        i += 1
         job_id = job.get("id")
         history_endpoint = f"{SERVICE_TRADE_API_BASE}/history"
         history_params = {
@@ -457,6 +477,8 @@ def get_jobs_processed_by_processor(selected_monday):
         # Parse the returned JSON data
         history_response = response.json().get("data", {})
         histories = history_response.get("histories", [])
+        sys.stdout.write(f"\rparsing history for job {i}/{num_of_jobs}")
+        sys.stdout.flush()
         for event in histories:
             # Assuming each history has a "properties" key which is a dict.
             type = event["type"]
@@ -483,6 +505,7 @@ def get_jobs_processed_by_processor(selected_monday):
                             delta = clock_out - clock_in
                             hours_difference = delta.total_seconds() / 3600
                             hours_by_processor[user_name] = hours_by_processor.get(user_name, 0) + hours_difference
-        
+    print()
+    print(jobs_completed_by_processor, " | ", hours_by_processor)
     return jobs_completed_by_processor, hours_by_processor
         
