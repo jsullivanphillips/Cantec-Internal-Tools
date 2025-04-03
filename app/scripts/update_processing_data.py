@@ -36,6 +36,11 @@ def update_job_summary_for_week(week_start_str):
     db.session.commit()
     print(f"Updated JobSummary for week starting {week_start_str}")
 
+def should_run_today():
+    # Monday is represented by 0
+    return datetime.now(timezone.utc).weekday() == 0
+
+
 def update_past_year():
     with app.app_context():
         # Create a test request context so that Flask's session is available.
@@ -68,4 +73,7 @@ def update_past_year():
             print("Old records deleted.")
 
 if __name__ == '__main__':
-    update_past_year()
+    if should_run_today():
+        update_past_year()
+    else:
+        print("Not the scheduled day, skipping job.")
