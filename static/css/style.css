@@ -464,6 +464,7 @@ button {
   min-height: 300px;       /* Taller for the bar graph */
   box-shadow: 2px 4px 10px rgba(0, 0, 0, 0.2);
   margin-bottom: 20px;
+  transition: opacity 0.4s ease;
 }
 
 .processing-attack .card.full.short {
@@ -475,7 +476,7 @@ button {
 
 /* Card header and body styling */
 .processing-attack .card-header {
-  background-color: #f3f3f3;
+  background-color: rgba(255, 255, 255, 0);
   padding: 8px;
   border-bottom: 1px solid #ddd;
   font-size: 20px;
@@ -506,7 +507,7 @@ button {
 }
 
 .weekly-summary-container .card-header {
-  background-color: #f3f3f3;
+  background-color: rgba(255, 255, 255, 0);
   padding: 8px;
   border-bottom: 1px solid #ddd;
   font-size: 20px;
@@ -591,7 +592,7 @@ button {
   border-radius: 4px;
 }
 .small-card .card-header {
-  background-color: #f8f9fa;
+  background-color: rgba(255, 255, 255, 0);
   padding: 0.5rem 1rem;
   font-weight: 600;
 }
@@ -631,6 +632,40 @@ button {
 
 .summary-trend.down {
   color: red;
+}
+
+.card.full.hidden-by-default {
+  display: none;
+  opacity: 0;
+}
+
+.loading-spinner {
+  text-align: center;
+  padding: 1rem;
+  font-weight: bold;
+  color: #0d6efd;
+}
+
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #0d6efd;
+  border-top: 2px solid transparent;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.jobsProcessedBarGraphContainer,
+.hoursProcessedBarGraphContainer {
+  height: 450px;  /* or another maximum height you prefer */
 }
 
 

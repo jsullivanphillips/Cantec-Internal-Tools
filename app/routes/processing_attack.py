@@ -279,8 +279,8 @@ def processing_attack_processed_data():
         previous_monday_str = previous_monday.strftime("%Y-%m-%d")  # Convert back to string
 
         # Fetch data using string inputs
-        total_jobs_processed, total_tech_hours_processed, jobs_by_type = get_jobs_processed(selected_monday_str)
-        total_jobs_processed_previous_week, total_tech_hours_processed_previous_week, _ = get_jobs_processed(previous_monday_str)
+        total_jobs_processed, total_tech_hours_processed, jobs_by_type, hours_by_type = get_jobs_processed(selected_monday_str)
+        total_jobs_processed_previous_week, total_tech_hours_processed_previous_week, _, _ = get_jobs_processed(previous_monday_str)
 
     response_data = {
          "total_jobs_processed": total_jobs_processed,
@@ -288,8 +288,11 @@ def processing_attack_processed_data():
          "jobs_by_type": jobs_by_type,
          "total_jobs_processed_previous_week": total_jobs_processed_previous_week,
          "total_tech_hours_processed_previous_week": total_tech_hours_processed_previous_week,
+         "hours_by_type": hours_by_type
     }
     return jsonify(response_data)
+
+
 
 
 
@@ -331,10 +334,11 @@ def get_jobs_processed(selected_monday):
         if job_type:
             jobs_by_type[job_type] = jobs_by_type.get(job_type, 0) + 1
 
-
+    hours_by_type = {}
     total_tech_hours_processed = 0
     for job in jobs:
         job_id = job.get("id")
+        job_type = job.get("type")
         clock_endpoint = f"{SERVICE_TRADE_API_BASE}/job/{job_id}/clockevent"
         clock_params = {
             "activity": "onsite"
@@ -354,5 +358,119 @@ def get_jobs_processed(selected_monday):
             delta = clock_out - clock_in
             hours_difference = delta.total_seconds() / 3600
             total_tech_hours_processed += hours_difference
+            hours_by_type[job_type] = hours_by_type.get(job_type, 0) + hours_difference
 
-    return total_jobs_processed, round(total_tech_hours_processed, 2), jobs_by_type
+    return total_jobs_processed, round(total_tech_hours_processed, 2), jobs_by_type, hours_by_type
+
+
+
+# -------------------------------------------------------
+# JOBS & TECH HOURS BY PROCESSOR
+# -------------------------------------------------------
+@processing_attack_bp.route('/processing_attack/processed_data_by_processor', methods=['POST'])
+def processing_attack_processed_data_by_processor():
+    """
+    Returns:
+      - Total jobs processed.
+      - Total tech hours processed.
+    """
+    authenticate()
+
+    data = request.get_json()
+    selected_monday_str = data.get('selectedMonday', None)
+    if selected_monday_str:
+        selected_monday = datetime.strptime(selected_monday_str, "%Y-%m-%d").date()
+        previous_monday = selected_monday - timedelta(days=7)
+        previous_monday_str = previous_monday.strftime("%Y-%m-%d")  # Convert back to string
+
+        jobs_processed_by_processor, hours_by_processor = get_jobs_processed_by_processor(selected_monday_str)
+        jobs_processed_by_processor_previous_week, hours_by_processor_previous_week = get_jobs_processed_by_processor(previous_monday_str)
+        print(jobs_processed_by_processor)
+        print(jobs_processed_by_processor_previous_week)
+    response_data = {
+        "jobs_processed_by_processor": jobs_processed_by_processor,
+        "jobs_processed_by_processor_previous_week": jobs_processed_by_processor_previous_week,
+        "hours_processed_by_processor": hours_by_processor,
+        "hours_processed_by_processor_previous_week": hours_by_processor_previous_week
+    }
+    return jsonify(response_data)
+
+
+def get_jobs_processed_by_processor(selected_monday):
+    """
+    Returns total jobs processed by processor
+    """
+    monday_date = datetime.strptime(selected_monday, "%Y-%m-%d")
+    monday_start = datetime.combine(monday_date, datetime.min.time())
+    friday_date = monday_date + timedelta(days=4)
+    friday_end = datetime.combine(friday_date, datetime.max.time()).replace(microsecond=0)
+
+    monday_timestamp = int(monday_start.timestamp())
+    friday_timestamp = int(friday_end.timestamp())
+
+    job_endpoint = f"{SERVICE_TRADE_API_BASE}/job"
+    job_params = {
+        "completedOnBegin": monday_timestamp,
+        "completedOnEnd": friday_timestamp,
+        "status": "completed",
+        "sort": "scheduleStart",
+        "type": "repair,upgrade,service_call,emergency_service_call,inspection,reinpsection,planned_maintenance,preventative_maintenance,inspection_repair,delivery,pickup,installation,training,testing,replacement"
+    }
+
+    try:
+        response = api_session.get(job_endpoint, params=job_params)
+        response.raise_for_status()
+    except requests.RequestException as e:
+        return 0, 0, None
+
+    jobs_data = response.json().get("data", {})
+    jobs = jobs_data.get("jobs", [])
+    jobs_completed_by_processor = {}
+    hours_by_processor = {}
+    for job in jobs:
+        job_id = job.get("id")
+        history_endpoint = f"{SERVICE_TRADE_API_BASE}/history"
+        history_params = {
+            "entityId": job_id,
+            "entityType": 3
+        }
+
+        try:
+            response = api_session.get(history_endpoint, params=history_params)
+            response.raise_for_status()
+        except requests.RequestException as e:
+            current_app.logger.error("ServiceTrade API error: %s", e)
+            print(jsonify({"error": f"Error calling ServiceTrade API: {str(e)}"}), 500)
+            continue
+        # Parse the returned JSON data
+        history_response = response.json().get("data", {})
+        histories = history_response.get("histories", [])
+        for event in histories:
+            # Assuming each history has a "properties" key which is a dict.
+            type = event["type"]
+            match type:
+                case "job.status.changed":
+                    if "status" in event["properties"] and event["properties"]["status"] == "Completed":
+                        user_name = event.get("user").get("name")
+                        jobs_completed_by_processor[user_name] = jobs_completed_by_processor.get(user_name, 0) + 1
+                        clock_endpoint = f"{SERVICE_TRADE_API_BASE}/job/{job_id}/clockevent"
+                        clock_params = {
+                            "activity": "onsite"
+                        }
+                        try:
+                            response = api_session.get(clock_endpoint, params=clock_params)
+                            response.raise_for_status()
+                        except requests.RequestException as e:
+                            continue
+
+                        clock_events_data = response.json().get("data", {})
+                        clock_pairs = clock_events_data.get("pairedEvents", [])
+                        for pair in clock_pairs:
+                            clock_in = datetime.fromtimestamp(pair.get("start").get("eventTime"))
+                            clock_out = datetime.fromtimestamp(pair.get("end").get("eventTime"))
+                            delta = clock_out - clock_in
+                            hours_difference = delta.total_seconds() / 3600
+                            hours_by_processor[user_name] = hours_by_processor.get(user_name, 0) + hours_difference
+        
+    return jobs_completed_by_processor, hours_by_processor
+        
