@@ -34,7 +34,6 @@ def authenticate():
 # -------------------------------------------------------
 # JOBS TO BE MARKED COMPLETE & OLDEST JOB & PINK FOLDER JOBS
 # -------------------------------------------------------
-## TODO: Check if job has ALL appointments completes
 @processing_attack_bp.route('/processing_attack/complete_jobs', methods=['POST'])
 def processing_attack_complete_jobs():
     """
@@ -43,6 +42,8 @@ def processing_attack_complete_jobs():
       - Oldest job's scheduled date, address, and type.
     """
     authenticate()
+
+    ## TODO : Remove jobs with unscheduled appointments
    
     jobs_to_be_marked_complete, oldest_job_id, oldest_inspection_job_id = get_jobs_to_be_marked_complete()
     if jobs_to_be_marked_complete:
@@ -177,7 +178,8 @@ def get_jobs_to_be_marked_complete():
     jobs_to_be_marked_complete = {}
     for job_id, appts in appointments_for_job.items():
         # Simply take the job info from the first appointment
-        jobs_to_be_marked_complete[job_id] = appts[0].get("job")
+        if appts[0].get("job"):
+            jobs_to_be_marked_complete[job_id] = appts[0].get("job")
     
     three_months_forward = datetime.now() + timedelta(days=90)    
     scheduleDateTo = int(three_months_forward.timestamp())
@@ -186,7 +188,7 @@ def get_jobs_to_be_marked_complete():
     appointment_params = {
         # "windowBeginsAfter": scheduleDateFrom,
         # "windowEndsBefore": scheduleDateTo,
-        "appointmentWith" : "incompleteServices",
+        #"appointmentWith" : "incompleteServices, allAppointmentsComplete, unscheduledAppointments",
         "status" : "unscheduled",
         "jobStatus": "scheduled",
         "sortOrder": "windowStart"
@@ -201,8 +203,9 @@ def get_jobs_to_be_marked_complete():
     
     unsched_appointments_data = response.json().get("data", {})
     unsched_appointments = unsched_appointments_data.get("appointments", [])
+    print(f"number of unsched appts: {len(unsched_appointments)}")
     jobs_to_remove = {appt.get("job").get("id") for appt in unsched_appointments}
-
+    
 
     # Remove jobs with incomplete services
     for job_id in jobs_to_remove:
