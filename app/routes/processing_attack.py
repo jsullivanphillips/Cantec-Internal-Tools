@@ -42,8 +42,6 @@ def processing_attack_complete_jobs():
       - Oldest job's scheduled date, address, and type.
     """
     authenticate()
-
-    ## TODO : Remove jobs with unscheduled appointments
    
     jobs_to_be_marked_complete, oldest_job_id, oldest_inspection_job_id = get_jobs_to_be_marked_complete()
     if jobs_to_be_marked_complete:
@@ -145,6 +143,7 @@ def get_oldest_job_data(oldest_job_id):
 
 
 def get_jobs_to_be_marked_complete():
+    authenticate()
     one_year_ago = datetime.now() - timedelta(days=365)
     yesterday = datetime.now() - timedelta(days=1)    
     scheduleDateFrom = int(one_year_ago.timestamp())
