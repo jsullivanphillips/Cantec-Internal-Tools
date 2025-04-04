@@ -387,23 +387,33 @@ def processing_attack_processed_data_by_processor():
       - Total jobs processed by processor.
       - Total hours processed by processor.
     """
-    authenticate()
-    data = request.get_json()
-    selected_monday_str = data.get('selectedMonday', None)
-    if selected_monday_str:
-        selected_monday = datetime.strptime(selected_monday_str, "%Y-%m-%d").date()
-        previous_monday = selected_monday - timedelta(days=7)
-        previous_monday_str = previous_monday.strftime("%Y-%m-%d")
-
-        jobs_by_processor, hours_by_processor = get_processor_metrics_for_week(selected_monday_str)
-        jobs_by_processor_prev, hours_by_processor_prev = get_processor_metrics_for_week(previous_monday_str)
-    response_data = {
-        "jobs_processed_by_processor": jobs_by_processor,
-        "jobs_processed_by_processor_previous_week": jobs_by_processor_prev,
-        "hours_processed_by_processor": hours_by_processor,
-        "hours_processed_by_processor_previous_week": hours_by_processor_prev
-    }
-    return jsonify(response_data)
+    try:
+        authenticate()
+        data = request.get_json()
+        selected_monday_str = data.get('selectedMonday', None)
+        if selected_monday_str:
+            selected_monday = datetime.strptime(selected_monday_str, "%Y-%m-%d").date()
+            previous_monday = selected_monday - timedelta(days=7)
+            previous_monday_str = previous_monday.strftime("%Y-%m-%d")
+    
+            jobs_by_processor, hours_by_processor = get_processor_metrics_for_week(selected_monday_str)
+            jobs_by_processor_prev, hours_by_processor_prev = get_processor_metrics_for_week(previous_monday_str)
+        else:
+            return jsonify({
+                "error": "Selected Monday not provided in the request."
+            }), 400
+    
+        response_data = {
+            "jobs_processed_by_processor": jobs_by_processor,
+            "jobs_processed_by_processor_previous_week": jobs_by_processor_prev,
+            "hours_processed_by_processor": hours_by_processor,
+            "hours_processed_by_processor_previous_week": hours_by_processor_prev
+        }
+        return jsonify(response_data)
+    except Exception as e:
+        return jsonify({
+            "error": f"Error in processing stats by processor section: {str(e)}"
+        }), 500
 
 
 def get_processor_metrics_for_week(selected_monday):
