@@ -405,6 +405,8 @@ def processing_attack_processed_data_by_processor():
                 "error": "Selected Monday not provided in the request."
             }), 400
     
+        print(hours_by_processor)
+
         response_data = {
             "jobs_processed_by_processor": jobs_by_processor,
             "jobs_processed_by_processor_previous_week": jobs_by_processor_prev,
@@ -469,7 +471,7 @@ def get_jobs_processed_by_processor(selected_monday):
     hours_by_processor = {}
     i = 0
     num_of_jobs = len(jobs)
-    print("# jobs to process: ", num_of_jobs)
+    print("# jobs to parse: ", num_of_jobs)
     for job in jobs:
         i += 1
         job_id = job.get("id")
@@ -501,12 +503,13 @@ def get_jobs_processed_by_processor(selected_monday):
                         jobs_completed_by_processor[user_name] = jobs_completed_by_processor.get(user_name, 0) + 1
                         clock_endpoint = f"{SERVICE_TRADE_API_BASE}/job/{job_id}/clockevent"
                         clock_params = {
-                            "activity": "onsite"
+                            "activity": "onsite, offsite, enroute"
                         }
                         try:
                             response = api_session.get(clock_endpoint, params=clock_params)
                             response.raise_for_status()
                         except requests.RequestException as e:
+                            print(f"no history found for job {i}.")
                             continue
 
                         clock_events_data = response.json().get("data", {})

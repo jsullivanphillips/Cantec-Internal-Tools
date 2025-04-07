@@ -1,6 +1,7 @@
 # update_processing_data.py
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date, time
+from pytz import UTC
 from app import create_app
 from app.models import db, JobSummary, ProcessorMetrics, ProcessingStatus
 from app.routes.processing_attack import get_jobs_processed, get_jobs_processed_by_processor, get_jobs_to_be_marked_complete, get_oldest_job_data, organize_jobs_by_job_type, get_number_of_pink_folder_jobs
@@ -18,21 +19,42 @@ def get_processing_status_data():
     '/processing_attack/complete_jobs' route, print a validation message,
     and update the ProcessingStatus record in the database.
     """
-    # Retrieve processing status data using your existing helper functions
+    today = datetime.now(timezone.utc).date()
+    week_start = today - timedelta(days=today.weekday())
+
+    # Define end of week: Sunday 11:59:59 PM UTC
+    week_end_datetime = datetime.combine(
+        week_start + timedelta(days=6),
+        time(hour=23, minute=59, second=59),
+        tzinfo=timezone.utc
+    )
+
+    # Check if a ProcessingStatus record for this week already exists
+    record = ProcessingStatus.query.filter_by(week_start=week_start).first()
+    if record and record.updated_at:
+        updated_at = record.updated_at
+        if updated_at.tzinfo is None:
+            updated_at = updated_at.replace(tzinfo=timezone.utc)
+
+        if updated_at > week_end_datetime:
+            print(f"ProcessingStatus for week {week_start} was already updated after the week ended. Skipping update.")
+            return
+        else:
+            print(f"ProcessingStatus for week {week_start} exists but is outdated. Overwriting...")
+
+    # Only run the expensive data gathering if not skipping
     jobs_to_be_marked_complete, oldest_job_id, oldest_inspection_job_id = get_jobs_to_be_marked_complete()
-    
+
     if jobs_to_be_marked_complete:
         oldest_job_date, oldest_job_address, oldest_job_type = get_oldest_job_data(oldest_job_id)
         oldest_inspection_date, oldest_inspection_address, _ = get_oldest_job_data(oldest_inspection_job_id)
     else:
         oldest_job_date, oldest_job_address, oldest_job_type = None, None, None
-        # Ensure these are defined even when no jobs exist.
         oldest_inspection_date, oldest_inspection_address = None, None
 
     jobs_by_job_type = organize_jobs_by_job_type(jobs_to_be_marked_complete)
     number_of_pink_folder_jobs = get_number_of_pink_folder_jobs()
 
-    # Build the data dictionary from the gathered data
     status_data = {
         "jobs_to_be_marked_complete": len(jobs_to_be_marked_complete),
         "oldest_job_date": oldest_job_date,
@@ -43,21 +65,27 @@ def get_processing_status_data():
         "oldest_inspection_date": oldest_inspection_date,
         "oldest_inspection_address": oldest_inspection_address
     }
-    
+
     # Print validation details to confirm data retrieval
     print("Validation: Successfully grabbed the following processing status data:")
     for key, value in status_data.items():
         print(f"  {key}: {value}")
-    
-    # Determine the week start (aligned to Monday) for the record.
-    from datetime import datetime, timedelta
-    today = datetime.now().date()
-    week_start = today - timedelta(days=today.weekday())
 
-    # Check if a ProcessingStatus record for this week already exists.
-    record = ProcessingStatus.query.filter_by(week_start=week_start).first()
-    if record is None:
-        # Create a new record if it doesn't exist.
+    now_utc = datetime.now(timezone.utc)
+
+    if record:
+        # Update existing record
+        record.jobs_to_be_marked_complete = status_data["jobs_to_be_marked_complete"]
+        record.oldest_job_date = status_data["oldest_job_date"]
+        record.oldest_job_address = status_data["oldest_job_address"]
+        record.oldest_job_type = status_data["oldest_job_type"]
+        record.job_type_count = status_data["job_type_count"]
+        record.number_of_pink_folder_jobs = status_data["number_of_pink_folder_jobs"]
+        record.oldest_inspection_date = status_data["oldest_inspection_date"]
+        record.oldest_inspection_address = status_data["oldest_inspection_address"]
+        record.updated_at = now_utc
+    else:
+        # Create new record
         record = ProcessingStatus(
             week_start=week_start,
             jobs_to_be_marked_complete=status_data["jobs_to_be_marked_complete"],
@@ -67,21 +95,11 @@ def get_processing_status_data():
             job_type_count=status_data["job_type_count"],
             number_of_pink_folder_jobs=status_data["number_of_pink_folder_jobs"],
             oldest_inspection_date=status_data["oldest_inspection_date"],
-            oldest_inspection_address=status_data["oldest_inspection_address"]
+            oldest_inspection_address=status_data["oldest_inspection_address"],
+            updated_at=now_utc
         )
         db.session.add(record)
-    else:
-        # Otherwise, update the existing record.
-        record.jobs_to_be_marked_complete = status_data["jobs_to_be_marked_complete"]
-        record.oldest_job_date = status_data["oldest_job_date"]
-        record.oldest_job_address = status_data["oldest_job_address"]
-        record.oldest_job_type = status_data["oldest_job_type"]
-        record.job_type_count = status_data["job_type_count"]
-        record.number_of_pink_folder_jobs = status_data["number_of_pink_folder_jobs"]
-        record.oldest_inspection_date = status_data["oldest_inspection_date"]
-        record.oldest_inspection_address = status_data["oldest_inspection_address"]
-    
-    # Commit the changes to update the database
+
     db.session.commit()
     print(f"Database updated successfully for week starting {week_start}.")
 
@@ -89,38 +107,84 @@ def get_processing_status_data():
 def update_job_summary_for_week(week_start_str):
     week_start_date = datetime.strptime(week_start_str, "%Y-%m-%d").date()
     summary = JobSummary.query.filter_by(week_start=week_start_date).first()
-    if summary:
-        print(f"Entry for week {week_start_str} already exists. Skipping update.")
-        return  # Exit the function if the record exists
 
-    # Otherwise, gather the data and create a new record.
+    # End of week is Friday 11:59:59 PM UTC
+    week_end_datetime = datetime.combine(
+        week_start_date + timedelta(days=4),
+        time(hour=23, minute=59, second=59),
+        tzinfo=timezone.utc
+    )
+
+    if summary and summary.updated_at:
+        updated_at = summary.updated_at
+
+        # Ensure updated_at is timezone-aware
+        if updated_at.tzinfo is None:
+            updated_at = updated_at.replace(tzinfo=timezone.utc)
+
+        if updated_at > week_end_datetime:
+            print(f"Entry for week {week_start_str} was already updated after the week ended. Skipping update.")
+            return
+        else:
+            print(f"Entry for week {week_start_str} exists but is outdated. Overwriting...")
+
+    # Gather data and update/create the record
     total_jobs_processed, total_tech_hours_processed, jobs_by_type, hours_by_type = get_jobs_processed(week_start_str)
     now_utc = datetime.now(timezone.utc)
-    summary = JobSummary(
-        week_start=week_start_date,
-        total_jobs_processed=total_jobs_processed,
-        total_tech_hours_processed=total_tech_hours_processed,
-        jobs_by_type=jobs_by_type,
-        hours_by_type=hours_by_type,
-        updated_at=now_utc
-    )
-    db.session.add(summary)
+
+    if summary:
+        summary.total_jobs_processed = total_jobs_processed
+        summary.total_tech_hours_processed = total_tech_hours_processed
+        summary.jobs_by_type = jobs_by_type
+        summary.hours_by_type = hours_by_type
+        summary.updated_at = now_utc
+    else:
+        summary = JobSummary(
+            week_start=week_start_date,
+            total_jobs_processed=total_jobs_processed,
+            total_tech_hours_processed=total_tech_hours_processed,
+            jobs_by_type=jobs_by_type,
+            hours_by_type=hours_by_type,
+            updated_at=now_utc
+        )
+        db.session.add(summary)
+
     db.session.commit()
     print(f"Updated JobSummary for week starting {week_start_str}")
 
 def update_processor_metrics_for_week(week_start_str):
     week_start_date = datetime.strptime(week_start_str, "%Y-%m-%d").date()
 
-    # Check if any processor metrics already exist for this week
-    if ProcessorMetrics.query.filter_by(week_start=week_start_date).first():
-        print(f"Processor metrics already exist for week starting {week_start_str}. Skipping update.")
-        return
+    # Define end of the week: Friday at 11:59:59 PM UTC
+    week_end_datetime = datetime.combine(
+        week_start_date + timedelta(days=4),
+        time(hour=23, minute=59, second=59),
+        tzinfo=timezone.utc
+    )
 
-    # Only call the API if no records exist for this week
+    # Check if any processor metrics already exist for this week
+    existing_record = ProcessorMetrics.query.filter_by(week_start=week_start_date).first()
+
+    if existing_record and existing_record.updated_at:
+        updated_at = existing_record.updated_at
+        if updated_at.tzinfo is None:
+            updated_at = updated_at.replace(tzinfo=timezone.utc)
+
+        if updated_at > week_end_datetime:
+            print(f"Processor metrics for week {week_start_str} were updated after the week ended. Skipping update.")
+            return
+        else:
+            print(f"Processor metrics for week {week_start_str} exist but are outdated. Overwriting...")
+
+            # Delete old metrics for that week
+            ProcessorMetrics.query.filter_by(week_start=week_start_date).delete()
+            db.session.commit()
+
+    # Fetch updated data
     jobs_by_processor, hours_by_processor = get_jobs_processed_by_processor(week_start_str)
     now_utc = datetime.now(timezone.utc)
 
-    # Loop through the processors from the API results and add new records
+    # Insert updated records
     for processor, job_count in jobs_by_processor.items():
         hours = hours_by_processor.get(processor, 0)
         record = ProcessorMetrics(
@@ -131,6 +195,7 @@ def update_processor_metrics_for_week(week_start_str):
             updated_at=now_utc
         )
         db.session.add(record)
+
     db.session.commit()
     print(f"Processor metrics updated for week starting {week_start_str}")
 
@@ -156,7 +221,8 @@ def update_all_metrics():
                 current_date += timedelta(days=7)
             
             # Optionally, delete records older than one year.
-            cutoff_date = today - timedelta(days=365)
+
+            cutoff_date = today - timedelta(days=372)
             old_job_summaries = JobSummary.query.filter(JobSummary.week_start < cutoff_date).all()
             for record in old_job_summaries:
                 db.session.delete(record)
@@ -166,15 +232,16 @@ def update_all_metrics():
             db.session.commit()
             print("Old records deleted.")
 
-def should_run_today():
-    # Monday is represented by 0
-    return datetime.now(timezone.utc).weekday() == 5
+# def should_run_today():
+#     # Monday is represented by 0
+#     return datetime.now(timezone.utc).weekday() == 6
 
 
 if __name__ == '__main__':
-    if should_run_today():
-        update_all_metrics()
-    else:
-        print("Not the scheduled day, skipping job.")
+    update_all_metrics()
+    #if should_run_today():
+    #    update_all_metrics()
+    #else:
+    #    print("Not the scheduled day, skipping job.")
 
 
