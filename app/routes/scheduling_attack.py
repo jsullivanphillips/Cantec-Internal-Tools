@@ -7,6 +7,7 @@ import calendar
 from dateutil import parser  # Use dateutil for flexible datetime parsing
 from collections import Counter
 import re
+from app.models import SchedulingAttack
 
 scheduling_attack_bp = Blueprint('scheduling_attack', __name__, template_folder='templates')
 api_session = requests.Session()
@@ -170,11 +171,48 @@ def scheduling_attack():
 
 @scheduling_attack_bp.route('/scheduling_attack/metrics', methods=['POST'])
 def scheduled_jobs():
-    authenticate()
-
-    # Extract the month (format: "YYYY-MM") from the POST data.
     data = request.get_json()
+    # Expecting the month string in "YYYY-MM" format; default to current month if not provided
     month_str = data.get('month', datetime.now().strftime("%Y-%m"))
+    
+    # Convert month_str to a date object representing the first day of the month
+    try:
+        month_date = datetime.strptime(month_str, "%Y-%m").date()
+    except ValueError:
+        return jsonify({"error": "Invalid month format, expected YYYY-MM"}), 400
+
+    # Query the database for a record with the given month_start date
+    record = SchedulingAttack.query.filter_by(month_start=month_date).first()
+
+    if record:
+        result = {
+            "month_start": record.month_start.strftime("%Y-%m-%d"),
+            "released_fa_jobs": record.released_fa_jobs,
+            "released_fa_tech_hours": record.released_fa_tech_hours,
+            "scheduled_fa_jobs": record.scheduled_fa_jobs,
+            "scheduled_fa_tech_hours": record.scheduled_fa_tech_hours,
+            "to_be_scheduled_fa_jobs": record.to_be_scheduled_fa_jobs,
+            "to_be_scheduled_fa_tech_hours": record.to_be_scheduled_fa_tech_hours,
+            "released_sprinkler_jobs": record.released_sprinkler_jobs,
+            "released_sprinkler_tech_hours": record.released_sprinkler_tech_hours,
+            "scheduled_sprinkler_jobs": record.scheduled_sprinkler_jobs,
+            "scheduled_sprinkler_tech_hours": record.scheduled_sprinkler_tech_hours,
+            "to_be_scheduled_sprinkler_jobs": record.to_be_scheduled_sprinkler_jobs,
+            "to_be_scheduled_sprinkler_tech_hours": record.to_be_scheduled_sprinkler_tech_hours,
+            "jobs_to_be_scheduled": record.jobs_to_be_scheduled,
+            "not_counted_fa_locations": record.not_counted_fa_locations,
+            "updated_at": record.updated_at.isoformat() if record.updated_at else None
+        }
+        return jsonify(result)
+    else:
+        return jsonify({
+            "error": "No scheduling attack metrics found for month", 
+            "month": month_str
+        }), 404
+    
+
+def get_scheduling_attack(month_str):
+    authenticate()
     start_of_month, _ = convert_month_to_unix_timestamp(month_str)
     # locations_in_month[location_id] = {"location": location, "serviceLineName" : service_line_name, "serviceLineId" : service_line_id}
     locations_in_month = get_service_recurrences_in_month(start_of_month)

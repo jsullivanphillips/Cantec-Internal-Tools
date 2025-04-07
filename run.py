@@ -1,5 +1,7 @@
 # run.py
 from app import create_app
+from app.models import db
+from app import migrate
 from flask import redirect, url_for
 
 app = create_app()

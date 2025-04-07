@@ -46,3 +46,48 @@ class ProcessingStatus(db.Model):
     
     def __repr__(self):
         return f'<ProcessingStatus {self.week_start}: {self.jobs_to_be_marked_complete} jobs marked complete>'
+
+
+class SchedulingAttack(db.Model):
+    __tablename__ = 'scheduling_attack'
+
+    id = db.Column(db.Integer, primary_key=True)
+    month_start = db.Column(db.Date, unique=True, nullable=False)
+
+    # FA job stats
+    released_fa_jobs = db.Column(db.Integer, default=0)
+    released_fa_tech_hours = db.Column(db.Float, default=0.0)
+    scheduled_fa_jobs = db.Column(db.Integer, default=0)
+    scheduled_fa_tech_hours = db.Column(db.Float, default=0.0)
+    to_be_scheduled_fa_jobs = db.Column(db.Integer, default=0)
+    to_be_scheduled_fa_tech_hours = db.Column(db.Float, default=0.0)
+
+    # Sprinkler job stats
+    released_sprinkler_jobs = db.Column(db.Integer, default=0)
+    released_sprinkler_tech_hours = db.Column(db.Float, default=0.0)
+    scheduled_sprinkler_jobs = db.Column(db.Integer, default=0)
+    scheduled_sprinkler_tech_hours = db.Column(db.Float, default=0.0)
+    to_be_scheduled_sprinkler_jobs = db.Column(db.Integer, default=0)
+    to_be_scheduled_sprinkler_tech_hours = db.Column(db.Float, default=0.0)
+
+    # Raw JSON data for deeper inspection
+    jobs_to_be_scheduled = db.Column(db.JSON)
+    not_counted_fa_locations = db.Column(db.JSON)
+
+    # Timestamps
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc)
+    )
+
+    def __repr__(self):
+        return f'<SchedulingAttack {self.month_start}>'
+
+if __name__ == '__main__':
+    from app import create_app
+    app = create_app()
+
+    with app.app_context():
+        db.create_all()
+        print("Database tables created.")
