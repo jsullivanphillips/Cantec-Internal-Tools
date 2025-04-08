@@ -13,21 +13,19 @@ load_dotenv()
 app = create_app()
 
 # month_start is a date object (e.g. datetime.date(2024, 7, 1))
-def update_scheduling_attack(month_start):
+def update_scheduling_attack(month_start, force_update=False):
     # Format the month string for get_scheduling_attack.
-    # Adjust format if needed (e.g. "2024-07" or "July 2024")
     month_str = month_start.strftime("%Y-%m")
     
     # Calculate month_end_datetime (last moment of the month)
-    # Here, month_end_date is the last day of the month.
     month_end_date = (month_start + relativedelta(months=1)) - timedelta(days=1)
-    # Create a datetime at the very end of month_end_date (23:59:59.999999)
     month_end_datetime = datetime.combine(month_end_date, datetime.max.time(), tzinfo=timezone.utc)
 
     # Check if a record for this month already exists.
     existing_record = SchedulingAttack.query.filter_by(month_start=month_start).first()
 
-    if existing_record and existing_record.updated_at:
+    # If force_update is False, check the updated_at timestamp.
+    if existing_record and existing_record.updated_at and not force_update:
         updated_at = existing_record.updated_at
         # Ensure updated_at is timezone-aware
         if updated_at.tzinfo is None:
@@ -41,9 +39,12 @@ def update_scheduling_attack(month_start):
             # Delete the old record(s) for that month
             SchedulingAttack.query.filter_by(month_start=month_start).delete()
             db.session.commit()
+    elif existing_record and force_update:
+        print(f"Force update enabled. Overwriting scheduling attack metrics for month {month_str}.")
+        SchedulingAttack.query.filter_by(month_start=month_start).delete()
+        db.session.commit()
 
     # Call get_scheduling_attack() to get the latest data.
-    # Note: get_scheduling_attack() returns a Flask JSON response, so call get_json()
     response = get_scheduling_attack(month_str)
     data = response.get_json()
 
@@ -71,7 +72,7 @@ def update_scheduling_attack(month_start):
 
 
 
-def update_all_metrics():
+def update_all_metrics(force_update):
     with app.app_context():
         with app.test_request_context():
             from flask import session
@@ -82,11 +83,12 @@ def update_all_metrics():
             current_month_start = date(today.year, today.month, 1)
             
             # Iterate from 2 months ago to 3 months ahead (inclusive)
-            for offset in range(-2, 4):  # Offsets: -2, -1, 0, 1, 2, 3
+            for offset in range(-2, 3):  # Offsets: -2, -1, 0, 1, 2, 3
                 target_month = current_month_start + relativedelta(months=offset)
                 print(f"Updating scheduling attack metrics for {target_month.strftime('%Y-%m-%d')}")
-                update_scheduling_attack(target_month)
+                update_scheduling_attack(target_month, force_update)
 
 
 if __name__ == '__main__':
-    update_all_metrics()
+    force_update = True
+    update_all_metrics(force_update)
