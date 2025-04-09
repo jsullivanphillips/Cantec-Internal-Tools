@@ -1,10 +1,15 @@
-/* ----- Global Resets & Body Style ----- */
+/* ========================================
+   1. Global Resets & Base Styles
+   ======================================== */
+
+/* Global Resets */
 * {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
+/* Base Body Style */
 body {
   font-family: 'Open Sans', Arial, sans-serif;
   background-color: #f5f7fa;
@@ -13,12 +18,45 @@ body {
   padding: 0;
 }
 
-/* ----- Custom Navbar Background ----- */
+
+/* ========================================
+   2. Navbar Styles
+   ======================================== */
+
+
+/* Custom Navbar Background */
 .bg-custom {
   background-color: #0C62A6 !important;
 }
 
-/* ----- Buttons ----- */
+.navbar {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.navbar-brand,
+.navbar-nav .nav-link {
+  height: 60px;           /* match the image height */
+  display: flex;
+  align-items: center;
+  /* Optional: If you want them horizontally side by side 
+     with a big brand image, you might remove margins */
+  margin: 0;
+}
+
+/* Adjust the logo image: set a consistent height and vertical alignment */
+.navbar-brand img {
+  height: 60px;               /* Adjust as needed */
+  vertical-align: middle;
+  margin-right: 10px;
+}
+
+
+/* ========================================
+   3. Buttons
+   ======================================== */
+
+/* Global Button Styles */
 button {
   cursor: pointer;
   font-size: 14px;
@@ -34,37 +72,12 @@ button {
   text-decoration: none;
   display: inline-block;
 }
+
 .primary-btn:hover {
   background-color: #96c8ee;
 }
 
-/* ----- Main Container ----- */
-.container {
-  margin-bottom: 40px;
-}
-
-/* ----- Page Title ----- */
-.page-title {
-  font-size: 28px;
-  text-align: center;
-  margin-bottom: 20px;
-}
-
-/* ----- Analytics Card ----- */
-.analytics-card {
-  padding: 1rem;
-}
-
-/* ----- Example Additional Card/Block Styles ----- */
-.block-container {
-  background-color: #fdfdfd;
-  border: 1px solid #ddd;
-  border-radius: 5px;
-  padding: 15px;
-  margin: 15px 0;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-}
-
+/* Button Group Styles */
 .btn-group .primary-btn {
   text-align: center;
   background-color: #0C62A6;
@@ -75,11 +88,13 @@ button {
   transition: background-color 0.3s ease;
   height: 35px;
 }
+
 .btn-group .primary-btn:hover {
   text-align: center;
   background-color: #0a538b;
   color: #fff;
 }
+
 .btn-group .primary-btn.active {
   text-align: center;
   background-color: #084b7c;
@@ -88,6 +103,157 @@ button {
   font-weight: bold;
 }
 
+.secondary-btn {
+  background-color: #0C62A6;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.secondary-btn:hover {
+  background-color: #0a538b;
+}
+
+
+/* ========================================
+   4. Containers & Layout
+   ======================================== */
+
+.container {
+  margin-bottom: 40px;
+}
+
+.main-container {
+  max-width: 900px;
+  margin: 60px auto 40px auto;
+  padding: 20px;
+  background-color: #fff;
+  border-radius: 5px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+
+/* ========================================
+   5. Typography & Page Titles
+   ======================================== */
+
+.page-title {
+  font-size: 28px;
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+
+/* ========================================
+   6. Cards & Block Styles
+   ======================================== */
+
+/* Analytics and Block Containers */
+.analytics-card {
+  padding: 1rem;
+}
+
+.block-container {
+  background-color: #fdfdfd;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  padding: 15px;
+  margin: 15px 0;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+/* Cards Container (for grid layouts, etc.) */
+.cards-container.processing-attack {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px; /* space between cards */
+  padding-top: 15px;
+}
+
+@media (max-width: 768px) {
+  .processing-attack .cards-container {
+    grid-template-columns: 1fr; /* single column on smaller screens */
+  }
+}
+
+/* Card Styles */
+.processing-attack .card {
+  background-color: #fdfdfd;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  padding: 15px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.processing-attack .card.half {
+  box-shadow: 2px 4px 10px rgba(0, 0, 0, 0.1);
+}
+
+.processing-attack .card.full {
+  grid-column: 1 / span 2;
+  min-height: 300px;
+  box-shadow: 2px 4px 10px rgba(0, 0, 0, 0.2);
+  margin-bottom: 20px;
+  transition: opacity 0.4s ease;
+}
+
+.processing-attack .card.full.short {
+  grid-column: 1 / span 2;
+  min-height: 100px;
+  box-shadow: 2px 4px 10px rgba(0, 0, 0, 0.1);
+  margin-bottom: 20px;
+}
+
+.processing-attack .card-header {
+  background-color: rgba(255, 255, 255, 0);
+  padding: 8px;
+  border-bottom: 1px solid #ddd;
+  font-size: 20px;
+  font-weight: 600;
+  font-family: 'Poppins', sans-serif;
+  text-align: center;
+  margin-bottom: 10px;
+}
+
+.processing-attack .card-body {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  font-size: 26px;
+  color: #0C62A6;
+}
+
+.processing-attack .card:hover {
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+/* Small Cards */
+.small-card {
+  font-size: 0.9rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.small-card .card-header {
+  background-color: rgba(255, 255, 255, 0);
+  padding: 0.5rem 1rem;
+  font-weight: 600;
+}
+
+.small-card .card-body {
+  padding: 0.5rem 1rem;
+}
+
+
+/* ========================================
+   7. Tables & Data Presentation
+   ======================================== */
+
 .table-striped tbody tr:nth-of-type(odd) {
   background-color: rgba(0, 0, 0, 0.05);
 }
@@ -95,21 +261,29 @@ button {
 .table-bordered {
   border: 1px solid #dee2e6;
 }
+
 .table-bordered th,
 .table-bordered td {
   border: 1px solid #dee2e6;
 }
+
 .table th,
 .table td {
   padding: 12px;
   text-align: left;
 }
+
 .table th {
   background-color: #f8f9fa;
   font-weight: 600;
 }
 
-/* ----- Login Page Styles ----- */
+
+/* ========================================
+   8. Forms & Login Page Styles
+   ======================================== */
+
+/* Login Page Container & Card */
 .login-container {
   width: 100%;
   padding: 20px;
@@ -127,6 +301,7 @@ button {
   text-align: center;
 }
 
+/* Login Titles */
 .login-title {
   font-size: 24px;
   margin-bottom: 10px;
@@ -139,6 +314,7 @@ button {
   color: #666;
 }
 
+/* Form Elements */
 .form-group {
   margin-bottom: 20px;
   text-align: left;
@@ -165,7 +341,11 @@ button {
   outline: none;
 }
 
-/* ----- Timeline & Legend ----- */
+
+/* ========================================
+   9. Timeline, Legend & Alerts
+   ======================================== */
+
 #visualization {
   width: 100%;
   border: 1px solid lightgray;
@@ -181,12 +361,20 @@ button {
   margin-top: 0.5rem;
 }
 
-/* ----- Intervals Alert ----- */
 #jobIntervals {
   white-space: normal;
 }
 
-/* ----- Spinner (Loading) ----- */
+#errorMessage {
+  color: red;
+  margin-bottom: 10px;
+}
+
+
+/* ========================================
+   10. Spinner & Loading Animations
+   ======================================== */
+
 .spinner-border {
   width: 1.5rem;
   height: 1.5rem;
@@ -194,22 +382,27 @@ button {
   vertical-align: text-bottom;
 }
 
-/* ----- Legend Color Box ----- */
-.legend-color {
+.spinner {
   display: inline-block;
-  width: 20px;
-  height: 12px;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #0d6efd;
+  border-top: 2px solid transparent;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
   margin-right: 8px;
   vertical-align: middle;
 }
 
-/* ----- Error Message ----- */
-#errorMessage {
-  color: red;
-  margin-bottom: 10px;
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
-/* ----- Extra Styles from First File (Priority to Second) ----- */
+
+/* ========================================
+   11. Additional Components & Utility Classes
+   ======================================== */
 
 /* Back Button */
 .back-button {
@@ -225,22 +418,13 @@ button {
   border-radius: 3px;
   transition: background-color 0.3s, border-color 0.3s;
 }
+
 .back-button:hover {
   background-color: #0a538b;
   border-color: #0a538b;
 }
 
-/* Main Container specific for some pages */
-.main-container {
-  max-width: 900px;
-  margin: 60px auto 40px auto;
-  padding: 20px;
-  background-color: #fff;
-  border-radius: 5px;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-}
-
-/* Weekday Styles */
+/* Weekday & Global Settings */
 .weekday-container {
   margin: 20px 0;
   text-align: center;
@@ -276,7 +460,6 @@ button {
   background-color: rgb(167, 33, 47);
 }
 
-/* Global Settings */
 .global-settings {
   display: flex;
   align-items: center;
@@ -295,7 +478,7 @@ button {
   gap: 5px;
 }
 
-/* Row Container (Each Tech Row) */
+/* Row & Tech Rows */
 .row-container {
   background-color: #fdfdfd;
   border: 1px solid #ddd;
@@ -304,7 +487,6 @@ button {
   margin: 15px 0;
 }
 
-/* Tech Row Grid */
 .tech-row {
   display: grid;
   grid-template-columns: auto 1fr auto;
@@ -313,7 +495,6 @@ button {
   width: 100%;
 }
 
-/* Main Row */
 .tech-row .main-row {
   display: flex;
   flex-wrap: nowrap;
@@ -322,7 +503,7 @@ button {
   justify-self: end;
 }
 
-/* Day Section */
+/* Day Section & Remove Row */
 .day-container {
   display: block;
 }
@@ -340,14 +521,12 @@ button {
   justify-self: center;
 }
 
-/* Remove Row */
 .remove-row-container {
   display: flex;
   align-items: center;
   justify-content: start;
 }
 
-/* Day Entry Buttons & Spans */
 .day-entry button {
   margin-left: 5px;
   color: red;
@@ -362,46 +541,7 @@ button {
   margin-right: 5px;
 }
 
-/* Block Container for content blocks */
-.block-container {
-  background-color: #fdfdfd;
-  border: 1px solid #ddd;
-  border-radius: 5px;
-  padding: 15px;
-  margin: 15px 0;
-}
-
-.block-title {
-  color: #0C62A6;
-  font-size: 20px;
-  margin-bottom: 10px;
-}
-
-.tech-row-assignment {
-  margin-top: 10px;
-}
-
-.tech-row-title {
-  font-size: 16px;
-  margin-bottom: 5px;
-  color: #0C62A6;
-}
-
-/* Secondary Button */
-.secondary-btn {
-  background-color: #0C62A6;
-  color: #fff;
-  border: none;
-  border-radius: 4px;
-  padding: 6px 10px;
-  cursor: pointer;
-  font-size: 14px;
-}
-.secondary-btn:hover {
-  background-color: #0a538b;
-}
-
-/* Assignment List */
+/* Assignment Lists */
 .assignment-list {
   list-style: none;
   margin: 0;
@@ -421,191 +561,13 @@ button {
   font-size: 14px;
 }
 
-/* Use a CSS Grid layout for the cards container */
-.cards-container.processing-attack {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 20px; /* space between cards */
-  padding-top: 15px;
-}
-
-@media (max-width: 768px) {
-  .processing-attack .cards-container {
-    grid-template-columns: 1fr; /* single column on smaller screens */
-  }
-}
-
-/* Add padding above and below the week select input */
-.processing-attack-container .week-selection {
-  display: flex;
-  align-items: center;
-  gap: 12px; /* space between label, select, button, and display */
-  flex-wrap: wrap; /* optional: allows wrapping on small screens */
-  margin-bottom: 1rem;
-}
-
-/* Generic card styling remains similar */
-.processing-attack .card {
-  background-color: #fdfdfd;
-  border: 1px solid #ddd;
-  border-radius: 5px;
-  padding: 15px;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-}
-
-/* The first four cards occupy one cell each in the 2×2 grid */
-.processing-attack .card.half {
-  box-shadow: 2px 4px 10px rgba(0, 0, 0, 0.1);
-}
-
-/* The bar graph card should span both columns to be full-width */
-.processing-attack .card.full {
-  grid-column: 1 / span 2; /* Span across 2 columns */
-  min-height: 300px;       /* Taller for the bar graph */
-  box-shadow: 2px 4px 10px rgba(0, 0, 0, 0.2);
-  margin-bottom: 20px;
-  transition: opacity 0.4s ease;
-}
-
-.processing-attack .card.full.short {
-  grid-column: 1 / span 2; /* Span across 2 columns */
-  min-height: 100px;       /* Taller for the bar graph */
-  box-shadow: 2px 4px 10px rgba(0, 0, 0, 0.1);
-  margin-bottom: 20px;
-}
-
-/* Card header and body styling */
-.processing-attack .card-header {
-  background-color: rgba(255, 255, 255, 0);
-  padding: 8px;
-  border-bottom: 1px solid #ddd;
-  font-size: 20px;
-  font-weight: 600;
-  font-family: 'Poppins', sans-serif;
-  text-align: center;
-  margin-bottom: 10px; /* keep or adjust as needed */
-}
-
-.processing-attack-container .section-header {
-  padding: 8px;
-  border-bottom: 1px solid #ddd;
-  font-size: 30px;
-  font-weight: 600;
-  color : #0C62A6;
-  text-align: left;
-  margin-bottom: 10px; /* keep or adjust as needed */
-}
-
-.weekly-summary-container .section-header {
-  padding: 8px;
-  border-bottom: 1px solid #ddd;
-  font-size: 30px;
-  font-weight: 600;
-  color : #0C62A6;
-  text-align: left;
-  margin-bottom: 10px; /* keep or adjust as needed */
-}
-
-.weekly-summary-container .card-header {
-  background-color: rgba(255, 255, 255, 0);
-  padding: 8px;
-  border-bottom: 1px solid #ddd;
-  font-size: 20px;
-  font-weight: 600;
-  font-family: 'Poppins', sans-serif;
-  text-align: center;
-  margin-bottom: 10px; /* keep or adjust as needed */
-}
-
-.processing-attack .card-body {
-  display: flex;
-  flex-direction: column;  /* Stack children vertically */
-  justify-content: center; /* Center vertically */
-  align-items: center;     /* Center horizontally */
-  text-align: center;
-  font-size: 26px;
-  color: #0C62A6;
-}
-
-
-.processing-attack .card:hover {
-  box-shadow: 0 4px 8px rgba(0,0,0,0.15);
-}
-
-
-.average-life-container {
-  border: 1px solid #dee2e6;       /* Light border */
-  border-radius: 4px;              /* Rounded corners */
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1); /* Subtle shadow */
-  overflow: hidden;                /* Ensure inner elements don't spill over rounded corners */
-  background-color: #fff;          /* Card background */
-  margin-bottom: 20px;             /* Spacing from other content */
-}
-
-#averageLifeHeader {
-  background-color: #f8f9fa;
-  padding: 12px 16px;
-  cursor: pointer;
-  border-bottom: 1px solid #dee2e6;  /* Separate header from body */
-  transition: background-color 0.3s, transform 0.3s;
-}
-
-#averageLifeHeader:hover {
-  background-color: #e9ecef;
-  transform: scale(1.02);
-}
-
-.average-life-cards {
-  padding: 16px;  /* Inner padding for the card body */
-}
-
-/* Flexbox layout for cards container */
-.cards-container {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-}
-/* Each half card takes about half the width (with a gap) */
-.card.half {
-  flex: 1 1 calc(50% - 1rem);
-}
-/* Full-width card */
-.card.full {
-  flex: 1 1 100%;
-  margin-top: 20px; /* match the gap or desired spacing */
-}
-
-/* Specific styling for Scheduling Attack page to center content and match processing_attack margins/padding */
-.scheduling-attack-container {
-  max-width: 900px;
-  margin: 60px auto 40px auto;
-  padding: 20px;
-  background-color: #fff;
-  border-radius: 5px;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-}
-
-
-.small-card {
-  font-size: 0.9rem;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-}
-.small-card .card-header {
-  background-color: rgba(255, 255, 255, 0);
-  padding: 0.5rem 1rem;
-  font-weight: 600;
-}
-.small-card .card-body {
-  padding: 0.5rem 1rem;
-}
-
+/* Miscellaneous */
 .month-selection {
   margin-top: 20px;
 }
 
 .info-text {
-  padding: 0.25rem; /* Or use px, like 16px */
+  padding: 0.25rem;
 }
 
 .selected-week-display {
@@ -613,7 +575,7 @@ button {
   font-weight: bold;
   color: #0d6efd;
   display: inline-block;
-  margin-left: 16px; /* <- adds spacing after the button */
+  margin-left: 16px;
 }
 
 .summary-metric {
@@ -639,34 +601,8 @@ button {
   opacity: 0;
 }
 
-.loading-spinner {
-  text-align: center;
-  padding: 1rem;
-  font-weight: bold;
-  color: #0d6efd;
-}
-
-.spinner {
-  display: inline-block;
-  width: 16px;
-  height: 16px;
-  border: 2px solid #0d6efd;
-  border-top: 2px solid transparent;
-  border-radius: 50%;
-  animation: spin 0.6s linear infinite;
-  margin-right: 8px;
-  vertical-align: middle;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
+/* Jobs & Graph Containers */
 .jobsProcessedBarGraphContainer,
 .hoursProcessedBarGraphContainer {
-  height: 450px;  /* or another maximum height you prefer */
+  height: 450px;
 }
-
-
-

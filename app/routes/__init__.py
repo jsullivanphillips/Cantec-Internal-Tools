@@ -9,6 +9,7 @@ from .scheduling_attack import scheduling_attack_bp
 from .update_db import update_db_bp
 
 
+
 def register_blueprints(app):
     app.register_blueprint(auth_bp)
     app.register_blueprint(home_bp)
