@@ -5,7 +5,7 @@ from logging.handlers import RotatingFileHandler
 def setup_logging(app):
     try:
         # Define the log file path
-        log_file_path = os.path.join(os.path.dirname(__file__), '..', 'app.log')
+        log_file_path = os.path.join(os.path.dirname(__file__), '../..', 'app.log')
         log_file_path = os.path.abspath(log_file_path)
 
         # File handler
