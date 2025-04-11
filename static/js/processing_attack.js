@@ -2,6 +2,38 @@
 
 Chart.defaults.datasets.bar.categoryPercentage = 0.7;
 Chart.defaults.datasets.bar.barPercentage = 0.8;
+let isPinkFolderDataLoaded = false;
+
+
+/****************************************
+ * 1) Dummy data for Pink Folder Jobs
+ ****************************************/
+const pinkfolderDetailedData = [
+  {
+    technicianName: "John Doe",
+    pinkFolderJobCount: 2,
+    jobs: [
+      { name: "Job #123", url: "/jobs/123" },
+      { name: "Job #124", url: "/jobs/124" }
+    ]
+  },
+  {
+    technicianName: "Jane Smith",
+    pinkFolderJobCount: 3,
+    jobs: [
+      { name: "Job #234", url: "/jobs/234" },
+      { name: "Job #235", url: "/jobs/235" },
+      { name: "Job #236", url: "/jobs/236" }
+    ]
+  },
+  {
+    technicianName: "Alex Johnson",
+    pinkFolderJobCount: 1,
+    jobs: [
+      { name: "Job #567", url: "/jobs/567" }
+    ]
+  }
+];
 
 const ProcessingAttack = (() => {
   // Chart variables
@@ -314,8 +346,30 @@ const ProcessingAttack = (() => {
           jobsChart.data.datasets[0].borderRadius = 8;
           jobsChart.update();
         }
+
+        // Load pink folder data from backend
+        if (data.pink_folder_detailed_info) {
+          pinkfolderDetailedData.length = 0;
+        
+          for (const [techName, jobs] of Object.entries(data.pink_folder_detailed_info)) {
+            pinkfolderDetailedData.push({
+              technicianName: techName,
+              pinkFolderJobCount: jobs.length,
+              jobs: jobs.map(job => ({
+                address: job.job_address,
+                url: job.job_url
+              }))
+            });
+          }
+        }
+
+
         // Update KPIs.
         updateKPIs(data);
+        isPinkFolderDataLoaded = true;
+        const pinkFolderCard = document.getElementById("numberOfPinkFolderJobsCard");
+        pinkFolderCard.classList.remove("disabled");
+        pinkFolderCard.classList.add("clickable");
       })
       .catch(error => console.error("Error loading complete jobs:", error));
   }
@@ -624,9 +678,115 @@ const ProcessingAttack = (() => {
     display.textContent = `Week of ${mondayStr} - ${fridayStr}`;
   }
 
+  
+
+
+
   /* =======================================================
      EVENT LISTENERS & INITIALIZATION
   ========================================================== */
+  /****************************************
+   * 2) Function to render Pink Folder data
+   ****************************************/
+  function renderPinkFolderData() {
+    const techniciansList = document.getElementById("pinkFolderTechniciansListModal");
+    techniciansList.innerHTML = "";
+  
+    pinkfolderDetailedData.forEach((tech, index) => {
+      const techId = `tech-${index}`;
+      const wrapper = document.createElement("div");
+      wrapper.classList.add("mb-2", "border", "rounded", "p-2");
+  
+      wrapper.innerHTML = `
+        <div class="d-flex justify-content-between align-items-center">
+          <button class="btn btn-link text-start w-100 d-flex justify-content-between align-items-center tech-toggle"
+                  type="button"
+                  aria-expanded="false"
+                  aria-controls="collapse-${techId}"
+                  id="button-${techId}">
+            <span><strong>${tech.technicianName}</strong></span>
+            <span class="d-flex align-items-center gap-2">
+              <span class="text-muted">(${tech.pinkFolderJobCount} jobs)</span>
+              <i class="chevron-icon bi bi-chevron-right transition-rotate"></i>
+            </span>
+          </button>
+        </div>
+        <div id="collapse-${techId}" class="collapse-custom mt-2">
+          <ul class="list-unstyled mb-0 ps-3">
+            ${tech.jobs.map(job => `
+              <li class="mb-1">
+                <a href="${job.url}" target="_blank" class="link-primary text-decoration-none">${job.address}</a>
+              </li>
+            `).join("")}
+          </ul>
+        </div>
+      `;
+  
+      techniciansList.appendChild(wrapper);
+  
+      const toggleBtn = wrapper.querySelector(`#button-${techId}`);
+      const collapseEl = wrapper.querySelector(`#collapse-${techId}`);
+  
+      toggleBtn.addEventListener("click", () => {
+        collapseEl.classList.toggle("show");
+        const isExpanded = collapseEl.classList.contains("show");
+        toggleBtn.setAttribute("aria-expanded", isExpanded);
+      });
+    });
+  }
+
+  document.getElementById("expandAllBtn").addEventListener("click", () => {
+    document.querySelectorAll(".collapse-custom").forEach(collapseEl => {
+      collapseEl.classList.add("show");
+      const btn = collapseEl.previousElementSibling.querySelector(".tech-toggle");
+      if (btn) btn.setAttribute("aria-expanded", "true");
+    });
+  });
+  
+  document.getElementById("collapseAllBtn").addEventListener("click", () => {
+    document.querySelectorAll(".collapse-custom").forEach(collapseEl => {
+      collapseEl.classList.remove("show");
+      const btn = collapseEl.previousElementSibling.querySelector(".tech-toggle");
+      if (btn) btn.setAttribute("aria-expanded", "false");
+    });
+  });
+  
+  
+  
+  
+  
+  
+  
+  
+
+  /****************************************
+ * 3) Event listener to expand/hide Pink Folder Jobs
+ ****************************************/
+  function setupPinkFolderCardToggle() {
+    const pinkFolderCard = document.getElementById("numberOfPinkFolderJobsCard");
+  
+    // Start in loading state
+    pinkFolderCard.classList.add("disabled");
+    pinkFolderCard.classList.remove("clickable");
+  
+    pinkFolderCard.addEventListener("click", () => {
+      if (!isPinkFolderDataLoaded) {
+        console.warn("Pink Folder data not yet loaded.");
+        return;
+      }
+  
+      renderPinkFolderData();
+      const pinkModal = new bootstrap.Modal(document.getElementById("pinkFolderModal"));
+      pinkModal.show();
+    });
+  }
+  
+  
+  
+  
+
+
+  
 
   function initEventListeners() {
     // Submit week button.
@@ -646,7 +806,7 @@ const ProcessingAttack = (() => {
     generateWorkWeekOptions();
     initEventListeners();
     initCharts();
-
+    setupPinkFolderCardToggle();
     const weekSelect = document.getElementById("week-select");
     if (weekSelect.value) {
       const selectedMonday = weekSelect.value;
@@ -665,5 +825,9 @@ const ProcessingAttack = (() => {
   };
 })();
 
+
+
 // Initialize the module on DOMContentLoaded.
-document.addEventListener("DOMContentLoaded", ProcessingAttack.init);
+document.addEventListener("DOMContentLoaded", () => {
+  ProcessingAttack.init();
+});

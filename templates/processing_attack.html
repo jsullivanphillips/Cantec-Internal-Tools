@@ -51,10 +51,12 @@
           <!-- Pink Folder Jobs -->
           <div class="card half" id="numberOfPinkFolderJobsCard">
             <div class="card-header">📁 Pink Folder Jobs | Goal: Less than 15</div>
-            <div class="card-body">
+            <div class="card-body position-relative">
               <strong id="numberOfPinkFolderJobs" style="font-weight: bold; font-size: 1.2em;">..</strong>
+              <div id="pinkFolderHint" class="pink-hint">Click for more info</div>
             </div>
           </div>
+          
           <!-- Oldest Inspection -->
           <div class="card half" id="oldestInspectionToBeMarkedCard">
             <div class="card-header">⏱️ Oldest Inspection | Goal: No Older than 1 Month</div>
@@ -140,9 +142,38 @@
       </div>
     </div><!-- End of Tab Content -->
   </div><!-- End of Container -->
+  <!-- Pink Folder Modal -->
+  <div class="modal fade" id="pinkFolderModal" tabindex="-1" aria-labelledby="pinkFolderModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="pinkFolderModalLabel">Pink Folder Jobs by Technician</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="d-flex justify-content-end mb-2 px-3">
+            <button id="expandAllBtn" class="btn btn-sm btn-outline-primary me-2">Expand All</button>
+            <button id="collapseAllBtn" class="btn btn-sm btn-outline-secondary">Collapse All</button>
+          </div>          
+          <div id="pinkFolderTechniciansListModal" class="list-group">
+            <!-- JS-generated content goes here -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
 {% endblock %}
 
 {% block extra_scripts %}
-  <!-- Include your JavaScript file specific to processing_attack -->
+  <!-- Your page-specific JS file -->
   <script src="{{ url_for('static', filename='js/processing_attack.js') }}"></script>
+
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+  <!-- 🔥 Bootstrap 5 JS Bundle (includes Popper) -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 {% endblock %}
+

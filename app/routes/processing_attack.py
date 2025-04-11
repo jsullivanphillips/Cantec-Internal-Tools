@@ -52,7 +52,7 @@ def processing_attack_complete_jobs():
 
     jobs_by_job_type = organize_jobs_by_job_type(jobs_to_be_marked_complete)
 
-    number_of_pink_folder_jobs = get_number_of_pink_folder_jobs()
+    number_of_pink_folder_jobs, pink_folder_detailed_info = get_pink_folder_data()
 
     response_data = {
         "jobs_to_be_marked_complete": len(jobs_to_be_marked_complete),
@@ -62,7 +62,8 @@ def processing_attack_complete_jobs():
         "job_type_count": jobs_by_job_type,
         "number_of_pink_folder_jobs" : number_of_pink_folder_jobs,
         "oldest_inspection_date": oldest_inspection_date if oldest_inspection_date else None,
-        "oldest_inspection_address" : oldest_inspection_address
+        "oldest_inspection_address" : oldest_inspection_address,
+        "pink_folder_detailed_info" : pink_folder_detailed_info
     }
     return jsonify(response_data)
 
@@ -83,10 +84,11 @@ def organize_jobs_by_job_type(jobs_to_be_marked_complete):
     return dict(counts)
 
 
-def get_number_of_pink_folder_jobs():
+def get_pink_folder_data():
     job_endpoint = f"{SERVICE_TRADE_API_BASE}/job"
     job_params = {
-        "tag": "PINK_FOLDER"
+        "tag": "PINK_FOLDER",
+        "appointmentStatus" : "unscheduled"
     }
 
     try:
@@ -95,10 +97,34 @@ def get_number_of_pink_folder_jobs():
     except requests.RequestException as e:
         # If desired, you could return default values here.
         return None, None, None
-
+    
+    pink_folder_detailed_info = {}
     job_response = response.json().get("data", {})
     jobs = job_response.get("jobs", {})
-    return len(jobs)
+
+    for job in jobs:
+        job_url = "https://app.servicetrade.com/jobs/" + str(job.get("id", ""))
+        job_address = job.get("location", {}).get("address", {}).get("street", "")
+
+        current_appointment = job.get("currentAppointment", {})
+        techs_on_app = current_appointment.get("techs", [])
+
+        for tech in techs_on_app:
+            tech_name = tech.get("name", "Unknown")
+
+            # Initialize the list if this tech hasn't been seen yet
+            if tech_name not in pink_folder_detailed_info:
+                pink_folder_detailed_info[tech_name] = []
+
+            # Append this job's info
+            pink_folder_detailed_info[tech_name].append({
+                "job_address": job_address,
+                "job_url": job_url
+            })
+
+    return len(jobs), pink_folder_detailed_info
+
+
 
 
 def get_oldest_job_data(oldest_job_id):
