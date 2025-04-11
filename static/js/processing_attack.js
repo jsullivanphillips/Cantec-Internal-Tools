@@ -598,7 +598,7 @@ const ProcessingAttack = (() => {
     // Pink Folder jobs.
     const pinkElem = document.getElementById("numberOfPinkFolderJobs");
     const pinkElemCard = document.getElementById("numberOfPinkFolderJobsCard");
-    if (parseInt(data.number_of_pink_folder_jobs) < 15) {
+    if (parseInt(data.number_of_pink_folder_jobs) < 10) {
       pinkElem.style.color = "#27a532";
       pinkElemCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(229, 248, 225))";
       pinkElemCard.style.borderTop = "5px solid #27a532";
