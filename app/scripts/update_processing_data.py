@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone, date, time
 from pytz import UTC
 from app import create_app
 from app.models import db, JobSummary, ProcessorMetrics, ProcessingStatus
-from app.routes.processing_attack import get_jobs_processed, get_jobs_processed_by_processor, get_jobs_to_be_marked_complete, get_oldest_job_data, organize_jobs_by_job_type, get_number_of_pink_folder_jobs
+from app.routes.processing_attack import get_jobs_processed, get_jobs_processed_by_processor, get_jobs_to_be_marked_complete, get_oldest_job_data, organize_jobs_by_job_type, get_pink_folder_data
 
 # Load environment variables from .env using python-dotenv.
 from dotenv import load_dotenv
@@ -53,7 +53,7 @@ def get_processing_status_data():
         oldest_inspection_date, oldest_inspection_address = None, None
 
     jobs_by_job_type = organize_jobs_by_job_type(jobs_to_be_marked_complete)
-    number_of_pink_folder_jobs = get_number_of_pink_folder_jobs()
+    number_of_pink_folder_jobs, _ = get_pink_folder_data()
 
     status_data = {
         "jobs_to_be_marked_complete": len(jobs_to_be_marked_complete),

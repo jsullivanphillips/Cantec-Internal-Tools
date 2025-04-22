@@ -90,5 +90,5 @@ def update_all_metrics(force_update):
 
 
 if __name__ == '__main__':
-    force_update = True
+    force_update = False
     update_all_metrics(force_update)
