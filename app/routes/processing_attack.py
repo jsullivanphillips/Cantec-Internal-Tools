@@ -4,7 +4,7 @@ import json
 from datetime import datetime, timedelta
 from dateutil import parser  # Use dateutil for flexible datetime parsing
 from collections import Counter
-from app.models import db, JobSummary, ProcessorMetrics
+from app.db_models import db, JobSummary, ProcessorMetrics
 import sys
 
 processing_attack_bp = Blueprint('processing_attack', __name__, template_folder='templates')

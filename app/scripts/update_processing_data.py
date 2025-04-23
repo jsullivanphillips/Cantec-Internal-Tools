@@ -3,7 +3,7 @@ import os
 from datetime import datetime, timedelta, timezone, date, time
 from pytz import UTC
 from app import create_app
-from app.models import db, JobSummary, ProcessorMetrics, ProcessingStatus
+from app.db_models import db, JobSummary, ProcessorMetrics, ProcessingStatus
 from app.routes.processing_attack import get_jobs_processed, get_jobs_processed_by_processor, get_jobs_to_be_marked_complete, get_oldest_job_data, organize_jobs_by_job_type, get_pink_folder_data
 
 # Load environment variables from .env using python-dotenv.

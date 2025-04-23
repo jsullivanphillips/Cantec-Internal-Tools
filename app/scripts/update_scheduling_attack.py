@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone, date, time
 from dateutil.relativedelta import relativedelta
 from pytz import UTC
 from app import create_app
-from app.models import db, SchedulingAttack
+from app.db_models import db, SchedulingAttack
 from app.routes.scheduling_attack import get_scheduling_attack
 
 from dotenv import load_dotenv

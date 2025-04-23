@@ -5,7 +5,7 @@ from flask_migrate import Migrate
 from app.config import Config
 from app.routes import register_blueprints
 from app.utils.logger import setup_logging
-from app.models import db
+from app.db_models import db
 from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '.env'))

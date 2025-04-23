@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify, request, current_app
 from datetime import datetime, timedelta, timezone
-from app.models import db, JobSummary
+from app.db_models import db, JobSummary
 from app.routes.processing_attack import get_jobs_processed  # Adjust the import based on your project structure
 
 update_db_bp = Blueprint('update_db', __name__)

@@ -7,7 +7,7 @@ import calendar
 from dateutil import parser  # Use dateutil for flexible datetime parsing
 from collections import Counter
 import re
-from app.models import SchedulingAttack
+from app.db_models import SchedulingAttack
 
 scheduling_attack_bp = Blueprint('scheduling_attack', __name__, template_folder='templates')
 api_session = requests.Session()
