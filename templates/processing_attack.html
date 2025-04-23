@@ -40,14 +40,16 @@
             </div>
           </div>
           <!-- Oldest Job -->
-          <div class="card half" id="oldestJobToBeMarkedCompleteCard">
+          <div class="card half clickable" id="oldestJobsCard" style="cursor: pointer;">
             <div class="card-header">⏱️ Oldest Job | Goal: No Older than 1 Month</div>
-            <div class="card-body">
+            <div class="card-body position-relative">
               <strong id="oldestJobToBeMarkedCompleteDate" style="font-weight: bold; font-size: 1.2em;"></strong>
-              <strong id="oldestJobToBeMarkedCompleteAddress">..</strong>
+              <strong id="oldestJobToBeMarkedCompleteAddress"></strong>
               <strong id="oldestJobToBeMarkedCompleteType" style="font-style: italic;"></strong>
+              <div id="pinkFolderHint" class="pink-hint">Click for more info</div>
             </div>
           </div>
+
           <!-- Pink Folder Jobs -->
           <div class="card half" id="numberOfPinkFolderJobsCard">
             <div class="card-header">📁 Pink Folder Jobs | Goal: Less than 10</div>
@@ -156,6 +158,23 @@
             <button id="collapseAllBtn" class="btn btn-sm btn-outline-secondary">Collapse All</button>
           </div>          
           <div id="pinkFolderTechniciansListModal" class="list-group">
+            <!-- JS-generated content goes here -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Oldest Jobs Modal -->
+  <div class="modal fade" id="oldestJobsModal" tabindex="-1" aria-labelledby="oldestJobsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="oldestJobsModalLabel">Oldest Jobs To Be Marked Complete</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">     
+          <div id="oldestJobsListModal" class="list-group">
             <!-- JS-generated content goes here -->
           </div>
         </div>

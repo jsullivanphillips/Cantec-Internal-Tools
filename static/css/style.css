@@ -762,10 +762,34 @@ button {
   pointer-events: none;
 }
 
-#numberOfPinkFolderJobsCard:hover .pink-hint {
+#numberOfPinkFolderJobsCard:hover.pink-hint {
   opacity: 0.9;
   text-decoration: underline;
 }
+
+#oldestJobsCard:hover.pink-hint {
+  opacity: 0.9;
+  text-decoration: underline;
+}
+
+#oldestJobsCard.disabled {
+  pointer-events: none;
+  opacity: 0.5;
+  filter: grayscale(50%);
+  cursor: not-allowed;
+}
+
+#oldestJobsCard.clickable:hover {
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px);
+  background-color: #eef6fc;
+}
+
+#oldestJobsCard.clickable {
+  cursor: pointer;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
 
 
 

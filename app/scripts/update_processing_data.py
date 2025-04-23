@@ -42,15 +42,19 @@ def get_processing_status_data():
         else:
             print(f"ProcessingStatus for week {week_start} exists but is outdated. Overwriting...")
 
-    # Only run the expensive data gathering if not skipping
-    jobs_to_be_marked_complete, oldest_job_id, oldest_inspection_job_id = get_jobs_to_be_marked_complete()
+    # Updated naming for clarity
+    jobs_to_be_marked_complete, oldest_job_ids, oldest_inspection_job_id = get_jobs_to_be_marked_complete()
 
-    if jobs_to_be_marked_complete:
-        oldest_job_date, oldest_job_address, oldest_job_type = get_oldest_job_data(oldest_job_id)
+    if jobs_to_be_marked_complete and oldest_job_ids:
+        first_oldest_job_id = oldest_job_ids[0]  # ✅ This is safe now
+        oldest_job_date, oldest_job_address, oldest_job_type = get_oldest_job_data(first_oldest_job_id)
+
         oldest_inspection_date, oldest_inspection_address, _ = get_oldest_job_data(oldest_inspection_job_id)
     else:
         oldest_job_date, oldest_job_address, oldest_job_type = None, None, None
         oldest_inspection_date, oldest_inspection_address = None, None
+
+
 
     jobs_by_job_type = organize_jobs_by_job_type(jobs_to_be_marked_complete)
     number_of_pink_folder_jobs, _ = get_pink_folder_data()
@@ -220,28 +224,12 @@ def update_all_metrics():
                 update_processor_metrics_for_week(week_start_str)
                 current_date += timedelta(days=7)
             
-            # Optionally, delete records older than one year.
-
-            cutoff_date = today - timedelta(days=372)
-            old_job_summaries = JobSummary.query.filter(JobSummary.week_start < cutoff_date).all()
-            for record in old_job_summaries:
-                db.session.delete(record)
-            old_processor_records = ProcessorMetrics.query.filter(ProcessorMetrics.week_start < cutoff_date).all()
-            for record in old_processor_records:
-                db.session.delete(record)
             db.session.commit()
-            print("Old records deleted.")
 
-# def should_run_today():
-#     # Monday is represented by 0
-#     return datetime.now(timezone.utc).weekday() == 6
 
 
 if __name__ == '__main__':
     update_all_metrics()
-    #if should_run_today():
-    #    update_all_metrics()
-    #else:
-    #    print("Not the scheduled day, skipping job.")
+
 
 

@@ -3,7 +3,7 @@
 Chart.defaults.datasets.bar.categoryPercentage = 0.7;
 Chart.defaults.datasets.bar.barPercentage = 0.8;
 let isPinkFolderDataLoaded = false;
-
+let isOldestJobsDataLoaded = false;
 
 /****************************************
  * 1) Dummy data for Pink Folder Jobs
@@ -320,11 +320,50 @@ const ProcessingAttack = (() => {
       .then(data => {
         console.log("Complete jobs data:", data);
         document.getElementById("jobsToBeMarkedComplete").textContent = data.jobs_to_be_marked_complete;
-        const oldestDate = new Date(data.oldest_job_date);
+
+        // Oldest Jobs to be Marked Complete
+        const oldestJobs = data.oldest_jobs_to_be_marked_complete;
+
+        // Update single oldest job display (card or summary)
+        const firstJobId = Object.keys(oldestJobs)[0];
+        const oldestDate = new Date(oldestJobs[firstJobId].oldest_job_date);
+
         document.getElementById("oldestJobToBeMarkedCompleteDate").textContent =
           oldestDate.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
-        document.getElementById("oldestJobToBeMarkedCompleteAddress").textContent = data.oldest_job_address;
-        document.getElementById("oldestJobToBeMarkedCompleteType").textContent = data.oldest_job_type;
+        document.getElementById("oldestJobToBeMarkedCompleteAddress").textContent = oldestJobs[firstJobId].oldest_job_address;
+        document.getElementById("oldestJobToBeMarkedCompleteType").textContent = oldestJobs[firstJobId].oldest_job_type;
+
+        // Populate modal with list of 5 oldest jobs
+        const oldestJobsList = document.getElementById("oldestJobsListModal");
+        oldestJobsList.innerHTML = "";  // Clear previous entries
+
+        for (const [jobId, jobData] of Object.entries(oldestJobs)) {
+          const jobDate = new Date(jobData.oldest_job_date).toLocaleDateString("en-US", {
+            year: "numeric",
+            month: "short",
+            day: "numeric"
+          });
+
+          const jobItem = document.createElement("div");
+          jobItem.className = "list-group-item mb-2"; // <- adds spacing below each job
+
+          jobItem.innerHTML = `
+            <div class="d-flex justify-content-between align-items-center">
+              <div>
+                <h6 class="mb-1">${jobData.oldest_job_address}</h6>
+                <small>${jobDate} — ${jobData.oldest_job_type}</small>
+              </div>
+              <a href="https://app.servicetrade.com/jobs/${jobId}" 
+                class="btn btn-sm" 
+                style="background-color: #0C62A6; color: white;" 
+                target="_blank">View Job</a>
+
+            </div>
+          `;
+
+          oldestJobsList.appendChild(jobItem);
+        }
+
 
         const oldestInspectionDate = new Date(data.oldest_inspection_date);
         document.getElementById("oldestInspectionToBeMarkedCompleteDate").textContent =
@@ -333,7 +372,6 @@ const ProcessingAttack = (() => {
         document.getElementById("oldestInspectionToBeMarkedCompleteType").textContent = "Inspection";
 
         document.getElementById("numberOfPinkFolderJobs").textContent = data.number_of_pink_folder_jobs;
-
         // Update jobsChart with job type counts.
         if (data.job_type_count) {
           const labels = Object.keys(data.job_type_count);
@@ -366,6 +404,12 @@ const ProcessingAttack = (() => {
 
         // Update KPIs.
         updateKPIs(data);
+        
+        isOldestJobsDataLoaded = true;
+        const oldestJobsCard = document.getElementById("oldestJobsCard");
+        oldestJobsCard.classList.remove("disabled");
+        oldestJobsCard.classList.add("clickable");
+
         isPinkFolderDataLoaded = true;
         const pinkFolderCard = document.getElementById("numberOfPinkFolderJobsCard");
         pinkFolderCard.classList.remove("disabled");
@@ -616,10 +660,14 @@ const ProcessingAttack = (() => {
     const oldestElem = document.getElementById("oldestJobToBeMarkedCompleteDate");
     const oldestElem1 = document.getElementById("oldestJobToBeMarkedCompleteAddress");
     const oldestElem2 = document.getElementById("oldestJobToBeMarkedCompleteType");
-    const oldestElemCard = document.getElementById("oldestJobToBeMarkedCompleteCard");
-    const oldestDate = new Date(data.oldest_job_date);
+    const oldestElemCard = document.getElementById("oldestJobsCard");
+    const oldestJobs = data.oldest_jobs_to_be_marked_complete;
+    const firstJobId = Object.keys(oldestJobs)[0]
+    console.log("Raw date string:", oldestJobs[firstJobId].oldest_job_date);
+    const oldestDate = new Date(oldestJobs[firstJobId].oldest_job_date);
     const currentDate = new Date();
     const diffDays = (currentDate - oldestDate) / (1000 * 60 * 60 * 24);
+
     if (diffDays <= 30) {
       oldestElem.style.color = "#27a532";
       oldestElem1.style.color = "#27a532";
@@ -633,6 +681,7 @@ const ProcessingAttack = (() => {
       oldestElemCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(248, 225, 227))";
       oldestElemCard.style.borderTop = "5px solid #b92525";
     }
+
     oldestElemCard.style.padding = "10px";
     oldestElemCard.style.borderRadius = "8px";
     oldestElemCard.style.boxShadow = "2px 4px 10px rgba(0, 0, 0, 0.1)";
@@ -782,7 +831,24 @@ const ProcessingAttack = (() => {
   }
   
   
+  function setupOldestJobsCardToggle() {
+    const oldestJobsCard = document.getElementById("oldestJobsCard");
   
+    // Start in loading state
+    oldestJobsCard.classList.add("disabled");
+    oldestJobsCard.classList.remove("clickable");
+  
+    oldestJobsCard.addEventListener("click", () => {
+      if (!isOldestJobsDataLoaded) {
+        console.warn("Oldest Jobs data not yet loaded.");
+        return;
+      }
+  
+      // If you want to re-render before each show, call a function like renderOldestJobsData()
+      const oldestJobsModal = new bootstrap.Modal(document.getElementById("oldestJobsModal"));
+      oldestJobsModal.show();
+    });
+  }
   
 
 
@@ -807,6 +873,7 @@ const ProcessingAttack = (() => {
     initEventListeners();
     initCharts();
     setupPinkFolderCardToggle();
+    setupOldestJobsCardToggle();
     const weekSelect = document.getElementById("week-select");
     if (weekSelect.value) {
       const selectedMonday = weekSelect.value;

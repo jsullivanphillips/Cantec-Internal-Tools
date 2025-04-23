@@ -42,13 +42,17 @@ def processing_attack_complete_jobs():
       - Oldest job's scheduled date, address, and type.
     """
     authenticate()
-   
-    jobs_to_be_marked_complete, oldest_job_id, oldest_inspection_job_id = get_jobs_to_be_marked_complete()
+    oldest_jobs_to_be_marked_complete = {}
+    jobs_to_be_marked_complete, oldest_job_ids, oldest_inspection_job_id = get_jobs_to_be_marked_complete()
     if jobs_to_be_marked_complete:
-        oldest_job_date, oldest_job_address, oldest_job_type = get_oldest_job_data(oldest_job_id)
         oldest_inspection_date, oldest_inspection_address, _ = get_oldest_job_data(oldest_inspection_job_id)
-    else:
-        oldest_job_date, oldest_job_address, oldest_job_type = None, None, None
+        for job_id in oldest_job_ids:
+            job_date, job_address, job_type = get_oldest_job_data(job_id)
+            oldest_jobs_to_be_marked_complete[job_id] = {
+                'oldest_job_date': job_date,
+                'oldest_job_address': job_address,
+                'oldest_job_type': job_type
+            }
 
     jobs_by_job_type = organize_jobs_by_job_type(jobs_to_be_marked_complete)
 
@@ -56,14 +60,12 @@ def processing_attack_complete_jobs():
 
     response_data = {
         "jobs_to_be_marked_complete": len(jobs_to_be_marked_complete),
-        "oldest_job_date": oldest_job_date if oldest_job_date else None,
-        "oldest_job_address": oldest_job_address,
-        "oldest_job_type": proper_format(oldest_job_type) if oldest_job_type else None,
         "job_type_count": jobs_by_job_type,
         "number_of_pink_folder_jobs" : number_of_pink_folder_jobs,
         "oldest_inspection_date": oldest_inspection_date if oldest_inspection_date else None,
         "oldest_inspection_address" : oldest_inspection_address,
-        "pink_folder_detailed_info" : pink_folder_detailed_info
+        "pink_folder_detailed_info" : pink_folder_detailed_info,
+        "oldest_jobs_to_be_marked_complete" : oldest_jobs_to_be_marked_complete
     }
     return jsonify(response_data)
 
@@ -277,7 +279,7 @@ def get_jobs_to_be_marked_complete():
         if job_id in jobs_to_be_marked_complete:
             jobs_to_be_marked_complete.pop(job_id, None)
     
-    oldest_job_id = next(iter(jobs_to_be_marked_complete))
+    oldest_job_ids = list(jobs_to_be_marked_complete)[:5]
 
     oldest_inspection_job_id = 0
     for job_id in jobs_to_be_marked_complete:
@@ -285,7 +287,7 @@ def get_jobs_to_be_marked_complete():
             oldest_inspection_job_id = job_id
             break
 
-    return jobs_to_be_marked_complete, oldest_job_id, oldest_inspection_job_id
+    return jobs_to_be_marked_complete, oldest_job_ids, oldest_inspection_job_id
 
 
 
