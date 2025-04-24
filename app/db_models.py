@@ -84,6 +84,47 @@ class SchedulingAttack(db.Model):
     def __repr__(self):
         return f'<SchedulingAttack {self.month_start}>'
 
+class DeficiencyRecord(db.Model):
+    __tablename__ = 'deficiency_record'
+
+    id = db.Column(db.Integer, primary_key=True)
+    deficiency_id = db.Column(db.String(100), unique=True, nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    status = db.Column(db.String(50))
+    reported_on = db.Column(db.DateTime(timezone=True))
+    address = db.Column(db.String(255))
+    location_name = db.Column(db.String(255))
+    is_monthly_access = db.Column(db.Boolean, default=False)
+    description = db.Column(db.Text)
+    proposed_solution = db.Column(db.Text)
+    company = db.Column(db.String(255))
+    tech_name = db.Column(db.String(255))
+    tech_image_link = db.Column(db.String(1024))
+    job_link = db.Column(db.String(1024))
+    service_line_name = db.Column(db.String(255))
+    service_line_icon_link = db.Column(db.String(1024))
+    severity = db.Column(db.String(50))
+    is_archived = db.Column(db.Boolean, default=False, index=True)  
+    is_quote_sent = db.Column(db.Boolean, default=False)
+    is_quote_approved = db.Column(db.Boolean, default=False)
+    is_quote_in_draft = db.Column(db.Boolean, default=False)
+
+    def __repr__(self):
+        return f"<DeficiencyRecord {self.deficiency_id}>"
+
+    @classmethod
+    def active(cls):
+        return cls.query.filter_by(is_archived=False)
+
+    @classmethod
+    def archived(cls):
+        return cls.query.filter_by(is_archived=True)
+
+
+
+
+
 if __name__ == '__main__':
     from app import create_app
     app = create_app()

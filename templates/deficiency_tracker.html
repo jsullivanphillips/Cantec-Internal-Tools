@@ -3,12 +3,97 @@
 {% block title %}Deficiency Tracker{% endblock %}
 
 {% block extra_head %}
- 
+  <style>
+    /* Tone down saturation on all badges */
+    #deficiency-list .badge {
+      filter: saturate(70%);
+      opacity: 0.9;
+    }
+    /* Spacing for filter row */
+    #filters .form-label {
+      font-weight: 600;
+      font-size: .9rem;
+    }
+  </style>
 {% endblock %}
-{% block content %}
-<p>Nothing</p>
 
+{% block content %}
+<div class="container my-4">
+  <h1 class="mb-4">Deficiency Tracker</h1>
+
+  <!-- FILTERS -->
+  <div id="filters" class="row g-3 mb-4">
+    <!-- Monthly Access -->
+    <div class="col-md-3">
+      <label for="filter-monthly" class="form-label">Monthly Access</label>
+      <select id="filter-monthly" class="form-select">
+        <option value="">All</option>
+        <option value="true">Yes</option>
+        <option value="false">No</option>
+      </select>
+    </div>
+
+    <!-- Quoted -->
+    <div class="col-md-3">
+        <label for="filter-quoted" class="form-label">Quoted</label>
+        <select id="filter-quoted" class="form-select">
+          <option value="">All</option>
+          <option value="approved">Approved</option>
+          <option value="draft">In Draft</option>
+          <option value="sent">Sent</option>
+          <option value="false">No</option>
+        </select>
+      </div>
+
+    <!-- Company -->
+    <div class="col-md-3">
+      <label for="filter-company" class="form-label">Company</label>
+      <input id="filter-company" list="company-list" class="form-control" placeholder="All companies">
+      <datalist id="company-list"></datalist>
+    </div>
+
+    <!-- Service Line -->
+    <div class="col-md-3">
+      <label for="filter-service" class="form-label">Service Line</label>
+      <input id="filter-service" list="service-list" class="form-control" placeholder="All service lines">
+      <datalist id="service-list"></datalist>
+    </div>
+
+    <!-- Reported By -->
+    <div class="col-md-3">
+      <label for="filter-reporter" class="form-label">Reported By</label>
+      <input id="filter-reporter" list="reporter-list" class="form-control" placeholder="All reporters">
+      <datalist id="reporter-list"></datalist>
+    </div>
+
+    <!-- Reported After -->
+    <div class="col-md-3">
+        <label for="filter-reported-after" class="form-label">Reported After</label>
+        <input id="filter-reported-after" type="date" class="form-control">
+    </div>
+    
+    <!-- Reported Before -->
+    <div class="col-md-3">
+        <label for="filter-reported-before" class="form-label">Reported Before</label>
+        <input id="filter-reported-before" type="date" class="form-control">
+    </div>
+  </div>
+
+    
+    
+
+  <!-- LIST -->
+  <div id="deficiency-list"></div>
+
+  <!-- PAGINATION -->
+  <div id="pagination-controls" class="d-flex justify-content-between align-items-center mt-4">
+    <button id="prev-page" class="btn btn-outline-primary" disabled>« Previous</button>
+    <span id="page-info"></span>
+    <button id="next-page" class="btn btn-outline-primary" disabled>Next »</button>
+  </div>
+</div>
 {% endblock %}
+
 {% block extra_scripts %}
-    <script src="{{ url_for('static', filename='js/deficiency_tracker.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/deficiency_tracker.js') }}"></script>
 {% endblock %}

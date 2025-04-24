@@ -4,9 +4,11 @@ from datetime import datetime
 
 @dataclass
 class Deficiency:
+    deficiency_id: Optional[str] = ""
     status: Optional[str] = ""
     reported_on: Optional[datetime] = None
     address: Optional[str] = ""
+    location_name: Optional[str] = ""
     is_monthly_access: Optional[bool] = False
     description: Optional[str] = ""
     proposed_solution: Optional[str] = ""
@@ -17,14 +19,19 @@ class Deficiency:
     service_line_name: Optional[str] = ""
     service_line_icon_link: Optional[str] = ""
     severity: Optional[str] = ""
+    is_quote_sent: Optional[bool] = False
+    is_quote_approved: Optional[bool] = False
+    is_quote_in_draft: Optional[bool] = False
 
     def __str__(self):
         return (
-            f"🛠️  Deficiency Report\n"
+            f"Deficiency Report\n"
             f"---------------------------\n"
+            f"Deficiency ID: {self.deficiency_id}\n"
             f"Status: {self.status}\n"
             f"Reported On: {self.reported_on.strftime('%Y-%m-%d') if self.reported_on else 'N/A'}\n"
             f"Address: {self.address or 'N/A'}\n"
+            f"Location Name: {self.location_name or 'N/A'}\n"
             f"Monthly Access: {'Yes' if self.is_monthly_access else 'No'}\n"
             f"Severity: {self.severity or 'N/A'}\n"
             f"\n"
