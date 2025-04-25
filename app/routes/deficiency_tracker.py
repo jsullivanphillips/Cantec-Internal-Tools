@@ -29,12 +29,21 @@ def deficiency_tracker():
 # Helper Authentication
 def authenticate():
     auth_url = "https://api.servicetrade.com/api/auth"
+
     payload = {"username": session.get('username'), "password": session.get('password')}
+    
+
+    if not payload["username"] or not payload["password"]:
+        raise Exception("Missing ServiceTrade credentials in session.")
+
     try:
         auth_response = api_session.post(auth_url, json=payload)
         auth_response.raise_for_status()
+        print("✅ Authenticated successfully with ServiceTrade!")
     except Exception as e:
-        return jsonify({"error": "Authentication failed"}), 401
+        print("❌ Authentication with ServiceTrade failed!")
+        raise e  # Rethrow the real error
+
 
 
 def safe_get(d: Dict[str, Any], *keys) -> Any:

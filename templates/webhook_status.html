@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}Webhook Status{% endblock %}
+
+{% block content %}
+<div class="container my-4">
+  <h1 class="mb-4">Webhook Status</h1>
+
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <h5 class="card-title">Last Webhook Received</h5>
+      {% if status.last_received %}
+        <p class="card-text">
+          <strong>Time (UTC):</strong> {{ status.last_received }}<br>
+          <strong>Entity ID:</strong> {{ status.last_entity_id }}
+        </p>
+      {% else %}
+        <p class="text-muted">No webhook received yet.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Optional: Auto-refresh -->
+  <script>
+    setTimeout(() => {
+      window.location.reload();
+    }, 15000); // refresh every 15 seconds
+  </script>
+
+</div>
+{% endblock %}
