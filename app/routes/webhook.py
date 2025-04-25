@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify, session
 from app.scripts.update_deficiency_by_id import update_deficiency_by_id
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 webhook_bp = Blueprint('webhook', __name__)
 
@@ -16,7 +16,7 @@ def handle_deficiency_webhook():
     print("📡 Webhook received!", data)
 
     # 🛠️ Save the webhook event
-    webhook_status["last_received"] = datetime.now(datetime.timezone.utc)
+    webhook_status["last_received"] = datetime.now(timezone.utc)
     webhook_status["last_entity_id"] = data.get("entityId")
 
     session['username'] = os.environ.get("PROCESSING_USERNAME")
