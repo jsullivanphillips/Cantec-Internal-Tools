@@ -2,11 +2,12 @@ from flask import Blueprint, render_template, jsonify, session, request
 from dataclasses import asdict
 import requests
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from app.models.deficiency import Deficiency
 from typing import Any, Dict
 from app.db_models import DeficiencyRecord
 from sqlalchemy import and_
+import pytz
 
 deficiency_tracker_bp = Blueprint('deficiency_tracker', __name__, template_folder='templates')
 api_session = requests.Session()
@@ -75,42 +76,48 @@ def serialize_deficiency(d):
 
 @deficiency_tracker_bp.route('/deficiency_tracker/deficiency_list', methods=['POST'])
 def deficiency_tracker_deficiency_list():
-    body = request.get_json()
-    try:
-        start_date = datetime.fromisoformat(body.get("start_date")) if body and "start_date" in body else datetime.today() - timedelta(days=10)
-        end_date = datetime.fromisoformat(body.get("end_date")) if body and "end_date" in body else datetime.today()
-    except ValueError:
-        return jsonify({"error": "Invalid date format"}), 400
+    deficiencies = DeficiencyRecord.active().order_by(DeficiencyRecord.reported_on.desc()).all()
 
-
-
-    deficiencies = DeficiencyRecord.active().filter(
-        and_(
-            DeficiencyRecord.reported_on >= start_date,
-            DeficiencyRecord.reported_on <= end_date
-        )
-    ).order_by(DeficiencyRecord.reported_on.desc()).all()
-
-    return jsonify([{
-        "deficiency_id": d.deficiency_id,
-        "status": d.status,
-        "reported_on": d.reported_on.isoformat() if d.reported_on else None,
-        "address": d.address,
-        "monthly_access": d.is_monthly_access,
-        "severity": d.severity,
-        "description": d.description,
-        "proposed_solution": d.proposed_solution,
-        "company": d.company,
-        "reported_by": d.tech_name,
-        "reporter_image_link": d.tech_image_link,
-        "job_link": d.job_link,
-        "service_line": d.service_line_name,
-        "service_line_icon": d.service_line_icon_link,
-        "is_quote_sent": d.is_quote_sent,
-        "is_quote_approved": d.is_quote_approved,
-        "is_quote_in_draft": d.is_quote_in_draft
-    } for d in deficiencies])
+    return jsonify([
+        {
+            "deficiency_id": d.deficiency_id,
+            "status": d.status,
+            "reported_on": d.reported_on.isoformat() if d.reported_on else None,
+            "address": d.address,
+            "monthly_access": d.is_monthly_access,
+            "severity": d.severity,
+            "description": d.description,
+            "proposed_solution": d.proposed_solution,
+            "company": d.company,
+            "reported_by": d.tech_name,
+            "reporter_image_link": d.tech_image_link,
+            "job_link": d.job_link,
+            "service_line": d.service_line_name,
+            "service_line_icon_link": d.service_line_icon_link,
+            "is_quote_sent": d.is_quote_sent,
+            "is_quote_approved": d.is_quote_approved,
+            "is_quote_in_draft": d.is_quote_in_draft,
+            "hidden": d.hidden,
+            "quote_expiry": d.quote_expiry
+        }
+    for d in deficiencies])
     
+@deficiency_tracker_bp.route('/deficiency_tracker/hide_toggle', methods=['POST'])
+def deficiency_tracker_hide_toggle():
+    body = request.get_json()
+    deficiency_id = body.get("deficiency_id")
+    hidden = body.get("hidden", False)
+
+    record = DeficiencyRecord.query.filter_by(deficiency_id=deficiency_id).first()
+    if not record:
+        return jsonify({"error": "Deficiency not found"}), 404
+
+    record.hidden = hidden
+    from app import db
+    db.session.commit()
+
+    return jsonify({"success": True})
+
 
 def fetch_deficiencies(start_date: datetime, end_date: datetime):
     # Authenticate
@@ -168,15 +175,26 @@ def fetch_deficiencies(start_date: datetime, end_date: datetime):
 
         # Lookup if deficiency is out for quote
         response = call_service_trade_api(quote_endpoint, {"deficiencyId": deficiency_id})
-        is_deficiency_quoted = False
         is_deficiency_quote_approved = False
         is_quote_in_draft = False
         is_quote_sent = False
+        quote_expiry = None
         response_data = response.json().get("data", {})
         if response_data:
             quotes = response_data.get("quotes")
             if len(quotes) > 0:
                 for quote in quotes:
+                    expires_on_ts = quote.get("expiresOn")
+                    if expires_on_ts:
+                        # First, create UTC-aware datetime
+                        quote_expiry_utc = datetime.fromtimestamp(expires_on_ts, tz=timezone.utc)
+
+                        # If you want it in PDT (Pacific Time), use pytz
+                        pdt = pytz.timezone('America/Los_Angeles')
+                        quote_expiry = quote_expiry_utc.astimezone(pdt)
+                    else:
+                        quote_expiry = None
+                    
                     quote_status = quote.get("quoteRequest").get("status")
                     print(f"{deficiency.get("title")} | quote status: {quote_status} | deficiency id: {deficiency_id}")
                     if quote_status == "approved":
@@ -205,7 +223,8 @@ def fetch_deficiencies(start_date: datetime, end_date: datetime):
             severity=severity,
             is_quote_sent=is_quote_sent,
             is_quote_approved=is_deficiency_quote_approved,
-            is_quote_in_draft=is_quote_in_draft
+            is_quote_in_draft=is_quote_in_draft,
+            quote_expiry=quote_expiry
         )
         deficiencies.append(deficiency_obj)
 

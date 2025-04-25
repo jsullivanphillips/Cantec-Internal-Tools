@@ -106,9 +106,12 @@ class DeficiencyRecord(db.Model):
     service_line_icon_link = db.Column(db.String(1024))
     severity = db.Column(db.String(50))
     is_archived = db.Column(db.Boolean, default=False, index=True)  
-    is_quote_sent = db.Column(db.Boolean, default=False)
-    is_quote_approved = db.Column(db.Boolean, default=False)
-    is_quote_in_draft = db.Column(db.Boolean, default=False)
+    is_quote_sent = db.Column(db.Boolean, default=False, nullable=False)
+    is_quote_approved = db.Column(db.Boolean, default=False, nullable=False)
+    is_quote_in_draft = db.Column(db.Boolean, default=False, nullable=False)
+    hidden = db.Column(db.Boolean, default=False)
+    quote_expiry = db.Column(db.DateTime(timezone=True))
+
 
     def __repr__(self):
         return f"<DeficiencyRecord {self.deficiency_id}>"

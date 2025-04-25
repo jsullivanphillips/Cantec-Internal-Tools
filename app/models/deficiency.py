@@ -22,6 +22,7 @@ class Deficiency:
     is_quote_sent: Optional[bool] = False
     is_quote_approved: Optional[bool] = False
     is_quote_in_draft: Optional[bool] = False
+    quote_expiry: Optional[datetime] = None
 
     def __str__(self):
         return (

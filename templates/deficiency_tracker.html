@@ -14,6 +14,15 @@
       font-weight: 600;
       font-size: .9rem;
     }
+    .opacity-0 {
+    opacity: 0;
+    transition: opacity 0.5s ease-in-out;
+    }
+
+  .opacity-100 {
+    opacity: 1;
+    transition: opacity 0.5s ease-in-out;
+    }
   </style>
 {% endblock %}
 
@@ -21,79 +30,141 @@
 <div class="container my-4">
   <h1 class="mb-4">Deficiency Tracker</h1>
 
-  <!-- FILTERS -->
-  <div id="filters" class="row g-3 mb-4">
-    <!-- Monthly Access -->
-    <div class="col-md-3">
-      <label for="filter-monthly" class="form-label">Monthly Access</label>
-      <select id="filter-monthly" class="form-select">
-        <option value="">All</option>
-        <option value="true">Yes</option>
-        <option value="false">No</option>
-      </select>
-    </div>
+  <!-- NAV TABS -->
+  <ul class="nav nav-tabs mb-4" id="deficiencyTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active" id="tracker-tab" data-bs-toggle="tab" data-bs-target="#tracker" type="button" role="tab" aria-controls="tracker" aria-selected="true">
+        Deficiency Tracker
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="quoting-tab" data-bs-toggle="tab" data-bs-target="#quoting" type="button" role="tab" aria-controls="quoting" aria-selected="false">
+        Quoting Performance
+      </button>
+    </li>
+  </ul>
 
-    <!-- Quoted -->
-    <div class="col-md-3">
-        <label for="filter-quoted" class="form-label">Quoted</label>
-        <select id="filter-quoted" class="form-select">
-          <option value="">All</option>
-          <option value="approved">Approved</option>
-          <option value="draft">In Draft</option>
-          <option value="sent">Sent</option>
-          <option value="false">No</option>
-        </select>
+  <!-- TAB CONTENTS -->
+  <div class="tab-content" id="deficiencyTabsContent">
+    
+    <!-- DEFICIENCY TRACKER TAB -->
+    <div class="tab-pane fade show active" id="tracker" role="tabpanel" aria-labelledby="tracker-tab">
+
+      <!-- FILTERS -->
+      <div id="filters" class="row g-3 mb-4">
+        <!-- (your full filters here) -->
+        <div class="col-md-3">
+          <label for="filter-monthly" class="form-label">Monthly Access</label>
+          <select id="filter-monthly" class="form-select">
+            <option value="">All</option>
+            <option value="true">Yes</option>
+            <option value="false">No</option>
+          </select>
+        </div>
+
+        <div class="col-md-3">
+          <label for="filter-quoted" class="form-label">Quoted</label>
+          <select id="filter-quoted" class="form-select">
+            <option value="">All</option>
+            <option value="approved">Approved</option>
+            <option value="draft">In Draft</option>
+            <option value="sent">Sent</option>
+            <option value="expired">Expired</option>
+            <option value="false">No</option>
+          </select>
+        </div>
+
+        <div class="col-md-3">
+          <label for="filter-company" class="form-label">Company</label>
+          <input id="filter-company" list="company-list" class="form-control" placeholder="All companies">
+          <datalist id="company-list"></datalist>
+        </div>
+
+        <div class="col-md-3">
+          <label for="filter-service" class="form-label">Service Line</label>
+          <input id="filter-service" list="service-list" class="form-control" placeholder="All service lines">
+          <datalist id="service-list"></datalist>
+        </div>
+
+        <div class="col-md-3">
+          <label for="filter-reporter" class="form-label">Reported By</label>
+          <input id="filter-reporter" list="reporter-list" class="form-control" placeholder="All reporters">
+          <datalist id="reporter-list"></datalist>
+        </div>
+
+        <div class="col-md-3">
+          <label for="filter-reported-after" class="form-label">Reported After</label>
+          <input id="filter-reported-after" type="date" class="form-control">
+        </div>
+        
+        <div class="col-md-3">
+          <label for="filter-reported-before" class="form-label">Reported Before</label>
+          <input id="filter-reported-before" type="date" class="form-control">
+        </div>
+
+        <div class="col-md-3">
+          <label for="filter-sort" class="form-label">Sort By</label>
+          <select id="filter-sort" class="form-select">
+            <option value="newest" selected>Newest First</option>
+            <option value="oldest">Oldest First</option>
+          </select>
+        </div>
       </div>
 
-    <!-- Company -->
-    <div class="col-md-3">
-      <label for="filter-company" class="form-label">Company</label>
-      <input id="filter-company" list="company-list" class="form-control" placeholder="All companies">
-      <datalist id="company-list"></datalist>
+      <!-- DEFICIENCY LIST -->
+      <div id="deficiency-list"></div>
+
+      <!-- PAGINATION -->
+      <div id="pagination-controls" class="d-flex justify-content-between align-items-center mt-4">
+        <button id="prev-page" class="btn btn-outline-primary" disabled>« Previous</button>
+        <span id="page-info"></span>
+        <button id="next-page" class="btn btn-outline-primary" disabled>Next »</button>
+      </div>
+
     </div>
 
-    <!-- Service Line -->
-    <div class="col-md-3">
-      <label for="filter-service" class="form-label">Service Line</label>
-      <input id="filter-service" list="service-list" class="form-control" placeholder="All service lines">
-      <datalist id="service-list"></datalist>
+    <!-- QUOTING PERFORMANCE TAB -->
+    <div class="tab-pane fade" id="quoting" role="tabpanel" aria-labelledby="quoting-tab">
+      <div class="row">
+        <div class="col-12">
+          <h3>Quoting Performance</h3>
+          <!-- Quoting Performance Filters -->
+            <div class="row mb-3">
+                <div class="col-md-4">
+                <label for="quote-filter-after" class="form-label">From</label>
+                <input type="date" id="quote-filter-after" class="form-control">
+                </div>
+                <div class="col-md-4">
+                <label for="quote-filter-before" class="form-label">To</label>
+                <input type="date" id="quote-filter-before" class="form-control">
+                </div>
+                <div class="col-md-4 d-flex align-items-end">
+                <button id="apply-quote-filters" class="btn btn-primary w-100">Apply Filters</button>
+                </div>
+            </div>
+            <div id="quoting-metrics" class="row mt-4 opacity-0"></div>
+            <!-- We'll populate quoting stats dynamically here later -->
+                <div class="row mt-4">
+                    <div class="col-12">
+                        <canvas id="quoting-chart" height="100"></canvas>
+                    </div>
+                </div>
+                <div class="row mt-4">
+                    <div class="col-12">
+                        <canvas id="quoting-over-time-chart" height="100"></canvas>
+                    </div>
+              </div>
+            </div>
+        </div>
+      </div>
     </div>
 
-    <!-- Reported By -->
-    <div class="col-md-3">
-      <label for="filter-reporter" class="form-label">Reported By</label>
-      <input id="filter-reporter" list="reporter-list" class="form-control" placeholder="All reporters">
-      <datalist id="reporter-list"></datalist>
-    </div>
-
-    <!-- Reported After -->
-    <div class="col-md-3">
-        <label for="filter-reported-after" class="form-label">Reported After</label>
-        <input id="filter-reported-after" type="date" class="form-control">
-    </div>
-    
-    <!-- Reported Before -->
-    <div class="col-md-3">
-        <label for="filter-reported-before" class="form-label">Reported Before</label>
-        <input id="filter-reported-before" type="date" class="form-control">
-    </div>
   </div>
 
-    
-    
-
-  <!-- LIST -->
-  <div id="deficiency-list"></div>
-
-  <!-- PAGINATION -->
-  <div id="pagination-controls" class="d-flex justify-content-between align-items-center mt-4">
-    <button id="prev-page" class="btn btn-outline-primary" disabled>« Previous</button>
-    <span id="page-info"></span>
-    <button id="next-page" class="btn btn-outline-primary" disabled>Next »</button>
-  </div>
 </div>
 {% endblock %}
 
 {% block extra_scripts %}
-  <script src="{{ url_for('static', filename='js/deficiency_tracker.js') }}"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> <!-- Chart.js -->
+    <script src="{{ url_for('static', filename='js/deficiency_tracker.js') }}"></script>
 {% endblock %}

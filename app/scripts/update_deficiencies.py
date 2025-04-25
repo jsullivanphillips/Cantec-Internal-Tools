@@ -58,7 +58,8 @@ def update_deficiency_records(start_date: datetime, end_date: datetime):
                             field_changed(existing, item["job_link"], "job_link") or 
                             field_changed(existing, item["is_quote_sent"], "is_quote_sent") or 
                             field_changed(existing, item["is_quote_approved"], "is_quote_approved") or
-                            field_changed(existing, item["is_quote_in_draft"], "is_quote_in_draft")
+                            field_changed(existing, item["is_quote_in_draft"], "is_quote_in_draft") or
+                            field_changed(existing, item["quote_expiry"], "quote_expiry")
                         ):
                             existing.status = item["status"]
                             existing.reported_on = incoming_reported_on
@@ -69,6 +70,7 @@ def update_deficiency_records(start_date: datetime, end_date: datetime):
                             existing.is_quote_sent = item["is_quote_sent"]
                             existing.is_quote_approved = item["is_quote_approved"]
                             existing.is_quote_in_draft = item["is_quote_in_draft"]
+                            existing.quote_expiry = item["quote_expiry"]
 
                             if item["status"].lower() in ("fixed", "invalid"):
                                 existing.is_archived = True
@@ -99,7 +101,8 @@ def update_deficiency_records(start_date: datetime, end_date: datetime):
                                 severity=item["severity"],
                                 is_quote_sent=item["is_quote_sent"],
                                 is_quote_approved=item["is_quote_approved"],
-                                is_quote_in_draft=item["is_quote_in_draft"]
+                                is_quote_in_draft=item["is_quote_in_draft"],
+                                quote_expiry=item["quote_expiry"]
                             )
                             db.session.add(record)
                             added += 1
@@ -126,6 +129,6 @@ if __name__ == '__main__':
             session['username'] = os.environ.get("PROCESSING_USERNAME")
             session['password'] = os.environ.get("PROCESSING_PASSWORD")
             update_deficiency_records(
-                start_date=datetime(2025, 4, 1),
+                start_date=datetime(2024, 6, 1),
                 end_date=datetime.today()
             )
