@@ -623,11 +623,18 @@ const DeficiencyTracker = (() => {
     }
   
     function init() {
-      document.addEventListener("DOMContentLoaded", () => {
-        bindEvents();
-        loadDeficiencyList();
-      });
-    }
+        document.addEventListener("DOMContentLoaded", () => {
+          bindEvents();
+          loadDeficiencyList();
+      
+          // 🛠️ NEW: Start polling for new data every 60 seconds
+          setInterval(() => {
+            console.log("🔄 Auto-refreshing deficiency list...");
+            loadDeficiencyList();
+          }, 60000); // 60,000 ms = 60 seconds
+        });
+      }
+      
   
     return { init };
   })();
