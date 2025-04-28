@@ -196,17 +196,15 @@ def get_jobs_to_be_marked_complete():
     complete_appointments_data = response.json().get("data", {})
     complete_appointments = complete_appointments_data.get("appointments", [])
     
-    appointments_for_job = {}
+    jobs_to_be_marked_complete = {}
     for appt in complete_appointments:
         job = appt.get("job")
         job_id = job.get("id")
-        appointments_for_job.setdefault(job_id, []).append(appt)
-    
-    jobs_to_be_marked_complete = {}
-    for job_id, appts in appointments_for_job.items():
-        # Simply take the job info from the first appointment
-        if appts[0].get("job"):
-            jobs_to_be_marked_complete[job_id] = appts[0].get("job")
+
+        # Save the job info if we haven't already
+        if job_id not in jobs_to_be_marked_complete and job and job_id:
+            jobs_to_be_marked_complete[job_id] = job
+
     
     three_months_forward = datetime.now() + timedelta(days=90)    
     scheduleDateTo = int(three_months_forward.timestamp())
@@ -275,6 +273,32 @@ def get_jobs_to_be_marked_complete():
     jobs_to_remove = {appt.get("job").get("id") for appt in future_appointments}
 
     # remove jobs that have appointments scheduled in the future
+    for job_id in jobs_to_remove:
+        if job_id in jobs_to_be_marked_complete:
+            jobs_to_be_marked_complete.pop(job_id, None)
+    
+    jobs_to_remove = []
+    for job_id in jobs_to_be_marked_complete:
+        # check if job has scheduled/unscheduled (a.k.a. incomplete) appointments
+        if job_id not in jobs_to_remove:
+            appointment_endpoint = f"{SERVICE_TRADE_API_BASE}/appointment"
+            appointment_params = {
+                "jobId": job_id
+            }
+
+            try:
+                response = api_session.get(appointment_endpoint, params=appointment_params)
+                response.raise_for_status()
+            except requests.RequestException as e:
+                return {}
+        
+            response_data = response.json().get("data", {})
+            appointments_for_this_job =response_data.get("appointments")
+            
+            for apoint in appointments_for_this_job:
+                if apoint.get("status") == "scheduled" or apoint.get("status") == "unscheduled":
+                    jobs_to_remove.append(job_id)
+    
     for job_id in jobs_to_remove:
         if job_id in jobs_to_be_marked_complete:
             jobs_to_be_marked_complete.pop(job_id, None)
