@@ -42,17 +42,27 @@ def processing_attack_complete_jobs():
       - Oldest job's scheduled date, address, and type.
     """
     authenticate()
-    oldest_jobs_to_be_marked_complete = {}
-    jobs_to_be_marked_complete, oldest_job_ids, oldest_inspection_job_id = get_jobs_to_be_marked_complete()
+    oldest_jobs_to_be_marked_complete = []
+    jobs_to_be_marked_complete, oldest_job_ids, oldest_inspection_job_id, job_date = get_jobs_to_be_marked_complete()
     if jobs_to_be_marked_complete:
         oldest_inspection_date, oldest_inspection_address, _ = get_oldest_job_data(oldest_inspection_job_id)
         for job_id in oldest_job_ids:
-            job_date, job_address, job_type = get_oldest_job_data(job_id)
-            oldest_jobs_to_be_marked_complete[job_id] = {
-                'oldest_job_date': job_date,
-                'oldest_job_address': job_address,
-                'oldest_job_type': job_type
-            }
+            timestamp = job_date.get(job_id)
+
+            if timestamp is None:
+                continue  # skip if timestamp is missing
+
+            job_datetime = datetime.fromtimestamp(timestamp)
+
+            _, address, job_type = get_oldest_job_data(job_id)
+
+            oldest_jobs_to_be_marked_complete.append({
+                "job_id": job_id,
+                "oldest_job_date": job_datetime.isoformat(),
+                "oldest_job_address": address or "Unknown",
+                "oldest_job_type": job_type or "Unknown"
+            })
+
 
     jobs_by_job_type = organize_jobs_by_job_type(jobs_to_be_marked_complete)
 
@@ -197,13 +207,25 @@ def get_jobs_to_be_marked_complete():
     complete_appointments = complete_appointments_data.get("appointments", [])
     
     jobs_to_be_marked_complete = {}
+    job_date = {}
+
     for appt in complete_appointments:
         job = appt.get("job")
         job_id = job.get("id")
 
+        if not job or not job_id:
+            continue  # skip if job or job_id is invalid
+
         # Save the job info if we haven't already
-        if job_id not in jobs_to_be_marked_complete and job and job_id:
+        if job_id not in jobs_to_be_marked_complete:
             jobs_to_be_marked_complete[job_id] = job
+
+        appt_start = appt.get("windowStart")
+
+        # If this is the first time we're seeing this job_id, or the new date is earlier
+        if job_id not in job_date or (appt_start and appt_start < job_date[job_id]):
+            job_date[job_id] = appt_start
+
 
     
     three_months_forward = datetime.now() + timedelta(days=90)    
@@ -303,15 +325,29 @@ def get_jobs_to_be_marked_complete():
         if job_id in jobs_to_be_marked_complete:
             jobs_to_be_marked_complete.pop(job_id, None)
     
-    oldest_job_ids = list(jobs_to_be_marked_complete)[:5]
+    # Filter and validate timestamps
+    valid_jobs_with_dates = [
+        (job_id, ts) for job_id, ts in job_date.items()
+        if job_id in jobs_to_be_marked_complete and isinstance(ts, (int, float))
+    ]
 
+    # Sort by timestamp ascending
+    sorted_jobs = sorted(valid_jobs_with_dates, key=lambda item: item[1])
+
+    # Extract the 5 oldest valid job_ids
+    oldest_job_ids = [job_id for job_id, _ in sorted_jobs[:5]]
+
+    # Select the oldest inspection job
     oldest_inspection_job_id = 0
-    for job_id in jobs_to_be_marked_complete:
-        if jobs_to_be_marked_complete[job_id].get("type") == "inspection":
+    for job_id in oldest_job_ids:
+        job_data = jobs_to_be_marked_complete[job_id]
+        if job_data.get("type") == "inspection":
             oldest_inspection_job_id = job_id
             break
 
-    return jobs_to_be_marked_complete, oldest_job_ids, oldest_inspection_job_id
+
+
+    return jobs_to_be_marked_complete, oldest_job_ids, oldest_inspection_job_id, job_date
 
 
 

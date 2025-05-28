@@ -321,48 +321,45 @@ const ProcessingAttack = (() => {
         console.log("Complete jobs data:", data);
         document.getElementById("jobsToBeMarkedComplete").textContent = data.jobs_to_be_marked_complete;
 
-        // Oldest Jobs to be Marked Complete
         const oldestJobs = data.oldest_jobs_to_be_marked_complete;
 
-        // Update single oldest job display (card or summary)
-        const firstJobId = Object.keys(oldestJobs)[0];
-        const oldestDate = new Date(oldestJobs[firstJobId].oldest_job_date);
+        if (oldestJobs.length > 0) {
+          const firstJob = oldestJobs[0];
+          const oldestDate = new Date(firstJob.oldest_job_date);
 
-        document.getElementById("oldestJobToBeMarkedCompleteDate").textContent =
-          oldestDate.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
-        document.getElementById("oldestJobToBeMarkedCompleteAddress").textContent = oldestJobs[firstJobId].oldest_job_address;
-        document.getElementById("oldestJobToBeMarkedCompleteType").textContent = oldestJobs[firstJobId].oldest_job_type;
+          document.getElementById("oldestJobToBeMarkedCompleteDate").textContent =
+            oldestDate.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+          document.getElementById("oldestJobToBeMarkedCompleteAddress").textContent = firstJob.oldest_job_address;
+          document.getElementById("oldestJobToBeMarkedCompleteType").textContent = firstJob.oldest_job_type;
 
-        // Populate modal with list of 5 oldest jobs
-        const oldestJobsList = document.getElementById("oldestJobsListModal");
-        oldestJobsList.innerHTML = "";  // Clear previous entries
+          const oldestJobsList = document.getElementById("oldestJobsListModal");
+          oldestJobsList.innerHTML = "";
 
-        for (const [jobId, jobData] of Object.entries(oldestJobs)) {
-          const jobDate = new Date(jobData.oldest_job_date).toLocaleDateString("en-US", {
-            year: "numeric",
-            month: "short",
-            day: "numeric"
-          });
+          for (const job of oldestJobs) {
+            const jobDate = new Date(job.oldest_job_date).toLocaleDateString("en-US", {
+              year: "numeric", month: "short", day: "numeric"
+            });
 
-          const jobItem = document.createElement("div");
-          jobItem.className = "list-group-item mb-2"; // <- adds spacing below each job
+            const jobItem = document.createElement("div");
+            jobItem.className = "list-group-item mb-2";
 
-          jobItem.innerHTML = `
-            <div class="d-flex justify-content-between align-items-center">
-              <div>
-                <h6 class="mb-1">${jobData.oldest_job_address}</h6>
-                <small>${jobDate} — ${jobData.oldest_job_type}</small>
+            jobItem.innerHTML = `
+              <div class="d-flex justify-content-between align-items-center">
+                <div>
+                  <h6 class="mb-1">${job.oldest_job_address}</h6>
+                  <small>${jobDate} — ${job.oldest_job_type}</small>
+                </div>
+                <a href="https://app.servicetrade.com/jobs/${job.job_id}" 
+                  class="btn btn-sm" 
+                  style="background-color: #0C62A6; color: white;" 
+                  target="_blank">View Job</a>
               </div>
-              <a href="https://app.servicetrade.com/jobs/${jobId}" 
-                class="btn btn-sm" 
-                style="background-color: #0C62A6; color: white;" 
-                target="_blank">View Job</a>
+            `;
 
-            </div>
-          `;
-
-          oldestJobsList.appendChild(jobItem);
+            oldestJobsList.appendChild(jobItem);
+          }
         }
+
 
 
         const oldestInspectionDate = new Date(data.oldest_inspection_date);
