@@ -339,7 +339,7 @@ def get_jobs_to_be_marked_complete():
 
     # Select the oldest inspection job
     oldest_inspection_job_id = 0
-    for job_id in oldest_job_ids:
+    for job_id in [job_id for job_id, _ in sorted_jobs]:
         job_data = jobs_to_be_marked_complete[job_id]
         if job_data.get("type") == "inspection":
             oldest_inspection_job_id = job_id
