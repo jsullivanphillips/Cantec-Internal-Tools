@@ -43,9 +43,9 @@ const LimboJobTracker = (() => {
         <div class="card shadow-sm h-100">
             <div class="card-body">
             <h5 class="card-title">${job.address}</h5>
-            <p class="card-text"><strong>Type:</strong> ${formattedType}</p>
-            <p class="card-text"><strong>Most Recent Appointment:</strong> ${formattedAppt}</p>
-            <a href="${job.job_link}" target="_blank" class="btn btn-primary">View Job</a>
+            <p class="card-text mb-1">${formattedType}</p>
+            <p class="card-text mt-2"><strong class="fs-5">${formattedAppt}</strong></p>
+            <a href="${job.job_link}" target="_blank" class="btn btn-primary mt-3">View Job</a>
             </div>
         </div>`;
         container.appendChild(card);
@@ -114,7 +114,7 @@ const LimboJobTracker = (() => {
 
   function init() {
     document.addEventListener("DOMContentLoaded", () => {
-        
+
         document.getElementById("sortSelect").addEventListener("change", () => {
             renderCards(currentPage);
         });
