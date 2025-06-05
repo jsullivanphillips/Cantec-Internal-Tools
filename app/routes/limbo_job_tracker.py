@@ -147,6 +147,8 @@ def get_limbo_jobs():
 
         most_recent_appt = "Not Scheduled"
         if job_id in most_recent_appt_for_job_id.keys():
+            if most_recent_appt_for_job_id[job_id] > today:
+                continue
             most_recent_appt = str(most_recent_appt_for_job_id[job_id])
         
         limbo_jobs[job_id] = {

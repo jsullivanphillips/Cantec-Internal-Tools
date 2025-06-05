@@ -7,9 +7,23 @@ const LimboJobTracker = (() => {
     const container = document.getElementById("jobCardsContainer");
     container.innerHTML = "";
 
+    const sortOrder = document.getElementById("sortSelect")?.value || "newest";
+    const sortedData = [...jobData].sort((a, b) => {
+        const dateA = a.most_recent_appt === "Not Scheduled" ? 0 : new Date(a.most_recent_appt).getTime();
+        const dateB = b.most_recent_appt === "Not Scheduled" ? 0 : new Date(b.most_recent_appt).getTime();
+        return sortOrder === "newest" ? dateB - dateA : dateA - dateB;
+    });
+
     const start = (page - 1) * itemsPerPage;
     const end = start + itemsPerPage;
-    const jobsToDisplay = jobData.slice(start, end);
+    const jobsToDisplay = sortedData.slice(start, end);
+
+    // Update "showing X–Y of Z" display
+    const jobCountDisplay = document.getElementById("jobCountDisplay");
+    const total = jobData.length;
+    const from = total === 0 ? 0 : start + 1;
+    const to = Math.min(end, total);
+    jobCountDisplay.textContent = `Showing jobs ${from}–${to} of ${total}`;
 
     jobsToDisplay.forEach(job => {
         const formattedType = job.type
@@ -24,7 +38,7 @@ const LimboJobTracker = (() => {
         }
 
         const card = document.createElement("div");
-        card.className = "col-12 col-md-6 col-lg-4";  // Responsive grid layout
+        card.className = "col-12 col-md-6 col-lg-4";
         card.innerHTML = `
         <div class="card shadow-sm h-100">
             <div class="card-body">
@@ -37,6 +51,7 @@ const LimboJobTracker = (() => {
         container.appendChild(card);
     });
     }
+
 
     
     function showLoadingPlaceholders(count = itemsPerPage) {
@@ -99,7 +114,12 @@ const LimboJobTracker = (() => {
 
   function init() {
     document.addEventListener("DOMContentLoaded", () => {
-      loadLimboJobs();
+        
+        document.getElementById("sortSelect").addEventListener("change", () => {
+            renderCards(currentPage);
+        });
+
+        loadLimboJobs();
     });
   }
 

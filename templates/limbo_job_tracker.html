@@ -26,6 +26,16 @@
 {% block content %}
 <div class="container my-4">
   <h1 class="mb-4">Limbo Job Tracker</h1>
+  <div class="d-flex justify-content-between align-items-center mb-3">
+  <div id="jobCountDisplay" class="text-muted small"></div>
+  <div>
+    <label for="sortSelect" class="form-label me-2 mb-0">Sort by:</label>
+    <select id="sortSelect" class="form-select form-select-sm d-inline-block w-auto">
+      <option value="newest">Newest</option>
+      <option value="oldest">Oldest</option>
+    </select>
+  </div>
+</div>
   <div id="jobCardsContainer" class="row g-3"></div>
   <nav>
     <ul class="pagination justify-content-center mt-4" id="paginationControls"></ul>
