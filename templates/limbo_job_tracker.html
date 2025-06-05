@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}Limbo Job Tracker{% endblock %}
+
+{% block extra_head %}
+  <style>
+      .shimmer-card {
+      background: linear-gradient(90deg, #e0e0e0 25%, #f8f8f8 50%, #e0e0e0 75%);
+      background-size: 400% 100%;
+      animation: shimmer 1.5s infinite;
+      border-radius: 0.25rem;
+      height: 200px;
+    }
+
+    @keyframes shimmer {
+      0% {
+        background-position: -400px 0;
+      }
+      100% {
+        background-position: 400px 0;
+      }
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+<div class="container my-4">
+  <h1 class="mb-4">Limbo Job Tracker</h1>
+  <div id="jobCardsContainer" class="row g-3"></div>
+  <nav>
+    <ul class="pagination justify-content-center mt-4" id="paginationControls"></ul>
+  </nav>
+</div>
+
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> <!-- Chart.js -->
+    <script src="{{ url_for('static', filename='js/limbo_job_tracker.js') }}"></script>
+{% endblock %}

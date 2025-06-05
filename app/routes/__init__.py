@@ -8,6 +8,7 @@ from .processing_attack import processing_attack_bp
 from .scheduling_attack import scheduling_attack_bp
 from .update_db import update_db_bp
 from .deficiency_tracker import deficiency_tracker_bp
+from .limbo_job_tracker import limbo_job_tracker_bp
 from .webhook import webhook_bp
 
 
@@ -22,6 +23,7 @@ def register_blueprints(app):
     app.register_blueprint(scheduling_attack_bp)
     app.register_blueprint(update_db_bp)
     app.register_blueprint(deficiency_tracker_bp)
+    app.register_blueprint(limbo_job_tracker_bp)
     app.register_blueprint(webhook_bp)
     init_cache(app)
 
