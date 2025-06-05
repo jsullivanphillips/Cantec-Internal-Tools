@@ -90,66 +90,99 @@ def get_jobs_from_api(params):
 # Meat & Potatos
 def get_limbo_jobs():
     authenticate()
+    most_recent_appt_for_job_id = {}
+    limbo_job_ids = []
 
+    # Job status = scheduled, appt status = unscheduled
+    appointment_params = UNSCHED_APPT_SCHED_JOB_PARAMS
+    appts = get_appointments_from_api(appointment_params)
+
+    # track jobs with unscheduled appts
+    unsched_appt_job_ids = []
+
+    for appt in appts:
+        job_id = appt.get("job").get("id")
+        if job_id not in unsched_appt_job_ids:
+            unsched_appt_job_ids.append(job_id)
+    
+    # Check if job with unsched appt HAS a scheduled appt
+    for job_id in unsched_appt_job_ids:
+        appointment_params = {
+            "jobId" : job_id
+        }
+        appts_for_job = get_appointments_from_api(appointment_params)
+        scheduled_appt_for_job = False
+
+        for appt in appts_for_job:
+            if appt.get("status") == "scheduled" or appt.get("status") == "completed":
+                scheduled_appt_for_job = True
+                windowEnd = datetime.fromtimestamp(appt.get("windowEnd"), tz=timezone.utc)
+                if job_id not in most_recent_appt_for_job_id:
+                    most_recent_appt_for_job_id[job_id] = windowEnd
+                elif windowEnd > most_recent_appt_for_job_id[job_id]:
+                    most_recent_appt_for_job_id[job_id] = windowEnd
+                
+        # if no scheduled appointment exists for the job, 
+        # add the job_id to limbo_job_ids
+        if not scheduled_appt_for_job:
+            limbo_job_ids.append(job_id)
+
+    # --- Sidebar to grab jobs with scheduled appointments --- #
     # Job status = scheduled, appt status = scheduled
     appointment_params = SCHED_APPT_SCHED_JOB_PARAMS
     appts = get_appointments_from_api(appointment_params)
 
-
-    # Filter appointments. Only keep the most recent appointment date
-    # for each job id.
-    most_recent_appt_for_job_id = {}
-    
+    # Filter appointments. 
+    # Only keep the most recent appointment date for each job id.
     for appt in appts:
         job_id = appt.get("job").get("id")
-        windowEnd = datetime.fromtimestamp(appt.get("windowEnd"), tz=timezone.utc)
-        if job_id is not None:
-            if job_id not in most_recent_appt_for_job_id:
-                most_recent_appt_for_job_id[job_id] = windowEnd
-            elif windowEnd > most_recent_appt_for_job_id[job_id]:
-                most_recent_appt_for_job_id[job_id] = windowEnd
+        if appt.get("status") == "scheduled":
+            windowEnd = datetime.fromtimestamp(appt.get("windowEnd"), tz=timezone.utc)
+            if job_id is not None:
+                if job_id not in most_recent_appt_for_job_id:
+                    most_recent_appt_for_job_id[job_id] = windowEnd
+                elif windowEnd > most_recent_appt_for_job_id[job_id]:
+                    most_recent_appt_for_job_id[job_id] = windowEnd
+    # --- Sidebar over --- #
 
-    # Filter jobs. Only keep jobs that are status = scheduled (incomplete)
-    # and the most recent scheduled appointment has passed.
+    # Filter jobs with scheduled appointments. 
+    # Jobs with a status = scheduled and with 
+    # their most recently scheduled appointment date in the past
+    # are added to limbo_job_ids
     today = datetime.now(tz=timezone.utc) - timedelta(days=1)
-    limbo_job_ids = []
+    
     for job_id in most_recent_appt_for_job_id.keys():
         appt_time = most_recent_appt_for_job_id[job_id]
         if appt_time < today:
             limbo_job_ids.append(job_id)
-    
 
-    # # Job status = scheduled, appt status = unscheduled
-    appointment_params = UNSCHED_APPT_SCHED_JOB_PARAMS
-    appts = get_appointments_from_api(appointment_params)
 
-    for appt in appts:
-        job_id = appt.get("job").get("id")
-        if job_id not in limbo_job_ids:
-            limbo_job_ids.append(job_id)
-    
-
-    # Grab the job info for the "Limbo Jobs"
+    # Grab job info for the "Limbo Jobs"
     limbo_jobs = {}
     job_params = { "jobIds": ','.join([str(i) for i in limbo_job_ids])}
     jobs = get_jobs_from_api(job_params)
 
     for job in jobs:
+        # Discard admin jobs
         job_type = job.get("type")
         if job_type == "administrative":
             continue
 
-        job_tags = job.get("tags", [])  # default to [] in case "tags" is None
+        # Discard PINK_FOLDER jobs
+        job_tags = job.get("tags", [])
         if any(tag.get("name") == "PINK_FOLDER" for tag in job_tags):
             continue
 
         job_id = job.get("id")
 
+        # Store the most recent appt date if one exists
         most_recent_appt = "Not Scheduled"
         if job_id in most_recent_appt_for_job_id.keys():
+            # Discard jobs that are scheduled to take place in the future
             if most_recent_appt_for_job_id[job_id] > today:
                 continue
             most_recent_appt = str(most_recent_appt_for_job_id[job_id])
+ 
         
         limbo_jobs[job_id] = {
             "job_link" : f"{SERVICE_TRADE_JOB_BASE}/{job_id}",
