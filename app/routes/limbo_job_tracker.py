@@ -155,7 +155,8 @@ def get_limbo_jobs():
         job_type = job.get("type")
         if job_type == "administrative" or job_type == "training":
             continue
-
+        
+        
 
         job_tags = job.get("tags", [])
         if any(tag.get("name") == "PINK_FOLDER" for tag in job_tags):

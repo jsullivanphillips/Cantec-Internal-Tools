@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}Limbo Job Tracker{% endblock %}
+
+{% block extra_head %}
+
+{% endblock %}
+
+{% block content %}
+<div class="container my-4">
+    <h1 class="mb-4">Performance Summary</h1>
+    <h2>Coming Soon...</h2>
+    <p>A review of the 2024-2025 Fiscal Year</p>
+  <div class="d-flex justify-content-between align-items-center mb-3">
+</div>
+
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="{{ url_for('static', filename='js/limbo_job_tracker.js') }}"></script>
+{% endblock %}
