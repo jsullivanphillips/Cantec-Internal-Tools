@@ -18,12 +18,15 @@ def get_processing_status_data():
 
     record = ProcessingStatus.query.filter_by(week_start=week_start).first()
     if record and record.updated_at:
-        updated_at = record.updated_at.replace(tzinfo=timezone.utc) if updated_at.tzinfo is None else updated_at
+        updated_at = record.updated_at
+        if updated_at.tzinfo is None:
+            updated_at = updated_at.replace(tzinfo=timezone.utc)
         if updated_at > week_end_datetime:
             print(f"ProcessingStatus for week {week_start} was already updated after the week ended. Skipping update.")
             return
         else:
             print(f"ProcessingStatus for week {week_start} exists but is outdated. Overwriting...")
+
 
     jobs_to_be_marked_complete, oldest_job_ids, oldest_inspection_job_id, _ = get_jobs_to_be_marked_complete()
     if jobs_to_be_marked_complete and oldest_job_ids:
@@ -127,8 +130,10 @@ def update_processor_metrics_for_week(week_start_str):
     print(f"Processor metrics updated for week starting {week_start_str}")
 
 def process_week(week_start_str):
-    update_job_summary_for_week(week_start_str)
-    update_processor_metrics_for_week(week_start_str)
+    with app.app_context():
+        update_job_summary_for_week(week_start_str)
+        update_processor_metrics_for_week(week_start_str)
+
 
 def update_all_metrics():
     with app.app_context():
@@ -136,25 +141,23 @@ def update_all_metrics():
             from flask import session
             session['username'] = os.environ.get("PROCESSING_USERNAME")
             session['password'] = os.environ.get("PROCESSING_PASSWORD")
+
+            # Get status summary for the current week
             get_processing_status_data()
 
             today = datetime.now(timezone.utc).date()
             start_date = today - timedelta(days=365)
-            start_date -= timedelta(days=start_date.weekday())
+            start_date -= timedelta(days=start_date.weekday())  # Align to Monday
 
-            week_start_strs = []
             current_date = start_date
             while current_date <= today:
-                week_start_strs.append(current_date.strftime("%Y-%m-%d"))
+                week_start_str = current_date.strftime("%Y-%m-%d")
+                try:
+                    process_week(week_start_str)
+                except Exception as e:
+                    print(f"[ERROR]: Week update failed for {week_start_str}: {e}")
                 current_date += timedelta(days=7)
 
-            with ThreadPoolExecutor(max_workers=6) as executor:
-                futures = [executor.submit(process_week, ws) for ws in week_start_strs]
-                for future in as_completed(futures):
-                    try:
-                        future.result()
-                    except Exception as e:
-                        print(f"[ERROR]: Week update failed: {e}")
 
 if __name__ == '__main__':
     update_all_metrics()
