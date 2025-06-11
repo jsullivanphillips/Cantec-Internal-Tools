@@ -1,30 +1,115 @@
-from flask import Blueprint, render_template, session
-from datetime import datetime, timedelta, timezone
+from flask import Blueprint, render_template, session, jsonify
+from app.db_models import db, Job, ClockEvent
+from datetime import datetime, timezone
+from tqdm import tqdm
 import requests
+import numpy as np
 
 performance_summary_bp = Blueprint('performance_summary', __name__, template_folder='templates')
 api_session = requests.Session()
 
 SERVICE_TRADE_API_BASE = "https://api.servicetrade.com/api"
 
-# Main Route
 @performance_summary_bp.route('/performance_summary', methods=['GET'])
 def performance_summary():
-    """
-    Render the main performance_summary page (HTML).
-    """
-    authenticate()
-
-    jobs_summary()
-
+    # Serve the HTML page
     return render_template("performance_summary.html")
 
-# Side Dishes
+@performance_summary_bp.route('/api/performance_summary_data', methods=['GET'])
+def performance_summary_data():
+    # Filter: only completed jobs
+    completed_filter = Job.completed_on.isnot(None)
+
+    # Query data
+    job_type_counts = dict(
+        db.session.query(Job.job_type, db.func.count(Job.job_id))
+        .filter(completed_filter)
+        .group_by(Job.job_type)
+        .all()
+    )
+
+    revenue_by_job_type = dict(
+        db.session.query(Job.job_type, db.func.sum(Job.revenue))
+        .filter(completed_filter)
+        .group_by(Job.job_type)
+        .all()
+    )
+
+    hours_by_job_type = dict(
+        db.session.query(Job.job_type, db.func.sum(Job.total_on_site_hours))
+        .filter(completed_filter)
+        .group_by(Job.job_type)
+        .all()
+    )
+
+    total_hours_by_tech = dict(
+        db.session.query(ClockEvent.tech_name, db.func.sum(ClockEvent.hours))
+        .group_by(ClockEvent.tech_name)
+        .all()
+    )
+
+    # Prep containers
+    avg_revenue_by_job_type = {}
+    jobs_by_job_type = {}
+    bubble_data_by_type = {}
+
+    # Collect data per job type
+    all_job_types = set(job_type_counts.keys()).union(revenue_by_job_type.keys())
+    for jt in all_job_types:
+        jobs = Job.query.filter(Job.job_type == jt, completed_filter).all()
+        revenues = [j.revenue for j in jobs if j.revenue is not None]
+        filtered_revenues = iqr_filter(revenues)
+
+        used_jobs = [
+            {"job_id": job.job_id, "revenue": round(job.revenue, 2)}
+            for job in jobs
+            if job.revenue is not None and job.revenue in filtered_revenues
+        ]
+        jobs_by_job_type[jt or "Unknown"] = used_jobs
+
+        avg = round(sum(filtered_revenues) / len(filtered_revenues), 2) if filtered_revenues else 0
+        avg_revenue_by_job_type[jt or "Unknown"] = avg
+
+        bubble_data_by_type[jt or "Unknown"] = {
+            "count": job_type_counts.get(jt, 0),
+            "avg_revenue": avg,
+            "total_revenue": revenue_by_job_type.get(jt, 0)
+        }
+
+    # Avoid division by zero for avg revenue per hour
+    avg_revenue_per_hour_by_job_type = {}
+    for jt in all_job_types:
+        hours = hours_by_job_type.get(jt, 0)
+        revenue = revenue_by_job_type.get(jt, 0)
+        avg_revenue_per_hour_by_job_type[jt or "Unknown"] = round(revenue / hours, 2) if hours else 0.0
+
+    return jsonify({
+        "job_type_counts": {jt or "Unknown": count for jt, count in job_type_counts.items()},
+        "revenue_by_job_type": {jt or "Unknown": rev or 0 for jt, rev in revenue_by_job_type.items()},
+        "hours_by_job_type": {jt or "Unknown": hrs or 0 for jt, hrs in hours_by_job_type.items()},
+        "avg_revenue_by_job_type": avg_revenue_by_job_type,
+        "avg_revenue_per_hour_by_job_type": avg_revenue_per_hour_by_job_type,
+        "total_hours_by_tech": {tech or "Unknown": hrs or 0 for tech, hrs in total_hours_by_tech.items()},
+        "jobs_by_job_type": jobs_by_job_type,
+        "bubble_data_by_type": bubble_data_by_type
+    })
+
+
+def iqr_filter(values):
+    if not values:
+        return []
+    q1 = np.percentile(values, 25)
+    q3 = np.percentile(values, 75)
+    iqr = q3 - q1
+    lower_bound = q1 - 1.5 * iqr
+    upper_bound = q3 + 1.5 * iqr
+    filtered = [v for v in values if lower_bound <= v <= upper_bound]
+    return filtered
+
+
 def authenticate():
     auth_url = "https://api.servicetrade.com/api/auth"
-
     payload = {"username": session.get('username'), "password": session.get('password')}
-    
 
     if not payload["username"] or not payload["password"]:
         raise Exception("Missing ServiceTrade credentials in session.")
@@ -35,8 +120,7 @@ def authenticate():
         print("✅ Authenticated successfully with ServiceTrade!")
     except Exception as e:
         print("❌ Authentication with ServiceTrade failed!")
-        raise e  # Rethrow the real error
-
+        raise e
 
 def call_service_trade_api(endpoint, params):
     try:
@@ -45,74 +129,187 @@ def call_service_trade_api(endpoint, params):
         return response
     except requests.RequestException as e:
         print(f"[ServiceTrade API Error] Endpoint: {endpoint} | Params: {params} | Error: {str(e)}")
-        return {}
+        return None
 
 
-# Meat and Potatoes
-def jobs_summary():
-    # PRE DEVELOPMENT RESEARCH
-    # Invoice payment completion is not tracked on service trade, 
-    # so we have to assume if an invoice is sent out, it gets paid.
 
-    # Some jobs will have multiple invoices. We can add the
-    # revenue amounts together to get the total revenue
-    # for the job.
-    jobs_endpoint = f"{SERVICE_TRADE_API_BASE}/job"
+def fetch_invoice_and_clock(job):
+    job_id = job.get("id")
 
-    window_start = datetime.timestamp(datetime(2024, 5, 1, 0, 0))
-    window_end = datetime.timestamp(datetime(2025, 4, 30, 23, 59))
+    # Skip processing if job already exists in DB
+    existing_job = Job.query.filter_by(job_id=job_id).first()
+    if existing_job:
+        tqdm.write(f"Skipping job {job_id} (already exists in DB)")
+        return job_id, {
+            "job": existing_job,
+            "clockEvents": {},  # Skipped, so nothing fresh
+            "onSiteHours": existing_job.total_on_site_hours
+        }
+
+    # Job details
+    job_type = job.get("type")
+    address = job.get("location", {}).get("address", {}).get("street", "Unknown")
+    customer_name = job.get("customer", {}).get("name", "Unknown")
+    job_status = job.get("displayStatus", "Unknown")
+    scheduled_date = datetime.fromtimestamp(job.get("scheduledDate")) if job.get("scheduledDate") else None
+    completed_on_raw = job.get("completedOn")
+    completed_on = datetime.fromtimestamp(completed_on_raw) if completed_on_raw else None
+
+    db_job = Job(job_id=job_id)
+    db_job.job_type = job_type
+    db_job.address = address
+    db_job.customer_name = customer_name
+    db_job.job_status = job_status
+    db_job.scheduled_date = scheduled_date
+    db_job.completed_on = completed_on
+
+    invoice_total = 0
+    total_on_site_hours = 0
+    clock_events = {}
+
+    if completed_on:
+        # --- Invoice ---
+        invoice_endpoint = f"{SERVICE_TRADE_API_BASE}/invoice"
+        invoice_params = {"jobId": job_id}
+        invoice_response = call_service_trade_api(invoice_endpoint, invoice_params)
+        if invoice_response:
+            try:
+                invoices = invoice_response.json().get("data", {}).get("invoices", [])
+                invoice_total = sum(inv.get("totalPrice", 0) for inv in invoices)
+            except Exception as e:
+                tqdm.write(f"⚠️ Failed parsing invoice data for job {job_id}: {e}")
+        db_job.revenue = invoice_total
+
+        # --- Clock Events ---
+        clock_endpoint = f"{SERVICE_TRADE_API_BASE}/job/{job_id}/clockevent"
+        clock_params = {"activity": "onsite"}
+        clock_response = call_service_trade_api(clock_endpoint, clock_params)
+        if clock_response:
+            try:
+                ClockEvent.query.filter_by(job_id=job_id).delete()
+                clock_event_pairs = clock_response.json().get("data", {}).get("pairedEvents", [])
+                for pair in clock_event_pairs:
+                    clock_in = datetime.fromtimestamp(pair.get("start", {}).get("eventTime", 0))
+                    clock_out = datetime.fromtimestamp(pair.get("end", {}).get("eventTime", 0))
+                    if not clock_in or not clock_out:
+                        continue
+                    delta = clock_out - clock_in
+                    hours = delta.total_seconds() / 3600
+                    tech = pair.get("start", {}).get("user", {}).get("name")
+                    if not tech:
+                        continue
+                    db.session.add(ClockEvent(
+                        job_id=job_id,
+                        tech_name=tech,
+                        hours=hours,
+                        created_at=datetime.now(timezone.utc)
+                    ))
+                    clock_events[tech] = clock_events.get(tech, 0) + hours
+                    total_on_site_hours += hours
+            except Exception as e:
+                tqdm.write(f"⚠️ Error processing clock events for job {job_id}: {e}")
+
+    # Even if job is just scheduled (no invoice or clock), we save the basic job record
+    db_job.total_on_site_hours = total_on_site_hours
+    db_job.revenue = invoice_total  # Will be 0 if skipped
+    db.session.add(db_job)
+    db.session.commit()
+
+    return job_id, {
+        "job": db_job,
+        "clockEvents": clock_events,
+        "onSiteHours": total_on_site_hours
+    }
+
+
+
+def get_jobs_with_params(params, desc="Fetching Jobs"):
+    """
+    Generalized job fetcher based on params.
+    Returns a full list of jobs across paginated responses.
+    """
+    jobs = []
+
+    response = call_service_trade_api(f"{SERVICE_TRADE_API_BASE}/job", params)
+    if not response:
+        tqdm.write("Failed to fetch jobs.")
+        return jobs
+
+    data = response.json().get("data", {})
+    total_pages = data.get("totalPages", 1)
+    jobs.extend(data.get("jobs", []))
+
+    if total_pages > 1:
+        for page_num in tqdm(range(2, total_pages + 1), desc=desc):
+            params["page"] = page_num
+            response = call_service_trade_api(f"{SERVICE_TRADE_API_BASE}/job", params)
+            if not response:
+                tqdm.write(f"Failed to fetch page {page_num}")
+                continue
+            page_data = response.json().get("data", {})
+            jobs.extend(page_data.get("jobs", []))
+    tqdm.write(f"Number of jobs with params: {len(jobs)}")
+
+    return jobs
+
+
+def jobs_summary(short_run=False):
+    authenticate()
 
     db_job_entry = {}
 
-    current_page = 1
-    jobs = []
-    while True:
-        job_params = {
-            "status": "completed",
-            "completedOnBegin": window_start,
-            "completedOnEnd": window_end,
-            "page": current_page,
-            "limit": 150
-        }
+    # --- Standard completed jobs from fiscal year ---
+    window_start = datetime.timestamp(datetime(2024, 5, 1, 0, 0))
+    window_end = datetime.timestamp(datetime(2025, 4, 30, 23, 59))
 
-        response = call_service_trade_api(jobs_endpoint, job_params)
-        data = response.json().get("data")
-        jobs.extend(data.get("jobs"))
+    base_params = {
+        "status": "completed",
+        "completedOnBegin": window_start,
+        "completedOnEnd": window_end,
+        "page": 1,
+        "limit": 100
+    }
 
-        if current_page >= 1:#data.get("totalPages"):
-            break
+    if short_run:
+        tqdm.write("Running in short mode (fetching only first page).")
+        response = call_service_trade_api(f"{SERVICE_TRADE_API_BASE}/job", base_params)
+        jobs = response.json().get("data", {}).get("jobs", []) if response else []
+    else:
+        jobs = get_jobs_with_params(base_params, desc="Fetching Completed Job Pages")
 
-        current_page += 1
+    tqdm.write(f"Jobs completed in 2024–2025 fiscal year: {len(jobs)}")
 
-    print("number of pages: ", current_page)
-    print(f"number of jobs completed in 2024 - 2025 fiscal year: {len(jobs)}")
-    k = 0
-    for j1 in jobs:
-        j_id = j1.get("id")
-        invoice_endpoint = f"{SERVICE_TRADE_API_BASE}/invoice"
-        invoice_params = {
-            "jobId": j_id
-        }
-        response = call_service_trade_api(invoice_endpoint, invoice_params)
-        data = response.json().get("data")
-        invoices = data.get("invoices")
-        if len(invoices) > 1:
-            print(f"------ JOB {k} -------\n[Job Id]: {j1.get("id")} \n [Type]: {j1.get("type")} \n [address]: {j1.get("location").get("address").get("street")}\n\
-[customer name]: {j1.get("customer").get("name")} \n [status]: {j1.get("displayStatus")} \n [scheduledDate]: {datetime.fromtimestamp(j1.get("scheduledDate"))}\n\
-[Completed On]: {datetime.fromtimestamp(j1.get("completedOn"))}\n")
-            num_invoice = 0
-            for i in invoices:
-                if i.get("status") != "void":
-                    print(f"- INVOICE {num_invoice} -\n[status]:{i.get("status")}\n[type]:{i.get("type")}\n\
-[subtotal]: {i.get("subtotal")}\n[taxAmount]: {i.get("taxAmount")}\n[total Price]: {i.get("totalPrice")}\n\
-[Transaction Date]: {datetime.fromtimestamp(i.get("transactionDate"))}\n\
-[Created]: {datetime.fromtimestamp(i.get("created"))}")
-                num_invoice += 1
-        k += 1
-            
-        
+    # --- Insert or update those jobs ---
+    with tqdm(total=len(jobs), desc="Processing Completed Jobs") as pbar:
+        for job in jobs:
+            try:
+                job_id, job_data = fetch_invoice_and_clock(job)
+                db_job_entry[job_id] = job_data
+            except Exception as exc:
+                tqdm.write(f"A job failed with exception: {exc}")
+            pbar.update(1)
 
-       
+    # --- Scheduled jobs that are not complete from fiscal year ---
+    scheduled_job_params = {
+        "status": "scheduled",
+        "scheduleDateFrom": window_start,
+        "scheduleDateTo": window_end,
+        "page": 1,
+        "limit": 100
+    }
+    scheduled_jobs = get_jobs_with_params(scheduled_job_params, desc="Fetching Additional Jobs")
+
+    if scheduled_jobs:
+        tqdm.write(f"Processing {len(scheduled_jobs)} additional jobs with alternate criteria.")
+        with tqdm(total=len(scheduled_jobs), desc="Processing Additional Jobs") as pbar:
+            for job in scheduled_jobs:
+                try:
+                    job_id, job_data = fetch_invoice_and_clock(job)
+                    db_job_entry[job_id] = job_data
+                except Exception as exc:
+                    tqdm.write(f"A job failed with exception: {exc}")
+                pbar.update(1)
 
 
-    # Use a database and then query it later, as db queries are faster than asking the ST api.
+    tqdm.write("\nAll jobs processed.")
+

@@ -1,24 +1,170 @@
 {% extends "base.html" %}
 
-{% block title %}Limbo Job Tracker{% endblock %}
+{% block title %}Performance Summary{% endblock %}
 
 {% block extra_head %}
-
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+  .chart-scroll {
+    overflow-x: auto;
+  }
+  .scroll-tabs {
+    position: relative;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+  .scroll-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .fade-transition {
+    transition: all 0.3s ease-in-out;
+  }
+  .collapse:not(.show) {
+    display: none;
+  }
+</style>
 {% endblock %}
 
 {% block content %}
-<div class="container my-4">
-    <h1 class="mb-4">Performance Summary</h1>
-    <h2>Coming Soon...</h2>
-    <p>A review of the 2024-2025 Fiscal Year</p>
-  <div class="d-flex justify-content-between align-items-center mb-3">
-</div>
+<div class="container my-4 fade-transition">
+  <h1 class="mb-4">Performance Summary</h1>
 
+  <div class="text-end text-muted small mb-2">
+    Last updated: <span id="lastUpdated"></span>
+  </div>
 
+  <!-- KPI Cards -->
+  <div class="row mb-4 fade-transition" id="summaryKPIs"></div>
+
+  <!-- Tabs -->
+  <ul class="nav nav-tabs" id="summaryTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active" id="job-type-tab" data-bs-toggle="tab" data-bs-target="#job-type" type="button" role="tab">
+        By Job Type
+      </button>
+    </li>
+    <!-- <li class="nav-item" role="presentation">
+      <button class="nav-link" id="tech-tab" data-bs-toggle="tab" data-bs-target="#tech" type="button" role="tab">
+        By Technician
+      </button>
+    </li> -->
+  </ul>
+
+  <div class="tab-content mt-4 fade-transition" id="summaryTabsContent">
+    <!-- Job Type Tab -->
+    <div class="tab-pane fade show active" id="job-type" role="tabpanel">
+      <div class="mb-4">
+        <label for="topNFilter" class="form-label fw-bold">Show Top:</label>
+        <select id="topNFilter" class="form-select w-auto d-inline-block ms-2">
+          <option value="3">Top 3</option>
+          <option value="5" selected>Top 5</option>
+          <option value="10">Top 10</option>
+          <option value="all">All</option>
+        </select>
+      </div>
+
+      <div class="accordion" id="accordionCharts">
+        <!-- Jobs Completed -->
+        <div class="accordion-item">
+          <h2 class="accordion-header" id="headingJobs">
+            <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseJobs" aria-expanded="true">
+              Jobs Completed by Job Type
+            </button>
+          </h2>
+          <div id="collapseJobs" class="accordion-collapse collapse show" data-bs-parent="#accordionCharts">
+            <div class="accordion-body chart-scroll fade-transition">
+              <canvas id="jobTypeCountChart"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Revenue Metrics -->
+        <div class="accordion-item">
+          <h2 class="accordion-header" id="headingRevenue">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseRevenue">
+              Revenue Metrics
+            </button>
+          </h2>
+          <div id="collapseRevenue" class="accordion-collapse collapse" data-bs-parent="#accordionCharts">
+            <div class="accordion-body">
+              <div class="card mb-4 fade-transition">
+                <div class="card-body">
+                  <h5 class="card-title">Total Revenue by Job Type</h5>
+                  <div class="chart-scroll">
+                    <canvas id="revenueByJobTypeChart"></canvas>
+                  </div>
+                </div>
+              </div>
+
+              <div class="card mb-4 fade-transition">
+                <div class="card-body">
+                  <h5 class="card-title">Average Revenue by Job Type</h5>
+                  <div class="chart-scroll">
+                    <canvas id="avgRevenueByJobTypeChart"></canvas>
+                  </div>
+                  <div id="jobLinksByType" class="mt-4"></div>
+                </div>
+              </div>
+
+              <div class="card mb-4 fade-transition">
+                <div class="card-body">
+                  <h5 class="card-title">Average Revenue per Hour by Job Type</h5>
+                  <div class="chart-scroll">
+                    <canvas id="avgRevenuePerHourChart"></canvas>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Combo Chart -->
+        <div class="accordion-item">
+          <h2 class="accordion-header" id="headingCombo">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseCombo">
+              Combined Revenue vs Hours
+            </button>
+          </h2>
+          <div id="collapseCombo" class="accordion-collapse collapse" data-bs-parent="#accordionCharts">
+            <div class="accordion-body chart-scroll fade-transition">
+              <canvas id="comboRevenueHoursChart"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bubble Chart -->
+        <div class="accordion-item">
+          <h2 class="accordion-header" id="headingBubble">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseBubble">
+              Job Efficiency Bubble Chart
+            </button>
+          </h2>
+          <div id="collapseBubble" class="accordion-collapse collapse" data-bs-parent="#accordionCharts">
+            <div class="accordion-body chart-scroll fade-transition">
+              <canvas id="bubbleJobEfficiencyChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Technician Tab -->
+    <!-- <div class="tab-pane fade" id="tech" role="tabpanel">
+      <div class="card mb-4 fade-transition">
+        <div class="card-body">
+          <h5 class="card-title">Total On-Site Hours by Technician</h5>
+          <div class="chart-scroll">
+            <canvas id="totalHoursByTechChart"></canvas>
+          </div>
+        </div>
+      </div>
+    </div> -->
+  </div>
 </div>
 {% endblock %}
 
 {% block extra_scripts %}
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="{{ url_for('static', filename='js/performance_summary.js') }}"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="{{ url_for('static', filename='js/performance_summary.js') }}"></script>
 {% endblock %}

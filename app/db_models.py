@@ -125,6 +125,38 @@ class DeficiencyRecord(db.Model):
         return cls.query.filter_by(is_archived=True)
 
 
+class Job(db.Model):
+    __tablename__ = 'job'
+
+    job_id = db.Column(db.BIGINT, primary_key=True)
+    job_type = db.Column(db.String(255))
+    address = db.Column(db.String(255))
+    customer_name = db.Column(db.String(255))
+    job_status = db.Column(db.String(255))
+    scheduled_date = db.Column(db.DateTime)
+    completed_on = db.Column(db.DateTime)
+    revenue = db.Column(db.Float)
+    total_on_site_hours = db.Column(db.Float)
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    clock_events = db.relationship("ClockEvent", back_populates="job")
+
+    def __repr__(self):
+        return f"<Job {self.job_id} - {self.customer_name}>"
+
+class ClockEvent(db.Model):
+    __tablename__ = 'clock_event'
+
+    id = db.Column(db.Integer, primary_key=True)
+    job_id = db.Column(db.BIGINT, db.ForeignKey('job.job_id'), nullable=False)
+    tech_name = db.Column(db.String(255))
+    hours = db.Column(db.Float)
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    job = db.relationship("Job", back_populates="clock_events")
+
+    def __repr__(self):
+        return f"<ClockEvent {self.tech_name} - {self.hours}h on job {self.job_id}>"
 
 if __name__ == '__main__':
     from app import create_app
