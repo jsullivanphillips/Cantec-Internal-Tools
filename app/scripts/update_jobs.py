@@ -17,6 +17,7 @@ if __name__ == "__main__":
     run_deficiencies = "--deficiencies" in sys.argv
     run_locations = "--locations" in sys.argv
     run_quotes = "--quotes" in sys.argv
+    overwrite = "--overwrite" in sys.argv
 
     with app.app_context():
         with app.test_request_context():

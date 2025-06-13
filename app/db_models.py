@@ -137,12 +137,14 @@ class Job(db.Model):
     completed_on = db.Column(db.DateTime)
     revenue = db.Column(db.Float)
     total_on_site_hours = db.Column(db.Float)
+    location_id = db.Column(db.BIGINT)  # ✅ New field
     created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     clock_events = db.relationship("ClockEvent", back_populates="job")
 
     def __repr__(self):
         return f"<Job {self.job_id} - {self.customer_name}>"
+
 
 class ClockEvent(db.Model):
     __tablename__ = 'clock_event'
@@ -175,6 +177,44 @@ class Deficiency(db.Model):
 
     def __repr__(self):
         return f"<Deficiency {self.deficiency_id} | Job {self.job_id} | Orphaned: {self.orphaned}>"
+
+
+class Location(db.Model):
+    __tablename__ = 'location'
+
+    id = db.Column(db.Integer, primary_key=True)
+    location_id = db.Column(db.BIGINT, unique=True, nullable=False)
+    street = db.Column(db.String(255))
+    status = db.Column(db.String(50))  # "active" or "inactive"
+    company_id = db.Column(db.BIGINT)
+    company_name = db.Column(db.String(255))
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    def __repr__(self):
+        return f"<Location {self.location_id} | {self.status} | {self.company_name}>"
+
+
+class Quote(db.Model):
+    __tablename__ = 'quote'
+
+    id = db.Column(db.Integer, primary_key=True)
+    quote_id = db.Column(db.BIGINT, unique=True, nullable=False)
+    customer_name = db.Column(db.String(255))
+    location_id = db.Column(db.BIGINT)
+    location_address = db.Column(db.String(255))
+    status = db.Column(db.String(100))
+    quote_created_on = db.Column(db.DateTime)
+    total_price = db.Column(db.Float)
+    quote_request = db.Column(db.String(100))
+    owner_id = db.Column(db.BIGINT)
+    owner_email = db.Column(db.String(255))
+    job_created = db.Column(db.Boolean, default=False)
+    job_id = db.Column(db.BIGINT, default=-1)
+    linked_deficiency_id = db.Column(db.BIGINT, nullable=True)
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    def __repr__(self):
+        return f"<Quote {self.quote_id} | {self.status} | Job Created: {self.job_created}>"
 
 
 if __name__ == '__main__':

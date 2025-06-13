@@ -49,12 +49,16 @@ const PerformanceSummary = (() => {
           datalabels: {
             anchor: 'center',
             align: 'center',
-            color: 'white',
+            color: 'white',                      // Main fill color
             font: {
               weight: 'bold',
               size: 12
             },
-            formatter: value => isCurrency ? `$${value.toLocaleString()}` : value.toLocaleString()
+            textStrokeColor: 'black',            // Outline color
+            textStrokeWidth: 1,                  // Outline thickness
+            formatter: value => isCurrency 
+              ? `$${value.toLocaleString()}` 
+              : value.toLocaleString()
           }
         },
         scales: {
@@ -76,8 +80,8 @@ const PerformanceSummary = (() => {
 
 
 
-  function renderKPIs(data) {
-    const container = document.getElementById("summaryKPIs");
+  function renderJobsAndRevenueKPIs(data) {
+    const container = document.getElementById("JobsAndRevenueKPIs");
     if (!container) return;
     container.innerHTML = "";
 
@@ -127,7 +131,7 @@ const PerformanceSummary = (() => {
             type: 'bar',
             label: 'Avg Revenue ($)',
             data: avgRevenue,
-            backgroundColor: '#e15759',
+            backgroundColor: '#59a14f',
             yAxisID: 'y',
             borderRadius: 5,
             order: 2,
@@ -136,8 +140,8 @@ const PerformanceSummary = (() => {
             type: 'line',
             label: 'Avg On-Site Hours',
             data: avgHours,
-            backgroundColor: '#4e79a7',
-            borderColor: '#4e79a7',
+            backgroundColor: '#ED2939',
+            borderColor: '#ED2939',
             yAxisID: 'y1',
             tension: 0.3,
             fill: false,
@@ -173,16 +177,64 @@ const PerformanceSummary = (() => {
     });
   }
 
-  function renderAllCharts(data) {
+  function renderDeficiencyInsights(data) {
+    const funnelValues = [
+      data.deficiency_insights.total_deficiencies,
+      data.deficiency_insights.quoted_deficiencies,
+      data.deficiency_insights.quoted_with_job,
+      data.deficiency_insights.quoted_with_completed_job
+    ];
+
+    const labels = [
+      "Deficiencies Created",
+      "Quoted",
+      "Quoted → Job Created",
+      "Quoted → Job Completed"
+    ];
+
+    const trace = {
+      type: "funnel",
+      y: labels,
+      x: funnelValues,
+      textinfo: "value+percent initial",
+      textposition: "inside",
+      marker: {
+        color: ['#4e79a7', '#f28e2b', '#e15759', '#76b7b2']
+      }
+    };
+
+
+    const layout = {
+      margin: { l: 180, r: 30, t: 20, b: 40 },  // ⬅ wider left margin + spacing
+      height: 400,
+      autosize: true
+    };
+
+
+    Plotly.newPlot("deficiencyFunnelChart", [trace], layout, {
+      responsive: true,
+      displayModeBar: false
+    });
+
+    document.getElementById("avgDefToQuote").textContent =
+    data.time_to_quote_metrics.avg_days_deficiency_to_quote + " days";
+
+    document.getElementById("avgQuoteToJob").textContent =
+    data.time_to_quote_metrics.avg_days_quote_to_job + " days";
+  }
+
+
+
+  function renderJobAndRevenue(data) {
     charts.jobTypeCountChart?.destroy();
     charts.revenueByJobTypeChart?.destroy();
     charts.avgRevenueByJobTypeChart?.destroy();
     charts.avgRevenuePerHourChart?.destroy();
+    charts.revenueOverTimeChart?.destroy();
 
     const topN = document.getElementById('topNFilter')?.value || "5";
     const n = topN === "all" ? Infinity : parseInt(topN);
 
-    // Helper to get top N sorted keys for a metric
     function topJobTypes(metricObj) {
       return Object.entries(metricObj)
         .sort((a, b) => b[1] - a[1])
@@ -194,9 +246,9 @@ const PerformanceSummary = (() => {
     const topRevenue = topJobTypes(data.revenue_by_job_type);
     const topAvgRevenue = topJobTypes(data.avg_revenue_by_job_type);
     const topAvgPerHour = Object.entries(data.avg_revenue_per_hour_by_job_type)
-      .filter(([jt]) => jt.toLowerCase() !== "delivery" && jt.toLowerCase() !== "pickup") // exclude delivery
+      .filter(([jt]) => jt.toLowerCase() !== "delivery" && jt.toLowerCase() !== "pickup")
       .sort((a, b) => b[1] - a[1])
-      .slice(0, topN)
+      .slice(0, n)
       .map(([jt]) => jt);
 
     const getFilteredCounts = (jobTypes, fullCounts) => {
@@ -216,7 +268,7 @@ const PerformanceSummary = (() => {
       topRevenue,
       topRevenue.map(jt => data.revenue_by_job_type[jt]),
       'Total Revenue ($)',
-      '#f28e2b',
+      '#59a14f',
       false,
       getFilteredCounts(topRevenue, data.job_type_counts),
       true
@@ -227,7 +279,7 @@ const PerformanceSummary = (() => {
       topAvgRevenue,
       topAvgRevenue.map(jt => data.avg_revenue_by_job_type[jt]),
       'Avg Revenue ($)',
-      '#e15759',
+      '#59a14f',
       false,
       getFilteredCounts(topAvgRevenue, data.job_type_counts),
       true
@@ -243,33 +295,283 @@ const PerformanceSummary = (() => {
       getFilteredCounts(topAvgPerHour, data.job_type_counts),
       true
     );
+
+    // ===== Revenue Over Time (Line Chart) =====
+    const weeks = data.weekly_revenue_over_time.map(entry => entry.week_start);
+    const revenues = data.weekly_revenue_over_time.map(entry => entry.revenue);
+
+    charts.revenueOverTimeChart = new Chart(
+      document.getElementById('revenueOverTimeChart').getContext('2d'),
+      {
+        type: 'line',
+        data: {
+          labels: weeks,
+          datasets: [{
+            label: 'Weekly Revenue',
+            data: revenues,
+            fill: false,
+            borderColor: '#59a14f',
+            backgroundColor: '#59a14f',
+            tension: 0.3,
+            pointRadius: 3,
+            pointHoverRadius: 5
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: ctx => `$${ctx.raw.toLocaleString()}`
+              }
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              title: { display: true, text: 'Revenue ($)' }
+            },
+           x: {
+              title: { display: true, text: 'Month' },
+              ticks: {
+                autoSkip: true,
+                maxTicksLimit: 12,
+                callback: function(value, index, ticks) {
+                  const dateStr = this.getLabelForValue(value);
+                  const date = new Date(dateStr);
+                  return date.toLocaleString('default', { month: 'short' });
+                }
+              }
+            }
+          }
+        }
+      }
+    );
   }
+
+
+  function renderTechnicianMetrics(data) {
+    const charts = {};
+    const revenueData = data.technician_metrics.revenue_per_hour;
+    const jobCountData = data.technician_metrics.jobs_completed_by_tech;
+
+    function renderTechCharts(topN = 5) {
+      // Prep raw data
+      let techs = Object.keys(revenueData).map(t => ({
+        tech: t,
+        revenue: revenueData[t],
+        jobs: jobCountData[t] || 0
+      }));
+
+      // ===== Revenue per Hour Chart =====
+      const sortedByRevenue = [...techs].sort((a, b) => b.revenue - a.revenue);
+      const revenueSelected = topN === "all" ? sortedByRevenue : sortedByRevenue.slice(0, parseInt(topN));
+      const revenueLabels = revenueSelected.map(t => t.tech);
+      const revenueValues = revenueSelected.map(t => t.revenue);
+
+      charts.revenuePerHour?.destroy();
+      charts.revenuePerHour = new Chart(
+        document.getElementById('revenuePerHourByTechChart').getContext('2d'),
+        {
+          type: 'bar',
+          data: {
+            labels: revenueLabels,
+            datasets: [{
+              label: "Revenue per Hour ($)",
+              data: revenueValues,
+              backgroundColor: '#4e79a7',
+              borderRadius: 5
+            }]
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  label: ctx => `$${ctx.raw.toFixed(2)}`
+                }
+              }
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                title: { display: true, text: 'Revenue per Hour ($)' }
+              }
+            }
+          }
+        }
+      );
+
+      // ===== Jobs Completed Chart =====
+      const sortedByJobs = [...techs].sort((a, b) => b.jobs - a.jobs);
+      const jobsSelected = topN === "all" ? sortedByJobs : sortedByJobs.slice(0, parseInt(topN));
+      const jobsLabels = jobsSelected.map(t => t.tech);
+      const jobsValues = jobsSelected.map(t => t.jobs);
+
+      charts.jobsCompleted?.destroy();
+      charts.jobsCompleted = new Chart(
+        document.getElementById('jobsCompletedByTechChart').getContext('2d'),
+        {
+          type: 'bar',
+          data: {
+            labels: jobsLabels,
+            datasets: [{
+              label: "Jobs Completed",
+              data: jobsValues,
+              backgroundColor: '#f28e2b',
+              borderRadius: 5
+            }]
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  label: ctx => `${ctx.raw} jobs`
+                }
+              }
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                title: { display: true, text: 'Jobs Completed' }
+              }
+            }
+          }
+        }
+      );
+    }
+
+
+    // Initial render
+    renderTechCharts("5");
+
+    // Top-N filter handler
+    document.getElementById("techTopNFilter")?.addEventListener("change", (e) => {
+      renderTechCharts(e.target.value);
+    });
+  }
+
+ function renderCustomerAndLocationMetrics(data) {
+    // stash the full datasets once
+    const allLocations       = [...data.location_service_type_counts];
+    const allCustomerRevenue = [...data.top_customer_revenue];
+
+    // hook up Top-N filter
+    const topNFilter = document.getElementById("locationTopNFilter");
+    if (topNFilter && !topNFilter.dataset.bound) {
+      topNFilter.addEventListener("change", () => render(topNFilter.value));
+      topNFilter.dataset.bound = "true";
+    }
+
+    function render(topN = "5") {
+      const topCount = topN === "all" ? Infinity : parseInt(topN, 10);
+
+      // 🚨 Destroy any existing instances before drawing new ones
+      charts.locationServiceTypeChart?.destroy();
+      charts.topCustomerRevenueChart?.destroy();
+      // removed deficiencyRevenueConversionChart entirely
+
+      // --- stacked Service Calls chart ---
+      const svc = [...allLocations]
+        .sort((a, b) => b.total - a.total)
+        .slice(0, topCount);
+      const svcLabels    = svc.map(l => l.address);
+      const svcEmergency = svc.map(l => l.emergency);
+      const svcRegular   = svc.map(l => l.service);
+
+      charts.locationServiceTypeChart = new Chart(
+        document.getElementById("locationServiceTypeChart").getContext("2d"), {
+          type: "bar",
+          data: {
+            labels: svcLabels,
+            datasets: [
+              { label: "Service Calls", data: svcRegular,   backgroundColor: "#4e79a7", stack: "calls" },
+              { label: "Emergency Calls", data: svcEmergency, backgroundColor: "#e15759", stack: "calls" }
+            ]
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              tooltip: { mode: "index", intersect: false },
+              legend: { position: "top" }
+            },
+            scales: {
+              x: { stacked: true },
+              y: { stacked: true, beginAtZero: true, title: { display: true, text: "Number of Calls" } }
+            }
+          }
+        }
+      );
+
+      // --- Top Customers by Revenue chart ---
+      const topCust = [...allCustomerRevenue]
+        .sort((a, b) => b.revenue - a.revenue)
+        .slice(0, topCount);
+
+      charts.topCustomerRevenueChart = new Chart(
+        document.getElementById("topCustomerRevenueChart").getContext("2d"), {
+          type: "bar",
+          data: {
+            labels: topCust.map(c => c.customer),
+            datasets: [{
+              label: "Revenue ($)",
+              data: topCust.map(c => c.revenue),
+              backgroundColor: "#f28e2b",
+              borderRadius: 5
+            }]
+          },
+          options: {
+            indexAxis: "y",
+            responsive: true,
+            plugins: {
+              tooltip: {
+                callbacks: { label: ctx => `$${ctx.raw.toLocaleString()}` }
+              },
+              legend: { display: false }
+            },
+            scales: {
+              x: { beginAtZero: true, title: { display: true, text: "Revenue ($)" } }
+            }
+          }
+        }
+      );
+    }
+
+    // initial draw
+    render(topNFilter.value || "5");
+  }
+
+
+
+
+
+
+
+
 
   function init() {
     document.addEventListener("DOMContentLoaded", () => {
+
       const topNControl = document.getElementById('topNFilter');
       if (topNControl) {
         topNControl.addEventListener('change', () => {
           fetch("/api/performance_summary_data")
             .then(res => res.json())
-            .then(data => renderAllCharts(data));
+            .then(data => renderJobAndRevenue(data));
         });
       }
 
       fetch("/api/performance_summary_data")
         .then(res => res.json())
         .then(data => {
-          renderKPIs(data);
-          renderAllCharts(data);
-
-          const bubbleData = Object.keys(data.job_type_counts).reduce((acc, jt) => {
-            acc[jt] = {
-              count: data.job_type_counts[jt] || 0,
-              total_revenue: data.revenue_by_job_type[jt] || 0,
-              avg_revenue: data.avg_revenue_by_job_type[jt] || 0,
-            };
-            return acc;
-          }, {});
+          renderJobsAndRevenueKPIs(data);
+          renderJobAndRevenue(data);
+          renderDeficiencyInsights(data);
+          renderTechnicianMetrics(data);
+          renderCustomerAndLocationMetrics(data);
 
           const avgRevenueEntries = Object.entries(data.avg_revenue_by_job_type);
 
