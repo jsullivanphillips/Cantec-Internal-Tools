@@ -56,7 +56,6 @@ setuptools==80.9.0
 simple-websocket==1.1.0
 six==1.17.0
 SQLAlchemy==2.0.40
-torchaudio==2.7.0+cu118
 torchvision==0.22.0+cu118
 tqdm==4.67.1
 typing_extensions==4.13.1
