@@ -406,57 +406,102 @@ const PerformanceSummary = (() => {
       true
     );
 
-    // ===== Revenue Over Time (Line Chart) =====
-    const weeks = data.weekly_revenue_over_time.map(entry => entry.week_start);
-    const revenues = data.weekly_revenue_over_time.map(entry => entry.revenue);
+    // ===== Revenue & Jobs Over Time (Combo Line Chart) =====
+    const weeks         = data.weekly_revenue_over_time.map(e => e.week_start);
+    const revenues      = data.weekly_revenue_over_time.map(e => e.revenue);
+    const jobsCompleted = data.weekly_jobs_over_time.map(e => e.jobs_completed);
+    const maxJobs       = Math.max(...jobsCompleted, 0);
+
+    // destroy old chart
+    charts.revenueOverTimeChart?.destroy();
 
     charts.revenueOverTimeChart = new Chart(
       document.getElementById('revenueOverTimeChart').getContext('2d'),
       {
-        type: 'line',
         data: {
           labels: weeks,
-          datasets: [{
-            label: 'Weekly Revenue',
-            data: revenues,
-            fill: false,
-            borderColor: '#59a14f',
-            backgroundColor: '#59a14f',
-            tension: 0.3,
-            pointRadius: 3,
-            pointHoverRadius: 5
-          }]
+          datasets: [
+            {
+              type: 'line',
+              label: 'Weekly Revenue',
+              data: revenues,
+              yAxisID: 'y',
+              borderColor: '#59a14f',
+              backgroundColor: '#59a14f',
+              tension: 0.3,
+              fill: false,
+              pointRadius: 3,
+              pointHoverRadius: 5
+            },
+            {
+              type: 'line',
+              label: 'Jobs Completed',
+              data: jobsCompleted,
+              yAxisID: 'y1',
+              borderColor: '#4e79a7',
+              backgroundColor: '#4e79a7',
+              tension: 0.3,
+              fill: false,
+              pointRadius: 3,
+              pointHoverRadius: 5
+            }
+          ]
         },
         options: {
           responsive: true,
           plugins: {
             tooltip: {
+              mode: 'index',
+              intersect: false,
               callbacks: {
-                label: ctx => `$${ctx.raw.toLocaleString()}`
+                label: ctx => {
+                  if (ctx.dataset.label === 'Weekly Revenue') {
+                    return `Revenue: $${ctx.raw.toLocaleString()}`;
+                  } else {
+                    return `Jobs: ${ctx.raw}`;
+                  }
+                }
               }
-            }
+            },
+            legend: { position: 'top' }
           },
           scales: {
-            y: {
-              beginAtZero: true,
-              title: { display: true, text: 'Revenue ($)' }
-            },
-           x: {
-              title: { display: true, text: 'Month' },
+            x: {
+              title: { display: true, text: 'Week Starting' },
               ticks: {
                 autoSkip: true,
                 maxTicksLimit: 12,
-                callback: function(value, index, ticks) {
-                  const dateStr = this.getLabelForValue(value);
-                  const date = new Date(dateStr);
-                  return date.toLocaleString('default', { month: 'short' });
+                callback(value) {
+                  const date = new Date(this.getLabelForValue(value));
+                  return date.toLocaleString('default', { month: 'short', day: 'numeric' });
                 }
+              }
+            },
+            y: {
+              type: 'linear',
+              position: 'left',
+              beginAtZero: true,
+              title: { display: true, text: 'Revenue ($)' }
+            },
+            y1: {
+              type: 'linear',
+              position: 'right',
+              display: true,
+              beginAtZero: true,
+              suggestedMax: maxJobs * 1.6,
+              title: { display: true, text: 'Jobs Completed' },
+              grid: { drawOnChartArea: false },
+              ticks: {
+                autoSkip: true,
+                maxTicksLimit: 8
               }
             }
           }
         }
       }
     );
+
+
   }
 
 

@@ -1,12 +1,11 @@
 from flask import Blueprint, render_template, session, jsonify
 from app.db_models import db, Job, ClockEvent, Deficiency, Location, Quote
 from collections import defaultdict
-from datetime import timedelta
-from datetime import datetime, timezone
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 import requests
 import numpy as np
+from datetime import datetime, timedelta, timezone
+from sqlalchemy import func
 
 performance_summary_bp = Blueprint('performance_summary', __name__, template_folder='templates')
 api_session = requests.Session()
@@ -39,6 +38,10 @@ def performance_summary_data():
     location_service_type_counts = get_top_locations_by_service_type()
     top_customer_revenue = get_top_customers_by_revenue()
 
+    # determine your fiscal window (whatever you use for revenue)
+    window_start = datetime(2024, 5, 1, tzinfo=timezone.utc)
+    window_end   = datetime(2025, 4, 30, tzinfo=timezone.utc)
+
 
     return jsonify({
         "job_type_counts": {jt or "Unknown": count for jt, count in job_type_counts.items()},
@@ -53,6 +56,7 @@ def performance_summary_data():
         "time_to_quote_metrics": time_to_quote_metrics,
         "technician_metrics": technician_metrics,
         "weekly_revenue_over_time": weekly_revenue_over_time,
+        "weekly_jobs_over_time":     get_weekly_jobs_over_time(),
         "location_service_type_counts": location_service_type_counts,
         "top_customer_revenue": top_customer_revenue,
         "deficiencies_by_service_line": get_deficiencies_by_service_line(),
@@ -146,6 +150,29 @@ def get_weekly_revenue_over_time():
     sorted_weekly = sorted(revenue_by_week.items())
 
     return [{"week_start": week.isoformat(), "revenue": round(rev, 2)} for week, rev in sorted_weekly]
+
+
+def get_weekly_jobs_over_time():
+    # 1. Fetch all completed_on dates
+    jobs = (
+        db.session.query(Job.completed_on)
+        .filter(Job.completed_on.isnot(None))
+        .all()
+    )
+
+    # 2. Bucket by ISO-week Monday
+    counts_by_week = defaultdict(int)
+    for (completed_on,) in jobs:
+        monday = completed_on - timedelta(days=completed_on.weekday())
+        week_start = monday.date()
+        counts_by_week[week_start] += 1
+
+    # 3. Sort and format
+    sorted_weeks = sorted(counts_by_week.items())
+    return [
+        {"week_start": week.isoformat(), "jobs_completed": count}
+        for week, count in sorted_weeks
+    ]
 
 
 def get_technician_metrics():
@@ -379,8 +406,6 @@ def get_deficiencies_by_service_line():
 
     return result
 
-
-
 def get_time_to_quote_metrics():
     deficiency_to_quote_deltas = []
     quote_to_job_deltas = []
@@ -417,8 +442,6 @@ def get_time_to_quote_metrics():
         "avg_days_deficiency_to_quote": avg_def_to_quote,
         "avg_days_quote_to_job": avg_quote_to_job
     }
-
-
 
 
 def iqr_filter(values):
