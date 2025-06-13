@@ -55,6 +55,7 @@ def performance_summary_data():
         "weekly_revenue_over_time": weekly_revenue_over_time,
         "location_service_type_counts": location_service_type_counts,
         "top_customer_revenue": top_customer_revenue,
+        "deficiencies_by_service_line": get_deficiencies_by_service_line(),
     })
 
 
@@ -293,6 +294,92 @@ def get_deficiency_insights():
         "quoted_with_job": quoted_with_job,
         "quoted_with_completed_job": quoted_with_completed_job
     }
+
+def get_deficiencies_by_service_line():
+    from sqlalchemy import func, distinct
+
+    # 1️⃣ Total deficiencies per service line
+    total_counts = dict(
+        db.session.query(
+            Deficiency.service_line,
+            func.count(Deficiency.id)
+        )
+        .group_by(Deficiency.service_line)
+        .all()
+    )
+
+    # 2️⃣ Deficiencies quoted (distinct linked)
+    quoted_counts = dict(
+        db.session.query(
+            Deficiency.service_line,
+            func.count(distinct(Quote.linked_deficiency_id))
+        )
+        .join(Quote, Quote.linked_deficiency_id == Deficiency.deficiency_id)
+        .filter(Quote.linked_deficiency_id.isnot(None))
+        .group_by(Deficiency.service_line)
+        .all()
+    )
+
+    # 3️⃣ Quoted → job created but NOT yet completed
+    quoted_job_counts = dict(
+        db.session.query(
+            Deficiency.service_line,
+            func.count(distinct(Quote.linked_deficiency_id))
+        )
+        .join(Quote, Quote.linked_deficiency_id == Deficiency.deficiency_id)
+        .join(Job, Quote.job_id == Job.job_id)
+        .filter(
+            Quote.linked_deficiency_id.isnot(None),
+            Quote.job_created.is_(True),
+            Job.completed_on.is_(None)        # <— only include jobs not completed
+        )
+        .group_by(Deficiency.service_line)
+        .all()
+    )
+
+    # 4️⃣ Quoted → job created → job completed
+    quoted_completed_counts = dict(
+        db.session.query(
+            Deficiency.service_line,
+            func.count(distinct(Quote.linked_deficiency_id))
+        )
+        .join(Quote, Quote.linked_deficiency_id == Deficiency.deficiency_id)
+        .join(Job, Quote.job_id == Job.job_id)
+        .filter(
+            Quote.linked_deficiency_id.isnot(None),
+            Quote.job_created.is_(True),
+            Job.completed_on.isnot(None)
+        )
+        .group_by(Deficiency.service_line)
+        .all()
+    )
+
+    # 5️⃣ Build the final list, sorted by service line
+    service_lines = sorted(
+        set(total_counts) |
+        set(quoted_counts) |
+        set(quoted_job_counts) |
+        set(quoted_completed_counts)
+    )
+
+    result = []
+    for sl in service_lines:
+        total       = total_counts.get(sl, 0)
+        quoted      = quoted_counts.get(sl, 0)
+        q_job       = quoted_job_counts.get(sl, 0)
+        q_completed = quoted_completed_counts.get(sl, 0)
+
+        result.append({
+            "service_line":       sl or "Unknown",
+            "no_quote":           total - quoted,
+            "quoted_no_job":      q_job,          # now only quotes with jobs not yet completed
+            "quoted_to_job":      q_job,
+            "quoted_to_complete": q_completed
+        })
+
+    return result
+
+
 
 def get_time_to_quote_metrics():
     deficiency_to_quote_deltas = []

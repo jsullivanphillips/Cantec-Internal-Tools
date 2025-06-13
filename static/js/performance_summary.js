@@ -178,20 +178,19 @@ const PerformanceSummary = (() => {
   }
 
   function renderDeficiencyInsights(data) {
+    // --- Funnel Chart (unchanged) ---
     const funnelValues = [
       data.deficiency_insights.total_deficiencies,
       data.deficiency_insights.quoted_deficiencies,
       data.deficiency_insights.quoted_with_job,
       data.deficiency_insights.quoted_with_completed_job
     ];
-
     const labels = [
       "Deficiencies Created",
       "Quoted",
       "Quoted → Job Created",
       "Quoted → Job Completed"
     ];
-
     const trace = {
       type: "funnel",
       y: labels,
@@ -199,29 +198,140 @@ const PerformanceSummary = (() => {
       textinfo: "value+percent initial",
       textposition: "inside",
       marker: {
-        color: ['#4e79a7', '#f28e2b', '#e15759', '#76b7b2']
+        color: ["#4e79a7", "#f28e2b", "#e15759", "#76b7b2"]
       }
     };
-
-
     const layout = {
-      margin: { l: 180, r: 30, t: 20, b: 40 },  // ⬅ wider left margin + spacing
+      margin: { l: 180, r: 30, t: 20, b: 40 },
       height: 400,
       autosize: true
     };
-
-
     Plotly.newPlot("deficiencyFunnelChart", [trace], layout, {
       responsive: true,
       displayModeBar: false
     });
 
+    // --- Time-to-Quote / Time-to-Job Cards (unchanged) ---
     document.getElementById("avgDefToQuote").textContent =
-    data.time_to_quote_metrics.avg_days_deficiency_to_quote + " days";
-
+      data.time_to_quote_metrics.avg_days_deficiency_to_quote + " days";
     document.getElementById("avgQuoteToJob").textContent =
-    data.time_to_quote_metrics.avg_days_quote_to_job + " days";
+      data.time_to_quote_metrics.avg_days_quote_to_job + " days";
+
+    // --- Deficiencies by Service Line (Stacked Bar) ---
+    let svcData = data.deficiencies_by_service_line
+      // make a copy and sort by “quoted_to_complete” descending
+      .slice()
+      .sort((a, b) => b.quoted_to_complete - a.quoted_to_complete);
+
+    // then apply your Top-N if you had one (you didn’t specify here, so we take all):
+    // svcData = svcData.slice(0, topCount);
+
+    const serviceLines      = svcData.map(d => d.service_line);
+    const noQuote           = svcData.map(d => d.no_quote);
+    const quotedNoJob       = svcData.map(d => d.quoted_no_job);
+    const quotedToJob       = svcData.map(d => d.quoted_to_job);
+    const quotedToComplete  = svcData.map(d => d.quoted_to_complete);
+
+    charts.deficienciesByServiceLineChart?.destroy();
+    charts.deficienciesByServiceLineChart = new Chart(
+      document.getElementById("deficienciesByServiceLineChart").getContext("2d"),
+      {
+        type: "bar",
+        data: {
+          labels: serviceLines,
+          datasets: [
+            { label: "No Quote",            data: noQuote,          backgroundColor: "#4e79a7" },
+            { label: "Quoted, No Job",      data: quotedNoJob,      backgroundColor: "#f28e2b" },
+            { label: "Quoted → Job Created", data: quotedToJob,      backgroundColor: "#e15759" },
+            { label: "Job → Completed",      data: quotedToComplete, backgroundColor: "#76b7b2" }
+          ]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { position: "top" },
+            tooltip: { mode: "index", intersect: false }
+          },
+          scales: {
+            x: { stacked: true },
+            y: {
+              stacked: true,
+              beginAtZero: true,
+              title: { display: true, text: "Number of Deficiencies" }
+            }
+          }
+        }
+      }
+    );
+
+    // --- Conversion Rate by Service Line (Sorted Vertical Bars with Inside Labels) ---
+    const filteredSvc = svcData
+      .filter(d => d.quoted_to_complete > 0)
+      .sort((a, b) => {
+        const totalA = a.no_quote + a.quoted_no_job + a.quoted_to_job;
+        const rateA  = totalA ? (a.quoted_to_complete / totalA) * 100 : 0;
+        const totalB = b.no_quote + b.quoted_no_job + b.quoted_to_job;
+        const rateB  = totalB ? (b.quoted_to_complete / totalB) * 100 : 0;
+        return rateB - rateA;
+      });
+
+    const convLabels = filteredSvc.map(d => d.service_line);
+    const convRates  = filteredSvc.map(d => {
+      const total = d.no_quote + d.quoted_no_job + d.quoted_to_job;
+      return total ? (d.quoted_to_complete / total) * 100 : 0;
+    });
+
+    // destroy previous instance
+    charts.serviceLineConversionRateChart?.destroy();
+
+    charts.serviceLineConversionRateChart = new Chart(
+      document.getElementById("serviceLineConversionRateChart").getContext("2d"), {
+        type: "bar",
+        data: {
+          labels: convLabels,
+          datasets: [{
+            label: "Conversion Rate (%)",
+            data: convRates,
+            backgroundColor: "#59a14f",
+            borderRadius: 4,
+            datalabels: {
+              color: "white",
+              textStrokeColor: "black",
+              textStrokeWidth: 2,
+              anchor: "center",
+              align: "center",
+              formatter: v => v.toFixed(1) + "%"
+            }
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: ctx => `Conversion: ${ctx.raw.toFixed(1)}%`
+              }
+            }
+          },
+          scales: {
+            x: {
+              title: { display: true, text: "Service Line" }
+            },
+            y: {
+              beginAtZero: true,
+              max: 100,
+              title: { display: true, text: "Conversion Rate (%)" },
+              ticks: { callback: val => val + "%" }
+            }
+          }
+        },
+        plugins: [ChartDataLabels]
+      }
+    );
+
   }
+
 
 
 
