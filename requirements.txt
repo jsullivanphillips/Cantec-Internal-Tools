@@ -42,6 +42,12 @@ progressbar2==4.5.0
 propcache==0.3.1
 psutil==7.0.0
 psycopg2-binary==2.9.10
+pytest==8.3.5
+python-dateutil==2.9.0.post0
+python-dotenv==1.0.1
+python-engineio==4.11.2
+python-socketio==5.12.1
+python-utils==3.9.1
 pytz==2025.1
 PyYAML==6.0.2
 regex==2024.11.6
@@ -50,6 +56,8 @@ setuptools==80.9.0
 simple-websocket==1.1.0
 six==1.17.0
 SQLAlchemy==2.0.40
+torchaudio==2.7.0+cu118
+torchvision==0.22.0+cu118
 tqdm==4.67.1
 typing_extensions==4.13.1
 tzdata==2025.1
