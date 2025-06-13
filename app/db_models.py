@@ -158,6 +158,25 @@ class ClockEvent(db.Model):
     def __repr__(self):
         return f"<ClockEvent {self.tech_name} - {self.hours}h on job {self.job_id}>"
 
+class Deficiency(db.Model):
+    __tablename__ = 'deficiency'
+
+    id = db.Column(db.Integer, primary_key=True)
+    deficiency_id = db.Column(db.BIGINT, unique=True, nullable=False)
+    description = db.Column(db.Text)
+    status = db.Column(db.String(100))
+    reported_by = db.Column(db.String(255))
+    service_line = db.Column(db.String(100))
+    job_id = db.Column(db.BIGINT, nullable=False)
+    location_id = db.Column(db.BIGINT, nullable=False)
+    deficiency_created_on = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    orphaned = db.Column(db.Boolean, default=False)
+
+    def __repr__(self):
+        return f"<Deficiency {self.deficiency_id} | Job {self.job_id} | Orphaned: {self.orphaned}>"
+
+
 if __name__ == '__main__':
     from app import create_app
     app = create_app()

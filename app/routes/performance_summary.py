@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, session, jsonify
-from app.db_models import db, Job, ClockEvent
+from app.db_models import db, Job, ClockEvent, Deficiency
 from datetime import datetime, timezone
 from tqdm import tqdm
 import requests
@@ -222,7 +222,6 @@ def fetch_invoice_and_clock(job):
     }
 
 
-
 def get_jobs_with_params(params, desc="Fetching Jobs"):
     """
     Generalized job fetcher based on params.
@@ -312,4 +311,140 @@ def jobs_summary(short_run=False):
 
 
     tqdm.write("\nAll jobs processed.")
+
+
+def get_deficiencies_with_params(params, desc="Fetching deficiencies"):
+    """
+    Generalized job fetcher based on params.
+    Returns a full list of deficiencies across paginated responses.
+    """
+    deficiencies = []
+
+    response = call_service_trade_api(f"{SERVICE_TRADE_API_BASE}/deficiency", params)
+    if not response:
+        tqdm.write("Failed to fetch deficiencies.")
+        return deficiencies
+
+    data = response.json().get("data", {})
+    total_pages = data.get("totalPages", 1)
+    deficiencies.extend(data.get("deficiencies", []))
+
+    if total_pages > 1:
+        for page_num in tqdm(range(2, total_pages + 1), desc=desc):
+            params["page"] = page_num
+            response = call_service_trade_api(f"{SERVICE_TRADE_API_BASE}/deficiency", params)
+            if not response:
+                tqdm.write(f"Failed to fetch page {page_num}")
+                continue
+            page_data = response.json().get("data", {})
+            deficiencies.extend(page_data.get("deficiencies", []))
+    tqdm.write(f"Number of deficiencies with params: {len(deficiencies)}")
+
+    return deficiencies
+
+def update_deficiencies():
+    authenticate()
+
+    fiscal_year_start = datetime.timestamp(datetime(2024, 5, 1, 0, 0))
+    fiscal_year_end = datetime.timestamp(datetime(2025, 4, 30, 23, 59))
+
+    deficiency_params = {
+        "createdAfter": fiscal_year_start,
+        "createdBefore": fiscal_year_end,
+        "limit": 500
+    }
+
+    deficiencies = get_deficiencies_with_params(params=deficiency_params)
+
+    tqdm.write(f"Number of deficiencies fetched: {len(deficiencies)}")
+
+    with tqdm(total=len(deficiencies), desc="Saving Deficiencies to DB") as pbar:
+        for d in deficiencies:
+            try:
+                reporter = d.get("reporter")
+                service_line = d.get("serviceLine")
+                job = d.get("job")
+                location = d.get("location")
+
+                job_id = job["id"] if job else -1
+                location_id = location["id"] if location else -1
+
+                deficiency = Deficiency.query.filter_by(deficiency_id=d["id"]).first()
+                if not deficiency:
+                    deficiency = Deficiency(deficiency_id=d["id"])
+
+                deficiency.description = d["description"]
+                deficiency.status = d["status"]
+                deficiency.reported_by = reporter["name"] if reporter else "Unknown"
+                deficiency.service_line = service_line["name"] if service_line else "Unknown"
+                deficiency.job_id = job_id
+                deficiency.location_id = location_id
+                deficiency.deficiency_created_on = datetime.fromtimestamp(d["created"])
+                deficiency.orphaned = job_id == -1
+
+                db.session.add(deficiency)
+
+            except Exception as e:
+                tqdm.write(f"[WARNING] Skipped deficiency {d.get('id')} | Error: {type(e).__name__}: {e}")
+            pbar.update(1)
+
+    db.session.commit()
+    tqdm.write("✅ All deficiencies processed and saved.")
+
+def get_locations_with_params(params, desc="Fetching locations"):
+    """
+    Generalized job fetcher based on params.
+    Returns a full list of deficiencies across paginated responses.
+    """
+    locations = []
+
+    response = call_service_trade_api(f"{SERVICE_TRADE_API_BASE}/location", params)
+    if not response:
+        tqdm.write("Failed to fetch locations.")
+        return locations
+
+    data = response.json().get("data", {})
+    total_pages = data.get("totalPages", 1)
+    locations.extend(data.get("locations", []))
+
+    if total_pages > 1:
+        for page_num in tqdm(range(2, total_pages + 1), desc=desc):
+            params["page"] = page_num
+            response = call_service_trade_api(f"{SERVICE_TRADE_API_BASE}/location", params)
+            if not response:
+                tqdm.write(f"Failed to fetch page {page_num}")
+                continue
+            page_data = response.json().get("data", {})
+            locations.extend(page_data.get("locations", []))
+
+    return locations 
+
+def update_locations():
+    authenticate()
+
+
+    params = {
+        "page": 1,
+        "limit": 500,
+        "status": "active"
+    }
+
+    active_locations = get_locations_with_params(params=params)
+    tqdm.write(f"number of active locations: {len(active_locations)}")
+
+    
+
+    params = {
+        "page": 1,
+        "limit": 500,
+        "status": "inactive"
+    }
+
+    inactive_locations = get_locations_with_params(params=params)
+    tqdm.write(f"number of active locations: {len(inactive_locations)}")
+
+def update_quotes():
+    authenticate()
+    print("💬 Updating quotes... (add logic here)")
+
 

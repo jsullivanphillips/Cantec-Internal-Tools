@@ -3,7 +3,14 @@ const PerformanceSummary = (() => {
   let charts = {};
   let topNValue = 5; // default to Top 5
 
-  function createBarChart(ctx, labels, data, label, color, horizontal = false, jobCounts = null) {
+  function formatLabelName(camelCaseLabel) {
+    return camelCaseLabel
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, char => char.toUpperCase());
+  }
+
+
+  function createBarChart(ctx, labels, data, label, color, horizontal = false, jobCounts = null, isCurrency = false) {
     return new Chart(ctx, {
       type: 'bar',
       data: {
@@ -23,29 +30,50 @@ const PerformanceSummary = (() => {
           tooltip: {
             callbacks: {
               label: ctx => {
+                const rawLabel = ctx.label;
+                const formattedLabel = formatLabelName(rawLabel);
                 const value = typeof ctx.parsed === 'object' ? 
                   (ctx.chart.options.indexAxis === 'y' ? ctx.parsed.x : ctx.parsed.y) : 
                   ctx.parsed;
 
-                const labelName = ctx.label;
-                const jobs = jobCounts?.[labelName];
+                const jobs = jobCounts?.[rawLabel];
 
                 if (jobCounts && jobs !== undefined) {
-                  return `${labelName}: $${value.toLocaleString()} (from ${jobs} jobs)`;
+                  return `${formattedLabel}: $${value.toLocaleString()} (from ${jobs} jobs)`;
                 } else {
-                  return `${labelName}: ${value.toLocaleString()}`;
+                  return isCurrency ? `${formattedLabel}: $${value.toLocaleString()}` : `${formattedLabel}: ${value.toLocaleString()}`;
                 }
               }
             }
+          },
+          datalabels: {
+            anchor: 'center',
+            align: 'center',
+            color: 'white',
+            font: {
+              weight: 'bold',
+              size: 12
+            },
+            formatter: value => isCurrency ? `$${value.toLocaleString()}` : value.toLocaleString()
           }
         },
         scales: {
-          y: { beginAtZero: true },
-          x: { beginAtZero: true }
+          x: {
+            beginAtZero: true,
+            ticks: {
+              callback: value => formatLabelName(labels[value])
+            }
+          },
+          y: {
+            beginAtZero: true
+          }
         }
-      }
+      },
+      plugins: [ChartDataLabels]
     });
   }
+
+
 
 
   function renderKPIs(data) {
@@ -55,39 +83,39 @@ const PerformanceSummary = (() => {
 
     const kpis = [
       {
-        title: "Top Revenue Job Type",
-        value: Object.entries(data.revenue_by_job_type).sort((a,b)=>b[1]-a[1])[0],
+        title: "Total Revenue Earned",
+        value: ["", Object.values(data.revenue_by_job_type).reduce((sum, v) => sum + v, 0)],
         format: v => `$${v.toLocaleString()}`
       },
       {
-        title: "Most Jobs Completed",
-        value: Object.entries(data.job_type_counts).sort((a,b)=>b[1]-a[1])[0],
+        title: "Total Jobs Completed",
+        value: ["", Object.values(data.job_type_counts).reduce((sum, v) => sum + v, 0)],
         format: v => v.toLocaleString()
       },
       {
         title: "Top Revenue/Hour Job Type",
         value: Object.entries(data.avg_revenue_per_hour_by_job_type)
-          .filter(([jt]) => jt.toLowerCase() !== "delivery")
+          .filter(([jt]) => jt.toLowerCase() !== "delivery" && jt.toLowerCase() !== "pickup")
           .sort((a, b) => b[1] - a[1])[0],
         format: v => `$${v.toLocaleString()}/hr`
       }
     ];
 
     kpis.forEach(({ title, value: [label, val], format }) => {
-      const card = document.createElement("div");
-      card.className = "col-md-4 mb-3";
-      card.innerHTML = `
-        <div class="card shadow-sm">
-          <div class="card-body">
-            <h6 class="card-subtitle text-muted">${title}</h6>
-            <h4 class="card-title">${label}</h4>
-            <p class="card-text fw-bold">${format(val)}</p>
+        const card = document.createElement("div");
+        card.className = "col-md-4 mb-3";
+        card.innerHTML = `
+          <div class="card shadow-sm">
+            <div class="card-body">
+              <h6 class="card-subtitle text-muted">${title}</h6>
+              ${label ? `<h4 class="card-title">${label}</h4>\n<p class="card-text fw-bold">${format(val)}</p>` : `<h4 class="card-title">${format(val)}</h4>`}
+            </div>
           </div>
-        </div>
-      `;
-      container.appendChild(card);
+        `;
+        container.appendChild(card);
     });
   }
+
 
   function renderComboChart(ctx, labels, avgRevenue, avgHours) {
     return new Chart(ctx, {
@@ -120,6 +148,13 @@ const PerformanceSummary = (() => {
       options: {
         responsive: true,
         scales: {
+          x: {
+            ticks: {
+              callback: function(value, index) {
+                return formatLabelName(labels[index]);
+              }
+            }
+          },
           y: {
             type: 'linear',
             position: 'left',
@@ -133,46 +168,6 @@ const PerformanceSummary = (() => {
             grid: { drawOnChartArea: false },
             title: { display: true, text: 'Avg On-Site Hours' }
           }
-        }
-      }
-    });
-  }
-
-  function renderBubbleChart(ctx, dataByType) {
-    const entries = Object.entries(dataByType);
-    const bubbles = entries.map(([jt, data]) => ({
-      x: data.avg_revenue,
-      y: data.total_revenue,
-      r: Math.max(8, Math.sqrt(data.count) * 3),
-      label: jt
-    }));
-
-    return new Chart(ctx, {
-      type: 'bubble',
-      data: {
-        datasets: [{
-          label: 'Job Type Efficiency (Bubble size = Job Count)',
-          data: bubbles,
-          backgroundColor: '#76b7b2',
-          parsing: false
-        }]
-      },
-      options: {
-        responsive: true,
-        plugins: {
-          tooltip: {
-            callbacks: {
-              label: ctx => `${ctx.raw.label}: $${ctx.raw.x.toFixed(0)} avg, $${ctx.raw.y.toFixed(0)} total, ${Math.round((ctx.raw.r / 3) ** 2)} jobs`
-            }
-          },
-          title: {
-            display: true,
-            text: 'Each bubble represents a job type. Size = number of jobs. More efficient = top-right.'
-          }
-        },
-        scales: {
-          x: { title: { display: true, text: 'Avg Revenue per Job' }, beginAtZero: true },
-          y: { title: { display: true, text: 'Total Revenue' }, beginAtZero: true }
         }
       }
     });
@@ -199,7 +194,7 @@ const PerformanceSummary = (() => {
     const topRevenue = topJobTypes(data.revenue_by_job_type);
     const topAvgRevenue = topJobTypes(data.avg_revenue_by_job_type);
     const topAvgPerHour = Object.entries(data.avg_revenue_per_hour_by_job_type)
-      .filter(([jt]) => jt !== "delivery") // exclude delivery
+      .filter(([jt]) => jt.toLowerCase() !== "delivery" && jt.toLowerCase() !== "pickup") // exclude delivery
       .sort((a, b) => b[1] - a[1])
       .slice(0, topN)
       .map(([jt]) => jt);
@@ -213,7 +208,7 @@ const PerformanceSummary = (() => {
       topCount,
       topCount.map(jt => data.job_type_counts[jt]),
       'Jobs Completed',
-      '#4e79a7'
+      '#4e79a7',
     );
 
     charts.revenueByJobTypeChart = createBarChart(
@@ -223,7 +218,8 @@ const PerformanceSummary = (() => {
       'Total Revenue ($)',
       '#f28e2b',
       false,
-      getFilteredCounts(topRevenue, data.job_type_counts)
+      getFilteredCounts(topRevenue, data.job_type_counts),
+      true
     );
 
     charts.avgRevenueByJobTypeChart = createBarChart(
@@ -233,7 +229,8 @@ const PerformanceSummary = (() => {
       'Avg Revenue ($)',
       '#e15759',
       false,
-      getFilteredCounts(topAvgRevenue, data.job_type_counts)
+      getFilteredCounts(topAvgRevenue, data.job_type_counts),
+      true
     );
 
     charts.avgRevenuePerHourChart = createBarChart(
@@ -243,7 +240,8 @@ const PerformanceSummary = (() => {
       'Avg Revenue / Hour ($)',
       '#59a14f',
       false,
-      getFilteredCounts(topAvgPerHour, data.job_type_counts)
+      getFilteredCounts(topAvgPerHour, data.job_type_counts),
+      true
     );
   }
 
@@ -295,11 +293,6 @@ const PerformanceSummary = (() => {
             sortedLabels,
             sortedAvgRevenue,
             sortedAvgHours
-          );
-
-          charts.bubble = renderBubbleChart(
-            document.getElementById('bubbleJobEfficiencyChart').getContext('2d'),
-            bubbleData
           );
         });
     });
