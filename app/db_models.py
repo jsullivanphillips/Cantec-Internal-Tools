@@ -1,6 +1,7 @@
 import os
 from datetime import datetime, timezone
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.orm import foreign
 
 db = SQLAlchemy()
 
@@ -141,6 +142,7 @@ class Job(db.Model):
     created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     clock_events = db.relationship("ClockEvent", back_populates="job")
+    invoice_items = db.relationship('InvoiceItem', back_populates='job')
 
     def __repr__(self):
         return f"<Job {self.job_id} - {self.customer_name}>"
@@ -163,20 +165,28 @@ class ClockEvent(db.Model):
 class Deficiency(db.Model):
     __tablename__ = 'deficiency'
 
-    id = db.Column(db.Integer, primary_key=True)
-    deficiency_id = db.Column(db.BIGINT, unique=True, nullable=False)
-    description = db.Column(db.Text)
-    status = db.Column(db.String(100))
-    reported_by = db.Column(db.String(255))
-    service_line = db.Column(db.String(100))
-    job_id = db.Column(db.BIGINT, nullable=False)
-    location_id = db.Column(db.BIGINT, nullable=False)
-    deficiency_created_on = db.Column(db.DateTime)
-    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    orphaned = db.Column(db.Boolean, default=False)
+    id                        = db.Column(db.Integer, primary_key=True)
+    deficiency_id             = db.Column(db.BIGINT, unique=True, nullable=False)
+    description               = db.Column(db.Text)
+    status                    = db.Column(db.String(100))
+    reported_by               = db.Column(db.String(255))
+    service_line              = db.Column(db.String(100))
+    job_id                    = db.Column(db.BIGINT, nullable=False)
+    location_id               = db.Column(db.BIGINT, nullable=False)
+    deficiency_created_on     = db.Column(db.DateTime)
+    orphaned                  = db.Column(db.Boolean, default=False)
+    has_attachment            = db.Column(db.Boolean, nullable=False, default=False)
+    attachment_uploaded_by    = db.Column(db.String(255), nullable=True)   # ← NEW
+    created_at                = db.Column(
+                                  db.DateTime(timezone=True),
+                                  default=lambda: datetime.now(timezone.utc)
+                               )
 
     def __repr__(self):
-        return f"<Deficiency {self.deficiency_id} | Job {self.job_id} | Orphaned: {self.orphaned}>"
+        return (f"<Deficiency {self.deficiency_id} | Job {self.job_id} "
+                f"| Orphaned: {self.orphaned} | Attachment: {self.has_attachment} "
+                f"| Uploaded by: {self.attachment_uploaded_by}>")
+
 
 
 class Location(db.Model):
@@ -209,12 +219,51 @@ class Quote(db.Model):
     owner_id = db.Column(db.BIGINT)
     owner_email = db.Column(db.String(255))
     job_created = db.Column(db.Boolean, default=False)
-    job_id = db.Column(db.BIGINT, default=-1)
+    job_id = db.Column(db.BIGINT, nullable=True)
     linked_deficiency_id = db.Column(db.BIGINT, nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    items = db.relationship('QuoteItem', back_populates='quote')
+    job = db.relationship(
+        "Job",
+        primaryjoin="foreign(Quote.job_id) == Job.job_id",
+        backref="quote",
+        lazy="joined",
+        uselist=False
+    )
 
     def __repr__(self):
         return f"<Quote {self.quote_id} | {self.status} | Job Created: {self.job_created}>"
+
+
+class QuoteItem(db.Model):
+    __tablename__ = 'quote_item'
+
+    id             = db.Column(db.Integer, primary_key=True)
+    quote_id       = db.Column(db.BigInteger, db.ForeignKey('quote.quote_id'), nullable=False)
+    service_trade_id = db.Column(db.String(100), nullable=True)   # original ST line-item ID
+    description    = db.Column(db.String(255))
+    item_type      = db.Column(db.Enum('fa_labour', 'spr_labour', 'part', name='quote_item_type'), nullable=False)
+    quantity       = db.Column(db.Float, default=1.0)
+    unit_price     = db.Column(db.Float, nullable=False)
+    total_price    = db.Column(db.Float, nullable=False)
+
+    quote = db.relationship('Quote', back_populates='items')
+
+class InvoiceItem(db.Model):
+    __tablename__ = 'invoice_item'
+
+    id              = db.Column(db.Integer, primary_key=True)
+    invoice_id      = db.Column(db.BigInteger, nullable=False)  # or FK if you store invoices
+    job_id          = db.Column(db.BigInteger, db.ForeignKey('job.job_id'), nullable=False)
+    service_trade_id = db.Column(db.String(100), nullable=True)
+    description     = db.Column(db.String(255))
+    item_type       = db.Column(db.Enum('fa_labour', 'spr_labour', 'part', name='invoice_item_type'), nullable=False)
+    quantity        = db.Column(db.Float, default=1.0)
+    unit_price      = db.Column(db.Float, nullable=False)
+    total_price     = db.Column(db.Float, nullable=False)
+
+    job = db.relationship('Job', back_populates='invoice_items')
+
 
 
 if __name__ == '__main__':

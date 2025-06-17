@@ -263,72 +263,276 @@ const PerformanceSummary = (() => {
         }
       }
     );
+    // --- Quotes Sent / Accepted / Canceled / Rejected / Draft by User (Grouped Bar + Total Line + % in Tooltip) ---
+    let quoteStats = data.quote_statistics_by_user || [];
 
-    // --- Conversion Rate by Service Line (Sorted Vertical Bars with Inside Labels) ---
-    const filteredSvc = svcData
-      .filter(d => d.quoted_to_complete > 0)
-      .sort((a, b) => {
-        const totalA = a.no_quote + a.quoted_no_job + a.quoted_to_job;
-        const rateA  = totalA ? (a.quoted_to_complete / totalA) * 100 : 0;
-        const totalB = b.no_quote + b.quoted_no_job + b.quoted_to_job;
-        const rateB  = totalB ? (b.quoted_to_complete / totalB) * 100 : 0;
-        return rateB - rateA;
-      });
-
-    const convLabels = filteredSvc.map(d => d.service_line);
-    const convRates  = filteredSvc.map(d => {
-      const total = d.no_quote + d.quoted_no_job + d.quoted_to_job;
-      return total ? (d.quoted_to_complete / total) * 100 : 0;
+    // parse emails "first.last@cantec.ca" → "F Last"
+    const displayNames = quoteStats.map(({ user: email }) => {
+      const [first, last] = email.split('@')[0].split('.');
+      const initial = first.charAt(0).toUpperCase();
+      const lastName = last
+        ? last.charAt(0).toUpperCase() + last.slice(1)
+        : '';
+      return `${initial} ${lastName}`;
     });
 
-    // destroy previous instance
-    charts.serviceLineConversionRateChart?.destroy();
+    const submitted = quoteStats.map(d => d.submitted);
+    const accepted  = quoteStats.map(d => d.accepted);
+    const canceled  = quoteStats.map(d => d.canceled);
+    const rejected  = quoteStats.map(d => d.rejected);
+    const draft     = quoteStats.map(d => d.draft);
 
-    charts.serviceLineConversionRateChart = new Chart(
-      document.getElementById("serviceLineConversionRateChart").getContext("2d"), {
-        type: "bar",
+    // compute total per user
+    const total = quoteStats.map(d =>
+      d.submitted + d.accepted + d.canceled + d.rejected + d.draft
+    );
+
+    // Destroy existing instance if present
+    charts.quoteStatisticsByUserChart?.destroy();
+    charts.quoteStatisticsByUserChart = new Chart(
+      document.getElementById("quoteStatisticsByUserChart").getContext("2d"),
+      {
         data: {
-          labels: convLabels,
-          datasets: [{
-            label: "Conversion Rate (%)",
-            data: convRates,
-            backgroundColor: "#59a14f",
-            borderRadius: 4,
-            datalabels: {
-              color: "white",
-              textStrokeColor: "black",
-              textStrokeWidth: 2,
-              anchor: "center",
-              align: "center",
-              formatter: v => v.toFixed(1) + "%"
+          labels: displayNames,
+          datasets: [
+            { label: "Submitted", data: submitted, type: 'bar', backgroundColor: "#4e79a7" },
+            { label: "Accepted",  data: accepted,  type: 'bar', backgroundColor: "#59a14f" },
+            { label: "Canceled",  data: canceled,  type: 'bar', backgroundColor: "#e15759" },
+            { label: "Rejected",  data: rejected,  type: 'bar', backgroundColor: "#f28e2b" },
+            { label: "Draft",     data: draft,     type: 'bar', backgroundColor: "#bab0ac" },
+            {
+              label: "Total",
+              data: total,
+              type: 'line',
+              yAxisID: 'y1',
+              borderWidth: 2,
+              fill: false,
+              pointRadius: 4,
+              borderColor: '#c6d6ec',
+              backgroundColor: '#c6d6ec'
             }
-          }]
+          ]
         },
         options: {
           responsive: true,
+          interaction: { mode: 'index', intersect: false },
           plugins: {
-            legend: { display: false },
+            legend: { position: "top" },
             tooltip: {
+              mode: 'index',
+              intersect: false,
               callbacks: {
-                label: ctx => `Conversion: ${ctx.raw.toFixed(1)}%`
+                label: function(context) {
+                  const label = context.dataset.label || '';
+                  const value = context.parsed.y;
+                  const userTotal = total[context.dataIndex] || 0;
+                  const pct = userTotal
+                    ? Math.round((value / userTotal) * 100)
+                    : 0;
+                  return `${label}: ${value} (${pct}%)`;
+                }
               }
             }
           },
           scales: {
-            x: {
-              title: { display: true, text: "Service Line" }
-            },
+            x: { stacked: false },
             y: {
               beginAtZero: true,
-              max: 100,
-              title: { display: true, text: "Conversion Rate (%)" },
-              ticks: { callback: val => val + "%" }
+              title: { display: true, text: "Number of Quotes" }
+            },
+            y1: {
+              position: 'right',
+              beginAtZero: true,
+              grid: { drawOnChartArea: false },
+              title: { display: true, text: "Total Quotes" }
+            }
+          }
+        }
+      }
+    );
+
+    
+    // --- Quoting Accuracy by User (Grouped Bar Chart) ---
+    const quoteAccuracy = data.quote_accuracy_by_user || [];
+
+    const accNames = quoteAccuracy.map(({ user }) => {
+      const [first, last] = user.split('@')[0].split('.');
+      const initial = first.charAt(0).toUpperCase();
+      const lastName = last
+        ? last.charAt(0).toUpperCase() + last.slice(1)
+        : '';
+      return `${initial} ${lastName}`;
+    });
+
+    const laborAcc = quoteAccuracy.map(d =>
+      d.labor_accuracy != null ? +(d.labor_accuracy * 100).toFixed(1) : null
+    );
+    const partsAcc = quoteAccuracy.map(d =>
+      d.parts_accuracy != null ? +(d.parts_accuracy * 100).toFixed(1) : null
+    );
+
+    charts.quoteAccuracyByUser?.destroy();
+    charts.quoteAccuracyByUser = new Chart(
+      document.getElementById("quoteAccuracyByUser").getContext("2d"),
+      {
+        type: "bar",
+        data: {
+          labels: accNames,
+          datasets: [
+            {
+              label: "Labor Accuracy",
+              data: laborAcc,
+              backgroundColor: "#4e79a7"
+            },
+            {
+              label: "Parts Accuracy",
+              data: partsAcc,
+              backgroundColor: "#f28e2b"
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { position: "top" },
+            tooltip: {
+              callbacks: {
+                label: function (ctx) {
+                  const value = ctx.raw;
+                  return `${ctx.dataset.label}: ${value}%`;
+                }
+              }
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              max: 200,
+              title: { display: true, text: "Accuracy (%)" }
+            }
+          },
+          animation: false, // Important to make afterDraw consistent
+          plugins: {
+            customLine: {
+              lineAt: 100
             }
           }
         },
-        plugins: [ChartDataLabels]
+        plugins: [
+          {
+            id: 'customLine',
+            beforeDraw(chart) {
+              const yValue = chart.options.plugins.customLine.lineAt;
+              const yScale = chart.scales.y;
+              const ctx = chart.ctx;
+              const y = yScale.getPixelForValue(yValue);
+
+              ctx.save();
+              ctx.beginPath();
+              ctx.moveTo(chart.chartArea.left, y);
+              ctx.lineTo(chart.chartArea.right, y);
+              ctx.lineWidth = 1;
+              ctx.strokeStyle = "green";
+              ctx.stroke();
+
+              // Optional label
+              ctx.fillStyle = "green";
+              ctx.font = "12px sans-serif";
+              ctx.fillText(`${yValue}%`, chart.chartArea.left + 4, y - 4);
+              ctx.restore();
+            }
+          }
+        ]
       }
     );
+
+
+    // --- Quoting Cost Comparison by User (Combined Bar + Line) ---
+    const quoteCostData = data.quote_cost_comparison_by_user || [];
+
+    const costLabels = quoteCostData.map(({ user }) => {
+      const [first, last] = user.split('@')[0].split('.');
+      const initial = first.charAt(0).toUpperCase();
+      const lastName = last ? last.charAt(0).toUpperCase() + last.slice(1) : '';
+      return `${initial} ${lastName}`;
+    });
+
+    const avgQuoted = quoteCostData.map(d => d.avg_quoted);
+    const avgActual = quoteCostData.map(d => d.avg_actual);
+    const jobCounts = quoteCostData.map(d => d.job_count || 0);
+    const margin = avgQuoted.map((q, i) => +(q - avgActual[i]).toFixed(2));
+
+    charts.quoteCostComparasinChart?.destroy();
+    charts.quoteCostComparasinChart = new Chart(
+      document.getElementById("quoteCostComparasinChart").getContext("2d"),
+      {
+        type: "bar",
+        data: {
+          labels: costLabels,
+          datasets: [
+            {
+              label: "Quote Margin (Quoted - Actual)",
+              type: "bar",
+              data: margin,
+              backgroundColor: margin.map(v => v >= 0 ? "#59a14f" : "#e15759"),
+              yAxisID: "y",
+              order: 1
+            },
+            {
+              label: "Avg Quoted Cost",
+              type: "line",
+              data: avgQuoted,
+              borderColor: "#4e79a7",
+              backgroundColor: "#4e79a7",
+              borderWidth: 2,
+              pointRadius: 4,
+              tension: 0.3,
+              yAxisID: "y",
+              order: 2
+            },
+            {
+              label: "Avg Actual Cost",
+              type: "line",
+              data: avgActual,
+              borderColor: "#f28e2b",
+              backgroundColor: "#f28e2b",
+              borderWidth: 2,
+              pointRadius: 4,
+              tension: 0.3,
+              yAxisID: "y",
+              order: 3
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          interaction: { mode: "index", intersect: false },
+          plugins: {
+            legend: { position: "top" },
+            tooltip: {
+              callbacks: {
+                title: ctx => {
+                  const index = ctx[0].dataIndex;
+                  return `${ctx[0].label} (Based on ${jobCounts[index]} job${jobCounts[index] === 1 ? '' : 's'})`;
+                },
+                label: ctx => {
+                  const label = ctx.dataset.label || '';
+                  const value = ctx.raw;
+                  return `${label}: $${value.toFixed(2)}`;
+                }
+              }
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              title: { display: true, text: "Cost ($)" }
+            }
+          }
+        }
+      }
+    );
+
 
   }
 
@@ -558,45 +762,320 @@ const PerformanceSummary = (() => {
         }
       );
 
-      // ===== Jobs Completed Chart =====
-      const sortedByJobs = [...techs].sort((a, b) => b.jobs - a.jobs);
-      const jobsSelected = topN === "all" ? sortedByJobs : sortedByJobs.slice(0, parseInt(topN));
-      const jobsLabels = jobsSelected.map(t => t.tech);
-      const jobsValues = jobsSelected.map(t => t.jobs);
-
+      // ===== Jobs Completed by Tech (Grouped Bar + Total Line) =====
       charts.jobsCompleted?.destroy();
+
+      // 1️⃣ Grab the payload
+      const jobsPayload   = data.technician_metrics.jobs_completed_by_tech_job_type;
+      const techsJobs     = jobsPayload.technicians;   // [ "Alice", "Bob", … ]
+      const jobTypes      = jobsPayload.job_types;     // [ "Repair", "Install", … ]
+      const jobsEntries   = jobsPayload.entries;       // [ { technician, job_type, count }, … ]
+
+      // 2️⃣ Pivot into lookupJobs[tech][jobType] = count
+      const lookupJobs = {};
+      techsJobs.forEach(t => { lookupJobs[t] = {}; });
+      jobsEntries.forEach(({ technician, job_type, count }) => {
+        lookupJobs[technician][job_type] = count;
+      });
+
+      // 3️⃣ Compute total jobs per tech and sort descending
+      const totalsJobs = techsJobs
+        .map(t => ({
+          tech:  t,
+          total: jobTypes.reduce((sum, jt) => sum + (lookupJobs[t][jt] || 0), 0)
+        }))
+        .sort((a, b) => b.total - a.total);
+
+      // 4️⃣ Apply Top-N filter to technicians
+      const N_jobs         = topN === "all" ? totalsJobs.length : parseInt(topN, 10);
+      const selectedTechsJ = totalsJobs.slice(0, N_jobs).map(d => d.tech);
+
+      // 5️⃣ Globally total up each jobType and pick top 8 + Other
+      const jobTypeTotals = jobTypes.map(jt => ({
+        jobType: jt,
+        total: techsJobs.reduce((sum, tech) => sum + (lookupJobs[tech][jt] || 0), 0)
+      }));
+      jobTypeTotals.sort((a, b) => b.total - a.total);
+      const topJobTypes   = jobTypeTotals.slice(0, 8).map(x => x.jobType);
+      const otherJobTypes = jobTypes.filter(jt => !topJobTypes.includes(jt));
+      const finalJobTypes = [...topJobTypes, 'Other'];
+
+      // 6️⃣ Build one bar dataset per finalJobType (no stacking)
+      const paletteJobs = [
+        '#c6d6ec','#8eb0d6','#4e79a7','#2d527d',
+        '#ffe0b3','#f7b366','#f28e2b','#b6651a',
+        '#678dbd','#d1873d'
+      ];
+      const jobDatasets = finalJobTypes.map((jt, i) => {
+        const data = selectedTechsJ.map(tech => {
+          if (jt === 'Other') {
+            return otherJobTypes.reduce((sum, other) => sum + (lookupJobs[tech][other] || 0), 0);
+          }
+          return lookupJobs[tech][jt] || 0;
+        });
+        return {
+          label: formatLabelName(jt),
+          data,
+          type: 'bar',
+          backgroundColor: paletteJobs[i % paletteJobs.length]
+        };
+      });
+
+      // 7️⃣ Compute total jobs per selected tech for the overlay line
+      const jobTotalsByTech = selectedTechsJ.map((_, idx) =>
+        jobDatasets.reduce((sum, ds) => sum + ds.data[idx], 0)
+      );
+      const totalJobsDataset = {
+        label: 'Total Jobs',
+        data: jobTotalsByTech,
+        type: 'line',
+        yAxisID: 'y1',
+        borderColor: '#add8e6',
+        backgroundColor: '#add8e6',
+        borderWidth: 2,
+        fill: false,
+        pointRadius: 4
+      };
+
+      // 8️⃣ Render the grouped-bar + line chart
       charts.jobsCompleted = new Chart(
         document.getElementById('jobsCompletedByTechChart').getContext('2d'),
         {
           type: 'bar',
           data: {
-            labels: jobsLabels,
-            datasets: [{
-              label: "Jobs Completed",
-              data: jobsValues,
-              backgroundColor: '#f28e2b',
-              borderRadius: 5
-            }]
+            labels: selectedTechsJ,
+            datasets: [
+              ...jobDatasets,
+              totalJobsDataset
+            ]
           },
           options: {
             responsive: true,
+            interaction: { mode: 'index', intersect: false },
             plugins: {
-              legend: { display: false },
+              legend: { position: 'top' },
               tooltip: {
+                mode: 'index',
+                intersect: false,
                 callbacks: {
-                  label: ctx => `${ctx.raw} jobs`
+                  title: items => {
+                    const tech = items[0].label;
+                    const total = jobTotalsByTech[items[0].dataIndex];
+                    return `${tech} (Total Jobs: ${total})`;
+                  },
+                  label: it => `${it.dataset.label}: ${it.raw}`
                 }
               }
             },
             scales: {
+              x: { stacked: false, title: { display: true, text: 'Technician' } },
               y: {
                 beginAtZero: true,
                 title: { display: true, text: 'Jobs Completed' }
+              },
+              y1: {
+                position: 'right',
+                beginAtZero: true,
+                grid: { drawOnChartArea: false },
+                title: { display: true, text: 'Total Jobs' }
               }
             }
           }
         }
       );
+
+
+
+      // ===== Deficiencies Created by Tech (Grouped Bar + Total Line) =====
+      charts.deficienciesByTechSL?.destroy();
+
+      // 1️⃣ Grab the payload
+      const defsPayload   = data.deficiencies_by_tech_service_line;
+      const techsDefs     = defsPayload.technicians;       // [ "Alice", … ]
+      const rawLines      = defsPayload.service_lines;     // [ "Electrical", … ]
+      const defsEntries   = defsPayload.entries;           // [ { technician, service_line, count }, … ]
+
+      // 2️⃣ Pivot into lookupDefs[tech][line] = count
+      const lookupDefs = {};
+      techsDefs.forEach(t => { lookupDefs[t] = {}; });
+      defsEntries.forEach(({ technician, service_line, count }) => {
+        lookupDefs[technician][service_line] = count;
+      });
+
+      // 3️⃣ Compute and sort global line totals, pick top-6
+      const lineTotals = rawLines
+        .map(sl => ({
+          line: sl,
+          total: techsDefs.reduce((sum, t) => sum + (lookupDefs[t][sl] || 0), 0)
+        }))
+        .sort((a, b) => b.total - a.total);
+      const topLines = lineTotals.slice(0, 6).map(x => x.line);
+
+      // 4️⃣ Build “Other” set
+      const otherLines = rawLines.filter(sl => !topLines.includes(sl));
+
+      // 5️⃣ Final lines = topLines + Other
+      const finalLines = [...topLines, 'Other'];
+
+      // 6️⃣ Build datasets for deficiencies (for all techs)
+      const paletteDefs = [
+        '#c6d6ec','#8eb0d6','#4e79a7','#2d527d',
+        '#ffe0b3','#f7b366','#f28e2b','#b6651a',
+        '#678dbd','#d1873d'
+      ];
+      const defDatasets = finalLines.map((sl, idx) => {
+        const data = techsDefs.map(tech => {
+          if (sl === 'Other') {
+            return otherLines.reduce(
+              (sum, ol) => sum + (lookupDefs[tech][ol] || 0),
+              0
+            );
+          }
+          return lookupDefs[tech][sl] || 0;
+        });
+        return {
+          label: sl,
+          data,
+          backgroundColor: paletteDefs[idx % paletteDefs.length]
+        };
+      });
+
+      // 7️⃣ Compute total defs per tech and apply Top-N
+      const totalsDefs = techsDefs
+        .map(t => ({
+          tech:  t,
+          total: finalLines.reduce((sum, sl) => {
+            const ds = defDatasets[finalLines.indexOf(sl)];
+            return sum + ds.data[techsDefs.indexOf(t)];
+          }, 0)
+        }))
+        .sort((a, b) => b.total - a.total);
+      const N_defs = topN === "all" ? totalsDefs.length : parseInt(topN, 10);
+      const selectedTechsD = totalsDefs.slice(0, N_defs).map(d => d.tech);
+
+      // 8️⃣ Build bar datasets for selected techs
+      const barDatasets = defDatasets.map(ds => ({
+        label: ds.label,
+        data: selectedTechsD.map(tech =>
+          ds.data[techsDefs.indexOf(tech)]
+        ),
+        type: 'bar',
+        backgroundColor: ds.backgroundColor
+      }));
+
+      // 9️⃣ Line dataset for total deficiencies
+      const defTotalsByTech = selectedTechsD.map((tech, i) =>
+        barDatasets.reduce((sum, ds) => sum + ds.data[i], 0)
+      );
+      const totalDefsDataset = {
+        label: 'Total Defs',
+        data: defTotalsByTech,
+        type: 'line',
+        yAxisID: 'y1',
+        borderColor: '#add8e6',
+        backgroundColor: '#add8e6',
+        borderWidth: 2,
+        fill: false,
+        pointRadius: 4
+      };
+
+      // 10️⃣ Render the grouped-bar + line chart
+      charts.deficienciesByTechSL = new Chart(
+        document.getElementById('deficienciesCreatedByTechChart').getContext('2d'),
+        {
+          data: {
+            labels: selectedTechsD,
+            datasets: [
+              ...barDatasets,
+              totalDefsDataset
+            ]
+          },
+          options: {
+            responsive: true,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+              legend: { position: 'top' },
+              tooltip: {
+                mode: 'index',
+                intersect: false,
+                callbacks: {
+                  title: items => {
+                    const tech = items[0].label;
+                    const total = defTotalsByTech[items[0].dataIndex];
+                    return `${tech} (Total Defs: ${total})`;
+                  },
+                  label: it => `${it.dataset.label}: ${it.raw}`
+                }
+              }
+            },
+            scales: {
+              x: { stacked: false, title: { display: true, text: 'Technician' } },
+              y: {
+                beginAtZero: true,
+                title: { display: true, text: 'Deficiencies Created' }
+              },
+              y1: {
+                position: 'right',
+                beginAtZero: true,
+                grid: { drawOnChartArea: false },
+                title: { display: true, text: 'Total Deficiencies' }
+              }
+            }
+          }
+        }
+      );
+
+
+
+      // ===== Attachments Added to Deficiencies by Tech =====
+      const attachments = data.attachments_by_tech || [];
+      // sort descending by count
+      const sortedAtt = [...attachments].sort((a, b) => b.count - a.count);
+      // apply Top-N
+      const N_att = topN === "all" ? sortedAtt.length : parseInt(topN, 10);
+      const topAtt = sortedAtt.slice(0, N_att);
+
+      const attLabels = topAtt.map(d => d.technician);
+      const attValues = topAtt.map(d => d.count);
+
+      charts.attachmentsAdded?.destroy();
+      charts.attachmentsAdded = new Chart(
+        document.getElementById('attachmentsAddedToDeficienciesByTechChart').getContext('2d'),
+        {
+          type: 'bar',
+          data: {
+            labels: attLabels,
+            datasets: [{
+              label: 'Attachments Added',
+              data: attValues,
+              backgroundColor: '#8eb0d6',
+              borderRadius: 5
+            }]
+          },
+          options: {
+            indexAxis: 'y',
+            responsive: true,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  label: ctx => `${ctx.raw} attachments`
+                }
+              }
+            },
+            scales: {
+              x: {
+                beginAtZero: true,
+                title: { display: true, text: 'Count of Attachments' }
+              },
+              y: {
+                title: { display: true, text: 'Technician' }
+              }
+            }
+          }
+        }
+      );
+
     }
 
 
@@ -709,7 +1188,7 @@ const PerformanceSummary = (() => {
 
   function init() {
     document.addEventListener("DOMContentLoaded", () => {
-
+     
       const topNControl = document.getElementById('topNFilter');
       if (topNControl) {
         topNControl.addEventListener('change', () => {
@@ -718,7 +1197,7 @@ const PerformanceSummary = (() => {
             .then(data => renderJobAndRevenue(data));
         });
       }
-
+      
       fetch("/api/performance_summary_data")
         .then(res => res.json())
         .then(data => {
@@ -753,6 +1232,7 @@ const PerformanceSummary = (() => {
           );
         });
     });
+    
   }
 
   return { init };

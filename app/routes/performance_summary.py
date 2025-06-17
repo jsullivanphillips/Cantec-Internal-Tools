@@ -1,11 +1,19 @@
 from flask import Blueprint, render_template, session, jsonify
-from app.db_models import db, Job, ClockEvent, Deficiency, Location, Quote
+from app.db_models import db, Job, ClockEvent, Deficiency, Location, Quote, QuoteItem, InvoiceItem
 from collections import defaultdict
 from tqdm import tqdm
 import requests
 import numpy as np
+import json
 from datetime import datetime, timedelta, timezone
-from sqlalchemy import func
+from sqlalchemy import func, distinct, case
+from sqlalchemy.orm import joinedload
+
+HOURLY_RATE = {
+    'fa':        125.0,
+    'sprinkler': 145.0,
+    'backflow':   75.0
+}
 
 performance_summary_bp = Blueprint('performance_summary', __name__, template_folder='templates')
 api_session = requests.Session()
@@ -37,6 +45,9 @@ def performance_summary_data():
     weekly_revenue_over_time = get_weekly_revenue_over_time()
     location_service_type_counts = get_top_locations_by_service_type()
     top_customer_revenue = get_top_customers_by_revenue()
+    deficiencies_by_tech_sl = get_deficiencies_created_by_tech_service_line()
+    attachments_by_tech = get_attachments_by_technician()
+    quote_statistics_by_user = get_quote_statistics_by_user()
 
     # determine your fiscal window (whatever you use for revenue)
     window_start = datetime(2024, 5, 1, tzinfo=timezone.utc)
@@ -60,8 +71,280 @@ def performance_summary_data():
         "location_service_type_counts": location_service_type_counts,
         "top_customer_revenue": top_customer_revenue,
         "deficiencies_by_service_line": get_deficiencies_by_service_line(),
+        "deficiencies_by_tech_service_line": deficiencies_by_tech_sl,
+        "attachments_by_tech": attachments_by_tech,
+        "quote_statistics_by_user": quote_statistics_by_user,
+        "quote_cost_comparison_by_user": get_quote_cost_comparison_by_user(),
+        "quote_accuracy_by_user": get_quote_efficiency_by_user()
     })
 
+
+HOURLY_RATE = {
+    'fa':        125.0,
+    'sprinkler': 145.0,
+    'backflow':   75.0
+}
+
+def get_quote_cost_comparison_by_user():
+    """
+    Returns average quoted vs actual cost per user, across quotes that created jobs.
+    Actual cost = on-site labor cost (based on hours * rate) + invoice parts.
+    Includes the number of jobs each user's stats are derived from.
+    """
+    EXCLUDED_USERS = {"lisa.smirfitt@cantec.ca", "j.zwicker@cantec.ca"}
+    
+    quotes = (
+        db.session.query(Quote)
+        .filter(Quote.job_created == True)
+        .options(
+            joinedload(Quote.items),
+            joinedload(Quote.job).joinedload(Job.clock_events),
+            joinedload(Quote.job).joinedload(Job.invoice_items)
+        )
+        .all()
+    )
+
+    HOURLY_RATE = {
+        'fa':        125.0,
+        'sprinkler': 145.0,
+        'backflow':   75.0
+    }
+
+    from collections import defaultdict
+
+    user_sums = defaultdict(lambda: {
+        "quoted_total": 0.0,
+        "actual_total": 0.0,
+        "count": 0
+    })
+
+    for q in quotes:
+        user = q.owner_email
+        if user in EXCLUDED_USERS:
+            continue
+        job = q.job
+        if not job:
+            continue
+
+        quoted_labor = sum(i.total_price for i in q.items if i.item_type in ('fa_labour', 'spr_labour'))
+        quoted_parts = sum(i.total_price for i in q.items if i.item_type == 'part')
+        quoted_total = quoted_labor + quoted_parts
+
+        hours = sum(evt.hours for evt in job.clock_events or [])
+        spr_quoted = any(i.item_type == 'spr_labour' for i in q.items)
+        rate = HOURLY_RATE['sprinkler'] if spr_quoted else HOURLY_RATE['fa']
+        actual_labor = hours * rate
+        actual_parts = sum(i.total_price for i in job.invoice_items or [] if i.item_type == 'part')
+        actual_total = actual_labor + actual_parts
+
+        user_sums[user]["quoted_total"] += quoted_total
+        user_sums[user]["actual_total"] += actual_total
+        user_sums[user]["count"] += 1
+
+    results = []
+    for user, vals in user_sums.items():
+        count = vals["count"]
+        if count == 0:
+            continue
+        results.append({
+            "user": user,
+            "avg_quoted": round(vals["quoted_total"] / count, 2),
+            "avg_actual": round(vals["actual_total"] / count, 2),
+            "job_count": count
+        })
+
+    return results
+
+
+
+def get_quote_efficiency_by_user():
+    """
+    Returns per-user quote efficiency:
+      - labor_accuracy = actual labor cost / quoted labor cost
+      - parts_accuracy = actual parts cost / quoted parts cost
+    Uses on-site hours × weighted labor rate based on quote, and invoice items for parts.
+    """
+
+    EXCLUDED_USERS = {"lisa.smirfitt@cantec.ca", "j.zwicker@cantec.ca"}
+    quotes = (
+        db.session.query(Quote)
+        .filter(Quote.job_created == True)
+        .options(
+            joinedload(Quote.items),
+            joinedload(Quote.job).joinedload(Job.clock_events),
+            joinedload(Quote.job).joinedload(Job.invoice_items)
+        )
+        .all()
+    )
+
+    user_totals = defaultdict(lambda: {
+        'quoted_labor':  0.0,
+        'quoted_parts':  0.0,
+        'actual_labor':  0.0,
+        'actual_parts':  0.0
+    })
+
+    for q in quotes:
+        user = q.owner_email
+        if user in EXCLUDED_USERS:
+            continue
+        job = q.job
+        if not job:
+            continue
+
+        totals = user_totals[user]
+
+        # === Quoted costs ===
+        fa_quoted = sum(i.total_price for i in q.items if i.item_type == 'fa_labour')
+        spr_quoted = sum(i.total_price for i in q.items if i.item_type == 'spr_labour')
+        parts_quoted = sum(i.total_price for i in q.items if i.item_type == 'part')
+
+        totals['quoted_labor'] += fa_quoted + spr_quoted
+        totals['quoted_parts'] += parts_quoted
+
+        # === Actual labor ===
+        hours = sum(evt.hours for evt in job.clock_events or [])
+        if hours > 0:
+            total_quoted_labor = fa_quoted + spr_quoted
+            if total_quoted_labor > 0:
+                fa_ratio = fa_quoted / total_quoted_labor
+                spr_ratio = spr_quoted / total_quoted_labor
+                labor_cost = (
+                    hours * fa_ratio * HOURLY_RATE['fa'] +
+                    hours * spr_ratio * HOURLY_RATE['sprinkler']
+                )
+            else:
+                # fallback: assume FA rate
+                labor_cost = hours * HOURLY_RATE['fa']
+
+            totals['actual_labor'] += labor_cost
+
+        # === Actual parts from invoice ===
+        actual_parts = sum(i.total_price for i in job.invoice_items or [] if i.item_type == 'part')
+        totals['actual_parts'] += actual_parts
+
+    # Build response
+    results = []
+    for user, t in user_totals.items():
+        ql, qp = t['quoted_labor'], t['quoted_parts']
+        al, ap = t['actual_labor'], t['actual_parts']
+
+        labor_accuracy = (al / ql) if ql else None
+        parts_accuracy = (ap / qp) if qp else None
+
+        results.append({
+            "user": user,
+            "labor_accuracy": round(labor_accuracy, 2) if labor_accuracy is not None else None,
+            "parts_accuracy": round(parts_accuracy, 2) if parts_accuracy is not None else None
+        })
+
+    return results
+
+
+def get_quote_statistics_by_user():
+    """
+    Returns a list of dicts, one per owner_email, with counts of:
+      - submitted
+      - accepted
+      - canceled
+      - rejected
+      - draft
+    """
+    stats = (
+        db.session.query(
+            Quote.owner_email.label("user"),
+            func.sum(case((Quote.status == "submitted", 1), else_=0)).label("submitted"),
+            func.sum(case((Quote.status == "accepted", 1), else_=0)).label("accepted"),
+            func.sum(case((Quote.status == "canceled", 1), else_=0)).label("canceled"),
+            func.sum(case((Quote.status == "rejected", 1), else_=0)).label("rejected"),
+            func.sum(case((Quote.status == "draft",    1), else_=0)).label("draft"),
+        )
+        .group_by(Quote.owner_email)
+        # optional: order by most submitted first
+        .order_by(func.sum(case((Quote.status == "submitted", 1), else_=0)).desc())
+        .all()
+    )
+
+    # Convert to plain Python dicts
+    return [
+        {
+            "user":      row.user,
+            "submitted": int(row.submitted),
+            "accepted":  int(row.accepted),
+            "canceled":  int(row.canceled),
+            "rejected":  int(row.rejected),
+            "draft":     int(row.draft),
+        }
+        for row in stats
+    ]
+
+def get_deficiencies_created_by_tech_service_line():
+    """
+    Returns a dict with:
+      - technicians: sorted list of tech names
+      - service_lines: sorted list of service line names
+      - entries: list of { technician, service_line, count }
+    """
+    rows = (
+        db.session
+        .query(
+            Deficiency.reported_by,
+            Deficiency.service_line,
+            func.count(Deficiency.id)
+        )
+        .group_by(Deficiency.reported_by, Deficiency.service_line)
+        .all()
+    )
+
+    techs = set()
+    service_lines = set()
+    entries = []
+
+    for tech, sl, cnt in rows:
+        t = (tech or "Unknown")
+        if t.lower() == "shop tech":
+            continue
+        s = (sl or "Unknown")
+        techs.add(t)
+        service_lines.add(s)
+        entries.append({
+            "technician": t,
+            "service_line": s,
+            "count": cnt
+        })
+
+    return {
+        "technicians": sorted(techs),
+        "service_lines": sorted(service_lines),
+        "entries": entries
+    }
+
+
+def get_attachments_by_technician():
+    """
+    Returns a list of dicts:
+      [
+        { "technician": "Alice Smith", "count": 12 },
+        { "technician": "Bob Jones",   "count":  8 },
+        ...
+      ]
+    Only counts those deficiencies with has_attachment=True.
+    """
+    rows = (
+        db.session.query(
+            Deficiency.attachment_uploaded_by,
+            func.count(Deficiency.id)
+        )
+        .filter(Deficiency.has_attachment.is_(True))
+        .group_by(Deficiency.attachment_uploaded_by)
+        .all()
+    )
+
+    # turn None into "Unknown" (or you can skip if you know it's never null)
+    return [
+        {"technician": uploader or "Unknown", "count": cnt}
+        for uploader, cnt in rows
+    ]
 
 def get_top_customers_by_revenue():
     results = (
@@ -176,49 +459,85 @@ def get_weekly_jobs_over_time():
 
 
 def get_technician_metrics():
-    # Revenue per on-site hour
-    revenue_by_tech = {}
-    hours_by_tech = {}
-
-    tech_jobs = (
-        db.session.query(Job.job_id, Job.revenue, ClockEvent.tech_name, ClockEvent.hours)
+    # types to exclude
+    EXCLUDE = {"administrative", "delivery", "pickup", "consultation"}
+    
+    # --- Base filters: only real techs, only completed jobs ---
+    base_q = (
+        db.session.query(Job.job_id, Job.revenue, ClockEvent.tech_name, ClockEvent.hours, Job.job_type)
         .join(ClockEvent, Job.job_id == ClockEvent.job_id)
         .filter(
             Job.completed_on.isnot(None),
-            ClockEvent.tech_name != "Shop Tech"
+            ClockEvent.tech_name != "Shop Tech",
+            ~func.lower(Job.job_type).in_(EXCLUDE)
         )
-        .all()
     )
 
+    # 1️⃣ Gather raw clock+job data for revenue & hours
+    revenue_by_tech = {}
+    hours_by_tech   = {}
+    jobs_set        = {}
 
-    jobs_completed_by_tech = {}
-
-    for job_id, revenue, tech, hours in tech_jobs:
+    for job_id, revenue, tech, hours, job_type in base_q.all():
         tech = tech or "Unknown"
-        revenue = revenue or 0
-        hours = hours or 0
+        jobs_set.setdefault(tech, set()).add(job_id)
+        revenue_by_tech[tech] = revenue_by_tech.get(tech, 0) + (revenue or 0)
+        hours_by_tech[tech]   = hours_by_tech.get(tech, 0)   + (hours or 0)
 
-        revenue_by_tech[tech] = revenue_by_tech.get(tech, 0) + revenue
-        hours_by_tech[tech] = hours_by_tech.get(tech, 0) + hours
+    jobs_completed_by_tech = { tech: len(jobs) for tech, jobs in jobs_set.items() }
 
-        # Count jobs (once per job per tech)
-        jobs_completed_by_tech.setdefault(tech, set()).add(job_id)
-
-    # Jobs completed by technician (as integer count)
-    jobs_completed_by_tech = {tech: len(job_ids) for tech, job_ids in jobs_completed_by_tech.items()}
-
-    # Revenue per hour
     revenue_per_hour = {
         tech: round(revenue_by_tech[tech] / hours_by_tech[tech], 2)
-        if hours_by_tech[tech] else 0
+              if hours_by_tech[tech] else 0.0
         for tech in revenue_by_tech
     }
 
+    # 2️⃣ Now get the breakdown: jobs completed per job type per tech,
+    #    excluding the same four job types.
+    raw_counts = (
+        db.session.query(
+            ClockEvent.tech_name,
+            Job.job_type,
+            func.count(distinct(Job.job_id))
+        )
+        .join(Job, Job.job_id == ClockEvent.job_id)
+        .filter(
+            Job.completed_on.isnot(None),
+            ClockEvent.tech_name != "Shop Tech",
+            ~func.lower(Job.job_type).in_(EXCLUDE)
+        )
+        .group_by(ClockEvent.tech_name, Job.job_type)
+        .all()
+    )
+
+    techs     = set()
+    job_types = set()
+    entries   = []
+
+    for tech, jt, cnt in raw_counts:
+        tech = tech or "Unknown"
+        jt   = jt   or "Unknown"
+        techs.add(tech)
+        job_types.add(jt)
+        entries.append({
+            "technician": tech,
+            "job_type":   jt,
+            "count":      cnt
+        })
+
+    technicians = sorted(techs)
+    job_types   = sorted(job_types)
 
     return {
         "revenue_per_hour": revenue_per_hour,
         "jobs_completed_by_tech": jobs_completed_by_tech,
+        "jobs_completed_by_tech_job_type": {
+            "technicians": technicians,
+            "job_types":   job_types,
+            "entries":     entries
+        }
     }
+    
 
 
 
@@ -733,6 +1052,23 @@ def update_deficiencies():
                 if not deficiency:
                     deficiency = Deficiency(deficiency_id=d["id"])
 
+                has_attachment = False
+                attachment_uploaded_by = None
+                attachment_endpoint = f"{SERVICE_TRADE_API_BASE}/attachment"
+                attachment_params = {
+                    "entityId": d["id"],
+                    "entityType": 10     # 10 is deficiency
+                }
+                response = call_service_trade_api(attachment_endpoint, attachment_params)
+                if response:
+                    data = response.json().get("data")
+                    attachments = data.get("attachments")
+                    if len(attachments) > 0:
+                        attachment_uploaded_by = attachments[0]["creator"]["name"]
+                        has_attachment = True
+
+                deficiency.attachment_uploaded_by = attachment_uploaded_by
+                deficiency.has_attachment = has_attachment
                 deficiency.description = d["description"]
                 deficiency.status = d["status"]
                 deficiency.reported_by = reporter["name"] if reporter else "Unknown"
@@ -750,6 +1086,50 @@ def update_deficiencies():
 
     db.session.commit()
     tqdm.write("✅ All deficiencies processed and saved.")
+
+
+def update_deficiencies_attachments():
+    authenticate()
+
+    # grab every deficiency in the DB
+    all_defs = Deficiency.query.all()
+    tqdm.write(f"Updating attachment info on {len(all_defs)} deficiencies…")
+
+    with tqdm(total=len(all_defs), desc="Updating Deficiencies") as pbar:
+        for deficiency in all_defs:
+            try:
+                # hit the Service Trade API for attachments
+                attachment_endpoint = f"{SERVICE_TRADE_API_BASE}/attachment"
+                attachment_params = {
+                    "entityId":   deficiency.deficiency_id,
+                    "entityType": 10  # 10 = deficiency
+                }
+                response = call_service_trade_api(attachment_endpoint, attachment_params)
+
+                has_att = False
+                uploaded_by = None
+
+                if response:
+                    data = response.json().get("data", {})
+                    attachments = data.get("attachments", [])
+                    if attachments:
+                        has_att = True
+                        uploaded_by = attachments[0].get("creator", {}).get("name")
+                        tqdm.write(f"Attachment on deficiency {deficiency.deficiency_id} uploaded by {uploaded_by}")
+
+                # set fields on the existing object
+                deficiency.has_attachment         = has_att
+                deficiency.attachment_uploaded_by = uploaded_by
+
+                db.session.add(deficiency)
+
+            except Exception as e:
+                tqdm.write(f"[WARNING] Failed updating {deficiency.deficiency_id}: {e!r}")
+
+            pbar.update(1)
+
+    db.session.commit()
+    tqdm.write("✅ All deficiencies’ attachment info updated.")
 
 def get_locations_with_params(params, desc="Fetching locations"):
     """
@@ -935,7 +1315,233 @@ def update_quotes():
     tqdm.write("✅ All quotes processed and saved.")
 
 
+def test():
+    authenticate()
+    endpoint = f"{SERVICE_TRADE_API_BASE}/invoice/2043614681112833"
+    params = {
+        "page": 1
+    }
+    response = call_service_trade_api(endpoint, params)
+    data = response.json().get("data")
+    print(json.dumps(data, indent=4))
+
+
+def quoteItemInvoiceItem(batch_size=100):
+    # Constants
+    HOURLY_RATE = {'fa':125.0, 'sprinkler':145.0, 'backflow':75.0}
+    FA_LABOUR_DESCRIPTIONS = {
+        "Annual Inspection",
+        "Return for Repairs",
+        "Service Call"
+    }
+    SPR_LABOUR_DESCRIPTIONS = {
+        "Return for Repairs - Sprinkler/Backflow",
+        "5-Year Standpipe Flow & FDC Hydrostatic Testing",
+        "Backflow Preventer Testing"
+    }
+
+    # Authenticate
+    try:
+        authenticate()
+    except Exception as e:
+        tqdm.write(f"[ERROR] Authentication failed: {e}")
+        return
+
+    # Time window
+    fy_start = datetime.timestamp(datetime(2024, 5, 1))
+    fy_end   = datetime.timestamp(datetime(2025, 4, 30, 23, 59))
+    base_params = {"createdAfter": fy_start, "createdBefore": fy_end}
+
+    # # Fetch quotes
+    # try:
+    #     all_quotes = get_quotes_with_params(params=base_params) or []
+    # except Exception as e:
+    #     tqdm.write(f"[ERROR] Failed to fetch quotes: {e}")
+    #     return
+
+    # tqdm.write(f"✅ Found {len(all_quotes)} quotes in fiscal year")
+
+    # quote_counter = 0
+    # with tqdm(total=len(all_quotes), desc="Saving Quote Items to DB") as pbar:
+    #     for q in all_quotes:
+    #         quote_id = q.get("id")
+    #         items_meta = q.get("items")
+    #         if not isinstance(items_meta, list) or not items_meta:
+    #             pbar.update(1)
+    #             continue
+
+    #         page = 1
+    #         while True:
+    #             try:
+    #                 endpoint = f"{SERVICE_TRADE_API_BASE}/quote/{quote_id}/item"
+    #                 resp = call_service_trade_api(endpoint, params={"page": page})
+    #                 resp.raise_for_status()
+    #                 data = resp.json().get("data", {}) or {}
+    #             except Exception as e:
+    #                 tqdm.write(f"[WARNING] Quote {quote_id} page {page} API error: {e}")
+    #                 break
+
+    #             items = data.get("items")
+    #             if not isinstance(items, list):
+    #                 tqdm.write(f"[WARNING] Unexpected items format for quote {quote_id} page {page}")
+    #                 break
+
+    #             for item in items:
+    #                 try:
+    #                     st_id_str = str(item.get("id", ""))
+    #                     desc      = item.get("description") or ""
+    #                     qty       = float(item.get("quantity") or 0)
+    #                     up        = float(item.get("price") or 0.0)
+    #                     raw_tax   = item.get("taxRate")
+    #                     tax_pct   = float(raw_tax) if raw_tax not in (None, "") else 0.0
+    #                     total_pr  = up * qty * (1 + tax_pct / 100.0)
+
+    #                     # map to DB enum
+    #                     if desc in FA_LABOUR_DESCRIPTIONS:
+    #                         itype = 'fa_labour'
+    #                     elif desc in SPR_LABOUR_DESCRIPTIONS:
+    #                         itype = 'spr_labour'
+    #                     else:
+    #                         itype = 'part'
+
+    #                     # upsert
+    #                     qi = QuoteItem.query.filter_by(
+    #                         quote_id=quote_id,
+    #                         service_trade_id=st_id_str
+    #                     ).first()
+    #                     if not qi:
+    #                         qi = QuoteItem(quote_id=quote_id, service_trade_id=st_id_str)
+    #                     qi.description = desc
+    #                     qi.item_type   = itype
+    #                     qi.quantity    = qty
+    #                     qi.unit_price  = up
+    #                     qi.total_price = total_pr
+    #                     db.session.add(qi)
+
+    #                     quote_counter += 1
+    #                     if quote_counter >= batch_size:
+    #                         db.session.commit()
+    #                         quote_counter = 0
+
+    #                 except Exception as e:
+    #                     db.session.rollback()
+    #                     tqdm.write(f"[WARNING] Skipping bad quote item {item.get('id')} for quote {quote_id}: {e}")
+    #                     continue
+
+    #             total_pages = data.get("totalPages") or 1
+    #             if page >= total_pages:
+    #                 break
+    #             page += 1
+
+    #         pbar.update(1)
+
+    # if quote_counter:
+    #     db.session.commit()
+    # tqdm.write("✅ All quote items saved to DB.")
+
+    # --- INVOICES ---
+    invoice_endpoint = f"{SERVICE_TRADE_API_BASE}/invoice"
+    all_invoices = []
+    page = 1
+    while True:
+        try:
+            resp = call_service_trade_api(invoice_endpoint, params={
+                "createdAfter": fy_start,
+                "createdBefore": fy_end,
+                "page": page
+            })
+            resp.raise_for_status()
+            data = resp.json().get("data", {}) or {}
+        except Exception as e:
+            tqdm.write(f"[WARNING] Invoice page {page} API error: {e}")
+            break
+
+        invoices = data.get("invoices")
+        if not isinstance(invoices, list):
+            tqdm.write(f"[WARNING] Unexpected invoices format on page {page}")
+            break
+        all_invoices.extend(invoices)
+
+        total_pages = data.get("totalPages") or 1
+        tqdm.write(f"🔄 Fetched page {page}/{total_pages}, got {len(invoices)} invoices")
+        if page >= total_pages:
+            break
+        page += 1
+
+    tqdm.write(f"✅ Retrieved {len(all_invoices)} invoices")
+
+    invoice_counter = 0
+    with tqdm(total=len(all_invoices), desc="Saving Invoice Items to DB") as pbar2:
+        for inv in all_invoices:
+            invoice_id = inv.get("id")
+            job_id     = inv.get("job").get("id")
+            items      = inv.get("items")
+            if not isinstance(items, list) or not items:
+                pbar2.update(1)
+                continue
+
+            for item in items:
+                try:
+                    st_id_str   = str(item.get("id", ""))
+                    desc        = item.get("description") or ""
+                    qty         = float(item.get("quantity") or 0)
+                    up          = float(item.get("price") or 0.0)
+                    total_pr    = float(item.get("totalPrice") or 0.0)
+
+                    if desc in FA_LABOUR_DESCRIPTIONS:
+                        itype = 'fa_labour'
+                    elif desc in SPR_LABOUR_DESCRIPTIONS:
+                        itype = 'spr_labour'
+                    else:
+                        itype = 'part'
+
+                    ii = InvoiceItem.query.filter_by(
+                        invoice_id=invoice_id,
+                        service_trade_id=st_id_str
+                    ).first()
+                    if not ii:
+                        ii = InvoiceItem(
+                            invoice_id=invoice_id,
+                            job_id=job_id,
+                            service_trade_id=st_id_str
+                        )
+                    ii.description = desc
+                    ii.item_type   = itype
+                    ii.quantity    = qty
+                    ii.unit_price  = up
+                    ii.total_price = total_pr
+                    db.session.add(ii)
+
+                    invoice_counter += 1
+                    if invoice_counter >= batch_size:
+                        db.session.commit()
+                        invoice_counter = 0
+
+                except Exception as e:
+                    db.session.rollback()
+                    tqdm.write(f"[WARNING] Skipping bad invoice item {item.get('id')} for invoice {invoice_id}: {e}")
+                    continue
+
+            pbar2.update(1)
+
+    if invoice_counter:
+        db.session.commit()
+    tqdm.write("✅ All invoice items saved to DB.")
+
+
+
+
+
     
+
+            
+                
+
+
+
+    
+
+
     
 
 

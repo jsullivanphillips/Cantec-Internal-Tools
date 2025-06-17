@@ -45,7 +45,7 @@
     </li>
     <li class="nav-item" role="presentation">
       <button class="nav-link" id="deficiency-tab" data-bs-toggle="tab" data-bs-target="#deficiency" type="button" role="tab" aria-controls="deficiency" aria-selected="false">
-        Deficiency Insights
+        Deficiencies and Quotes
       </button>
     </li>
     <li class="nav-item" role="presentation">
@@ -152,6 +152,49 @@
 
     <!-- Deficiency Insights Tab -->
     <div class="tab-pane fade" id="deficiency" role="tabpanel" aria-labelledby="deficiency-tab">
+      <H3>Quotes</H3>
+      <!-- Quotes Sent / Accepted / Rejected by User -->
+      <div class="card mb-4 fade-transition shadow-sm">
+        <div class="card-body">
+          <h5 class="card-title">Quoting Statistics by User</h5>
+          <div class="chart-scroll">
+            <canvas id="quoteStatisticsByUserChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quoting Accuracy -->
+      <div class="card mb-4 fade-transition shadow-sm">
+        <div class="card-body">
+          <h5 class="card-title">Quoting Accuracy by User</h5>
+          <p class="text-muted" style="font-size: 0.9rem;">
+            <strong>Average Quoting Accuracy for Labour and Parts.</strong><br>
+            The closer to 100% the more accurate the quoting. 
+          </p>
+          <div class="chart-scroll">
+            <canvas id="quoteAccuracyByUser"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quoting Cost Accuracy -->
+      <div class="card mb-4 fade-transition shadow-sm">
+        <div class="card-body">
+          <h5 class="card-title">Quote-Cost Comparasin by User</h5>
+          <p class="text-muted" style="font-size: 0.9rem;">
+            <strong>Average Quoted Cost</strong> vs. <strong>Average Actual Cost</strong><br>
+            Margin shows the difference between these two values, with red being under-quoting 
+            and green being over-quoting.
+          </p>
+          <div class="chart-scroll">
+            <canvas id="quoteCostComparasinChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <br>
+      <H3>Deficiencies</H3>
+      <!-- Deficiency to Completed Job Funnel -->
       <div class="card mb-4 fade-transition">
         <div class="card-body">
           <h5 class="card-title">Deficiency to Completed Job Funnel</h5>
@@ -190,15 +233,6 @@
           </div>
         </div>
       </div>
-      <!-- Conversion Rate by Service Line -->
-      <div class="card mb-4 fade-transition shadow-sm">
-        <div class="card-body">
-          <h5 class="card-title">Deficiency Conversion Rate by Service Line</h5>
-          <div class="chart-scroll">
-            <canvas id="serviceLineConversionRateChart"></canvas>
-          </div>
-        </div>
-      </div>
 
     </div>
 
@@ -210,19 +244,29 @@
       <div class="mb-3">
         <label for="techTopNFilter" class="form-label fw-bold me-2">Show Top:</label>
         <select id="techTopNFilter" class="form-select d-inline-block w-auto">
-          <option value="3">Top 3</option>
           <option value="5" selected>Top 5</option>
           <option value="10">Top 10</option>
+          <option value="20">Top 20</option>
           <option value="all">All</option>
         </select>
       </div>
 
-      <!-- Revenue per Hour -->
+      <!-- Deficiencies Created -->
       <div class="card mb-4 fade-transition shadow-sm">
         <div class="card-body">
-          <h5 class="card-title">Revenue per On-Site Hour by Technician</h5>
+          <h5 class="card-title">Deficiencies Created by Technician</h5>
           <div class="chart-scroll">
-            <canvas id="revenuePerHourByTechChart"></canvas>
+            <canvas id="deficienciesCreatedByTechChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Attachments Added to Deficiencies -->
+      <div class="card mb-4 fade-transition shadow-sm">
+        <div class="card-body">
+          <h5 class="card-title">Attachments added to Deficiencies By Technician</h5>
+          <div class="chart-scroll">
+            <canvas id="attachmentsAddedToDeficienciesByTechChart"></canvas>
           </div>
         </div>
       </div>
@@ -233,6 +277,16 @@
           <h5 class="card-title">Jobs Completed by Technician</h5>
           <div class="chart-scroll">
             <canvas id="jobsCompletedByTechChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Revenue per Hour -->
+      <div class="card mb-4 fade-transition shadow-sm">
+        <div class="card-body">
+          <h5 class="card-title">Revenue per On-Site Hour by Technician</h5>
+          <div class="chart-scroll">
+            <canvas id="revenuePerHourByTechChart"></canvas>
           </div>
         </div>
       </div>
