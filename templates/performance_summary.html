@@ -49,6 +49,11 @@
       </button>
     </li>
     <li class="nav-item" role="presentation">
+      <button class="nav-link" id="quote-cost-log-tab" data-bs-toggle="tab" data-bs-target="#quote-cost-log" type="button" role="tab" aria-controls="quote-cost-log" aria-selected="false">
+        Quote-Cost Breakdown Log
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
       <button class="nav-link" id="technician-tab" data-bs-toggle="tab" data-bs-target="#technician" type="button" role="tab" aria-controls="technician" aria-selected="false">
         Technician Metrics
       </button>
@@ -164,33 +169,34 @@
       </div>
 
       <!-- Quoting Accuracy -->
-      <div class="card mb-4 fade-transition shadow-sm">
+      <!-- <div class="card mb-4 fade-transition shadow-sm">
         <div class="card-body">
           <h5 class="card-title">Quoting Accuracy by User</h5>
           <p class="text-muted" style="font-size: 0.9rem;">
             <strong>Average Quoting Accuracy for Labour and Parts.</strong><br>
-            The closer to 100% the more accurate the quoting. 
+            The closer to 100% the more accurate the quoting. Above 100% means over-quoting, below 100% means under-quoting.<br>
+            Data excludes the following job types: "installation", "upgrade", "replacement", "inspection", "delivery", "pickup", "testing", "unknown", "administrative"
           </p>
           <div class="chart-scroll">
             <canvas id="quoteAccuracyByUser"></canvas>
           </div>
         </div>
-      </div>
+      </div> -->
 
       <!-- Quoting Cost Accuracy -->
-      <div class="card mb-4 fade-transition shadow-sm">
+      <!-- <div class="card mb-4 fade-transition shadow-sm">
         <div class="card-body">
-          <h5 class="card-title">Quote-Cost Comparasin by User</h5>
+          <h5 class="card-title">Quote-Cost Comparison by Job Type</h5>
           <p class="text-muted" style="font-size: 0.9rem;">
             <strong>Average Quoted Cost</strong> vs. <strong>Average Actual Cost</strong><br>
-            Margin shows the difference between these two values, with red being under-quoting 
+            Margin shows the difference between quoted and actual value, with red being under-quoting 
             and green being over-quoting.
           </p>
           <div class="chart-scroll">
-            <canvas id="quoteCostComparasinChart"></canvas>
+            <canvas id="quoteCostComparisonChart"></canvas>
           </div>
         </div>
-      </div>
+      </div> -->
 
       <br>
       <H3>Deficiencies</H3>
@@ -281,6 +287,16 @@
         </div>
       </div>
 
+      <!-- Clock Event Accuracy -->
+      <div class="card mb-4 fade-transition shadow-sm">
+        <div class="card-body">
+          <h5 class="card-title">Likely-hood to be ontime by Technician</h5>
+          <div class="chart-scroll">
+            <canvas id="onTimeByTechChart"></canvas>
+          </div>
+        </div>
+      </div>
+
       <!-- Revenue per Hour -->
       <div class="card mb-4 fade-transition shadow-sm">
         <div class="card-body">
@@ -325,12 +341,31 @@
         </div>
       </div>
     </div>
+
+    <!-- Quote-Cost Breakdown Log Tab -->
+    <div class="tab-pane fade" id="quote-cost-log" role="tabpanel" aria-labelledby="quote-cost-log-tab">
+      <div class="card mb-4 fade-transition shadow-sm">
+        <div class="card-body">
+          <h5 class="card-title">Quote-Cost Breakdown Log</h5>
+          <p class="text-muted" style="font-size: 0.9rem;">
+            Red means underquoting, Green means over quoting.
+          </p>
+          <!-- Nested Tabs for Job Types -->
+          <ul class="nav nav-pills mb-3" id="quoteCostTypeTabs" role="tablist"></ul>
+          <!-- Content panes for each Job Type -->
+          <div class="tab-content" id="quoteCostTypeTabsContent"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  </div>
   <div style="height: 120px;"></div>
 </div>
 {% endblock %}
 
 {% block extra_scripts %}
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels" defer></script>
 <script src="https://cdn.plot.ly/plotly-2.32.0.min.js" defer></script>

@@ -151,16 +151,19 @@ class Job(db.Model):
 class ClockEvent(db.Model):
     __tablename__ = 'clock_event'
 
-    id = db.Column(db.Integer, primary_key=True)
-    job_id = db.Column(db.BIGINT, db.ForeignKey('job.job_id'), nullable=False)
-    tech_name = db.Column(db.String(255))
-    hours = db.Column(db.Float)
+    id         = db.Column(db.Integer, primary_key=True)
+    job_id     = db.Column(db.BIGINT, db.ForeignKey('job.job_id'), nullable=False)
+    tech_name  = db.Column(db.String(255), nullable=False)
+    hours      = db.Column(db.Float, nullable=False)
     created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     job = db.relationship("Job", back_populates="clock_events")
 
     def __repr__(self):
-        return f"<ClockEvent {self.tech_name} - {self.hours}h on job {self.job_id}>"
+        return (
+            f"<ClockEvent {self.tech_name} | "
+            f"{self.hours}h on job {self.job_id}>"
+        )
 
 class Deficiency(db.Model):
     __tablename__ = 'deficiency'

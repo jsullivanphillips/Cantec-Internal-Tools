@@ -352,186 +352,149 @@ const PerformanceSummary = (() => {
     );
 
     
-    // --- Quoting Accuracy by User (Grouped Bar Chart) ---
-    const quoteAccuracy = data.quote_accuracy_by_user || [];
+    // // --- Quoting Accuracy by User (Grouped Bar Chart) ---
+    // const quoteAccuracy = data.quote_accuracy_by_user || [];
 
-    const accNames = quoteAccuracy.map(({ user }) => {
-      const [first, last] = user.split('@')[0].split('.');
-      const initial = first.charAt(0).toUpperCase();
-      const lastName = last
-        ? last.charAt(0).toUpperCase() + last.slice(1)
-        : '';
-      return `${initial} ${lastName}`;
-    });
+    // const accNames = quoteAccuracy.map(({ user }) => {
+    //   const [first, last] = user.split('@')[0].split('.');
+    //   const initial = first.charAt(0).toUpperCase();
+    //   const lastName = last
+    //     ? last.charAt(0).toUpperCase() + last.slice(1)
+    //     : '';
+    //   return `${initial} ${lastName}`;
+    // });
 
-    const laborAcc = quoteAccuracy.map(d =>
-      d.labor_accuracy != null ? +(d.labor_accuracy * 100).toFixed(1) : null
-    );
-    const partsAcc = quoteAccuracy.map(d =>
-      d.parts_accuracy != null ? +(d.parts_accuracy * 100).toFixed(1) : null
-    );
+    // const laborAcc = quoteAccuracy.map(d =>
+    //   d.labor_accuracy != null ? +(d.labor_accuracy * 100).toFixed(1) : null
+    // );
+    // const partsAcc = quoteAccuracy.map(d =>
+    //   d.parts_accuracy != null ? +(d.parts_accuracy * 100).toFixed(1) : null
+    // );
 
-    charts.quoteAccuracyByUser?.destroy();
-    charts.quoteAccuracyByUser = new Chart(
-      document.getElementById("quoteAccuracyByUser").getContext("2d"),
-      {
-        type: "bar",
-        data: {
-          labels: accNames,
-          datasets: [
-            {
-              label: "Labor Accuracy",
-              data: laborAcc,
-              backgroundColor: "#4e79a7"
-            },
-            {
-              label: "Parts Accuracy",
-              data: partsAcc,
-              backgroundColor: "#f28e2b"
-            }
-          ]
-        },
-        options: {
-          responsive: true,
-          plugins: {
-            legend: { position: "top" },
-            tooltip: {
-              callbacks: {
-                label: function (ctx) {
-                  const value = ctx.raw;
-                  return `${ctx.dataset.label}: ${value}%`;
-                }
-              }
-            }
-          },
-          scales: {
-            y: {
-              beginAtZero: true,
-              max: 200,
-              title: { display: true, text: "Accuracy (%)" }
-            }
-          },
-          animation: false, // Important to make afterDraw consistent
-          plugins: {
-            customLine: {
-              lineAt: 100
-            }
-          }
-        },
-        plugins: [
-          {
-            id: 'customLine',
-            beforeDraw(chart) {
-              const yValue = chart.options.plugins.customLine.lineAt;
-              const yScale = chart.scales.y;
-              const ctx = chart.ctx;
-              const y = yScale.getPixelForValue(yValue);
+    // charts.quoteAccuracyByUser?.destroy();
+    // charts.quoteAccuracyByUser = new Chart(
+    //   document.getElementById("quoteAccuracyByUser").getContext("2d"),
+    //   {
+    //     type: "bar",
+    //     data: {
+    //       labels: accNames,
+    //       datasets: [
+    //         {
+    //           label: "Labor Accuracy",
+    //           data: laborAcc,
+    //           backgroundColor: "#4e79a7"
+    //         },
+    //         {
+    //           label: "Parts Accuracy",
+    //           data: partsAcc,
+    //           backgroundColor: "#f28e2b"
+    //         }
+    //       ]
+    //     },
+    //     options: {
+    //       responsive: true,
+    //       plugins: {
+    //         legend: { position: "top" },
+    //         tooltip: {
+    //           callbacks: {
+    //             label: function (ctx) {
+    //               const value = ctx.raw;
+    //               return `${ctx.dataset.label}: ${value}%`;
+    //             }
+    //           }
+    //         }
+    //       },
+    //       scales: {
+    //         y: {
+    //           beginAtZero: true,
+    //           max: 200,
+    //           title: { display: true, text: "Accuracy (%)" }
+    //         }
+    //       },
+    //       animation: false, // Important to make afterDraw consistent
+    //       plugins: {
+    //         customLine: {
+    //           lineAt: 100
+    //         }
+    //       }
+    //     },
+    //     plugins: [
+    //       {
+    //         id: 'customLine',
+    //         beforeDraw(chart) {
+    //           const yValue = chart.options.plugins.customLine.lineAt;
+    //           const yScale = chart.scales.y;
+    //           const ctx = chart.ctx;
+    //           const y = yScale.getPixelForValue(yValue);
 
-              ctx.save();
-              ctx.beginPath();
-              ctx.moveTo(chart.chartArea.left, y);
-              ctx.lineTo(chart.chartArea.right, y);
-              ctx.lineWidth = 1;
-              ctx.strokeStyle = "green";
-              ctx.stroke();
+    //           ctx.save();
+    //           ctx.beginPath();
+    //           ctx.moveTo(chart.chartArea.left, y);
+    //           ctx.lineTo(chart.chartArea.right, y);
+    //           ctx.lineWidth = 1;
+    //           ctx.strokeStyle = "green";
+    //           ctx.stroke();
 
-              // Optional label
-              ctx.fillStyle = "green";
-              ctx.font = "12px sans-serif";
-              ctx.fillText(`${yValue}%`, chart.chartArea.left + 4, y - 4);
-              ctx.restore();
-            }
-          }
-        ]
-      }
-    );
+    //           // Optional label
+    //           ctx.fillStyle = "green";
+    //           ctx.font = "12px sans-serif";
+    //           ctx.fillText(`${yValue}%`, chart.chartArea.left + 4, y - 4);
+    //           ctx.restore();
+    //         }
+    //       }
+    //     ]
+    //   }
+    // );
 
 
-    // --- Quoting Cost Comparison by User (Combined Bar + Line) ---
-    const quoteCostData = data.quote_cost_comparison_by_user || [];
+    // // --- Quoting Cost Comparison by Job Type (Combined Bar + Line, from individual job margins) ---
+    // const quoteCostData = data.quote_cost_comparison_by_job_type || [];
 
-    const costLabels = quoteCostData.map(({ user }) => {
-      const [first, last] = user.split('@')[0].split('.');
-      const initial = first.charAt(0).toUpperCase();
-      const lastName = last ? last.charAt(0).toUpperCase() + last.slice(1) : '';
-      return `${initial} ${lastName}`;
-    });
+    // const costLabels = quoteCostData.map(({ job_type }) => job_type);
 
-    const avgQuoted = quoteCostData.map(d => d.avg_quoted);
-    const avgActual = quoteCostData.map(d => d.avg_actual);
-    const jobCounts = quoteCostData.map(d => d.job_count || 0);
-    const margin = avgQuoted.map((q, i) => +(q - avgActual[i]).toFixed(2));
+    // const avgMargin = quoteCostData.map(d => d.avg_margin);
+    // const jobCounts = quoteCostData.map(d => d.job_count);
 
-    charts.quoteCostComparasinChart?.destroy();
-    charts.quoteCostComparasinChart = new Chart(
-      document.getElementById("quoteCostComparasinChart").getContext("2d"),
-      {
-        type: "bar",
-        data: {
-          labels: costLabels,
-          datasets: [
-            {
-              label: "Quote Margin (Quoted - Actual)",
-              type: "bar",
-              data: margin,
-              backgroundColor: margin.map(v => v >= 0 ? "#59a14f" : "#e15759"),
-              yAxisID: "y",
-              order: 1
-            },
-            {
-              label: "Avg Quoted Cost",
-              type: "line",
-              data: avgQuoted,
-              borderColor: "#4e79a7",
-              backgroundColor: "#4e79a7",
-              borderWidth: 2,
-              pointRadius: 4,
-              tension: 0.3,
-              yAxisID: "y",
-              order: 2
-            },
-            {
-              label: "Avg Actual Cost",
-              type: "line",
-              data: avgActual,
-              borderColor: "#f28e2b",
-              backgroundColor: "#f28e2b",
-              borderWidth: 2,
-              pointRadius: 4,
-              tension: 0.3,
-              yAxisID: "y",
-              order: 3
-            }
-          ]
-        },
-        options: {
-          responsive: true,
-          interaction: { mode: "index", intersect: false },
-          plugins: {
-            legend: { position: "top" },
-            tooltip: {
-              callbacks: {
-                title: ctx => {
-                  const index = ctx[0].dataIndex;
-                  return `${ctx[0].label} (Based on ${jobCounts[index]} job${jobCounts[index] === 1 ? '' : 's'})`;
-                },
-                label: ctx => {
-                  const label = ctx.dataset.label || '';
-                  const value = ctx.raw;
-                  return `${label}: $${value.toFixed(2)}`;
-                }
-              }
-            }
-          },
-          scales: {
-            y: {
-              beginAtZero: true,
-              title: { display: true, text: "Cost ($)" }
-            }
-          }
-        }
-      }
-    );
+    // charts.quoteCostComparisonChart?.destroy();
+    // charts.quoteCostComparisonChart = new Chart(
+    //   document.getElementById("quoteCostComparisonChart").getContext("2d"),
+    //   {
+    //     type: "bar",
+    //     data: {
+    //       labels: costLabels,
+    //       datasets: [
+    //         {
+    //           label: "Average Quote Margin (Quoted - Actual)",
+    //           data: avgMargin,
+    //           backgroundColor: avgMargin.map(v => v >= 0 ? "#59a14f" : "#e15759")
+    //         }
+    //       ]
+    //     },
+    //     options: {
+    //       responsive: true,
+    //       interaction: { mode: "index", intersect: false },
+    //       plugins: {
+    //         legend: { position: "top" },
+    //         tooltip: {
+    //           callbacks: {
+    //             title: ctx => {
+    //               const idx = ctx[0].dataIndex;
+    //               return `${ctx[0].label} (Based on ${jobCounts[idx]} job${jobCounts[idx] === 1 ? '' : 's'})`;
+    //             },
+    //             label: ctx => `Avg Margin: $${ctx.raw.toFixed(2)}`
+    //           }
+    //         }
+    //       },
+    //       scales: {
+    //         y: {
+    //           beginAtZero: true,
+    //           title: { display: true, text: "Avg Margin ($)" }
+    //         }
+    //       }
+    //     }
+    //   }
+    // );
+
 
 
   }
@@ -713,6 +676,7 @@ const PerformanceSummary = (() => {
     const charts = {};
     const revenueData = data.technician_metrics.revenue_per_hour;
     const jobCountData = data.technician_metrics.jobs_completed_by_tech;
+    const onTimeStats = data.technician_ontime_stats || [];
 
     function renderTechCharts(topN = 5) {
       // Prep raw data
@@ -1075,7 +1039,60 @@ const PerformanceSummary = (() => {
           }
         }
       );
+      // ===== On-Time by Technician =====
+      // 1️⃣ Sort by on_time_pct desc
+      
+      const sortedOnTime = [...onTimeStats].sort(
+        (a, b) => b.on_time_pct - a.on_time_pct
+      );
+      console.log('Raw on-time stats:', data.technician_ontime_stats);
+      // 2️⃣ Apply Top-N
+      const N_ot = topN === "all" ? sortedOnTime.length : parseInt(topN, 10);
+      const selectedOnTime = sortedOnTime.slice(0, N_ot);
 
+      const onTimeLabels = selectedOnTime.map(d => d.tech_name);
+      const onTimeValues = selectedOnTime.map(d => d.on_time_pct);
+
+      // 3️⃣ Destroy old chart if present
+      charts.onTimeByTech?.destroy();
+
+      // 4️⃣ Create new bar chart
+      charts.onTimeByTech = new Chart(
+        document.getElementById('onTimeByTechChart').getContext('2d'),
+        {
+          type: 'bar',
+          data: {
+            labels: onTimeLabels,
+            datasets: [{
+              label: 'On-Time %',
+              data: onTimeValues,
+              backgroundColor: onTimeValues.map(v => v >= 100 ? '#59a14f' : '#e15759'),
+              borderRadius: 5
+            }]
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  label: ctx => `${ctx.raw.toFixed(1)}% on time`
+                }
+              }
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                max: 100,
+                title: { display: true, text: 'On-Time Percentage (%)' }
+              },
+              x: {
+                title: { display: true, text: 'Technician' }
+              }
+            }
+          }
+        }
+      );
     }
 
 
@@ -1180,6 +1197,112 @@ const PerformanceSummary = (() => {
 
 
 
+  function renderQuoteCostBreakdownLog(response) {
+    // normalize
+    const buckets = Array.isArray(response)
+      ? response
+      : response.quote_cost_breakdown_log || [];
+    if (!Array.isArray(buckets)) return console.error("Invalid data", response);
+
+    const tabs  = document.getElementById('quoteCostTypeTabs');
+    const panes = document.getElementById('quoteCostTypeTabsContent');
+    tabs.innerHTML  = '';
+    panes.innerHTML = '';
+
+    buckets.forEach((bucket, idx) => {
+      // use the user as the key
+      const key    = bucket.user.replace(/\s+/g,'-').toLowerCase();
+      const active = idx === 0;
+
+      // --- create the pill tab ---
+      const btn = document.createElement('button');
+      btn.className = `nav-link${active ? ' active' : ''}`;
+      btn.id           = `tab-${key}-btn`;
+      btn.setAttribute('data-bs-toggle','pill');
+      btn.setAttribute('data-bs-target',`#pane-${key}`);
+      btn.type         = 'button';
+      btn.role         = 'tab';
+      btn.ariaControls = `pane-${key}`;
+      btn.ariaSelected = active;
+      // label with user and count
+      btn.innerText    = `${bucket.user} (${bucket.job_count})`;
+
+      const li = document.createElement('li');
+      li.className = 'nav-item';
+      li.role      = 'presentation';
+      li.appendChild(btn);
+      tabs.appendChild(li);
+
+      // --- create the pane ---
+      const pane = document.createElement('div');
+      pane.className = `tab-pane fade${active ? ' show active' : ''}`;
+      pane.id             = `pane-${key}`;
+      pane.role           = 'tabpanel';
+      pane.ariaLabelledby = `tab-${key}-btn`;
+
+      // 1) chart canvas
+      const canvas = document.createElement('canvas');
+      canvas.id = `chart-${key}`;
+      pane.appendChild(canvas);
+
+      // 2) empty <pre> for log output
+      const logPre = document.createElement('pre');
+      logPre.id = `log-${key}`;
+      logPre.style.whiteSpace = 'pre-wrap';
+      logPre.style.display     = 'none';
+      pane.appendChild(logPre);
+
+      panes.appendChild(pane);
+
+      // --- render the chart with onclick handler ---
+      new Chart(canvas.getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: bucket.jobs.map(j => j.location_address || '(no address)'),
+          datasets: [{
+            label: 'Total Margin ($)',
+            data: bucket.jobs.map(j => j.total_margin),
+            backgroundColor: bucket.jobs.map(j =>
+              j.total_margin >= 0 ? '#59a14f' : '#e15759'
+            )
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: ctx => `Margin: $${ctx.raw.toFixed(2)}`
+              }
+            }
+          },
+          scales: {
+            x: {
+              title: { display: true, text: 'Location Address' }
+            },
+            y: {
+              title: { display: true, text: 'Margin ($)' },
+              beginAtZero: true
+            }
+          },
+          onClick: (evt, elements) => {
+            if (!elements.length) return;
+            const i   = elements[0].index;
+            const job = bucket.jobs[i];
+            const url = `https://app.servicetrade.com/jobs/${job.job_id}`;
+
+            // build HTML: a clickable link + the preformatted lines
+            const lines = job.summary_lines || [];
+            logPre.innerHTML = `<a href="${url}" target="_blank">View Job ${job.job_id}</a>\n`
+                              + lines.join('\n');
+            logPre.style.display = 'block';
+          }
+        }
+      });
+    });
+  }
+
 
 
 
@@ -1206,6 +1329,7 @@ const PerformanceSummary = (() => {
           renderDeficiencyInsights(data);
           renderTechnicianMetrics(data);
           renderCustomerAndLocationMetrics(data);
+          renderQuoteCostBreakdownLog(data);
 
           const avgRevenueEntries = Object.entries(data.avg_revenue_by_job_type);
 

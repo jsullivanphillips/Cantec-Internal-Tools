@@ -10,7 +10,9 @@ from app.routes.performance_summary import (
     update_locations,
     update_quotes,
     quoteItemInvoiceItem,
-    test
+    test,
+    test_update_invoice,
+    test_update_quote
 )
 
 app = create_app()
@@ -39,11 +41,14 @@ if __name__ == "__main__":
                 update_quotes()
                 print("✅ Quotes updated.")
             elif run_test:
-                test()
+                test_update_invoice()
+                test_update_quote()
                 print("Test updated")
             elif quote_invoice_items:
                 quoteItemInvoiceItem()
                 print("quote and invoice items updated")
+            elif overwrite:
+                jobs_summary(short_run=False, overwrite=overwrite)
             else:
                 jobs_summary(short_run=short_run)
                 print("✅ Jobs updated successfully.")

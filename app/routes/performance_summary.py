@@ -1,4 +1,5 @@
-from flask import Blueprint, render_template, session, jsonify
+from flask import Blueprint, render_template, session, jsonify, request
+import random
 from app.db_models import db, Job, ClockEvent, Deficiency, Location, Quote, QuoteItem, InvoiceItem
 from collections import defaultdict
 from tqdm import tqdm
@@ -15,6 +16,28 @@ HOURLY_RATE = {
     'backflow':   75.0
 }
 
+# Constants
+FA_LABOUR_DESCRIPTIONS = {
+    "Annual Inspection",
+    "Return for Repairs",
+    "Service Call",
+    "Project Verification & Programming",
+    "Labour",
+    "Verification",
+    "On-Site Repairs",
+    "Backflow Preventer Testing"
+}
+SPR_LABOUR_DESCRIPTIONS = {
+    "Return for Repairs - Sprinkler/Backflow",
+    "5-Year Standpipe Flow & FDC Hydrostatic Testing",
+    "Backflow Preventer Testing",
+    "Sprinkler Service Call",
+    "3 Year Trip Test",
+    "Annual Sprinkler Inspection"
+}
+
+OUTLIER_MARGIN_RATIO = 0.4
+
 performance_summary_bp = Blueprint('performance_summary', __name__, template_folder='templates')
 api_session = requests.Session()
 
@@ -24,6 +47,7 @@ SERVICE_TRADE_API_BASE = "https://api.servicetrade.com/api"
 def performance_summary():
     # Serve the HTML page
     return render_template("performance_summary.html")
+
 
 @performance_summary_bp.route('/api/performance_summary_data', methods=['GET'])
 def performance_summary_data():
@@ -74,8 +98,9 @@ def performance_summary_data():
         "deficiencies_by_tech_service_line": deficiencies_by_tech_sl,
         "attachments_by_tech": attachments_by_tech,
         "quote_statistics_by_user": quote_statistics_by_user,
-        "quote_cost_comparison_by_user": get_quote_cost_comparison_by_user(),
-        "quote_accuracy_by_user": get_quote_efficiency_by_user()
+        "quote_cost_comparison_by_job_type": get_quote_cost_comparison_by_job_type(),
+        "quote_accuracy_by_user": get_quote_efficiency_by_user(),
+        "quote_cost_breakdown_log": get_detailed_quote_job_stats(db.session),
     })
 
 
@@ -85,17 +110,23 @@ HOURLY_RATE = {
     'backflow':   75.0
 }
 
-def get_quote_cost_comparison_by_user():
+def get_detailed_quote_job_stats(session):
     """
-    Returns average quoted vs actual cost per user, across quotes that created jobs.
-    Actual cost = on-site labor cost (based on hours * rate) + invoice parts.
-    Includes the number of jobs each user's stats are derived from.
+    Returns a breakdown of *all* jobs that were created by one or more quotes,
+    merging line‐items from multiple quotes and listing all their quote IDs.
+    Grouped by quote owner (user). Excludes in-progress jobs.
+    - If the quote did not include “Annual Inspection”, subtract that
+      invoice line from the invoice total.
+    - If the quote has ONLY spr_labour (and no fa_labour), only count
+      clock events for Colin Peterson and Justin Walker.
+    - Remove outlier jobs where margin deviates too far from quoted total.
     """
-    EXCLUDED_USERS = {"lisa.smirfitt@cantec.ca", "j.zwicker@cantec.ca"}
-    
+    SPRINKLER_TECHS = {"Colin Peterson", "Justin Walker"}
+
+    # 1) Load every quote that created a completed job
     quotes = (
-        db.session.query(Quote)
-        .filter(Quote.job_created == True)
+        session.query(Quote)
+        .filter(Quote.job_created.is_(True))
         .options(
             joinedload(Quote.items),
             joinedload(Quote.job).joinedload(Job.clock_events),
@@ -104,71 +135,290 @@ def get_quote_cost_comparison_by_user():
         .all()
     )
 
-    HOURLY_RATE = {
-        'fa':        125.0,
-        'sprinkler': 145.0,
-        'backflow':   75.0
-    }
-
-    from collections import defaultdict
-
-    user_sums = defaultdict(lambda: {
-        "quoted_total": 0.0,
-        "actual_total": 0.0,
-        "count": 0
-    })
-
+    # 2) Group quotes under each job_id
+    quotes_by_job = defaultdict(list)
     for q in quotes:
-        user = q.owner_email
-        if user in EXCLUDED_USERS:
-            continue
         job = q.job
-        if not job:
+        if not job or not job.invoice_items or job.completed_on is None:
             continue
+        quotes_by_job[job.job_id].append(q)
 
-        quoted_labor = sum(i.total_price for i in q.items if i.item_type in ('fa_labour', 'spr_labour'))
-        quoted_parts = sum(i.total_price for i in q.items if i.item_type == 'part')
+    # 3) For each job, compute metrics and bucket by owner_email
+    buckets_by_user = defaultdict(lambda: {"jobs": [], "margin_sum": 0.0})
+
+    for job_id, quote_list in quotes_by_job.items():
+        first_q = quote_list[0]
+        job     = first_q.job
+        user    = first_q.owner_email or "—"
+
+        # Combine all quote‐items
+        all_items = [item for q in quote_list for item in q.items]
+        has_spr   = any(item.item_type == 'spr_labour' for item in all_items)
+        has_fa    = any(item.item_type == 'fa_labour'  for item in all_items)
+        spr_only  = has_spr and not has_fa
+
+        # Quoted totals
+        quoted_labor = sum(item.total_price for item in all_items
+                           if item.item_type in ('fa_labour','spr_labour'))
+        quoted_parts = sum(item.total_price for item in all_items
+                           if item.item_type == 'part')
         quoted_total = quoted_labor + quoted_parts
 
-        hours = sum(evt.hours for evt in job.clock_events or [])
-        spr_quoted = any(i.item_type == 'spr_labour' for i in q.items)
-        rate = HOURLY_RATE['sprinkler'] if spr_quoted else HOURLY_RATE['fa']
-        actual_labor = hours * rate
-        actual_parts = sum(i.total_price for i in job.invoice_items or [] if i.item_type == 'part')
-        actual_total = actual_labor + actual_parts
+        # Select clock events
+        raw_events = job.clock_events or []
+        if spr_only:
+            clock_events = [evt for evt in raw_events
+                            if evt.tech_name in SPRINKLER_TECHS]
+        else:
+            clock_events = list(raw_events)
 
-        user_sums[user]["quoted_total"] += quoted_total
-        user_sums[user]["actual_total"] += actual_total
-        user_sums[user]["count"] += 1
+        # Actual labor cost
+        total_hours  = sum(evt.hours for evt in clock_events)
+        rate         = (HOURLY_RATE['sprinkler'] if has_spr else HOURLY_RATE['fa'])
+        actual_labor = total_hours * rate
 
+        # Actual parts cost
+        actual_parts = sum(inv.total_price for inv in job.invoice_items
+                           if inv.item_type == 'part')
+
+        # Compute and adjust invoice revenue
+        original_invoice_revenue = sum(inv.total_price for inv in job.invoice_items)
+        ai_amt = sum(inv.total_price for inv in job.invoice_items
+                     if "annual inspection" in inv.description.lower())
+        invoice_revenue = original_invoice_revenue
+        if not any("annual inspection" in item.description.lower() for item in all_items):
+            invoice_revenue -= ai_amt
+
+        # Margins (quoted vs cost)
+        margin_labor = quoted_labor - actual_labor
+        margin_parts = quoted_parts - actual_parts
+        total_margin = margin_labor + margin_parts
+
+        # Outlier removal
+        if quoted_total > 0:
+            if abs(total_margin) / quoted_total > OUTLIER_MARGIN_RATIO:
+                # skip this job as an outlier
+                continue
+
+        # Build human-readable summary lines
+        quote_ids = ", ".join(str(q.quote_id) for q in quote_list)
+        summary_lines = [
+            "="*40,
+            f"Job ID:          {job.job_id}",
+            f"Quotes:          {quote_ids}",
+            f"User:            {user}",
+            f"Customer:        {first_q.customer_name}",
+            f"Location Addr:   {first_q.location_address or '—'}",
+            f"Job Completed:   {job.completed_on.isoformat()}",
+            "-"*40,
+            "Quoted Items:",
+        ]
+        for itm in all_items:
+            summary_lines.append(
+                f"  • [{itm.item_type}] {itm.description:<30}"
+                f" x{itm.quantity:<4} @ ${itm.unit_price:.2f}"
+                f" →  ${itm.total_price:.2f}"
+            )
+
+        summary_lines += ["", "Invoice Items:"]
+        for inv in job.invoice_items:
+            summary_lines.append(
+                f"  • [{inv.item_type}] {inv.description:<30}"
+                f" x{inv.quantity:<4} @ ${inv.unit_price:.2f}"
+                f" →  ${inv.total_price:.2f}"
+            )
+
+        # Show invoice revenue adjustment
+        summary_lines += [
+            "",
+            f"Invoice Total:         ${original_invoice_revenue:8.2f}"
+        ]
+        if invoice_revenue != original_invoice_revenue:
+            summary_lines += [
+                f"Adjusted Invoice Total:${invoice_revenue:8.2f}  "
+                f"(-${ai_amt:.2f} Annual Inspection)"
+            ]
+
+        summary_lines += ["", "Clock Events:"]
+        if clock_events:
+            for evt in clock_events:
+                summary_lines.append(
+                    f"  • {evt.tech_name:<20} {evt.hours:.2f}h"
+                )
+        else:
+            summary_lines.append("  (no clock events)")
+
+        summary_lines += [
+            "", "--- Summary ---",
+            f"Quoted Labour:   ${quoted_labor:8.2f}",
+            f"Actual Cost Lbr: ${actual_labor:8.2f}",
+            f"Labour Δ:        ${margin_labor:8.2f}",
+            f"Quoted Parts:    ${quoted_parts:8.2f}",
+            f"Actual Cost Prt: ${actual_parts:8.2f}",
+            f"Parts Δ:         ${margin_parts:8.2f}",
+            f"Total Margin:    ${total_margin:8.2f}",
+            ""
+        ]
+
+        # Build and store payload
+        job_payload = {
+            "job_id":           job.job_id,
+            "quote_ids":        [q.quote_id for q in quote_list],
+            "location_address": first_q.location_address,
+            "quoted_labor":     round(quoted_labor, 2),
+            "actual_labor":     round(actual_labor, 2),
+            "margin_labor":     round(margin_labor, 2),
+            "quoted_parts":     round(quoted_parts, 2),
+            "actual_parts":     round(actual_parts, 2),
+            "margin_parts":     round(margin_parts, 2),
+            "total_margin":     round(total_margin, 2),
+            "invoice_revenue":  round(invoice_revenue, 2),
+            "quote_items": [
+                {
+                    "item_type":   it.item_type,
+                    "description": it.description,
+                    "quantity":    it.quantity,
+                    "unit_price":  it.unit_price,
+                    "total_price": it.total_price
+                }
+                for it in all_items
+            ],
+            "invoice_items": [
+                {
+                    "item_type":   inv.item_type,
+                    "description": inv.description,
+                    "quantity":    inv.quantity,
+                    "unit_price":  inv.unit_price,
+                    "total_price": inv.total_price
+                }
+                for inv in job.invoice_items
+            ],
+            "clock_events": [
+                {"tech_name": evt.tech_name, "hours": evt.hours}
+                for evt in clock_events
+            ],
+            "summary_lines": summary_lines
+        }
+
+        buckets_by_user[user]["jobs"].append(job_payload)
+        buckets_by_user[user]["margin_sum"] += total_margin
+
+    # 4) Assemble and return final results
     results = []
-    for user, vals in user_sums.items():
-        count = vals["count"]
-        if count == 0:
-            continue
+    for user, data in buckets_by_user.items():
+        count = len(data["jobs"])
+        sum_m = data["margin_sum"]
+        avg_m = (sum_m / count) if count else 0.0
+        overall_summary = [
+            "="*40,
+            f"Across {count} jobs:",
+            f"  Margin Sum:    ${sum_m:8.2f}",
+            f"  Job Count:      {count}",
+            f"  Average Margin:${avg_m:8.2f}",
+            "="*40
+        ]
         results.append({
-            "user": user,
-            "avg_quoted": round(vals["quoted_total"] / count, 2),
-            "avg_actual": round(vals["actual_total"] / count, 2),
-            "job_count": count
+            "user":                  user,
+            "job_count":             count,
+            "margin_sum":            round(sum_m, 2),
+            "avg_margin":            round(avg_m, 2),
+            "jobs":                  data["jobs"],
+            "overall_summary_lines": overall_summary
         })
 
     return results
 
+def get_quote_cost_comparison_by_job_type():
+    """
+    Returns average quoted vs actual cost margin per job_type,
+    excluding any jobs with no invoices or whose margin ratio > OUTLIER_MARGIN_RATIO.
+    Now groups multiple quotes per job into a single record.
+    """
+    quotes = (
+        db.session.query(Quote)
+        .filter(Quote.job_created.is_(True))
+        .options(
+            joinedload(Quote.items),
+            joinedload(Quote.job).joinedload(Job.clock_events),
+            joinedload(Quote.job).joinedload(Job.invoice_items)
+        )
+        .all()
+    )
+
+    # group by job_id
+    quotes_by_job = defaultdict(list)
+    for q in quotes:
+        job = q.job
+        if not job or not job.invoice_items:
+            continue
+        quotes_by_job[job.job_id].append(q)
+
+    # compute per‐job margins, bucket by job_type
+    type_margins = defaultdict(lambda: {"margin_sum": 0.0, "job_count": 0})
+    for job_id, qlist in quotes_by_job.items():
+        job = qlist[0].job
+        jt  = job.job_type or "Unknown"
+
+        # flatten items
+        all_items = [it for q in qlist for it in q.items]
+
+        # quoted totals
+        quoted_labor = sum(it.total_price for it in all_items
+                           if it.item_type in ('fa_labour','spr_labour'))
+        quoted_parts = sum(it.total_price for it in all_items
+                           if it.item_type == 'part')
+        quoted_total = quoted_labor + quoted_parts
+
+        # actual totals
+        hours = sum(evt.hours for evt in (job.clock_events or []))
+        spr_quoted = any(it.item_type=='spr_labour' for it in all_items)
+        rate = HOURLY_RATE['sprinkler'] if spr_quoted else HOURLY_RATE['fa']
+        actual_labor = hours * rate
+        actual_parts = sum(inv.total_price for inv in job.invoice_items
+                           if inv.item_type == 'part')
+        actual_total = actual_labor + actual_parts
+
+        # outlier filter
+        if quoted_total > 0 and abs(quoted_total - actual_total) / quoted_total > OUTLIER_MARGIN_RATIO:
+            continue
+
+        # accumulate
+        margin = quoted_total - actual_total
+        type_margins[jt]["margin_sum"] += margin
+        type_margins[jt]["job_count"]  += 1
+
+    # build results
+    results = []
+    for jt, vals in type_margins.items():
+        count = vals["job_count"]
+        if count == 0:
+            continue
+        avg_margin = vals["margin_sum"] / count
+        results.append({
+            "job_type":  jt,
+            "avg_margin": round(avg_margin, 2),
+            "job_count":  count
+        })
+
+    return results
 
 
 def get_quote_efficiency_by_user():
     """
     Returns per-user quote efficiency:
-      - labor_accuracy = actual labor cost / quoted labor cost
-      - parts_accuracy = actual parts cost / quoted parts cost
-    Uses on-site hours × weighted labor rate based on quote, and invoice items for parts.
+      - labor_accuracy = avg(actual labor cost / quoted labor cost) per job
+      - parts_accuracy = avg(actual parts cost / quoted parts cost) per job
+    Excludes outliers where |margin|/quoted_total > OUTLIER_MARGIN_RATIO.
     """
-
     EXCLUDED_USERS = {"lisa.smirfitt@cantec.ca", "j.zwicker@cantec.ca"}
+    EXCLUDED_JOB_TYPES = {
+        "installation", "upgrade", "replacement", "inspection",
+        "delivery", "pickup", "testing", "unknown", "administrative"
+    }
+
     quotes = (
         db.session.query(Quote)
-        .filter(Quote.job_created == True)
+        .filter(Quote.job_created.is_(True))
         .options(
             joinedload(Quote.items),
             joinedload(Quote.job).joinedload(Job.clock_events),
@@ -177,68 +427,76 @@ def get_quote_efficiency_by_user():
         .all()
     )
 
-    user_totals = defaultdict(lambda: {
-        'quoted_labor':  0.0,
-        'quoted_parts':  0.0,
-        'actual_labor':  0.0,
-        'actual_parts':  0.0
-    })
-
+    # filter + group by job_id
+    quotes_by_job = defaultdict(list)
     for q in quotes:
         user = q.owner_email
-        if user in EXCLUDED_USERS:
+        job  = q.job
+        jt   = (job.job_type or "").strip().lower() if job else ""
+        if (not job
+            or not job.invoice_items
+            or user in EXCLUDED_USERS
+            or jt in EXCLUDED_JOB_TYPES):
             continue
-        job = q.job
-        if not job:
+        quotes_by_job[job.job_id].append(q)
+
+    # compute ratios per job, bucket by user
+    user_data = defaultdict(lambda: {"labor_ratios": [], "parts_ratios": []})
+    for job_id, qlist in quotes_by_job.items():
+        first_q = qlist[0]
+        user    = first_q.owner_email
+        job     = first_q.job
+
+        # flatten items
+        all_items = [it for q in qlist for it in q.items]
+
+        # quoted totals
+        quoted_labor = sum(it.total_price for it in all_items if it.item_type=='fa_labour') \
+                     + sum(it.total_price for it in all_items if it.item_type=='spr_labour')
+        quoted_parts = sum(it.total_price for it in all_items if it.item_type=='part')
+        quoted_total = quoted_labor + quoted_parts
+
+        # actual cost
+        hours = sum(evt.hours for evt in (job.clock_events or []))
+        if quoted_labor > 0:
+            fa_ratio  = sum(it.total_price for it in all_items if it.item_type=='fa_labour') / quoted_labor
+            spr_ratio = sum(it.total_price for it in all_items if it.item_type=='spr_labour') / quoted_labor
+            actual_labor = hours * (fa_ratio * HOURLY_RATE['fa'] + spr_ratio * HOURLY_RATE['sprinkler'])
+        else:
+            actual_labor = hours * HOURLY_RATE['fa']
+
+        actual_parts = sum(inv.total_price for inv in (job.invoice_items or []) if inv.item_type=='part')
+        actual_total = actual_labor + actual_parts
+
+        # outlier filter
+        if quoted_total > 0 and abs(quoted_total - actual_total) / quoted_total > OUTLIER_MARGIN_RATIO:
             continue
 
-        totals = user_totals[user]
+        # efficiency ratios
+        labor_ratio = actual_labor / quoted_labor if quoted_labor else None
+        parts_ratio = actual_parts / quoted_parts if quoted_parts else None
 
-        # === Quoted costs ===
-        fa_quoted = sum(i.total_price for i in q.items if i.item_type == 'fa_labour')
-        spr_quoted = sum(i.total_price for i in q.items if i.item_type == 'spr_labour')
-        parts_quoted = sum(i.total_price for i in q.items if i.item_type == 'part')
+        if labor_ratio is not None:
+            user_data[user]["labor_ratios"].append(labor_ratio)
+        if parts_ratio is not None:
+            user_data[user]["parts_ratios"].append(parts_ratio)
 
-        totals['quoted_labor'] += fa_quoted + spr_quoted
-        totals['quoted_parts'] += parts_quoted
-
-        # === Actual labor ===
-        hours = sum(evt.hours for evt in job.clock_events or [])
-        if hours > 0:
-            total_quoted_labor = fa_quoted + spr_quoted
-            if total_quoted_labor > 0:
-                fa_ratio = fa_quoted / total_quoted_labor
-                spr_ratio = spr_quoted / total_quoted_labor
-                labor_cost = (
-                    hours * fa_ratio * HOURLY_RATE['fa'] +
-                    hours * spr_ratio * HOURLY_RATE['sprinkler']
-                )
-            else:
-                # fallback: assume FA rate
-                labor_cost = hours * HOURLY_RATE['fa']
-
-            totals['actual_labor'] += labor_cost
-
-        # === Actual parts from invoice ===
-        actual_parts = sum(i.total_price for i in job.invoice_items or [] if i.item_type == 'part')
-        totals['actual_parts'] += actual_parts
-
-    # Build response
+    # finalize averages
     results = []
-    for user, t in user_totals.items():
-        ql, qp = t['quoted_labor'], t['quoted_parts']
-        al, ap = t['actual_labor'], t['actual_parts']
-
-        labor_accuracy = (al / ql) if ql else None
-        parts_accuracy = (ap / qp) if qp else None
+    for user, vals in user_data.items():
+        lrs = vals["labor_ratios"]
+        prs = vals["parts_ratios"]
+        avg_labor = round(sum(lrs)/len(lrs), 2) if lrs else None
+        avg_parts = round(sum(prs)/len(prs), 2) if prs else None
 
         results.append({
-            "user": user,
-            "labor_accuracy": round(labor_accuracy, 2) if labor_accuracy is not None else None,
-            "parts_accuracy": round(parts_accuracy, 2) if parts_accuracy is not None else None
+            "user":           user,
+            "labor_accuracy": avg_labor,
+            "parts_accuracy": avg_parts
         })
 
     return results
+
 
 
 def get_quote_statistics_by_user():
@@ -800,104 +1058,96 @@ def call_service_trade_api(endpoint, params):
         return None
 
 
-
-def fetch_invoice_and_clock(job):
+def fetch_invoice_and_clock(job, overwrite=False):
     job_id = job.get("id")
 
-    # Check if job already exists
+    # See if we already have this job
     existing_job = Job.query.filter_by(job_id=job_id).first()
     if existing_job:
-        # Patch missing location_id if needed
+        # Patch missing location_id if present in payload
         if not existing_job.location_id:
-            new_loc_id = job.get("location", {}).get("id")
-            if new_loc_id:
-                existing_job.location_id = new_loc_id
+            new_loc = job.get("location", {}).get("id")
+            if new_loc:
+                existing_job.location_id = new_loc
                 db.session.commit()
-                tqdm.write(f"✅ Patched location_id for job {job_id} to {new_loc_id}")
-        else:
-            tqdm.write(f"Skipping job {job_id} (already exists in DB)")
+                tqdm.write(f"✅ Patched location_id for job {job_id} → {new_loc}")
+
+        if not overwrite:
+            tqdm.write(f"Skipping job {job_id} (already exists)")
+            return job_id, {
+                "job": existing_job,
+                "clockEvents": {},
+                "onSiteHours": existing_job.total_on_site_hours
+            }
+
+        # Overwrite=True: update only invoice/revenue, skip any clock logic
+        invoice_total = 0
+        if existing_job.completed_on:
+            inv_ep     = f"{SERVICE_TRADE_API_BASE}/invoice"
+            inv_params = {"jobId": job_id}
+            inv_resp   = call_service_trade_api(inv_ep, inv_params)
+            if inv_resp:
+                try:
+                    invs = inv_resp.json().get("data", {}).get("invoices", [])
+                    invoice_total = sum(inv.get("totalPrice", 0) for inv in invs)
+                except Exception as e:
+                    tqdm.write(f"⚠️ Failed parsing invoice for job {job_id}: {e}")
+            existing_job.revenue = invoice_total
+            db.session.commit()
+
         return job_id, {
             "job": existing_job,
-            "clockEvents": {},  # Skipped updating clock events
+            "clockEvents": {},
             "onSiteHours": existing_job.total_on_site_hours
         }
 
-    # Job does not exist → create new record
-    job_type = job.get("type")
-    address = job.get("location", {}).get("address", {}).get("street", "Unknown")
+    # --- Job does not exist: create it and fetch invoice only ---
+    job_type      = job.get("type")
+    address       = job.get("location", {}).get("address", {}).get("street", "Unknown")
     customer_name = job.get("customer", {}).get("name", "Unknown")
-    job_status = job.get("displayStatus", "Unknown")
-    scheduled_date = datetime.fromtimestamp(job.get("scheduledDate")) if job.get("scheduledDate") else None
-    completed_on_raw = job.get("completedOn")
-    completed_on = datetime.fromtimestamp(completed_on_raw) if completed_on_raw else None
+    job_status    = job.get("displayStatus", "Unknown")
+    sched_raw     = job.get("scheduledDate")
+    scheduled_date = datetime.fromtimestamp(sched_raw, timezone.utc) if sched_raw else None
+    comp_raw      = job.get("completedOn")
+    completed_on  = datetime.fromtimestamp(comp_raw, timezone.utc) if comp_raw else None
 
-    db_job = Job(job_id=job_id)
-    db_job.location_id = job.get("location", {}).get("id")
-    db_job.job_type = job_type
-    db_job.address = address
-    db_job.customer_name = customer_name
-    db_job.job_status = job_status
-    db_job.scheduled_date = scheduled_date
-    db_job.completed_on = completed_on
-    db_job.total_on_site_hours = 0
-    db_job.revenue = 0
+    db_job = Job(
+        job_id              = job_id,
+        location_id         = job.get("location", {}).get("id"),
+        job_type            = job_type,
+        address             = address,
+        customer_name       = customer_name,
+        job_status          = job_status,
+        scheduled_date      = scheduled_date,
+        completed_on        = completed_on,
+        total_on_site_hours = 0,
+        revenue             = 0
+    )
     db.session.add(db_job)
     db.session.commit()
 
+    # Invoice fetch (if completed)
     invoice_total = 0
-    total_on_site_hours = 0
-    clock_events = {}
-
     if completed_on:
-        # Invoice fetch
-        invoice_endpoint = f"{SERVICE_TRADE_API_BASE}/invoice"
-        invoice_params = {"jobId": job_id}
-        invoice_response = call_service_trade_api(invoice_endpoint, invoice_params)
-        if invoice_response:
+        inv_ep     = f"{SERVICE_TRADE_API_BASE}/invoice"
+        inv_params = {"jobId": job_id}
+        inv_resp   = call_service_trade_api(inv_ep, inv_params)
+        if inv_resp:
             try:
-                invoices = invoice_response.json().get("data", {}).get("invoices", [])
-                invoice_total = sum(inv.get("totalPrice", 0) for inv in invoices)
+                invs = inv_resp.json().get("data", {}).get("invoices", [])
+                invoice_total = sum(inv.get("totalPrice", 0) for inv in invs)
             except Exception as e:
-                tqdm.write(f"⚠️ Failed parsing invoice data for job {job_id}: {e}")
+                tqdm.write(f"⚠️ Failed parsing invoice for job {job_id}: {e}")
+
         db_job.revenue = invoice_total
-
-        # Clock events
-        clock_endpoint = f"{SERVICE_TRADE_API_BASE}/job/{job_id}/clockevent"
-        clock_params = {"activity": "onsite"}
-        clock_response = call_service_trade_api(clock_endpoint, clock_params)
-        if clock_response:
-            try:
-                clock_event_pairs = clock_response.json().get("data", {}).get("pairedEvents", [])
-                for pair in clock_event_pairs:
-                    clock_in = datetime.fromtimestamp(pair.get("start", {}).get("eventTime", 0))
-                    clock_out = datetime.fromtimestamp(pair.get("end", {}).get("eventTime", 0))
-                    if not clock_in or not clock_out:
-                        continue
-                    delta = clock_out - clock_in
-                    hours = delta.total_seconds() / 3600
-                    tech = pair.get("start", {}).get("user", {}).get("name")
-                    if not tech:
-                        continue
-                    db.session.add(ClockEvent(
-                        job_id=job_id,
-                        tech_name=tech,
-                        hours=hours,
-                        created_at=datetime.now(timezone.utc)
-                    ))
-                    clock_events[tech] = clock_events.get(tech, 0) + hours
-                    total_on_site_hours += hours
-            except Exception as e:
-                tqdm.write(f"⚠️ Error processing clock events for job {job_id}: {e}")
-
-    db_job.total_on_site_hours = total_on_site_hours
-    db_job.revenue = invoice_total
-    db.session.commit()
+        db.session.commit()
 
     return job_id, {
-        "job": db_job,
-        "clockEvents": clock_events,
-        "onSiteHours": total_on_site_hours
+        "job":        db_job,
+        "clockEvents": {},
+        "onSiteHours": db_job.total_on_site_hours
     }
+
 
 
 
@@ -930,7 +1180,6 @@ def get_jobs_with_params(params, desc="Fetching Jobs"):
 
     return jobs
 
-
 def jobs_summary(short_run=False, overwrite=False):
     authenticate()
 
@@ -938,30 +1187,31 @@ def jobs_summary(short_run=False, overwrite=False):
 
     # --- Standard completed jobs from fiscal year ---
     window_start = datetime.timestamp(datetime(2024, 5, 1, 0, 0))
-    window_end = datetime.timestamp(datetime(2025, 4, 30, 23, 59))
+    window_end   = datetime.timestamp(datetime(2025, 4, 30, 23, 59))
 
     base_params = {
         "status": "completed",
         "completedOnBegin": window_start,
-        "completedOnEnd": window_end,
-        "page": 1,
+        "completedOnEnd":   window_end,
+        "page":  1,
         "limit": 100
     }
 
+    # Fetch completed jobs
     if short_run:
         tqdm.write("Running in short mode (fetching only first page).")
-        response = call_service_trade_api(f"{SERVICE_TRADE_API_BASE}/job", base_params)
-        jobs = response.json().get("data", {}).get("jobs", []) if response else []
+        resp = call_service_trade_api(f"{SERVICE_TRADE_API_BASE}/job", base_params)
+        jobs = resp.json().get("data", {}).get("jobs", []) if resp else []
     else:
         jobs = get_jobs_with_params(base_params, desc="Fetching Completed Job Pages")
 
     tqdm.write(f"Jobs completed in 2024–2025 fiscal year: {len(jobs)}")
 
-    # --- Insert or update those jobs ---
+    # Process completed jobs
     with tqdm(total=len(jobs), desc="Processing Completed Jobs") as pbar:
         for job in jobs:
             try:
-                job_id, job_data = fetch_invoice_and_clock(job)
+                job_id, job_data = fetch_invoice_and_clock(job, overwrite=overwrite)
                 db_job_entry[job_id] = job_data
             except Exception as exc:
                 tqdm.write(f"A job failed with exception: {exc}")
@@ -969,27 +1219,31 @@ def jobs_summary(short_run=False, overwrite=False):
 
     # --- Scheduled jobs that are not complete from fiscal year ---
     scheduled_job_params = {
-        "status": "scheduled",
-        "scheduleDateFrom": window_start,
-        "scheduleDateTo": window_end,
-        "page": 1,
-        "limit": 100
+        "status":             "scheduled",
+        "scheduleDateFrom":   window_start,
+        "scheduleDateTo":     window_end,
+        "page":               1,
+        "limit":              100
     }
-    scheduled_jobs = get_jobs_with_params(scheduled_job_params, desc="Fetching Additional Jobs")
+    scheduled_jobs = get_jobs_with_params(
+        scheduled_job_params,
+        desc="Fetching Additional Jobs"
+    )
 
     if scheduled_jobs:
         tqdm.write(f"Processing {len(scheduled_jobs)} additional jobs with alternate criteria.")
         with tqdm(total=len(scheduled_jobs), desc="Processing Additional Jobs") as pbar:
             for job in scheduled_jobs:
                 try:
-                    job_id, job_data = fetch_invoice_and_clock(job)
+                    job_id, job_data = fetch_invoice_and_clock(job, overwrite=overwrite)
                     db_job_entry[job_id] = job_data
                 except Exception as exc:
                     tqdm.write(f"A job failed with exception: {exc}")
                 pbar.update(1)
 
-
     tqdm.write("\nAll jobs processed.")
+    return db_job_entry
+
 
 
 def get_deficiencies_with_params(params, desc="Fetching deficiencies"):
@@ -1317,7 +1571,7 @@ def update_quotes():
 
 def test():
     authenticate()
-    endpoint = f"{SERVICE_TRADE_API_BASE}/invoice/2043614681112833"
+    endpoint = f"{SERVICE_TRADE_API_BASE}/invoice/1876570907636161"
     params = {
         "page": 1
     }
@@ -1325,20 +1579,143 @@ def test():
     data = response.json().get("data")
     print(json.dumps(data, indent=4))
 
+def test_update_invoice():
+    authenticate()
+
+    # hardcode the invoice you want to upsert
+    invoice_id = '1954194748431297'
+    endpoint   = f"{SERVICE_TRADE_API_BASE}/invoice/{invoice_id}"
+
+    # fetch page 1 of that invoice
+    resp = call_service_trade_api(endpoint, params={"page": 1})
+    resp.raise_for_status()
+    data = resp.json().get("data", {}) or {}
+
+    # grab the job ID so we know how to link InvoiceItems
+    job_id = data.get("job", {}).get("id")
+    if not job_id:
+        print(f"No job attached to invoice {invoice_id}, aborting")
+        return
+
+    items = data.get("items") or []
+    if not isinstance(items, list):
+        print(f"Unexpected items format for invoice {invoice_id}")
+        return
+
+    updated = 0
+    for item in items:
+        try:
+            st_id_str = str(item.get("id", ""))
+            desc      = item.get("description") or ""
+            qty       = float(item.get("quantity") or 0)
+            up        = float(item.get("price") or 0.0)
+            total_pr  = float(item.get("totalPrice") or 0.0)
+
+            # normalize once for performance
+            desc_lower = desc.lower()
+
+            if any(keyword.lower() in desc_lower for keyword in FA_LABOUR_DESCRIPTIONS):
+                itype = 'fa_labour'
+            elif any(keyword.lower() in desc_lower for keyword in SPR_LABOUR_DESCRIPTIONS):
+                itype = 'spr_labour'
+            else:
+                itype = 'part'
+
+            # upsert
+            ii = InvoiceItem.query.filter_by(
+                invoice_id=invoice_id,
+                service_trade_id=st_id_str
+            ).first()
+            if not ii:
+                ii = InvoiceItem(
+                    invoice_id=invoice_id,
+                    job_id=job_id,
+                    service_trade_id=st_id_str
+                )
+            ii.description = desc
+            ii.item_type   = itype
+            ii.quantity    = qty
+            ii.unit_price  = up
+            ii.total_price = total_pr
+
+            db.session.add(ii)
+            updated += 1
+
+        except Exception as e:
+            db.session.rollback()
+            print(f"[WARNING] Skipping item {item.get('id')} for invoice {invoice_id}: {e}")
+
+    # commit all at once
+    db.session.commit()
+    print(f"✅ Updated {updated} invoice items for invoice {invoice_id}")
+
+def test_update_quote():
+    """
+    Fetches a single quote by hardcoded ID, upserts its line items into the QuoteItem table.
+    """
+    # Authenticate to ServiceTrade API
+    authenticate()
+
+    
+
+    # Hardcoded quote ID to update
+    quote_id = '1926124817413889'
+    endpoint = f"{SERVICE_TRADE_API_BASE}/quote/{quote_id}/item"
+
+    # Fetch first page of items
+    resp = call_service_trade_api(endpoint, params={"page": 1})
+    resp.raise_for_status()
+    data = resp.json().get('data', {}) or {}
+
+    items = data.get('items') or []
+    if not isinstance(items, list):
+        print(f"Unexpected items format for quote {quote_id}")
+        return
+
+    updated = 0
+    for item in items:
+        try:
+            st_id_str = str(item.get('id', ''))
+            desc      = item.get('description') or ''
+            qty       = float(item.get('quantity') or 0)
+            up        = float(item.get('price') or 0.0)
+            total_pr = qty * up
+
+            # normalize once for performance
+            desc_lower = desc.lower()
+
+            if any(keyword.lower() in desc_lower for keyword in FA_LABOUR_DESCRIPTIONS):
+                itype = 'fa_labour'
+            elif any(keyword.lower() in desc_lower for keyword in SPR_LABOUR_DESCRIPTIONS):
+                itype = 'spr_labour'
+            else:
+                itype = 'part'
+
+            # Upsert QuoteItem
+            qi = QuoteItem.query.filter_by(
+                quote_id=quote_id,
+                service_trade_id=st_id_str
+            ).first()
+            if not qi:
+                qi = QuoteItem(quote_id=quote_id, service_trade_id=st_id_str)
+            qi.description = desc
+            qi.item_type   = itype
+            qi.quantity    = qty
+            qi.unit_price  = up
+            qi.total_price = total_pr
+
+            db.session.add(qi)
+            updated += 1
+
+        except Exception as e:
+            db.session.rollback()
+            print(f"[WARNING] Skipping item {item.get('id')} for quote {quote_id}: {e}")
+
+    # Commit all
+    db.session.commit()
+    print(f"✅ Updated {updated} quote items for quote {quote_id}")
 
 def quoteItemInvoiceItem(batch_size=100):
-    # Constants
-    HOURLY_RATE = {'fa':125.0, 'sprinkler':145.0, 'backflow':75.0}
-    FA_LABOUR_DESCRIPTIONS = {
-        "Annual Inspection",
-        "Return for Repairs",
-        "Service Call"
-    }
-    SPR_LABOUR_DESCRIPTIONS = {
-        "Return for Repairs - Sprinkler/Backflow",
-        "5-Year Standpipe Flow & FDC Hydrostatic Testing",
-        "Backflow Preventer Testing"
-    }
 
     # Authenticate
     try:
@@ -1352,181 +1729,183 @@ def quoteItemInvoiceItem(batch_size=100):
     fy_end   = datetime.timestamp(datetime(2025, 4, 30, 23, 59))
     base_params = {"createdAfter": fy_start, "createdBefore": fy_end}
 
-    # # Fetch quotes
-    # try:
-    #     all_quotes = get_quotes_with_params(params=base_params) or []
-    # except Exception as e:
-    #     tqdm.write(f"[ERROR] Failed to fetch quotes: {e}")
-    #     return
+    # Fetch quotes
+    try:
+        all_quotes = get_quotes_with_params(params=base_params) or []
+    except Exception as e:
+        tqdm.write(f"[ERROR] Failed to fetch quotes: {e}")
+        return
 
-    # tqdm.write(f"✅ Found {len(all_quotes)} quotes in fiscal year")
+    tqdm.write(f"✅ Found {len(all_quotes)} quotes in fiscal year")
 
-    # quote_counter = 0
-    # with tqdm(total=len(all_quotes), desc="Saving Quote Items to DB") as pbar:
-    #     for q in all_quotes:
-    #         quote_id = q.get("id")
-    #         items_meta = q.get("items")
-    #         if not isinstance(items_meta, list) or not items_meta:
-    #             pbar.update(1)
-    #             continue
-
-    #         page = 1
-    #         while True:
-    #             try:
-    #                 endpoint = f"{SERVICE_TRADE_API_BASE}/quote/{quote_id}/item"
-    #                 resp = call_service_trade_api(endpoint, params={"page": page})
-    #                 resp.raise_for_status()
-    #                 data = resp.json().get("data", {}) or {}
-    #             except Exception as e:
-    #                 tqdm.write(f"[WARNING] Quote {quote_id} page {page} API error: {e}")
-    #                 break
-
-    #             items = data.get("items")
-    #             if not isinstance(items, list):
-    #                 tqdm.write(f"[WARNING] Unexpected items format for quote {quote_id} page {page}")
-    #                 break
-
-    #             for item in items:
-    #                 try:
-    #                     st_id_str = str(item.get("id", ""))
-    #                     desc      = item.get("description") or ""
-    #                     qty       = float(item.get("quantity") or 0)
-    #                     up        = float(item.get("price") or 0.0)
-    #                     raw_tax   = item.get("taxRate")
-    #                     tax_pct   = float(raw_tax) if raw_tax not in (None, "") else 0.0
-    #                     total_pr  = up * qty * (1 + tax_pct / 100.0)
-
-    #                     # map to DB enum
-    #                     if desc in FA_LABOUR_DESCRIPTIONS:
-    #                         itype = 'fa_labour'
-    #                     elif desc in SPR_LABOUR_DESCRIPTIONS:
-    #                         itype = 'spr_labour'
-    #                     else:
-    #                         itype = 'part'
-
-    #                     # upsert
-    #                     qi = QuoteItem.query.filter_by(
-    #                         quote_id=quote_id,
-    #                         service_trade_id=st_id_str
-    #                     ).first()
-    #                     if not qi:
-    #                         qi = QuoteItem(quote_id=quote_id, service_trade_id=st_id_str)
-    #                     qi.description = desc
-    #                     qi.item_type   = itype
-    #                     qi.quantity    = qty
-    #                     qi.unit_price  = up
-    #                     qi.total_price = total_pr
-    #                     db.session.add(qi)
-
-    #                     quote_counter += 1
-    #                     if quote_counter >= batch_size:
-    #                         db.session.commit()
-    #                         quote_counter = 0
-
-    #                 except Exception as e:
-    #                     db.session.rollback()
-    #                     tqdm.write(f"[WARNING] Skipping bad quote item {item.get('id')} for quote {quote_id}: {e}")
-    #                     continue
-
-    #             total_pages = data.get("totalPages") or 1
-    #             if page >= total_pages:
-    #                 break
-    #             page += 1
-
-    #         pbar.update(1)
-
-    # if quote_counter:
-    #     db.session.commit()
-    # tqdm.write("✅ All quote items saved to DB.")
-
-    # --- INVOICES ---
-    invoice_endpoint = f"{SERVICE_TRADE_API_BASE}/invoice"
-    all_invoices = []
-    page = 1
-    while True:
-        try:
-            resp = call_service_trade_api(invoice_endpoint, params={
-                "createdAfter": fy_start,
-                "createdBefore": fy_end,
-                "page": page
-            })
-            resp.raise_for_status()
-            data = resp.json().get("data", {}) or {}
-        except Exception as e:
-            tqdm.write(f"[WARNING] Invoice page {page} API error: {e}")
-            break
-
-        invoices = data.get("invoices")
-        if not isinstance(invoices, list):
-            tqdm.write(f"[WARNING] Unexpected invoices format on page {page}")
-            break
-        all_invoices.extend(invoices)
-
-        total_pages = data.get("totalPages") or 1
-        tqdm.write(f"🔄 Fetched page {page}/{total_pages}, got {len(invoices)} invoices")
-        if page >= total_pages:
-            break
-        page += 1
-
-    tqdm.write(f"✅ Retrieved {len(all_invoices)} invoices")
-
-    invoice_counter = 0
-    with tqdm(total=len(all_invoices), desc="Saving Invoice Items to DB") as pbar2:
-        for inv in all_invoices:
-            invoice_id = inv.get("id")
-            job_id     = inv.get("job").get("id")
-            items      = inv.get("items")
-            if not isinstance(items, list) or not items:
-                pbar2.update(1)
+    quote_counter = 0
+    with tqdm(total=len(all_quotes), desc="Saving Quote Items to DB") as pbar:
+        for q in all_quotes:
+            quote_id = q.get("id")
+            items_meta = q.get("items")
+            if not isinstance(items_meta, list) or not items_meta:
+                pbar.update(1)
                 continue
 
-            for item in items:
+            page = 1
+            while True:
                 try:
-                    st_id_str   = str(item.get("id", ""))
-                    desc        = item.get("description") or ""
-                    qty         = float(item.get("quantity") or 0)
-                    up          = float(item.get("price") or 0.0)
-                    total_pr    = float(item.get("totalPrice") or 0.0)
-
-                    if desc in FA_LABOUR_DESCRIPTIONS:
-                        itype = 'fa_labour'
-                    elif desc in SPR_LABOUR_DESCRIPTIONS:
-                        itype = 'spr_labour'
-                    else:
-                        itype = 'part'
-
-                    ii = InvoiceItem.query.filter_by(
-                        invoice_id=invoice_id,
-                        service_trade_id=st_id_str
-                    ).first()
-                    if not ii:
-                        ii = InvoiceItem(
-                            invoice_id=invoice_id,
-                            job_id=job_id,
-                            service_trade_id=st_id_str
-                        )
-                    ii.description = desc
-                    ii.item_type   = itype
-                    ii.quantity    = qty
-                    ii.unit_price  = up
-                    ii.total_price = total_pr
-                    db.session.add(ii)
-
-                    invoice_counter += 1
-                    if invoice_counter >= batch_size:
-                        db.session.commit()
-                        invoice_counter = 0
-
+                    endpoint = f"{SERVICE_TRADE_API_BASE}/quote/{quote_id}/item"
+                    resp = call_service_trade_api(endpoint, params={"page": page})
+                    resp.raise_for_status()
+                    data = resp.json().get("data", {}) or {}
                 except Exception as e:
-                    db.session.rollback()
-                    tqdm.write(f"[WARNING] Skipping bad invoice item {item.get('id')} for invoice {invoice_id}: {e}")
-                    continue
+                    tqdm.write(f"[WARNING] Quote {quote_id} page {page} API error: {e}")
+                    break
 
-            pbar2.update(1)
+                items = data.get("items")
+                if not isinstance(items, list):
+                    tqdm.write(f"[WARNING] Unexpected items format for quote {quote_id} page {page}")
+                    break
 
-    if invoice_counter:
+                for item in items:
+                    try:
+                        st_id_str = str(item.get("id", ""))
+                        desc      = item.get("description") or ""
+                        qty       = float(item.get("quantity") or 0)
+                        up        = float(item.get("price") or 0.0)
+                        raw_tax   = item.get("taxRate")
+                        tax_pct   = float(raw_tax) if raw_tax not in (None, "") else 0.0
+                        total_pr  = up * qty * (1 + tax_pct / 100.0)
+
+                        # normalize once for performance
+                        desc_lower = desc.lower()
+
+                        if any(keyword.lower() in desc_lower for keyword in FA_LABOUR_DESCRIPTIONS):
+                            itype = 'fa_labour'
+                        elif any(keyword.lower() in desc_lower for keyword in SPR_LABOUR_DESCRIPTIONS):
+                            itype = 'spr_labour'
+                        else:
+                            itype = 'part'
+
+                        # upsert
+                        qi = QuoteItem.query.filter_by(
+                            quote_id=quote_id,
+                            service_trade_id=st_id_str
+                        ).first()
+                        if not qi:
+                            qi = QuoteItem(quote_id=quote_id, service_trade_id=st_id_str)
+                        qi.description = desc
+                        qi.item_type   = itype
+                        qi.quantity    = qty
+                        qi.unit_price  = up
+                        qi.total_price = total_pr
+                        db.session.add(qi)
+
+                        quote_counter += 1
+                        if quote_counter >= batch_size:
+                            db.session.commit()
+                            quote_counter = 0
+
+                    except Exception as e:
+                        db.session.rollback()
+                        tqdm.write(f"[WARNING] Skipping bad quote item {item.get('id')} for quote {quote_id}: {e}")
+                        continue
+
+                total_pages = data.get("totalPages") or 1
+                if page >= total_pages:
+                    break
+                page += 1
+
+            pbar.update(1)
+
+    if quote_counter:
         db.session.commit()
-    tqdm.write("✅ All invoice items saved to DB.")
+    tqdm.write("✅ All quote items saved to DB.")
+
+    # # --- INVOICES ---
+    # invoice_endpoint = f"{SERVICE_TRADE_API_BASE}/invoice"
+    # all_invoices = []
+    # page = 1
+    # while True:
+    #     try:
+    #         resp = call_service_trade_api(invoice_endpoint, params={
+    #             "createdAfter": fy_start,
+    #             "createdBefore": fy_end,
+    #             "page": page
+    #         })
+    #         resp.raise_for_status()
+    #         data = resp.json().get("data", {}) or {}
+    #     except Exception as e:
+    #         tqdm.write(f"[WARNING] Invoice page {page} API error: {e}")
+    #         break
+
+    #     invoices = data.get("invoices")
+    #     if not isinstance(invoices, list):
+    #         tqdm.write(f"[WARNING] Unexpected invoices format on page {page}")
+    #         break
+    #     all_invoices.extend(invoices)
+
+    #     total_pages = data.get("totalPages") or 1
+    #     tqdm.write(f"🔄 Fetched page {page}/{total_pages}, got {len(invoices)} invoices")
+    #     if page >= total_pages:
+    #         break
+    #     page += 1
+
+    # tqdm.write(f"✅ Retrieved {len(all_invoices)} invoices")
+
+    # invoice_counter = 0
+    # with tqdm(total=len(all_invoices), desc="Saving Invoice Items to DB") as pbar2:
+    #     for inv in all_invoices:
+    #         invoice_id = inv.get("id")
+    #         job_id     = inv.get("job").get("id")
+    #         items      = inv.get("items")
+    #         if not isinstance(items, list) or not items:
+    #             pbar2.update(1)
+    #             continue
+
+    #         for item in items:
+    #             try:
+    #                 st_id_str   = str(item.get("id", ""))
+    #                 desc        = item.get("description") or ""
+    #                 qty         = float(item.get("quantity") or 0)
+    #                 up          = float(item.get("price") or 0.0)
+    #                 total_pr    = float(item.get("totalPrice") or 0.0)
+
+    #                 if desc in FA_LABOUR_DESCRIPTIONS:
+    #                     itype = 'fa_labour'
+    #                 elif desc in SPR_LABOUR_DESCRIPTIONS:
+    #                     itype = 'spr_labour'
+    #                 else:
+    #                     itype = 'part'
+
+    #                 ii = InvoiceItem.query.filter_by(
+    #                     invoice_id=invoice_id,
+    #                     service_trade_id=st_id_str
+    #                 ).first()
+    #                 if not ii:
+    #                     ii = InvoiceItem(
+    #                         invoice_id=invoice_id,
+    #                         job_id=job_id,
+    #                         service_trade_id=st_id_str
+    #                     )
+    #                 ii.description = desc
+    #                 ii.item_type   = itype
+    #                 ii.quantity    = qty
+    #                 ii.unit_price  = up
+    #                 ii.total_price = total_pr
+    #                 db.session.add(ii)
+
+    #                 invoice_counter += 1
+    #                 if invoice_counter >= batch_size:
+    #                     db.session.commit()
+    #                     invoice_counter = 0
+
+    #             except Exception as e:
+    #                 db.session.rollback()
+    #                 tqdm.write(f"[WARNING] Skipping bad invoice item {item.get('id')} for invoice {invoice_id}: {e}")
+    #                 continue
+
+    #         pbar2.update(1)
+
+    # if invoice_counter:
+    #     db.session.commit()
+    # tqdm.write("✅ All invoice items saved to DB.")
 
 
 
