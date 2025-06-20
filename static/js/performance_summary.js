@@ -1039,60 +1039,7 @@ const PerformanceSummary = (() => {
           }
         }
       );
-      // ===== On-Time by Technician =====
-      // 1️⃣ Sort by on_time_pct desc
-      
-      const sortedOnTime = [...onTimeStats].sort(
-        (a, b) => b.on_time_pct - a.on_time_pct
-      );
-      console.log('Raw on-time stats:', data.technician_ontime_stats);
-      // 2️⃣ Apply Top-N
-      const N_ot = topN === "all" ? sortedOnTime.length : parseInt(topN, 10);
-      const selectedOnTime = sortedOnTime.slice(0, N_ot);
-
-      const onTimeLabels = selectedOnTime.map(d => d.tech_name);
-      const onTimeValues = selectedOnTime.map(d => d.on_time_pct);
-
-      // 3️⃣ Destroy old chart if present
-      charts.onTimeByTech?.destroy();
-
-      // 4️⃣ Create new bar chart
-      charts.onTimeByTech = new Chart(
-        document.getElementById('onTimeByTechChart').getContext('2d'),
-        {
-          type: 'bar',
-          data: {
-            labels: onTimeLabels,
-            datasets: [{
-              label: 'On-Time %',
-              data: onTimeValues,
-              backgroundColor: onTimeValues.map(v => v >= 100 ? '#59a14f' : '#e15759'),
-              borderRadius: 5
-            }]
-          },
-          options: {
-            responsive: true,
-            plugins: {
-              legend: { display: false },
-              tooltip: {
-                callbacks: {
-                  label: ctx => `${ctx.raw.toFixed(1)}% on time`
-                }
-              }
-            },
-            scales: {
-              y: {
-                beginAtZero: true,
-                max: 100,
-                title: { display: true, text: 'On-Time Percentage (%)' }
-              },
-              x: {
-                title: { display: true, text: 'Technician' }
-              }
-            }
-          }
-        }
-      );
+    
     }
 
 
