@@ -71,8 +71,6 @@ def performance_summary_data():
             window_end   = datetime.fromisoformat(end_param).astimezone(timezone.utc)
         except ValueError:
             pass  # fallback to defaults if bad input
-
-    print(f"[DEBUG] Using date range: {window_start.isoformat()} to {window_end.isoformat()}")
     
     completed_filter = and_(
         Job.completed_on.isnot(None),
@@ -125,6 +123,18 @@ def performance_summary_data():
         "quote_cost_breakdown_log": get_detailed_quote_job_stats(db.session, window_start, window_end),
     })
 
+
+@performance_summary_bp.route("/api/last_updated", methods=["GET"])
+def get_last_updated():
+    latest_job = db.session.query(func.max(Job.created_at)).scalar()
+    latest_def = db.session.query(func.max(Deficiency.created_at)).scalar()
+
+    # Pick the most recent of all
+    latest_timestamp = max(filter(None, [latest_job, latest_def]))
+
+    return jsonify({
+        "last_updated": latest_timestamp.isoformat() if latest_timestamp else None
+    })
 
 
 
@@ -438,7 +448,6 @@ def get_deficiencies_created_by_tech_service_line(window_start, window_end):
       - service_lines: sorted list of service line names
       - entries: list of { technician, service_line, count }
     """
-    print(f"[DEBUG] Date range: {window_start.isoformat()} to {window_end.isoformat()}")
 
     rows = (
         db.session
@@ -455,9 +464,6 @@ def get_deficiencies_created_by_tech_service_line(window_start, window_end):
         .all()
     )
 
-    print(f"[DEBUG] Raw query returned {len(rows)} rows")
-    for i, row in enumerate(rows[:5]):
-        print(f"[DEBUG] Row {i}: {row}")
 
     techs = set()
     service_lines = set()
@@ -476,7 +482,6 @@ def get_deficiencies_created_by_tech_service_line(window_start, window_end):
             "count": cnt
         })
 
-    print(f"[DEBUG] Final entry count: {len(entries)}")
 
     return {
         "technicians": sorted(techs),
@@ -828,12 +833,15 @@ def get_avg_revenue_per_hour(revenue_by_job_type, hours_by_job_type):
     return result
 
 def get_deficiency_insights(start_date, end_date):
-    # Base date filter on deficiency.created_on
+    # Base date filter is ALWAYS on deficiency.created_on
+    base_filter = and_(
+        Deficiency.deficiency_created_on >= start_date,
+        Deficiency.deficiency_created_on <= end_date
+    )
+
+    # Total deficiencies created within range
     total_deficiencies = db.session.query(Deficiency)\
-        .filter(
-            Deficiency.deficiency_created_on >= start_date,
-            Deficiency.deficiency_created_on <= end_date
-        )\
+        .filter(base_filter)\
         .count()
 
     # Quoted deficiencies created within range
@@ -841,25 +849,23 @@ def get_deficiency_insights(start_date, end_date):
         .join(Deficiency, Quote.linked_deficiency_id == Deficiency.deficiency_id)\
         .filter(
             Quote.linked_deficiency_id.isnot(None),
-            Deficiency.deficiency_created_on >= start_date,
-            Deficiency.deficiency_created_on <= end_date
+            base_filter
         )\
         .distinct()\
         .count()
 
-    # Quoted + job created (filter by deficiency date)
+    # Quoted + job created (filter still by deficiency.created_on)
     quoted_with_job = db.session.query(Quote.linked_deficiency_id)\
         .join(Deficiency, Quote.linked_deficiency_id == Deficiency.deficiency_id)\
         .filter(
             Quote.linked_deficiency_id.isnot(None),
             Quote.job_created.is_(True),
-            Deficiency.deficiency_created_on >= start_date,
-            Deficiency.deficiency_created_on <= end_date
+            base_filter
         )\
         .distinct()\
         .count()
 
-    # Quoted → job → completed (filter by job completed date)
+    # Quoted → job → completed (also filter by deficiency.created_on)
     quoted_with_completed_job = db.session.query(Quote.linked_deficiency_id)\
         .join(Job, Quote.job_id == Job.job_id)\
         .join(Deficiency, Quote.linked_deficiency_id == Deficiency.deficiency_id)\
@@ -867,8 +873,7 @@ def get_deficiency_insights(start_date, end_date):
             Quote.linked_deficiency_id.isnot(None),
             Quote.job_created.is_(True),
             Job.completed_on.isnot(None),
-            Job.completed_on >= start_date,
-            Job.completed_on <= end_date
+            base_filter
         )\
         .distinct()\
         .count()
@@ -879,6 +884,7 @@ def get_deficiency_insights(start_date, end_date):
         "quoted_with_job": quoted_with_job,
         "quoted_with_completed_job": quoted_with_completed_job
     }
+
 
 
 def get_deficiencies_by_service_line(window_start, window_end):

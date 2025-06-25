@@ -686,9 +686,6 @@ const PerformanceSummary = (() => {
         jobs: jobCountData[t] || 0
       }));
 
-      console.log("[DEBUG] Revenue Data:", revenueData);
-      console.log("[DEBUG] Deficiency Data:", data.deficiencies_by_tech_service_line);
-
       // ===== Revenue per Hour Chart =====
       const sortedByRevenue = [...techs].sort((a, b) => b.revenue - a.revenue);
       const revenueSelected = topN === "all" ? sortedByRevenue : sortedByRevenue.slice(0, parseInt(topN));
@@ -1265,6 +1262,7 @@ const PerformanceSummary = (() => {
       const startInput = document.getElementById('startDate');
       const endInput = document.getElementById('endDate');
       const filterBtn = document.getElementById('applyDateFilter');
+      updateLastUpdated();
 
       // 1️⃣ Set default range: previous Monday to last Monday
       const today = new Date();
@@ -1287,7 +1285,7 @@ const PerformanceSummary = (() => {
       // Set inputs
       startInput.value = defaultStart;
       endInput.value = defaultEnd;
-      
+
       function fetchAndRenderWithDateRange(startDate, endDate) {
         document.getElementById("loadingMessage").style.display = "block";
         document.getElementById("reportContent").style.display = "none";
@@ -1331,6 +1329,9 @@ const PerformanceSummary = (() => {
           });
       }
 
+      
+
+
       if (topNControl) {
         topNControl.addEventListener('change', () => {
           const start = startInput?.value;
@@ -1349,7 +1350,26 @@ const PerformanceSummary = (() => {
 
       // 2️⃣ Initial fetch with last week's range
       fetchAndRenderWithDateRange(defaultStart, defaultEnd);
+      
     });
+
+    function updateLastUpdated() {
+      fetch("/api/last_updated")
+        .then(res => res.json())
+        .then(data => {
+          const span = document.getElementById("lastUpdated");
+          if (data.last_updated) {
+            const date = new Date(data.last_updated);
+            span.textContent = date.toLocaleDateString('en-CA', {
+              year: 'numeric',
+              month: 'short',
+              day: 'numeric'
+            });
+          } else {
+            span.textContent = "Unavailable";
+          }
+        });
+      }
   }
 
   return { init };
