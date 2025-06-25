@@ -671,9 +671,9 @@ const PerformanceSummary = (() => {
 
   }
 
-
+  const techCharts = {};
   function renderTechnicianMetrics(data) {
-    const charts = {};
+    
     const revenueData = data.technician_metrics.revenue_per_hour;
     const jobCountData = data.technician_metrics.jobs_completed_by_tech;
     const onTimeStats = data.technician_ontime_stats || [];
@@ -686,14 +686,17 @@ const PerformanceSummary = (() => {
         jobs: jobCountData[t] || 0
       }));
 
+      console.log("[DEBUG] Revenue Data:", revenueData);
+      console.log("[DEBUG] Deficiency Data:", data.deficiencies_by_tech_service_line);
+
       // ===== Revenue per Hour Chart =====
       const sortedByRevenue = [...techs].sort((a, b) => b.revenue - a.revenue);
       const revenueSelected = topN === "all" ? sortedByRevenue : sortedByRevenue.slice(0, parseInt(topN));
       const revenueLabels = revenueSelected.map(t => t.tech);
       const revenueValues = revenueSelected.map(t => t.revenue);
 
-      charts.revenuePerHour?.destroy();
-      charts.revenuePerHour = new Chart(
+      techCharts.revenuePerHour?.destroy();
+      techCharts.revenuePerHour = new Chart(
         document.getElementById('revenuePerHourByTechChart').getContext('2d'),
         {
           type: 'bar',
@@ -727,7 +730,7 @@ const PerformanceSummary = (() => {
       );
 
       // ===== Jobs Completed by Tech (Grouped Bar + Total Line) =====
-      charts.jobsCompleted?.destroy();
+      techCharts.jobsCompleted?.destroy();
 
       // 1️⃣ Grab the payload
       const jobsPayload   = data.technician_metrics.jobs_completed_by_tech_job_type;
@@ -802,7 +805,7 @@ const PerformanceSummary = (() => {
       };
 
       // 8️⃣ Render the grouped-bar + line chart
-      charts.jobsCompleted = new Chart(
+      techCharts.jobsCompleted = new Chart(
         document.getElementById('jobsCompletedByTechChart').getContext('2d'),
         {
           type: 'bar',
@@ -851,7 +854,7 @@ const PerformanceSummary = (() => {
 
 
       // ===== Deficiencies Created by Tech (Grouped Bar + Total Line) =====
-      charts.deficienciesByTechSL?.destroy();
+      techCharts.deficienciesByTechSL?.destroy();
 
       // 1️⃣ Grab the payload
       const defsPayload   = data.deficiencies_by_tech_service_line;
@@ -944,7 +947,7 @@ const PerformanceSummary = (() => {
       };
 
       // 10️⃣ Render the grouped-bar + line chart
-      charts.deficienciesByTechSL = new Chart(
+      techCharts.deficienciesByTechSL = new Chart(
         document.getElementById('deficienciesCreatedByTechChart').getContext('2d'),
         {
           data: {
@@ -1002,8 +1005,8 @@ const PerformanceSummary = (() => {
       const attLabels = topAtt.map(d => d.technician);
       const attValues = topAtt.map(d => d.count);
 
-      charts.attachmentsAdded?.destroy();
-      charts.attachmentsAdded = new Chart(
+      techCharts.attachmentsAdded?.destroy();
+      techCharts.attachmentsAdded = new Chart(
         document.getElementById('attachmentsAddedToDeficienciesByTechChart').getContext('2d'),
         {
           type: 'bar',
@@ -1258,52 +1261,95 @@ const PerformanceSummary = (() => {
 
   function init() {
     document.addEventListener("DOMContentLoaded", () => {
-     
       const topNControl = document.getElementById('topNFilter');
+      const startInput = document.getElementById('startDate');
+      const endInput = document.getElementById('endDate');
+      const filterBtn = document.getElementById('applyDateFilter');
+
+      // 1️⃣ Set default range: previous Monday to last Monday
+      const today = new Date();
+      const dayOfWeek = today.getDay(); // Sunday=0, Monday=1, ..., Saturday=6
+
+      // Calculate how many days since the *last* Monday
+      const daysSinceLastMonday = (dayOfWeek + 6) % 7; // e.g. if Tuesday (2), then 1
+      const lastMonday = new Date(today);
+      lastMonday.setDate(today.getDate() - daysSinceLastMonday);
+
+      // Get previous Monday (7 days before lastMonday)
+      const prevMonday = new Date(lastMonday);
+      prevMonday.setDate(lastMonday.getDate() - 7);
+
+      // Format to YYYY-MM-DD
+      const toISODate = date => date.toISOString().split("T")[0];
+      const defaultStart = toISODate(prevMonday);
+      const defaultEnd = toISODate(lastMonday);
+
+      // Set inputs
+      startInput.value = defaultStart;
+      endInput.value = defaultEnd;
+      
+      function fetchAndRenderWithDateRange(startDate, endDate) {
+        document.getElementById("loadingMessage").style.display = "block";
+        document.getElementById("reportContent").style.display = "none";
+
+        const url = new URL("/api/performance_summary_data", window.location.origin);
+        if (startDate) url.searchParams.append("start_date", startDate);
+        if (endDate) url.searchParams.append("end_date", endDate);
+
+        fetch(url)
+          .then(res => res.json())
+          .then(data => {
+            document.getElementById("loadingMessage").style.display = "none";
+            document.getElementById("reportContent").style.display = "block";
+
+            renderJobsAndRevenueKPIs(data);
+            renderJobAndRevenue(data);
+            renderDeficiencyInsights(data);
+            renderTechnicianMetrics(data);
+            renderCustomerAndLocationMetrics(data);
+            renderQuoteCostBreakdownLog(data);
+
+            const avgRevenueEntries = Object.entries(data.avg_revenue_by_job_type);
+            avgRevenueEntries.sort((a, b) => b[1] - a[1]);
+
+            const sortedLabels = avgRevenueEntries.map(([jt]) => jt);
+            const sortedAvgRevenue = avgRevenueEntries.map(([, rev]) => rev);
+            const sortedAvgHours = sortedLabels.map(jt => {
+              const totalHours = data.hours_by_job_type[jt] || 0;
+              const jobCount = data.job_type_counts[jt] || 1;
+              return totalHours / jobCount;
+            });
+
+            if (charts.combo) charts.combo.destroy();
+
+            charts.combo = renderComboChart(
+              document.getElementById('comboRevenueHoursChart').getContext('2d'),
+              sortedLabels,
+              sortedAvgRevenue,
+              sortedAvgHours
+            );
+          });
+      }
+
       if (topNControl) {
         topNControl.addEventListener('change', () => {
-          fetch("/api/performance_summary_data")
-            .then(res => res.json())
-            .then(data => renderJobAndRevenue(data));
+          const start = startInput?.value;
+          const end = endInput?.value;
+          fetchAndRenderWithDateRange(start, end);
         });
       }
-      
-      fetch("/api/performance_summary_data")
-        .then(res => res.json())
-        .then(data => {
-          renderJobsAndRevenueKPIs(data);
-          renderJobAndRevenue(data);
-          renderDeficiencyInsights(data);
-          renderTechnicianMetrics(data);
-          renderCustomerAndLocationMetrics(data);
-          renderQuoteCostBreakdownLog(data);
 
-          const avgRevenueEntries = Object.entries(data.avg_revenue_by_job_type);
-
-          // Sort by descending average revenue
-          avgRevenueEntries.sort((a, b) => b[1] - a[1]);
-
-          // Extract the sorted labels and revenue
-          const sortedLabels = avgRevenueEntries.map(([jt]) => jt);
-          const sortedAvgRevenue = avgRevenueEntries.map(([, rev]) => rev);
-
-          // Reorder the avgHours array to match the sorted labels
-          const sortedAvgHours = sortedLabels.map(jt => {
-            const totalHours = data.hours_by_job_type[jt] || 0;
-            const jobCount = data.job_type_counts[jt] || 1;
-            return totalHours / jobCount;
-          });
-
-          // Now call the renderComboChart with sorted data
-          charts.combo = renderComboChart(
-            document.getElementById('comboRevenueHoursChart').getContext('2d'),
-            sortedLabels,
-            sortedAvgRevenue,
-            sortedAvgHours
-          );
+      if (filterBtn) {
+        filterBtn.addEventListener("click", () => {
+          const start = startInput?.value;
+          const end = endInput?.value;
+          fetchAndRenderWithDateRange(start, end);
         });
+      }
+
+      // 2️⃣ Initial fetch with last week's range
+      fetchAndRenderWithDateRange(defaultStart, defaultEnd);
     });
-    
   }
 
   return { init };
