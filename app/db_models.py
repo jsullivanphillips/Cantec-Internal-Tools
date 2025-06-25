@@ -138,8 +138,9 @@ class Job(db.Model):
     completed_on = db.Column(db.DateTime)
     revenue = db.Column(db.Float)
     total_on_site_hours = db.Column(db.Float)
-    location_id = db.Column(db.BIGINT)  # ✅ New field
+    location_id = db.Column(db.BIGINT)  
     created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    created_on_st = db.Column(db.DateTime)  
 
     clock_events = db.relationship("ClockEvent", back_populates="job")
     invoice_items = db.relationship('InvoiceItem', back_populates='job')
@@ -202,6 +203,7 @@ class Location(db.Model):
     company_id = db.Column(db.BIGINT)
     company_name = db.Column(db.String(255))
     created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    created_on_st = db.Column(db.DateTime(timezone=True))
 
     def __repr__(self):
         return f"<Location {self.location_id} | {self.status} | {self.company_name}>"

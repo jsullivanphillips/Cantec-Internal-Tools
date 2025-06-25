@@ -12,7 +12,8 @@ from app.routes.performance_summary import (
     quoteItemInvoiceItem,
     test,
     test_update_invoice,
-    test_update_quote
+    test_update_quote,
+    backfill_created_on_st_for_jobs
 )
 
 app = create_app()
@@ -41,8 +42,7 @@ if __name__ == "__main__":
                 update_quotes()
                 print("✅ Quotes updated.")
             elif run_test:
-                test_update_invoice()
-                test_update_quote()
+                backfill_created_on_st_for_jobs()
                 print("Test updated")
             elif quote_invoice_items:
                 quoteItemInvoiceItem()

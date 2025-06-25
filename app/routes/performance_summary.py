@@ -1060,94 +1060,122 @@ def call_service_trade_api(endpoint, params):
 
 def fetch_invoice_and_clock(job, overwrite=False):
     job_id = job.get("id")
-
-    # See if we already have this job
     existing_job = Job.query.filter_by(job_id=job_id).first()
-    if existing_job:
-        # Patch missing location_id if present in payload
-        if not existing_job.location_id:
-            new_loc = job.get("location", {}).get("id")
-            if new_loc:
-                existing_job.location_id = new_loc
-                db.session.commit()
-                tqdm.write(f"✅ Patched location_id for job {job_id} → {new_loc}")
 
+    job_type = job.get("type")
+    address = job.get("location", {}).get("address", {}).get("street", "Unknown")
+    customer_name = job.get("customer", {}).get("name", "Unknown")
+    job_status = job.get("displayStatus", "Unknown")
+    scheduled_date = datetime.fromtimestamp(job.get("scheduledDate")) if job.get("scheduledDate") else None
+    completed_on_raw = job.get("completedOn")
+    completed_on = datetime.fromtimestamp(completed_on_raw) if completed_on_raw else None
+    created_raw = job.get("created")
+    created_on_st = datetime.fromtimestamp(created_raw, timezone.utc) if created_raw else None
+    location_id = job.get("location", {}).get("id")
+
+    if existing_job:
         if not overwrite:
-            tqdm.write(f"Skipping job {job_id} (already exists)")
+            tqdm.write(f"Skipping job {job_id} (already exists in DB)")
             return job_id, {
                 "job": existing_job,
                 "clockEvents": {},
                 "onSiteHours": existing_job.total_on_site_hours
             }
 
-        # Overwrite=True: update only invoice/revenue, skip any clock logic
-        invoice_total = 0
-        if existing_job.completed_on:
-            inv_ep     = f"{SERVICE_TRADE_API_BASE}/invoice"
-            inv_params = {"jobId": job_id}
-            inv_resp   = call_service_trade_api(inv_ep, inv_params)
-            if inv_resp:
-                try:
-                    invs = inv_resp.json().get("data", {}).get("invoices", [])
-                    invoice_total = sum(inv.get("totalPrice", 0) for inv in invs)
-                except Exception as e:
-                    tqdm.write(f"⚠️ Failed parsing invoice for job {job_id}: {e}")
-            existing_job.revenue = invoice_total
-            db.session.commit()
+        # ✏️ Overwrite fields instead of creating new Job
+        existing_job.job_type = job_type
+        existing_job.address = address
+        existing_job.customer_name = customer_name
+        existing_job.job_status = job_status
+        existing_job.scheduled_date = scheduled_date
+        existing_job.completed_on = completed_on
+        existing_job.created_on_st = created_on_st
+        if location_id:
+            existing_job.location_id = location_id
+        db_job = existing_job
+    else:
+        db_job = Job(
+            job_id=job_id,
+            location_id=location_id,
+            job_type=job_type,
+            address=address,
+            customer_name=customer_name,
+            job_status=job_status,
+            scheduled_date=scheduled_date,
+            completed_on=completed_on,
+            total_on_site_hours=0,
+            revenue=0,
+            created_on_st=created_on_st
+        )
+        db.session.add(db_job)
 
-        return job_id, {
-            "job": existing_job,
-            "clockEvents": {},
-            "onSiteHours": existing_job.total_on_site_hours
-        }
-
-    # --- Job does not exist: create it and fetch invoice only ---
-    job_type      = job.get("type")
-    address       = job.get("location", {}).get("address", {}).get("street", "Unknown")
-    customer_name = job.get("customer", {}).get("name", "Unknown")
-    job_status    = job.get("displayStatus", "Unknown")
-    sched_raw     = job.get("scheduledDate")
-    scheduled_date = datetime.fromtimestamp(sched_raw, timezone.utc) if sched_raw else None
-    comp_raw      = job.get("completedOn")
-    completed_on  = datetime.fromtimestamp(comp_raw, timezone.utc) if comp_raw else None
-
-    db_job = Job(
-        job_id              = job_id,
-        location_id         = job.get("location", {}).get("id"),
-        job_type            = job_type,
-        address             = address,
-        customer_name       = customer_name,
-        job_status          = job_status,
-        scheduled_date      = scheduled_date,
-        completed_on        = completed_on,
-        total_on_site_hours = 0,
-        revenue             = 0
-    )
-    db.session.add(db_job)
-    db.session.commit()
-
-    # Invoice fetch (if completed)
+    # Fetch invoice and clock events only for completed jobs
     invoice_total = 0
-    if completed_on:
-        inv_ep     = f"{SERVICE_TRADE_API_BASE}/invoice"
-        inv_params = {"jobId": job_id}
-        inv_resp   = call_service_trade_api(inv_ep, inv_params)
-        if inv_resp:
-            try:
-                invs = inv_resp.json().get("data", {}).get("invoices", [])
-                invoice_total = sum(inv.get("totalPrice", 0) for inv in invs)
-            except Exception as e:
-                tqdm.write(f"⚠️ Failed parsing invoice for job {job_id}: {e}")
+    total_on_site_hours = 0
+    clock_events = {}
 
+    if completed_on:
+        invoice_endpoint = f"{SERVICE_TRADE_API_BASE}/invoice"
+        invoice_params = {"jobId": job_id}
+        invoice_response = call_service_trade_api(invoice_endpoint, invoice_params)
+        if invoice_response:
+            try:
+                invoices = invoice_response.json().get("data", {}).get("invoices", [])
+                invoice_total = sum(inv.get("totalPrice", 0) for inv in invoices)
+            except Exception as e:
+                tqdm.write(f"⚠️ Failed parsing invoice data for job {job_id}: {e}")
         db_job.revenue = invoice_total
+
+        clock_endpoint = f"{SERVICE_TRADE_API_BASE}/job/{job_id}/clockevent"
+        clock_params = {"activity": "onsite"}
+        clock_response = call_service_trade_api(clock_endpoint, clock_params)
+        if clock_response:
+            try:
+                clock_event_pairs = clock_response.json().get("data", {}).get("pairedEvents", [])
+                for pair in clock_event_pairs:
+                    clock_in_raw = pair.get("start", {}).get("eventTime", 0)
+                    clock_out_raw = pair.get("end", {}).get("eventTime", 0)
+                    if not clock_in_raw or not clock_out_raw:
+                        continue
+                    clock_in = datetime.fromtimestamp(clock_in_raw)
+                    clock_out = datetime.fromtimestamp(clock_out_raw)
+                    delta = clock_out - clock_in
+                    hours = delta.total_seconds() / 3600
+                    tech = pair.get("start", {}).get("user", {}).get("name")
+                    if not tech:
+                        continue
+
+                    existing_evt = ClockEvent.query.filter_by(job_id=job_id, tech_name=tech, hours=hours).first()
+                    if existing_evt:
+                        existing_evt.created_at = datetime.now(timezone.utc)
+                    else:
+                        db.session.add(ClockEvent(
+                            job_id=job_id,
+                            tech_name=tech,
+                            hours=hours,
+                            created_at=datetime.now(timezone.utc)
+                        ))
+
+                    clock_events[tech] = clock_events.get(tech, 0) + hours
+                    total_on_site_hours += hours
+            except Exception as e:
+                tqdm.write(f"⚠️ Error processing clock events for job {job_id}: {e}")
+
+    db_job.total_on_site_hours = total_on_site_hours
+    db_job.revenue = invoice_total
+
+    try:
         db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        tqdm.write(f"[ERROR] Failed to save job {job_id}: {e}")
+        raise
 
     return job_id, {
-        "job":        db_job,
-        "clockEvents": {},
-        "onSiteHours": db_job.total_on_site_hours
+        "job": db_job,
+        "clockEvents": clock_events,
+        "onSiteHours": total_on_site_hours
     }
-
 
 
 
@@ -1180,14 +1208,17 @@ def get_jobs_with_params(params, desc="Fetching Jobs"):
 
     return jobs
 
-def jobs_summary(short_run=False, overwrite=False):
+def jobs_summary(overwrite=False, start_date=None, end_date=None):
     authenticate()
 
     db_job_entry = {}
 
-    # --- Standard completed jobs from fiscal year ---
-    window_start = datetime.timestamp(datetime(2024, 5, 1, 0, 0))
-    window_end   = datetime.timestamp(datetime(2025, 4, 30, 23, 59))
+    if not start_date or not end_date:
+        start_date = datetime(2024, 5, 1, 0, 0)
+        end_date   = datetime(2025, 4, 30, 23, 59)
+
+    window_start = datetime.timestamp(start_date)
+    window_end   = datetime.timestamp(end_date)
 
     base_params = {
         "status": "completed",
@@ -1197,15 +1228,10 @@ def jobs_summary(short_run=False, overwrite=False):
         "limit": 100
     }
 
-    # Fetch completed jobs
-    if short_run:
-        tqdm.write("Running in short mode (fetching only first page).")
-        resp = call_service_trade_api(f"{SERVICE_TRADE_API_BASE}/job", base_params)
-        jobs = resp.json().get("data", {}).get("jobs", []) if resp else []
-    else:
-        jobs = get_jobs_with_params(base_params, desc="Fetching Completed Job Pages")
 
-    tqdm.write(f"Jobs completed in 2024–2025 fiscal year: {len(jobs)}")
+    jobs = get_jobs_with_params(base_params, desc="Fetching Completed Job Pages")
+
+    tqdm.write(f"Jobs completed in {start_date} - {end_date}: {len(jobs)}")
 
     # Process completed jobs
     with tqdm(total=len(jobs), desc="Processing Completed Jobs") as pbar:
@@ -1275,15 +1301,18 @@ def get_deficiencies_with_params(params, desc="Fetching deficiencies"):
 
     return deficiencies
 
-def update_deficiencies():
+def update_deficiencies(start_date=None, end_date=None):
     authenticate()
+    if not start_date or not end_date:
+        start_date = datetime(2024, 5, 1, 0, 0)
+        end_date   = datetime(2025, 4, 30, 23, 59)
 
-    fiscal_year_start = datetime.timestamp(datetime(2024, 5, 1, 0, 0))
-    fiscal_year_end = datetime.timestamp(datetime(2025, 4, 30, 23, 59))
+    window_start = start_date
+    window_end   = end_date
 
     deficiency_params = {
-        "createdAfter": fiscal_year_start,
-        "createdBefore": fiscal_year_end,
+        "createdAfter": datetime.timestamp(window_start),
+        "createdBefore": datetime.timestamp(window_end),
         "limit": 500
     }
 
@@ -1342,16 +1371,29 @@ def update_deficiencies():
     tqdm.write("✅ All deficiencies processed and saved.")
 
 
-def update_deficiencies_attachments():
+def update_deficiencies_attachments(start_date=None, end_date=None):
     authenticate()
 
-    # grab every deficiency in the DB
-    all_defs = Deficiency.query.all()
+    if not start_date or not end_date:
+        start_date = datetime(2024, 5, 1, 0, 0)
+        end_date   = datetime(2025, 4, 30, 23, 59)
+
+    tqdm.write(f"Fetching deficiencies created between {start_date} and {end_date}...")
+
+    # Filter deficiencies based on created_at range
+    all_defs = Deficiency.query.filter(
+        Deficiency.created_at >= start_date,
+        Deficiency.created_at <= end_date
+    ).all()
+
     tqdm.write(f"Updating attachment info on {len(all_defs)} deficiencies…")
 
     with tqdm(total=len(all_defs), desc="Updating Deficiencies") as pbar:
         for deficiency in all_defs:
             try:
+                if deficiency.has_attachment is True:
+                    pbar.update(1)
+                    continue
                 # hit the Service Trade API for attachments
                 attachment_endpoint = f"{SERVICE_TRADE_API_BASE}/attachment"
                 attachment_params = {
@@ -1371,7 +1413,7 @@ def update_deficiencies_attachments():
                         uploaded_by = attachments[0].get("creator", {}).get("name")
                         tqdm.write(f"Attachment on deficiency {deficiency.deficiency_id} uploaded by {uploaded_by}")
 
-                # set fields on the existing object
+                # update fields
                 deficiency.has_attachment         = has_att
                 deficiency.attachment_uploaded_by = uploaded_by
 
@@ -1424,40 +1466,71 @@ def update_locations():
             "status": status
         }
         locations = get_locations_with_params(params=params)
-        tqdm.write(f"Number of {status} locations: {len(locations)}")
-
+        tqdm.write(f"📦 {status.title()} locations fetched: {len(locations)}")
         for loc in locations:
-            loc["status"] = status  # attach status inline
+            loc["status"] = status
         all_locations.extend(locations)
 
-    tqdm.write(f"Total locations to process: {len(all_locations)}")
+    tqdm.write(f"🔄 Processing {len(all_locations)} total locations...")
 
     with tqdm(total=len(all_locations), desc="Saving Locations to DB") as pbar:
-        for l in all_locations:
+        for loc in all_locations:
             try:
-                location_id = l["id"]
-                street = l["address"]["street"]
-                status = l["status"]
-                company_name = l["company"]["name"]
-                company_id = l["company"]["id"]
+                location_id = loc.get("id")
+                address     = loc.get("address", {})
+                company     = loc.get("company", {})
+                created_ts  = loc.get("created")
+
+                street        = address.get("street", "Unknown")
+                status        = loc.get("status", "Unknown")
+                company_name  = company.get("name", "Unknown")
+                company_id    = company.get("id")
+                created_on_st = datetime.fromtimestamp(created_ts) if created_ts else None
 
                 location = Location.query.filter_by(location_id=location_id).first()
+
                 if not location:
-                    location = Location(location_id=location_id)
+                    # New location
+                    location = Location(
+                        location_id=location_id,
+                        street=street,
+                        status=status,
+                        company_name=company_name,
+                        company_id=company_id,
+                        created_on_st=created_on_st
+                    )
+                    db.session.add(location)
+                    tqdm.write(f"Added new location {location_id}")
+                else:
+                    # Existing: check if any field changed
+                    updated = False
+                    if location.street != street:
+                        location.street = street
+                        updated = True
+                    if location.status != status:
+                        location.status = status
+                        updated = True
+                    if location.company_name != company_name:
+                        location.company_name = company_name
+                        updated = True
+                    if location.company_id != company_id:
+                        location.company_id = company_id
+                        updated = True
+                    if location.created_on_st != created_on_st:
+                        location.created_on_st = created_on_st
+                        updated = True
 
-                location.street = street
-                location.status = status
-                location.company_name = company_name
-                location.company_id = company_id
-
-                db.session.add(location)
+                    if updated:
+                        db.session.add(location)
+                        tqdm.write(f"Updated location {location_id}")
 
             except Exception as e:
-                tqdm.write(f"[WARNING] Skipped location {l.get('id')} | Error: {type(e).__name__}: {e}")
+                tqdm.write(f"[WARNING] Skipped location {loc.get('id')} | {type(e).__name__}: {e}")
             pbar.update(1)
 
     db.session.commit()
     tqdm.write("✅ All locations processed and saved.")
+
 
 
 def get_quotes_with_params(params, desc="Fetching quotes"):
@@ -1488,20 +1561,24 @@ def get_quotes_with_params(params, desc="Fetching quotes"):
 
     return quotes 
 
-def update_quotes():
+def update_quotes(start_date=None, end_date=None):
     authenticate()
 
-    fiscal_year_start = datetime.timestamp(datetime(2024, 5, 1, 0, 0))
-    fiscal_year_end = datetime.timestamp(datetime(2025, 4, 30, 23, 59))
+    if not start_date or not end_date:
+        start_date = datetime(2024, 5, 1, 0, 0)
+        end_date   = datetime(2025, 4, 30, 23, 59)
+
+    start_ts = datetime.timestamp(start_date)
+    end_ts   = datetime.timestamp(end_date)
 
     base_params = {
-        "createdAfter": fiscal_year_start,
-        "createdBefore": fiscal_year_end,
+        "createdAfter": start_ts,
+        "createdBefore": end_ts,
     }
 
     # --- 1. Fetch all quotes within the timeframe
     all_quotes = get_quotes_with_params(params=base_params)
-    tqdm.write(f"✅ Found {len(all_quotes)} quotes in fiscal year")
+    tqdm.write(f"✅ Found {len(all_quotes)} quotes in {start_date} - {end_date}")
 
     # --- 2. Fetch deficiency-linked quotes in same window
     known_deficiencies = Deficiency.query.with_entities(Deficiency.deficiency_id).all()
@@ -1510,8 +1587,8 @@ def update_quotes():
     linked_quotes = []
     for d_id in tqdm(deficiency_ids, desc="Fetching linked quotes"):
         params = {
-            "createdAfter": fiscal_year_start,
-            "createdBefore": fiscal_year_end,
+            "createdAfter": start_ts,
+            "createdBefore": end_ts,
             "deficiencyId": d_id
         }
         quotes = get_quotes_with_params(params=params)
@@ -1715,18 +1792,13 @@ def test_update_quote():
     db.session.commit()
     print(f"✅ Updated {updated} quote items for quote {quote_id}")
 
-def quoteItemInvoiceItem(batch_size=100):
-
-    # Authenticate
-    try:
-        authenticate()
-    except Exception as e:
-        tqdm.write(f"[ERROR] Authentication failed: {e}")
-        return
-
-    # Time window
-    fy_start = datetime.timestamp(datetime(2024, 5, 1))
-    fy_end   = datetime.timestamp(datetime(2025, 4, 30, 23, 59))
+def quoteItemInvoiceItem(start_date=None, end_date=None, batch_size=100):
+    authenticate()
+    if not start_date or not end_date:
+        start_date = datetime(2024, 5, 1)
+        end_date   = datetime(2025, 4, 30, 23, 59)
+    fy_start = datetime.timestamp(start_date)
+    fy_end   = datetime.timestamp(end_date)
     base_params = {"createdAfter": fy_start, "createdBefore": fy_end}
 
     # Fetch quotes
@@ -1736,7 +1808,7 @@ def quoteItemInvoiceItem(batch_size=100):
         tqdm.write(f"[ERROR] Failed to fetch quotes: {e}")
         return
 
-    tqdm.write(f"✅ Found {len(all_quotes)} quotes in fiscal year")
+    tqdm.write(f"✅ Found {len(all_quotes)} quotes in {fy_start} - {fy_end}")
 
     quote_counter = 0
     with tqdm(total=len(all_quotes), desc="Saving Quote Items to DB") as pbar:
@@ -1818,94 +1890,141 @@ def quoteItemInvoiceItem(batch_size=100):
         db.session.commit()
     tqdm.write("✅ All quote items saved to DB.")
 
-    # # --- INVOICES ---
-    # invoice_endpoint = f"{SERVICE_TRADE_API_BASE}/invoice"
-    # all_invoices = []
-    # page = 1
-    # while True:
-    #     try:
-    #         resp = call_service_trade_api(invoice_endpoint, params={
-    #             "createdAfter": fy_start,
-    #             "createdBefore": fy_end,
-    #             "page": page
-    #         })
-    #         resp.raise_for_status()
-    #         data = resp.json().get("data", {}) or {}
-    #     except Exception as e:
-    #         tqdm.write(f"[WARNING] Invoice page {page} API error: {e}")
-    #         break
+    # --- INVOICES ---
+    invoice_endpoint = f"{SERVICE_TRADE_API_BASE}/invoice"
+    all_invoices = []
+    page = 1
+    while True:
+        try:
+            resp = call_service_trade_api(invoice_endpoint, params={
+                "createdAfter": fy_start,
+                "createdBefore": fy_end,
+                "page": page
+            })
+            resp.raise_for_status()
+            data = resp.json().get("data", {}) or {}
+        except Exception as e:
+            tqdm.write(f"[WARNING] Invoice page {page} API error: {e}")
+            break
 
-    #     invoices = data.get("invoices")
-    #     if not isinstance(invoices, list):
-    #         tqdm.write(f"[WARNING] Unexpected invoices format on page {page}")
-    #         break
-    #     all_invoices.extend(invoices)
+        invoices = data.get("invoices")
+        if not isinstance(invoices, list):
+            tqdm.write(f"[WARNING] Unexpected invoices format on page {page}")
+            break
+        all_invoices.extend(invoices)
 
-    #     total_pages = data.get("totalPages") or 1
-    #     tqdm.write(f"🔄 Fetched page {page}/{total_pages}, got {len(invoices)} invoices")
-    #     if page >= total_pages:
-    #         break
-    #     page += 1
+        total_pages = data.get("totalPages") or 1
+        tqdm.write(f"🔄 Fetched page {page}/{total_pages}, got {len(invoices)} invoices")
+        if page >= total_pages:
+            break
+        page += 1
 
-    # tqdm.write(f"✅ Retrieved {len(all_invoices)} invoices")
+    tqdm.write(f"✅ Retrieved {len(all_invoices)} invoices")
 
-    # invoice_counter = 0
-    # with tqdm(total=len(all_invoices), desc="Saving Invoice Items to DB") as pbar2:
-    #     for inv in all_invoices:
-    #         invoice_id = inv.get("id")
-    #         job_id     = inv.get("job").get("id")
-    #         items      = inv.get("items")
-    #         if not isinstance(items, list) or not items:
-    #             pbar2.update(1)
-    #             continue
+    invoice_counter = 0
+    with tqdm(total=len(all_invoices), desc="Saving Invoice Items to DB") as pbar2:
+        for inv in all_invoices:
+            invoice_id = inv.get("id")
+            job_id     = inv.get("job").get("id")
+            items      = inv.get("items")
+            if not isinstance(items, list) or not items:
+                pbar2.update(1)
+                continue
 
-    #         for item in items:
-    #             try:
-    #                 st_id_str   = str(item.get("id", ""))
-    #                 desc        = item.get("description") or ""
-    #                 qty         = float(item.get("quantity") or 0)
-    #                 up          = float(item.get("price") or 0.0)
-    #                 total_pr    = float(item.get("totalPrice") or 0.0)
+            for item in items:
+                try:
+                    st_id_str   = str(item.get("id", ""))
+                    desc        = item.get("description") or ""
+                    qty         = float(item.get("quantity") or 0)
+                    up          = float(item.get("price") or 0.0)
+                    total_pr    = float(item.get("totalPrice") or 0.0)
 
-    #                 if desc in FA_LABOUR_DESCRIPTIONS:
-    #                     itype = 'fa_labour'
-    #                 elif desc in SPR_LABOUR_DESCRIPTIONS:
-    #                     itype = 'spr_labour'
-    #                 else:
-    #                     itype = 'part'
+                    if desc in FA_LABOUR_DESCRIPTIONS:
+                        itype = 'fa_labour'
+                    elif desc in SPR_LABOUR_DESCRIPTIONS:
+                        itype = 'spr_labour'
+                    else:
+                        itype = 'part'
 
-    #                 ii = InvoiceItem.query.filter_by(
-    #                     invoice_id=invoice_id,
-    #                     service_trade_id=st_id_str
-    #                 ).first()
-    #                 if not ii:
-    #                     ii = InvoiceItem(
-    #                         invoice_id=invoice_id,
-    #                         job_id=job_id,
-    #                         service_trade_id=st_id_str
-    #                     )
-    #                 ii.description = desc
-    #                 ii.item_type   = itype
-    #                 ii.quantity    = qty
-    #                 ii.unit_price  = up
-    #                 ii.total_price = total_pr
-    #                 db.session.add(ii)
+                    ii = InvoiceItem.query.filter_by(
+                        invoice_id=invoice_id,
+                        service_trade_id=st_id_str
+                    ).first()
+                    if not ii:
+                        ii = InvoiceItem(
+                            invoice_id=invoice_id,
+                            job_id=job_id,
+                            service_trade_id=st_id_str
+                        )
+                    ii.description = desc
+                    ii.item_type   = itype
+                    ii.quantity    = qty
+                    ii.unit_price  = up
+                    ii.total_price = total_pr
+                    db.session.add(ii)
 
-    #                 invoice_counter += 1
-    #                 if invoice_counter >= batch_size:
-    #                     db.session.commit()
-    #                     invoice_counter = 0
+                    invoice_counter += 1
+                    if invoice_counter >= batch_size:
+                        db.session.commit()
+                        invoice_counter = 0
 
-    #             except Exception as e:
-    #                 db.session.rollback()
-    #                 tqdm.write(f"[WARNING] Skipping bad invoice item {item.get('id')} for invoice {invoice_id}: {e}")
-    #                 continue
+                except Exception as e:
+                    db.session.rollback()
+                    tqdm.write(f"[WARNING] Skipping bad invoice item {item.get('id')} for invoice {invoice_id}: {e}")
+                    continue
 
-    #         pbar2.update(1)
+            pbar2.update(1)
 
-    # if invoice_counter:
-    #     db.session.commit()
-    # tqdm.write("✅ All invoice items saved to DB.")
+    if invoice_counter:
+        db.session.commit()
+    tqdm.write("✅ All invoice items saved to DB.")
+
+
+def backfill_created_on_st_for_jobs(batch_size=100):
+    authenticate()
+    tqdm.write("Backfilling created_on_st for existing jobs...")
+    jobs = Job.query.filter(Job.created_on_st.is_(None)).all()
+
+    updated = 0
+    with tqdm(total=len(jobs), desc="Backfilling jobs") as pbar:
+        for job in jobs:
+            try:
+                job_id = job.job_id
+                job_resp = call_service_trade_api(f"{SERVICE_TRADE_API_BASE}/job/{job_id}", params={})
+                if job_resp:
+                    job_data = job_resp.json().get("data", {})
+                    created_raw = job_data.get("created")
+                    if created_raw:
+                        job.created_on_st = datetime.fromtimestamp(created_raw, timezone.utc)
+                        db.session.add(job)
+                        updated += 1
+                        if updated % batch_size == 0:
+                            db.session.commit()
+            except Exception as e:
+                tqdm.write(f"[WARNING] Failed job {job.job_id}: {e}")
+            pbar.update(1)
+
+    if updated % batch_size != 0:
+        db.session.commit()
+
+    tqdm.write("✅ Finished backfilling created_on_st for jobs.")
+
+
+def update_all_data(start_date=None, end_date=None):
+    if not start_date or not end_date:
+        start_date = datetime(2024, 5, 1)
+        end_date   = datetime(2025, 4, 30, 23, 59)
+
+    tqdm.write(f"\n🗓 Updating all data from {start_date.date()} to {end_date.date()}")
+
+    jobs_summary(overwrite=True, start_date=start_date, end_date=end_date)
+    update_deficiencies(start_date=start_date, end_date=end_date)
+    update_quotes(start_date=start_date, end_date=end_date)
+    quoteItemInvoiceItem(start_date=start_date, end_date=end_date)
+    update_locations()
+    update_deficiencies_attachments(start_date=start_date, end_date=end_date)
+
+    tqdm.write("✅ Weekly update complete.")
 
 
 
