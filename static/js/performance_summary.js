@@ -2,6 +2,7 @@
 const PerformanceSummary = (() => {
   let charts = {};
   let topNValue = 5; // default to Top 5
+  let latestData = null;
 
   function formatLabelName(camelCaseLabel) {
     return camelCaseLabel
@@ -1053,94 +1054,106 @@ const PerformanceSummary = (() => {
   }
 
  function renderCustomerAndLocationMetrics(data) {
-    // stash the full datasets once
-    const allLocations       = [...data.location_service_type_counts];
-    const allCustomerRevenue = [...data.top_customer_revenue];
+  const topNFilter = document.getElementById("locationTopNFilter");
 
-    // hook up Top-N filter
-    const topNFilter = document.getElementById("locationTopNFilter");
-    if (topNFilter && !topNFilter.dataset.bound) {
-      topNFilter.addEventListener("change", () => render(topNFilter.value));
-      topNFilter.dataset.bound = "true";
-    }
-
-    function render(topN = "5") {
-      const topCount = topN === "all" ? Infinity : parseInt(topN, 10);
-
-      // 🚨 Destroy any existing instances before drawing new ones
-      charts.locationServiceTypeChart?.destroy();
-      charts.topCustomerRevenueChart?.destroy();
-      // removed deficiencyRevenueConversionChart entirely
-
-      // --- stacked Service Calls chart ---
-      const svc = [...allLocations]
-        .sort((a, b) => b.total - a.total)
-        .slice(0, topCount);
-      const svcLabels    = svc.map(l => l.address);
-      const svcEmergency = svc.map(l => l.emergency);
-      const svcRegular   = svc.map(l => l.service);
-
-      charts.locationServiceTypeChart = new Chart(
-        document.getElementById("locationServiceTypeChart").getContext("2d"), {
-          type: "bar",
-          data: {
-            labels: svcLabels,
-            datasets: [
-              { label: "Service Calls", data: svcRegular,   backgroundColor: "#4e79a7", stack: "calls" },
-              { label: "Emergency Calls", data: svcEmergency, backgroundColor: "#e15759", stack: "calls" }
-            ]
-          },
-          options: {
-            responsive: true,
-            plugins: {
-              tooltip: { mode: "index", intersect: false },
-              legend: { position: "top" }
-            },
-            scales: {
-              x: { stacked: true },
-              y: { stacked: true, beginAtZero: true, title: { display: true, text: "Number of Calls" } }
-            }
-          }
-        }
-      );
-
-      // --- Top Customers by Revenue chart ---
-      const topCust = [...allCustomerRevenue]
-        .sort((a, b) => b.revenue - a.revenue)
-        .slice(0, topCount);
-
-      charts.topCustomerRevenueChart = new Chart(
-        document.getElementById("topCustomerRevenueChart").getContext("2d"), {
-          type: "bar",
-          data: {
-            labels: topCust.map(c => c.customer),
-            datasets: [{
-              label: "Revenue ($)",
-              data: topCust.map(c => c.revenue),
-              backgroundColor: "#f28e2b",
-              borderRadius: 5
-            }]
-          },
-          options: {
-            indexAxis: "y",
-            responsive: true,
-            plugins: {
-              tooltip: {
-                callbacks: { label: ctx => `$${ctx.raw.toLocaleString()}` }
-              },
-              legend: { display: false }
-            },
-            scales: {
-              x: { beginAtZero: true, title: { display: true, text: "Revenue ($)" } }
-            }
-          }
-        }
-      );
-    }
-
-    // initial draw
-    render(topNFilter.value || "5");
+  if (topNFilter && !topNFilter.dataset.bound) {
+    topNFilter.addEventListener("change", () => {
+      if (latestData) render(latestData, topNFilter.value);
+    });
+    topNFilter.dataset.bound = "true";
   }
+
+  function render(currentData, topN = "5") {
+    const topCount = topN === "all" ? Infinity : parseInt(topN, 10);
+
+    const allLocations = [...currentData.location_service_type_counts];
+    const allCustomerRevenue = [...currentData.top_customer_revenue];
+
+    charts.locationServiceTypeChart?.destroy();
+    charts.topCustomerRevenueChart?.destroy();
+
+    const svc = allLocations
+      .sort((a, b) => b.total - a.total)
+      .slice(0, topCount);
+
+    charts.locationServiceTypeChart = new Chart(
+      document.getElementById("locationServiceTypeChart").getContext("2d"),
+      {
+        type: "bar",
+        data: {
+          labels: svc.map(l => l.address),
+          datasets: [
+            {
+              label: "Service Calls",
+              data: svc.map(l => l.service),
+              backgroundColor: "#4e79a7",
+              stack: "calls"
+            },
+            {
+              label: "Emergency Calls",
+              data: svc.map(l => l.emergency),
+              backgroundColor: "#e15759",
+              stack: "calls"
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            tooltip: { mode: "index", intersect: false },
+            legend: { position: "top" }
+          },
+          scales: {
+            x: { stacked: true },
+            y: {
+              stacked: true,
+              beginAtZero: true,
+              title: { display: true, text: "Number of Calls" }
+            }
+          }
+        }
+      }
+    );
+
+    // Top customers chart
+    const topCust = allCustomerRevenue
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, topCount);
+
+    charts.topCustomerRevenueChart = new Chart(
+      document.getElementById("topCustomerRevenueChart").getContext("2d"),
+      {
+        type: "bar",
+        data: {
+          labels: topCust.map(c => c.customer),
+          datasets: [{
+            label: "Revenue ($)",
+            data: topCust.map(c => c.revenue),
+            backgroundColor: "#f28e2b",
+            borderRadius: 5
+          }]
+        },
+        options: {
+          indexAxis: "y",
+          responsive: true,
+          plugins: {
+            tooltip: {
+              callbacks: { label: ctx => `$${ctx.raw.toLocaleString()}` }
+            },
+            legend: { display: false }
+          },
+          scales: {
+            x: { beginAtZero: true, title: { display: true, text: "Revenue ($)" } }
+          }
+        }
+      }
+    );
+  }
+
+  // 🔁 Initial draw
+  render(data, topNFilter.value || "5");
+}
+
 
 
 
@@ -1297,6 +1310,7 @@ const PerformanceSummary = (() => {
         fetch(url)
           .then(res => res.json())
           .then(data => {
+            latestData = data;
             document.getElementById("loadingMessage").style.display = "none";
             document.getElementById("reportContent").style.display = "block";
 
