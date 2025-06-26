@@ -115,12 +115,15 @@ def update_deficiency_records(start_date: datetime, end_date: datetime):
                             print(f"⚠️ Skipped duplicate insert attempt for {item['deficiency_id']}")
                             skipped += 1
 
-                db.session.commit()
+                if (added + updated) % 200 == 0:
+                    print(f"committing batch {(added + updated) / 200}")
+                    db.session.commit()
 
             except IntegrityError as e:
                 db.session.rollback()
                 print(f"❌ Duplicate or insert error for deficiency_id {item['deficiency_id']}: {e}")
 
+        db.session.commit()
         print(f"{added} new deficiencies added.")
         print(f"{updated} deficiencies updated.")
         print(f"{skipped} unchanged deficiencies skipped.")

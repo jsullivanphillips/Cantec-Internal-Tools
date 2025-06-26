@@ -78,28 +78,34 @@ def create_deficiency_webhook():
     print(f"Confirmed: {webhook_data['confirmed']}")
     print()
 
+
 def create_job_complete_webhook():
     webhook_payload = {
         "hookUrl": JOB_STATUS_WEBHOOK_ENDPOINT,
         "entityEvents": [
             {
                 "entityType": 3,
-                "actions": []
+                "actions": ["updated"]
             }
         ],
-        "includeChangesets": True
+        "includeChangesets": True,
     }
 
-    print(f"Creating new webhook to {JOB_STATUS_WEBHOOK_ENDPOINT}")
+    print(f"Creating new webhook to {JOB_STATUS_WEBHOOK_ENDPOINT}...")
 
-    response = api_session.post(f"{JOB_STATUS_WEBHOOK_ENDPOINT}", json=webhook_payload)
-    response.raise_for_status()
-    webhook_data = response.json()["data"]
-    print(f"✅ Webhook created successfully! Webhook ID: {webhook_data['id']}")
-    print(f"Webhook URI: {webhook_data['uri']}")
-    print(f"Enabled: {webhook_data['enabled']}")
-    print(f"Confirmed: {webhook_data['confirmed']}")
-    print()
+    try:
+        response = api_session.post(f"{SERVICE_TRADE_API_BASE}/webhook", json=webhook_payload)
+        response.raise_for_status()
+    except Exception as e:
+        print(f"Failed to create webhook: {e}")
+
+    webhook_data = response.json().get("data",{})
+    print(f"webhook data:\n {webhook_data}")
+    # print(f"✅ Webhook created successfully! Webhook ID: {webhook_data['id']}")
+    # print(f"Webhook URI: {webhook_data['uri']}")
+    # print(f"Enabled: {webhook_data['enabled']}")
+    # print(f"Confirmed: {webhook_data['confirmed']}")
+    # print()
 
 
 def main():

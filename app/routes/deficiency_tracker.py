@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from app.models.deficiency import Deficiency
 from typing import Any, Dict
 from app.db_models import DeficiencyRecord
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from sqlalchemy import and_
 import pytz
 
@@ -101,6 +102,7 @@ def deficiency_tracker_deficiency_list():
             "reported_by": d.tech_name,
             "reporter_image_link": d.tech_image_link,
             "job_link": d.job_link,
+            "is_job_complete": d.is_job_complete,
             "service_line": d.service_line_name,
             "service_line_icon_link": d.service_line_icon_link,
             "is_quote_sent": d.is_quote_sent,
@@ -129,124 +131,116 @@ def deficiency_tracker_hide_toggle():
 
 
 def fetch_deficiencies(start_date: datetime, end_date: datetime):
-    # Authenticate
     authenticate()
 
-    # Convert dates to UNIX timestamps
     deficiency_params = {
         "createdBefore": int(end_date.timestamp()),
         "createdAfter": int(start_date.timestamp())
     }
 
-    deficiency_endpoint = f"{SERVICE_TRADE_API_BASE}/deficiency"
-    location_endpoint = f"{SERVICE_TRADE_API_BASE}/location"
-    job_endpoint = f"{SERVICE_TRADE_API_BASE}/job"
-    quote_endpoint = f"{SERVICE_TRADE_API_BASE}/quote"
+    response = call_service_trade_api(f"{SERVICE_TRADE_API_BASE}/deficiency", deficiency_params)
+    deficiencies_json = response.json().get("data", {}).get("deficiencies", [])
 
-    response = call_service_trade_api(deficiency_endpoint, deficiency_params)
-    response_data = response.json().get("data", {})
-    deficiencies_json = response_data.get("deficiencies", {})
-
-    print(f"Received data from deficiencies endpoint for range {start_date} -> {end_date}")
     print(f"Number of deficiencies found: {len(deficiencies_json)}")
+    print("Processing Deficiencies (multithreaded)...")
 
-    deficiencies = []
-    print("Processing Deficiencies")
-    total_deficiencies = len(deficiencies_json)
+    def process_deficiency(deficiency):
+        try:
+            deficiency_id = deficiency.get("id")
+            job_id = safe_get(deficiency, "job", "id")
+            status = deficiency.get("status", "")
+            timestamp = deficiency.get("reportedOn")
+            reported_on = datetime.fromtimestamp(timestamp) if timestamp else None
+            address = safe_get(deficiency, "location", "address", "street")
+            location_name = safe_get(deficiency, "location", "name")
+            description = deficiency.get("description", "")
+            proposed_solution = deficiency.get("proposedFix", "")
+            tech_name = safe_get(deficiency, "reporter", "name")
+            tech_image_link = safe_get(deficiency, "reporter", "avatar", "small")
+            job_link = f"{SERVICE_TRADE_DEFICIENCY_BASE}/{deficiency_id}" if deficiency_id else ""
+            service_line_name = safe_get(deficiency, "serviceLine", "name")
+            service_line_icon_link = safe_get(deficiency, "serviceLine", "icon")
+            severity = deficiency.get("severity", "")
 
-    for i, deficiency in enumerate(deficiencies_json, start=1):
-        print(f"Processing Deficiency {i}/{total_deficiencies}", end="\r", flush=True)
-        job_id = safe_get(deficiency, "job", "id")
-        deficiency_id = deficiency.get("id", "")
-        status = deficiency.get("status", "")
-        timestamp = deficiency.get("reportedOn")
-        reported_on = datetime.fromtimestamp(timestamp) if timestamp else None
-        address = safe_get(deficiency, "location", "address", "street")
-        location_name = safe_get(deficiency, "location", "name")
-        description = deficiency.get("description", "")
-        proposed_solution = deficiency.get("proposedFix", "")
-        tech_name = safe_get(deficiency, "reporter", "name")
-        tech_image_link = safe_get(deficiency, "reporter", "avatar", "small")
-        job_link = f"{SERVICE_TRADE_DEFICIENCY_BASE}/{deficiency_id}" if deficiency_id else ""
-        service_line_name = safe_get(deficiency, "serviceLine", "name")
-        service_line_icon_link = safe_get(deficiency, "serviceLine", "icon")
-        severity = deficiency.get("severity", "")
+            # Location API call (with safeguard)
+            try:
+                loc_resp = call_service_trade_api(f"{SERVICE_TRADE_API_BASE}/location", {"name": location_name})
+                locations = loc_resp.json().get("data", {}).get("locations", [])
+                current_location = locations[0] if locations else {}
 
-        # Lookup location details
-        response = call_service_trade_api(location_endpoint, {"name": location_name})
-        locations = response.json().get("data", {}).get("locations")
-        current_location = locations[0] if isinstance(locations, list) and locations else {}
+                if not current_location:
+                    return None
 
-        if not current_location:
-            continue
+                is_monthly_access = is_location_monthly_access(current_location)
+                company = safe_get(current_location, "company", "name")
+            except Exception as e:
+                print(f"⚠️ Error fetching location info for deficiency {deficiency.get('id')}: {e}")
+                return None
 
-        is_monthly_access = is_location_monthly_access(current_location)
-        company = safe_get(current_location, "company", "name")
 
-        # Lookup if job is complete
-        if job_id:
-            response = call_service_trade_api(job_endpoint, params={"id": job_id})
-            job_status = response.json().get("data", {}).get("status")
-            is_job_complete = job_status == "completed"
-        else:
+            # Job API call
             is_job_complete = False
+            if job_id:
+                job_resp = call_service_trade_api(f"{SERVICE_TRADE_API_BASE}/job", {"id": job_id})
+                job_status = job_resp.json().get("data", {}).get("status")
+                is_job_complete = job_status == "completed"
 
-        # Lookup if deficiency is out for quote
-        response = call_service_trade_api(quote_endpoint, {"deficiencyId": deficiency_id})
-        is_deficiency_quote_approved = False
-        is_quote_in_draft = False
-        is_quote_sent = False
-        quote_expiry = None
-        response_data = response.json().get("data", {})
-        if response_data:
-            quotes = response_data.get("quotes")
-            if len(quotes) > 0:
-                for quote in quotes:
-                    expires_on_ts = quote.get("expiresOn")
-                    if expires_on_ts:
-                        # First, create UTC-aware datetime
-                        quote_expiry_utc = datetime.fromtimestamp(expires_on_ts, tz=timezone.utc)
+            # Quote API call
+            quote_resp = call_service_trade_api(f"{SERVICE_TRADE_API_BASE}/quote", {"deficiencyId": deficiency_id})
+            quotes = quote_resp.json().get("data", {}).get("quotes", [])
+            is_quote_approved = is_quote_sent = is_quote_in_draft = False
+            quote_expiry = None
 
-                        # If you want it in PDT (Pacific Time), use pytz
-                        pdt = pytz.timezone('America/Los_Angeles')
-                        quote_expiry = quote_expiry_utc.astimezone(pdt)
-                    else:
-                        quote_expiry = None
-                    
-                    quote_status = quote.get("quoteRequest").get("status")
-                    print(f"{deficiency.get("title")} | quote status: {quote_status} | deficiency id: {deficiency_id}")
-                    if quote_status == "approved":
-                        is_deficiency_quote_approved = True
-                    elif quote_status == "waiting":
-                        is_quote_in_draft = True
-                    elif quote_status == "quote_received":
-                        is_quote_sent = True
+            for quote in quotes:
+                status = safe_get(quote, "quoteRequest", "status")
+                if status == "approved":
+                    is_quote_approved = True
+                elif status == "waiting":
+                    is_quote_in_draft = True
+                elif status == "quote_received":
+                    is_quote_sent = True
 
+                exp_ts = quote.get("expiresOn")
+                if exp_ts:
+                    quote_expiry = datetime.fromtimestamp(exp_ts, tz=timezone.utc).astimezone(
+                        pytz.timezone("America/Los_Angeles"))
 
-        deficiency_obj = Deficiency(
-            deficiency_id=deficiency_id,
-            status=status,
-            reported_on=reported_on,
-            address=address,
-            location_name=location_name,
-            is_monthly_access=is_monthly_access,
-            description=description,
-            proposed_solution=proposed_solution,
-            company=company,
-            tech_name=tech_name,
-            tech_image_link=tech_image_link,
-            job_link=job_link,
-            is_job_complete=is_job_complete,
-            job_id=job_id,
-            service_line_name=service_line_name,
-            service_line_icon_link=service_line_icon_link,
-            severity=severity,
-            is_quote_sent=is_quote_sent,
-            is_quote_approved=is_deficiency_quote_approved,
-            is_quote_in_draft=is_quote_in_draft,
-            quote_expiry=quote_expiry
-        )
-        deficiencies.append(deficiency_obj)
+            return Deficiency(
+                deficiency_id=deficiency_id,
+                status=status,
+                reported_on=reported_on,
+                address=address,
+                location_name=location_name,
+                is_monthly_access=is_monthly_access,
+                description=description,
+                proposed_solution=proposed_solution,
+                company=company,
+                tech_name=tech_name,
+                tech_image_link=tech_image_link,
+                job_link=job_link,
+                is_job_complete=is_job_complete,
+                job_id=job_id,
+                service_line_name=service_line_name,
+                service_line_icon_link=service_line_icon_link,
+                severity=severity,
+                is_quote_sent=is_quote_sent,
+                is_quote_approved=is_quote_approved,
+                is_quote_in_draft=is_quote_in_draft,
+                quote_expiry=quote_expiry
+            )
+        except Exception as e:
+            print(f"❌ Error processing deficiency {deficiency.get('id')}: {e}")
+            return None
+
+    # 🔄 Run with threads
+    deficiencies = []
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        future_to_def = {executor.submit(process_deficiency, d): d for d in deficiencies_json}
+        for i, future in enumerate(as_completed(future_to_def), 1):
+            result = future.result()
+            if result:
+                deficiencies.append(result)
+            print(f"Processed {i}/{len(deficiencies_json)}", end="\r", flush=True)
 
     print()
     return jsonify({"data": [serialize_deficiency(d) for d in deficiencies]})

@@ -20,7 +20,8 @@ const DeficiencyTracker = (() => {
       datalistReporter: document.getElementById("reporter-list"),
       filterReportedAfter: document.getElementById("filter-reported-after"),
       filterReportedBefore: document.getElementById("filter-reported-before"),
-      filterSort: document.getElementById("filter-sort")
+      filterSort: document.getElementById("filter-sort"),
+      filterComplete: document.getElementById("filter-complete")
     };
   
     function createBadge(text, variant="secondary") {
@@ -64,6 +65,7 @@ const DeficiencyTracker = (() => {
       const afterVal = el.filterReportedAfter.value;
       const beforeVal = el.filterReportedBefore.value;
       const sortVal = el.filterSort.value;
+      const completeVal = el.filterComplete.value;
   
       filteredData = allData.filter(d => {
         if (mVal === "true" && !d.monthly_access) return false;
@@ -112,6 +114,10 @@ const DeficiencyTracker = (() => {
           const reportedDate = new Date(d.reported_on);
           if (reportedDate > beforeDate) return false;
         }
+
+        // Job completed
+        if (completeVal === "true" && !d.is_job_complete) return false;
+        if (completeVal === "false" && d.is_job_complete) return false;
       
         return true;
       });
@@ -141,8 +147,18 @@ const DeficiencyTracker = (() => {
         // TITLE SECTION
         const title = document.createElement("h5");
         title.className = "card-title d-flex align-items-center justify-content-between";
-      
+
         const titleLeft = document.createElement("div");
+
+        // ✅ Status Light
+        const statusLight = document.createElement("span");
+        statusLight.className = "rounded-circle me-2";
+        statusLight.style.width = "10px";
+        statusLight.style.height = "10px";
+        statusLight.style.display = "inline-block";
+        statusLight.style.backgroundColor = d.is_job_complete ? "#28a745" : "#ccc";  // Green if complete, grey otherwise
+        titleLeft.append(statusLight);
+
         const link = document.createElement("a");
         link.href = d.job_link;
         link.target = "_blank";
@@ -594,7 +610,8 @@ const DeficiencyTracker = (() => {
         el.filterReporter,
         el.filterReportedAfter,
         el.filterReportedBefore,
-        el.filterSort // ✅ New
+        el.filterSort,
+        el.filterComplete
         ].forEach(inp => {
         inp.addEventListener("input", () => {
             applyFilters();
