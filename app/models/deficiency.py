@@ -16,6 +16,8 @@ class Deficiency:
     tech_name: Optional[str] = ""
     tech_image_link: Optional[str] = ""
     job_link: Optional[str] = ""
+    is_job_complete: Optional[bool] = False
+    job_id: Optional[int] = None
     service_line_name: Optional[str] = ""
     service_line_icon_link: Optional[str] = ""
     severity: Optional[str] = ""
@@ -43,6 +45,8 @@ class Deficiency:
             f"Reported By: {self.tech_name or 'N/A'}\n"
             f"Reporter Image: {self.tech_image_link or 'N/A'}\n"
             f"Job Link: {self.job_link or 'N/A'}\n"
+            f"Job Id: {self.job_id or 'N/A'}\n"
+            f"Is Job Complete: {self.is_job_complete or 'N/A'}\n"
             f"Service Line: {self.service_line_name or 'N/A'}\n"
             f"Service Icon: {self.service_line_icon_link or 'N/A'}"
         )

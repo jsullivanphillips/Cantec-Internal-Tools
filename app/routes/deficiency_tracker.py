@@ -140,6 +140,7 @@ def fetch_deficiencies(start_date: datetime, end_date: datetime):
 
     deficiency_endpoint = f"{SERVICE_TRADE_API_BASE}/deficiency"
     location_endpoint = f"{SERVICE_TRADE_API_BASE}/location"
+    job_endpoint = f"{SERVICE_TRADE_API_BASE}/job"
     quote_endpoint = f"{SERVICE_TRADE_API_BASE}/quote"
 
     response = call_service_trade_api(deficiency_endpoint, deficiency_params)
@@ -155,7 +156,7 @@ def fetch_deficiencies(start_date: datetime, end_date: datetime):
 
     for i, deficiency in enumerate(deficiencies_json, start=1):
         print(f"Processing Deficiency {i}/{total_deficiencies}", end="\r", flush=True)
-
+        job_id = safe_get(deficiency, "job", "id")
         deficiency_id = deficiency.get("id", "")
         status = deficiency.get("status", "")
         timestamp = deficiency.get("reportedOn")
@@ -181,6 +182,14 @@ def fetch_deficiencies(start_date: datetime, end_date: datetime):
 
         is_monthly_access = is_location_monthly_access(current_location)
         company = safe_get(current_location, "company", "name")
+
+        # Lookup if job is complete
+        if job_id:
+            response = call_service_trade_api(job_endpoint, params={"id": job_id})
+            job_status = response.json().get("data", {}).get("status")
+            is_job_complete = job_status == "completed"
+        else:
+            is_job_complete = False
 
         # Lookup if deficiency is out for quote
         response = call_service_trade_api(quote_endpoint, {"deficiencyId": deficiency_id})
@@ -227,6 +236,8 @@ def fetch_deficiencies(start_date: datetime, end_date: datetime):
             tech_name=tech_name,
             tech_image_link=tech_image_link,
             job_link=job_link,
+            is_job_complete=is_job_complete,
+            job_id=job_id,
             service_line_name=service_line_name,
             service_line_icon_link=service_line_icon_link,
             severity=severity,

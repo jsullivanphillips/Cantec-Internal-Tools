@@ -25,7 +25,6 @@ def field_changed(existing, incoming, field):
     return existing_val != incoming
 
 
-
 def update_deficiency_records(start_date: datetime, end_date: datetime):
     with app.test_request_context():
         from flask import session
@@ -56,6 +55,8 @@ def update_deficiency_records(start_date: datetime, end_date: datetime):
                             field_changed(existing, item["company"], "company") or
                             field_changed(existing, item["severity"], "severity") or 
                             field_changed(existing, item["job_link"], "job_link") or 
+                            field_changed(existing, item["job_id"], "job_id") or 
+                            field_changed(existing, item["is_job_complete"], "is_job_complete") or 
                             field_changed(existing, item["is_quote_sent"], "is_quote_sent") or 
                             field_changed(existing, item["is_quote_approved"], "is_quote_approved") or
                             field_changed(existing, item["is_quote_in_draft"], "is_quote_in_draft") or
@@ -67,6 +68,8 @@ def update_deficiency_records(start_date: datetime, end_date: datetime):
                             existing.company = item["company"]
                             existing.severity = item["severity"]
                             existing.job_link = item["job_link"]
+                            existing.job_id = item["job_id"]
+                            existing.is_job_complete = item["is_job_complete"]
                             existing.is_quote_sent = item["is_quote_sent"]
                             existing.is_quote_approved = item["is_quote_approved"]
                             existing.is_quote_in_draft = item["is_quote_in_draft"]
@@ -96,6 +99,8 @@ def update_deficiency_records(start_date: datetime, end_date: datetime):
                                 tech_name=item["tech_name"],
                                 tech_image_link=item["tech_image_link"],
                                 job_link=item["job_link"],
+                                is_job_complete=item["is_job_complete"],
+                                job_id=item["job_id"],
                                 service_line_name=item["service_line_name"],
                                 service_line_icon_link=item["service_line_icon_link"],
                                 severity=item["severity"],
@@ -116,9 +121,9 @@ def update_deficiency_records(start_date: datetime, end_date: datetime):
                 db.session.rollback()
                 print(f"❌ Duplicate or insert error for deficiency_id {item['deficiency_id']}: {e}")
 
-        print(f"✅ {added} new deficiencies added.")
-        print(f"🛠️  {updated} deficiencies updated.")
-        print(f"⚠️  {skipped} unchanged deficiencies skipped.")
+        print(f"{added} new deficiencies added.")
+        print(f"{updated} deficiencies updated.")
+        print(f"{skipped} unchanged deficiencies skipped.")
             
 
 if __name__ == '__main__':
