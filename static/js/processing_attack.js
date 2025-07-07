@@ -665,7 +665,7 @@ const ProcessingAttack = (() => {
     const currentDate = new Date();
     const diffDays = (currentDate - oldestDate) / (1000 * 60 * 60 * 24);
 
-    if (diffDays <= 30) {
+    if (diffDays <= 42) {
       oldestElem.style.color = "#27a532";
       oldestElem1.style.color = "#27a532";
       oldestElem2.style.color = "#27a532";
@@ -691,7 +691,7 @@ const ProcessingAttack = (() => {
     const oldestInspCard = document.getElementById("oldestInspectionToBeMarkedCard");
     const oldestInspDate = new Date(data.oldest_inspection_date);
     const inspDiffDays = (currentDate - oldestInspDate) / (1000 * 60 * 60 * 24);
-    if (inspDiffDays <= 30) {
+    if (inspDiffDays <= 42) {
       oldestInspElem.style.color = "#27a532";
       oldestInspElem1.style.color = "#27a532";
       oldestInspElem2.style.color = "#27a532";

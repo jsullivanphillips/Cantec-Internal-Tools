@@ -1,6 +1,7 @@
 import os
 from datetime import datetime, timezone
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import foreign
 
 db = SQLAlchemy()

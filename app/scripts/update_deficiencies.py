@@ -1,10 +1,12 @@
 import os
+import sys
 from app import create_app, db
 from flask import current_app as app
-from app.routes.deficiency_tracker import fetch_deficiencies
+from app.routes.deficiency_tracker import fetch_deficiencies, authenticate, call_service_trade_api, SERVICE_TRADE_API_BASE
 from app.db_models import DeficiencyRecord
 from datetime import datetime, timezone
 from sqlalchemy.exc import IntegrityError
+
 
 app = create_app()
 
@@ -127,16 +129,30 @@ def update_deficiency_records(start_date: datetime, end_date: datetime):
         print(f"{added} new deficiencies added.")
         print(f"{updated} deficiencies updated.")
         print(f"{skipped} unchanged deficiencies skipped.")
-            
+
+
+def test():
+    import json
+    authenticate()
+    response = call_service_trade_api(SERVICE_TRADE_API_BASE + "/deficiency/2036741323234497", params={})
+    data = response.json().get("data", {})
+    print(json.dumps(data, indent=4))
+
+
 
 if __name__ == '__main__':
+    is_test = '--test' in sys.argv
+
     app = create_app()
     with app.app_context():
         with app.test_request_context():
             from flask import session
             session['username'] = os.environ.get("PROCESSING_USERNAME")
             session['password'] = os.environ.get("PROCESSING_PASSWORD")
-            update_deficiency_records(
-                start_date=datetime(2024, 6, 1),
-                end_date=datetime.today()
-            )
+            if is_test:
+                test()
+            else:
+                update_deficiency_records(
+                    start_date=datetime(2024, 6, 1),
+                    end_date=datetime.today()
+                )
