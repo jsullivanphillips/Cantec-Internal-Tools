@@ -3,6 +3,37 @@
 
 {% block title %}Home - Scheduling App{% endblock %}
 
+{% block extra_head %}
+  <script type="module">
+    import { Editor } from 'https://esm.sh/@tiptap/core@2.1.11';
+    import StarterKit from 'https://esm.sh/@tiptap/starter-kit@2.1.11';
+
+    window.Tiptap = { Editor, StarterKit };
+  </script>
+  <style>
+    .word-style {
+      font-family: "CAlibri", "Calibri", serif;
+      font-size: 12pt;
+      line-height: 1.6;
+      color: #333;
+      padding: 1in;
+      background-color: white;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.05);
+      max-width: 800px;
+      margin: 0 auto 32px auto;
+      white-space: pre-wrap;
+    }
+    .ProseMirror {
+      outline: none;
+      min-height: 300px;
+      white-space: normal;
+    }
+  </style>
+{% endblock %}
+
+
 {% block content %}
   <!-- Main container for the homepage content -->
   <div class="main-container">
@@ -32,5 +63,22 @@
         Performance Summary
       </a>
     </div>
-  </div>
+
+    <!-- Meeting Minutes Section -->
+    <!-- Create New Button -->
+    <div style="text-align: center; margin: 30px 0;">
+      <button id="create-minute-btn" class="btn btn-success">+ New Meeting Minute</button>
+    </div>
+
+    <!-- Container for all meeting minutes -->
+    <div id="minutes-list" style="max-width: 800px; margin: auto;"></div>
+
+    <!-- Optional: loading spinner -->
+    <div id="loading" style="text-align: center; padding: 20px; display: none;">
+      <span>Loading more...</span>
+    </div>
+{% endblock %}
+
+{% block extra_scripts %}
+  <script src="{{ url_for('static', filename='js/home.js') }}"></script>
 {% endblock %}

@@ -2,9 +2,13 @@ import os
 from datetime import datetime, timezone
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.dialects.postgresql import ARRAY
+from zoneinfo import ZoneInfo
 from sqlalchemy.orm import foreign
 
 db = SQLAlchemy()
+
+def vancouver_now():
+    return datetime.now(ZoneInfo("America/Vancouver"))  # for zoneinfo
 
 class JobSummary(db.Model):
     __tablename__ = 'job_summary'
@@ -272,7 +276,15 @@ class InvoiceItem(db.Model):
 
     job = db.relationship('Job', back_populates='invoice_items')
 
+class MeetingMinute(db.Model):
+    __tablename__ = 'meeting_minute'
 
+    id = db.Column(db.Integer, primary_key=True)
+    week_of = db.Column(db.Date, nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    updated_at = db.Column(db.DateTime(timezone=True), default=vancouver_now, onupdate=vancouver_now)
+    modified_by = db.Column(db.String(100), nullable=True)
+    version = db.Column(db.Integer, default=1)
 
 if __name__ == '__main__':
     from app import create_app
