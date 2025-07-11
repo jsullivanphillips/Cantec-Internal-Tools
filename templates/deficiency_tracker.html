@@ -82,8 +82,10 @@
 
         <div class="col-md-3">
           <label for="filter-service" class="form-label">Service Line</label>
-          <input id="filter-service" list="service-list" class="form-control" placeholder="All service lines">
-          <datalist id="service-list"></datalist>
+          <select id="filter-service" multiple class="form-select">
+            <!-- JS will populate options -->
+          </select>
+          <small class="text-muted">Hold Ctrl (Cmd on Mac) to select multiple</small>
         </div>
 
         <div class="col-md-3">

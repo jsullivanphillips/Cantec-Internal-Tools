@@ -16,7 +16,6 @@ const DeficiencyTracker = (() => {
       filterService:  document.getElementById("filter-service"),
       filterReporter: document.getElementById("filter-reporter"),
       datalistCompany:  document.getElementById("company-list"),
-      datalistService:  document.getElementById("service-list"),
       datalistReporter: document.getElementById("reporter-list"),
       filterReportedAfter: document.getElementById("filter-reported-after"),
       filterReportedBefore: document.getElementById("filter-reported-before"),
@@ -52,7 +51,13 @@ const DeficiencyTracker = (() => {
       }
   
       fill(companies, el.datalistCompany);
-      fill(services, el.datalistService);
+      el.filterService.innerHTML = "";
+      [...services].sort().forEach(val => {
+        const opt = document.createElement("option");
+        opt.value = val;
+        opt.textContent = val;
+        el.filterService.append(opt);
+      });
       fill(reporters, el.datalistReporter);
     }
   
@@ -60,7 +65,7 @@ const DeficiencyTracker = (() => {
       const mVal = el.filterMonthly.value;
       const qVal = el.filterQuoted.value;
       const cVal = el.filterCompany.value.trim().toLowerCase();
-      const sVal = el.filterService.value.trim().toLowerCase();
+      const selectedServices = Array.from(el.filterService.selectedOptions).map(opt => opt.value.toLowerCase());
       const rVal = el.filterReporter.value.trim().toLowerCase();
       const afterVal = el.filterReportedAfter.value;
       const beforeVal = el.filterReportedBefore.value;
@@ -93,9 +98,9 @@ const DeficiencyTracker = (() => {
         if (cVal && d.company.toLowerCase() !== cVal) return false;
       
         // Service Line filter
-        if (sVal) {
+        if (selectedServices.length > 0) {
           const full = (d.service_line || "").toLowerCase();
-          if (full !== sVal && !full.includes(sVal)) return false;
+          if (!selectedServices.includes(full)) return false;
         }
       
         // Reporter filter
