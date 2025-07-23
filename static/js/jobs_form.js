@@ -20,7 +20,7 @@ document.addEventListener('DOMContentLoaded', function() {
     },
     {
       type: "Trainee Tech",
-      technicians: ["William Daniel", "Kevin Gao", "Hannah Feness", "James McNeil"]
+      technicians: ["Liam Knowles", "Kevin Gao", "Hannah Feness", "James McNeil"]
     },
     {
       type: "Sprinkler Tech",
