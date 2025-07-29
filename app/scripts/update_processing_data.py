@@ -135,6 +135,32 @@ def process_week(week_start_str):
         update_processor_metrics_for_week(week_start_str)
 
 
+
+def print_week(week_start_str):
+    with app.app_context():
+        jobs_by_processor, hours_by_processor = get_jobs_processed_by_processor(week_start_str)
+
+        print(f"\nSummary for week starting {week_start_str}:\n")
+        print("{:<25} {:>10} {:>15}".format("Processor", "Jobs", "Hours Logged"))
+        print("-" * 50)
+
+        all_processors = set(jobs_by_processor) | set(hours_by_processor)
+        total_jobs = 0
+        total_hours = 0.0
+
+        for processor in sorted(all_processors):
+            jobs = jobs_by_processor.get(processor, 0)
+            hours = hours_by_processor.get(processor, 0.0)
+            total_jobs += jobs
+            total_hours += hours
+            print("{:<25} {:>10} {:>15.2f}".format(processor, jobs, hours))
+
+        print("-" * 50)
+        print("{:<25} {:>10} {:>15.2f}".format("TOTAL", total_jobs, total_hours))
+
+
+
+
 def update_all_metrics():
     with app.app_context():
         with app.test_request_context():
@@ -159,5 +185,24 @@ def update_all_metrics():
                 current_date += timedelta(days=7)
 
 
+def print_last_weeks_metrics():
+    with app.app_context():
+        with app.test_request_context():
+            from flask import session
+            session['username'] = os.environ.get("PROCESSING_USERNAME")
+            session['password'] = os.environ.get("PROCESSING_PASSWORD")
+
+            # Get the date for 6 days ago
+            last_week = datetime.now(timezone.utc).date() - timedelta(days=6)
+
+            # Align it to the Monday of that week
+            last_week_monday = last_week - timedelta(days=last_week.weekday())
+            week_start_str = last_week_monday.strftime("%Y-%m-%d")
+            print_week(week_start_str)
+            
+
+
+
 if __name__ == '__main__':
-    update_all_metrics()
+    print_last_weeks_metrics()
+    #update_all_metrics()
