@@ -204,5 +204,5 @@ def print_last_weeks_metrics():
 
 
 if __name__ == '__main__':
-    print_last_weeks_metrics()
-    #update_all_metrics()
+    #print_last_weeks_metrics()
+    update_all_metrics()
