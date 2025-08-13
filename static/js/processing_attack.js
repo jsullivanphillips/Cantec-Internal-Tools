@@ -295,14 +295,14 @@ const ProcessingAttack = (() => {
       Fetching oldest job...
     `;
 
-    document.getElementById("oldestInspectionToBeMarkedCompleteAddress").textContent = "";
-    document.getElementById("oldestInspectionToBeMarkedCompleteType").textContent = "";
-    document.getElementById("oldestInspectionToBeMarkedCompleteDate").innerHTML = `
+    document.getElementById("jobsProcessedMinusIncomingJobs").innerHTML = `
       <div class="spinner-border text-primary" role="status">
         <span class="visually-hidden">Loading...</span>
       </div>
-      Fetching oldest inspection...
+      Fetching Processed Vs. Incoming jobs...
     `;
+    document.getElementById("incomingJobs").innerHTML = "";
+    document.getElementById("jobsProcessed").innerHTML = "";
     
     document.getElementById("numberOfPinkFolderJobs").innerHTML = `
       <div class="spinner-border text-primary" role="status">
@@ -362,11 +362,12 @@ const ProcessingAttack = (() => {
 
 
 
-        const oldestInspectionDate = new Date(data.oldest_inspection_date);
-        document.getElementById("oldestInspectionToBeMarkedCompleteDate").textContent =
-          oldestInspectionDate.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
-        document.getElementById("oldestInspectionToBeMarkedCompleteAddress").textContent = data.oldest_inspection_address;
-        document.getElementById("oldestInspectionToBeMarkedCompleteType").textContent = "Inspection";
+        const jobsDelta = data.incoming_jobs_today - data.jobs_processed_today;
+
+        document.getElementById("jobsProcessedMinusIncomingJobs").textContent = `Δ Jobs: ${jobsDelta}`;
+        document.getElementById("incomingJobs").textContent = `Incoming jobs: ${data.incoming_jobs_today}`;
+        document.getElementById("jobsProcessed").textContent = `Jobs processed: ${data.jobs_processed_today}`;
+
 
         document.getElementById("numberOfPinkFolderJobs").textContent = data.number_of_pink_folder_jobs;
         // Update jobsChart with job type counts.
@@ -684,30 +685,34 @@ const ProcessingAttack = (() => {
     oldestElemCard.style.boxShadow = "2px 4px 10px rgba(0, 0, 0, 0.1)";
     oldestElemCard.style.textAlign = "center";
 
-    // Oldest inspection.
-    const oldestInspElem = document.getElementById("oldestInspectionToBeMarkedCompleteDate");
-    const oldestInspElem1 = document.getElementById("oldestInspectionToBeMarkedCompleteAddress");
-    const oldestInspElem2 = document.getElementById("oldestInspectionToBeMarkedCompleteType");
-    const oldestInspCard = document.getElementById("oldestInspectionToBeMarkedCard");
-    const oldestInspDate = new Date(data.oldest_inspection_date);
-    const inspDiffDays = (currentDate - oldestInspDate) / (1000 * 60 * 60 * 24);
-    if (inspDiffDays <= 42) {
-      oldestInspElem.style.color = "#27a532";
-      oldestInspElem1.style.color = "#27a532";
-      oldestInspElem2.style.color = "#27a532";
-      oldestInspCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(229, 248, 225))";
-      oldestInspCard.style.borderTop = "5px solid #27a532";
+    // Change in jobs to be processed (today)
+    const jobsToBeProcessedText = document.getElementById("jobsProcessedMinusIncomingJobs");
+    const jobsToBeProcessedCard = document.getElementById("jobsProcessedMinusIncomingJobsCard");
+    const incomingJobsText = document.getElementById("incomingJobs")
+    const jobsProcessedText = document.getElementById("jobsProcessed")
+    const change_in_jobs = data.jobs_processed_today - data.incoming_jobs_today 
+    if (change_in_jobs >= 0) {
+      jobsToBeProcessedText.style.color = "#27a532";
+      jobsToBeProcessedCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(229, 248, 225))";
+      jobsToBeProcessedCard.style.borderTop = "5px solid #27a532";
     } else {
-      oldestInspElem.style.color = "#b92525";
-      oldestInspElem1.style.color = "#b92525";
-      oldestInspElem2.style.color = "#b92525";
-      oldestInspCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(248, 225, 227))";
-      oldestInspCard.style.borderTop = "5px solid #b92525";
+      jobsToBeProcessedText.style.color = "#b92525";
+      jobsToBeProcessedCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(248, 225, 227))";
+      jobsToBeProcessedCard.style.borderTop = "5px solid #b92525";
     }
-    oldestInspCard.style.padding = "10px";
-    oldestInspCard.style.borderRadius = "8px";
-    oldestInspCard.style.boxShadow = "2px 4px 10px rgba(0, 0, 0, 0.1)";
-    oldestInspCard.style.textAlign = "center";
+    jobsToBeProcessedCard.style.padding = "10px";
+    jobsToBeProcessedCard.style.borderRadius = "8px";
+    jobsToBeProcessedCard.style.boxShadow = "2px 4px 10px rgba(0, 0, 0, 0.1)";
+    jobsToBeProcessedCard.style.textAlign = "center";
+    
+    if (data.jobs_processed_today > 0){
+      jobsProcessedText.style.color = "#27a532";
+    }
+    else{
+      jobsProcessedText.style.color = "#b92525";
+    }
+    incomingJobsText.style.color = "#b92525";
+
   }
 
   // Update the week display (e.g., "Week of March 24 - 28").

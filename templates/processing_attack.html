@@ -60,13 +60,16 @@
             </div>
           </div>
           
-          <!-- Oldest Inspection -->
-          <div class="card half" id="oldestInspectionToBeMarkedCard">
-            <div class="card-header">⏱️ Oldest Inspection | Goal: No Older than 6 weeks</div>
+          <!-- Jobs Processed - Incoming Jobs -->
+          <div class="card half" id="jobsProcessedMinusIncomingJobsCard">
+            <div class="card-header">Change in Jobs to be Processed (Today)</div>
+            <small style="display:block; text-align:center;">Incoming jobs from 12:00am Yesterday -> 12:00am Today<br>Jobs processed from 12:00am Today -> Current Time</small>
             <div class="card-body">
-              <strong id="oldestInspectionToBeMarkedCompleteDate" style="font-weight: bold; font-size: 1.2em;"></strong>
-              <strong id="oldestInspectionToBeMarkedCompleteAddress">..</strong>
-              <strong id="oldestInspectionToBeMarkedCompleteType" style="font-style: italic;"></strong>
+              <strong id="jobsProcessedMinusIncomingJobs" style="font-weight: bold; font-size: 1.2em;"></strong>
+              <div style="display: flex; gap: 20px;">
+                  <strong id="incomingJobs"></strong>
+                  <strong id="jobsProcessed"></strong>
+              </div>
             </div>
           </div>
           <!-- Full-width bar graph card -->

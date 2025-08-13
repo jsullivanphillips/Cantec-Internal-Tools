@@ -2,6 +2,7 @@ from flask import Blueprint, render_template, jsonify, session, request, current
 import requests
 import json
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from dateutil import parser  # Use dateutil for flexible datetime parsing
 from collections import Counter
 from app.db_models import db, JobSummary, ProcessorMetrics
@@ -68,6 +69,12 @@ def processing_attack_complete_jobs():
 
     number_of_pink_folder_jobs, pink_folder_detailed_info = get_pink_folder_data()
 
+    jobs_processed_today = get_jobs_processed_today()
+
+    incoming_jobs_today = get_incoming_jobs_today()
+
+    print("Incoming Jobs Today: ", incoming_jobs_today)
+
     response_data = {
         "jobs_to_be_marked_complete": len(jobs_to_be_marked_complete),
         "job_type_count": jobs_by_job_type,
@@ -75,7 +82,9 @@ def processing_attack_complete_jobs():
         "oldest_inspection_date": oldest_inspection_date if oldest_inspection_date else None,
         "oldest_inspection_address" : oldest_inspection_address,
         "pink_folder_detailed_info" : pink_folder_detailed_info,
-        "oldest_jobs_to_be_marked_complete" : oldest_jobs_to_be_marked_complete
+        "oldest_jobs_to_be_marked_complete" : oldest_jobs_to_be_marked_complete,
+        "jobs_processed_today": jobs_processed_today,
+        "incoming_jobs_today": incoming_jobs_today
     }
     return jsonify(response_data)
 
@@ -179,10 +188,114 @@ def get_oldest_job_data(oldest_job_id):
     return earliest_appointment_date, job.get("location", {}).get("address", {}).get("street"), job.get("type")
 
 
+def get_incoming_jobs_today():
+    authenticate()
+    # Pacific Time (auto-adjusts for PST/PDT)
+    PT = ZoneInfo("America/Los_Angeles")
+
+    # Get today's date in Pacific Time and set time to 12:00 AM
+    yesterday_at_430_pt = (datetime.now(PT) - timedelta(days=1)).replace(hour=16, minute=30, second=0, microsecond=0)
+    yesterday_at_12am_pt = (datetime.now(PT) - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    today_12am_pt = datetime.now(PT).replace(hour=0, minute=0, second=0, microsecond=0)
+
+    right_now_pst = datetime.now(PT)
+
+    scheduleDateFrom = int(yesterday_at_12am_pt.timestamp())
+    scheduleDateTo = int(today_12am_pt.timestamp())
+
+    #1.  Get jobs that are complete
+    jobs_endpoint = f"{SERVICE_TRADE_API_BASE}/job"
+    jobs_params = {
+        "scheduleDateFrom": scheduleDateFrom,
+        "scheduleDateTo": scheduleDateTo,
+        "jobStatus": "scheduled",
+    }
+
+    try:
+        response = api_session.get(jobs_endpoint, params=jobs_params)
+        response.raise_for_status()
+    except requests.RequestException as e:
+        return {}
+    
+    data = response.json().get("data", {})
+    jobs_data = data.get("jobs", []) or []
+
+    # Build a dict keyed by job_id in O(n)
+    jobs_by_id = {j["id"]: j for j in jobs_data if isinstance(j, dict) and "id" in j}
+
+    # Start with all jobs; we'll remove those with scheduled/unscheduled appointments
+    jobs_to_be_marked_complete_today = dict(jobs_by_id)  # shallow copy
+
+    incomplete_statuses = {"scheduled", "unscheduled"}
+
+    i = 0
+    for job_id in list(jobs_to_be_marked_complete_today.keys()):
+        appointment_endpoint = f"{SERVICE_TRADE_API_BASE}/appointment"
+        appointment_params = {"jobId": job_id}
+
+        try:
+            resp = api_session.get(appointment_endpoint, params=appointment_params, timeout=30)
+            resp.raise_for_status()
+            response_data = resp.json().get("data", {}) or {}
+            appointments = response_data.get("appointments", []) or []
+        except requests.RequestException:
+            # If the API call fails, choose one:
+            # Option A (conservative): keep the job, since we couldn't verify incompleteness
+            # Option B (strict): remove the job to avoid marking something complete erroneously
+            # Here we choose A: skip removal if we can't confirm.
+            continue
+
+        # If ANY appointment is scheduled/unscheduled, remove from the "complete today" dict
+        if any((a or {}).get("status") in incomplete_statuses for a in appointments):
+            jobs_to_be_marked_complete_today.pop(job_id, None)
+
+        i += 1
+
+    # Return the count (or the dict if you need details)
+    result_count = len(jobs_to_be_marked_complete_today)
+    # result_dict = jobs_to_be_marked_complete_today
+
+    return result_count
+
+
+def get_jobs_processed_today():
+    authenticate()
+    # Pacific Time (auto-adjusts for PST/PDT)
+    PT = ZoneInfo("America/Los_Angeles")
+
+    # Get today's date in Pacific Time and set time to 12:00 AM
+    today_12am_pt = datetime.now(PT).replace(hour=0, minute=0, second=0, microsecond=0)
+
+    right_now_pst = datetime.now(PT)
+
+    print("jobs from: ", today_12am_pt, " to ", right_now_pst)
+
+    scheduleDateFrom = int(today_12am_pt.timestamp())
+    scheduleDateTo = int(right_now_pst.timestamp())
+
+    #1.  Get jobs that are complete
+    jobs_endpoint = f"{SERVICE_TRADE_API_BASE}/job"
+    jobs_params = {
+        "completedOnBegin": scheduleDateFrom,
+        "completedOnEnd": scheduleDateTo,
+        "status": "all"
+    }
+
+    try:
+        response = api_session.get(jobs_endpoint, params=jobs_params)
+        response.raise_for_status()
+    except requests.RequestException as e:
+        return {}
+    
+    data = response.json().get("data", {})
+    jobs_data = data.get("jobs", []) or []
+
+    return len(jobs_data)
+    
 
 def get_jobs_to_be_marked_complete():
     authenticate()
-    one_year_ago = datetime.now() - timedelta(days=365)
+    one_year_ago = datetime.now() - timedelta(days=180)
     yesterday = datetime.now() - timedelta(days=1)    
     scheduleDateFrom = int(one_year_ago.timestamp())
     scheduleDateTo = int(yesterday.timestamp())
