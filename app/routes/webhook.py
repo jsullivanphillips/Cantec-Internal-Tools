@@ -90,9 +90,9 @@ def handle_job_status_changed_webhook():
 
 
 @webhook_bp.route('/webhooks/job_item_added', methods=['POST'])
-def handle_job_status_changed_webhook():
+def handle_job_item_added_webhook():
     data = request.json
-    print("Webhook received!", data)
+    print("JOB ITEM Webhook received!", data)
 
     webhook_status["last_received"] = datetime.now(timezone.utc)
 
