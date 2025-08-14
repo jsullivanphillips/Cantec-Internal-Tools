@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify, session
-from app.scripts.update_deficiency_by_id import update_deficiency_by_id, update_deficiency_by_job_id, update_job_item_by_id
+from app.scripts.update_deficiency_by_id import update_deficiency_by_id, update_deficiency_by_job_id
+from app.routes.performance_summary import update_job_item_by_id
 import os
 from datetime import datetime, timezone
 
