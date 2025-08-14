@@ -127,8 +127,8 @@ def create_job_item_added_webhook():
         "hookUrl": JOB_ITEM_WEBHOOK_ENDPOINT,
         "entityEvents": [
             {
-                "entityType": 23, # UPDATE
-                "actions": ["created"] # UPDATE
+                "entityType": 23,
+                "actions": ["created", "updated", "deleted"] 
             }
         ],
         "includeChangesets": True,
@@ -157,9 +157,10 @@ def main():
     parser.add_argument("--deficiency", action="store_true", help="Create the deficiency webhook")
     parser.add_argument("--job_status", action="store_true", help="Create the job status webhook")
     parser.add_argument("--job_item", action="store_true", help="Create the job item webhook")
+    parser.add_argument("--delete_job_item", action="store_true", help="Delete the job item webhook")
     args = parser.parse_args()
 
-    if not args.deficiency and not args.job_status and not args.job_item:
+    if not args.deficiency and not args.job_status and not args.job_item and not args.delete_job_item:
         print("⚠️  Please specify at least one of --deficiency or --job_status or --job_item")
         return
 
@@ -201,6 +202,19 @@ def main():
                 print("✅ Skipping creation.")
             else:
                 create_job_item_added_webhook()
+        
+        if args.delete_job_item:
+            existing = find_existing_job_item_webhook()
+            if existing:
+                webhook_id = existing['id']
+                print(f"🗑️ Deleting job item webhook with ID: {webhook_id}...")
+                delete_response = api_session.delete(f"{SERVICE_TRADE_API_BASE}/webhook/{webhook_id}")
+                if delete_response.status_code == 204:
+                    print("✅ Webhook deleted successfully.")
+                else:
+                    print(f"❌ Failed to delete webhook. Status code: {delete_response.status_code}")
+            else:
+                print("⚠️ No existing job item webhook found to delete.")
 
     except requests.RequestException as e:
         print(f"❌ HTTP error during webhook setup: {e}")

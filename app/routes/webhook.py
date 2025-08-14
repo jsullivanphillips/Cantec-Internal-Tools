@@ -13,7 +13,7 @@ webhook_status = {
 @webhook_bp.route('/webhooks/deficiency', methods=['POST'])
 def handle_deficiency_webhook():
     data = request.json
-    print("📡 Webhook received!", data)
+    print("Deficiency Webhook received.")
 
     # 🛠️ Save the webhook event
     webhook_status["last_received"] = datetime.now(timezone.utc)
@@ -49,7 +49,7 @@ def handle_deficiency_webhook():
 @webhook_bp.route('/webhooks/job_status_changed', methods=['POST'])
 def handle_job_status_changed_webhook():
     data = request.json
-    print("Webhook received!", data)
+    print("Job Status Changed Webhook Received")
 
     webhook_status["last_received"] = datetime.now(timezone.utc)
 
@@ -91,6 +91,7 @@ def handle_job_status_changed_webhook():
 
 @webhook_bp.route('/webhooks/job_item_added', methods=['POST'])
 def handle_job_item_added_webhook():
+    # This only gets called on Create. Would be smart to also handle Update, and Delete.
     data = request.json
     print("JOB ITEM Webhook received!", data)
 
@@ -108,9 +109,13 @@ def handle_job_item_added_webhook():
 
     print(f"Entity Type: {entity_type}, Entity ID: {entity_id}")
 
+    action = data.get("data", [])[0].get("action")
+    job_item_id = entity_id
+    user_id = data.get("data", [])[0].get("userId")
+
+    # get the job item quantity1
+
     return jsonify({"message": "Webhook received"}), 200
-
-
 
 
 
