@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify, session
-from app.scripts.update_deficiency_by_id import update_deficiency_by_id, update_deficiency_by_job_id
+from app.scripts.update_deficiency_by_id import update_deficiency_by_id, update_deficiency_by_job_id, update_job_item_by_id
 import os
 from datetime import datetime, timezone
 
@@ -113,8 +113,8 @@ def handle_job_item_added_webhook():
     job_item_id = entity_id
     user_id = data.get("data", [])[0].get("userId")
 
-    # get the job item quantity1
-
+    update_job_item_by_id(action, job_item_id, user_id)
+    
     return jsonify({"message": "Webhook received"}), 200
 
 

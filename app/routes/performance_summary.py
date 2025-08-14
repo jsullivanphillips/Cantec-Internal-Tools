@@ -1829,6 +1829,46 @@ def test_update_quote():
     db.session.commit()
     print(f"✅ Updated {updated} quote items for quote {quote_id}")
 
+
+def update_job_item_by_id(action, job_item_id, user_id=None):
+    authenticate()
+
+    base_params = {
+        "jobId": job_item_id,
+    }
+
+    job_item_data = None
+    user_data = None
+
+    try:
+        response = call_service_trade_api(f"{SERVICE_TRADE_API_BASE}/jobitem", base_params)
+        if not response:
+            tqdm.write("Failed to fetch job items.")
+            return
+        job_item_data = response.json().get("data", {})
+    except Exception as e:
+        tqdm.write(f"[ERROR] Failed to fetch job item: {e}")
+        return
+    
+    user_params = {
+        "userId": user_id
+    }
+
+    try: 
+        response = call_service_trade_api(f"{SERVICE_TRADE_API_BASE}/user", user_params)
+        if not response:
+            tqdm.write("Failed to fetch user data.")
+            return
+        user_data = response.json().get("data", {})
+    except Exception as e:
+        tqdm.write(f"[ERROR] Failed to fetch user data: {e}")
+        return
+    
+    print("job_item_data:", job_item_data)
+    print("user_data:", user_data)
+    
+
+
 # def update_job_items_added(start_date=None, end_date=None, batch_size=100):
 #     authenticate()
 #     if not start_date or not end_date:
@@ -1874,10 +1914,6 @@ def test_update_quote():
 #                 tqdm.write(f"[WARNING] Skipping job item {st_id_str} due to error: {e}")
 #                 pbar.update(1)
 #                 continue
-
-
-                
-
 
 
 
