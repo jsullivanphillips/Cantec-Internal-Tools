@@ -1549,6 +1549,7 @@ def get_job_items_with_params(params, desc="Fetching job items"):
     job_items = []
 
     response = call_service_trade_api(f"{SERVICE_TRADE_API_BASE}/jobitem", params)
+    
     if not response:
         tqdm.write("Failed to fetch job items.")
         return job_items
@@ -1833,21 +1834,20 @@ def test_update_quote():
 def update_job_item_by_id(action, job_item_id, user_id=None):
     authenticate()
 
-    base_params = {
-        "jobId": job_item_id,
-    }
+    
 
     job_item_data = None
     user_data = None
 
     try:
-        response = call_service_trade_api(f"{SERVICE_TRADE_API_BASE}/jobitem", base_params)
-        if not response:
-            tqdm.write("Failed to fetch job items.")
-            return
-        job_item_data = response.json().get("data", {})
+        response = api_session.get(f"https://api.servicetrade.com/api/jobitem/{job_item_id}")
+        if response.ok:
+            job_item_data = response.json().get("data", {})
+            print(job_item_data)
+        else:
+            print(f"Error: {response.status_code} - {response.text}")
     except Exception as e:
-        tqdm.write(f"[ERROR] Failed to fetch job item: {e}")
+        print(f"[ERROR] Failed to fetch job item {job_item_id}: {e}")
         return
     
     user_params = {
