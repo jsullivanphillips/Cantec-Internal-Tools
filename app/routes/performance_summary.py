@@ -1928,53 +1928,6 @@ def upsert_job_item_technician(action, user_data, job_item_data):
     
 
 
-# def update_job_items_added(start_date=None, end_date=None, batch_size=100):
-#     authenticate()
-#     if not start_date or not end_date:
-#         start_date = datetime(2024, 5, 1)
-#         end_date   = datetime(2025, 4, 30, 23, 59)
-#     fy_start = datetime.timestamp(start_date)
-#     fy_end   = datetime.timestamp(end_date)
-
-#     base_params = {"createdAfter": fy_start, "createdBefore": fy_end}
-
-#     # fetch job items
-#     try:
-#         all_job_items = get_job_items_with_params(params=base_params) or []
-#     except Exception as e:
-#         tqdm.write(f"[ERROR] Failed to fetch job items: {e}")
-#         return
-    
-#     tqdm.write(f"✅ Found {len(all_job_items)} job items in {fy_start} - {fy_end}")
-
-#     job_item_counter = 0
-#     with tqdm(total=len(all_job_items), desc="Saving Job Items to DB") as pbar:
-#         for ji in all_job_items:
-#             try:
-#                 job_id = ji.get("job", {}).get("id")
-#                 if not job_id:
-#                     pbar.update(1)
-#                     continue
-
-#                 st_id_str = str(ji.get("id", ""))
-#                 name = ji.get("name") or ""
-#                 qty       = float(ji.get("quantity") or 0)
-#                 cost        = float(ji.get("cost") or 0.0)
-#                 job         = ji.get("job", {})
-#                 created     = ji.get("created") # unix timestamp of when this job item was created
-#                 updated     = ji.get("updated") # unix timestamp of when this job item was last updated
-
-#                 if job is None or not isinstance(job, dict):
-#                     tqdm.write(f"[WARNING] Job data is missing or malformed for job item {st_id_str}")
-#                     pbar.update(1)
-#                     continue
-            
-#             except Exception as e:
-#                 tqdm.write(f"[WARNING] Skipping job item {st_id_str} due to error: {e}")
-#                 pbar.update(1)
-#                 continue
-
-
 
 def quoteItemInvoiceItem(start_date=None, end_date=None, batch_size=100):
     authenticate()
