@@ -89,6 +89,27 @@ def handle_job_status_changed_webhook():
     return jsonify({"message": "Webhook received"}), 200
 
 
+@webhook_bp.route('/webhooks/job_item_added', methods=['POST'])
+def handle_job_status_changed_webhook():
+    data = request.json
+    print("Webhook received!", data)
+
+    webhook_status["last_received"] = datetime.now(timezone.utc)
+
+    # Safely extract entity ID
+    try:
+        entity_info = data.get("data", [])[0].get("entity", {})
+        entity_type = entity_info.get("type")
+        entity_id = entity_info.get("id")
+    except (IndexError, AttributeError):
+        entity_info = {}
+        entity_type = None
+        entity_id = None
+
+    print(f"Entity Type: {entity_type}, Entity ID: {entity_id}")
+
+
+
 
 
 @webhook_bp.route('/webhooks/status', methods=['GET'])

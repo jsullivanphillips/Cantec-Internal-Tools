@@ -10,8 +10,9 @@ SERVICE_TRADE_API_BASE = "https://api.servicetrade.com/api"
 
 # Your public webhook URL
 PUBLIC_BASE_URL = "https://schedule-assist-1ff25977d0cf.herokuapp.com"
-WEBHOOK_ENDPOINT = f"{PUBLIC_BASE_URL}/webhooks/deficiency"
+DEFICIENCY_WEBHOOK_ENDPOINT = f"{PUBLIC_BASE_URL}/webhooks/deficiency"
 JOB_STATUS_WEBHOOK_ENDPOINT = f"{PUBLIC_BASE_URL}/webhooks/job_status_changed"
+JOB_ITEM_WEBHOOK_ENDPOINT = f"{PUBLIC_BASE_URL}/webhooks/job_item_added"
 
 def authenticate_service_trade():
     """Authenticate against ServiceTrade API."""
@@ -37,7 +38,7 @@ def find_existing_deficiency_webhook():
 
     webhooks = response.json().get("data", {}).get("webhooks", [])
     for webhook in webhooks:
-        if webhook.get("hookUrl") == WEBHOOK_ENDPOINT:
+        if webhook.get("hookUrl") == DEFICIENCY_WEBHOOK_ENDPOINT:
             return webhook
     return None
 
@@ -54,10 +55,23 @@ def find_existing_job_status_webhook():
     return None
 
 
+def find_existing_job_item_webhook():
+    """Return existing webhook info if the URL is already registered."""
+    print("🔎 Checking for existing job item webhooks...")
+    response = api_session.get(f"{SERVICE_TRADE_API_BASE}/webhook")
+    response.raise_for_status()
+
+    webhooks = response.json().get("data", {}).get("webhooks", [])
+    for webhook in webhooks:
+        if webhook.get("hookUrl") == JOB_ITEM_WEBHOOK_ENDPOINT:
+            return webhook
+    return None
+
+
 def create_deficiency_webhook():
     """Create a webhook for Deficiencies (entityType 10)."""
     webhook_payload = {
-        "hookUrl": WEBHOOK_ENDPOINT,
+        "hookUrl": DEFICIENCY_WEBHOOK_ENDPOINT,
         "entityEvents": [
             {
                 "entityType": 10,
@@ -67,7 +81,7 @@ def create_deficiency_webhook():
         "includeChangesets": False
     }
 
-    print(f"📡 Creating new webhook to {WEBHOOK_ENDPOINT}...")
+    print(f"📡 Creating new webhook to {DEFICIENCY_WEBHOOK_ENDPOINT}...")
     response = api_session.post(f"{SERVICE_TRADE_API_BASE}/webhook", json=webhook_payload)
     response.raise_for_status()
 
@@ -108,14 +122,45 @@ def create_job_complete_webhook():
     # print()
 
 
+def create_job_item_added_webhook():
+    webhook_payload = {
+        "hookUrl": JOB_ITEM_WEBHOOK_ENDPOINT,
+        "entityEvents": [
+            {
+                "entityType": 23, # UPDATE
+                "actions": ["created"] # UPDATE
+            }
+        ],
+        "includeChangesets": True,
+    }
+
+    print(f"Creating new webhook to {JOB_ITEM_WEBHOOK_ENDPOINT}...")
+
+    try:
+        response = api_session.post(f"{SERVICE_TRADE_API_BASE}/webhook", json=webhook_payload)
+        response.raise_for_status()
+    except Exception as e:
+        print(f"Failed to create webhook: {e}")
+
+    webhook_data = response.json().get("data",{})
+    print(f"webhook data:\n {webhook_data}")
+
+    print(f"✅ Webhook created successfully! Webhook ID: {webhook_data['id']}")
+    print(f"Webhook URI: {webhook_data['uri']}")
+    print(f"Enabled: {webhook_data['enabled']}")
+    print(f"Confirmed: {webhook_data['confirmed']}")
+    print()
+
+
 def main():
     parser = argparse.ArgumentParser(description="Create ServiceTrade webhooks.")
     parser.add_argument("--deficiency", action="store_true", help="Create the deficiency webhook")
     parser.add_argument("--job_status", action="store_true", help="Create the job status webhook")
+    parser.add_argument("--job_item", action="store_true", help="Create the job item webhook")
     args = parser.parse_args()
 
-    if not args.deficiency and not args.job_status:
-        print("⚠️  Please specify at least one of --deficiency or --job_status")
+    if not args.deficiency and not args.job_status and not args.job_item:
+        print("⚠️  Please specify at least one of --deficiency or --job_status or --job_item")
         return
 
     try:
@@ -144,6 +189,18 @@ def main():
                 print("✅ Skipping creation.")
             else:
                 create_job_complete_webhook()
+        
+        if args.job_item:
+            existing = find_existing_job_item_webhook()
+            if existing:
+                print("⚠️ Job item webhook already exists!")
+                print(f"Webhook ID: {existing['id']}")
+                print(f"Webhook URI: {existing['uri']}")
+                print(f"Enabled: {existing['enabled']}")
+                print(f"Confirmed: {existing['confirmed']}")
+                print("✅ Skipping creation.")
+            else:
+                create_job_item_added_webhook()
 
     except requests.RequestException as e:
         print(f"❌ HTTP error during webhook setup: {e}")
