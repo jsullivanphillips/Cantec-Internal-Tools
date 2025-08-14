@@ -7,6 +7,7 @@ import requests
 import numpy as np
 import json
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from sqlalchemy import func, distinct, case, and_
 from sqlalchemy.orm import joinedload
 from sqlalchemy.dialects.postgresql import insert
@@ -45,6 +46,17 @@ HOURLY_RATE = {
     'backflow':   75.0
 }
 
+EXCLUDED_ITEM_NAMES = [
+    "Truck Charge",
+    "Return for Repairs",
+    "Annual Inspection",
+    "Annual Sprinkler Inspection",
+    "Backflow Preventer Testing",
+    "On-Site Repairs",
+]
+
+PACIFIC_TZ = ZoneInfo("America/Vancouver")
+
 performance_summary_bp = Blueprint('performance_summary', __name__, template_folder='templates')
 api_session = requests.Session()
 
@@ -55,6 +67,38 @@ def performance_summary():
     # Serve the HTML page
     return render_template("performance_summary.html")
 
+def _parse_date_param(value: str | None, end_of_day: bool) -> datetime | None:
+    """
+    Parse an ISO-like date/datetime string. If it's date-only or naive, assume
+    America/Vancouver. Snap to start-of-day or end-of-day in Pacific, then return UTC.
+    """
+    if not value:
+        return None
+
+    # Normalize Z to +00:00 for older Python compatibility
+    s = value.replace("Z", "+00:00")
+    try:
+        dt = datetime.fromisoformat(s)
+    except ValueError:
+        # If we got just YYYY-MM-DD or otherwise failed, try as date-only
+        try:
+            dt = datetime.fromisoformat(value + "T00:00:00")
+        except Exception:
+            return None  # give up; caller will fall back to defaults
+
+    # If naive, assume Pacific
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=PACIFIC_TZ)
+
+    # Work in Pacific, snap to SOD/EOD, then convert to UTC
+    dt_pacific = dt.astimezone(PACIFIC_TZ)
+    if end_of_day:
+        dt_pacific = dt_pacific.replace(hour=23, minute=59, second=59, microsecond=999_999)
+    else:
+        dt_pacific = dt_pacific.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    return dt_pacific.astimezone(timezone.utc)
+
 
 @performance_summary_bp.route('/api/performance_summary_data', methods=['GET'])
 def performance_summary_data():
@@ -62,16 +106,20 @@ def performance_summary_data():
     start_param = request.args.get("start_date")
     end_param   = request.args.get("end_date")
 
-    # Default fallback
-    window_start = datetime(2024, 5, 1, tzinfo=timezone.utc)
-    window_end   = datetime(2025, 4, 30, tzinfo=timezone.utc)
+    # Defaults (snap to Pacific SOD/EOD, then to UTC)
+    default_start_pacific = datetime(2024, 5, 1, 0, 0, 0, tzinfo=PACIFIC_TZ)
+    default_end_pacific   = datetime(2025, 4, 30, 23, 59, 59, 999_999, tzinfo=PACIFIC_TZ)
+    window_start = default_start_pacific.astimezone(timezone.utc)
+    window_end   = default_end_pacific.astimezone(timezone.utc)
 
-    if start_param and end_param:
-        try:
-            window_start = datetime.fromisoformat(start_param).astimezone(timezone.utc)
-            window_end   = datetime.fromisoformat(end_param).astimezone(timezone.utc)
-        except ValueError:
-            pass  # fallback to defaults if bad input
+    # Override with inputs if provided
+    parsed_start = _parse_date_param(start_param, end_of_day=False)
+    parsed_end   = _parse_date_param(end_param,   end_of_day=True)
+
+    if parsed_start:
+        window_start = parsed_start
+    if parsed_end:
+        window_end = parsed_end
     
     completed_filter = and_(
         Job.completed_on.isnot(None),
@@ -98,6 +146,7 @@ def performance_summary_data():
     deficiencies_by_tech_sl = get_deficiencies_created_by_tech_service_line(window_start, window_end)
     attachments_by_tech = get_attachments_by_technician(window_start, window_end)
     quote_statistics_by_user = get_quote_statistics_by_user(window_start, window_end)
+    job_items_created_by_tech = get_job_items_created_count_by_tech(window_start, window_end, include_debug=True)
 
 
     return jsonify({
@@ -122,6 +171,7 @@ def performance_summary_data():
         "quote_statistics_by_user": quote_statistics_by_user,
         "quote_cost_comparison_by_job_type": get_quote_cost_comparison_by_job_type(window_start, window_end),
         "quote_cost_breakdown_log": get_detailed_quote_job_stats(db.session, window_start, window_end),
+        "job_items_created_by_tech": job_items_created_by_tech,
     })
 
 
@@ -136,6 +186,146 @@ def get_last_updated():
     return jsonify({
         "last_updated": latest_timestamp.isoformat() if latest_timestamp else None
     })
+
+
+
+def get_job_items_created_count_by_tech(window_start, window_end, include_debug=False, debug_limit=500):
+    """
+    Count job items created per technician within [window_start, window_end],
+    using local insert time `created_on_st`. Excludes rows where:
+      - is_tech != True
+      - job_item_name is one of EXCLUDED_ITEM_NAMES (exact match, case-sensitive)
+    If include_debug=True, prints a summary + inspected rows (up to debug_limit) to stdout.
+    """
+
+    # --- Primary query (uses created_on_st) ---
+    q = (
+        db.session.query(
+            func.coalesce(JobItemTechnician.user_name, "Unknown").label("technician"),
+            func.count(JobItemTechnician.job_item_id).label("count")
+        )
+        .filter(
+            JobItemTechnician.is_tech.is_(True),
+            JobItemTechnician.created_on_st.isnot(None),
+            JobItemTechnician.created_on_st >= window_start,
+            JobItemTechnician.created_on_st <= window_end,
+            JobItemTechnician.job_item_name.isnot(None),
+            ~JobItemTechnician.job_item_name.in_(EXCLUDED_ITEM_NAMES),  # exclude by name
+        )
+        .group_by("technician")
+    )
+
+    rows = q.all()
+    rows_sorted = sorted(rows, key=lambda r: r.count, reverse=True)
+
+    technicians = [r.technician for r in rows_sorted]
+    counts      = [int(r.count) for r in rows_sorted]
+    entries     = [{"technician": r.technician, "count": int(r.count)} for r in rows_sorted]
+
+    payload = {
+        "technicians": technicians,
+        "counts": counts,
+        "entries": entries,
+    }
+
+    # --- Optional debug: inspect ALL rows and print to console ---
+    if include_debug:
+        all_rows = (
+            db.session.query(
+                JobItemTechnician.job_item_id,
+                JobItemTechnician.user_name,
+                JobItemTechnician.is_tech,
+                JobItemTechnician.job_item_name,
+                JobItemTechnician.created_on_st,  # local insert time (filter basis)
+                JobItemTechnician.created_at,     # ServiceTrade-created time (for comparison)
+            )
+            .order_by(JobItemTechnician.created_on_st.desc().nullslast())
+            .limit(debug_limit)
+            .all()
+        )
+
+        debug_entries = []
+        reason_counts = {
+            "not_tech": 0,
+            "missing_created_on_st": 0,
+            "outside_window": 0,
+            "excluded_name": 0,
+            "included": 0
+        }
+
+        for row in all_rows:
+            tech_name   = row.user_name or "Unknown"
+            is_tech     = bool(row.is_tech)
+            name        = row.job_item_name
+            st_time     = row.created_at
+            local_time  = row.created_on_st
+
+            in_window_local = bool(local_time and (window_start <= local_time <= window_end))
+            in_window_st    = bool(st_time   and (window_start <= st_time   <= window_end))
+            is_excluded_name = bool(name and name in EXCLUDED_ITEM_NAMES)
+
+            # Determine inclusion by same rules as main query
+            if not is_tech:
+                reason = "not_tech"
+            elif local_time is None:
+                reason = "missing_created_on_st"
+            elif not in_window_local:
+                reason = "outside_window"
+            elif is_excluded_name:
+                reason = "excluded_name"
+            else:
+                reason = "included"
+
+            reason_counts[reason] = reason_counts.get(reason, 0) + 1
+
+            debug_entries.append({
+                "job_item_id": row.job_item_id,
+                "technician": tech_name,
+                "is_tech": is_tech,
+                "job_item_name": name,
+                "excluded_name": is_excluded_name,
+                "created_on_st_iso": local_time.isoformat() if local_time else None,
+                "created_at_st_iso":  st_time.isoformat()    if st_time    else None,
+                "in_window_created_on_st": in_window_local,
+                "in_window_created_at":    in_window_st,
+                "reason": reason,
+            })
+
+        summary = {
+            "window_start": window_start.isoformat(),
+            "window_end": window_end.isoformat(),
+            "checked_rows": len(all_rows),
+            "reason_counts": reason_counts,
+            "excluded_names": EXCLUDED_ITEM_NAMES,
+        }
+
+        # Pretty print to console (stdout)
+        bar = "=" * 70
+        sub = "-" * 70
+
+        pretty_summary = json.dumps(summary, indent=2, sort_keys=True, default=str)
+        pretty_rows    = json.dumps(debug_entries, indent=2, sort_keys=True, default=str)
+
+        print(
+            f"\n{bar}\n[DEBUG][JobItemTechnician] SUMMARY\n{sub}\n"
+            f"{pretty_summary}\n"
+            f"{sub}\n[DEBUG][JobItemTechnician] ROWS (showing {len(debug_entries)})\n{sub}\n"
+            f"{pretty_rows}\n{bar}\n"
+        )
+
+        # Also include the debug block in the API response
+        payload["debug"] = {
+            "window_start": summary["window_start"],
+            "window_end": summary["window_end"],
+            "checked_rows": summary["checked_rows"],
+            "reason_counts": summary["reason_counts"],
+            "excluded_names": summary["excluded_names"],
+            "rows": debug_entries,
+        }
+
+    return payload
+
+
 
 
 
@@ -1841,9 +2031,7 @@ def to_dt(ts):
 def update_job_item_by_id(action, job_item_id, user_id=None):
     authenticate()
 
-    job_item_data = None
-    user_data = None
-
+    # Handle deletion immediately
     if action == "deleted":
         deleted = JobItemTechnician.query.filter_by(job_item_id=job_item_id).delete(synchronize_session=False)
         db.session.commit()
@@ -1853,29 +2041,45 @@ def update_job_item_by_id(action, job_item_id, user_id=None):
             print(f"⚠️ Job item {job_item_id} not found for deletion")
         return
 
-
+    # Fetch job item payload
+    job_item_data = None
     try:
         response = api_session.get(f"https://api.servicetrade.com/api/jobitem/{job_item_id}")
         if response.ok:
             job_item_data = response.json().get("data", {})
-            print(job_item_data)
         else:
-            print(f"Error: {response.status_code} - {response.text}")
+            print(f"[ERROR] Fetch jobitem {job_item_id}: {response.status_code} - {response.text}")
+            return
     except Exception as e:
         print(f"[ERROR] Failed to fetch job item {job_item_id}: {e}")
         return
-    
 
-    try: 
-        response = api_session.get(f"https://api.servicetrade.com/api/user/{user_id}")
-        if not response:
-            tqdm.write("Failed to fetch user data.")
-            return
-        user_data = response.json().get("data", {})
-    except Exception as e:
-        tqdm.write(f"[ERROR] Failed to fetch user data: {e}")
+    # Skip if name is excluded
+    item_name = (job_item_data.get("name") or "").strip()
+    if item_name in EXCLUDED_ITEM_NAMES:
+        print(f"⏭️ Skipping job item {job_item_id} ('{item_name}') — excluded name.")
+        # Optional cleanup: uncomment to ensure excluded items are removed if they ever existed
+        JobItemTechnician.query.filter_by(job_item_id=job_item_id).delete(synchronize_session=False)
+        db.session.commit()
         return
-    
+
+    # Resolve user_id if not provided
+    if not user_id:
+        user_id = job_item_data.get("user", {}).get("id")
+
+    # Fetch user payload (if available)
+    user_data = {}
+    if user_id:
+        try:
+            response = api_session.get(f"https://api.servicetrade.com/api/user/{user_id}")
+            if response and response.ok:
+                user_data = response.json().get("data", {})
+            else:
+                print(f"[WARN] Could not fetch user {user_id}. Proceeding with defaults.")
+        except Exception as e:
+            print(f"[ERROR] Failed to fetch user data for {user_id}: {e}")
+
+    # Upsert (created/updated) when not excluded
     upsert_job_item_technician(action, user_data, job_item_data)
 
 

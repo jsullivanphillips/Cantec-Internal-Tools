@@ -507,7 +507,6 @@ const PerformanceSummary = (() => {
     charts.jobTypeCountChart?.destroy();
     charts.revenueByJobTypeChart?.destroy();
     charts.avgRevenueByJobTypeChart?.destroy();
-    charts.avgRevenuePerHourChart?.destroy();
     charts.revenueOverTimeChart?.destroy();
 
     const topN = document.getElementById('topNFilter')?.value || "5";
@@ -563,16 +562,7 @@ const PerformanceSummary = (() => {
       true
     );
 
-    charts.avgRevenuePerHourChart = createBarChart(
-      document.getElementById('avgRevenuePerHourChart').getContext('2d'),
-      topAvgPerHour,
-      topAvgPerHour.map(jt => data.avg_revenue_per_hour_by_job_type[jt]),
-      'Avg Revenue / Hour ($)',
-      '#59a14f',
-      false,
-      getFilteredCounts(topAvgPerHour, data.job_type_counts),
-      true
-    );
+    
 
     // ===== Revenue & Jobs Over Time (Combo Line Chart) =====
     const weeks         = data.weekly_revenue_over_time.map(e => e.week_start);
@@ -687,45 +677,63 @@ const PerformanceSummary = (() => {
         jobs: jobCountData[t] || 0
       }));
 
-      // ===== Revenue per Hour Chart =====
-      const sortedByRevenue = [...techs].sort((a, b) => b.revenue - a.revenue);
-      const revenueSelected = topN === "all" ? sortedByRevenue : sortedByRevenue.slice(0, parseInt(topN));
-      const revenueLabels = revenueSelected.map(t => t.tech);
-      const revenueValues = revenueSelected.map(t => t.revenue);
 
-      techCharts.revenuePerHour?.destroy();
-      techCharts.revenuePerHour = new Chart(
-        document.getElementById('revenuePerHourByTechChart').getContext('2d'),
-        {
-          type: 'bar',
-          data: {
-            labels: revenueLabels,
-            datasets: [{
-              label: "Revenue per Hour ($)",
-              data: revenueValues,
-              backgroundColor: '#4e79a7',
-              borderRadius: 5
-            }]
+      // ===== Job Items added by Tech (Bar) =====
+      techCharts.jobItemsAddedByTech?.destroy();
+
+      const jiSimple = data.job_items_created_by_tech || { technicians: [], counts: [] };
+      const allTechs = jiSimple.technicians || [];
+      const allCounts = jiSimple.counts || [];
+
+      // Optional Top-N (reuse global `topN` if you have it)
+      let N_items = (typeof topN !== 'undefined' && topN !== "all") ? parseInt(topN, 10) : allTechs.length;
+      if (Number.isNaN(N_items) || N_items < 1) N_items = allTechs.length;
+
+      // Slice top-N (arrays are already sorted desc by backend)
+      const labelsJI = allTechs.slice(0, N_items);
+      const dataJI   = allCounts.slice(0, N_items);
+
+      // Build chart
+      const ctxJI = document.getElementById('jobItemsAddedByTechChart').getContext('2d');
+      techCharts.jobItemsAddedByTech = new Chart(ctxJI, {
+        type: 'bar',
+        data: {
+          labels: labelsJI,
+          datasets: [
+            {
+              label: 'Job Items Added',
+              data: dataJI,
+              // use your existing theming or let Chart.js pick defaults
+              borderWidth: 1
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { display: true, position: 'top' },
+            tooltip: {
+              callbacks: {
+                title: items => {
+                  const tech = items[0].label;
+                  return tech;
+                },
+                label: it => `Job Items: ${it.raw}`
+              }
+            }
           },
-          options: {
-            responsive: true,
-            plugins: {
-              legend: { display: false },
-              tooltip: {
-                callbacks: {
-                  label: ctx => `$${ctx.raw.toFixed(2)}`
-                }
-              }
-            },
-            scales: {
-              y: {
-                beginAtZero: true,
-                title: { display: true, text: 'Revenue per Hour ($)' }
-              }
+          scales: {
+            x: { title: { display: true, text: 'Technician' } },
+            y: {
+              beginAtZero: true,
+              title: { display: true, text: 'Job Items Added' },
+              ticks: { precision: 0 }
             }
           }
         }
-      );
+      });
+      
 
       // ===== Jobs Completed by Tech (Grouped Bar + Total Line) =====
       techCharts.jobsCompleted?.destroy();
