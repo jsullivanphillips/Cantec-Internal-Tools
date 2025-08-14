@@ -1844,6 +1844,16 @@ def update_job_item_by_id(action, job_item_id, user_id=None):
     job_item_data = None
     user_data = None
 
+    if action == "deleted":
+        deleted = JobItemTechnician.query.filter_by(job_item_id=job_item_id).delete(synchronize_session=False)
+        db.session.commit()
+        if deleted:
+            print(f"🗑️ Deleted job item {job_item_id}")
+        else:
+            print(f"⚠️ Job item {job_item_id} not found for deletion")
+        return
+
+
     try:
         response = api_session.get(f"https://api.servicetrade.com/api/jobitem/{job_item_id}")
         if response.ok:
@@ -1911,14 +1921,6 @@ def upsert_job_item_technician(action, user_data, job_item_data):
         db.session.execute(stmt)
         db.session.commit()
         print(f"✅ Upserted job item {job_item_id}")
-
-    elif action == "deleted":
-        deleted = JobItemTechnician.query.filter_by(job_item_id=job_item_id).delete(synchronize_session=False)
-        db.session.commit()
-        if deleted:
-            print(f"🗑️ Deleted job item {job_item_id}")
-        else:
-            print(f"⚠️ Job item {job_item_id} not found for deletion")
 
     else:
         raise ValueError("action must be one of: 'created', 'updated', 'deleted'")
