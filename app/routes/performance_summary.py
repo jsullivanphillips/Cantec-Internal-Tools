@@ -1850,12 +1850,9 @@ def update_job_item_by_id(action, job_item_id, user_id=None):
         print(f"[ERROR] Failed to fetch job item {job_item_id}: {e}")
         return
     
-    user_params = {
-        "userId": user_id
-    }
 
     try: 
-        response = call_service_trade_api(f"{SERVICE_TRADE_API_BASE}/user", user_params)
+        response = api_session.get(f"https://api.servicetrade.com/api/user/{user_id}")
         if not response:
             tqdm.write("Failed to fetch user data.")
             return
@@ -1864,10 +1861,34 @@ def update_job_item_by_id(action, job_item_id, user_id=None):
         tqdm.write(f"[ERROR] Failed to fetch user data: {e}")
         return
     
-    users = user_data.get("users", [])
 
-    print("job_item_data:", job_item_data)
-    print("number of users returned:", len(users))
+    user_name = user_data.get("name", "Unknown User")
+    is_tech = user_data.get("isTech", False)
+    avatar_url = user_data.get("avatar", {}).get("medium", "")
+    job_item_name = job_item_data.get("name", "Unknown Job Item")
+    job_item_quantity = job_item_data.get("quantity", 0)
+    job_item_cost = job_item_data.get("cost", 0.0)
+    related_job_id = job_item_data.get("job", {}).get("id", "Unknown Job ID")
+    created_at = job_item_data.get("created", 0)
+    updated_at = job_item_data.get("updated", 0)
+
+    print(f"""
+    User Information
+    ----------------
+    Name: {user_name}
+    Is Technician: {"Yes" if is_tech else "No"}
+    Avatar URL: {avatar_url}
+
+    Job Item Information
+    --------------------
+    Name: {job_item_name}
+    Quantity: {job_item_quantity}
+    Cost: ${job_item_cost:,.2f}
+    Related Job ID: {related_job_id}
+    Created At: {created_at}
+    Updated At: {updated_at}
+    """)
+
     
 
 
