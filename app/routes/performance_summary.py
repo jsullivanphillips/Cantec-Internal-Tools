@@ -1864,8 +1864,10 @@ def update_job_item_by_id(action, job_item_id, user_id=None):
         tqdm.write(f"[ERROR] Failed to fetch user data: {e}")
         return
     
+    users = user_data.get("users", [])
+
     print("job_item_data:", job_item_data)
-    print("user_data:", user_data)
+    print("number of users returned:", len(users))
     
 
 
