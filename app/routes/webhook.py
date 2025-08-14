@@ -108,6 +108,8 @@ def handle_job_item_added_webhook():
 
     print(f"Entity Type: {entity_type}, Entity ID: {entity_id}")
 
+    return jsonify({"message": "Webhook received"}), 200
+
 
 
 
