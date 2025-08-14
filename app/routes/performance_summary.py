@@ -1841,9 +1841,6 @@ def to_dt(ts):
 def update_job_item_by_id(action, job_item_id, user_id=None):
     authenticate()
 
-    if action == "deleted":
-        return
-
     job_item_data = None
     user_data = None
 
