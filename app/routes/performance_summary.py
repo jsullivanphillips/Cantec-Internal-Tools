@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, session, jsonify, request
 import random
-from app.db_models import db, Job, ClockEvent, Deficiency, Location, Quote, QuoteItem, InvoiceItem
+from app.db_models import db, Job, ClockEvent, Deficiency, Location, Quote, QuoteItem, InvoiceItem, JobItemTechnician
 from collections import defaultdict
 from tqdm import tqdm
 import requests
@@ -9,6 +9,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, distinct, case, and_
 from sqlalchemy.orm import joinedload
+from sqlalchemy.dialects.postgresql import insert
 
 HOURLY_RATE = {
     'fa':        125.0,
@@ -1831,6 +1832,12 @@ def test_update_quote():
     print(f"✅ Updated {updated} quote items for quote {quote_id}")
 
 
+# Convert timestamps if they are epoch integers
+def to_dt(ts):
+    if isinstance(ts, (int, float)) and ts > 0:
+        return datetime.fromtimestamp(ts, tz=timezone.utc)
+    return None
+
 def update_job_item_by_id(action, job_item_id, user_id=None):
     authenticate()
 
@@ -1862,34 +1869,62 @@ def update_job_item_by_id(action, job_item_id, user_id=None):
         tqdm.write(f"[ERROR] Failed to fetch user data: {e}")
         return
     
+    upsert_job_item_technician(action, user_data, job_item_data)
 
-    user_name = user_data.get("name", "Unknown User")
-    is_tech = user_data.get("isTech", False)
-    avatar_url = user_data.get("avatar", {}).get("medium", "")
-    job_item_name = job_item_data.get("name", "Unknown Job Item")
-    job_item_quantity = job_item_data.get("quantity", 0)
-    job_item_cost = job_item_data.get("cost", 0.0)
-    related_job_id = job_item_data.get("job", {}).get("id", "Unknown Job ID")
-    created_at = job_item_data.get("created", 0)
-    updated_at = job_item_data.get("updated", 0)
 
-    print(f"""
-    User Information
-    ----------------
-    Name: {user_name}
-    Is Technician: {"Yes" if is_tech else "No"}
-    Avatar URL: {avatar_url}
+def upsert_job_item_technician(action, user_data, job_item_data):
+    # Primary key from ServiceTrade
+    job_item_id = job_item_data.get("id")
+    if not job_item_id:
+        raise ValueError("job_item_data must include an 'id' field")
 
-    Job Item Information
-    --------------------
-    Name: {job_item_name}
-    Quantity: {job_item_quantity}
-    Cost: ${job_item_cost:,.2f}
-    Related Job ID: {related_job_id}
-    Created At: {created_at}
-    Updated At: {updated_at}
-    """)
+    # Common mapped fields
+    payload = {
+        "job_item_id": job_item_id,
+        "user_name": user_data.get("name", "Unknown User"),
+        "is_tech": user_data.get("isTech", False),
+        "avatar_url": user_data.get("avatar", {}).get("medium", ""),
+        "job_item_name": job_item_data.get("name", "Unknown Job Item"),
+        "quantity": job_item_data.get("quantity", 0),
+        "cost": job_item_data.get("cost", 0.0),
+        "related_job_id": job_item_data.get("job", {}).get("id"),
+        "created_at": to_dt(job_item_data.get("created", 0)),
+        "updated_at": to_dt(job_item_data.get("updated", 0)),
+        "created_on_st": datetime.now(timezone.utc),
+    }
 
+    if action in ("created", "updated"):
+        # UPSERT: insert new row or update existing on PK conflict
+        stmt = insert(JobItemTechnician).values(**payload).on_conflict_do_update(
+            index_elements=[JobItemTechnician.job_item_id],  # conflict target = PK
+            set_={
+                "user_name": payload["user_name"],
+                "is_tech": payload["is_tech"],
+                "avatar_url": payload["avatar_url"],
+                "job_item_name": payload["job_item_name"],
+                "quantity": payload["quantity"],
+                "cost": payload["cost"],
+                "related_job_id": payload["related_job_id"],
+                "created_at": payload["created_at"],   # keep API's created time
+                "updated_at": payload["updated_at"],
+                # do not overwrite created_on_st on update if you prefer first-seen time:
+                # "created_on_st": payload["created_on_st"],
+            },
+        )
+        db.session.execute(stmt)
+        db.session.commit()
+        print(f"✅ Upserted job item {job_item_id}")
+
+    elif action == "deleted":
+        deleted = JobItemTechnician.query.filter_by(job_item_id=job_item_id).delete(synchronize_session=False)
+        db.session.commit()
+        if deleted:
+            print(f"🗑️ Deleted job item {job_item_id}")
+        else:
+            print(f"⚠️ Job item {job_item_id} not found for deletion")
+
+    else:
+        raise ValueError("action must be one of: 'created', 'updated', 'deleted'")
     
 
 

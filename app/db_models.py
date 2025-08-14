@@ -4,6 +4,7 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.dialects.postgresql import ARRAY
 from zoneinfo import ZoneInfo
 from sqlalchemy.orm import foreign
+from sqlalchemy import UniqueConstraint
 
 db = SQLAlchemy()
 
@@ -154,6 +155,29 @@ class Job(db.Model):
 
     def __repr__(self):
         return f"<Job {self.job_id} - {self.customer_name}>"
+
+
+class JobItemTechnician(db.Model):
+    __tablename__ = 'job_item_technician'
+
+    job_item_id = db.Column(db.BIGINT, primary_key=True)  # ServiceTrade Job Item ID
+    user_name = db.Column(db.String(255), default="Unknown User")
+    is_tech = db.Column(db.Boolean, default=False)
+    avatar_url = db.Column(db.String(1024))
+    job_item_name = db.Column(db.String(255), default="Unknown Job Item")
+    quantity = db.Column(db.Integer, default=0)
+    cost = db.Column(db.Float, default=0.0)
+    related_job_id = db.Column(db.BIGINT, nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True))
+    updated_at = db.Column(db.DateTime(timezone=True))
+    created_on_st = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        UniqueConstraint('job_item_id', name='uq_job_item_id'),
+    )
+
+    def __repr__(self):
+        return f"<JobItemTechnician {self.job_item_id} - {self.user_name} - {self.job_item_name}>"
 
 
 class ClockEvent(db.Model):
