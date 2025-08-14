@@ -114,6 +114,10 @@ def handle_job_item_added_webhook():
     job_item_id = entity_id
     user_id = data.get("data", [])[0].get("userId")
 
+    # Setup session credentials
+    session['username'] = os.environ.get("PROCESSING_USERNAME")
+    session['password'] = os.environ.get("PROCESSING_PASSWORD")
+
     update_job_item_by_id(action, job_item_id, user_id)
     
     return jsonify({"message": "Webhook received"}), 200
