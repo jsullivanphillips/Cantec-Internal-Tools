@@ -208,7 +208,7 @@ def get_incoming_jobs_today():
     jobs_params = {
         "scheduleDateFrom": scheduleDateFrom,
         "scheduleDateTo": scheduleDateTo,
-        "jobStatus": "scheduled",
+        "status": "scheduled, completed",
     }
 
     try:
