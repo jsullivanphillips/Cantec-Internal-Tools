@@ -190,20 +190,28 @@ def get_oldest_job_data(oldest_job_id):
 
 def get_incoming_jobs_today():
     authenticate()
-    # Pacific Time (auto-adjusts for PST/PDT)
-    PT = ZoneInfo("America/Los_Angeles")
 
-    # Get today's date in Pacific Time and set time to 12:00 AM
-    yesterday_at_430_pt = (datetime.now(PT) - timedelta(days=1)).replace(hour=16, minute=30, second=0, microsecond=0)
-    yesterday_at_12am_pt = (datetime.now(PT) - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-    today_12am_pt = datetime.now(PT).replace(hour=0, minute=0, second=0, microsecond=0)
+    # Pacific (BC) time
+    PT = ZoneInfo("America/Vancouver")
+    now_pt = datetime.now(PT)
 
-    right_now_pst = datetime.now(PT)
+    # Compute last business day (Mon→Fri). 
+    # Mon -> Fri (-3), Sun -> Fri (-2), Sat -> Fri (-1), Tue–Fri -> previous day (-1)
+    wd = now_pt.weekday()  # Mon=0 ... Sun=6
+    if wd == 0:          # Monday
+        delta_days = 3
+    elif wd == 6:        # Sunday
+        delta_days = 2
+    else:                # Tue–Sat
+        delta_days = 1
 
-    scheduleDateFrom = int(yesterday_at_12am_pt.timestamp())
-    scheduleDateTo = int(today_12am_pt.timestamp())
+    last_bd_start = (now_pt - timedelta(days=delta_days)).replace(hour=0, minute=0, second=0, microsecond=0)
+    last_bd_end   = last_bd_start + timedelta(days=1)  # exclusive upper bound at 12:00 AM next day
 
-    #1.  Get jobs that are complete
+    scheduleDateFrom = int(last_bd_start.timestamp())
+    scheduleDateTo   = int(last_bd_end.timestamp())
+
+    # 1) Get jobs that are scheduled or completed on the last business day
     jobs_endpoint = f"{SERVICE_TRADE_API_BASE}/job"
     jobs_params = {
         "scheduleDateFrom": scheduleDateFrom,
@@ -212,23 +220,22 @@ def get_incoming_jobs_today():
     }
 
     try:
-        response = api_session.get(jobs_endpoint, params=jobs_params)
+        response = api_session.get(jobs_endpoint, params=jobs_params, timeout=30)
         response.raise_for_status()
-    except requests.RequestException as e:
+    except requests.RequestException:
         return {}
-    
-    data = response.json().get("data", {})
+
+    data = response.json().get("data", {}) or {}
     jobs_data = data.get("jobs", []) or []
 
-    # Build a dict keyed by job_id in O(n)
+    # Build a dict keyed by job_id
     jobs_by_id = {j["id"]: j for j in jobs_data if isinstance(j, dict) and "id" in j}
 
-    # Start with all jobs; we'll remove those with scheduled/unscheduled appointments
-    jobs_to_be_marked_complete_today = dict(jobs_by_id)  # shallow copy
+    # Start with all jobs; remove those with any scheduled/unscheduled appointments
+    jobs_to_be_marked_complete_today = dict(jobs_by_id)
 
     incomplete_statuses = {"scheduled", "unscheduled"}
 
-    i = 0
     for job_id in list(jobs_to_be_marked_complete_today.keys()):
         appointment_endpoint = f"{SERVICE_TRADE_API_BASE}/appointment"
         appointment_params = {"jobId": job_id}
@@ -239,23 +246,13 @@ def get_incoming_jobs_today():
             response_data = resp.json().get("data", {}) or {}
             appointments = response_data.get("appointments", []) or []
         except requests.RequestException:
-            # If the API call fails, choose one:
-            # Option A (conservative): keep the job, since we couldn't verify incompleteness
-            # Option B (strict): remove the job to avoid marking something complete erroneously
-            # Here we choose A: skip removal if we can't confirm.
+            # Conservative: keep the job if we can't verify
             continue
 
-        # If ANY appointment is scheduled/unscheduled, remove from the "complete today" dict
         if any((a or {}).get("status") in incomplete_statuses for a in appointments):
             jobs_to_be_marked_complete_today.pop(job_id, None)
 
-        i += 1
-
-    # Return the count (or the dict if you need details)
-    result_count = len(jobs_to_be_marked_complete_today)
-    # result_dict = jobs_to_be_marked_complete_today
-
-    return result_count
+    return len(jobs_to_be_marked_complete_today)
 
 
 def get_jobs_processed_today():
