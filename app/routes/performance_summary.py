@@ -146,7 +146,7 @@ def performance_summary_data():
     deficiencies_by_tech_sl = get_deficiencies_created_by_tech_service_line(window_start, window_end)
     attachments_by_tech = get_attachments_by_technician(window_start, window_end)
     quote_statistics_by_user = get_quote_statistics_by_user(window_start, window_end)
-    job_items_created_by_tech = get_job_items_created_count_by_tech(window_start, window_end, include_debug=True)
+    job_items_created_by_tech = get_job_items_created_count_by_tech(window_start, window_end, include_debug=False)
 
 
     return jsonify({
