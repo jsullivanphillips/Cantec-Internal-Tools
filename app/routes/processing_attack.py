@@ -73,8 +73,6 @@ def processing_attack_complete_jobs():
 
     incoming_jobs_today = get_incoming_jobs_today()
 
-    print("Incoming Jobs Today: ", incoming_jobs_today)
-
     response_data = {
         "jobs_to_be_marked_complete": len(jobs_to_be_marked_complete),
         "job_type_count": jobs_by_job_type,
@@ -265,8 +263,6 @@ def get_jobs_processed_today():
 
     right_now_pst = datetime.now(PT)
 
-    print("jobs from: ", today_12am_pt, " to ", right_now_pst)
-
     scheduleDateFrom = int(today_12am_pt.timestamp())
     scheduleDateTo = int(right_now_pst.timestamp())
 
@@ -360,7 +356,6 @@ def get_jobs_to_be_marked_complete():
     
     unsched_appointments_data = response.json().get("data", {})
     unsched_appointments = unsched_appointments_data.get("appointments", [])
-    print(f"number of unsched appts: {len(unsched_appointments)}")
     jobs_to_remove = {appt.get("job").get("id") for appt in unsched_appointments}
     
 
@@ -374,7 +369,6 @@ def get_jobs_to_be_marked_complete():
     jobs_to_remove = []
     for job_id in jobs_to_be_marked_complete:
         if jobs_to_be_marked_complete[job_id].get("type") == "administrative":
-            print("removing administrative job: ", jobs_to_be_marked_complete[job_id].get("name"))
             jobs_to_remove.append(job_id)
     
     for job_id in jobs_to_remove:
@@ -511,7 +505,6 @@ def get_jobs_processed(selected_monday):
     """
     Returns total jobs processed, total tech hours processed, and the oldest job id.
     """
-    print("Get Jobs Processed!!!!--")
     authenticate()
     monday_date = datetime.strptime(selected_monday, "%Y-%m-%d")
     monday_start = datetime.combine(monday_date, datetime.min.time())
@@ -603,7 +596,7 @@ def processing_attack_processed_data_by_processor():
                 "error": "Selected Monday not provided in the request."
             }), 400
     
-        print(hours_by_processor)
+        
 
         response_data = {
             "jobs_processed_by_processor": jobs_by_processor,
@@ -642,8 +635,6 @@ def get_jobs_processed_by_processor(selected_monday):
     friday_date = monday_date + timedelta(days=4)
     friday_end = datetime.combine(friday_date, datetime.max.time()).replace(microsecond=0)
 
-    print("processing week of ", monday_date, "-", friday_date)
-
     monday_timestamp = int(monday_start.timestamp())
     friday_timestamp = int(friday_end.timestamp())
 
@@ -669,7 +660,7 @@ def get_jobs_processed_by_processor(selected_monday):
     hours_by_processor = {}
     i = 0
     num_of_jobs = len(jobs)
-    print("# jobs to parse: ", num_of_jobs)
+    
     for job in jobs:
         i += 1
         job_id = job.get("id")
@@ -718,7 +709,5 @@ def get_jobs_processed_by_processor(selected_monday):
                             delta = clock_out - clock_in
                             hours_difference = delta.total_seconds() / 3600
                             hours_by_processor[user_name] = hours_by_processor.get(user_name, 0) + hours_difference
-    print()
-    print(jobs_completed_by_processor, " | ", hours_by_processor)
     return jobs_completed_by_processor, hours_by_processor
         
