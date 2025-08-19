@@ -50,7 +50,6 @@ def handle_deficiency_webhook():
 @webhook_bp.route('/webhooks/job_status_changed', methods=['POST'])
 def handle_job_status_changed_webhook():
     data = request.json
-    print("Job Status Changed Webhook Received")
 
     webhook_status["last_received"] = datetime.now(timezone.utc)
 
@@ -70,6 +69,7 @@ def handle_job_status_changed_webhook():
     
     # only update our deficiency_record table if the status of a job has changed.
     if field != "status":
+        print("ignoring webhook for non-status change.")
         return jsonify({"message": "Webhook received"}), 200
 
     webhook_status["last_entity_id"] = entity_id
@@ -83,6 +83,7 @@ def handle_job_status_changed_webhook():
     session['password'] = os.environ.get("PROCESSING_PASSWORD")
 
     if entity_id:
+        print(f"Updating deficiency from job status change")
         update_deficiency_by_job_id(str(entity_id))
     else:
         print("⚠️ No entity ID found in webhook.")
