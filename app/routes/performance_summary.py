@@ -195,6 +195,7 @@ def get_job_items_created_count_by_tech(window_start, window_end, include_debug=
     using local insert time `created_on_st`. Excludes rows where:
       - is_tech != True
       - job_item_name is one of EXCLUDED_ITEM_NAMES (exact match, case-sensitive)
+      - technician name is "Jordan Zwicker"
     If include_debug=True, prints a summary + inspected rows (up to debug_limit) to stdout.
     """
 
@@ -211,6 +212,7 @@ def get_job_items_created_count_by_tech(window_start, window_end, include_debug=
             JobItemTechnician.created_on_st <= window_end,
             JobItemTechnician.job_item_name.isnot(None),
             ~JobItemTechnician.job_item_name.in_(EXCLUDED_ITEM_NAMES),  # exclude by name
+            JobItemTechnician.user_name != "Jordan Zwicker",   
         )
         .group_by("technician")
     )
