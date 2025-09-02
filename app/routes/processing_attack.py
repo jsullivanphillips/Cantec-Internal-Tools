@@ -319,8 +319,18 @@ def get_jobs_to_be_marked_complete():
         job = appt.get("job")
         job_id = job.get("id")
 
+        # if there is no service Line (i.e. Emergency Service Calls), skip it
+        if not appt.get('serviceRequests') or not appt.get('serviceRequests')[0].get('serviceLine'):
+            continue
+        
+        appt_service_line_name = appt.get('serviceRequests')[0].get('serviceLine').get('name')
+
+        # dont track pink folder appointments
+        if appt_service_line_name == "Office Clerical":
+            continue
+
         if not job or not job_id:
-            continue  # skip if job or job_id is invalid
+            continue  # skip if either the job or job_id is invalid
 
         # Save the job info if we haven't already
         if job_id not in jobs_to_be_marked_complete:
@@ -328,8 +338,8 @@ def get_jobs_to_be_marked_complete():
 
         appt_start = appt.get("windowStart")
 
-        # If this is the first time we're seeing this job_id, or the new date is earlier
-        if job_id not in job_date or (appt_start and appt_start < job_date[job_id]):
+        # If this is the first time we're seeing this job_id, or the new date is later
+        if job_id not in job_date or (appt_start and appt_start > job_date[job_id]):
             job_date[job_id] = appt_start
 
 
