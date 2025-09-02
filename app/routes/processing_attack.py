@@ -329,7 +329,7 @@ def get_jobs_to_be_marked_complete():
         appt_start = appt.get("windowStart")
 
         # If this is the first time we're seeing this job_id, or the new date is earlier
-        if job_id not in job_date or (appt_start and appt_start > job_date[job_id]):
+        if job_id not in job_date or (appt_start and appt_start < job_date[job_id]):
             job_date[job_id] = appt_start
 
 
