@@ -304,6 +304,7 @@ const ProcessingAttack = (() => {
     document.getElementById("incomingJobs").innerHTML = "";
     document.getElementById("jobsProcessed").innerHTML = "";
     
+    document.getElementById("timeInPinkFolder").innerHTML = "";
     document.getElementById("numberOfPinkFolderJobs").innerHTML = `
       <div class="spinner-border text-primary" role="status">
         <span class="visually-hidden">Loading...</span>
@@ -370,6 +371,7 @@ const ProcessingAttack = (() => {
 
 
         document.getElementById("numberOfPinkFolderJobs").textContent = data.number_of_pink_folder_jobs;
+        document.getElementById("timeInPinkFolder").textContent = `${data.time_in_pink_folder} Tech hours`;
         // Update jobsChart with job type counts.
         if (data.job_type_count) {
           const labels = Object.keys(data.job_type_count);
@@ -640,12 +642,15 @@ const ProcessingAttack = (() => {
     // Pink Folder jobs.
     const pinkElem = document.getElementById("numberOfPinkFolderJobs");
     const pinkElemCard = document.getElementById("numberOfPinkFolderJobsCard");
+    const timeInPinkFolderElem = document.getElementById("timeInPinkFolder");
     if (parseInt(data.number_of_pink_folder_jobs) < 11) {
       pinkElem.style.color = "#27a532";
+      timeInPinkFolderElem.style.color = "#27a532";
       pinkElemCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(229, 248, 225))";
       pinkElemCard.style.borderTop = "5px solid #27a532";
     } else {
       pinkElem.style.color = "#b92525";
+      timeInPinkFolderElem.style.color = "#b92525";
       pinkElemCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(248, 225, 227))";
       pinkElemCard.style.borderTop = "5px solid #b92525";
     }

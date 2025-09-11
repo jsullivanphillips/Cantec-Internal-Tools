@@ -67,7 +67,7 @@ def processing_attack_complete_jobs():
 
     jobs_by_job_type = organize_jobs_by_job_type(jobs_to_be_marked_complete)
 
-    number_of_pink_folder_jobs, pink_folder_detailed_info = get_pink_folder_data()
+    number_of_pink_folder_jobs, pink_folder_detailed_info, time_in_pink_folder = get_pink_folder_data()
 
     jobs_processed_today = get_jobs_processed_today()
 
@@ -82,7 +82,8 @@ def processing_attack_complete_jobs():
         "pink_folder_detailed_info" : pink_folder_detailed_info,
         "oldest_jobs_to_be_marked_complete" : oldest_jobs_to_be_marked_complete,
         "jobs_processed_today": jobs_processed_today,
-        "incoming_jobs_today": incoming_jobs_today
+        "incoming_jobs_today": incoming_jobs_today,
+        "time_in_pink_folder": time_in_pink_folder
     }
     return jsonify(response_data)
 
@@ -120,10 +121,39 @@ def get_pink_folder_data():
     pink_folder_detailed_info = {}
     job_response = response.json().get("data", {})
     jobs = job_response.get("jobs", {})
+    time_in_pink_folder = 0
+    
 
     for job in jobs:
-        job_url = "https://app.servicetrade.com/jobs/" + str(job.get("id", ""))
+        job_id = job.get("id")
+        if not job_id:
+            continue
+        job_url = "https://app.servicetrade.com/job/" + str(job_id)
         job_address = job.get("location", {}).get("address", {}).get("street", "")
+
+
+        clock_endpoint = f"{SERVICE_TRADE_API_BASE}/job/{job_id}/clockevent"
+        clock_params = {
+            "activity": "onsite"
+        }
+
+        try:
+            response = api_session.get(clock_endpoint, params=clock_params)
+            response.raise_for_status()
+        except requests.RequestException as e:
+            print("exception requesting clock events for pnik folkder job", e)
+            continue
+
+        
+        clock_event_reponse = response.json()
+
+        clock_events_data = clock_event_reponse.get("data", {})
+        paired_events = clock_events_data.get("pairedEvents", [])
+        if paired_events:
+            for clock_event in paired_events:
+                time_in_pink_folder += clock_event.get("elapsedTime", 0)
+
+
 
         current_appointment = job.get("currentAppointment", {})
         techs_on_app = current_appointment.get("techs", [])
@@ -140,8 +170,12 @@ def get_pink_folder_data():
                 "job_address": job_address,
                 "job_url": job_url
             })
+    
 
-    return len(jobs), pink_folder_detailed_info
+    ## Get # of tech hours in pink folder :$
+    time_in_hours = round(time_in_pink_folder / 3600, 1)
+
+    return len(jobs), pink_folder_detailed_info, time_in_hours
 
 
 
