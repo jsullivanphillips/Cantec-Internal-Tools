@@ -371,7 +371,7 @@ const ProcessingAttack = (() => {
 
 
         document.getElementById("numberOfPinkFolderJobs").textContent = data.number_of_pink_folder_jobs;
-        document.getElementById("timeInPinkFolder").textContent = `${data.time_in_pink_folder} Tech hours`;
+        document.getElementById("timeInPinkFolder").textContent = `${data.time_in_pink_folder} tech hours`;
         // Update jobsChart with job type counts.
         if (data.job_type_count) {
           const labels = Object.keys(data.job_type_count);
