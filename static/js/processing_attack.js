@@ -305,6 +305,7 @@ const ProcessingAttack = (() => {
     document.getElementById("jobsProcessed").innerHTML = "";
     
     document.getElementById("timeInPinkFolder").innerHTML = "";
+    document.getElementById("moneyInPinkFolder").innerHTML = "";
     document.getElementById("numberOfPinkFolderJobs").innerHTML = `
       <div class="spinner-border text-primary" role="status">
         <span class="visually-hidden">Loading...</span>
@@ -369,9 +370,16 @@ const ProcessingAttack = (() => {
         document.getElementById("incomingJobs").textContent = `Incoming jobs: ${data.incoming_jobs_today}`;
         document.getElementById("jobsProcessed").textContent = `Jobs processed: ${data.jobs_processed_today}`;
 
-
-        document.getElementById("numberOfPinkFolderJobs").textContent = data.number_of_pink_folder_jobs;
-        document.getElementById("timeInPinkFolder").textContent = `${data.time_in_pink_folder} tech hours`;
+        document.getElementById("numberOfPinkFolderJobs").textContent = data.number_of_pink_folder_jobs + " jobs";
+        document.getElementById("timeInPinkFolder").textContent = `${data.time_in_pink_folder} tech hours  |`;
+        const revenue = data.time_in_pink_folder * 110;
+        document.getElementById("moneyInPinkFolder").textContent = 
+        `${new Intl.NumberFormat("en-US", { 
+            style: "currency", 
+            currency: "CAD", 
+            minimumFractionDigits: 0, 
+            maximumFractionDigits: 0 
+        }).format(revenue)}`;
         // Update jobsChart with job type counts.
         if (data.job_type_count) {
           const labels = Object.keys(data.job_type_count);
@@ -643,14 +651,17 @@ const ProcessingAttack = (() => {
     const pinkElem = document.getElementById("numberOfPinkFolderJobs");
     const pinkElemCard = document.getElementById("numberOfPinkFolderJobsCard");
     const timeInPinkFolderElem = document.getElementById("timeInPinkFolder");
+    const moneyInPinkFolderElem = document.getElementById("moneyInPinkFolder");
     if (parseInt(data.number_of_pink_folder_jobs) < 11) {
       pinkElem.style.color = "#27a532";
       timeInPinkFolderElem.style.color = "#27a532";
+      moneyInPinkFolderElem.style.color = "#27a532";
       pinkElemCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(229, 248, 225))";
       pinkElemCard.style.borderTop = "5px solid #27a532";
     } else {
       pinkElem.style.color = "#b92525";
       timeInPinkFolderElem.style.color = "#b92525";
+      moneyInPinkFolderElem.style.color = "#b92525";
       pinkElemCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(248, 225, 227))";
       pinkElemCard.style.borderTop = "5px solid #b92525";
     }
