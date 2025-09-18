@@ -1,63 +1,68 @@
-from flask import Blueprint, render_template, jsonify, session, request, current_app
-import requests
+from flask import Blueprint, render_template, jsonify, session, request, current_app, has_request_context
+import requests, os, csv, logging
 import json
-from datetime import datetime, date
-from dateutil.relativedelta import relativedelta
-import calendar
-from dateutil import parser  # Use dateutil for flexible datetime parsing
-from collections import Counter
 import re
-from app.db_models import SchedulingAttack
+from datetime import datetime, timezone, timedelta, date
+from dateutil.relativedelta import relativedelta
+from zoneinfo import ZoneInfo  # Python 3.9+
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy import or_, func, cast, Float, select
+from app.db_models import db, ServiceRecurrence, Location  
+from tqdm import tqdm 
+import calendar
+
+log = logging.getLogger("month-conflicts")
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 scheduling_attack_bp = Blueprint('scheduling_attack', __name__, template_folder='templates')
 api_session = requests.Session()
+api_session.headers.update({"Accept": "application/json"})
 
 SERVICE_TRADE_API_BASE = "https://api.servicetrade.com/api"
 
+BUSINESS_TZ = ZoneInfo("America/Vancouver")  # or a per-location tz if you have one
 
-all_locations_by_id = {}
+APPOINTMENT_SERVICE_LINE_IDS = [168, 3, 1, 2, 556] 
+
+#--SERVICE LINE IDS--:
+    # {168: 'Fire Protection', 
+    # 3: 'Portable Extinguishers', 
+    # 5: 'Sprinkler', 
+    # 1: 'Alarm Systems', 
+    # 2: 'Emergency / Exit Lights', 
+    # 556: 'Smoke Alarm', 
+    # 702: 'Vehicle Maintenance', 
+    # 13: 'Fire Hydrant', 
+    # 704: '5-year Sprinkler', 
+    # 83: 'Stand Pipe', 
+    # 699: 'Office Clerical', 
+    # 703: '3-Year Sprinkler'}
+
 
 ## -----
 ## Helpers
 ## ------
-def authenticate():
-    auth_url = "https://api.servicetrade.com/api/auth"
-    payload = {"username": session.get('username'), "password": session.get('password')}
-    try:
-        auth_response = api_session.post(auth_url, json=payload)
-        auth_response.raise_for_status()
-    except Exception as e:
-        return jsonify({"error": "Authentication failed"}), 401
+def _get_st_creds():
+    if has_request_context():  # running in a real HTTP request
+        return session.get("username"), session.get("password")
+    # running from a script/CLI
+    return os.getenv("PROCESSING_USERNAME"), os.getenv("PROCESSING_PASSWORD")
 
-def convert_month_to_unix_timestamp(month_str):
-    year, month = map(int, month_str.split('-'))
-    # Start of month: first day at 00:00:00
-    start_date = datetime(year, month, 1)
-    # End of month: get the last day of the month and set time to 23:59:59
-    last_day = calendar.monthrange(year, month)[1]
-    end_date = datetime(year, month, last_day, 23, 59, 59)
-    start_ts = int(start_date.timestamp())
-    end_ts = int(end_date.timestamp())
-    return start_ts, end_ts
+def authenticate():
+    username, password = _get_st_creds()
+    if not username or not password:
+        raise RuntimeError("Missing ServiceTrade creds. Set PROCESSING_USERNAME/PROCESSING_PASSWORD.")
+    resp = api_session.post(f"{SERVICE_TRADE_API_BASE}/auth",
+                            json={"username": username, "password": password})
+    resp.raise_for_status()
+    return True
+
+def to_business_month(dt):
+    if not dt:
+        return None
+    return dt.astimezone(BUSINESS_TZ).month
 
 def parse_fa_timing_tag(tag_str):
-    """
-    Parses an FA timing tag that can be in one of two types:
-
-    1. Hour format: "x_ytz_w" (e.g. "1_5t0_5"), where the number before the 't'
-       represents tech time in hours (underscores in place of decimals).
-    2. Day format: Variants including "1Day", "1Daytw", "1Daytw_z", 
-       "1Daytz_w", "1Day-xHourtw_z", "1Day-xHourstw_z", "2Days", etc.
-       For these, the numeric part before "Day" (or "Days") is converted to days 
-       (multiplied by 8 to convert to hours). If the day part is an integer and the tag
-       contains a trailing "t" with a fractional part, that fraction is added.
-
-    Examples:
-      - "1Day"          => 1 * 8 = 8 hours.
-      - "1Dayt0_5"      => 1 + 0.5 = 1.5 days → 1.5 * 8 = 12 hours.
-      - "1_5Dayst0_5"   => day part already fractional (1.5 days) → 1.5 * 8 = 12 hours.
-      - "1_5t0_5"       => 1.5 hours (original behavior).
-    """
     tag_str = tag_str.strip()
     # If the tag contains "day" (in any case), process it as a day format.
     if re.search(r"day", tag_str, re.IGNORECASE):
@@ -121,131 +126,907 @@ def parse_spr_tag(tag_str):
         hours = 0.0
     return num_techs, hours
     
+def call_service_trade_api(endpoint, params=None):
+    url = f"{SERVICE_TRADE_API_BASE}/{endpoint}"
+    try:
+        response = api_session.get(url, params=params)
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException as e:
+        current_app.logger.error(f"API call failed: {e}")
+        return None
 
-def get_Fa_service_recurrences_in_month(start_of_month):
-    recurrence_endpoint = f"{SERVICE_TRADE_API_BASE}/servicerecurrence"
-    safe_max = datetime(3000, 1, 1)
-    max_timestamp = safe_max.timestamp()
-    start_dt = datetime.fromtimestamp(start_of_month)
+
+def get_all_locations_with_params(params=None):
+    all_locations = []
+    endpoint = "location"
     page = 1
-    locations_in_month = {}
-    service_lines_to_exclude = [702, 699]
-    #--SERVICE LINE IDS--:
-    # {168: 'Fire Protection', 
-    # 3: 'Portable Extinguishers', 
-    # 5: 'Sprinkler', 
-    # 1: 'Alarm Systems', 
-    # 2: 'Emergency / Exit Lights', 
-    # 556: 'Smoke Alarm', 
-    # 702: 'Vehicle Maintenance', 
-    # 13: 'Fire Hydrant', 
-    # 704: '5-year Sprinkler', 
-    # 83: 'Stand Pipe', 
-    # 699: 'Office Clerical', 
-    # 703: '3-Year Sprinkler'}
     while True:
-        recurrence_params = {
-                "endsOnAfter" : max_timestamp,
-                "limit" : 250,
-                "page" : page,
-                "serviceLineIds" : "168,3,1,2,556"
-            }
-        try:
-            response = api_session.get(recurrence_endpoint, params=recurrence_params)
-            response.raise_for_status()
-        except requests.RequestException as e:
-            print("Request error:", e)
-        data = response.json().get("data", {})
-        service_recurrences = data.get("serviceRecurrences", [])
-        
-        for thing in service_recurrences:
-            if thing is not None:
-                service_line_id = thing.get("serviceLine").get("id")
-                if service_line_id in service_lines_to_exclude:
-                    continue                
-                location_address = thing.get("location").get("address").get("street")
-                first_start = datetime.fromtimestamp(thing.get("firstStart"))
-                location_id = thing.get("location").get("id")
-                service_line_id = thing.get("serviceLine").get("id")
-                service_line_name = thing.get("serviceLine").get("name")
-                is_location_active = thing.get("location").get("status")
-                frequency = thing.get("frequency") # and start_dt.year >= first_start.year
-                
-                if start_dt.month == first_start.month and start_dt.year >= first_start.year and is_location_active == "active" and frequency == "yearly":
-                    locations_in_month[location_id] = {"location": thing.get("location"), "serviceLineName" : service_line_name, "serviceLineId" : service_line_id, "firstStart": first_start}
-                
-
-
-        print(f"page {page} of {data.get("totalPages")}", end='\r', flush=True)
-        page +=1 
-        if data.get("page") >= data.get("totalPages"):
-            print(f"Retreived {page-1} page(s) of data for all Service Recurrence's")
+        print("\nFetching page", page, "for", endpoint)
+        paged_params = params.copy() if params else {}
+        paged_params['page'] = page
+    
+        response = call_service_trade_api(endpoint, params=paged_params)
+        if not response or 'data' not in response:
             break
     
-    return locations_in_month
+        data = response.get("data", {})
+        locations = data.get('locations', [])
+
+        if not locations:
+            break
+
+        all_locations.extend(locations)
+
+        if len(locations) < params.get("limit", 2000):
+            break
+        page += 1
+    
+    return all_locations
 
 
-def get_Spr_service_recurrences_in_month(start_of_month):
-    recurrence_endpoint = f"{SERVICE_TRADE_API_BASE}/servicerecurrence"
-    safe_max = datetime(3000, 1, 1)
-    max_timestamp = safe_max.timestamp()
-    start_dt = datetime.fromtimestamp(start_of_month)
+def get_all_locations_with_tag(tag):
+    params = {
+        "tag": tag,
+        "status": "active",
+        "limit": 500
+    }
+    return get_all_locations_with_params(params=params)
+
+
+def get_all_jobs_with_params(params=None):
+    all_jobs = []
+    endpoint = "job"
     page = 1
-    locations_in_month = {}
-    service_lines_to_exclude = [702, 699]
-    #--SERVICE LINE IDS--:
-    # {168: 'Fire Protection', 
-    # 3: 'Portable Extinguishers', 
-    # 5: 'Sprinkler', 
-    # 1: 'Alarm Systems', 
-    # 2: 'Emergency / Exit Lights', 
-    # 556: 'Smoke Alarm', 
-    # 702: 'Vehicle Maintenance', 
-    # 13: 'Fire Hydrant', 
-    # 704: '5-year Sprinkler', 
-    # 83: 'Stand Pipe', 
-    # 699: 'Office Clerical', 
-    # 703: '3-Year Sprinkler'}
     while True:
-        recurrence_params = {
-                "endsOnAfter" : max_timestamp,
-                "limit" : 250,
-                "page" : page,
-                "serviceLineIds" : "5,13,704,83,703"
-            }
-        try:
-            response = api_session.get(recurrence_endpoint, params=recurrence_params)
-            response.raise_for_status()
-        except requests.RequestException as e:
-            print("Request error:", e)
-        data = response.json().get("data", {})
-        service_recurrences = data.get("serviceRecurrences", [])
-        
-        for thing in service_recurrences:
-            if thing is not None:
-                service_line_id = thing.get("serviceLine").get("id")
-                if service_line_id in service_lines_to_exclude:
-                    continue                
-                location_address = thing.get("location").get("address").get("street")
-                first_start = datetime.fromtimestamp(thing.get("firstStart"))
-                location_id = thing.get("location").get("id")
-                service_line_id = thing.get("serviceLine").get("id")
-                service_line_name = thing.get("serviceLine").get("name")
-                is_location_active = thing.get("location").get("status")
-                frequency = thing.get("frequency") # and start_dt.year >= first_start.year
-                
-                if start_dt.month == first_start.month and start_dt.year >= first_start.year and is_location_active == "active" and frequency == "yearly":
-                    locations_in_month[location_id] = {"location": thing.get("location"), "serviceLineName" : service_line_name, "serviceLineId" : service_line_id, "firstStart": first_start}
-                
-
-
-        print(f"page {page} of {data.get("totalPages")}", end='\r', flush=True)
-        page +=1 
-        if data.get("page") >= data.get("totalPages"):
-            print(f"Retreived {data.get("page")} page(s) of data for all Service Recurrence's")
+        paged_params = params.copy() if params else {}
+        paged_params['page'] = page
+    
+        response = call_service_trade_api(endpoint, params=paged_params)
+        if not response or 'data' not in response:
             break
     
-    return locations_in_month
+        data = response.get("data", {})
+        jobs = data.get('jobs', [])
+
+        if not jobs:
+            break
+
+        all_jobs.extend(jobs)
+
+        if len(jobs) < params.get("limit", 2000):
+            break
+        page += 1
+    
+    return all_jobs
+
+
+def parse_dt(v):
+    """Accept ISO string, epoch seconds, or epoch milliseconds."""
+    if v is None:
+        return None
+    if isinstance(v, (int, float)):
+        ts = float(v)
+        if ts > 1e12:  # likely milliseconds
+            ts = ts / 1000.0
+        return datetime.fromtimestamp(ts, tz=timezone.utc)
+    if isinstance(v, str):
+        # try ISO first
+        try:
+            return datetime.fromisoformat(v.replace("Z", "+00:00")).astimezone(timezone.utc)
+        except Exception:
+            # maybe it's a numeric string
+            try:
+                ts = float(v)
+                if ts > 1e12:
+                    ts = ts / 1000.0
+                return datetime.fromtimestamp(ts, tz=timezone.utc)
+            except Exception:
+                return None
+    return None
+
+
+def end_of_month(dt: datetime) -> datetime:
+    first_next = (dt.replace(day=1) + relativedelta(months=1))
+    return first_next - timedelta(seconds=1)
+
+
+def window_for(sr: ServiceRecurrence):
+    """
+    18-month lookback ending at end-of-month of sr.first_start (your recurrence anchor).
+    """
+    assert sr.first_start, "first_start required on ServiceRecurrence"
+    end = end_of_month(sr.first_start)
+    start = end.replace(day=1) - relativedelta(months=18)
+    return start, end
+
+def job_loc_meta(j: dict):
+    loc = j.get("location") or {}
+    return (loc.get("id"), (loc.get("name") or "").strip())
+
+def list_jobs_for_location(location_id: int, start: datetime, end: datetime, debug: bool=False) -> list[dict]:
+    page, limit = 1, 500
+    out = []
+
+    while True:
+        params = {
+            # ⚠️ Use singular for jobs
+            "locationId": str(location_id),
+            "page": page,
+            "limit": limit,
+            "status": "completed",  # only need completed or canceled jobs
+            "type": "inspection,replacement,installation,upgrade",
+            # Prefer schedule-date window if your account supports it:
+            # "scheduleDateFrom": int(start.timestamp()),
+            # "scheduleDateTo": int(end.timestamp()),
+            # Fallback (comment out if not supported on your tenant):
+            # "createdAfter": int(start.timestamp()),
+            # "createdBefore": int(end.timestamp()),
+        }
+        r = call_service_trade_api("job", params=params)
+        data = r.get("data", {}) if r else {}
+        if debug:
+            log.info(f"[loc {location_id}] data: {json.dumps(data)[:200]}...")
+        jobs = data.get("jobs") or []
+        if not jobs:
+            if debug:
+                log.info(f"[loc {location_id}] no more jobs found at page {page}")
+            break
+
+        # Defensive filter: keep only jobs that actually belong to this location
+        filtered = []
+        extras = []
+        for j in jobs:
+            loc_id, loc_name = job_loc_meta(j)
+            if loc_id == location_id:
+                filtered.append(j)
+            else:
+                extras.append((j.get("id"), loc_id, loc_name))
+
+        if debug and extras:
+            # If the API returned jobs for other locations, show a few to diagnose
+            log.warning(
+                "[loc %s] API returned %s jobs; %s did not match location. Examples: %s",
+                location_id, len(jobs), len(extras),
+                extras[:3]
+            )
+
+        out.extend(filtered)
+        if len(jobs) < limit:
+            break
+        page += 1
+
+    if debug:
+        log.info("[loc %s] jobs kept after filter: %s", location_id, len(out))
+    return out
+
+
+def is_annual_job(job: dict) -> bool:
+    # Add any filtering to jobs here
+    return True  # Placeholder; customize as needed
+
+def appointment_when(appt: dict):
+    """
+    Return (dt, key) picking the best timestamp from an appointment.
+    Handles ISO strings, epoch seconds, and epoch ms.
+    """
+    # Try likely "done" fields first, then fall back:
+    candidate_keys = [
+        # PREFERRED "done" / end-ish
+        "windowEnd", "windowStart",
+        # fallback "start-ish"
+        "actualStart", "start", "startTime", "startOn", "scheduledOn", "scheduledStart",
+        # absolute fallback
+        "created", "updated"
+    ]
+    for key in candidate_keys:
+        dt = parse_dt(appt.get(key))
+        if dt:
+            return dt, key
+    return None, None
+
+def job_when_with_key(j: dict):
+    for key in ["completedOn", "completed", "completedDate", "scheduledOn", "scheduledDate", "created"]:
+        dt = parse_dt(j.get(key))
+        if dt:
+            return dt, key
+    return None, None
+
+def list_appointments_for_job(job_id: int, debug: bool = False) -> list[dict]:
+    """
+    Fetch appointments for a job, filtered to specific serviceLineIds.
+    """
+    page, limit, all_appts = 1, 500, []
+    while True:
+        params = {
+            "jobId": int(job_id),
+            "serviceLineIds": ",".join(map(str, APPOINTMENT_SERVICE_LINE_IDS)),
+            "page": page,
+            "limit": limit,
+        }
+        r = call_service_trade_api("appointment", params=params)
+        data = r.get("data", {}) if r else {}
+        appts = data.get("appointments")
+        all_appts.extend(appts)
+        if len(appts) < limit: break
+        page += 1
+
+    if debug:
+        log.info(f"[job {job_id}] appointments fetched={len(all_appts)}")
+        # show a peek at date-ish keys for first few appts
+        for a in all_appts[:3]:
+            keys = [k for k in a.keys() if "time" in k.lower() or "on" in k.lower() or k in ("start","end","created","updated")]
+            sample = {k: a.get(k) for k in keys}
+            sl = (a.get("serviceLine") or {})
+            log.debug(f"  appt peek sl='{sl.get('name')}' keys={sample}")
+
+    return all_appts
+
+def job_completed_dt_via_appointments(job_id: int, debug: bool = False):
+    """
+    Define job 'completed' time as the earliest non-clerical appointment timestamp.
+    """
+    appts = list_appointments_for_job(job_id, debug=debug)
+    earliest = None
+
+    for a in appts:
+        sl = (a.get("serviceLine") or {})
+        if (sl.get("name") or "").strip().lower() == "office clerical":
+            continue
+        dt, key = appointment_when(a)
+        if not dt:
+            continue
+        if debug and earliest is None:
+            log.debug(f"[job {job_id}] first usable appt key={key} dt_utc={dt.isoformat()}")
+
+        if earliest is None or dt < earliest[0]:
+            earliest = (dt, key, sl.get("name"))
+
+    if earliest:
+        dt, key, sl_name = earliest
+        if debug:
+            log.info(f"[job {job_id}] completed via appt key={key} dt_utc={dt.isoformat()} "
+                     f"local={dt.astimezone(BUSINESS_TZ).isoformat()} sl='{sl_name}'")
+        return dt
+
+    if debug:
+        log.info(f"[job {job_id}] no usable appointment timestamps found")
+    return None
+
+def recent_annual_job_for(sr: ServiceRecurrence, debug: bool = False):
+    start, end = window_for(sr)
+    jobs = list_jobs_for_location(sr.location_id, start, end)
+    if debug and len(jobs) > 0:
+        log.info(f"[loc {sr.location_id}] found {len(jobs)} jobs in window {start.date()} to {end.date()}")
+    
+    # --- detect most recent job overall (any type) ---
+    most_recent_any = []
+    for j in jobs:
+        dt, key = job_when_with_key(j)  # uses parse_dt; no extra API calls
+        if dt:
+            most_recent_any.append((j, dt, key))
+        
+    most_recent_any.sort(key=lambda t: t[1], reverse=True)
+    cancelled_meta = None
+    if most_recent_any:
+        last_job, last_dt, last_key = most_recent_any[0]
+        status = (last_job.get("status") or "").lower()
+        if status in ("canceled", "cancelled"):
+            cancelled_meta = {
+                "job_id": last_job.get("id"),
+                "when": last_dt,
+                "when_key": last_key,
+                "status": status,
+            }
+
+    
+
+    # --- pick most recent ANNUAL job (using appointments to define completion time) ---
+    candidates = []
+    for j in jobs:
+        if not is_annual_job(j):  # your predicate
+            continue
+        when = job_completed_dt_via_appointments(j["id"], debug=debug)
+        if debug and when:
+            log.debug(f"  annual candidate job={j.get('id')} when_utc={when.isoformat()} "
+                      f"biz_month={to_business_month(when)} "
+                      f"text='{(f'{j.get('name','')} {j.get('description','')}'.strip()[:100])}'")
+        if when:
+            candidates.append((j, when))
+            if debug and len(candidates) <= 3:
+                log.debug(f"  candidate job={j.get('id')} when_utc={when.isoformat()} "
+                          f"biz_month={to_business_month(when)} "
+                          f"text='{(f'{j.get('name','')} {j.get('description','')}'.strip()[:100])}'")
+
+    if not candidates:
+        if debug:
+            log.info(f"  no annual candidates for loc_id: {sr.location_id} (jobs_fetched={len(jobs)})")
+        # Return cancel info so caller can log it even if no annual was found
+        return None, None, cancelled_meta
+
+    candidates.sort(key=lambda t: t[1], reverse=True)
+    picked, when = candidates[0]
+    picked_month = to_business_month(when)
+
+    if debug:
+        log.info(f"  picked job={picked.get('id')} when_utc={when.isoformat()} "
+                 f"when_local={when.astimezone(BUSINESS_TZ).isoformat()} biz_month={picked_month}")
+
+    # If the most recent ANY job is canceled and is newer than the picked annual job, surface that fact
+    if cancelled_meta and cancelled_meta["when"] >= when:
+        if debug:
+            log.info(f"  note: most recent job (id={cancelled_meta['job_id']}) is CANCELED and "
+                     f"is newer than the picked annual job.")
+        # Caller can decide how to log; we still return the picked annual for comparison
+        return picked, picked_month, cancelled_meta
+
+    return picked, picked_month, None
+
+
+# NOTE: We need to run a scheduled updater for our locations table!
+# Find recent annual inspection for location
+# log location_id if no annual inspection found 
+# or if annual inspection is not in the same month listed in the service_recurrence table
+# --- main checker
+def check_month_conflicts(output_csv="recurrence_month_conflicts.csv", only_problems=True) -> dict:
+    authenticate()
+    q = (db.session.query(ServiceRecurrence)
+         .join(Location, Location.location_id == ServiceRecurrence.location_id)
+         .filter(Location.status == "active"))
+    total, missing, mismatches, canceled = q.count(), [], [], []
+
+    with open(output_csv, "w", newline="", encoding="utf-8") as f, \
+         tqdm(total=total, desc="Checking month conflicts", unit="loc", mininterval=0.5) as pbar:
+        w = csv.writer(f)
+        w.writerow(["location_id","recurrence_month","last_job_month","job_id",
+                    "job_completed_local","note"])
+
+        for sr in q.yield_per(500):
+            picked, picked_month, cancel_meta = recent_annual_job_for(sr, debug=False)
+
+            if cancel_meta and not picked:
+                canceled.append(sr.location_id)
+                w.writerow([sr.location_id, int(sr.month or 0), None,
+                            cancel_meta["job_id"],
+                            cancel_meta["when"].astimezone(BUSINESS_TZ).isoformat(),
+                            "LAST JOB CANCELED"])
+            elif not picked:
+                missing.append(sr.location_id)
+                w.writerow([sr.location_id, int(sr.month or 0), None, None, None, "NO ANNUAL FOUND"])
+            else:
+                when = job_completed_dt_via_appointments(picked["id"], debug=False)
+                biz_month = to_business_month(when)
+                if biz_month != int(sr.month or 0):
+                    mismatches.append(sr.location_id)
+                    w.writerow([sr.location_id, int(sr.month or 0), int(biz_month or 0),
+                                picked["id"],
+                                when.astimezone(BUSINESS_TZ).isoformat() if when else None,
+                                "MONTH MISMATCH" + (" | LAST JOB CANCELED" if cancel_meta else "")])
+
+            pbar.update(1)
+            pbar.set_postfix(missing=len(missing), mismatches=len(mismatches), canceled=len(canceled))
+
+    return {"checked": total, "missing": len(missing), "mismatches": len(mismatches),
+            "canceled": len(canceled), "csv": output_csv}
+
+
+def check_month_conflict_for_location(location_id: int) -> dict:
+    sr = (db.session.query(ServiceRecurrence)
+          .join(Location, Location.location_id == ServiceRecurrence.location_id)
+          .filter(ServiceRecurrence.location_id == location_id, Location.status == "active")
+          .one_or_none())
+    if not sr:
+        print(f"[loc {location_id}] No active ServiceRecurrence row.")
+        return {"location_id": location_id, "status": "no_sr"}
+
+    start_dt, end_dt = window_for(sr)                 # local/business TZ
+    start_ts, end_ts = window_for(sr)   # unix (for ST)
+
+    print(f"\n[loc {location_id}] Recurrence month={sr.month} "
+          f"first_start_local={sr.first_start.astimezone(BUSINESS_TZ).isoformat()}")
+    print(f"[loc {location_id}] Window local: {start_dt.isoformat()} → {end_dt.isoformat()}")
+    print(f"[loc {location_id}] Window unix : {start_ts} → {end_ts}")
+
+    jobs = list_jobs_for_location(location_id, start_dt, end_dt, debug=True)
+    print(f"[loc {location_id}] Jobs returned (post-filter): {len(jobs)}")
+
+    # List each job with appointment-derived time
+    for j in jobs:
+        jid = j.get("id"); status = (j.get("status") or "").lower()
+        loc_meta = (j.get("location") or {})
+        when = job_completed_dt_via_appointments(jid, debug=True)
+        when_local = when.astimezone(BUSINESS_TZ).isoformat() if when else "-"
+        print(f"  • job={jid} status={status:>9} annual={'Y' if is_annual_job(j) else 'N'} "
+              f"appt_time_local={when_local} job_loc={loc_meta.get('id')}:{loc_meta.get('name')}")
+
+    # Choose annual job (via appointments)
+    picked, picked_month, cancel_note = recent_annual_job_for(sr, debug=True)
+    if not picked:
+        note = "LAST JOB CANCELED" if cancel_note else "NO ANNUAL FOUND"
+        print(f"[loc {location_id}] RESULT: {note}")
+        return {"location_id": location_id, "status": note}
+
+    when = job_completed_dt_via_appointments(picked.get("id"), debug=True)
+    biz_month = to_business_month(when)
+    conflict = (biz_month != int(sr.month or 0))
+
+    print(f"[loc {location_id}] Picked annual job id={picked.get('id')} "
+          f"local={when.astimezone(BUSINESS_TZ).isoformat() if when else '-'} "
+          f"job_month={biz_month} vs recurrence_month={int(sr.month or 0)}")
+    print(f"[loc {location_id}] RESULT: {'MONTH MISMATCH' if conflict else 'OK'}")
+    return {
+        "location_id": location_id,
+        "recurrence_month": int(sr.month or 0),
+        "picked_job_id": picked.get("id"),
+        "picked_job_month": int(biz_month or 0) if biz_month else None,
+        "conflict": bool(conflict),
+    }
+
+def _norm_seconds(v):
+    """Accept seconds or ms; return seconds as float or None."""
+    if v is None:
+        return None
+    try:
+        s = float(v)
+    except (TypeError, ValueError):
+        return None
+    # If absurdly large, assume milliseconds
+    if s > 1_000_000:  # ~11.6 days in seconds; too big for a single onsite stint
+        s = s / 1000.0
+    return s
+
+# Updating tech time
+def _clock_hours_for_job(job_id: int) -> float | None:
+    """
+    GET /job/{jobId}/clockevent, sum durations (hours) for pairedEvents
+    where either start.activity or end.activity == 'onsite'.
+    Prefer reported elapsedTime when sane; otherwise use computed delta.
+    """
+    r = api_session.get(f"{SERVICE_TRADE_API_BASE}/job/{job_id}/clockevent")
+    r.raise_for_status()
+    payload = r.json()
+    pairs = (
+        payload.get("pairedEvents")
+        or payload.get("data", {}).get("pairedEvents")
+        or []
+    )
+
+    total_sec = 0.0
+    for p in pairs:
+        s = (p.get("start") or {})
+        e = (p.get("end") or {})
+        act_s = (s.get("activity") or "").lower()
+        act_e = (e.get("activity") or "").lower()
+        if act_s != "onsite" and act_e != "onsite":
+            continue
+
+        # reported duration (preferred when sane)
+        secs_reported = _norm_seconds(p.get("elapsedTime"))
+
+        # computed duration from timestamps (fallback / cross-check)
+        dt_s = parse_dt(s.get("eventTime"))
+        dt_e = parse_dt(e.get("eventTime"))
+        secs_calc = (dt_e - dt_s).total_seconds() if (dt_s and dt_e) else None
+
+        # choose duration with sanity checks
+        chosen = None
+        if secs_reported and 0 < secs_reported < 20 * 3600:
+            chosen = secs_reported
+            # cross-check if we also have computed
+            if secs_calc and secs_calc > 0:
+                diff = abs(secs_reported - secs_calc)
+                if diff > 60 and diff / max(secs_calc, 1) > 0.10:
+                    log.warning(
+                        "clockevent mismatch job=%s pair_id=%s reported=%.1fs calc=%.1fs start=%s end=%s",
+                        job_id, p.get("id"), secs_reported, secs_calc, s.get("eventTime"), e.get("eventTime")
+                    )
+        elif secs_calc and 0 < secs_calc < 20 * 3600:
+            chosen = secs_calc
+
+        if chosen:
+            total_sec += chosen
+
+    hours = round(total_sec / 3600.0, 2)
+    return hours if hours > 0 else None
+
+
+def _travel_time_for_location(location_id: int) -> int | None:
+    """
+    GET /location/{locationId}
+    Tags are dicts with a 'name' field.
+    Pattern: ... 't' <hours>, where hours may use underscore as decimal (e.g., t1_5 = 1.5h).
+    Returns one-way travel time in MINUTES (int), not roundtrip.
+    """
+    r = api_session.get(f"{SERVICE_TRADE_API_BASE}/location/{location_id}")
+    r.raise_for_status()
+    payload = r.json()
+    tags = payload.get("data", {}).get("tags") or payload.get("tags") or []
+    if not isinstance(tags, list):
+        return None
+
+    candidates_min = []
+
+    for tag in tags:
+        name = (tag.get("name") or "").strip().lower()
+        if not name:
+            continue
+
+        # Find t<hours> where hours is N or N_M (underscore as decimal, max 2 decimals)
+        # Examples matched: "t2", "t0_5", "something_123_t1_5", "t10_25"
+        for m in re.finditer(r"(?<![a-z])t(\d+(?:_\d{1,2})?)(?!\d)", name):
+            tok = m.group(1)  # e.g., "1_5" or "2"
+            if "_" in tok:
+                whole, frac = tok.split("_", 1)
+                try:
+                    hours = float(f"{int(whole)}.{frac}")
+                except Exception:
+                    continue
+            else:
+                try:
+                    hours = float(tok)
+                except Exception:
+                    continue
+
+            minutes = int(round(hours * 60))
+            # sanity: 1 min .. 12h (720 min)
+            if 1 <= minutes <= 720:
+                candidates_min.append(minutes)
+
+    if not candidates_min:
+        return None
+    return max(candidates_min)
+
+
+
+def update_service_recurrence_time(
+    *, force: bool = False, commit_every: int = 200, location_id: int | None = None
+) -> dict:
+    """
+    Update tech hours (clock events) and travel minutes (location tags).
+    Optional: restrict to a single ServiceTrade location_id.
+    Uses ID prefetch to avoid invalidating server-side cursors on commit.
+    """
+    authenticate()
+
+    # Prefetch IDs only (safe to commit later without killing a streaming cursor)
+    id_q = (
+        db.session.query(ServiceRecurrence.id)
+        .join(Location, Location.location_id == ServiceRecurrence.location_id)
+        .filter(Location.status == "active")
+        .order_by(ServiceRecurrence.location_id.asc())
+    )
+    if location_id is not None:
+        id_q = id_q.filter(ServiceRecurrence.location_id == location_id)
+
+    id_rows = id_q.all()
+    sr_ids = [r[0] for r in id_rows]
+    total = len(sr_ids)
+
+    updated = skipped = processed = failures = 0
+    log.info(
+        "Starting SR hours update (force=%s, commit_every=%s, location_id=%s, total=%s)",
+        force, commit_every, location_id, total,
+    )
+
+    with tqdm(total=total, desc="Updating SR hours", unit="loc", mininterval=0.5) as pbar:
+        for sr_id in sr_ids:
+            # SQLAlchemy 1.4+: session.get; fallback to Query.get for older versions
+            try:
+                try:
+                    sr = db.session.get(ServiceRecurrence, sr_id)  # type: ignore[attr-defined]
+                except AttributeError:
+                    sr = ServiceRecurrence.query.get(sr_id)
+                if sr is None:
+                    skipped += 1
+                    pbar.update(1)
+                    pbar.set_postfix(upd=updated, skip=skipped, err=failures, loc="-", act="missing")
+                    continue
+
+                action = "skip"
+                last_tm = sr.travel_minutes
+                last_hrs = sr.est_on_site_hours
+
+                # Travel (one-way). Fill if missing or forcing.
+                if force or sr.travel_minutes is None:
+                    tm = _travel_time_for_location(sr.location_id)
+                    if tm is not None:
+                        sr.travel_minutes = tm
+                        sr.travel_minutes_is_roundtrip = False
+                        last_tm = tm
+
+                # Tech hours
+                if not force and sr.est_on_site_hours is not None and sr.basis_job_id is not None:
+                    skipped += 1
+                    action = "skip"
+                else:
+                    picked_job, _picked_month, _cancel_note = recent_annual_job_for(sr, debug=False)
+                    if not picked_job:
+                        skipped += 1
+                        action = "nojob"
+                    else:
+                        job_id = picked_job.get("id")
+                        completed_dt = job_completed_dt_via_appointments(job_id, debug=False)
+                        hours = _clock_hours_for_job(job_id)
+                        if hours is None:
+                            skipped += 1
+                            action = "nohours"
+                        else:
+                            sr.est_on_site_hours = hours
+                            sr.hours_basis = "clockevents"
+                            sr.basis_job_id = job_id
+                            sr.basis_inspection_date = completed_dt
+                            sr.basis_clock_events_hours = hours
+                            sr.basis_sample_size = 1
+                            last_hrs = hours
+                            action = "updated"
+                            updated += 1
+
+                processed += 1
+                if processed % commit_every == 0:
+                    db.session.commit()
+
+                pbar.update(1)
+                pbar.set_postfix(
+                    upd=updated, skip=skipped, err=failures,
+                    loc=sr.location_id, tm=(last_tm if last_tm is not None else "-"),
+                    hrs=(last_hrs if last_hrs is not None else "-"),
+                    act=action
+                )
+
+            except Exception as e:
+                failures += 1
+                log.exception("Failed updating sr_id=%s: %s", sr_id, e)
+                pbar.update(1)
+                pbar.set_postfix(upd=updated, skip=skipped, err=failures, loc="-", act="error")
+
+    db.session.commit()
+    summary = {
+        "processed": processed,
+        "updated": updated,
+        "skipped": skipped,
+        "errors": failures,
+        "location_id": location_id,
+    }
+    log.info("SR hours update complete: %s", summary)
+    return summary
+
+
+def get_active_techs():
+    authenticate()
+    # Authenticate and call the ServiceTrade API for active tech users
+    tech_response = call_service_trade_api("user", params={"isTech": "true", "status": "active"})
+    
+    # Safely extract data
+    data = tech_response.get("data", {}) if tech_response else {}
+    techs = data.get("users", []) if isinstance(data.get("users"), list) else []
+    
+    # Remove unwanted techs by name
+    exclude_names = {"Sub Contractors", "Jordan Zwicker", "Shop Tech"}
+    techs = [tech for tech in techs if tech.get("name") not in exclude_names]
+    
+    return techs
+
+
+# -----------------------
+# Helpers
+# -----------------------
+
+def _month_range(year, month):
+    last_day = calendar.monthrange(year, month)[1]
+    return date(year, month, 1), date(year, month, last_day)
+
+def _iter_workdays(start_dt, end_dt):
+    cur = start_dt
+    while cur <= end_dt:
+        if cur.weekday() < 5:  # Mon-Fri
+            yield cur
+        cur += timedelta(days=1)
+
+def _nth_weekday_of_month(year, month, weekday, n):
+    # weekday: Mon=0..Sun=6, n>=1
+    first, last = _month_range(year, month)
+    count, cur = 0, first
+    while cur <= last:
+        if cur.weekday() == weekday:
+            count += 1
+            if count == n:
+                return cur
+        cur += timedelta(days=1)
+    return None
+
+def _weekday_before(year, month, day, weekday):
+    # e.g., Monday before May 25 (Victoria Day): weekday=0 (Mon)
+    target = date(year, month, day)
+    cur = target - timedelta(days=1)
+    while cur.weekday() != weekday:
+        cur -= timedelta(days=1)
+    return cur
+
+def _observed(dt):
+    # If holiday falls on weekend, observe on weekday (Mon for Sat/Sun)
+    if dt.weekday() == 5:  # Sat -> Friday (some orgs) or Monday; Canada often Monday
+        return dt + timedelta(days=2)
+    if dt.weekday() == 6:  # Sun -> Monday
+        return dt + timedelta(days=1)
+    return dt
+
+# Minimal “company 9” stat set (matches your previous total = 9 days)
+def _company_9_holidays(year):
+    # New Year’s, Family Day (BC 3rd Mon Feb), Good Friday, Victoria Day,
+    # Canada Day, Labour Day, Thanksgiving, Remembrance Day, Christmas.
+    # (No BC Day, Truth & Reconciliation, Boxing Day to keep it at 9.)
+    # ---- Good Friday requires Easter calculation (Computus) ----
+    # Anonymous Gregorian computus:
+    a = year % 19
+    b = year // 100
+    c = year % 100
+    d = b // 4
+    e = b % 4
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19*a + b - d - g + 15) % 30
+    i = c // 4
+    k = c % 4
+    l = (32 + 2*e + 2*i - h - k) % 7
+    m = (a + 11*h + 22*l) // 451
+    easter_month = (h + l - 7*m + 114) // 31  # 3=Mar, 4=Apr
+    easter_day = ((h + l - 7*m + 114) % 31) + 1
+    easter = date(year, easter_month, easter_day)
+    good_friday = easter - timedelta(days=2)
+
+    holidays = {
+        "New Year's Day": _observed(date(year, 1, 1)),
+        "Family Day (BC)": _nth_weekday_of_month(year, 2, 0, 3),   # 3rd Monday Feb
+        "Good Friday": good_friday,
+        "Victoria Day": _weekday_before(year, 5, 25, 0),          # Monday before May 25
+        "Canada Day": _observed(date(year, 7, 1)),
+        "Labour Day": _nth_weekday_of_month(year, 9, 0, 1),       # 1st Monday Sept
+        "Thanksgiving": _nth_weekday_of_month(year, 10, 0, 2),    # 2nd Monday Oct
+        "Remembrance Day": _observed(date(year, 11, 11)),
+        "Christmas Day": _observed(date(year, 12, 25)),
+    }
+    # Ensure no Nones (in pathological calendar cases)
+    return {name: dt for name, dt in holidays.items() if dt is not None}
+
+# Optional richer BC set (+ BC Day, Truth & Reconciliation, Boxing Day)
+def _bc_richer_holidays(year):
+    h = _company_9_holidays(year).copy()
+    h.update({
+        "BC Day": _nth_weekday_of_month(year, 8, 0, 1),                   # 1st Monday Aug
+        "National Day for Truth and Reconciliation": _observed(date(year, 9, 30)),
+        "Boxing Day": _observed(date(year, 12, 26)),
+    })
+    return h
+
+# -----------------------
+# Main calculator
+# -----------------------
+
+def calculate_monthly_available_hours(
+    active_techs,
+    year=None,
+    holiday_policy="bc_richer",  # "company9" or "bc_richer"
+    dec_shutdown=True,          # Dec 25–31 assigned to December only
+    vacation_days=10,
+    sick_days=5,
+    lunch_hours_per_day=0.5,
+    meeting_hours_per_month=0.5,
+    inventory_months=(4, 7, 10, 1),  # +1 hr per month listed
+    loadups_by_mondays=True,   # 1 hr per Monday (≈ weeks in month)
+):
+    """
+    Returns { 'January': hours_for_all_techs, ... } for the given year.
+    """
+    number_of_techs = len(active_techs)
+    # Pick a year if none passed (use current)
+    from datetime import datetime, timezone
+    if year is None:
+        year = datetime.now(timezone.utc).astimezone().year
+
+    # Build holiday set by month
+    if holiday_policy == "bc_richer":
+        hol = _bc_richer_holidays(year)
+    else:
+        hol = _company_9_holidays(year)
+
+    holidays_by_month = {}
+    for name, dt in hol.items():
+        holidays_by_month.setdefault(dt.month, []).append((name, dt))
+
+    monthly_hours = {}
+    # Track totals to validate toward your 1656 baseline (per tech)
+    per_tech_total = 0.0
+
+    for month in range(1, 13):
+        start, end = _month_range(year, month)
+
+        # Base workdays (Mon–Fri)
+        workdays = list(_iter_workdays(start, end))
+        workday_set = set(workdays)
+
+        # Subtract stat holidays in this month
+        for name_dt in holidays_by_month.get(month, []):
+            _, hdt = name_dt
+            if hdt in workday_set:
+                workday_set.remove(hdt)
+        workdays = sorted(workday_set)
+
+        # Subtract Dec 25–31 shutdown into December only (if enabled)
+        if dec_shutdown and month == 12:
+            cur = date(year, 12, 25)
+            while cur <= date(year, 12, 31):
+                if cur in workday_set:
+                    workday_set.remove(cur)
+                cur += timedelta(days=1)
+            workdays = sorted(workday_set)
+
+        # Hours from workdays (8h/day)
+        base_hours = len(workdays) * 8.0
+
+        # Lunch per actual working day
+        lunch_hours = len(workdays) * lunch_hours_per_day
+
+        # Load-ups: 1 hr per Monday (≈ weeks)
+        if loadups_by_mondays:
+            mondays = sum(1 for d in workdays if d.weekday() == 0)
+            loadup_hours = float(mondays) * 1.0
+        else:
+            loadup_hours = 52.0 / 12.0
+
+        # Meetings: flat per month
+        meeting_hours = meeting_hours_per_month
+
+        # Inventory hours if this is a quarter-end month
+        inventory_hours = 1.0 if month in set(inventory_months) else 0.0
+
+        # Vacation & sick: spread by workday share of the year (if not tracking exact dates)
+        # Compute annual working days (to spread fairly across months)
+        # Recompute once (cacheable), but okay here for clarity.
+        annual_workdays = 0
+        for m in range(1, 13):
+            s, e = _month_range(year, m)
+            wd = list(_iter_workdays(s, e))
+            # remove holidays
+            wd_set = set(wd)
+            for _, hdt in holidays_by_month.get(m, []):
+                if hdt in wd_set:
+                    wd_set.remove(hdt)
+            # shutdown only in December
+            if dec_shutdown and m == 12:
+                cur2 = date(year, 12, 25)
+                while cur2 <= date(year, 12, 31):
+                    if cur2 in wd_set:
+                        wd_set.remove(cur2)
+                    cur2 += timedelta(days=1)
+            annual_workdays += len(wd_set)
+
+        share = (len(workdays) / annual_workdays) if annual_workdays else 0.0
+        vac_hours = vacation_days * 8.0 * share
+        sick_hours = sick_days * 8.0 * share
+
+        per_tech_month = base_hours - (lunch_hours + loadup_hours + meeting_hours + inventory_hours + vac_hours + sick_hours)
+        per_tech_month = max(per_tech_month, 0.0)  # safety
+
+        monthly_hours[calendar.month_name[month]] = round(per_tech_month * number_of_techs, 2)
+        per_tech_total += per_tech_month
+
+    # Optional: sanity check (close to prior 1656 if using “company9” set)
+    # print(f"Per-tech annual total (computed): {per_tech_total:.2f}")
+
+    return monthly_hours
+
+
+
+
+# "frequency": "yearly",
+# "interval": 1,
+# "firstStart": 1775026800, -> Start of the month of the service (i.e. April 1, 2026)
+# "firstEnd": 1777532400, -> End of the month of the service (i.e. April 30, 2026)
+#  For some reason service trade creates a NEW service recurrence each time one is updated.
+#  To make a usable schedule we need to create a database of all locations and their service recurrences
+#  and then only keep the most recent one for each location.
+#  The database needs to be updated anytime a service recurrence is updated or created via webhook.
+#  This will allow us to see the correct service recurrence for each location.
 
 
 ## -----
@@ -256,499 +1037,191 @@ def scheduling_attack():
     return render_template("scheduling_attack.html")
 
 
-@scheduling_attack_bp.route('/scheduling_attack/metrics', methods=['POST'])
-def scheduled_jobs():
-    data = request.get_json()
-    # Expecting the month string in "YYYY-MM" format; default to current month if not provided
-    month_str = data.get('month', datetime.now().strftime("%Y-%m"))
-    # Convert month_str to a date object representing the first day of the month
-    try:
-        month_date = datetime.strptime(month_str, "%Y-%m").date()
-    except ValueError:
-        return jsonify({"error": "Invalid month format, expected YYYY-MM"}), 400
+# routes/scheduling_attack.py
+from sqlalchemy import func, cast, Float
 
-    # Query the database for a record with the given month_start date
-    record = SchedulingAttack.query.filter_by(month_start=month_date).first()
+MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
 
-    if record:
-        result = {
-            "month_start": record.month_start.strftime("%Y-%m-%d"),
-            "released_fa_jobs": record.released_fa_jobs,
-            "released_fa_tech_hours": record.released_fa_tech_hours,
-            "scheduled_fa_jobs": record.scheduled_fa_jobs,
-            "scheduled_fa_tech_hours": record.scheduled_fa_tech_hours,
-            "to_be_scheduled_fa_jobs": record.to_be_scheduled_fa_jobs,
-            "to_be_scheduled_fa_tech_hours": record.to_be_scheduled_fa_tech_hours,
-            "released_sprinkler_jobs": record.released_sprinkler_jobs,
-            "released_sprinkler_tech_hours": record.released_sprinkler_tech_hours,
-            "scheduled_sprinkler_jobs": record.scheduled_sprinkler_jobs,
-            "scheduled_sprinkler_tech_hours": record.scheduled_sprinkler_tech_hours,
-            "to_be_scheduled_sprinkler_jobs": record.to_be_scheduled_sprinkler_jobs,
-            "to_be_scheduled_sprinkler_tech_hours": record.to_be_scheduled_sprinkler_tech_hours,
-            "jobs_to_be_scheduled": record.jobs_to_be_scheduled,
-            "not_counted_fa_locations": record.not_counted_fa_locations,
-            "updated_at": record.updated_at.isoformat() if record.updated_at else None
+@scheduling_attack_bp.route('/scheduling_attack/metrics', methods=["GET", "POST"])
+def scheduled_jobs_metrics():
+    # Subquery of ACTIVE locations
+    active_locs = (
+        db.session.query(Location.location_id)
+        .filter(Location.status == "active")
+        .subquery()
+    )
+
+    # Locations per month (active only)
+    rows_cnt = (
+        db.session.query(ServiceRecurrence.month, func.count().label("c"))
+        .join(active_locs, ServiceRecurrence.location_id == active_locs.c.location_id)
+        .filter(ServiceRecurrence.month.isnot(None))
+        .group_by(ServiceRecurrence.month)
+        .order_by(ServiceRecurrence.month.asc())
+        .all()
+    )
+
+    # Tech hours per month (onsite + one-way travel) for active locations only
+    total_expr = (
+        func.coalesce(ServiceRecurrence.est_on_site_hours, 0.0) +
+        (cast(func.coalesce(ServiceRecurrence.travel_minutes, 0), Float) / 60.0)
+    )
+    rows_hours_total = (
+        db.session.query(
+            ServiceRecurrence.month,
+            func.coalesce(func.sum(total_expr), 0.0).label("h")
+        )
+        .join(active_locs, ServiceRecurrence.location_id == active_locs.c.location_id)
+        .filter(ServiceRecurrence.month.isnot(None))
+        .group_by(ServiceRecurrence.month)
+        .order_by(ServiceRecurrence.month.asc())
+        .all()
+    )
+
+    counts      = [0]*12
+    hours_total = [0.0]*12
+    total_locations = 0
+    grand_total_hours = 0.0
+
+    for m, c in rows_cnt:
+        if m and 1 <= int(m) <= 12:
+            counts[int(m)-1] = int(c)
+            total_locations += int(c)
+
+    for m, h in rows_hours_total:
+        if m and 1 <= int(m) <= 12:
+            val = float(h or 0.0)
+            hours_total[int(m)-1] = round(val, 2)
+            grand_total_hours += val
+
+    labels = MONTH_NAMES
+    table = [
+        {
+            "month": i+1,
+            "name": MONTH_NAMES[i],
+            "count": counts[i],
+            "hours_total": round(hours_total[i], 2),
         }
-        return jsonify(result)
-    else:
-        return jsonify({
-            "error": "No scheduling attack metrics found for month", 
-            "month": month_str
-        }), 404
-    
+        for i in range(12)
+    ]
 
-pattern = r"^(?:\d+(?:_\d+)?(?:t(?:\d+(?:_\d+)?))?|\d+(?:_\d+)?(?:Day(?:s)?)(?:(?:t(?:\d+(?:_\d+)?))|(?:(?:tw|tz)(?:_\d+)?|-\d+(?:_\d+)?Hour(?:s)?(?:t\d+(?:_\d+)?)?))?)$"
+    active_techs = get_active_techs()
+    number_of_techs = len(active_techs)
+    monthly_available_hours = calculate_monthly_available_hours(active_techs)
+    print(monthly_available_hours)
 
-########################################################################
-# Helper function: Fetch jobs from the API based on parameters.
-########################################################################
-def fetch_jobs(location_ids_str, scheduleDateFrom, scheduleDateTo, status, job_types, limit=500, initial_page=0):
+    return jsonify({
+        "labels": labels,
+        "counts": counts,                      # locations per (active) month
+        "hours_total": hours_total,            # tech hours incl. one-way travel
+        "table": table,
+        "total": total_locations,
+        "total_hours": round(grand_total_hours, 2),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "available_tech_hours_per_month": len(active_techs),
+        "monthly_available_hours": monthly_available_hours,
+        "num_active_techs": number_of_techs,
+    })
+
+
+
+#region Ingest
+def epoch_to_aware(epoch: int, tz=BUSINESS_TZ) -> datetime:
+    return datetime.fromtimestamp(int(epoch), tz=timezone.utc).astimezone(tz)
+
+
+def coalesce_updated_on(rec: dict) -> datetime:
+    iso = rec.get("updatedOn") or rec.get("modifiedOn") or rec.get("updated") or rec.get("modified") or rec.get("created")
+    if isinstance(iso, str):
+        return datetime.fromisoformat(iso.replace("Z", "+00:00")).astimezone(timezone.utc)
+    created_epoch = rec.get("created")
+    return datetime.fromtimestamp(int(created_epoch), tz=timezone.utc) if created_epoch else datetime.now(timezone.utc)
+
+
+    # 2: 'Emergency / Exit Lights', 
+    # 556: 'Smoke Alarm',
+    # 3: 'Portable Extinguishers', 
+    # 168: 'Fire Protection', 
+    # 1: 'Alarm Systems'
+def is_relevant_annual_recurrence(rec: dict) -> bool:
+    if rec.get("frequency") != "yearly" or int(rec.get("interval", 0)) != 1:
+        return False
+    # Optional: tighten to fire alarm only (uncomment/customize)
+    sl_id = (rec.get("serviceLine") or {}).get("id", "")  # e.g., "Fire Alarm", "Fire Sprinkler", "Fire Suppression"
+    if sl_id not in {1, 2, 3, 168, 556}:
+        return False
+    return True
+
+def ingest_service_recurrence(rec: dict, *, session=db.session):
     """
-    Fetch jobs from the jobs endpoint with pagination.
+    Idempotently upsert the *latest* recurrence per location.
+    Conflicts on location_id; updates only if incoming updated_on_st is newer.
+    Keeps any previously computed est_on_site_hours / travel fields.
     """
-    job_endpoint = f"{SERVICE_TRADE_API_BASE}/job"
-    all_jobs = []
-    page = initial_page
-    while True:
-        job_params = {
-            "page": page,
-            "locationId": location_ids_str,
-            "limit": limit,
-            "scheduleDateFrom": scheduleDateFrom,
-            "scheduleDateTo": scheduleDateTo,
-            "status": status,
-            "type": job_types
-        }
-        try:
-            response = api_session.get(job_endpoint, params=job_params)
-            response.raise_for_status()
-        except requests.RequestException as e:
-            print("Request error (fetch_jobs):", e)
-            break
-        data = response.json().get("data", {})
-        jobs_data = data.get("jobs", [])
-        all_jobs.extend(jobs_data)
+    if not is_relevant_annual_recurrence(rec):
+        return None  # skip non-annual
 
-        page += 1
-        print(f"page {page} of {data.get("totalPages")}", end='\r', flush=True)
-        if data.get("page") == data.get("totalPages"):
-            print(f"Retreived {data.get("page")} page(s) of data for jobs with previously found Service Recurrences")
-            break
-    return all_jobs
+    loc = rec.get("location") or {}
+    loc_id = int(loc.get("id") or 0)
+    if not loc_id:
+        return None
 
-########################################################################
-# Helper function: Classify jobs into released and scheduled.
-########################################################################
-def classify_jobs(all_FA_jobs, all_jobs_to_be_scheduled_from_locations):
-    """
-    Go through each job and classify it as 'released' or 'scheduled' based on status.
-    """
-    released_jobs = {}
-    scheduled_jobs = {}
-    for job in all_FA_jobs:
-        location = job.get("location", {})
-        location_id = location.get("id")
-        location_address = location.get("address", {}).get("street")
-        job_status = job.get("status")
-        currentAppointment = job.get("currentAppointment")
-        # Default released flag to False if there is no appointment.
-        is_released = False
-        if currentAppointment is not None:
-            is_released = currentAppointment.get("released", False)
+    st_id = int(rec["id"])
 
-        # Criteria for "released_jobs"
-        if job_status == "completed" or is_released:
-            # Use the URL from all_jobs_to_be_scheduled if available.
-            url = all_jobs_to_be_scheduled_from_locations.get(location_id, {}).get("url")
-            released_jobs[location_id] = {"address": location_address, "url": url}
-            
-        # Criteria for "scheduled_jobs"
-        elif job_status == "scheduled" and not is_released:
-            url = all_jobs_to_be_scheduled_from_locations.get(location_id, {}).get("url")
-            scheduled_jobs[location_id] = {"address": location_address, "url": url}
-    return released_jobs, scheduled_jobs
+    fs = rec.get("firstStart")
+    fe = rec.get("firstEnd")
+    if fs is None or fe is None:
+        return None  # need these to compute month
 
-########################################################################
-# Helper function: Build initial jobs_to_be_scheduled.
-########################################################################
-def initialize_jobs_to_be_scheduled(locations_in_month):
-    """
-    Construct the initial jobs_to_be_scheduled dictionary from locations_in_month.
-    """
-    jobs_dict = {}
-    for location_id, info in locations_in_month.items():
-        location = info.get("location", {})
-        location_address = location.get("address", {}).get("street")
-        location_url = f"https://app.servicetrade.com/locations/{location_id}"
-        if location_id not in jobs_dict:
-            jobs_dict[location_id] = {"address": location_address, "url": location_url}
-    return jobs_dict
+    first_start = epoch_to_aware(fs)
+    first_end   = epoch_to_aware(fe)
+    month       = first_start.month
+    updated_on  = coalesce_updated_on(rec)
 
-########################################################################
-# Helper function: Filter out locations with cancelled inspections.
-########################################################################
-def filter_cancelled_jobs(jobs_to_be_scheduled, scheduleDateFrom, scheduleDateTo):
-    """
-    Remove locations from jobs_to_be_scheduled if their most recent inspection job was cancelled.
-    """
-    location_ids_str = ",".join(str(loc_id) for loc_id in jobs_to_be_scheduled.keys())
-    job_params = {
-        "locationId": location_ids_str,
-        "limit": 2000,
-        "status": "scheduled,completed,canceled,new",
-        "type": "inspection"
-    }
-    job_endpoint = f"{SERVICE_TRADE_API_BASE}/job"
-    try:
-        response = api_session.get(job_endpoint, params=job_params)
-        response.raise_for_status()
-    except requests.RequestException as e:
-        print("Request error (filter_cancelled_jobs):", e)
-        return jobs_to_be_scheduled
-    data = response.json().get("data", {})
-    jobs = data.get("jobs", [])
-    most_recent_job = {}
-    for job in jobs:
-        created_date = job.get("created")  # Unix timestamp
-        job_status = job.get("status")
-        location_id = job.get("location", {}).get("id")
-        
-        # Update if new or first time seen.
-        if (location_id not in most_recent_job) or (created_date > most_recent_job[location_id]["created"]):
-            most_recent_job[location_id] = {"created": created_date, "status": job_status}
-    for location_id, info in most_recent_job.items():
-        if info["status"] == "canceled" and location_id in jobs_to_be_scheduled:
-            jobs_to_be_scheduled.pop(location_id)
-    return jobs_to_be_scheduled
-
-########################################################################
-# Helper function: Filter out locations with replacement/installation/upgrade.
-########################################################################
-def filter_replacement_jobs(jobs_to_be_scheduled):
-    """
-    Remove locations that have had a replacement, installation, or upgrade this year.
-    """
-    location_ids_str = ",".join(str(loc_id) for loc_id in jobs_to_be_scheduled.keys())
-    job_params = {
-        "locationId": location_ids_str,
-        "limit": 2000,
-        "status": "completed,scheduled,new",
-        "type": "replacement, installation, upgrade"
-    }
-    job_endpoint = f"{SERVICE_TRADE_API_BASE}/job"
-    try:
-        response = api_session.get(job_endpoint, params=job_params)
-        response.raise_for_status()
-    except requests.RequestException as e:
-        print("Request error (filter_replacement_jobs):", e)
-        return jobs_to_be_scheduled
-    job_data = response.json().get("data", {})
-    jobs = job_data.get("jobs", [])
-    current_year_start_ts = int(datetime(datetime.now().year, 1, 1).timestamp())
-    for job in jobs:
-        created_date = job.get("created")  # Unix timestamp
-        if created_date and created_date >= current_year_start_ts:
-            location_id = job.get("location", {}).get("id")
-            if location_id in jobs_to_be_scheduled:
-                jobs_to_be_scheduled.pop(location_id)
-    return jobs_to_be_scheduled
-
-
-
-########################################################################
-# Helper function: Filter out locations that have had an inspection in the last year
-########################################################################
-def filter_completed_jobs(jobs_to_be_scheduled):
-    """
-    Remove locations that have had a completed inspection in the past 11 months.
-    """
-    if not jobs_to_be_scheduled:
-        return jobs_to_be_scheduled
-
-    # Create a comma-separated list of location IDs
-    location_ids_str = ",".join(str(loc_id) for loc_id in jobs_to_be_scheduled.keys())
-
-    # Get current time and 11 months prior as UNIX timestamps
-    today = int(datetime.now().timestamp())
-    ten_months_before_today = int((datetime.now() - relativedelta(months=10)).timestamp())
-
-    job_endpoint = f"{SERVICE_TRADE_API_BASE}/job"
-    job_params = {
-        "locationId": location_ids_str,
-        "limit": 2000,
-        "status": "completed",
-        "type": "inspection",
-        "scheduleDateFrom": ten_months_before_today,
-        "scheduleDateTo": today,
+    insert_vals = {
+        "location_id":       loc_id,
+        "st_recurrence_id":  st_id,
+        "service_id":        (rec.get("serviceLine") or {}).get("id") or rec.get("serviceId"),
+        "service_name":      (rec.get("serviceLine") or {}).get("name") or rec.get("serviceName") or rec.get("description"),
+        "frequency":         rec.get("frequency"),
+        "interval":          rec.get("interval"),
+        "first_start":       first_start,
+        "first_end":         first_end,
+        "month":             month,
+        "updated_on_st":     updated_on,
+        # NOTE: we intentionally do NOT include hours/travel here;
+        # they'll be preserved on conflict.
     }
 
-    try:
-        response = api_session.get(job_endpoint, params=job_params)
-        response.raise_for_status()
-    except requests.RequestException as e:
-        print("Request error (filter_completed_jobs):", e)
-        return jobs_to_be_scheduled
+    ins = insert(ServiceRecurrence).values(**insert_vals)
 
-    job_data = response.json().get("data", {})
-    jobs = job_data.get("jobs", [])
-
-    # Remove any locations that had a completed inspection in the last 10 months
-    for job in jobs:
-        location_id = job.get("location", {}).get("id")
-        if location_id in jobs_to_be_scheduled:
-            jobs_to_be_scheduled.pop(location_id)
-
-    return jobs_to_be_scheduled
-
-
-########################################################################
-# Helper function: Fetch full location details.
-########################################################################
-def fetch_all_locations_by_id():
-    """
-    Create a dictionary of all locations on ServiceTrade
-    """
-    local_all_locations_by_id = {}
-    locations_endpoint = f"{SERVICE_TRADE_API_BASE}/location"
-    page = 1
-    while True:
-        location_params = {
-            "page" : page,
-            "limit": 2000,
-        }
-        
-        try:
-            response = api_session.get(locations_endpoint, params=location_params)
-            response.raise_for_status()
-        except requests.RequestException as e:
-            print("Request error (fetch_all_locations_by_id):", e)
-            return {}
-        location_data = response.json().get("data", {})
-        locations = location_data.get("locations", [])
-
-       
-        for location in locations:
-            loc_id = location.get("id")
-            local_all_locations_by_id[loc_id] = location
-        
-        print(f"page {page} of {location_data.get("totalPages")}", end='\r', flush=True)
-        page += 1
-        if location_data.get("page") >= location_data.get("totalPages"):
-            print(f"Retreived {location_data.get("page")} page(s) of data for all locations")
-            break
-    
-    return local_all_locations_by_id
-
-########################################################################
-# Helper function: Process tags for a given job group.
-########################################################################
-def process_job_group(job_group, all_locations_by_id, group_label):
-    """
-    Process jobs in a group (e.g., released, scheduled, to-be-scheduled) to compute:
-     - Number of FA jobs and tech hours.
-     - Number of sprinkler jobs and tech hours.
-    Returns a dictionary with these counts.
-    """
-    num_fa_jobs = 0
-    num_fa_tech_hours = 0.0
-    num_spr_jobs = 0
-    num_spr_tech_hours = 0.0
-    not_found_location_ids = []
-
-    for location_id in job_group.keys():
-        location = all_locations_by_id.get(location_id)
-        if not location:
-            not_found_location_ids.append(location_id)
-            continue
-        tags = location.get("tags", [])
-        sprinkler_job_counted = False
-        fa_job_counted = False
-        fa_tech_count = 0
-        fa_time = 0.0
-
-        for tag in tags:
-            tag_str = tag.get("name", "")
-            # Process sprinkler-related tags.
-            if ("Spr_Cantec" in tag_str or "Backflow_Testing_Cantec" in tag_str):
-                if not sprinkler_job_counted:
-                    num_spr_jobs += 1
-                    sprinkler_job_counted = True
-            elif tag_str.startswith("Spr_") and ("Spr_Cantec" not in tag_str and "Backflow_Testing_Cantec" not in tag_str and "Spr_Cascade" not in tag_str):
-                if not sprinkler_job_counted:
-                    num_spr_jobs += 1
-                    sprinkler_job_counted = True
-                try:
-                    num_tech, hours = parse_spr_tag(tag_str)
-                    num_spr_tech_hours += num_tech * hours
-                except Exception as e:
-                    print("Error parsing sprinkler tag", tag_str, ":", e)
-            # Process FA-related tags (skip any tag starting with "Spr_").
-            elif tag_str.endswith("_tech") and "Spr_" not in tag_str:
-                try:
-                    fa_tech_count = int(tag_str.split("_tech")[0])
-                except ValueError:
-                    fa_tech_count = 0
-            elif re.fullmatch(pattern, tag_str):
-                try:
-                    fa_time = parse_fa_timing_tag(tag_str)
-                except Exception as e:
-                    print("Error parsing FA timing tag", tag_str, ":", e)
-        total_fa_hours = 0.0
-        if fa_time > 0:
-            if fa_tech_count > 0:
-                total_fa_hours = fa_tech_count * fa_time
-            else:
-                total_fa_hours = fa_time
-        if total_fa_hours > 0 and not fa_job_counted:
-            num_fa_jobs += 1
-            num_fa_tech_hours += total_fa_hours
-            fa_job_counted = True
-
-
-    return {
-        "fa_jobs": num_fa_jobs,
-        "fa_tech_hours": num_fa_tech_hours,
-        "spr_jobs": num_spr_jobs,
-        "spr_tech_hours": num_spr_tech_hours
+    # Only overwrite when the incoming row is newer OR existing updated_on_st is NULL.
+    update_vals = {
+        "st_recurrence_id": ins.excluded.st_recurrence_id,
+        "service_id":       ins.excluded.service_id,
+        "service_name":     ins.excluded.service_name,
+        "frequency":        ins.excluded.frequency,
+        "interval":         ins.excluded.interval,
+        "first_start":      ins.excluded.first_start,
+        "first_end":        ins.excluded.first_end,
+        "month":            ins.excluded.month,
+        "updated_on_st":    ins.excluded.updated_on_st,
+        # deliberately NOT updating:
+        # est_on_site_hours, travel_minutes, travel_minutes_is_roundtrip,
+        # hours_basis, basis_job_id, basis_inspection_date,
+        # basis_clock_events_hours, basis_sample_size
     }
 
-def filter_completed_services(jobs_to_be_scheduled, fa_locations, spr_locations):
-    """
-    For each location in jobs_to_be_scheduled, query for completed jobs:
-       - For FA: completed inspections (job type "inspection")
-       - For SPR: completed maintenance (job types "planned_maintenance" and "preventative_maintenance")
-    Then, remove the location only if it has no outstanding service (i.e. both services are up-to-date).
-    """
-    # Prepare lists (or sets) of location IDs for each service type.
-    fa_ids = set(fa_locations.keys())
-    spr_ids = set(spr_locations.keys())
-    
-    # Set time window: here, we use 10 months (or your threshold) prior to now.
-    today_ts = int(datetime.now().timestamp())
-    threshold_ts = int((datetime.now() - relativedelta(months=10)).timestamp())
-    
-    # 1. Query for completed FA inspection jobs for locations in fa_ids
-    fa_loc_ids_str = ",".join(str(loc_id) for loc_id in fa_ids)
-    fa_jobs = fetch_jobs(fa_loc_ids_str, threshold_ts, today_ts,
-                         status="completed", job_types="inspection", limit=2000)
-    completed_fa_ids = { job.get("location", {}).get("id") for job in fa_jobs }
-    
-    # 2. Query for completed sprinkler maintenance jobs for locations in spr_ids.
-    spr_loc_ids_str = ",".join(str(loc_id) for loc_id in spr_ids)
-    spr_jobs = fetch_jobs(spr_loc_ids_str, threshold_ts, today_ts,
-                          status="completed", job_types="planned_maintenance,preventative_maintenance", limit=2000)
-    completed_spr_ids = { job.get("location", {}).get("id") for job in spr_jobs }
-    
-    # 3. Now filter the jobs_to_be_scheduled dictionary.
-    # For each location, check:
-    #   - If the location has FA service, then it is up-to-date if its ID is in completed_fa_ids.
-    #   - Likewise for SPR service.
-    filtered_jobs = {}
-    
-    for loc_id, info in jobs_to_be_scheduled.items():
-        # Assume by default that each service is due.
-        fa_due = True
-        spr_due = True
-        
-        if loc_id in fa_ids:
-            # If the location offers FA service and we have a recent inspection, mark FA as up-to-date.
-            if loc_id in completed_fa_ids:
-                fa_due = False
+    stmt = ins.on_conflict_do_update(
+        index_elements=[ServiceRecurrence.location_id],  # requires a UNIQUE on location_id
+        set_=update_vals,
+        where=or_(
+            ServiceRecurrence.updated_on_st.is_(None),
+            ins.excluded.updated_on_st > ServiceRecurrence.updated_on_st,
+        )
+    )
 
-        if loc_id in spr_ids:
-            # If the location offers sprinkler service and we have a recent maintenance, mark SPR as up-to-date.
-            if loc_id in completed_spr_ids:
-                spr_due = False
-
-        # Now, if the location offers both types of service, we only want to remove it 
-        # if BOTH services are up-to-date.
-        if (loc_id in fa_ids and loc_id in spr_ids):
-            if fa_due or spr_due:  # at least one is due
-                filtered_jobs[loc_id] = info
-        # If it only offers FA service:
-        elif loc_id in fa_ids:
-            if fa_due:
-                filtered_jobs[loc_id] = info
-        # If it only offers sprinkler service:
-        elif loc_id in spr_ids:
-            if spr_due:
-                filtered_jobs[loc_id] = info
-        # If it doesn't appear in either list, you can either keep or discard it.
-        else:
-            filtered_jobs[loc_id] = info
-
-    return filtered_jobs
-
-########################################################################
-# Main function: get_scheduling_attack
-########################################################################
-def get_scheduling_attack(month_str):
-    # Step 1: Authenticate and convert month_str to start-of-month timestamp.
-    authenticate()
-    start_of_month, _ = convert_month_to_unix_timestamp(month_str)
-    
-    # Step 1: Get all locations in our account.
-    all_locations_by_id = fetch_all_locations_by_id()
-
-    # Step 2: Get service recurrences (locations for the month).
-    # locations_in_month: {location_id: {"location": location, "serviceLineName":..., "serviceLineId":...} }
-    fa_locations_in_month = get_Fa_service_recurrences_in_month(start_of_month)
-    spr_locations_in_month = get_Spr_service_recurrences_in_month(start_of_month)
-    print("# of locations with Fa services in month: ", len(fa_locations_in_month))
-    print("# of locations with Spr services in month: ", len(spr_locations_in_month))
-    location_ids_str = ",".join(str(loc_id) for loc_id in fa_locations_in_month.keys())
-
-    # Step 3: Fetch all jobs in a 6‑month window (3 months back and 3 months ahead).
-    now = datetime.now()
-    scheduleDateFrom = int((now - relativedelta(months=4)).timestamp())
-    scheduleDateTo = int((now + relativedelta(months=4)).timestamp())
-    scheduled_and_completed_jobs = fetch_jobs(location_ids_str, scheduleDateFrom, scheduleDateTo,
-                            status="scheduled,completed",
-                            job_types="inspection,planned_maintenance,preventative_maintenance",
-                            limit=500)
-
-    # Step 4: Build initial dictionary for jobs to be scheduled using the locations from recurrences.
-    all_jobs_to_be_scheduled_from_locations = initialize_jobs_to_be_scheduled(fa_locations_in_month)
-
-    # Step 5: Classify jobs into released and scheduled.
-    released_jobs, scheduled_jobs = classify_jobs(scheduled_and_completed_jobs, all_jobs_to_be_scheduled_from_locations)
-
-    # Step 6: Determine jobs_to_be_scheduled as those not in released_jobs or scheduled_jobs.
-    jobs_to_be_scheduled = {loc_id: info for loc_id, info in all_jobs_to_be_scheduled_from_locations.items()
-                            if (loc_id not in released_jobs) and (loc_id not in scheduled_jobs)}
-
-    # Step 7: Remove locations with cancelled inspections.
-    jobs_to_be_scheduled = filter_cancelled_jobs(jobs_to_be_scheduled, scheduleDateFrom, scheduleDateTo)
-
-    # Step 8: Remove locations with replacement/installation/upgrade this year.
-    jobs_to_be_scheduled = filter_replacement_jobs(jobs_to_be_scheduled)
-
-    # Step 9: Remove locations with recently (within the last 10 months) completed inspections
-    jobs_to_be_scheduled = filter_completed_services(jobs_to_be_scheduled, fa_locations_in_month, spr_locations_in_month)
-
-    # Step 9: Process tag data for each job category.
-    released_metrics = process_job_group(released_jobs, all_locations_by_id, "released")
-    scheduled_metrics = process_job_group(scheduled_jobs, all_locations_by_id, "scheduled")
-    to_be_scheduled_metrics = process_job_group(jobs_to_be_scheduled, all_locations_by_id, "to_be_scheduled")
-
-
-    # Step 10: Assemble the response data.
-    response_data = {
-        "released_fa_jobs": released_metrics.get("fa_jobs", 0),
-        "released_fa_tech_hours": released_metrics.get("fa_tech_hours", 0.0),
-        "released_sprinkler_jobs": released_metrics.get("spr_jobs", 0),
-        "released_sprinkler_tech_hours": released_metrics.get("spr_tech_hours", 0.0),
-        "scheduled_fa_jobs": scheduled_metrics.get("fa_jobs", 0),
-        "scheduled_fa_tech_hours": scheduled_metrics.get("fa_tech_hours", 0.0),
-        "scheduled_sprinkler_jobs": scheduled_metrics.get("spr_jobs", 0),
-        "scheduled_sprinkler_tech_hours": scheduled_metrics.get("spr_tech_hours", 0.0),
-        "to_be_scheduled_fa_jobs": to_be_scheduled_metrics.get("fa_jobs", 0),
-        "to_be_scheduled_fa_tech_hours": to_be_scheduled_metrics.get("fa_tech_hours", 0.0),
-        "to_be_scheduled_sprinkler_jobs": to_be_scheduled_metrics.get("spr_jobs", 0),
-        "to_be_scheduled_sprinkler_tech_hours": to_be_scheduled_metrics.get("spr_tech_hours", 0.0),
-        "jobs_to_be_scheduled": jobs_to_be_scheduled,
-        # For debugging, also include any FA locations not counted.
-        "not_counted_fa_locations": {}  # (if you later wish to capture these separately)
-    }
-    return jsonify(response_data)
-
+    session.execute(stmt)
+    # optional: return the current snapshot row
+    return ServiceRecurrence.query.filter_by(location_id=loc_id).one()
+#endregion

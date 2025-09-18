@@ -1,7 +1,7 @@
 from flask import Blueprint, render_template, session, jsonify, request
-import random
 from app.db_models import db, Job, ClockEvent, Deficiency, Location, Quote, QuoteItem, InvoiceItem, JobItemTechnician
 from collections import defaultdict
+from sqlalchemy.exc import IntegrityError
 from tqdm import tqdm
 import requests
 import numpy as np
@@ -1390,7 +1390,7 @@ def get_jobs_with_params(params, desc="Fetching Jobs"):
 
     response = call_service_trade_api(f"{SERVICE_TRADE_API_BASE}/job", params)
     if not response:
-        tqdm.write("Failed to fetch jobs.")
+        print("Failed to fetch jobs.")
         return jobs
 
     data = response.json().get("data", {})
@@ -1402,11 +1402,11 @@ def get_jobs_with_params(params, desc="Fetching Jobs"):
             params["page"] = page_num
             response = call_service_trade_api(f"{SERVICE_TRADE_API_BASE}/job", params)
             if not response:
-                tqdm.write(f"Failed to fetch page {page_num}")
+                printe(f"Failed to fetch page {page_num}")
                 continue
             page_data = response.json().get("data", {})
             jobs.extend(page_data.get("jobs", []))
-    tqdm.write(f"Number of jobs with params: {len(jobs)}")
+    print(f"Number of jobs with params: {len(jobs)}")
 
     return jobs
 
@@ -1657,17 +1657,13 @@ def get_locations_with_params(params, desc="Fetching locations"):
 
     return locations 
 
-def update_locations():
+def update_locations(commit_every: int = 500) -> None:
     authenticate()
 
     all_locations = []
     for status in ["active", "inactive"]:
-        params = {
-            "page": 1,
-            "limit": 500,
-            "status": status
-        }
-        locations = get_locations_with_params(params=params)
+        params = {"page": 1, "limit": 500, "status": status}
+        locations = get_locations_with_params(params=params)  # assumes this paginates internally
         tqdm.write(f"📦 {status.title()} locations fetched: {len(locations)}")
         for loc in locations:
             loc["status"] = status
@@ -1675,59 +1671,53 @@ def update_locations():
 
     tqdm.write(f"🔄 Processing {len(all_locations)} total locations...")
 
+    processed = 0
     with tqdm(total=len(all_locations), desc="Saving Locations to DB") as pbar:
         for loc in all_locations:
             try:
                 location_id = loc.get("id")
-                address     = loc.get("address", {})
-                company     = loc.get("company", {})
+                address     = loc.get("address", {}) or {}
+                company     = loc.get("company", {}) or {}
                 created_ts  = loc.get("created")
 
-                street        = address.get("street", "Unknown")
-                status        = loc.get("status", "Unknown")
-                company_name  = company.get("name", "Unknown")
+                street        = address.get("street") or "Unknown"
+                status        = loc.get("status") or "Unknown"
+                company_name  = company.get("name") or "Unknown"
                 company_id    = company.get("id")
-                created_on_st = datetime.fromtimestamp(created_ts) if created_ts else None
+                created_on_st = (
+                    datetime.fromtimestamp(created_ts, tz=timezone.utc) if created_ts else None
+                )
 
-                location = Location.query.filter_by(location_id=location_id).first()
+                # Postgres upsert (ON CONFLICT)
+                stmt = insert(Location.__table__).values(
+                    location_id=location_id,
+                    street=street,
+                    status=status,
+                    company_name=company_name,
+                    company_id=company_id,
+                    created_on_st=created_on_st,
+                ).on_conflict_do_update(
+                    index_elements=[Location.location_id],
+                    set_={
+                        "street": street,
+                        "status": status,
+                        "company_name": company_name,
+                        "company_id": company_id,
+                        "created_on_st": created_on_st,
+                    }
+                )
+                db.session.execute(stmt)
 
-                if not location:
-                    # New location
-                    location = Location(
-                        location_id=location_id,
-                        street=street,
-                        status=status,
-                        company_name=company_name,
-                        company_id=company_id,
-                        created_on_st=created_on_st
-                    )
-                    db.session.add(location)
-                    tqdm.write(f"Added new location {location_id}")
-                else:
-                    # Existing: check if any field changed
-                    updated = False
-                    if location.street != street:
-                        location.street = street
-                        updated = True
-                    if location.status != status:
-                        location.status = status
-                        updated = True
-                    if location.company_name != company_name:
-                        location.company_name = company_name
-                        updated = True
-                    if location.company_id != company_id:
-                        location.company_id = company_id
-                        updated = True
-                    if location.created_on_st != created_on_st:
-                        location.created_on_st = created_on_st
-                        updated = True
-
-                    if updated:
-                        db.session.add(location)
-                        tqdm.write(f"Updated location {location_id}")
-
+            except IntegrityError as e:
+                db.session.rollback()
+                tqdm.write(f"[WARNING] IntegrityError for location {loc.get('id')}: {e}")
             except Exception as e:
+                db.session.rollback()
                 tqdm.write(f"[WARNING] Skipped location {loc.get('id')} | {type(e).__name__}: {e}")
+
+            processed += 1
+            if processed % commit_every == 0:
+                db.session.commit()
             pbar.update(1)
 
     db.session.commit()

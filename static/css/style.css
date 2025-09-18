@@ -791,6 +791,135 @@ button {
 }
 
 
+/* ========================================
+   Annual Service Recurrences Dashboard
+   (matches existing site styles)
+   ======================================== */
+
+.sa-wrap {
+  /* visually the same as .main-container */
+  max-width: 900px;
+  margin: 60px auto 40px auto;
+  padding: 20px;
+  background-color: #fff;
+  border-radius: 5px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+/* Title aligns with your .page-title scale but a bit smaller */
+.sa-wrap h1 {
+  font-size: 24px;
+  color: #0C62A6;
+  text-align: center;
+  margin-bottom: 16px;
+  font-weight: 700;
+}
+
+/* KPI row matches your card style, grid responsive like the rest of the app */
+.sa-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.sa-kpi {
+  background-color: #fdfdfd;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  padding: 12px 14px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.06);
+}
+
+.sa-kpi .value {
+  display: block;
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #0C62A6;
+  line-height: 1.1;
+}
+
+.sa-kpi .label {
+  display: block;
+  font-size: .85rem;
+  color: #555;
+  margin-top: 4px;
+}
+
+/* Cards mirror .processing-attack .card look */
+.sa-card {
+  background-color: #fdfdfd;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  padding: 15px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+  margin-bottom: 16px;
+}
+
+.sa-card .card-header {
+  background-color: transparent;
+  padding: 6px 0 10px 0;
+  border-bottom: 1px solid #ddd;
+  font-size: 18px;
+  font-weight: 600;
+  font-family: 'Poppins', sans-serif;
+  text-align: center;
+  color: #0C62A6;
+}
+
+.sa-card .card-body {
+  padding-top: 10px;
+}
+
+/* Chart area: give it height so Chart.js renders nicely */
+.sa-chart {
+  min-height: 360px;
+  display: block;
+}
+
+/* Table: reuse your .table styles; add subtle tweaks */
+.sa-table-wrapper {
+  overflow-x: auto;
+}
+
+.sa-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.sa-table th,
+.sa-table td {
+  padding: 12px;
+  border-bottom: 1px solid #dee2e6;
+  text-align: left;
+}
+
+.sa-table th {
+  background-color: #f8f9fa;
+  font-weight: 600;
+}
+
+.sa-table tr:nth-of-type(odd) td {
+  background-color: rgba(0,0,0,0.03);
+}
+
+/* Accessibility helpers (screen-reader only) */
+.sa-sr-only {
+  position: absolute;
+  left: -9999px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+/* Hover affordance consistent with your cards */
+.sa-card:hover {
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+
+
 
 
 

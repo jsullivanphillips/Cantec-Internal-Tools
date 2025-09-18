@@ -1,168 +1,48 @@
 {% extends "base.html" %}
-
 {% block title %}Scheduling Attack{% endblock %}
 
 {% block content %}
-  <br>
+<div class="sa-wrap" role="region" aria-labelledby="sa-title">
+  <h1 id="sa-title">Annual Service Recurrences by Month</h1>
 
-  <div class="container scheduling-attack-container">
-    <!-- Row: Month Selection and Submit -->
-    <div class="row mb-3 align-items-end">
-      <div class="col-auto">
-        <label for="month-select" class="col-form-label fw-bold">Select Month:</label>
-      </div>
-      <div class="col-auto">
-        <input type="month" id="month-select" class="form-control">
-      </div>
-      <div class="col-auto">
-        <button id="submitMonthBtn" class="btn btn-primary">Submit</button>
-      </div>
-      <div class="col-auto">
-        <strong>Scheduling Status for <span id="selected-month">Current Month</span></strong>
-      </div>
-    </div>
-    <p class="info-text">Data is from active locations with yearly services that are due in the selected month</p>
+  <div class="sa-kpis">
+    <div class="sa-kpi"><span class="value" id="kpi-total">0</span><span class="label">Total Locations</span></div>
+    <div class="sa-kpi"><span class="value" id="kpi-hours">0</span><span class="label">Total Tech Hours (incl. travel)</span></div>
+    <div class="sa-kpi"><span class="value" id="kpi-updated">—</span><span class="label">Last Updated</span></div>
+  </div>
 
-    <!-- Inspections Scheduled KPI Card -->
-    <div class="card mb-4">
-      <div class="card-header fw-bold text-primary">Inspections Scheduled KPI</div>
-      <div class="card-body">
-        <div id="inspectionsKPIText" class="h5 mb-2">Loading...</div>
-        <div class="progress" style="height: 24px;">
-          <div id="inspectionsKPIBar" class="progress-bar" role="progressbar" 
-               style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Released Jobs Row -->
-    <h5 class="fw-bold text-secondary">Released Jobs</h5>
-    <div class="row g-3 mb-4">
-      <!-- Released FA Jobs -->
-      <div class="col-md-3">
-        <div class="card h-100">
-          <div class="card-header">Released FA Jobs</div>
-          <div class="card-body text-center" id="releasedFAJobs">..</div>
-        </div>
-      </div>
-      <!-- Released FA Tech Hours -->
-      <div class="col-md-3">
-        <div class="card h-100">
-          <div class="card-header">Released FA Tech Hours</div>
-          <div class="card-body text-center" id="releasedFATechHours">..</div>
-        </div>
-      </div>
-      <!-- Released Sprinkler Jobs -->
-      <div class="col-md-3">
-        <div class="card h-100">
-          <div class="card-header">Released Sprinkler Jobs</div>
-          <div class="card-body text-center" id="releasedSprJobs">..</div>
-        </div>
-      </div>
-      <!-- Released Sprinkler Tech Hours -->
-      <div class="col-md-3">
-        <div class="card h-100">
-          <div class="card-header">Released Sprinkler Tech Hours</div>
-          <div class="card-body text-center" id="releasedSprTechHours">..</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Scheduled Jobs Row -->
-    <h5 class="fw-bold text-secondary">Scheduled Jobs</h5>
-    <div class="row g-3 mb-4">
-      <!-- Scheduled FA Jobs -->
-      <div class="col-md-3">
-        <div class="card h-100">
-          <div class="card-header">Scheduled FA Jobs</div>
-          <div class="card-body text-center" id="scheduledFAJobs">..</div>
-        </div>
-      </div>
-      <!-- Scheduled FA Tech Hours -->
-      <div class="col-md-3">
-        <div class="card h-100">
-          <div class="card-header">Scheduled FA Tech Hours</div>
-          <div class="card-body text-center" id="scheduledFATechHours">..</div>
-        </div>
-      </div>
-      <!-- Scheduled Sprinkler Jobs -->
-      <div class="col-md-3">
-        <div class="card h-100">
-          <div class="card-header">Scheduled Sprinkler Jobs</div>
-          <div class="card-body text-center" id="scheduledSprJobs">..</div>
-        </div>
-      </div>
-      <!-- Scheduled Sprinkler Tech Hours -->
-      <div class="col-md-3">
-        <div class="card h-100">
-          <div class="card-header">Scheduled Sprinkler Tech Hours</div>
-          <div class="card-body text-center" id="scheduledSprTechHours">..</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- To Be Scheduled Jobs Row -->
-    <h5 class="fw-bold text-secondary">To Be Scheduled Jobs</h5>
-    <div class="row g-3 mb-4">
-      <!-- To Be Scheduled FA Jobs -->
-      <div class="col-md-3">
-        <div class="card h-100">
-          <div class="card-header">To Be Scheduled FA Jobs</div>
-          <div class="card-body text-center" id="toBeScheduledFAJobs">..</div>
-        </div>
-      </div>
-      <!-- To Be Scheduled FA Tech Hours -->
-      <div class="col-md-3">
-        <div class="card h-100">
-          <div class="card-header">To Be Scheduled FA Tech Hours</div>
-          <div class="card-body text-center" id="toBeScheduledFATechHours">..</div>
-        </div>
-      </div>
-      <!-- To Be Scheduled Sprinkler Jobs -->
-      <div class="col-md-3">
-        <div class="card h-100">
-          <div class="card-header">To Be Scheduled Sprinkler Jobs</div>
-          <div class="card-body text-center" id="toBeScheduledSprJobs">..</div>
-        </div>
-      </div>
-      <!-- To Be Scheduled Sprinkler Tech Hours -->
-      <div class="col-md-3">
-        <div class="card h-100">
-          <div class="card-header">To Be Scheduled Sprinkler Tech Hours</div>
-          <div class="card-body text-center" id="toBeScheduledSprTechHours">..</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Jobs To Be Scheduled - Collapsible Section -->
-    <div class="card mb-4">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <span>Jobs To Be Scheduled - Location Addresses</span>
-        <button class="btn btn-link" id="toggleJobsBtn">Show/Hide</button>
-      </div>
-      <div class="card-body" id="jobsToBeScheduledSection" style="display: none;">
-        <div id="jobsToBeScheduledLocationsContainer" class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-3">
-          <!-- Each location card will be appended here -->
-        </div>
-      </div>
-    </div>
-
-    <!-- Locations That Need Fixing - Collapsible Section -->
-    <div class="card mb-4">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <span>Locations That Need Fixing - Location Addresses</span>
-        <button class="btn btn-link" id="toggleInvestigateJobsBtn">Show/Hide</button>
-      </div>
-      <div class="card-body" id="notCountedFaLocations" style="display: none;">
-        <div id="notCountedFaLocationsContainer" class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-3">
-          <!-- Each location card appended here -->
-        </div>
-      </div>
+  <div class="sa-card">
+    <div class="card-header">Locations per Month</div>
+    <div class="card-body">
+      <canvas id="srChart" class="sa-chart" aria-label="Service Recurrences per Month" role="img"></canvas>
     </div>
   </div>
 
-  <!-- Scripts specific to Scheduling Attack -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="{{ url_for('static', filename='js/scheduling_attack.js') }}"></script>
+  <div class="sa-card">
+    <div class="card-header">Tech Hours per Month (incl. travel)</div>
+    <div class="card-body">
+      <canvas id="srHoursChart" class="sa-chart" aria-label="Tech Hours per Month (including travel)" role="img"></canvas>
+    </div>
+  </div>
+
+  <div class="sa-card">
+    <div class="card-header">Data Table</div>
+    <div class="card-body sa-table-wrapper">
+      <table class="sa-table" aria-describedby="sa-title">
+        <thead>
+          <tr>
+            <th scope="col">Month</th>
+            <th scope="col">Locations</th>
+            <th scope="col">Tech Hrs (incl. travel)</th>
+          </tr>
+        </thead>
+        <tbody id="srTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="{{ url_for('static', filename='js/scheduling_attack.js') }}"></script>
 {% endblock %}

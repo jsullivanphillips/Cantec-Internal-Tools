@@ -1,271 +1,197 @@
-document.addEventListener("DOMContentLoaded", function() {
-    const monthSelect = document.getElementById("month-select");
-    const now = new Date();
-    const defaultMonth = now.toISOString().slice(0, 7); // YYYY-MM format
-    monthSelect.value = defaultMonth;
-    document.getElementById("selected-month").textContent = defaultMonth;
-  
-    // Load the metrics for the default month
-    loadMetrics(defaultMonth);
-  
-    // When user clicks "Submit", reload metrics for the new month
-    document.getElementById("submitMonthBtn").addEventListener("click", function() {
-      const selectedMonth = monthSelect.value;
-      document.getElementById("selected-month").textContent = selectedMonth;
-      loadMetrics(selectedMonth);
-    });
-  
-    // Toggle show/hide for the "Jobs To Be Scheduled" section
-    const toggleBtn = document.getElementById("toggleJobsBtn");
-    const jobsSection = document.getElementById("jobsToBeScheduledSection");
-    if (toggleBtn && jobsSection) {
-      toggleBtn.addEventListener("click", () => {
-        if (jobsSection.style.display === "none") {
-          jobsSection.style.display = "block";
-          toggleBtn.textContent = "Hide";
-        } else {
-          jobsSection.style.display = "none";
-          toggleBtn.textContent = "Show";
-        }
-      });
-    }
+// static/js/scheduling_attack.js
+const SchedulingAttack = (() => {
+  let chartLocations;
+  let chartHours;
 
-    const toggleInvBtn = document.getElementById("toggleInvestigateJobsBtn");
-    const jobsNotCountedSection = document.getElementById("notCountedFaLocations");
+  function init() {
+    loadMetrics();
+  }
 
-    if (toggleInvBtn && jobsNotCountedSection) {
-    toggleInvBtn.addEventListener("click", () => {
-        if (jobsNotCountedSection.style.display === "none") {
-        jobsNotCountedSection.style.display = "block";
-        toggleInvBtn.textContent = "Hide";
-        } else {
-        jobsNotCountedSection.style.display = "none";
-        toggleInvBtn.textContent = "Show";
-        }
-    });
-    }
-  });
-  
-  function loadMetrics(selectedMonth) {
-    // Mapping of backend keys to element IDs for pre-existing cards
-    const mapping = {
-      "released_fa_jobs": "releasedFAJobs",
-      "released_fa_tech_hours": "releasedFATechHours",
-      "released_sprinkler_jobs": "releasedSprJobs",
-      "released_sprinkler_tech_hours": "releasedSprTechHours",
-      "scheduled_fa_jobs": "scheduledFAJobs",
-      "scheduled_fa_tech_hours": "scheduledFATechHours",
-      "scheduled_sprinkler_jobs": "scheduledSprJobs",
-      "scheduled_sprinkler_tech_hours": "scheduledSprTechHours",
-      "to_be_scheduled_fa_jobs": "toBeScheduledFAJobs",
-      "to_be_scheduled_fa_tech_hours": "toBeScheduledFATechHours",
-      "to_be_scheduled_sprinkler_jobs": "toBeScheduledSprJobs",
-      "to_be_scheduled_sprinkler_tech_hours": "toBeScheduledSprTechHours",
-      // "jobs_to_be_scheduled": "jobsToBeScheduled"  // We'll handle this separately
-    };
-  
-    // Show spinners on known elements
-    const spinner = spinnerMarkup();
-    Object.values(mapping).forEach(id => {
-      const el = document.getElementById(id);
-      if (el) {
-        el.innerHTML = spinner;
+  function loadMetrics() {
+    fetch("/scheduling_attack/metrics", { method: "GET", headers: { "Accept": "application/json" } })
+      .then(r => r.json())
+      .then(render)
+      .catch(err => console.error("Failed to load metrics", err));
+  }
+
+  function render(data) {
+    // KPIs (unchanged)
+    document.getElementById("kpi-total").textContent = (data.total || 0).toLocaleString();
+    document.getElementById("kpi-hours").textContent = (data.total_hours || 0).toLocaleString(undefined, { maximumFractionDigits: 1 });
+    document.getElementById("kpi-updated").textContent = data.generated_at || "—";
+    console.log(data.monthly_available_hours);
+    // Chart: Locations per month (unchanged)
+    const ctx1 = document.getElementById("srChart").getContext("2d");
+    if (chartLocations) chartLocations.destroy();
+    chartLocations = new Chart(ctx1, {
+      type: "bar",
+      data: {
+        labels: data.labels,
+        datasets: [{
+          label: "Locations",
+          data: data.counts,
+          borderWidth: 1
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { mode: "index", intersect: false } },
+        scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
       }
     });
-  
-    // Set KPI text & progress bar to loading state
-    const kpiTextEl = document.getElementById("inspectionsKPIText");
-    if (kpiTextEl) { kpiTextEl.textContent = "Loading..."; }
-    const kpiBarEl = document.getElementById("inspectionsKPIBar");
-    if (kpiBarEl) {
-      kpiBarEl.style.width = "0%";
-      kpiBarEl.setAttribute("aria-valuenow", "0");
-    }
-  
-    // Clear the "Jobs To Be Scheduled" container
-    const container = document.getElementById("jobsToBeScheduledLocationsContainer");
-    if (container) {
-      container.innerHTML = spinner; // Show spinner while loading
+    document.getElementById("srChart").parentElement.style.minHeight = "360px";
+
+    // ---- Build capacity line from backend dict (robust month matching) ----
+    function normalizeToFullMonth(label) {
+      if (label == null) return null;
+      const s = String(label).trim();
+
+      // Try ISO YYYY-MM or YYYY/MM
+      let m = s.match(/^(\d{4})[-/](\d{1,2})$/);
+      if (m) {
+        const n = Number(m[2]);
+        return ["January","February","March","April","May","June","July","August","September","October","November","December"][n-1] || null;
+      }
+
+      // Try "Jan", "JAN", "Jan-2025", "January 2025", etc.
+      const monthNames = [
+        ["january","jan"],
+        ["february","feb"],
+        ["march","mar"],
+        ["april","apr"],
+        ["may","may"],
+        ["june","jun"],
+        ["july","jul"],
+        ["august","aug"],
+        ["september","sep","sept"],
+        ["october","oct"],
+        ["november","nov"],
+        ["december","dec"]
+      ];
+
+      const lower = s.toLowerCase();
+
+      // If label is numeric 1..12
+      if (/^\d{1,2}$/.test(lower)) {
+        const n = Number(lower);
+        if (n >= 1 && n <= 12) return monthNames[n-1][0].charAt(0).toUpperCase() + monthNames[n-1][0].slice(1);
+      }
+
+      // Find by presence of a month token anywhere in the string
+      for (let i = 0; i < monthNames.length; i++) {
+        const [full, ...abbrevs] = monthNames[i];
+        const tokens = [full, ...abbrevs];
+        if (tokens.some(tok => lower.includes(tok))) {
+          const fullCap = full.charAt(0).toUpperCase() + full.slice(1);
+          return fullCap; // "january" -> "January"
+        }
+      }
+
+      return null;
     }
 
-    const container2 = document.getElementById("notCountedFaLocationsContainer");
-    if (container2) {
-      container2.innerHTML = spinner; // Show spinner while loading
+    function buildCapacitySeries(labels, monthlyAvailableDict) {
+      const out = [];
+      labels.forEach((lbl, i) => {
+        const monthFull = normalizeToFullMonth(lbl);
+        const val = monthFull ? monthlyAvailableDict?.[monthFull] : null;
+        out.push(val ?? null);
+        // Debug: see what we matched
+        // console.debug(`[capacity-map] label="${lbl}" -> "${monthFull}" ->`, val);
+      });
+      return out;
     }
-  
-    // Fetch data from the backend
-    fetch("/scheduling_attack/metrics", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ month: selectedMonth })
-    })
-      .then(response => response.json())
-      .then(data => {
-        // 1) Update known metric cards
-        for (const key in mapping) {
-          const elemId = mapping[key];
-          const el = document.getElementById(elemId);
-          if (el && data[key] !== undefined) {
-            el.textContent = data[key];
-          }
-        }
-  
-        // 2) Handle "jobs_to_be_scheduled"
-        if (data.jobs_to_be_scheduled) {
-          if (container) {
-            container.innerHTML = ""; // Clear spinner
-            const locData = data.jobs_to_be_scheduled;
-            // For each location, create a small card
-            for (const locId in locData) {
-              if (locData.hasOwnProperty(locId)) {
-                const { address, url } = locData[locId];
-  
-                // Each card in a responsive .col
-                const colDiv = document.createElement("div");
-                colDiv.classList.add("col");
-  
-                // The card
-                const card = document.createElement("div");
-                card.classList.add("small-card", "h-100");
-  
-                // Card header
-                const cardHeader = document.createElement("div");
-                cardHeader.classList.add("card-header");
-                cardHeader.textContent = address || "No Address";
-                card.appendChild(cardHeader);
-  
-                // Card body
-                const cardBody = document.createElement("div");
-                cardBody.classList.add("card-body");
-                if (url) {
-                  const anchor = document.createElement("a");
-                  anchor.href = url;
-                  anchor.textContent = url;
-                  anchor.target = "_blank";
-                  cardBody.appendChild(anchor);
-                } else {
-                  cardBody.textContent = "No URL";
-                }
-                card.appendChild(cardBody);
-  
-                colDiv.appendChild(card);
-                container.appendChild(colDiv);
-              }
-            }
-          }
-        } else {
-          // If no jobs_to_be_scheduled data
-          if (container) container.innerHTML = "No jobs to display.";
-        }
 
-        // jobs to investigate
-        if (data.not_counted_fa_locations) {
-            if (container2) {
-              container2.innerHTML = ""; // Clear spinner
-              const locData = data.not_counted_fa_locations;
-              // For each location, create a small card
-              for (const locId in locData) {
-                if (locData.hasOwnProperty(locId)) {
-                  const { address, url } = locData[locId];
-    
-                  // Each card in a responsive .col
-                  const colDiv = document.createElement("div");
-                  colDiv.classList.add("col");
-    
-                  // The card
-                  const card = document.createElement("div");
-                  card.classList.add("small-card", "h-100");
-    
-                  // Card header
-                  const cardHeader = document.createElement("div");
-                  cardHeader.classList.add("card-header");
-                  cardHeader.textContent = address || "No Address";
-                  card.appendChild(cardHeader);
-    
-                  // Card body
-                  const cardBody = document.createElement("div");
-                  cardBody.classList.add("card-body");
-                  if (url) {
-                    const anchor = document.createElement("a");
-                    anchor.href = url;
-                    anchor.textContent = url;
-                    anchor.target = "_blank";
-                    cardBody.appendChild(anchor);
-                  } else {
-                    cardBody.textContent = "No URL";
-                  }
-                  card.appendChild(cardBody);
-    
-                  colDiv.appendChild(card);
-                  container2.appendChild(colDiv);
+    const capacityByMonth = buildCapacitySeries(data.labels, data.monthly_available_hours);
+
+    // Chart: Tech hours per month (incl. travel) + dotted red capacity line
+    const ctx2 = document.getElementById("srHoursChart").getContext("2d");
+    if (chartHours) chartHours.destroy();
+    chartHours = new Chart(ctx2, {
+      type: "bar",
+      data: {
+        labels: data.labels,
+        datasets: [
+          {
+            label: "Tech Hours (incl. travel)",
+            data: data.hours_total,
+            borderWidth: 1,
+            order: 1
+          },
+          {
+            type: "line",
+            label: "Available Tech Hours",
+            data: capacityByMonth,
+            borderWidth: 2,
+            borderColor: "rgba(220,53,69,1)",   // red
+            backgroundColor: "rgba(220,53,69,0.1)",
+            borderDash: [6, 4],
+            pointRadius: 0,
+            tension: 0.3,
+            fill: false,
+            yAxisID: "y",
+            order: 0,
+            spanGaps: true                      // renders line across any isolated null gaps
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: true },
+          tooltip: {
+            mode: "index",
+            intersect: false,
+            callbacks: {
+              afterBody: (items) => {
+                try {
+                  const i = items[0].dataIndex;
+                  const used = Number(data.hours_total?.[i] ?? 0);
+                  const cap = Number(capacityByMonth?.[i] ?? 0);
+                  if (!cap) return "";
+                  const pct = (used / cap) * 100;
+                  return `Utilization: ${pct.toFixed(1)}%`;
+                } catch {
+                  return "";
                 }
               }
             }
-          } else {
-            // If no jobs_to_be_scheduled data
-            if (container2) container2.innerHTML = "No jobs to display.";
-        }
-  
-        // 3) Calculate overall inspections KPI
-        const releasedFA = parseInt(data.released_fa_jobs) || 0;
-        const scheduledFA = parseInt(data.scheduled_fa_jobs) || 0;
-        const toBeScheduledFA = parseInt(data.to_be_scheduled_fa_jobs) || 0;
-  
-        const releasedSpr = parseInt(data.released_sprinkler_jobs) || 0;
-        const scheduledSpr = parseInt(data.scheduled_sprinkler_jobs) || 0;
-        const toBeScheduledSpr = parseInt(data.to_be_scheduled_sprinkler_jobs) || 0;
-  
-        const totalInspections = releasedFA + scheduledFA + toBeScheduledFA +
-                                 releasedSpr + scheduledSpr + toBeScheduledSpr;
-        const scheduledInspections = releasedFA + scheduledFA + releasedSpr + scheduledSpr;
-        const percentScheduled = totalInspections > 0
-          ? Math.round((scheduledInspections / totalInspections) * 100)
-          : 0;
-  
-        // Update KPI text & bar
-        if (kpiTextEl) {
-          kpiTextEl.textContent = `${scheduledInspections} of ${totalInspections} Inspections Scheduled (${percentScheduled}% Complete)`;
-        }
-        if (kpiBarEl) {
-          kpiBarEl.style.width = `${percentScheduled}%`;
-          kpiBarEl.setAttribute("aria-valuenow", percentScheduled);
-        }
-  
-        // 4) Dynamically add new cards for any extra keys not in mapping
-        const mainContainer = document.querySelector(".cards-container.scheduling-attack");
-        for (const key in data) {
-          if (!mapping.hasOwnProperty(key) && key !== "jobs_to_be_scheduled" && key !== "not_counted_fa_locations") {
-            let extraCard = document.getElementById(key);
-            if (!extraCard) {
-              extraCard = document.createElement("div");
-              extraCard.classList.add("card", "half", "mt-3");
-              extraCard.id = key;
-  
-              const header = document.createElement("div");
-              header.classList.add("card-header");
-              header.textContent = key.replace(/_/g, " ").toUpperCase();
-  
-              const body = document.createElement("div");
-              body.classList.add("card-body");
-  
-              extraCard.appendChild(header);
-              extraCard.appendChild(body);
-              mainContainer.appendChild(extraCard);
-            }
-            const body = extraCard.querySelector(".card-body");
-            if (body) {
-              body.textContent = data[key];
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: {
+              callback: (val) => Number(val).toLocaleString(undefined, { maximumFractionDigits: 1 })
             }
           }
         }
-      })
-      .catch(error => console.error("Error loading metrics:", error));
+      }
+    });
+    document.getElementById("srHoursChart").parentElement.style.minHeight = "360px";
+
+    // Table (unchanged)
+    const tbody = document.getElementById("srTableBody");
+    tbody.innerHTML = "";
+    (data.table || []).forEach(row => {
+      const tr = document.createElement("tr");
+      const tdMonth = document.createElement("td");
+      const tdCount = document.createElement("td");
+      const tdHours = document.createElement("td");
+      tdMonth.textContent = row.name;
+      tdCount.textContent = row.count.toLocaleString();
+      tdHours.textContent = (row.hours_total || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
+      tr.appendChild(tdMonth);
+      tr.appendChild(tdCount);
+      tr.appendChild(tdHours);
+      tbody.appendChild(tr);
+    });
   }
-  
-  function spinnerMarkup() {
-    return `
-      <div class="spinner-border text-primary" role="status">
-        <span class="visually-hidden">Loading...</span>
-      </div>`;
-  }
-  
+
+
+  return { init };
+})();
+
+document.addEventListener("DOMContentLoaded", SchedulingAttack.init);
