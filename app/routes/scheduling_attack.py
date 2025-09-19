@@ -1143,6 +1143,7 @@ def coalesce_updated_on(rec: dict) -> datetime:
     # 3: 'Portable Extinguishers', 
     # 168: 'Fire Protection', 
     # 1: 'Alarm Systems'
+    # 6: 'Backflows'
 def is_relevant_annual_recurrence(rec: dict) -> bool:
     if rec.get("frequency") != "yearly" or int(rec.get("interval", 0)) != 1:
         return False

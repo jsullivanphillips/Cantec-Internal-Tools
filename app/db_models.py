@@ -369,6 +369,74 @@ class MeetingMinute(db.Model):
     modified_by = db.Column(db.String(100), nullable=True)
     version = db.Column(db.Integer, default=1)
 
+class ServiceOccurrence(db.Model):
+    __tablename__ = "service_occurrence"
+    __table_args__ = (
+        # fast lookups by month and location
+        db.Index("ix_so_month", "observed_month"),
+        db.Index("ix_so_location_month", "location_id", "observed_month"),
+        # enforce one row per job
+        db.UniqueConstraint("job_id", name="uq_so_job"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    # Identity / linkage
+    job_id        = db.Column(db.BigInteger, nullable=False)                 # ST job id (row is keyed by this)
+    location_id   = db.Column(db.BigInteger, db.ForeignKey("location.location_id"),
+                              index=True, nullable=False)
+
+    # Helpful labels from ST
+    job_type      = db.Column(db.String(255))                                # inspection / planned_maintenance / preventive_maintenance / service
+
+    # Lifecycle (all tz-aware; store UTC)
+    job_created_at = db.Column(db.DateTime(timezone=True))                   # when job was created in ST
+    scheduled_for  = db.Column(db.DateTime(timezone=True))                   # when first appt was scheduled (start)
+    completed_at   = db.Column(db.DateTime(timezone=True))                   # when job completed
+
+    # Month attribution for forecasting/rollups (first day of month)
+    observed_month = db.Column(db.Date, nullable=False)                      # e.g., date(2025, 8, 1)
+
+    # Classification
+    is_recurring   = db.Column(db.Boolean, nullable=False, default=False)    # True for annual/PM/planned
+
+    # Hours (split by line so you can separate FA vs Spr work recorded on same job)
+    spr_hours_actual  = db.Column(db.Numeric(8, 2))
+    fa_hours_actual   = db.Column(db.Numeric(8, 2))
+
+    # Scheduling Meta
+    number_of_fa_days    = db.Column(db.Integer, nullable=False, default=1)         # how many days the job spanned
+    number_of_spr_days    = db.Column(db.Integer, nullable=False, default=1)         # how many days the job spanned
+    number_of_fa_techs = db.Column(db.Integer, nullable=False, default=0)        # count of FA techs that worked on it
+    number_of_spr_techs = db.Column(db.Integer, nullable=False, default=0)       # count of Sprinkler techs that worked on it
+
+    # Travel time derived from location tags (store both per-appt default and what you applied)
+    travel_minutes_per_appt   = db.Column(db.Integer)                        # default from tags
+    travel_minutes_total      = db.Column(db.Integer)                        # per-appt * tech-on-appt (or summed)
+
+    # Status snapshot (optional but useful to query quickly)
+    status = db.Column(db.String(32), nullable=False, default="created")     # 'created' | 'scheduled' | 'completed' | 'cancelled'
+
+    # location on hold?
+    location_on_hold = db.Column(db.Boolean, nullable=False, default=False)
+
+    # Provenance / extras
+    source    = db.Column(db.String(64), nullable=False, default="servicetrade")
+    tags_json = db.Column(db.JSON)                                           # raw tags if you want to stash them
+    meta      = db.Column(db.JSON)                                           # any other diagnostics
+
+    # Audit (row bookkeeping; separate from ST job creation time)
+    row_inserted_at = db.Column(db.DateTime(timezone=True),
+                                server_default=db.func.now(), nullable=False)
+    row_updated_at  = db.Column(db.DateTime(timezone=True),
+                                server_default=db.func.now(),
+                                onupdate=db.func.now(), nullable=False)
+
+    def __repr__(self):
+        return f"<ServiceOccurrence job={self.job_id} loc={self.location_id} month={self.observed_month}>"
+
+
+
 if __name__ == '__main__':
     from app import create_app
     app = create_app()
