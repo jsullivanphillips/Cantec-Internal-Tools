@@ -3,41 +3,87 @@
 
 {% block content %}
 <div class="sa-wrap" role="region" aria-labelledby="sa-title">
-  <h1 id="sa-title">Annual Service Recurrences by Month</h1>
+  <h1 id="sa-title">Scheduling Attack</h1>
 
-  <div class="sa-kpis">
-    <div class="sa-kpi"><span class="value" id="kpi-total">0</span><span class="label">Total Locations</span></div>
-    <div class="sa-kpi"><span class="value" id="kpi-hours">0</span><span class="label">Total Tech Hours (incl. travel)</span></div>
-    <div class="sa-kpi"><span class="value" id="kpi-updated">—</span><span class="label">Last Updated</span></div>
-  </div>
+  <!-- Tabs -->
+  <ul class="nav nav-tabs" id="saTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active" id="forecast-tab" data-bs-toggle="tab" data-bs-target="#forecast"
+              type="button" role="tab" aria-controls="forecast" aria-selected="true">
+        Forecast
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="status-tab" data-bs-toggle="tab" data-bs-target="#scheduling-status"
+              type="button" role="tab" aria-controls="scheduling-status" aria-selected="false">
+        Scheduling Status
+      </button>
+    </li>
+  </ul>
 
-  <div class="sa-card">
-    <div class="card-header">Locations per Month</div>
-    <div class="card-body">
-      <canvas id="srChart" class="sa-chart" aria-label="Service Recurrences per Month" role="img"></canvas>
+  <div class="tab-content pt-3" id="saTabsContent">
+    <!-- === FORECAST TAB (existing content) === -->
+    <div class="tab-pane fade show active" id="forecast" role="tabpanel" aria-labelledby="forecast-tab" tabindex="0">
+      <h2 class="h5 mb-3">Forecast &amp; Actuals</h2>
+
+      <!-- Toggle -->
+      <div class="form-check form-switch ms-auto">
+        <input class="form-check-input" type="checkbox" role="switch"
+              id="sa-include-travel" checked>
+        <label class="form-check-label" for="sa-include-travel">
+          Include travel time
+        </label>
+      </div>
+      <div class="sa-kpis">
+        <!-- Keep these if you plan to wire them up later; JS currently updates only kpi-updated -->
+        <div class="sa-kpi">
+          <span class="value" id="kpi-hours">0</span>
+          <span class="label">Total Tech Hours (incl. travel)</span>
+        </div>
+        <div class="sa-kpi">
+          <span class="value" id="kpi-total">0</span>
+          <span class="label">Total Jobs</span>
+        </div>
+      </div>
+
+      <!-- Stacked HOURS chart with capacity line -->
+      <div class="sa-card">
+        <div class="card-header">Tech Hours per Month (incl. travel)</div>
+        <div class="card-body">
+          <canvas id="srHoursChart" class="sa-chart" aria-label="Tech Hours per Month (including travel)" role="img"></canvas>
+        </div>
+        <div class="card-footer">
+          <small>
+            <strong>Legend:</strong> Previous year bars are lighter; current year bars are darker. Line = available tech hours.
+          </small>
+        </div>
+      </div>
+
+      <!-- Stacked JOB COUNTS chart -->
+      <div class="sa-card">
+        <div class="card-header">Job Counts per Month</div>
+        <div class="card-body">
+          <canvas id="srJobsChart" class="sa-chart" aria-label="Job Counts per Month" role="img"></canvas>
+        </div>
+        <div class="card-footer">
+          <small>
+            <strong>Rule:</strong> Past months show current year only; future months show previous year; current month shows both.
+          </small>
+        </div>
+      </div>
     </div>
-  </div>
 
-  <div class="sa-card">
-    <div class="card-header">Tech Hours per Month (incl. travel)</div>
-    <div class="card-body">
-      <canvas id="srHoursChart" class="sa-chart" aria-label="Tech Hours per Month (including travel)" role="img"></canvas>
-    </div>
-  </div>
+    <!-- === SCHEDULING STATUS TAB (new) === -->
+    <div class="tab-pane fade" id="scheduling-status" role="tabpanel" aria-labelledby="status-tab" tabindex="0">
+      <h2 class="h5 mb-3">Scheduling Status</h2>
 
-  <div class="sa-card">
-    <div class="card-header">Data Table</div>
-    <div class="card-body sa-table-wrapper">
-      <table class="sa-table" aria-describedby="sa-title">
-        <thead>
-          <tr>
-            <th scope="col">Month</th>
-            <th scope="col">Locations</th>
-            <th scope="col">Tech Hrs (incl. travel)</th>
-          </tr>
-        </thead>
-        <tbody id="srTableBody"></tbody>
-      </table>
+      <!-- Placeholder content; replace with your status UI/components -->
+      <div class="sa-card">
+        <div class="card-header">Overview</div>
+        <div class="card-body">
+          <p class="text-muted mb-0">Status dashboard coming soon…</p>
+        </div>
+      </div>
     </div>
   </div>
 </div>

@@ -11,6 +11,9 @@ from collections import defaultdict
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from zoneinfo import ZoneInfo
 import json
+import csv
+
+NULL_JOB_CSV_PATH = "logs/missing_job_ids.csv"
 
 from app import create_app
 from app.db_models import db, Location, ServiceOccurrence
@@ -71,7 +74,7 @@ def stream_canceled_inspection_jobs_for_location(location_id: int, limit: int = 
     page = 0
     while True:
         params = {"locationId": str(location_id), "page": page, "limit": limit, 
-                  "scheduleDateFrom": JOB_SEARCH_RANGE.replace(year=datetime.now(timezone.utc).year - 2).timestamp(), "scheduleDateTo": datetime.now(timezone.utc),
+                  "scheduleDateFrom": JOB_SEARCH_RANGE.replace(year=datetime.now(timezone.utc).year - 2).timestamp(), "scheduleDateTo": datetime.now(timezone.utc).timestamp(),
                   "status": "canceled",
                   "type": "inspection"
         }
@@ -471,6 +474,59 @@ def is_relevant_annual_recurrence(rec: dict) -> bool:
         return False
     return True
 
+def _append_rows_to_csv(rows: list[dict], path: str | None) -> int:
+    """
+    Append selected fields from rows into CSV at 'path'.
+    Returns number of rows written. Creates file+header on first write.
+    """
+    if not rows or not path:
+        return 0
+
+    # Make parent dir if needed
+    import os, json
+    dirname = os.path.dirname(path)
+    if dirname:
+        os.makedirs(dirname, exist_ok=True)
+
+    # Choose a stable subset of fields; ignore extras via extrasaction='ignore'
+    fieldnames = [
+        "location_id", "location_name",
+        "observed_month", "job_type", "status",
+        "job_created_at", "scheduled_for", "completed_at",
+        "is_recurring",
+        "spr_hours_actual", "fa_hours_actual",
+        "number_of_fa_days", "number_of_spr_days",
+        "number_of_fa_techs", "number_of_spr_techs",
+        "travel_minutes_per_appt", "travel_minutes_total",
+        "location_on_hold",
+        "source", "meta", "tags_json",
+    ]
+
+    file_exists = os.path.exists(path)
+    wrote = 0
+    with open(path, "a", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        if not file_exists:
+            writer.writeheader()
+
+        for r in rows:
+            row = dict(r)  # shallow copy to normalize/serialize
+
+            # Normalize observed_month (date-like)
+            om = _month_floor_utc(row.get("observed_month"))
+            row["observed_month"] = om.isoformat() if om else ""
+
+            # Serialize complex fields to JSON strings if needed
+            if row.get("meta") is not None and not isinstance(row["meta"], str):
+                row["meta"] = json.dumps(row["meta"])
+            if row.get("tags_json") is not None and not isinstance(row["tags_json"], str):
+                row["tags_json"] = json.dumps(row["tags_json"])
+
+            # Timestamps: keep as raw values; DictWriter will str() them.
+            writer.writerow(row)
+            wrote += 1
+    return wrote
+
 
 def upsert_service_occurrences(rows: list[dict]) -> int:
     """
@@ -479,6 +535,28 @@ def upsert_service_occurrences(rows: list[dict]) -> int:
     """
     if not rows:
         return 0
+
+    # Filter out invalid rows (no job_id) to avoid NULL constraint violations
+    to_csv: list[dict] = []
+    valid_rows: list[dict] = []
+    for r in rows:
+        if r.get("job_id") is None:
+            to_csv.append(r)
+        else:
+            valid_rows.append(r)
+
+    if to_csv:
+        try:
+            _append_rows_to_csv(to_csv, NULL_JOB_CSV_PATH)
+            log.warning("Wrote %s rows missing job_id to CSV: %s", len(to_csv), NULL_JOB_CSV_PATH)
+        except Exception:
+            # CSV write should never break the pipeline; log and continue
+            log.exception("Failed writing missing-job_id rows to CSV: %s", NULL_JOB_CSV_PATH)
+
+    if not valid_rows:
+        return 0
+
+    rows = valid_rows
 
     # Map the incoming dicts onto the table columns with normalization
     normalized = []
@@ -861,7 +939,7 @@ def main():
                     try:
                         for jobs in stream_canceled_inspection_jobs_for_location(loc_id):
                             if jobs is not None:
-                                print("found a cancelled annual!")
+                                print(f"found a cancelled annual!: loc id [{loc_id}]")
                                 is_location_on_hold = True
 
                     except requests.HTTPError as http_err:

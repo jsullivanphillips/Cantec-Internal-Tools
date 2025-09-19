@@ -6,8 +6,8 @@ from datetime import datetime, timezone, timedelta, date
 from dateutil.relativedelta import relativedelta
 from zoneinfo import ZoneInfo  # Python 3.9+
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy import or_, func, cast, Float, select
-from app.db_models import db, ServiceRecurrence, Location  
+from sqlalchemy import or_, func, cast, Float, case, and_
+from app.db_models import db, ServiceOccurrence, Location, ServiceRecurrence
 from tqdm import tqdm 
 import calendar
 
@@ -1044,83 +1044,138 @@ MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov"
 
 @scheduling_attack_bp.route('/scheduling_attack/metrics', methods=["GET", "POST"])
 def scheduled_jobs_metrics():
-    # Subquery of ACTIVE locations
+    # Active locations subquery
     active_locs = (
         db.session.query(Location.location_id)
         .filter(Location.status == "active")
         .subquery()
     )
 
-    # Locations per month (active only)
-    rows_cnt = (
-        db.session.query(ServiceRecurrence.month, func.count().label("c"))
-        .join(active_locs, ServiceRecurrence.location_id == active_locs.c.location_id)
-        .filter(ServiceRecurrence.month.isnot(None))
-        .group_by(ServiceRecurrence.month)
-        .order_by(ServiceRecurrence.month.asc())
-        .all()
-    )
+    include_travel = request.args.get("include_travel", "true").lower() == "true"
 
-    # Tech hours per month (onsite + one-way travel) for active locations only
-    total_expr = (
-        func.coalesce(ServiceRecurrence.est_on_site_hours, 0.0) +
-        (cast(func.coalesce(ServiceRecurrence.travel_minutes, 0), Float) / 60.0)
-    )
-    rows_hours_total = (
+    # Years / month extractors
+    now_utc = datetime.now(timezone.utc)
+    cur_year = now_utc.year
+    prev_year = cur_year - 1
+    m = func.extract('month', ServiceOccurrence.observed_month).label("m")
+    y = func.extract('year', ServiceOccurrence.observed_month).label("y")
+
+    # Base hours (onsite)
+    fa_h   = func.coalesce(ServiceOccurrence.fa_hours_actual, 0.0)
+    spr_h  = func.coalesce(ServiceOccurrence.spr_hours_actual, 0.0)
+
+    # Travel minutes per-appt (coalesced)
+    tpa    = func.coalesce(ServiceOccurrence.travel_minutes_per_appt, 0)
+
+    # Factors
+    fa_days   = func.coalesce(ServiceOccurrence.number_of_fa_days, 0)
+    fa_techs  = func.coalesce(ServiceOccurrence.number_of_fa_techs, 0)
+    spr_days  = func.coalesce(ServiceOccurrence.number_of_spr_days, 0)
+    spr_techs = func.coalesce(ServiceOccurrence.number_of_spr_techs, 0)
+
+    # Travel minutes -> hours
+    fa_travel_h  = cast(tpa * fa_techs * fa_days, Float) / 60.0
+    spr_travel_h = cast(tpa * spr_techs * spr_days, Float) / 60.0
+
+    # Totals include travel
+    if include_travel:
+        fa_total_h  = fa_h  + fa_travel_h
+        spr_total_h = spr_h + spr_travel_h
+    else:
+        fa_total_h  = fa_h
+        spr_total_h = spr_h
+
+    # Discipline job-counters (count as job if onsite hours > 0)
+    fa_job  = case((fa_h  > 0, 1), else_=0)
+    spr_job = case((spr_h > 0, 1), else_=0)
+
+    is_rec    = ServiceOccurrence.is_recurring.is_(True)
+    is_nonrec = ~ServiceOccurrence.is_recurring
+
+    # One query grouped by year + month; we’ll split to cur/prev in Python
+    rows = (
         db.session.query(
-            ServiceRecurrence.month,
-            func.coalesce(func.sum(total_expr), 0.0).label("h")
+            y, m,
+            # Recurring
+            func.sum(case((is_rec,    fa_total_h), else_=0.0)).label("rec_fa_hours"),
+            func.sum(case((is_rec,    fa_job),     else_=0)).label("rec_fa_jobs"),
+            func.sum(case((is_rec,    spr_total_h), else_=0.0)).label("rec_spr_hours"),
+            func.sum(case((is_rec,    spr_job),     else_=0)).label("rec_spr_jobs"),
+            # Non-recurring
+            func.sum(case((is_nonrec, fa_total_h), else_=0.0)).label("nonrec_fa_hours"),
+            func.sum(case((is_nonrec, fa_job),     else_=0)).label("nonrec_fa_jobs"),
+            func.sum(case((is_nonrec, spr_total_h), else_=0.0)).label("nonrec_spr_hours"),
+            func.sum(case((is_nonrec, spr_job),     else_=0)).label("nonrec_spr_jobs"),
         )
-        .join(active_locs, ServiceRecurrence.location_id == active_locs.c.location_id)
-        .filter(ServiceRecurrence.month.isnot(None))
-        .group_by(ServiceRecurrence.month)
-        .order_by(ServiceRecurrence.month.asc())
+        .join(active_locs, ServiceOccurrence.location_id == active_locs.c.location_id)
+        .filter(
+            ServiceOccurrence.observed_month.isnot(None),
+            func.extract('year', ServiceOccurrence.observed_month).in_([prev_year, cur_year]),
+        )
+        .group_by(y, m)
+        .order_by(y.asc(), m.asc())
         .all()
     )
 
-    counts      = [0]*12
-    hours_total = [0.0]*12
-    total_locations = 0
-    grand_total_hours = 0.0
+    # Build 12 arrays for each year set
+    def zeros_f(): return [0.0] * 12
+    def zeros_i(): return [0]   * 12
 
-    for m, c in rows_cnt:
-        if m and 1 <= int(m) <= 12:
-            counts[int(m)-1] = int(c)
-            total_locations += int(c)
+    cur = {
+        "recurring_fa_hours": zeros_f(), "recurring_fa_jobs": zeros_i(),
+        "recurring_spr_hours": zeros_f(), "recurring_spr_jobs": zeros_i(),
+        "nonrecurring_fa_hours": zeros_f(), "nonrecurring_fa_jobs": zeros_i(),
+        "nonrecurring_spr_hours": zeros_f(), "nonrecurring_spr_jobs": zeros_i(),
+    }
+    prev = {
+        "recurring_fa_hours": zeros_f(), "recurring_fa_jobs": zeros_i(),
+        "recurring_spr_hours": zeros_f(), "recurring_spr_jobs": zeros_i(),
+        "nonrecurring_fa_hours": zeros_f(), "nonrecurring_fa_jobs": zeros_i(),
+        "nonrecurring_spr_hours": zeros_f(), "nonrecurring_spr_jobs": zeros_i(),
+    }
 
-    for m, h in rows_hours_total:
-        if m and 1 <= int(m) <= 12:
-            val = float(h or 0.0)
-            hours_total[int(m)-1] = round(val, 2)
-            grand_total_hours += val
+    # Totals for KPI cards (we'll sum what we actually display later on the client)
+    # but we also send raw yearly totals if you want.
+    yearly_totals = {
+        "cur":  {k: 0.0 for k in cur if "hours" in k} | {k: 0 for k in cur if "jobs" in k},
+        "prev": {k: 0.0 for k in prev if "hours" in k} | {k: 0 for k in prev if "jobs" in k},
+    }
 
-    labels = MONTH_NAMES
-    table = [
-        {
-            "month": i+1,
-            "name": MONTH_NAMES[i],
-            "count": counts[i],
-            "hours_total": round(hours_total[i], 2),
-        }
-        for i in range(12)
-    ]
+    for row in rows:
+        year = int(row.y)
+        mi   = int(row.m)
+        if not (1 <= mi <= 12):
+            continue
+        idx = mi - 1
+        bucket = cur if year == cur_year else prev
+        # Fill arrays
+        bucket["recurring_fa_hours"][idx]      = float(row.rec_fa_hours or 0.0)
+        bucket["recurring_fa_jobs"][idx]       = int(row.rec_fa_jobs or 0)
+        bucket["recurring_spr_hours"][idx]     = float(row.rec_spr_hours or 0.0)
+        bucket["recurring_spr_jobs"][idx]      = int(row.rec_spr_jobs or 0)
+        bucket["nonrecurring_fa_hours"][idx]   = float(row.nonrec_fa_hours or 0.0)
+        bucket["nonrecurring_fa_jobs"][idx]    = int(row.nonrec_fa_jobs or 0)
+        bucket["nonrecurring_spr_hours"][idx]  = float(row.nonrec_spr_hours or 0.0)
+        bucket["nonrecurring_spr_jobs"][idx]   = int(row.nonrec_spr_jobs or 0)
 
+    # Tech capacity helpers (unchanged)
     active_techs = get_active_techs()
     number_of_techs = len(active_techs)
     monthly_available_hours = calculate_monthly_available_hours(active_techs)
-    print(monthly_available_hours)
 
     return jsonify({
-        "labels": labels,
-        "counts": counts,                      # locations per (active) month
-        "hours_total": hours_total,            # tech hours incl. one-way travel
-        "table": table,
-        "total": total_locations,
-        "total_hours": round(grand_total_hours, 2),
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "available_tech_hours_per_month": len(active_techs),
+        "labels": MONTH_NAMES,
+        "year": cur_year,
+        "prev_year": prev_year,
+
+        # Full datasets for both years. Frontend will decide which to show per month.
+        "cur": cur,
+        "prev": prev,
+
+        # Capacity, meta
         "monthly_available_hours": monthly_available_hours,
         "num_active_techs": number_of_techs,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
     })
 
 
