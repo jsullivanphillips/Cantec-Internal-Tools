@@ -28,7 +28,7 @@ api_session.headers.update({"Accept": "application/json"})
 
 SPRINKLER_TECHS_NAMES = ["Colin Peterson", "Justin Walker"]
 
-JOB_SEARCH_RANGE = datetime.now(timezone.utc).replace(year=datetime.now(timezone.utc).year - 1)
+JOB_SEARCH_RANGE = datetime.now(timezone.utc).replace(year=datetime.now(timezone.utc).year - 2)
 
 # -------------------- ServiceTrade helpers --------------------
 

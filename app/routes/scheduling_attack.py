@@ -6,9 +6,10 @@ from datetime import datetime, timezone, timedelta, date
 from dateutil.relativedelta import relativedelta
 from zoneinfo import ZoneInfo  # Python 3.9+
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy import or_, func, cast, Float, case, and_
+from sqlalchemy import or_, func, cast, Float, case
 from app.db_models import db, ServiceOccurrence, Location, ServiceRecurrence
 from tqdm import tqdm 
+from collections import Counter
 import calendar
 
 log = logging.getLogger("month-conflicts")
@@ -1039,6 +1040,66 @@ def scheduling_attack():
 
 # routes/scheduling_attack.py
 from sqlalchemy import func, cast, Float
+@scheduling_attack_bp.route('/scheduling_attack/status', methods=["GET", "POST"])
+def scheduling_status():
+    """
+    Return all (location_id, job_type) rows from service_occurrence
+    that are recurring and attributed to the selected month.
+
+    Request query:
+      ?month=YYYY-MM   (e.g., 2025-09)
+
+    Response JSON:
+      {
+        "month": "2025-09",
+        "observed_month": "2025-09-01",
+        "rows": [{"location_id": 123, "job_type": "inspection"}, ...],
+        "counts_by_job_type": {"inspection": 10, "planned_maintenance": 3, ...},
+        "distinct_locations": [123, 456, ...],
+        "num_distinct_locations": 17
+      }
+    """
+    sel = (request.args.get("month") or "").strip()
+    m = re.match(r"^(\d{4})-(\d{2})$", sel)
+    if not m:
+        return jsonify({"error": "month must be in YYYY-MM format"}), 400
+
+    year = int(m.group(1))
+    month = int(m.group(2))
+    try:
+        month_floor = date(year, month, 1)  # observed_month is stored as first-of-month
+    except ValueError:
+        return jsonify({"error": "invalid month"}), 400
+
+    # Query the service_occurrence table
+    q = (
+        db.session.query(
+            ServiceOccurrence.location_id,
+            ServiceOccurrence.job_type
+        )
+        .filter(
+            ServiceOccurrence.is_recurring.is_(True),
+            ServiceOccurrence.observed_month == month_floor
+        )
+        .order_by(ServiceOccurrence.location_id.asc(), ServiceOccurrence.job_type.asc())
+    )
+    rows = q.all()
+
+    # Build response lists / aggregates
+    rows_json = [{"location_id": loc_id, "job_type": (job_type or "unknown")}
+                 for (loc_id, job_type) in rows]
+
+    counts = Counter([r["job_type"] for r in rows_json])
+    counts_by_job_type = dict(counts)
+
+    distinct_locations = sorted({r["location_id"] for r in rows_json})
+
+    print("count: ", counts)
+
+    return jsonify({
+        "month": sel,
+    })
+
 
 MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
 

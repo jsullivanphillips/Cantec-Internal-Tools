@@ -31,6 +31,143 @@ const SchedulingAttack = (() => {
       .catch(err => console.error("Failed to load metrics", err));
   }
 
+  // --- Scheduling Status (month-scoped) ---
+
+  function loadStatus(monthStr) {
+    if (!monthStr) return;
+    const url = `/scheduling_attack/status?month=${encodeURIComponent(monthStr)}`;
+    fetch(url, { headers: { "Accept": "application/json" } })
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then(renderStatusForMonth)
+      .catch(err => {
+        console.error("Failed to load scheduling status", err);
+        // Optional: simple UI hint
+        document.getElementById("sa-status-title").textContent = "Scheduling Status (failed to load)";
+        document.getElementById("sa-status-updated").textContent = new Date().toISOString();
+        // Clear table
+        const tbody = document.getElementById("saStatusTableBody");
+        if (tbody) tbody.innerHTML = "";
+      });
+  }
+
+  function renderStatusForMonth(data) {
+    // Expecting shape like:
+    // {
+    //   month: "2025-10",
+    //   generated_at: "...",
+    //   totals: { total_jobs, scheduled_jobs, unscheduled_jobs, hours_total },
+    //   jobs: [
+    //     { job_id, location_name, job_type, scheduled_for, hours_total, status }
+    //   ]
+    // }
+    const titleEl   = document.getElementById("sa-status-title");
+    const updatedEl = document.getElementById("sa-status-updated");
+    const kpisWrap  = document.getElementById("sa-status-kpis");
+
+    const monthStr = data?.month || "";
+    const niceMonth = (() => {
+      if (!monthStr) return "(unknown month)";
+      const [y, m] = monthStr.split("-").map(Number);
+      const dt = new Date(Date.UTC(y || 1970, (m || 1) - 1, 1));
+      return dt.toLocaleString(undefined, { month: "long", year: "numeric" });
+    })();
+
+    if (titleEl)   titleEl.textContent = `Scheduling Status — ${niceMonth}`;
+    if (updatedEl) updatedEl.textContent = data?.generated_at || "";
+
+    // KPIs
+    const totals = data?.totals || {};
+    const v = (x, d=0) => (typeof x === "number" ? x : d);
+    const fmt = (x, digits=0) => v(x).toLocaleString(undefined, { maximumFractionDigits: digits });
+
+    const elTotalJobs = document.getElementById("sa-status-total-jobs");
+    const elScheduled = document.getElementById("sa-status-scheduled");
+    const elUnscheduled = document.getElementById("sa-status-unscheduled");
+    const elHours = document.getElementById("sa-status-hours");
+
+    if (elTotalJobs)  elTotalJobs.textContent  = fmt(totals.total_jobs || totals.jobs_total || 0);
+    if (elScheduled)  elScheduled.textContent  = fmt(totals.scheduled_jobs || totals.scheduled || 0);
+    if (elUnscheduled)elUnscheduled.textContent= fmt(totals.unscheduled_jobs || totals.unscheduled || 0);
+    if (elHours)      elHours.textContent      = fmt(totals.hours_total || 0, 1);
+
+    if (kpisWrap) kpisWrap.hidden = false;
+
+    // Table
+    const tbody = document.getElementById("saStatusTableBody");
+    if (tbody) {
+      tbody.innerHTML = "";
+      (data?.jobs || []).forEach(job => {
+        const tr = document.createElement("tr");
+
+        const tdJob = document.createElement("td");
+        tdJob.textContent = String(job?.job_id ?? "—");
+
+        const tdLoc = document.createElement("td");
+        tdLoc.textContent = String(job?.location_name ?? "—");
+
+        const tdType = document.createElement("td");
+        tdType.textContent = String(job?.job_type ?? "—");
+
+        const tdSched = document.createElement("td");
+        // Accepts unix seconds or ISO
+        let schedTxt = "—";
+        const sched = job?.scheduled_for;
+        if (sched != null) {
+          if (typeof sched === "number") {
+            schedTxt = new Date(sched * 1000).toLocaleString();
+          } else if (typeof sched === "string") {
+            const d = new Date(sched);
+            schedTxt = isNaN(d) ? sched : d.toLocaleString();
+          }
+        }
+        tdSched.textContent = schedTxt;
+
+        const tdHours = document.createElement("td");
+        tdHours.textContent = fmt(job?.hours_total ?? job?.hours_incl_travel ?? 0, 2);
+
+        const tdStatus = document.createElement("td");
+        tdStatus.textContent = String(job?.status ?? "—");
+
+        tr.appendChild(tdJob);
+        tr.appendChild(tdLoc);
+        tr.appendChild(tdType);
+        tr.appendChild(tdSched);
+        tr.appendChild(tdHours);
+        tr.appendChild(tdStatus);
+        tbody.appendChild(tr);
+      });
+    }
+  }
+
+  // Listen for the custom event from the month selector controls in the HTML
+  window.addEventListener("sa:load-status", (e) => {
+    const month = e?.detail?.month;
+    loadStatus(month);
+  });
+
+  // Optional: auto-load on tab show if a value exists
+  document.addEventListener("shown.bs.tab", (ev) => {
+    if (ev.target?.id === "status-tab") {
+      const input = document.getElementById("sa-status-month");
+      if (input?.value) loadStatus(input.value);
+    }
+  });
+
+  // Optional: fire once on page load if the status tab is the default
+  (() => {
+    const statusTab = document.getElementById("scheduling-status");
+    const input = document.getElementById("sa-status-month");
+    if (statusTab?.classList.contains("show") && input?.value) {
+      loadStatus(input.value);
+    }
+  })();
+
+
+
+
   function render(data) {
 
     const hoursHeader = document.querySelector('.sa-card .card-header');
@@ -389,6 +526,12 @@ const SchedulingAttack = (() => {
       document.getElementById("srJobsChart").parentElement.style.minHeight = "360px";
     }
   }
+    window.addEventListener('sa:load-status', (e) => {
+    const month = e.detail.month; // "YYYY-MM"
+    fetch(`/scheduling_attack/status?month=${encodeURIComponent(month)}`)
+      .then(r => r.json())
+      .then(renderStatusForMonth); // implement this to fill #saStatusChart, #saStatusTableBody, KPIs, etc.
+  });
 
   return { init };
 })();
