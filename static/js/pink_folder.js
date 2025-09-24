@@ -21,10 +21,9 @@
     })
     .catch(err => {
         console.error("Failed to load pink folder data:", err);
-        tbody.innerHTML = `<tr><td colspan="6" class="text-danger">Error loading data.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="5" class="text-danger">Error loading data.</td></tr>`;
     })
     .finally(() => {
-        // Hide spinner once data is loaded (success or error)
         const loadingRow = document.getElementById("loadingRow");
         if (loadingRow) loadingRow.classList.add("d-none");
     });
@@ -95,23 +94,24 @@
     updateHeaderIndicators();
   });
 
-  function applyControlsFromUI() {
-    const val = sortSelect.value;
-    if (val.startsWith("date")) {
-      sortState.key = "job_date";
-      sortState.dir = val.endsWith("asc") ? "asc" : "desc";
-    } else {
-      sortState.key = "tech_hours";
-      sortState.dir = val.endsWith("asc") ? "asc" : "desc";
+  
+    function applyControlsFromUI() {
+        const val = sortSelect.value;
+        if (val.startsWith("date")) {
+            sortState.key = "job_date";
+            sortState.dir = val.endsWith("asc") ? "asc" : "desc";
+        } else {
+            sortState.key = "tech_hours";
+            sortState.dir = val.endsWith("asc") ? "asc" : "desc";
+        }
+        const term = techFilterInput.value.trim().toLowerCase();
+        view = raw
+            .filter(r => {
+            if (!term) return true;
+            return r.assigned_techs.some(t => String(t).toLowerCase().includes(term));
+            })
+            .sort(makeSorter(sortState.key, sortState.dir));
     }
-    const term = techFilterInput.value.trim().toLowerCase();
-    view = raw
-      .filter(r => {
-        if (!term) return true;
-        return r.techs_need_upload.some(t => String(t).toLowerCase().includes(term));
-      })
-      .sort(makeSorter(sortState.key, sortState.dir));
-  }
 
   function makeSorter(key, dir) {
     const m = dir === "asc" ? 1 : -1;
@@ -170,7 +170,7 @@
 
     const rows = view.map(row => {
         const techBadges = row.assigned_techs.length
-        ? row.assigned_techs.map(t => 
+        ? row.assigned_techs.map(t =>
             `<span class="badge text-bg-primary me-1 mb-1">${escapeHtml(t)}</span>`
             ).join("")
         : `<span class="text-muted">None</span>`;
@@ -180,8 +180,8 @@
         : `<span class="badge text-bg-danger">No</span>`;
 
         return `
-        <tr>
-            <td class="fw-semibold">${row.job_id}</td>
+        <tr class="pf-row">
+            <!-- removed Job ID cell -->
             <td>${formatDate(row.job_date)}</td>
             <td><a href="${escapeAttr(row.hyperlink)}" target="_blank" rel="noopener">${escapeHtml(row.address || "Open job")}</a></td>
             <td style="white-space: normal;">${techBadges}</td>
