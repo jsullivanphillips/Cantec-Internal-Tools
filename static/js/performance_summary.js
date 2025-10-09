@@ -1128,6 +1128,8 @@ const PerformanceSummary = (() => {
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, topCount);
 
+      console.log('top_customer_revenue sample:', (data.top_customer_revenue || [])[0]);
+      console.log('location_service_type_counts sample:', (data.location_service_type_counts || [])[0]);    
     charts.topCustomerRevenueChart = new Chart(
       document.getElementById("topCustomerRevenueChart").getContext("2d"),
       {

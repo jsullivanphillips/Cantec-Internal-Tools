@@ -744,6 +744,10 @@ def get_top_customers_by_revenue(window_start, window_end):
 
     sorted_customers = sorted(customer_map.items(), key=lambda x: x[1], reverse=True)
 
+
+    for name, revenue in sorted_customers:
+        print(f"{name:<40} ${revenue:,.2f}")
+        
     return [
         {"customer": name, "revenue": round(revenue, 2)}
         for name, revenue in sorted_customers
