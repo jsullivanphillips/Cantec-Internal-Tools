@@ -434,6 +434,17 @@ class ServiceOccurrence(db.Model):
 
     def __repr__(self):
         return f"<ServiceOccurrence job={self.job_id} loc={self.location_id} month={self.observed_month}>"
+    
+class BackflowAutomationMetric(db.Model):
+    __tablename__ = "metric"
+
+    id = db.Column(db.Integer, primary_key=True)
+    key = db.Column(db.String(100), unique=True, nullable=False)
+    value = db.Column(db.Integer, default=0, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<Metric {self.key}={self.value}>"
 
 
 
