@@ -478,62 +478,69 @@ def main():
                                 print(f" Posted new comment for asset {asset_id}")
                             except Exception as e:
                                 print(f"  Error posting comment for asset {asset_id}: {e}")
-                # ----------------------------------------------------------------
-                #  Step 8. Move the processed email to its destination folder
-                # ----------------------------------------------------------------
-                moved_messages = set()  # Track which message IDs were already moved
+        # ----------------------------------------------------------------
+        #  Step 8. Move the processed email to its destination folder
+        # ----------------------------------------------------------------
+        moved_messages = set()  # Track which message IDs were already moved
 
-                for item in filtered_data:
-                    # After all ServiceTrade location + asset matching logic:
-                    if item.get("ServiceTradeLocations") and any(item.get("MatchedAssets", [])):
-                        try:
-                            message_id = item.get("MessageId")
-                            if not message_id or message_id in moved_messages:
-                                continue
+        for item in filtered_data:
+            message_id = item.get("MessageId")
+            if not message_id or message_id in moved_messages:
+                continue
 
-                            if item["Type"] == "DeviceAssignment":
-                                dest_folder = os.getenv("OUTSTANDING_BACKFLOWS_FOLDER_ID")
-                            else:
-                                dest_folder = os.getenv("ASSIGNED_COMPLETED_BACKFLOWS_FOLDER_ID")
+            # Check asset matching completeness
+            total_serials = len(item.get("SerialNumbers", []))
+            matched_assets = item.get("MatchedAssets", [])
+            matched_count = len(matched_assets)
 
-                            move_url = f"https://graph.microsoft.com/v1.0/users/{USER_EMAIL}/messages/{message_id}/move"
-                            move_resp = requests.post(move_url, headers=headers, json={"destinationId": dest_folder})
-                            move_resp.raise_for_status()
-                            moved_message = move_resp.json()
-                            new_message_id = moved_message.get("id")
-                            moved_messages.add(message_id)
-
-                            print(f"📦 Moved email '{item['Subject']}' → {item['Type']} folder")
-                            processed_emails += 1
-                            # Mark as read / flag depending on type
-                            patch_url = f"https://graph.microsoft.com/v1.0/users/{USER_EMAIL}/messages/{new_message_id}"
-                            if item["Type"] == "TestResult":
-                                patch_resp = requests.patch(
-                                    patch_url,
-                                    headers={**headers, "Content-Type": "application/json"},
-                                    json={"isRead": True},
-                                )
-                                patch_resp.raise_for_status()
-                                print(f"✅ Marked '{item['Subject']}' as read")
-                            elif item["Type"] == "DeviceAssignment":
-                                flag_body = {"flag": {"flagStatus": "flagged"}}
-                                patch_resp = requests.patch(
-                                    patch_url,
-                                    headers={**headers, "Content-Type": "application/json"},
-                                    json=flag_body,
-                                )
-                                patch_resp.raise_for_status()
-                                print(f"🚩 Flagged '{item['Subject']}' for follow-up")
-
-                        except requests.HTTPError as e:
-                            if e.response.status_code == 404:
-                                print(f"⚠️ Email '{item['Subject']}' already moved or missing — skipping.")
-                            else:
-                                print(f"⚠️ HTTP error moving '{item['Subject']}': {e}")
-                        except Exception as e:
-                            print(f"⚠️ General error moving '{item.get('Subject')}': {e}")
+            # Only move if we found all expected assets
+            if total_serials > 0 and matched_count == total_serials:
+                try:
+                    if item["Type"] == "DeviceAssignment":
+                        dest_folder = os.getenv("OUTSTANDING_BACKFLOWS_FOLDER_ID")
                     else:
-                        print(f"🛑 Skipping move for '{item['Subject']}' — no matching location or asset found.")
+                        dest_folder = os.getenv("ASSIGNED_COMPLETED_BACKFLOWS_FOLDER_ID")
+
+                    move_url = f"https://graph.microsoft.com/v1.0/users/{USER_EMAIL}/messages/{message_id}/move"
+                    move_resp = requests.post(move_url, headers=headers, json={"destinationId": dest_folder})
+                    move_resp.raise_for_status()
+                    moved_message = move_resp.json()
+                    new_message_id = moved_message.get("id")
+                    moved_messages.add(message_id)
+
+                    print(f"📦 Moved email '{item['Subject']}' → {item['Type']} folder")
+                    processed_emails += 1
+
+                    # Mark as read / flag depending on type
+                    patch_url = f"https://graph.microsoft.com/v1.0/users/{USER_EMAIL}/messages/{new_message_id}"
+                    if item["Type"] == "TestResult":
+                        patch_resp = requests.patch(
+                            patch_url,
+                            headers={**headers, "Content-Type": "application/json"},
+                            json={"isRead": True},
+                        )
+                        patch_resp.raise_for_status()
+                        print(f"✅ Marked '{item['Subject']}' as read")
+                    elif item["Type"] == "DeviceAssignment":
+                        flag_body = {"flag": {"flagStatus": "flagged"}}
+                        patch_resp = requests.patch(
+                            patch_url,
+                            headers={**headers, "Content-Type": "application/json"},
+                            json=flag_body,
+                        )
+                        patch_resp.raise_for_status()
+                        print(f"🚩 Flagged '{item['Subject']}' for follow-up")
+
+                except requests.HTTPError as e:
+                    if e.response.status_code == 404:
+                        print(f"⚠️ Email '{item['Subject']}' already moved or missing — skipping.")
+                    else:
+                        print(f"⚠️ HTTP error moving '{item['Subject']}': {e}")
+                except Exception as e:
+                    print(f"⚠️ General error moving '{item.get('Subject')}': {e}")
+
+            else:
+                print(f"Not moving '{item['Address']}' — matched {matched_count}/{total_serials} assets. Needs review.")
 
                     
         # -----------------------------------------------------------------------
