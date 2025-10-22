@@ -33,18 +33,31 @@
       <div class="tab-pane fade show active" id="processing-status" role="tabpanel" aria-labelledby="processing-status-tab">
         <!-- Existing Processing Status Content -->
         <div class="cards-container processing-attack">
+
+          <!-- Jobs Processed - Incoming Jobs -->
+          <div class="card full short" id="jobsProcessedMinusIncomingJobsCard">
+            <div class="card-header">Change in Jobs to be Processed (Today)</div>
+            <small style="display:block; text-align:center;">Incoming jobs from 12:00am Yesterday -> 12:00am Today<br>Jobs processed from 12:00am Today -> Current Time</small>
+            <div class="card-body">
+              <strong id="jobsProcessedMinusIncomingJobs" style="font-weight: bold; font-size: 1.0em;"></strong>
+              <div style="display: flex; gap: 20px;">
+                  <strong id="incomingJobs"></strong>
+                  <strong id="jobsProcessed"></strong>
+              </div>
+            </div>
+          </div>
           <!-- Jobs to be marked complete -->
           <div class="card half" id="jobsToBeMarkedCompleteCard">
             <div class="card-header">✅ Jobs To Be Marked Complete | Goal: Less than 50</div>
             <div class="card-body">
-              <strong id="jobsToBeMarkedComplete" style="font-weight: bold; font-size: 1.2em;">..</strong>
+              <strong id="jobsToBeMarkedComplete" style="font-weight: bold; font-size: 1.0em;">..</strong>
             </div>
           </div>
           <!-- Oldest Job -->
           <div class="card half clickable" id="oldestJobsCard" style="cursor: pointer;">
             <div class="card-header">⏱️ Oldest Job | Goal: No Older than 6 Weeks</div>
             <div class="card-body position-relative">
-              <strong id="oldestJobToBeMarkedCompleteDate" style="font-weight: bold; font-size: 1.2em;"></strong>
+              <strong id="oldestJobToBeMarkedCompleteDate" style="font-weight: bold; font-size: 1.0em;"></strong>
               <strong id="oldestJobToBeMarkedCompleteAddress"></strong>
               <strong id="oldestJobToBeMarkedCompleteType" style="font-style: italic;"></strong>
               <div id="pinkFolderHint" class="pink-hint">Click for more info</div>
@@ -55,7 +68,7 @@
           <div class="card half" id="numberOfPinkFolderJobsCard">
             <div class="card-header">📁 Whats in the Pink Folder? | Goal: Less than 10 Jobs</div>
             <div class="card-body position-relative">
-              <strong id="numberOfPinkFolderJobs" style="font-weight: bold; font-size: 1.2em;">..</strong>
+              <strong id="numberOfPinkFolderJobs" style="font-weight: bold; font-size: 1.0em;">..</strong>
               <div style="display: flex; gap: 20px;">
                   <strong id="timeInPinkFolder"></strong>
                   <strong id="moneyInPinkFolder"></strong>
@@ -63,19 +76,18 @@
               <div id="pinkFolderHint" class="pink-hint">Click for more info</div>
             </div>
           </div>
-          
-          <!-- Jobs Processed - Incoming Jobs -->
-          <div class="card half" id="jobsProcessedMinusIncomingJobsCard">
-            <div class="card-header">Change in Jobs to be Processed (Today)</div>
-            <small style="display:block; text-align:center;">Incoming jobs from 12:00am Yesterday -> 12:00am Today<br>Jobs processed from 12:00am Today -> Current Time</small>
+          <!-- Jobs to be Invoiced -->
+          <div class="card half" id="jobsToBeInvoicedCard">
+            <div class="card-header">Complete Jobs to be Invoiced</div>
+            <small style="display:block; text-align:center;">Jobs scheduled from 1 year ago to today</small>
             <div class="card-body">
-              <strong id="jobsProcessedMinusIncomingJobs" style="font-weight: bold; font-size: 1.2em;"></strong>
-              <div style="display: flex; gap: 20px;">
-                  <strong id="incomingJobs"></strong>
-                  <strong id="jobsProcessed"></strong>
-              </div>
+              <strong id="jobsToBeInvoiced" style="font-weight: bold; font-size: 1.0em;"></strong>
             </div>
           </div>
+
+          
+          
+
           <!-- Full-width bar graph card -->
           <div class="card full">
             <div class="card-header">Jobs To Be Marked Complete By Job Type</div>

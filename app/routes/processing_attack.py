@@ -31,6 +31,12 @@ def authenticate():
     except Exception as e:
         return jsonify({"error": "Authentication failed"}), 401
 
+def call_service_trade_api(endpoint: str, params=None):
+    url = f"{SERVICE_TRADE_API_BASE}/{endpoint}"
+    resp = api_session.get(url, params=params or {})
+    resp.raise_for_status()
+    return resp.json()
+
 
 # -------------------------------------------------------
 # JOBS TO BE MARKED COMPLETE & OLDEST JOB & PINK FOLDER JOBS
@@ -73,6 +79,8 @@ def processing_attack_complete_jobs():
 
     incoming_jobs_today = get_incoming_jobs_today()
 
+    jobs_to_be_invoiced = get_jobs_to_be_invoiced()
+
     response_data = {
         "jobs_to_be_marked_complete": len(jobs_to_be_marked_complete),
         "job_type_count": jobs_by_job_type,
@@ -83,7 +91,8 @@ def processing_attack_complete_jobs():
         "oldest_jobs_to_be_marked_complete" : oldest_jobs_to_be_marked_complete,
         "jobs_processed_today": jobs_processed_today,
         "incoming_jobs_today": incoming_jobs_today,
-        "time_in_pink_folder": time_in_pink_folder
+        "time_in_pink_folder": time_in_pink_folder,
+        "jobs_to_be_invoiced": jobs_to_be_invoiced
     }
     return jsonify(response_data)
 
@@ -102,6 +111,18 @@ def organize_jobs_by_job_type(jobs_to_be_marked_complete):
     # Count occurrences of each job type
     counts = Counter(job_types)
     return dict(counts)
+
+def get_jobs_to_be_invoiced():
+    resp = call_service_trade_api("job", params={
+        'status': 'completed', 
+        'isInvoiced': False,
+        'scheduleDateFrom': datetime.timestamp((datetime.now() - timedelta(days=365))), 
+        'scheduleDateTo': datetime.timestamp(datetime.now() + timedelta(80))})
+    
+    jobs = resp.get("data", {}).get("jobs", [])
+    return len(jobs)
+    
+
 
 
 def get_pink_folder_data():

@@ -1,6 +1,7 @@
 import os
 import requests
 from app import create_app
+from datetime import datetime, timedelta
 
 SERVICE_TRADE_API_BASE = "https://api.servicetrade.com/api"
 api_session = requests.Session()
@@ -37,52 +38,16 @@ def main():
         authenticate(username, password)
 
         # -----------------------------------------------------------------------
-        resp = call_service_trade_api("invoice", params={'status': 'sent'})
-        invoices = resp.get("data", {}).get("invoices", [])
+        resp = call_service_trade_api("job", params={
+            'status': 'completed', 
+            'isInvoiced': False,
+            'scheduleDateFrom': datetime.timestamp((datetime.now() - timedelta(days=365))), 
+            'scheduleDateTo': datetime.timestamp(datetime.now() + timedelta(80))})
+        
+        jobs = resp.get("data", {}).get("jobs", [])
+        print(f"Retrieved {len(jobs)} jobs to be invoiced from a year ago to today from ServiceTrade.")
 
-        print(f"Retrieved {len(invoices)} sent invoices from ServiceTrade.")
-
-        # -----------------------------------------------------------------------
-        resp = call_service_trade_api("invoice", params={'status': 'ok'})
-        invoices = resp.get("data", {}).get("invoices", [])
-
-        print(f"Retrieved {len(invoices)} \"ok\" invoices from ServiceTrade.")
-
-        # -----------------------------------------------------------------------
-        resp = call_service_trade_api("invoice", params={'status': 'internal_review'})
-        invoices = resp.get("data", {}).get("invoices", [])
-
-        print(f"Retrieved {len(invoices)} \"internal_review\" invoices from ServiceTrade.")
-
-        # -----------------------------------------------------------------------
-        resp = call_service_trade_api("invoice", params={'status': 'pending_accounting'})
-        invoices = resp.get("data", {}).get("invoices", [])
-
-        print(f"Retrieved {len(invoices)} \"pending_accounting\" invoices from ServiceTrade.")
-
-        # -----------------------------------------------------------------------
-        resp = call_service_trade_api("invoice", params={'status': 'processed'})
-        invoices = resp.get("data", {}).get("invoices", [])
-
-        print(f"Retrieved {len(invoices)} \"processed\" invoices from ServiceTrade.")
-
-        # -----------------------------------------------------------------------
-        resp = call_service_trade_api("invoice", params={'status': 'paid'})
-        invoices = resp.get("data", {}).get("invoices", [])
-
-        print(f"Retrieved {len(invoices)} \"paid\" invoices from ServiceTrade.")
-
-        # -----------------------------------------------------------------------
-        resp = call_service_trade_api("invoice", params={'status': 'failed'})
-        invoices = resp.get("data", {}).get("invoices", [])
-
-        print(f"Retrieved {len(invoices)} \"failed\" invoices from ServiceTrade.")
-
-        # -----------------------------------------------------------------------
-        resp = call_service_trade_api("invoice", params={'sent': 'false'})
-        invoices = resp.get("data", {}).get("invoices", [])
-
-        print(f"Retrieved {len(invoices)} \"sent = false\" invoices from ServiceTrade.")
+        
        
 
 

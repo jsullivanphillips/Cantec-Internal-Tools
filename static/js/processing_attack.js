@@ -295,6 +295,13 @@ const ProcessingAttack = (() => {
       Fetching oldest job...
     `;
 
+    document.getElementById("jobsToBeInvoiced").innerHTML = `
+      <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Loading...</span>
+      </div>
+      Fetching Processed Vs. Incoming jobs...
+    `;
+
     document.getElementById("jobsProcessedMinusIncomingJobs").innerHTML = `
       <div class="spinner-border text-primary" role="status">
         <span class="visually-hidden">Loading...</span>
@@ -369,6 +376,7 @@ const ProcessingAttack = (() => {
         document.getElementById("jobsProcessedMinusIncomingJobs").textContent = `Δ Jobs: ${jobsDelta}`;
         document.getElementById("incomingJobs").textContent = `Incoming jobs: ${data.incoming_jobs_today}`;
         document.getElementById("jobsProcessed").textContent = `Jobs processed: ${data.jobs_processed_today}`;
+        document.getElementById("jobsToBeInvoiced").textContent = `Jobs to be invoiced: ${data.jobs_to_be_invoiced}`;
 
         document.getElementById("numberOfPinkFolderJobs").textContent = data.number_of_pink_folder_jobs + " jobs";
         document.getElementById("timeInPinkFolder").textContent = `${data.time_in_pink_folder} tech hours  |`;
@@ -700,6 +708,19 @@ const ProcessingAttack = (() => {
     oldestElemCard.style.borderRadius = "8px";
     oldestElemCard.style.boxShadow = "2px 4px 10px rgba(0, 0, 0, 0.1)";
     oldestElemCard.style.textAlign = "center";
+
+    // Jobs to be Invoiced
+    const jobsToBeInvoicedText = document.getElementById("jobsToBeInvoiced");
+    const jobsToBeInvoicedCard = document.getElementById("jobsToBeInvoicedCard");
+    if (parseInt(data.jobs_to_be_invoiced) < 50) {
+      jobsToBeInvoicedText.style.color = "#27a532";
+      jobsToBeInvoicedCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(229, 248, 225))";
+      jobsToBeInvoicedCard.style.borderTop = "5px solid #27a532";
+    } else {
+      jobsToBeInvoicedText.style.color = "#b92525";
+      jobsToBeInvoicedCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(248, 225, 227))";
+      jobsToBeInvoicedCard.style.borderTop = "5px solid #b92525";
+    }
 
     // Change in jobs to be processed (today)
     const jobsToBeProcessedText = document.getElementById("jobsProcessedMinusIncomingJobs");
