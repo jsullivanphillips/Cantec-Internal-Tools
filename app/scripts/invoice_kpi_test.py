@@ -2,6 +2,7 @@ import os
 import requests
 from app import create_app
 from datetime import datetime, timedelta
+import json
 
 SERVICE_TRADE_API_BASE = "https://api.servicetrade.com/api"
 api_session = requests.Session()
@@ -38,14 +39,13 @@ def main():
         authenticate(username, password)
 
         # -----------------------------------------------------------------------
-        resp = call_service_trade_api("job", params={
-            'status': 'completed', 
-            'isInvoiced': False,
-            'scheduleDateFrom': datetime.timestamp((datetime.now() - timedelta(days=365))), 
-            'scheduleDateTo': datetime.timestamp(datetime.now() + timedelta(80))})
-        
-        jobs = resp.get("data", {}).get("jobs", [])
-        print(f"Retrieved {len(jobs)} jobs to be invoiced from a year ago to today from ServiceTrade.")
+        resp = call_service_trade_api("assetdefinition")
+        definitions = resp.get("data", {}).get("assetDefinitions", [])
+        for asset_def in definitions:
+            if asset_def.get("type") == "backflow":
+                print(json.dumps(asset_def, indent=4))
+
+
 
         
        

@@ -161,52 +161,82 @@ def normalize(s):
 
 
 def parse_crd_test_result(html_content):
-    """Extract address, device serials, and test results section from a CRD test email."""
+    """Extract address, all device details, serials, and properly formatted test results from a CRD test email."""
     soup = BeautifulSoup(html_content, "html.parser")
+    text = soup.get_text("\n", strip=True)  # preserve line breaks
 
-    # 🏠 Address
-    address_tag = soup.find("td", string="Address:")
-    address = address_tag.find_next("td").get_text(strip=True) if address_tag else None
+    # 🏠 Address (from Facility info)
+    address_match = re.search(r"Address:\s*([\w\s\-,]+BC[,A-Z\s]*)", text)
+    address = address_match.group(1).strip() if address_match else None
 
-    # 🔢 Device Serial Numbers (list, even if one)
-    serial_tag = soup.find(text=lambda t: "Device Serial Number:" in t)
+    # 🔍 Extract the installed device section
+    device_section_match = re.search(
+        r"Installed Device:(.*?)(?=Test Results:|$)", text, re.IGNORECASE | re.DOTALL
+    )
+    device_section = device_section_match.group(1) if device_section_match else ""
+
+    # Parse all fields from the installed device info
+    devices = {}
     serial_numbers = []
-    if serial_tag:
-        device_serial = serial_tag.split("Device Serial Number:")[-1].strip()
-        if device_serial:
-            serial_numbers = [device_serial]
 
-    # 🧾 Extract the "Test results information" section
-    section_lines = []
-    collecting = False
-    for el in soup.stripped_strings:
-        if "Test results information" in el:
-            collecting = True
-        elif collecting and "If you have any further questions" in el:
-            break
-        elif collecting:
-            section_lines.append(el)
+    make_match = re.search(r"Device Make:\s*([A-Za-z0-9\-\s]+)", device_section)
+    model_match = re.search(r"Device Model:\s*([A-Za-z0-9\-\s]+)", device_section)
+    serial_match = re.search(r"Device Serial Number:\s*([A-Za-z0-9]+)", device_section)
+    type_match = re.search(r"Device Device Type:\s*([A-Za-z0-9]+)", device_section)
+    size_match = re.search(r"Device Plumbing Fixture Size:\s*(.*?)\s*(?:Device|$)", device_section)
+    orientation_match = re.search(r"Device Orientation:\s*([A-Za-z]+)", device_section)
+    location_match = re.search(r"Device Location:\s*(.*?)\s*(?:Device|$)", device_section)
+    hazard_match = re.search(r"Device Hazard Type:\s*(.*?)\s*(?:Device|$)", device_section)
+    active_match = re.search(r"Device Active:\s*(True|False)", device_section, re.IGNORECASE)
 
-    test_results = "\n".join(section_lines).strip() if section_lines else None
+    serial = serial_match.group(1).strip() if serial_match else None
+    if serial:
+        serial_numbers = [serial]
+        devices[serial] = {
+            "Make": make_match.group(1).strip() if make_match else None,
+            "Model": model_match.group(1).strip() if model_match else None,
+            "SerialNumber": serial,
+            "Type": type_match.group(1).strip() if type_match else None,
+            "FixtureSize": size_match.group(1).strip() if size_match else None,
+            "Orientation": orientation_match.group(1).strip() if orientation_match else None,
+            "Location": location_match.group(1).strip() if location_match else None,
+            "HazardType": hazard_match.group(1).strip() if hazard_match else None,
+            "Active": active_match.group(1).strip().lower() == "true" if active_match else None,
+        }
+
+    # 🧾 Extract "Test results information" cleanly
+    # Capture everything between "Test results information:" and the CRD footer or contact section
+    test_section_match = re.search(
+        r"Test results information:(.*?)(?:If you have any further questions|CRD Parks|This message is intended|$)",
+        text,
+        re.IGNORECASE | re.DOTALL,
+    )
+
+    if test_section_match:
+        test_results_raw = test_section_match.group(1).strip()
+        # Restore readable line breaks
+        lines = [line.strip() for line in test_results_raw.splitlines() if line.strip()]
+        test_results = "\n".join(lines)
+    else:
+        test_results = None
 
     return {
         "Address": address,
         "SerialNumbers": serial_numbers,
+        "Devices": devices,
         "TestResultsInfo": test_results,
     }
 
 
+
 def parse_device_assignment(html_content):
-    """Extract address, all serial numbers, login id, and portal link from a CRD device assignment email."""
+    """Extract address, login id, portal link, and full device details keyed by serial number."""
     soup = BeautifulSoup(html_content, "html.parser")
     text = soup.get_text(" ", strip=True)
 
     # 🏠 Address
     address_tag = soup.find("td", string="Address:")
     address = address_tag.find_next("td").get_text(strip=True) if address_tag else None
-
-    # 🔢 All device serial numbers (list)
-    serial_numbers = re.findall(r"Device Serial Number:\s*([A-Za-z0-9]+)", text)
 
     # 🔑 Login ID
     login_id_match = re.search(
@@ -218,11 +248,47 @@ def parse_device_assignment(html_content):
     link_match = re.search(r"(https://crims\.crd\.bc\.ca/[^\s]+)", text, re.IGNORECASE)
     portal_link = link_match.group(1) if link_match else PORTAL_LINK
 
+    # 🔧 Extract all installed device blocks
+    device_blocks = re.split(r"Device Make:", text)
+    devices = {}
+    serial_numbers = []
+
+    for block in device_blocks[1:]:
+        make_match = re.search(r"^\s*([A-Za-z0-9\s\-/]+)", block)
+        model_match = re.search(r"Device Model:\s*([A-Za-z0-9\-]+)", block)
+        serial_match = re.search(r"Device Serial Number:\s*([A-Za-z0-9]+)", block)
+        external_match = re.search(
+            r"Device External Number:\s*(.*?)(?:Device|The Login Id provided|$)", block, re.DOTALL)
+        type_match = re.search(r"Device Device Type:\s*([A-Za-z0-9]+)", block)
+        location_match = re.search(
+            r"Device Location:\s*(.*?)(?:Device|The Login Id provided|$)", block, re.DOTALL)
+        size_match = re.search(
+            r"Device Plumbing Fixture Size:\s*(.*?)(?:Device|The Login Id provided|$)", block, re.DOTALL)
+        hazard_match = re.search(
+            r"Device Hazard Type:\s*(.*?)(?:Device|The Login Id provided|$)", block, re.DOTALL)
+
+        serial = serial_match.group(1).strip() if serial_match else None
+        if not serial:
+            continue
+
+        serial_numbers.append(serial)
+        devices[serial] = {
+            "Make": make_match.group(1).strip() if make_match else None,
+            "Model": model_match.group(1).strip() if model_match else None,
+            "SerialNumber": serial,
+            "ExternalNumber": external_match.group(1).strip() if external_match else None,
+            "Type": type_match.group(1).strip() if type_match else None,
+            "Location": location_match.group(1).strip() if location_match else None,
+            "FixtureSize": size_match.group(1).strip() if size_match else None,
+            "HazardType": hazard_match.group(1).strip() if hazard_match else None,
+        }
+
     return {
         "Address": address,
-        "SerialNumbers": serial_numbers,
         "LoginId": login_id,
         "PortalLink": portal_link,
+        "SerialNumbers": serial_numbers,
+        "Devices": devices,  # indexed by serial
     }
 
 
@@ -262,10 +328,11 @@ def handle_test_result(message, body_html):
         "Type": "TestResult",
         "Subject": message.get("subject"),
         "From": message["from"]["emailAddress"]["address"],
-        "Received": received_str,        # original ISO string
-        "ReceivedAt": received_dt,       # parsed datetime object
+        "Received": received_str,
+        "ReceivedAt": received_dt,
         "Address": parsed["Address"],
         "SerialNumbers": serials,
+        "Devices": parsed["Devices"],          # includes full device info
         "TestResultsInfo": parsed["TestResultsInfo"],
     }
     return data
@@ -286,12 +353,13 @@ def handle_device_assignment(message, body_html):
         "Type": "DeviceAssignment",
         "Subject": message.get("subject"),
         "From": message["from"]["emailAddress"]["address"],
-        "Received": received_str,        # original ISO string
-        "ReceivedAt": received_dt,       # parsed datetime object
+        "Received": received_str,
+        "ReceivedAt": received_dt,
         "Address": parsed["Address"],
         "SerialNumbers": serials,
         "LoginId": parsed["LoginId"],
         "PortalLink": parsed["PortalLink"],
+        "Devices": parsed["Devices"],  # all device fields by serial
     }
     return data
 
@@ -391,7 +459,6 @@ def main():
                 continue
 
             search_name = extract_street_search(address)
-
             resp = call_service_trade_api("location", params={"name": search_name, "status": "active"})
             locations = resp.get("data", {}).get("locations", [])
             item["ServiceTradeLocations"] = locations
@@ -401,83 +468,128 @@ def main():
                 if not loc_id:
                     continue
 
-                # Fetch all assets for this location
+                # Fetch all existing assets for this location
                 assets_resp = call_service_trade_api("asset", params={"locationId": loc_id})
                 assets = assets_resp.get("data", {}).get("assets", [])
 
-                wanted_serials = [normalize(sn) for sn in item.get("SerialNumbers", [])] 
-                matched_assets = [ asset for asset in assets if normalize(asset.get("properties", {}).get("serial", "")) in wanted_serials ]
+                # Normalize serials for comparison
+                wanted_serials = [normalize(sn) for sn in item.get("SerialNumbers", [])]
+                matched_assets = [
+                    asset for asset in assets
+                    if normalize(asset.get("properties", {}).get("serial", "")) in wanted_serials
+                ]
+                existing_serials = [normalize(asset.get("properties", {}).get("serial", "")) for asset in assets]
+                
+                # Find serials that do not yet exist as assets
+                missing_serials = [sn for sn in wanted_serials if sn not in existing_serials]
 
+                # ----------------------------------------------------------
+                #  Create assets on ServiceTrade for unmatched serials
+                # ----------------------------------------------------------
+                newly_created_assets = []
+                if missing_serials:
+                    for serial in missing_serials:
+                        device_info = item.get("Devices", {}).get(serial, {})
+                        if not device_info:
+                            print(f" ⚠️ No device info found for serial {serial}")
+                            continue
+                        print(f"device info: ", device_info)
+
+                        payload = {
+                            "locationId": loc_id,
+                            "name": f"Backflow {device_info.get('Model', '')} ({serial})",
+                            "type": "backflow",
+                            "properties": {
+                                "manufacturer": (device_info.get("Make") or "").split()[0] if device_info.get("Make") else "",
+                                "model": (device_info.get("Model") or "").split()[0] if device_info.get("Model") else "",
+                                "serial": serial,
+                                "size": " ".join(re.findall(r"[\d/]+", device_info.get("FixtureSize", ""))) or None,
+                                "water_one_hazard": device_info.get("HazardType"),
+                                "location_in_site": device_info.get("Location"),
+                                "feed": (device_info.get("HazardType") or "").split()[0] if device_info.get("HazardType") else "",
+                                "type": device_info.get("Type"),
+                                "application": (device_info.get("HazardType") or "").split()[0] if device_info.get("HazardType") else ""
+                            },
+                        }
+
+                        try:
+                            url = f"{SERVICE_TRADE_API_BASE}/asset"
+                            post_resp = api_session.post(url, json=payload)
+                            post_resp.raise_for_status()
+                            new_asset = post_resp.json().get("data", {})
+                            newly_created_assets.append(new_asset)
+                            print(f" ✅ Created new asset for serial {serial} at location {loc_id}")
+                        except Exception as e:
+                            print(f"  Error creating asset for serial {serial}: {e}")
+
+                # Combine matched + newly created assets for unified update logic
+                all_assets = matched_assets + newly_created_assets
+                if newly_created_assets:
+                    item.setdefault("CreatedAssets", []).extend(newly_created_assets)
                 if matched_assets:
                     item.setdefault("MatchedAssets", []).extend(matched_assets)
 
-                    # ----------------------------------------------------------
-                    #  Step 6. Update ServiceTrade records for each matched asset
-                    # ----------------------------------------------------------
-                    for asset in matched_assets:
-                        asset_id = asset.get("id")
-                        entity_type = 2  # Asset entity type
+                # ----------------------------------------------------------
+                #  Process all assets (new + existing) with updates/comments
+                # ----------------------------------------------------------
+                for asset in all_assets:
+                    asset_id = asset.get("id")
+                    entity_type = 2  # Asset
 
-                        # Determine if we have a new comment to post
-                        has_new_comment = False
-                        new_comment_text = None
+                    has_new_comment = False
+                    new_comment_text = None
 
-                        if item["Type"] == "DeviceAssignment" and item.get("LoginId") and item.get("PortalLink"):
-                            has_new_comment = True
-                            new_comment_text = (
-                                "[BACKFLOW AUTOMATION]\n"
-                                f"Login ID: {item['LoginId']}\n"
-                                f"Online CRD Test Portal Link: {item['PortalLink']}"
-                            )
+                    if item["Type"] == "DeviceAssignment" and item.get("LoginId") and item.get("PortalLink"):
+                        has_new_comment = True
+                        new_comment_text = (
+                            "[BACKFLOW AUTOMATION]\n"
+                            f"Login ID: {item['LoginId']}\n"
+                            f"Online CRD Test Portal Link: {item['PortalLink']}"
+                        )
 
-                        elif item["Type"] == "TestResult" and item.get("TestResultsInfo"):
-                            has_new_comment = True
-                            new_comment_text = (
-                                "[BACKFLOW AUTOMATION]\n"
-                                "CRD Test Results:\n" + item["TestResultsInfo"]
-                            )
+                    elif item["Type"] == "TestResult" and item.get("TestResultsInfo"):
+                        has_new_comment = True
+                        new_comment_text = (
+                            "[BACKFLOW AUTOMATION]\n"
+                            "CRD Test Results:\n" + item["TestResultsInfo"]
+                        )
 
-                        # Fetch all existing comments for this asset
-                        resp = call_service_trade_api("comment", params={"entityId": asset_id, "entityType": entity_type})
-                        comments = resp.get("data", {}).get("comments", [])
+                    # Fetch and filter existing comments
+                    resp = call_service_trade_api("comment", params={"entityId": asset_id, "entityType": entity_type})
+                    comments = resp.get("data", {}).get("comments", [])
+                    existing_contents = [c.get("content", "").strip() for c in comments]
 
-                        # Check if our exact new message already exists
-                        existing_contents = [c.get("content", "").strip() for c in comments]
-                        if new_comment_text and new_comment_text.strip() in existing_contents:
-                            print(f" Skipping asset {asset_id} — identical comment already exists.")
-                            continue
+                    if new_comment_text and new_comment_text.strip() in existing_contents:
+                        print(f" Skipping asset {asset_id} — identical comment already exists.")
+                        continue
 
-                        # Delete old login ID comments only if we’re about to post something new
-                        for comment in comments:
-                            content = comment.get("content", "")
-                            comment_id = comment.get("id")
-
-                            if has_new_comment and "login id" in content.lower():
-                                try:
-                                    url = f"{SERVICE_TRADE_API_BASE}/comment/{comment_id}"
-                                    delete_resp = api_session.delete(url)
-                                    delete_resp.raise_for_status()
-                                    print(f"  Deleted outdated login ID comment (ID {comment_id}) for asset {asset_id}")
-                                except Exception as e:
-                                    print(f"  Error deleting comment {comment_id}: {e}")
-
-                        # ----------------------------------------------------------
-                        #  Post new comment (only if needed)
-                        # ----------------------------------------------------------
-                        if has_new_comment and new_comment_text:
+                    # Delete outdated login ID comments
+                    for comment in comments:
+                        if has_new_comment and "login id" in comment.get("content", "").lower():
                             try:
-                                url = f"{SERVICE_TRADE_API_BASE}/comment"
-                                params = {
-                                    "entityId": asset_id,
-                                    "entityType": entity_type,
-                                    "content": new_comment_text,
-                                    "visibility": ["tech"],
-                                }
-                                post_resp = api_session.post(url, params=params)
-                                post_resp.raise_for_status()
-                                print(f" Posted new comment for asset {asset_id}")
+                                del_url = f"{SERVICE_TRADE_API_BASE}/comment/{comment['id']}"
+                                del_resp = api_session.delete(del_url)
+                                del_resp.raise_for_status()
+                                print(f"  Deleted outdated login ID comment (ID {comment['id']}) for asset {asset_id}")
                             except Exception as e:
-                                print(f"  Error posting comment for asset {asset_id}: {e}")
+                                print(f"  Error deleting comment {comment['id']}: {e}")
+
+                    # Post new comment
+                    if has_new_comment and new_comment_text:
+                        try:
+                            comment_url = f"{SERVICE_TRADE_API_BASE}/comment"
+                            params = {
+                                "entityId": asset_id,
+                                "entityType": entity_type,
+                                "content": new_comment_text,
+                                "visibility": ["tech"],
+                            }
+                            post_resp = api_session.post(comment_url, params=params)
+                            post_resp.raise_for_status()
+                            print(f" Posted new comment for asset {asset_id}")
+                        except Exception as e:
+                            print(f"  Error posting comment for asset {asset_id}: {e}")
+
         # ----------------------------------------------------------------
         #  Step 8. Move the processed email to its destination folder
         # ----------------------------------------------------------------
@@ -488,13 +600,8 @@ def main():
             if not message_id or message_id in moved_messages:
                 continue
 
-            # Check asset matching completeness
-            total_serials = len(item.get("SerialNumbers", []))
-            matched_assets = item.get("MatchedAssets", [])
-            matched_count = len(matched_assets)
-
             # Only move if we found all expected assets
-            if total_serials > 0 and matched_count == total_serials:
+            if item.get("ServiceTradeLocations"):
                 try:
                     if item["Type"] == "DeviceAssignment":
                         dest_folder = os.getenv("OUTSTANDING_BACKFLOWS_FOLDER_ID")
@@ -540,7 +647,7 @@ def main():
                     print(f"⚠️ General error moving '{item.get('Subject')}': {e}")
 
             else:
-                print(f"Not moving '{item['Address']}' — matched {matched_count}/{total_serials} assets. Needs review.")
+                print(f"Not moving '{item['Address']}' — No location on ServiceTrade. Needs review.")
 
                     
         # -----------------------------------------------------------------------
@@ -549,16 +656,6 @@ def main():
         total_count = increment_metric("backflow_emails_processed", processed_emails)
         print(f"\n📈 Processed {processed_emails} emails this run.")
         print(f"🏁 Total emails processed since start: {total_count}\n")
-
-
-
-
-
-    
-
-
-
-
 
 
 if __name__ == "__main__":
