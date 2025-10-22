@@ -479,15 +479,17 @@ def main():
                     if normalize(asset.get("properties", {}).get("serial", "")) in wanted_serials
                 ]
                 existing_serials = [normalize(asset.get("properties", {}).get("serial", "")) for asset in assets]
-                
+
                 # Find serials that do not yet exist as assets
                 missing_serials = [sn for sn in wanted_serials if sn not in existing_serials]
 
                 # ----------------------------------------------------------
-                #  Create assets on ServiceTrade for unmatched serials
+                #  Handle asset creation logic
                 # ----------------------------------------------------------
                 newly_created_assets = []
-                if missing_serials:
+
+                # ❗️Only create new assets for DeviceAssignment emails
+                if item["Type"] == "DeviceAssignment" and missing_serials:
                     for serial in missing_serials:
                         device_info = item.get("Devices", {}).get(serial, {})
                         if not device_info:
@@ -521,6 +523,15 @@ def main():
                             print(f" ✅ Created new asset for serial {serial} at location {loc_id}")
                         except Exception as e:
                             print(f"  Error creating asset for serial {serial}: {e}")
+
+                # ----------------------------------------------------------
+                #  Handle Test Result emails: skip if no existing assets
+                # ----------------------------------------------------------
+                if item["Type"] == "TestResult" and not matched_assets:
+                    print(f" ⚠️ Skipping Test Result for '{address}' — no existing ServiceTrade assets found.")
+                    # Don’t move or process comments
+                    item["SkipProcessing"] = True
+                    continue
 
                 # Combine matched + newly created assets for unified update logic
                 all_assets = matched_assets + newly_created_assets
@@ -590,6 +601,7 @@ def main():
                         except Exception as e:
                             print(f"  Error posting comment for asset {asset_id}: {e}")
 
+
         # ----------------------------------------------------------------
         #  Step 8. Move the processed email to its destination folder
         # ----------------------------------------------------------------
@@ -598,6 +610,11 @@ def main():
         for item in filtered_data:
             message_id = item.get("MessageId")
             if not message_id or message_id in moved_messages:
+                continue
+
+            # 🚫 Skip TestResult emails flagged as missing assets
+            if item.get("SkipProcessing"):
+                print(f"Skipping move for '{item['Subject']}' — missing assets.")
                 continue
 
             # Only move if we found all expected assets
