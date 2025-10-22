@@ -168,7 +168,7 @@ button {
 /* Cards Container (for grid layouts, etc.) */
 .cards-container.processing-attack {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(300px, 1fr));
   gap: 20px; /* space between cards */
   padding-top: 15px;
 }
@@ -189,6 +189,11 @@ button {
 }
 
 .processing-attack .card.half {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 250px;
+  box-sizing: border-box;
   box-shadow: 2px 4px 10px rgba(0, 0, 0, 0.1);
 }
 
@@ -204,7 +209,7 @@ button {
   grid-column: 1 / span 2;
   min-height: 100px;
   box-shadow: 2px 4px 10px rgba(0, 0, 0, 0.1);
-  margin-bottom: 20px;
+  margin-bottom: 10px;
 }
 
 .processing-attack .card-header {
