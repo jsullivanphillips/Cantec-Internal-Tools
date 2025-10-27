@@ -447,6 +447,21 @@ class BackflowAutomationMetric(db.Model):
         return f"<Metric {self.key}={self.value}>"
 
 
+# models/technician.py
+class Technician(db.Model):
+    __tablename__ = 'technician'
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(255), unique=True, nullable=False)
+    type = db.Column(db.String(100), nullable=True)  # e.g., 'Senior Tech', 'Mid-Level Tech'
+    active = db.Column(db.Boolean, default=True)
+    updated_on_st = db.Column(db.DateTime(timezone=True))
+
+    def __repr__(self):
+        return f"<Technician {self.name} | {self.type or 'Unassigned'}>"
+
+
+
 
 if __name__ == '__main__':
     from app import create_app

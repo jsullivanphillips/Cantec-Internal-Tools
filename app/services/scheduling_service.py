@@ -1,6 +1,5 @@
 # app/services/scheduling_service.py
 from datetime import datetime, timedelta, time
-from app.constants import TECH_CATEGORIES
 
 def get_working_hours_for_day(date_obj, custom_start_time=None):
     """
@@ -64,7 +63,7 @@ def find_candidate_dates(appointments_data, absences_data, allowable_techs, incl
             available_info = {}
             for tech in allowable_techs:
                 tech_name = tech.get("name", "").strip()
-                tech_type = tech.get("type", "").strip()
+                tech_type = (tech.get("type") or "").strip()
                 busy_intervals = []
                 # Process appointments.
                 for appt in appointments_data:
@@ -146,8 +145,8 @@ def process_single_day_candidate(date, available_info, tech_rows, allowable_tech
         qualified = []
         for tech in allowable_techs:
             # Updated check for nested tech selections:
-            row_techs = row.get("tech_types", {})
-            if tech.get("type") not in row_techs or tech.get("name") not in row_techs[tech.get("type")]:
+            row_techs = row.get("technicians", [])
+            if not any(t["id"] == tech.get("id") for t in row_techs):
                 continue
             tech_name = tech.get("name")
             if tech_name in available_info and available_info[tech_name]["free_hours"] >= required_day_hours[0]:
@@ -197,8 +196,8 @@ def process_multi_day_block(block, tech_rows, allowable_techs, tech_rank):
                 qualified = []
                 for tech in allowable_techs:
                     # Updated check for nested tech selections:
-                    row_techs = row.get("tech_types", {})
-                    if tech.get("type") not in row_techs or tech.get("name") not in row_techs[tech.get("type")]:
+                    row_techs = row.get("technicians", [])
+                    if not any(t["id"] == tech.get("id") for t in row_techs):
                         continue
                     date, avail_info = window[0]
                     tech_name = tech.get("name")

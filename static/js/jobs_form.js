@@ -1,172 +1,246 @@
-document.addEventListener('DOMContentLoaded', function() {
+let techData = [];
+
+// Fetch technician data
+async function loadTechnicians() {
+  const response = await fetch('/api/technicians');
+  techData = await response.json(); // { "Senior Tech": [{"id":1,"name":"Adam"}], ... }
+  console.log("returned techData:", techData);
+}
+
+// === Technician Management Section ===
+async function renderTechnicianManagement() {
+  const container = document.getElementById('techManagementContainer');
+  if (!container) return;
+  container.innerHTML = ''; // clear old content
+
+  const response = await fetch('/api/technicians');
+  const groupedData = await response.json();
+
+  Object.entries(groupedData).forEach(([type, techs]) => {
+    const groupDiv = document.createElement('div');
+    groupDiv.classList.add('tech-group');
+    groupDiv.style.marginBottom = '25px';
+    groupDiv.style.border = '1px solid #ddd';
+    groupDiv.style.borderRadius = '8px';
+    groupDiv.style.padding = '10px 15px';
+    groupDiv.style.background = '#fafafa';
+
+    const header = document.createElement('h3');
+    header.textContent = type;
+    header.style.marginBottom = '10px';
+    header.style.color = '#444';
+    header.style.fontSize = '1.1rem';
+    groupDiv.appendChild(header);
+
+    const list = document.createElement('ul');
+    list.style.listStyle = 'none';
+    list.style.padding = '0';
+
+    techs.forEach((tech) => {
+      const li = document.createElement('li');
+      li.style.display = 'flex';
+      li.style.alignItems = 'center';
+      li.style.justifyContent = 'space-between';
+      li.style.padding = '4px 0';
+
+      const name = document.createElement('span');
+      name.textContent = tech.name;
+      name.style.flex = '1';
+
+      const select = document.createElement('select');
+      ["Senior Tech", "Mid-Level Tech", "Junior Tech", "Trainee Tech", "Sprinkler Tech", "Unassigned"].forEach(optVal => {
+        const opt = document.createElement('option');
+        opt.value = optVal;
+        opt.textContent = optVal;
+        if (optVal === type) opt.selected = true;
+        select.appendChild(opt);
+      });
+      select.style.marginLeft = '10px';
+      select.style.padding = '3px 5px';
+      select.style.borderRadius = '4px';
+
+      select.addEventListener('change', async () => {
+        try {
+          const response = await fetch(`/api/technicians/${tech.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: select.value })
+          });
+          const result = await response.json();
+          console.log('Updated:', result);
+          await renderTechnicianManagement(); // Refresh instantly
+        } catch (err) {
+          console.error('Failed to update tech type:', err);
+        }
+      });
+
+      li.appendChild(name);
+      li.appendChild(select);
+      list.appendChild(li);
+    });
+
+    groupDiv.appendChild(list);
+    container.appendChild(groupDiv);
+  });
+}
+
+document.addEventListener('DOMContentLoaded', async function() {
+  await loadTechnicians();
+  renderTechnicianManagement();
+
   const techRowsContainer = document.getElementById('techRowsContainer');
   const addTechRowButton = document.getElementById('addTechRowButton');
   const hiddenInputsContainer = document.getElementById('hiddenInputsContainer');
   const scheduleForm = document.getElementById('scheduleForm');
-
-  // Nested array of tech types and their available technicians.
-  const techData = [
-    {
-      type: "Senior Tech",
-      technicians: ["Adam Bendorffe", "Craig Shepherd", "Jonathan Graves", "James Martyn"]
-    },
-    {
-      type: "Mid-Level Tech",
-      technicians: ["Alex Turko", "Austin Rasmussen", "Kyler Dickey", "Crosby Stewart", "Eric Turko"]
-    },
-    {
-      type: "Junior Tech",
-      technicians: ["Jonathan Palahicky", "Mariah Grier", "Seth Ealing"]
-    },
-    {
-      type: "Trainee Tech",
-      technicians: ["Liam Knowles", "Kevin Gao", "Hannah Feness", "James McNeil"]
-    },
-    {
-      type: "Sprinkler Tech",
-      technicians: ["Justin Walker", "Colin Peterson"]
-    }
-  ];
-
   let techRowCount = 0;
 
-  /**
-   * Creates a new tech row with:
-   * - A numeric input for # of techs
-   * - A nested multi-select dropdown for tech types and their technicians
-   * - A "Day" section with hours input
-   * - A remove-row button
-   */
+  // === Scheduling Tech Row ===
   function createTechRow() {
-    // --- ROW CONTAINER ---
     const rowContainer = document.createElement('div');
     rowContainer.classList.add('row-container');
 
-    // Grid-based wrapper for the row's columns
     const row = document.createElement('div');
     row.classList.add('tech-row');
     row.setAttribute('data-row-index', techRowCount);
-
-    // Example 3-column grid
     row.style.display = 'grid';
     row.style.gridTemplateColumns = 'auto 1fr auto';
     row.style.alignItems = 'center';
     row.style.gap = '10px';
     row.style.width = '100%';
 
-    // --- MAIN ROW (Left Column) ---
+    // --- MAIN SECTION (left) ---
     const mainRow = document.createElement('div');
     mainRow.style.display = 'flex';
-    mainRow.style.flexWrap = 'nowrap';
     mainRow.style.alignItems = 'center';
     mainRow.style.gap = '10px';
-    mainRow.style.justifySelf = 'end'; // aligns right in the grid cell
 
-    // Tech count input
     const techCountInput = document.createElement('input');
     techCountInput.type = 'number';
     techCountInput.name = 'tech_count[]';
     techCountInput.min = '1';
     techCountInput.step = '1';
-    techCountInput.value = '1'; // default to 1
+    techCountInput.value = '1';
     techCountInput.placeholder = '# Techs';
     techCountInput.style.width = '60px';
     techCountInput.style.textAlign = 'center';
 
-    // " x " text
     const timesSpan = document.createElement('span');
     timesSpan.textContent = " x ";
 
-    // --- DROPDOWN CONTAINER ---
+    // --- TECH DROPDOWN ---
     const dropdownContainer = document.createElement('div');
     dropdownContainer.style.display = 'inline-block';
     dropdownContainer.style.position = 'relative';
 
-    // Dropdown button with fixed width
     const dropdownButton = document.createElement('button');
     dropdownButton.type = 'button';
-    dropdownButton.textContent = 'Select Tech Types';
+    dropdownButton.textContent = 'Select Technicians';
     dropdownButton.classList.add('secondary-btn');
-    dropdownButton.style.width = '260px';
+    dropdownButton.style.width = '300px'; // was 260px
+    dropdownButton.style.maxWidth = '100%';
 
-    // Dropdown content container
+
     const dropdownContent = document.createElement('div');
-    dropdownContent.classList.add('dropdown-content'); // for outside-click detection
+    dropdownContent.classList.add('dropdown-content');
     dropdownContent.style.display = 'none';
     dropdownContent.style.position = 'absolute';
     dropdownContent.style.backgroundColor = '#f9f9f9';
-    dropdownContent.style.minWidth = '150px';
-    dropdownContent.style.boxShadow = '0px 8px 16px rgba(0,0,0,0.2)';
-    dropdownContent.style.padding = '5px';
+    dropdownContent.style.minWidth = '380px'; // match the button width
+    dropdownContent.style.maxWidth = '500px';
+    dropdownContent.style.boxShadow = '0px 8px 16px rgba(0,0,0,0.3)';
+    dropdownContent.style.padding = '10px';
     dropdownContent.style.zIndex = '100';
+    dropdownContent.style.maxHeight = '400px'; // taller view
+    dropdownContent.style.overflowY = 'auto';
+    dropdownContent.style.borderRadius = '6px';
+    dropdownContent.style.border = '1px solid #ccc';
 
-    // Populate the dropdown with nested checkboxes
-    techData.forEach((group) => {
-      // Container for each top-level type + sub-list
+    const typeOrder = [
+      "Senior Tech",
+      "Mid-Level Tech",
+      "Junior Tech",
+      "Trainee Tech",
+      "Sprinkler Tech",
+      "Unassigned"
+    ];
+
+    // Render in the specified order (no extra Object.entries loop!)
+    typeOrder.forEach(type => {
+      if (!techData[type]) return; // skip missing categories
+      const technicians = techData[type];
+
       const groupContainer = document.createElement('div');
       groupContainer.style.borderBottom = '1px solid #ddd';
       groupContainer.style.padding = '5px 0';
 
-      // Main type label + checkbox
-      const typeLabel = document.createElement('label');
-      typeLabel.style.display = 'block';
-      typeLabel.style.fontWeight = 'bold';
-      const typeCheckbox = document.createElement('input');
-      typeCheckbox.type = 'checkbox';
-      typeCheckbox.name = 'tech_types_' + techRowCount + '[]';
-      typeCheckbox.value = group.type;
-      typeCheckbox.style.marginRight = '6px';
+      // === Group Header with Select-All checkbox ===
+      const headerDiv = document.createElement('div');
+      headerDiv.style.display = 'flex';
+      headerDiv.style.alignItems = 'center';
+      headerDiv.style.justifyContent = 'space-between';
+      headerDiv.style.fontWeight = 'bold';
+      headerDiv.style.marginBottom = '4px';
 
-      // Toggle sub-tech checkboxes when main type is checked/unchecked
-      typeCheckbox.addEventListener('change', function() {
-        const subChecks = groupContainer.querySelectorAll('.sub-tech-checkbox');
-        subChecks.forEach((sub) => {
-          sub.checked = typeCheckbox.checked;
-        });
-        updateDropdownButtonText(dropdownButton, dropdownContent);
-      });
+      const typeLabel = document.createElement('span');
+      typeLabel.textContent = type;
 
-      typeLabel.appendChild(typeCheckbox);
-      typeLabel.appendChild(document.createTextNode(group.type));
+      const selectAllLabel = document.createElement('label');
+      selectAllLabel.style.fontWeight = 'normal';
+      selectAllLabel.style.fontSize = '0.9rem';
+      selectAllLabel.style.cursor = 'pointer';
+      selectAllLabel.style.color = '#007bff';
 
-      // Sub-list container
+      const selectAllCheckbox = document.createElement('input');
+      selectAllCheckbox.type = 'checkbox';
+      selectAllCheckbox.style.marginRight = '5px';
+      selectAllLabel.appendChild(selectAllCheckbox);
+      selectAllLabel.appendChild(document.createTextNode('Select All'));
+
+      headerDiv.appendChild(typeLabel);
+      headerDiv.appendChild(selectAllLabel);
+      groupContainer.appendChild(headerDiv);
+
+      // === Individual Techs List ===
       const subList = document.createElement('div');
-      subList.style.marginLeft = '20px';
+      subList.style.marginLeft = '15px';
 
-      group.technicians.forEach((techName) => {
-        // Each sub-tech is also a checkbox
-        const subLabel = document.createElement('label');
-        subLabel.style.display = 'block';
-        subLabel.style.padding = '3px 0';
+      technicians.forEach((tech) => {
+        const label = document.createElement('label');
+        label.style.display = 'block';
+        label.style.padding = '2px 0';
 
-        const subCheckbox = document.createElement('input');
-        subCheckbox.type = 'checkbox';
-        // Stored as "Type:Technician" to know which group they belong to
-        subCheckbox.value = group.type + ':' + techName;
-        subCheckbox.name = 'tech_types_' + techRowCount + '[]';
-        subCheckbox.classList.add('sub-tech-checkbox');
-        subCheckbox.style.marginRight = '6px';
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.name = `techs_row_${techRowCount}[]`;
+        checkbox.value = tech.id;
+        checkbox.dataset.techName = tech.name;
+        checkbox.dataset.type = type;          // 👈 add this line
+        checkbox.style.marginRight = '5px';
 
-        // If a sub-tech is unchecked, uncheck the main type
-        subCheckbox.addEventListener('change', function() {
-          if (!subCheckbox.checked) {
-            typeCheckbox.checked = false;
-          }
+        checkbox.addEventListener('change', () => {
+          const allChecked = Array.from(subList.querySelectorAll('input[type="checkbox"]'))
+            .every(cb => cb.checked);
+          selectAllCheckbox.checked = allChecked;
           updateDropdownButtonText(dropdownButton, dropdownContent);
         });
 
-        subLabel.appendChild(subCheckbox);
-        // Display only the technician's name
-        subLabel.appendChild(document.createTextNode(techName));
-        subList.appendChild(subLabel);
+        label.appendChild(checkbox);
+        label.appendChild(document.createTextNode(tech.name));
+        subList.appendChild(label);
       });
 
-      groupContainer.appendChild(typeLabel);
       groupContainer.appendChild(subList);
       dropdownContent.appendChild(groupContainer);
+
+      // === Select All behavior ===
+      selectAllCheckbox.addEventListener('change', () => {
+        const allBoxes = subList.querySelectorAll('input[type="checkbox"]');
+        allBoxes.forEach(cb => cb.checked = selectAllCheckbox.checked);
+        updateDropdownButtonText(dropdownButton, dropdownContent);
+      });
     });
 
-    // Toggle dropdown on button click
+
     dropdownButton.addEventListener('click', function(event) {
       event.stopPropagation();
       dropdownContent.style.display =
@@ -176,17 +250,75 @@ document.addEventListener('DOMContentLoaded', function() {
     dropdownContainer.appendChild(dropdownButton);
     dropdownContainer.appendChild(dropdownContent);
 
-    // " for " text
+    function updateDropdownButtonText(button, content) {
+      const checked = Array.from(content.querySelectorAll('input[type="checkbox"]:checked'));
+      if (checked.length === 0) {
+        button.textContent = 'Select Technicians';
+        return;
+      }
+
+      // Build a map of selected names by type
+      const selectedByType = {};
+      for (const chk of checked) {
+        const t = chk.dataset.type || 'Unassigned';
+        if (!selectedByType[t]) selectedByType[t] = [];
+        selectedByType[t].push(chk.dataset.techName);
+      }
+
+      // Order + plural labels
+      const typeOrder = [
+        "Senior Tech",
+        "Mid-Level Tech",
+        "Junior Tech",
+        "Trainee Tech",
+        "Sprinkler Tech",
+        "Unassigned"
+      ];
+
+      const pluralLabel = (type) => {
+        // Tweak pluralization however you like:
+        // return type + "s";
+        // or nicer:
+        if (type === "Mid-Level Tech") return "Mid-Level Techs";
+        if (type === "Senior Tech") return "Senior Techs";
+        if (type === "Junior Tech") return "Junior Techs";
+        if (type === "Trainee Tech") return "Trainee Techs";
+        if (type === "Sprinkler Tech") return "Sprinkler Techs";
+        if (type === "Unassigned") return "Unassigned";
+        return type + "s";
+      };
+
+      const pieces = [];
+
+      // Build the display list in the specified order
+      for (const type of typeOrder) {
+        if (!techData[type]) continue; // not rendered / no techs of this type in data
+        const allNamesInType = techData[type].map(t => t.name);
+        const selectedNamesInType = selectedByType[type] || [];
+
+        if (selectedNamesInType.length === allNamesInType.length && allNamesInType.length > 0) {
+          // All selected -> push the group label only
+          pieces.push(pluralLabel(type));
+        } else if (selectedNamesInType.length > 0) {
+          // Partial -> list the actual names (keep original selection order)
+          pieces.push(...selectedNamesInType);
+        }
+      }
+
+      button.textContent = pieces.length ? pieces.join(', ') : 'Select Technicians';
+    }
+
+
+
     const forSpan = document.createElement('span');
     forSpan.textContent = " for ";
 
-    // Append main row elements
     mainRow.appendChild(techCountInput);
     mainRow.appendChild(timesSpan);
     mainRow.appendChild(dropdownContainer);
     mainRow.appendChild(forSpan);
 
-    // --- DAY SECTION (Middle Column) ---
+    // --- DAY / HOURS SECTION (middle) ---
     const daySection = document.createElement('div');
     daySection.style.display = 'block';
     daySection.style.marginTop = '10px';
@@ -196,35 +328,29 @@ document.addEventListener('DOMContentLoaded', function() {
     dayContainer.classList.add('day-container');
     dayContainer.style.display = 'block';
 
-    // Adds a single "Day" input row
     function addDayEntry() {
       const dayEntry = document.createElement('div');
       dayEntry.classList.add('day-entry');
       dayEntry.style.marginBottom = '5px';
 
-      // Day label
       const dayLabel = document.createElement('span');
       dayLabel.classList.add('day-label');
+      const existing = dayContainer.querySelectorAll('.day-entry').length;
+      dayLabel.textContent = "Day " + (existing + 1) + ": ";
 
-      // "Day X: "
-      const existingEntries = dayContainer.querySelectorAll('.day-entry');
-      dayLabel.textContent = "Day " + (existingEntries.length + 1) + ": ";
+      const hoursInput = document.createElement('input');
+      hoursInput.type = 'number';
+      hoursInput.name = `tech_day_hours_${techRowCount}[]`;
+      hoursInput.min = '0';
+      hoursInput.step = '0.5';
+      hoursInput.placeholder = 'Hours';
+      hoursInput.style.width = '60px';
+      hoursInput.style.textAlign = 'center';
 
-      // Hours input
-      const dayHoursInput = document.createElement('input');
-      dayHoursInput.type = 'number';
-      dayHoursInput.name = 'tech_day_hours_' + row.getAttribute('data-row-index') + '[]';
-      dayHoursInput.min = '0';
-      dayHoursInput.step = '0.5';
-      dayHoursInput.placeholder = 'Hours';
-      dayHoursInput.style.width = '60px';
-      dayHoursInput.style.textAlign = 'center';
+      const hrsSpan = document.createElement('span');
+      hrsSpan.textContent = " hrs ";
+      hrsSpan.style.color = "#555";
 
-      const dayHoursSuffix = document.createElement('span');
-      dayHoursSuffix.textContent = " hrs";
-      dayHoursSuffix.style.color = "#555";
-
-      // Remove day button
       const removeDayButton = document.createElement('button');
       removeDayButton.type = 'button';
       removeDayButton.textContent = 'x';
@@ -235,37 +361,28 @@ document.addEventListener('DOMContentLoaded', function() {
       removeDayButton.style.fontWeight = 'bold';
       removeDayButton.style.padding = '2px 6px';
       removeDayButton.style.webkitTextStroke = '1px darkred';
-
-      removeDayButton.addEventListener('click', function() {
+      removeDayButton.addEventListener('click', () => {
         dayContainer.removeChild(dayEntry);
-        reindexDayEntries(row, row.getAttribute('data-row-index'));
+        reindexDayEntries(row, techRowCount);
       });
 
       const removeDayLabel = document.createElement('span');
       removeDayLabel.textContent = " remove day";
       removeDayLabel.style.color = '#cf4655';
 
-      dayEntry.appendChild(dayLabel);
-      dayEntry.appendChild(dayHoursInput);
-      dayEntry.appendChild(dayHoursSuffix);
-      dayEntry.appendChild(removeDayButton);
-      dayEntry.appendChild(removeDayLabel);
+      dayEntry.append(dayLabel, hoursInput, hrsSpan, removeDayButton, removeDayLabel);
       dayContainer.appendChild(dayEntry);
     }
 
-    // Add one default day entry
+    // Default first day
     addDayEntry();
 
-    // + Add Day button
     const addDayButton = document.createElement('button');
     addDayButton.type = 'button';
     addDayButton.textContent = '+ Add Day';
     addDayButton.classList.add('secondary-btn');
     addDayButton.style.marginTop = '5px';
-
-    addDayButton.addEventListener('click', function() {
-      addDayEntry();
-    });
+    addDayButton.addEventListener('click', addDayEntry);
 
     const addDayWrapper = document.createElement('div');
     addDayWrapper.style.textAlign = 'center';
@@ -275,12 +392,11 @@ document.addEventListener('DOMContentLoaded', function() {
     daySection.appendChild(dayContainer);
     daySection.appendChild(addDayWrapper);
 
-    // --- REMOVE ROW (Right Column) ---
+    // --- REMOVE ROW BUTTON (right) ---
     const removeRowContainer = document.createElement('div');
     removeRowContainer.style.display = 'flex';
     removeRowContainer.style.alignItems = 'center';
     removeRowContainer.style.justifyContent = 'start';
-    removeRowContainer.style.alignSelf = 'center';
 
     const removeButton = document.createElement('button');
     removeButton.type = 'button';
@@ -291,7 +407,6 @@ document.addEventListener('DOMContentLoaded', function() {
     removeButton.style.fontWeight = 'bold';
     removeButton.style.padding = '2px 6px';
     removeButton.style.webkitTextStroke = '1px darkred';
-
     removeButton.addEventListener('click', function() {
       techRowsContainer.removeChild(rowContainer);
       reindexTechRows();
@@ -301,13 +416,9 @@ document.addEventListener('DOMContentLoaded', function() {
     removeRowLabel.textContent = " remove row";
     removeRowLabel.style.color = '#cf4655';
 
-    removeRowContainer.appendChild(removeButton);
-    removeRowContainer.appendChild(removeRowLabel);
+    removeRowContainer.append(removeButton, removeRowLabel);
 
-    row.appendChild(mainRow);
-    row.appendChild(daySection);
-    row.appendChild(removeRowContainer);
-
+    row.append(mainRow, daySection, removeRowContainer);
     rowContainer.appendChild(row);
     techRowsContainer.appendChild(rowContainer);
 
@@ -316,37 +427,26 @@ document.addEventListener('DOMContentLoaded', function() {
 
   addTechRowButton.addEventListener('click', createTechRow);
 
-  // Uncomment the following line if you want a default row on page load:
-  // createTechRow();
-
-  // --- WEEKDAY BUTTONS ---
-  const weekdayButtons = document.querySelectorAll('.weekday-button');
-  weekdayButtons.forEach(function(button) {
-    button.addEventListener('click', function() {
-      if (button.classList.contains('weekday-true')) {
-        button.classList.remove('weekday-true');
-        button.classList.add('weekday-false');
-      } else {
-        button.classList.remove('weekday-false');
-        button.classList.add('weekday-true');
-      }
+  // --- Reindex helpers ---
+  function reindexDayEntries(row, rowIndex) {
+    const entries = row.querySelectorAll('.day-entry');
+    entries.forEach((entry, i) => {
+      entry.querySelector('.day-label').textContent = `Day ${i + 1}: `;
+      entry.querySelector('input[type="number"]').name = `tech_day_hours_${rowIndex}[]`;
     });
-  });
+  }
 
-  scheduleForm.addEventListener('submit', function() {
-    hiddenInputsContainer.innerHTML = '';
-    weekdayButtons.forEach(function(button) {
-      if (button.classList.contains('weekday-true')) {
-        const day = button.getAttribute('data-day');
-        const hiddenInput = document.createElement('input');
-        hiddenInput.type = 'hidden';
-        hiddenInput.name = 'weekdays';
-        hiddenInput.value = day;
-        hiddenInputsContainer.appendChild(hiddenInput);
-      }
+  function reindexTechRows() {
+    const rows = techRowsContainer.querySelectorAll('.row-container');
+    rows.forEach((container, i) => {
+      const row = container.querySelector('.tech-row');
+      row.setAttribute('data-row-index', i);
+      reindexDayEntries(row, i);
     });
-  });
+    techRowCount = rows.length;
+  }
 
+  // Close dropdowns when clicking elsewhere
   document.addEventListener('click', function(event) {
     const allDropdowns = document.querySelectorAll('.dropdown-content');
     allDropdowns.forEach(function(dropdown) {
@@ -358,73 +458,4 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     });
   });
-
-  /**
-   * Updates the dropdown button text.
-   * For each group, if all sub-technicians are checked, it shows "GroupType s"
-   * Otherwise, it lists individual technician names.
-   */
-  function updateDropdownButtonText(button, content) {
-    let selected = [];
-    Array.from(content.children).forEach(groupContainer => {
-      const typeLabel = groupContainer.querySelector('label');
-      const mainCheckbox = typeLabel.querySelector('input[type="checkbox"]');
-      const groupType = mainCheckbox.value;
-      const subList = groupContainer.querySelector('div');
-      const subCheckboxes = subList.querySelectorAll('.sub-tech-checkbox');
-      const totalSubs = subCheckboxes.length;
-      let checkedSubs = [];
-      subCheckboxes.forEach(sub => {
-        if (sub.checked) {
-          let subName = sub.value.split(':')[1];
-          checkedSubs.push(subName);
-        }
-      });
-      if (checkedSubs.length === totalSubs && totalSubs > 0) {
-        // All technicians in this group are selected: display group label (pluralized)
-        selected.push(groupType + "s");
-      } else if (checkedSubs.length > 0) {
-        selected = selected.concat(checkedSubs);
-      }
-    });
-    button.textContent = selected.length > 0 ? selected.join(', ') : 'Select Tech Types';
-  }
-
-  /**
-   * Reindexes day entries so the labels and input names remain consistent.
-   */
-  function reindexDayEntries(row, rowIndex) {
-    const dayContainer = row.querySelector('.day-container');
-    const dayEntries = dayContainer.querySelectorAll('.day-entry');
-    dayEntries.forEach(function(entry, idx) {
-      const label = entry.querySelector('.day-label');
-      label.textContent = "Day " + (idx + 1) + ": ";
-      const hoursInput = entry.querySelector('input[type="number"]');
-      hoursInput.name = 'tech_day_hours_' + rowIndex + '[]';
-    });
-  }
-
-  /**
-   * Reindexes tech rows after one is removed.
-   */
-  function reindexTechRows() {
-    const rows = techRowsContainer.querySelectorAll('.row-container');
-    rows.forEach(function(container, index) {
-      const row = container.querySelector('.tech-row');
-      row.setAttribute('data-row-index', index);
-
-      reindexDayEntries(row, index);
-
-      const checkboxes = row.querySelectorAll('.dropdown-content input[type="checkbox"]');
-      checkboxes.forEach(function(checkbox) {
-        checkbox.name = 'tech_types_' + index + '[]';
-      });
-
-      const hoursInputs = row.querySelectorAll('input[name^="tech_day_hours_"]');
-      hoursInputs.forEach(function(input) {
-        input.name = 'tech_day_hours_' + index + '[]';
-      });
-    });
-    techRowCount = rows.length;
-  }
 });

@@ -2,22 +2,34 @@
 
 {% block title %}ScheduleAssist{% endblock %}
 
+<style>
+  #techManagementSection {
+  padding-bottom: 40px;
+}
+
+.tech-group h3 {
+  font-weight: 600;
+  border-bottom: 1px solid #ccc;
+  padding-bottom: 4px;
+}
+
+.tech-group ul li select {
+  background-color: #fff;
+  border: 1px solid #ccc;
+  font-size: 0.9rem;
+}
+</style>
 {% block content %}
   <div class="main-container">
     <!-- Page header -->
-    <h1 class="page-title">ScheduleAssist</h1>
+    <h1 class="page-title">Scheduling Assistant</h1>
 
     <!-- Tech rows form -->
     <form method="post" id="scheduleForm">
-      <!-- Dynamic Tech Rows Section -->
-      <div id="techRowsContainer">
-        <!-- Tech rows (cards) will be added dynamically here via jobs_form.js -->
-      </div>
+      <div id="techRowsContainer"></div>
 
-      <!-- Add Tech Row button -->
       <button type="button" id="addTechRowButton" class="primary-btn">+ Add Tech Row</button>
 
-      <!-- Weekday selection container -->
       <div class="weekday-container">
         <label class="weekday-label">Select Weekdays:</label>
         <div id="weekdaysContainer">
@@ -29,7 +41,6 @@
         </div>
       </div>
 
-      <!-- Global settings row -->
       <div class="global-settings">
         <label for="start_time">Start time after:</label>
         <input type="time" id="start_time" name="start_time" min="08:30" max="16:30" value="08:30" required>
@@ -40,12 +51,20 @@
         </label>
       </div>
 
-      <!-- Hidden container for dynamically added hidden inputs (weekdays) -->
       <div id="hiddenInputsContainer"></div>
-
-      <!-- Submit button -->
       <button type="submit" id="findDatesButton" class="primary-btn">Find Dates</button>
     </form>
+
+    <!-- ✅ New Technician Management Section -->
+    <hr style="margin: 40px 0;">
+    <section id="techManagementSection">
+      <h2 class="section-title">Technician Management</h2>
+      <p class="section-description">Assign or reassign technicians to their proper types below. Changes are saved instantly.</p>
+
+      <div id="techManagementContainer" class="tech-management-container">
+        <!-- Technicians grouped by type will appear here -->
+      </div>
+    </section>
   </div>
 {% endblock %}
 
