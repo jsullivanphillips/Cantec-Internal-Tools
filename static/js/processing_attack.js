@@ -299,7 +299,7 @@ const ProcessingAttack = (() => {
       <div class="spinner-border text-primary" role="status">
         <span class="visually-hidden">Loading...</span>
       </div>
-      Fetching Processed Vs. Incoming jobs...
+      Fetching Jobs to be invoiced...
     `;
 
     document.getElementById("jobsProcessedMinusIncomingJobs").innerHTML = `
