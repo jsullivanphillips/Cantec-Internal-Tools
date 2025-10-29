@@ -192,7 +192,7 @@ button {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  min-height: 250px;
+  min-height: 230px;
   box-sizing: border-box;
   box-shadow: 2px 4px 10px rgba(0, 0, 0, 0.1);
 }
@@ -737,8 +737,20 @@ button {
   cursor: not-allowed;
 }
 
+#numberOfLocationsWithReportConversionTagCard.disabled {
+  pointer-events: none;
+  opacity: 0.5;
+  filter: grayscale(50%);
+  cursor: not-allowed;
+}
+
 /* When active, indicate it's clickable */
 #numberOfPinkFolderJobsCard.clickable {
+  cursor: pointer;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+#numberOfLocationsWithReportConversionTagCard.clickable {
   cursor: pointer;
   transition: box-shadow 0.2s ease, transform 0.2s ease;
 }

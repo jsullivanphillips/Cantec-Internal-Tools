@@ -283,8 +283,20 @@ const ProcessingAttack = (() => {
       <div class="spinner-border text-primary" role="status">
         <span class="visually-hidden">Loading...</span>
       </div>
-      Fetching jobs to be marked complete...
     `;
+
+    document.getElementById("numberOfJobsWithReportConversionTag").innerHTML = `
+      <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Loading...</span>
+      </div>
+    `;
+
+    document.getElementById("earliestJobToBeConvertedAddress").innerHTML = `
+      <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Loading...</span>
+      </div>
+    `;
+    document.getElementById("earliestJobToBeConvertedDate").textContent = "";
 
     document.getElementById("oldestJobToBeMarkedCompleteAddress").textContent = "";
     document.getElementById("oldestJobToBeMarkedCompleteType").textContent = "";
@@ -292,21 +304,18 @@ const ProcessingAttack = (() => {
       <div class="spinner-border text-primary" role="status">
         <span class="visually-hidden">Loading...</span>
       </div>
-      Fetching oldest job...
     `;
 
     document.getElementById("jobsToBeInvoiced").innerHTML = `
       <div class="spinner-border text-primary" role="status">
         <span class="visually-hidden">Loading...</span>
       </div>
-      Fetching Jobs to be invoiced...
     `;
 
     document.getElementById("jobsProcessedMinusIncomingJobs").innerHTML = `
       <div class="spinner-border text-primary" role="status">
         <span class="visually-hidden">Loading...</span>
       </div>
-      Fetching Processed Vs. Incoming jobs...
     `;
     document.getElementById("incomingJobs").innerHTML = "";
     document.getElementById("jobsProcessed").innerHTML = "";
@@ -317,7 +326,6 @@ const ProcessingAttack = (() => {
       <div class="spinner-border text-primary" role="status">
         <span class="visually-hidden">Loading...</span>
       </div>
-      Fetching pink folder...
     `;
 
     fetch("/processing_attack/complete_jobs", {
@@ -329,6 +337,46 @@ const ProcessingAttack = (() => {
       .then(data => {
         console.log("Complete jobs data:", data);
         document.getElementById("jobsToBeMarkedComplete").textContent = data.jobs_to_be_marked_complete;
+
+
+        // Jobs requiring report conversion
+        document.getElementById("numberOfJobsWithReportConversionTag").textContent = data.jobs_to_be_converted.length;
+        const oldestJobsList = document.getElementById("scheduledJobsRequiringReportConversionListModal");
+          oldestJobsList.innerHTML = "";
+        if (data.jobs_to_be_converted.length > 0){
+          const earliest_job_to_be_converted = data.jobs_to_be_converted[0];
+          for (const job of data.jobs_to_be_converted) {
+            const jobDate = new Date(job.scheduledDate * 1000)
+              .toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+
+            const jobItem = document.createElement("div");
+            jobItem.className = "list-group-item mb-2";
+
+            jobItem.innerHTML = `
+              <div class="d-flex justify-content-between align-items-center">
+                <div>
+                  <h6 class="mb-1">${job.location.address.street}</h6>
+                  <small>${jobDate}</small>
+                </div>
+                <a href="https://app.servicetrade.com/jobs/${job.id}" 
+                  class="btn btn-sm" 
+                  style="background-color: #0C62A6; color: white;" 
+                  target="_blank">View Job</a>
+              </div>
+            `;
+
+            oldestJobsList.appendChild(jobItem);
+          }
+          
+          document.getElementById("earliestJobToBeConvertedAddress").textContent = earliest_job_to_be_converted.location.address.street;
+          document.getElementById("earliestJobToBeConvertedDate").textContent =
+            new Date(earliest_job_to_be_converted.scheduledDate * 1000)
+                .toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+        } else {
+          document.getElementById("earliestJobToBeConvertedAddress").textContent = "No Jobs to Convert";
+        }
+        
+        
 
         const oldestJobs = data.oldest_jobs_to_be_marked_complete;
 
@@ -430,6 +478,10 @@ const ProcessingAttack = (() => {
         const pinkFolderCard = document.getElementById("numberOfPinkFolderJobsCard");
         pinkFolderCard.classList.remove("disabled");
         pinkFolderCard.classList.add("clickable");
+
+        const scheduledJobsRequiringConversionCard = document.getElementById("numberOfLocationsWithReportConversionTagCard");
+        scheduledJobsRequiringConversionCard.classList.remove("disabled");
+        scheduledJobsRequiringConversionCard.classList.add("clickable");
       })
       .catch(error => console.error("Error loading complete jobs:", error));
   }
@@ -750,6 +802,47 @@ const ProcessingAttack = (() => {
     }
     incomingJobsText.style.color = "#b92525";
 
+    // Number of Scheduled Jobs to be Converted
+    const numberOfScheduledJobsToBeConvertedText = document.getElementById("numberOfJobsWithReportConversionTag");
+    const numberOfScheduledJobsToBeConvertedCard = document.getElementById("numberOfLocationsWithReportConversionTagCard");
+    const numberOfScheduledJobsToBeConverted = data.jobs_to_be_converted.length;
+    if (numberOfScheduledJobsToBeConverted <= 10) {
+      numberOfScheduledJobsToBeConvertedText.style.color = "#27a532";
+      numberOfScheduledJobsToBeConvertedCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(229, 248, 225))";
+      numberOfScheduledJobsToBeConvertedCard.style.borderTop = "5px solid #27a532";
+    } else {
+      numberOfScheduledJobsToBeConvertedText.style.color = "#b92525";
+      numberOfScheduledJobsToBeConvertedCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(248, 225, 227))";
+      numberOfScheduledJobsToBeConvertedCard.style.borderTop = "5px solid #b92525";
+    }
+
+    
+    // Earliest Scheduled Job with Report Conversion
+    const earliestScheduledJobToBeConvertedAddressText = document.getElementById("earliestJobToBeConvertedAddress");
+    const earliestScheduledJobToBeConvertedDateText = document.getElementById("earliestJobToBeConvertedDate");
+    const earliestScheduledJobToBeConvertedCard = document.getElementById("earliestJobToBeConvertedCard");
+    const earliestScheduledJobDate = data.jobs_to_be_converted[0].scheduledDate
+    const jobDate = new Date(earliestScheduledJobDate * 1000);
+
+    // Get the current date and a date two weeks from now
+    const now = new Date();
+    const twoWeeksFromNow = new Date();
+    twoWeeksFromNow.setDate(now.getDate() + 14);
+
+    // Check if the job date is equal to or further than 2 weeks away
+    if (jobDate >= twoWeeksFromNow) {
+      earliestScheduledJobToBeConvertedAddressText.style.color = "#27a532";
+      earliestScheduledJobToBeConvertedDateText.style.color = "#27a532";
+      earliestScheduledJobToBeConvertedCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(229, 248, 225))";
+      earliestScheduledJobToBeConvertedCard.style.borderTop = "5px solid #27a532";
+    } else {
+      earliestScheduledJobToBeConvertedAddressText.style.color = "#b92525";
+      earliestScheduledJobToBeConvertedDateText.style.color = "#b92525";
+      earliestScheduledJobToBeConvertedCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(248, 225, 227))";
+      earliestScheduledJobToBeConvertedCard.style.borderTop = "5px solid #b92525";
+    }
+
+
   }
 
   // Update the week display (e.g., "Week of March 24 - 28").
@@ -888,6 +981,24 @@ const ProcessingAttack = (() => {
       oldestJobsModal.show();
     });
   }
+
+  function setupScheduledJobsRequiringConversionCardToggle() {
+    const scheduledJobsRequiringReportConversionCard = document.getElementById("numberOfLocationsWithReportConversionTagCard");
+
+    // Start in loading state
+    scheduledJobsRequiringReportConversionCard.classList.add("disabled");
+    scheduledJobsRequiringReportConversionCard.classList.remove("clickable");
+
+    scheduledJobsRequiringReportConversionCard.addEventListener("click", () => {
+      if (!isOldestJobsDataLoaded) {
+        console.warn("data not loaded yet");
+        return;
+      }
+
+      const scheduledJobsRequiringConversionModal = new bootstrap.Modal(document.getElementById("scheduledJobsRequiringReportConversionModal"));
+      scheduledJobsRequiringConversionModal.show();
+    })
+  }
   
 
 
@@ -913,6 +1024,7 @@ const ProcessingAttack = (() => {
     initCharts();
     setupPinkFolderCardToggle();
     setupOldestJobsCardToggle();
+    setupScheduledJobsRequiringConversionCardToggle();
     const weekSelect = document.getElementById("week-select");
     if (weekSelect.value) {
       const selectedMonday = weekSelect.value;

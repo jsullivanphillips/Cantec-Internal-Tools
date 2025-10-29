@@ -81,6 +81,8 @@ def processing_attack_complete_jobs():
 
     jobs_to_be_invoiced = get_jobs_to_be_invoiced()
 
+    num_locations_to_be_converted, jobs_to_be_converted = find_report_conversion_jobs()
+
     response_data = {
         "jobs_to_be_marked_complete": len(jobs_to_be_marked_complete),
         "job_type_count": jobs_by_job_type,
@@ -92,7 +94,9 @@ def processing_attack_complete_jobs():
         "jobs_processed_today": jobs_processed_today,
         "incoming_jobs_today": incoming_jobs_today,
         "time_in_pink_folder": time_in_pink_folder,
-        "jobs_to_be_invoiced": jobs_to_be_invoiced
+        "jobs_to_be_invoiced": jobs_to_be_invoiced,
+        "num_locations_to_be_converted": num_locations_to_be_converted,
+        "jobs_to_be_converted": jobs_to_be_converted
     }
     return jsonify(response_data)
 
@@ -122,7 +126,42 @@ def get_jobs_to_be_invoiced():
     jobs = resp.get("data", {}).get("jobs", [])
     return len(jobs)
     
+def find_report_conversion_jobs():
+    # Grab locations with Report_conversion tag
+    params = {
+        "tag": "Report_Conversion",
+        "limit": 1000
+    }
+    response = api_session.get(f"{SERVICE_TRADE_API_BASE}/location", params=params)
+    response.raise_for_status()
+    locations = response.json().get("data", {}).get("locations", [])
+    print(f"\nfound {len(locations)} locations")
 
+    location_ids = ""
+    for l in locations:
+        l_id = l.get("id")
+        print(f"{l.get("address").get("street")}: {l.get("id")}")
+        location_ids += f"{l_id},"
+    
+    params = {
+        "status": "scheduled",
+        "scheduleDateFrom": datetime.timestamp(datetime.now()),
+        "scheduleDateTo": datetime.timestamp(datetime.now() + timedelta(days=180)),
+        "locationId": location_ids,
+        "type": "inspection"
+    }
+    response = api_session.get(f"{SERVICE_TRADE_API_BASE}/job", params=params)
+    response.raise_for_status()
+    jobs = response.json().get("data", {}).get("jobs", [])
+    print(f"found {len(jobs)} jobs")
+
+    # Sort jobs by job.get("scheduledDate")
+    jobs.sort(key=lambda job: job.get("scheduledDate"))
+
+    for job in jobs:
+        print(f"{job.get("location").get("address").get("street")}: {job.get("id")} : Scheduled -> {datetime.fromtimestamp(job.get("scheduledDate"))}")
+
+    return len(locations), jobs
 
 
 def get_pink_folder_data():
