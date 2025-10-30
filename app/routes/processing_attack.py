@@ -135,12 +135,10 @@ def find_report_conversion_jobs():
     response = api_session.get(f"{SERVICE_TRADE_API_BASE}/location", params=params)
     response.raise_for_status()
     locations = response.json().get("data", {}).get("locations", [])
-    print(f"\nfound {len(locations)} locations")
 
     location_ids = ""
     for l in locations:
         l_id = l.get("id")
-        print(f"{l.get("address").get("street")}: {l.get("id")}")
         location_ids += f"{l_id},"
     
     params = {
@@ -157,9 +155,6 @@ def find_report_conversion_jobs():
 
     # Sort jobs by job.get("scheduledDate")
     jobs.sort(key=lambda job: job.get("scheduledDate"))
-
-    for job in jobs:
-        print(f"{job.get("location").get("address").get("street")}: {job.get("id")} : Scheduled -> {datetime.fromtimestamp(job.get("scheduledDate"))}")
 
     return len(locations), jobs
 
