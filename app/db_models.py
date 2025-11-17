@@ -297,39 +297,6 @@ class ServiceRecurrence(db.Model):
         return (self.est_on_site_hours or 0.0) + t_hours
 
 
-
-
-class Quote(db.Model):
-    __tablename__ = 'quote'
-
-    id = db.Column(db.Integer, primary_key=True)
-    quote_id = db.Column(db.BIGINT, unique=True, nullable=False)
-    customer_name = db.Column(db.String(255))
-    location_id = db.Column(db.BIGINT)
-    location_address = db.Column(db.String(255))
-    status = db.Column(db.String(100))
-    quote_created_on = db.Column(db.DateTime)
-    total_price = db.Column(db.Float)
-    quote_request = db.Column(db.String(100))
-    owner_id = db.Column(db.BIGINT)
-    owner_email = db.Column(db.String(255))
-    job_created = db.Column(db.Boolean, default=False)
-    job_id = db.Column(db.BIGINT, nullable=True)
-    linked_deficiency_id = db.Column(db.BIGINT, nullable=True)
-    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    items = db.relationship('QuoteItem', back_populates='quote')
-    job = db.relationship(
-        "Job",
-        primaryjoin="foreign(Quote.job_id) == Job.job_id",
-        backref="quote",
-        lazy="joined",
-        uselist=False
-    )
-
-    def __repr__(self):
-        return f"<Quote {self.quote_id} | {self.status} | Job Created: {self.job_created}>"
-
-
 class QuoteItem(db.Model):
     __tablename__ = 'quote_item'
 
@@ -343,6 +310,42 @@ class QuoteItem(db.Model):
     total_price    = db.Column(db.Float, nullable=False)
 
     quote = db.relationship('Quote', back_populates='items')
+
+class QuoteDeficiencyLink(db.Model):
+    __tablename__ = "quote_deficiency_link"
+
+    id = db.Column(db.Integer, primary_key=True)
+    quote_id = db.Column(db.BIGINT, db.ForeignKey("quote.quote_id"), nullable=False)
+    deficiency_id = db.Column(db.Integer, db.ForeignKey("deficiency.id"), nullable=False)
+
+
+class Quote(db.Model):
+    __tablename__ = 'quote'
+
+    id = db.Column(db.Integer, primary_key=True)
+    quote_id = db.Column(db.BIGINT, unique=True, nullable=False)
+    customer_name = db.Column(db.String(255))
+    location_id = db.Column(db.BIGINT)
+    location_address = db.Column(db.String(255))
+    status = db.Column(db.String(100))
+    quote_created_on = db.Column(db.DateTime)
+    items = db.relationship('QuoteItem', back_populates='quote')
+    total_price = db.Column(db.Float)
+    quote_request = db.Column(db.String(100))
+    owner_id = db.Column(db.BIGINT)
+    owner_email = db.Column(db.String(255))
+    job_created = db.Column(db.Boolean, default=False)
+    job_id = db.Column(db.BIGINT, nullable=True)
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+    # NEW RELATION
+    deficiencies = db.relationship(
+        "Deficiency",
+        secondary="quote_deficiency_link",
+        backref="quotes"
+    )
+
 
 class InvoiceItem(db.Model):
     __tablename__ = 'invoice_item'

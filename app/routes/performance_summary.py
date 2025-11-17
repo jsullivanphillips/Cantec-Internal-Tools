@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, session, jsonify, request
-from app.db_models import db, Job, ClockEvent, Deficiency, Location, Quote, QuoteItem, InvoiceItem, JobItemTechnician
+from app.db_models import db, Job, ClockEvent, Deficiency, Location, Quote, QuoteItem, InvoiceItem, JobItemTechnician, QuoteDeficiencyLink
 from collections import defaultdict
 from sqlalchemy.exc import IntegrityError
 from tqdm import tqdm
@@ -339,119 +339,164 @@ def make_aware(dt):
 
 def get_detailed_quote_job_stats(session, window_start, window_end):
     """
-    Returns a breakdown of *all* jobs that were created by one or more quotes,
-    filtered by job completed_on date. Merges line-items from multiple quotes
-    and lists all their quote IDs, grouped by quote owner (user).
+    Returns a breakdown of all jobs created from quotes,
+    grouped by job, quote owner, and includes detailed line items.
+    Version WITHOUT Quote.job relationship.
     """
+
     SPRINKLER_TECHS = {"Colin Peterson", "Justin Walker"}
 
-    quotes = (
-        session.query(Quote)
+    # --- Pull every quote + its job using explicit join ---
+    rows = (
+        session.query(Quote, Job)
+        .join(Job, Quote.job_id == Job.job_id)              # <-- explicit join
         .filter(Quote.job_created.is_(True))
         .options(
-            joinedload(Quote.items),
-            joinedload(Quote.job).joinedload(Job.clock_events),
-            joinedload(Quote.job).joinedload(Job.invoice_items)
+            joinedload(Quote.items),                        # quote → quote_items
+            joinedload(Job.clock_events),                   # job → clock events
+            joinedload(Job.invoice_items)                   # job → invoice items
         )
         .all()
     )
 
+    # --- bucket quotes by job ---
     quotes_by_job = defaultdict(list)
-    for q in quotes:
-        job = q.job
-        if not job or not job.invoice_items or not job.completed_on:
-            continue
-        if not (window_start <= make_aware(job.completed_on) <= window_end):
-            continue
-        quotes_by_job[job.job_id].append(q)
 
+    for quote, job in rows:
+        # job must have invoices and be completed
+        if not job.invoice_items or not job.completed_on:
+            continue
+
+        completed = make_aware(job.completed_on)
+        if not (window_start <= completed <= window_end):
+            continue
+
+        quotes_by_job[job.job_id].append((quote, job))
+
+    # --- accumulate stats by quote owner ---
     buckets_by_user = defaultdict(lambda: {"jobs": [], "margin_sum": 0.0})
 
-    for job_id, quote_list in quotes_by_job.items():
-        first_q = quote_list[0]
-        job     = first_q.job
-        user    = first_q.owner_email or "—"
+    for job_id, qj_list in quotes_by_job.items():
+        # Each row contains (Quote, Job)
+        first_quote, job = qj_list[0]
+        user = first_quote.owner_email or "—"
 
-        all_items = [item for q in quote_list for item in q.items]
-        has_spr   = any(item.item_type == 'spr_labour' for item in all_items)
-        has_fa    = any(item.item_type == 'fa_labour'  for item in all_items)
-        spr_only  = has_spr and not has_fa
+        # --- gather all quote items across all quotes for this job ---
+        all_items = []
+        quote_ids = []
 
-        quoted_labor = sum(item.total_price for item in all_items if item.item_type in ('fa_labour','spr_labour'))
-        quoted_parts = sum(item.total_price for item in all_items if item.item_type == 'part')
+        for quote, _job in qj_list:
+            all_items.extend(quote.items)
+            quote_ids.append(str(quote.quote_id))
+
+        # labor type determination
+        has_spr = any(it.item_type == "spr_labour" for it in all_items)
+        has_fa  = any(it.item_type == "fa_labour"  for it in all_items)
+        spr_only = has_spr and not has_fa
+
+        # --- QUOTED totals ---
+        quoted_labor = sum(it.total_price for it in all_items
+                           if it.item_type in ("fa_labour", "spr_labour"))
+        quoted_parts = sum(it.total_price for it in all_items
+                           if it.item_type == "part")
+
         quoted_total = quoted_labor + quoted_parts
 
+        # --- ACTUAL totals ---
         raw_events = job.clock_events or []
-        clock_events = [evt for evt in raw_events if evt.tech_name in SPRINKLER_TECHS] if spr_only else list(raw_events)
+        clock_events = (
+            [evt for evt in raw_events if evt.tech_name in SPRINKLER_TECHS]
+            if spr_only else
+            list(raw_events)
+        )
 
-        total_hours  = sum(evt.hours for evt in clock_events)
-        rate         = HOURLY_RATE['sprinkler'] if has_spr else HOURLY_RATE['fa']
+        total_hours = sum(evt.hours for evt in clock_events)
+        rate = HOURLY_RATE["sprinkler"] if has_spr else HOURLY_RATE["fa"]
         actual_labor = total_hours * rate
-        actual_parts = sum(inv.total_price for inv in job.invoice_items if inv.item_type == 'part')
 
+        actual_parts = sum(inv.total_price for inv in job.invoice_items
+                           if inv.item_type == "part")
+        actual_total = actual_labor + actual_parts
+
+        # --- Adjust invoice revenue for annual-inspection exclusion ---
         original_invoice_revenue = sum(inv.total_price for inv in job.invoice_items)
-        ai_amt = sum(inv.total_price for inv in job.invoice_items if "annual inspection" in inv.description.lower())
+        ai_amt = sum(inv.total_price for inv in job.invoice_items
+                     if "annual inspection" in inv.description.lower())
+
         invoice_revenue = original_invoice_revenue
-        if not any("annual inspection" in item.description.lower() for item in all_items):
+        if not any("annual inspection" in it.description.lower() for it in all_items):
             invoice_revenue -= ai_amt
 
+        # --- calculate margins ---
         margin_labor = quoted_labor - actual_labor
         margin_parts = quoted_parts - actual_parts
         total_margin = margin_labor + margin_parts
 
+        # --- outlier filter ---
         if quoted_total > 0 and abs(total_margin) / quoted_total > OUTLIER_MARGIN_RATIO:
             continue
 
-        quote_ids = ", ".join(str(q.quote_id) for q in quote_list)
-        summary_lines = [
-            "="*40,
-            f"Job ID:          {job.job_id}",
-            f"Quotes:          {quote_ids}",
-            f"User:            {user}",
-            f"Customer:        {first_q.customer_name}",
-            f"Location Addr:   {first_q.location_address or '—'}",
-            f"Job Completed:   {job.completed_on.isoformat()}",
-            "-"*40,
-            "Quoted Items:",
-        ]
+        # --- summary text block ---
+        summary_lines = []
+        summary_lines.append("=" * 40)
+        summary_lines.append(f"Job ID:          {job.job_id}")
+        summary_lines.append(f"Quotes:          {', '.join(quote_ids)}")
+        summary_lines.append(f"User:            {user}")
+        summary_lines.append(f"Customer:        {first_quote.customer_name}")
+        summary_lines.append(f"Location Addr:   {first_quote.location_address or '—'}")
+        summary_lines.append(f"Job Completed:   {job.completed_on.isoformat()}")
+        summary_lines.append("-" * 40)
+        summary_lines.append("Quoted Items:")
+
         for itm in all_items:
             summary_lines.append(
-                f"  • [{itm.item_type}] {itm.description:<30} x{itm.quantity:<4} @ ${itm.unit_price:.2f} →  ${itm.total_price:.2f}"
+                f"  • [{itm.item_type}] {itm.description:<30} x{itm.quantity:<4} "
+                f"@ ${itm.unit_price:.2f} → ${itm.total_price:.2f}"
             )
 
-        summary_lines += ["", "Invoice Items:"]
+        summary_lines.append("")
+        summary_lines.append("Invoice Items:")
         for inv in job.invoice_items:
             summary_lines.append(
-                f"  • [{inv.item_type}] {inv.description:<30} x{inv.quantity:<4} @ ${inv.unit_price:.2f} →  ${inv.total_price:.2f}"
+                f"  • [{inv.item_type}] {inv.description:<30} x{inv.quantity:<4} "
+                f"@ ${inv.unit_price:.2f} → ${inv.total_price:.2f}"
             )
 
-        summary_lines += [ "", f"Invoice Total:         ${original_invoice_revenue:8.2f}" ]
+        summary_lines.append("")
+        summary_lines.append(f"Invoice Total:         ${original_invoice_revenue:8.2f}")
         if invoice_revenue != original_invoice_revenue:
-            summary_lines += [ f"Adjusted Invoice Total:${invoice_revenue:8.2f}  (-${ai_amt:.2f} Annual Inspection)" ]
+            summary_lines.append(
+                f"Adjusted Invoice Total:${invoice_revenue:8.2f} "
+                f"(-${ai_amt:.2f} Annual Inspection)"
+            )
 
-        summary_lines += ["", "Clock Events:"]
+        summary_lines.append("")
+        summary_lines.append("Clock Events:")
+
         if clock_events:
             for evt in clock_events:
-                summary_lines.append(f"  • {evt.tech_name:<20} {evt.hours:.2f}h")
+                summary_lines.append(
+                    f"  • {evt.tech_name:<20} {evt.hours:.2f}h"
+                )
         else:
             summary_lines.append("  (no clock events)")
 
-        summary_lines += [
-            "", "--- Summary ---",
-            f"Quoted Labour:   ${quoted_labor:8.2f}",
-            f"Actual Cost Lbr: ${actual_labor:8.2f}",
-            f"Labour Δ:        ${margin_labor:8.2f}",
-            f"Quoted Parts:    ${quoted_parts:8.2f}",
-            f"Actual Cost Prt: ${actual_parts:8.2f}",
-            f"Parts Δ:         ${margin_parts:8.2f}",
-            f"Total Margin:    ${total_margin:8.2f}",
-            ""
-        ]
+        summary_lines.append("")
+        summary_lines.append("--- Summary ---")
+        summary_lines.append(f"Quoted Labour:   ${quoted_labor:8.2f}")
+        summary_lines.append(f"Actual Cost Lbr: ${actual_labor:8.2f}")
+        summary_lines.append(f"Labour Δ:        ${margin_labor:8.2f}")
+        summary_lines.append(f"Quoted Parts:    ${quoted_parts:8.2f}")
+        summary_lines.append(f"Actual Cost Prt: ${actual_parts:8.2f}")
+        summary_lines.append(f"Parts Δ:         ${margin_parts:8.2f}")
+        summary_lines.append(f"Total Margin:    ${total_margin:8.2f}")
+        summary_lines.append("")
 
+        # --- Build final payload ---
         job_payload = {
             "job_id":           job.job_id,
-            "quote_ids":        [q.quote_id for q in quote_list],
-            "location_address": first_q.location_address,
+            "quote_ids":        [int(qid) for qid in quote_ids],
+            "location_address": first_quote.location_address,
             "quoted_labor":     round(quoted_labor, 2),
             "actual_labor":     round(actual_labor, 2),
             "margin_labor":     round(margin_labor, 2),
@@ -466,7 +511,7 @@ def get_detailed_quote_job_stats(session, window_start, window_end):
                     "description": it.description,
                     "quantity":    it.quantity,
                     "unit_price":  it.unit_price,
-                    "total_price": it.total_price
+                    "total_price": it.total_price,
                 }
                 for it in all_items
             ],
@@ -476,7 +521,7 @@ def get_detailed_quote_job_stats(session, window_start, window_end):
                     "description": inv.description,
                     "quantity":    inv.quantity,
                     "unit_price":  inv.unit_price,
-                    "total_price": inv.total_price
+                    "total_price": inv.total_price,
                 }
                 for inv in job.invoice_items
             ],
@@ -484,112 +529,142 @@ def get_detailed_quote_job_stats(session, window_start, window_end):
                 {"tech_name": evt.tech_name, "hours": evt.hours}
                 for evt in clock_events
             ],
-            "summary_lines": summary_lines
+            "summary_lines": summary_lines,
         }
 
+        # --- Bucket by user ---
         buckets_by_user[user]["jobs"].append(job_payload)
         buckets_by_user[user]["margin_sum"] += total_margin
 
+    # --- Build final results ---
     results = []
     for user, data in buckets_by_user.items():
         count = len(data["jobs"])
         sum_m = data["margin_sum"]
         avg_m = (sum_m / count) if count else 0.0
+
         overall_summary = [
-            "="*40,
+            "=" * 40,
             f"Across {count} jobs:",
             f"  Margin Sum:    ${sum_m:8.2f}",
             f"  Job Count:      {count}",
             f"  Average Margin:${avg_m:8.2f}",
-            "="*40
+            "=" * 40,
         ]
+
         results.append({
             "user":                  user,
             "job_count":             count,
             "margin_sum":            round(sum_m, 2),
             "avg_margin":            round(avg_m, 2),
             "jobs":                  data["jobs"],
-            "overall_summary_lines": overall_summary
+            "overall_summary_lines": overall_summary,
         })
 
     return results
+
 
 
 def get_quote_cost_comparison_by_job_type(window_start, window_end):
     """
     Returns average quoted vs actual cost margin per job_type,
-    excluding any jobs with no invoices or whose margin ratio > OUTLIER_MARGIN_RATIO.
-    Now groups multiple quotes per job into a single record.
+    grouping multiple quotes per job into a single record.
+    NO use of Quote.job relationship.
     """
-    quotes = (
-        db.session.query(Quote)
-        .filter(Quote.job_created.is_(True))
+
+    # --- Fetch all data with explicit JOINs ---
+    rows = (
+        db.session.query(Quote, Job)
+        .join(Job, Quote.job_id == Job.job_id)
         .options(
-            joinedload(Quote.items),
-            joinedload(Quote.job).joinedload(Job.clock_events),
-            joinedload(Quote.job).joinedload(Job.invoice_items)
+            joinedload(Quote.items),                         # quote → quote_items
+            joinedload(Job.clock_events),                   # job → clock events
+            joinedload(Job.invoice_items),                  # job → invoice items
+        )
+        .filter(
+            Quote.job_created.is_(True),
+            Job.completed_on.isnot(None),
         )
         .all()
     )
 
-    # group by job_id
-    quotes_by_job = defaultdict(list)
-    for q in quotes:
-        job = q.job
-        if not job or not job.invoice_items or not job.completed_on:
-            continue
-        if not (window_start <= make_aware(job.completed_on) <= window_end):
-            continue
-        quotes_by_job[job.job_id].append(q)
+    # --- Group quotes by job ---
+    quotes_by_job = defaultdict(lambda: {"job": None, "quotes": []})
 
-    # compute per‐job margins, bucket by job_type
+    for quote, job in rows:
+        # Filter by window range using job.completed_on
+        completed = make_aware(job.completed_on)
+        if not (window_start <= completed <= window_end):
+            continue
+
+        jdata = quotes_by_job[job.job_id]
+        jdata["job"] = job
+        jdata["quotes"].append(quote)
+
+    # --- Compute margins grouped by job_type ---
     type_margins = defaultdict(lambda: {"margin_sum": 0.0, "job_count": 0})
-    for job_id, qlist in quotes_by_job.items():
-        job = qlist[0].job
-        jt  = job.job_type or "Unknown"
 
-        # flatten items
-        all_items = [it for q in qlist for it in q.items]
+    for job_id, data in quotes_by_job.items():
+        job = data["job"]
+        qlist = data["quotes"]
+        jt = job.job_type or "Unknown"
 
-        # quoted totals
-        quoted_labor = sum(it.total_price for it in all_items
-                           if it.item_type in ('fa_labour','spr_labour'))
-        quoted_parts = sum(it.total_price for it in all_items
-                           if it.item_type == 'part')
+        # Flatten quote items
+        all_items = [item for q in qlist for item in q.items]
+
+        # --- QUOTED totals ---
+        quoted_labor = sum(
+            it.total_price
+            for it in all_items
+            if it.item_type in ("fa_labour", "spr_labour")
+        )
+        quoted_parts = sum(
+            it.total_price
+            for it in all_items
+            if it.item_type == "part"
+        )
         quoted_total = quoted_labor + quoted_parts
 
-        # actual totals
-        hours = sum(evt.hours for evt in (job.clock_events or []))
-        spr_quoted = any(it.item_type == 'spr_labour' for it in all_items)
-        rate = HOURLY_RATE['sprinkler'] if spr_quoted else HOURLY_RATE['fa']
+        # --- ACTUAL totals ---
+        hours = sum(evt.hours for evt in job.clock_events or [])
+
+        spr_quoted = any(it.item_type == "spr_labour" for it in all_items)
+        rate = HOURLY_RATE["sprinkler"] if spr_quoted else HOURLY_RATE["fa"]
+
         actual_labor = hours * rate
-        actual_parts = sum(inv.total_price for inv in job.invoice_items
-                           if inv.item_type == 'part')
+        actual_parts = sum(
+            inv.total_price
+            for inv in job.invoice_items
+            if inv.item_type == "part"
+        )
         actual_total = actual_labor + actual_parts
 
-        # outlier filter
+        # --- OUTLIER FILTER ---
         if quoted_total > 0 and abs(quoted_total - actual_total) / quoted_total > OUTLIER_MARGIN_RATIO:
             continue
 
-        # accumulate
+        # --- Record margin ---
         margin = quoted_total - actual_total
         type_margins[jt]["margin_sum"] += margin
         type_margins[jt]["job_count"]  += 1
 
-    # build results
+    # --- Build final return structure ---
     results = []
     for jt, vals in type_margins.items():
         count = vals["job_count"]
         if count == 0:
             continue
+
         avg_margin = vals["margin_sum"] / count
+
         results.append({
-            "job_type":  jt,
+            "job_type": jt,
             "avg_margin": round(avg_margin, 2),
-            "job_count":  count
+            "job_count": count
         })
 
     return results
+
 
 
 
@@ -1030,47 +1105,43 @@ def get_avg_revenue_per_hour(revenue_by_job_type, hours_by_job_type):
     return result
 
 def get_deficiency_insights(start_date, end_date):
-    # Base date filter is ALWAYS on deficiency.created_on
     base_filter = and_(
         Deficiency.deficiency_created_on >= start_date,
         Deficiency.deficiency_created_on <= end_date
     )
 
-    # Total deficiencies created within range
+    # Total deficiencies created
     total_deficiencies = db.session.query(Deficiency)\
         .filter(base_filter)\
         .count()
 
-    # Quoted deficiencies created within range
-    quoted_deficiencies = db.session.query(Quote.linked_deficiency_id)\
-        .join(Deficiency, Quote.linked_deficiency_id == Deficiency.deficiency_id)\
+    # All linked deficiencies (distinct)
+    quoted_deficiencies = db.session.query(QuoteDeficiencyLink.deficiency_id)\
+        .join(Deficiency, QuoteDeficiencyLink.deficiency_id == Deficiency.deficiency_id)\
+        .filter(base_filter)\
+        .distinct()\
+        .count()
+
+    # Quoted + job created
+    quoted_with_job = db.session.query(QuoteDeficiencyLink.deficiency_id)\
+        .join(Quote, Quote.quote_id == QuoteDeficiencyLink.quote_id)\
+        .join(Deficiency, QuoteDeficiencyLink.deficiency_id == Deficiency.deficiency_id)\
         .filter(
-            Quote.linked_deficiency_id.isnot(None),
-            base_filter
+            base_filter,
+            Quote.job_created.is_(True)
         )\
         .distinct()\
         .count()
 
-    # Quoted + job created (filter still by deficiency.created_on)
-    quoted_with_job = db.session.query(Quote.linked_deficiency_id)\
-        .join(Deficiency, Quote.linked_deficiency_id == Deficiency.deficiency_id)\
-        .filter(
-            Quote.linked_deficiency_id.isnot(None),
-            Quote.job_created.is_(True),
-            base_filter
-        )\
-        .distinct()\
-        .count()
-
-    # Quoted → job → completed (also filter by deficiency.created_on)
-    quoted_with_completed_job = db.session.query(Quote.linked_deficiency_id)\
+    # Quoted + job completed
+    quoted_with_completed_job = db.session.query(QuoteDeficiencyLink.deficiency_id)\
+        .join(Quote, Quote.quote_id == QuoteDeficiencyLink.quote_id)\
         .join(Job, Quote.job_id == Job.job_id)\
-        .join(Deficiency, Quote.linked_deficiency_id == Deficiency.deficiency_id)\
+        .join(Deficiency, QuoteDeficiencyLink.deficiency_id == Deficiency.deficiency_id)\
         .filter(
-            Quote.linked_deficiency_id.isnot(None),
+            base_filter,
             Quote.job_created.is_(True),
-            Job.completed_on.isnot(None),
-            base_filter
+            Job.completed_on.isnot(None)
         )\
         .distinct()\
         .count()
@@ -1101,15 +1172,21 @@ def get_deficiencies_by_service_line(window_start, window_end):
         .all()
     )
 
-    # 2️⃣ Deficiencies quoted (distinct linked)
+    # 2️⃣ Deficiencies that have at least one quote
     quoted_counts = dict(
         db.session.query(
             Deficiency.service_line,
-            func.count(distinct(Quote.linked_deficiency_id))
+            func.count(distinct(Deficiency.deficiency_id))
         )
-        .join(Quote, Quote.linked_deficiency_id == Deficiency.deficiency_id)
+        .join(
+            QuoteDeficiencyLink,
+            QuoteDeficiencyLink.deficiency_id == Deficiency.deficiency_id
+        )
+        .join(
+            Quote,
+            Quote.quote_id == QuoteDeficiencyLink.quote_id
+        )
         .filter(
-            Quote.linked_deficiency_id.isnot(None),
             Deficiency.deficiency_created_on >= window_start,
             Deficiency.deficiency_created_on <= window_end
         )
@@ -1117,16 +1194,22 @@ def get_deficiencies_by_service_line(window_start, window_end):
         .all()
     )
 
-    # 3️⃣ Quoted → job created but NOT yet completed
+    # 3️⃣ Quoted → job created (but NOT yet completed)
     quoted_job_counts = dict(
         db.session.query(
             Deficiency.service_line,
-            func.count(distinct(Quote.linked_deficiency_id))
+            func.count(distinct(Deficiency.deficiency_id))
         )
-        .join(Quote, Quote.linked_deficiency_id == Deficiency.deficiency_id)
+        .join(
+            QuoteDeficiencyLink,
+            QuoteDeficiencyLink.deficiency_id == Deficiency.deficiency_id
+        )
+        .join(
+            Quote,
+            Quote.quote_id == QuoteDeficiencyLink.quote_id
+        )
         .join(Job, Quote.job_id == Job.job_id)
         .filter(
-            Quote.linked_deficiency_id.isnot(None),
             Quote.job_created.is_(True),
             Job.completed_on.is_(None),
             Deficiency.deficiency_created_on >= window_start,
@@ -1140,12 +1223,18 @@ def get_deficiencies_by_service_line(window_start, window_end):
     quoted_completed_counts = dict(
         db.session.query(
             Deficiency.service_line,
-            func.count(distinct(Quote.linked_deficiency_id))
+            func.count(distinct(Deficiency.deficiency_id))
         )
-        .join(Quote, Quote.linked_deficiency_id == Deficiency.deficiency_id)
+        .join(
+            QuoteDeficiencyLink,
+            QuoteDeficiencyLink.deficiency_id == Deficiency.deficiency_id
+        )
+        .join(
+            Quote,
+            Quote.quote_id == QuoteDeficiencyLink.quote_id
+        )
         .join(Job, Quote.job_id == Job.job_id)
         .filter(
-            Quote.linked_deficiency_id.isnot(None),
             Quote.job_created.is_(True),
             Job.completed_on.isnot(None),
             Deficiency.deficiency_created_on >= window_start,
@@ -1155,12 +1244,12 @@ def get_deficiencies_by_service_line(window_start, window_end):
         .all()
     )
 
-    # 5️⃣ Build the final list, sorted by service line
+    # 5️⃣ Combine & sort results
     service_lines = sorted(
-        set(total_counts) |
-        set(quoted_counts) |
-        set(quoted_job_counts) |
-        set(quoted_completed_counts)
+        set(total_counts)
+        | set(quoted_counts)
+        | set(quoted_job_counts)
+        | set(quoted_completed_counts)
     )
 
     result = []
@@ -1168,62 +1257,75 @@ def get_deficiencies_by_service_line(window_start, window_end):
         total       = total_counts.get(sl, 0)
         quoted      = quoted_counts.get(sl, 0)
         q_job       = quoted_job_counts.get(sl, 0)
-        q_completed = quoted_completed_counts.get(sl, 0)
+        q_complete  = quoted_completed_counts.get(sl, 0)
 
         result.append({
             "service_line":       sl or "Unknown",
             "no_quote":           total - quoted,
-            "quoted_no_job":      q_job,
+            "quoted_no_job":      quoted - q_job,
             "quoted_to_job":      q_job,
-            "quoted_to_complete": q_completed
+            "quoted_to_complete": q_complete,
         })
 
     return result
+
 
 
 def get_time_to_quote_metrics(window_start, window_end):
     deficiency_to_quote_deltas = []
     quote_to_job_deltas = []
 
-    linked_quotes = (
+    # --- JOIN USING NEW MANY-TO-MANY SCHEMA ---
+    linked_rows = (
         db.session.query(Quote, Deficiency, Job)
-        .outerjoin(Deficiency, Quote.linked_deficiency_id == Deficiency.deficiency_id)
+        .join(QuoteDeficiencyLink, QuoteDeficiencyLink.quote_id == Quote.quote_id)
+        .join(Deficiency, QuoteDeficiencyLink.deficiency_id == Deficiency.deficiency_id)
         .outerjoin(Job, Quote.job_id == Job.job_id)
         .filter(
-            Quote.linked_deficiency_id.isnot(None),
             Quote.quote_created_on >= window_start,
-            Quote.quote_created_on <= window_end
+            Quote.quote_created_on <= window_end,
         )
         .all()
     )
 
-    for quote, deficiency, job in linked_quotes:
+    for quote, deficiency, job in linked_rows:
+
+        # === Deficiency → Quote ===
         if deficiency and deficiency.deficiency_created_on and quote.quote_created_on:
-            delta1 = make_aware(quote.quote_created_on) - make_aware(deficiency.deficiency_created_on)
+            delta1 = (
+                make_aware(quote.quote_created_on)
+                - make_aware(deficiency.deficiency_created_on)
+            )
             deficiency_to_quote_deltas.append(delta1.days)
 
+        # === Quote → Job (scheduled or completed) ===
         if quote.quote_created_on and job:
             job_date = job.scheduled_date or job.completed_on
             if job_date:
                 if job_date.tzinfo is None:
                     job_date = job_date.replace(tzinfo=timezone.utc)
+
                 if window_start <= job_date <= window_end:
                     delta2 = make_aware(job_date) - make_aware(quote.quote_created_on)
                     quote_to_job_deltas.append(delta2.days)
 
     avg_def_to_quote = (
         round(sum(deficiency_to_quote_deltas) / len(deficiency_to_quote_deltas), 1)
-        if deficiency_to_quote_deltas else 0
+        if deficiency_to_quote_deltas
+        else 0
     )
+
     avg_quote_to_job = (
         round(sum(quote_to_job_deltas) / len(quote_to_job_deltas), 1)
-        if quote_to_job_deltas else 0
+        if quote_to_job_deltas
+        else 0
     )
 
     return {
         "avg_days_deficiency_to_quote": avg_def_to_quote,
-        "avg_days_quote_to_job": avg_quote_to_job
+        "avg_days_quote_to_job": avg_quote_to_job,
     }
+
 
 
 
@@ -1783,8 +1885,19 @@ def get_quotes_with_params(params, desc="Fetching quotes"):
                 continue
             page_data = response.json().get("data", {})
             quotes.extend(page_data.get("quotes", []))
+        
 
     return quotes 
+
+def query_quote_by_id(quote_id):
+    authenticate()
+    endpoint = f"{SERVICE_TRADE_API_BASE}/quote/{quote_id}"
+    response = call_service_trade_api(endpoint, params={})
+    if not response:
+        tqdm.write(f"Failed to fetch quote {quote_id}.")
+        return None
+    data = response.json().get("data", {})
+    print(json.dumps(data, indent=4))
 
 def update_quotes(start_date=None, end_date=None):
     authenticate()
@@ -1806,69 +1919,91 @@ def update_quotes(start_date=None, end_date=None):
     tqdm.write(f"✅ Found {len(all_quotes)} quotes in {start_date} - {end_date}")
 
     # --- 2. Fetch deficiency-linked quotes in same window
-    known_deficiencies = Deficiency.query.with_entities(Deficiency.deficiency_id).all()
+    # FIX: use Deficiency.id (or whatever your new field is)
+    known_deficiencies = Deficiency.query.with_entities(Deficiency.id).all()
     deficiency_ids = [d[0] for d in known_deficiencies]
 
     linked_quotes = []
+
     for d_id in tqdm(deficiency_ids, desc="Fetching linked quotes"):
         params = {
             "createdAfter": start_ts,
             "createdBefore": end_ts,
-            "deficiencyId": d_id
+            "deficiencyId": d_id,   # this must match whatever ID ST expects
         }
         quotes = get_quotes_with_params(params=params)
+
         for q in quotes:
-            q["linked_deficiency_id"] = d_id
+            # Attach a LIST of deficiencies (append, don't overwrite)
+            q.setdefault("linked_deficiency_ids", []).append(d_id)
+
         linked_quotes.extend(quotes)
 
     # Index linked quotes by ID for later matching
-    quote_deficiency_map = {q["id"]: q["linked_deficiency_id"] for q in linked_quotes}
+    quote_def_map = {}
+    for q in linked_quotes:
+        qid = q["id"]
+        if qid not in quote_def_map:
+            quote_def_map[qid] = set()
+        quote_def_map[qid].update(q["linked_deficiency_ids"])
 
     # --- 3. Save all quotes, with any link if present
     with tqdm(total=len(all_quotes), desc="Saving quotes to DB") as pbar:
         for q in all_quotes:
             try:
                 quote_id = q["id"]
-                customer_name = q["customer"]["name"]
-                location_id = q["location"]["id"]
-                location_address = q["location"]["address"]["street"]
-                status = q["status"]
-                quote_created_on = datetime.fromtimestamp(q["created"])
-                total_price_raw = q["totalPrice"]
-                total_price = float(total_price_raw.replace(",", "")) if isinstance(total_price_raw, str) else total_price_raw
-                quote_request = q["quoteRequest"]["status"]
-                owner_id = q["owner"]["id"]
-                owner_email = q["owner"]["email"]
-
-                job_created = len(q["jobs"]) > 0
-                job_id = q["jobs"][0]["id"] if job_created else -1
-                linked_deficiency_id = quote_deficiency_map.get(quote_id)
-
                 quote = Quote.query.filter_by(quote_id=quote_id).first()
                 if not quote:
                     quote = Quote(quote_id=quote_id)
 
-                quote.customer_name = customer_name
-                quote.location_id = location_id
-                quote.location_address = location_address
-                quote.status = status
-                quote.quote_created_on = quote_created_on
-                quote.total_price = total_price
-                quote.quote_request = quote_request
-                quote.owner_id = owner_id
-                quote.owner_email = owner_email
-                quote.job_created = job_created
-                quote.job_id = job_id
-                quote.linked_deficiency_id = linked_deficiency_id
+                # --- Standard fields ---
+                quote.customer_name = q["customer"]["name"]
+                quote.location_id = q["location"]["id"]
+                quote.location_address = q["location"]["address"]["street"]
+                quote.status = q["status"]
+                quote.quote_created_on = datetime.fromtimestamp(q["created"])
+
+                total_price_raw = q["totalPrice"]
+                quote.total_price = (
+                    float(total_price_raw.replace(",", ""))
+                    if isinstance(total_price_raw, str)
+                    else total_price_raw
+                )
+
+                quote.quote_request = q["quoteRequest"]["status"]
+                quote.owner_id = q["owner"]["id"]
+                quote.owner_email = q["owner"]["email"]
+
+                quote.job_created = len(q["jobs"]) > 0
+                quote.job_id = q["jobs"][0]["id"] if quote.job_created else None
 
                 db.session.add(quote)
+                db.session.flush()  # ensures quote.id and quote.quote_id are available
+
+                # --- NEW: insert link rows ---
+                linked_def_ids = quote_def_map.get(quote_id, [])
+                for d_id in linked_def_ids:
+                    exists = QuoteDeficiencyLink.query.filter_by(
+                        quote_id=quote.quote_id,
+                        deficiency_id=d_id,
+                    ).first()
+
+                    if not exists:
+                        db.session.add(
+                            QuoteDeficiencyLink(
+                                quote_id=quote.quote_id,
+                                deficiency_id=d_id,
+                            )
+                        )
 
             except Exception as e:
-                tqdm.write(f"[WARNING] Skipped quote {q.get('id')} | Error: {type(e).__name__}: {e}")
+                tqdm.write(f"[WARNING] Skipped quote {q.get('id')} | Error: {e}")
+
             pbar.update(1)
 
     db.session.commit()
     tqdm.write("✅ All quotes processed and saved.")
+
 
 
 def test():

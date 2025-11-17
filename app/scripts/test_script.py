@@ -63,10 +63,7 @@ def find_report_conversion_jobs():
         return len(locations), jobs
 
 
-        
 
-        
-        
 
 def main():
     find_report_conversion_jobs()
