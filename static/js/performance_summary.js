@@ -17,7 +17,7 @@ const PerformanceSummary = (() => {
       fetch(`/api/performance/jobs_revenue${params}`).then(r => r.json()),
       fetch(`/api/performance/deficiencies${params}`).then(r => r.json()),
       fetch(`/api/performance/technicians${params}`).then(r => r.json()),
-      fetch(`/api/performance/quotes${params}`).then(r => r.json()),
+      //fetch(`/api/performance/quotes${params}`).then(r => r.json()),
       fetch(`/api/performance/customers_locations${params}`).then(r => r.json())
     ]);
 
@@ -25,7 +25,7 @@ const PerformanceSummary = (() => {
       ...jobsRevenue,
       ...deficiencies,
       ...technicians,
-      ...quotes,
+      //...quotes,
       ...customersLocations
     };
   }
@@ -302,93 +302,93 @@ const PerformanceSummary = (() => {
 
 
 
-    // --- Quotes Sent / Accepted / Canceled / Rejected / Draft by User (Grouped Bar + Total Line + % in Tooltip) ---
-    let quoteStats = data.quote_statistics_by_user || [];
+    // // --- Quotes Sent / Accepted / Canceled / Rejected / Draft by User (Grouped Bar + Total Line + % in Tooltip) ---
+    // let quoteStats = data.quote_statistics_by_user || [];
 
-    // parse emails "first.last@cantec.ca" → "F Last"
-    const displayNames = quoteStats.map(({ user: email }) => {
-      const [first, last] = email.split('@')[0].split('.');
-      const initial = first.charAt(0).toUpperCase();
-      const lastName = last
-        ? last.charAt(0).toUpperCase() + last.slice(1)
-        : '';
-      return `${initial} ${lastName}`;
-    });
+    // // parse emails "first.last@cantec.ca" → "F Last"
+    // const displayNames = quoteStats.map(({ user: email }) => {
+    //   const [first, last] = email.split('@')[0].split('.');
+    //   const initial = first.charAt(0).toUpperCase();
+    //   const lastName = last
+    //     ? last.charAt(0).toUpperCase() + last.slice(1)
+    //     : '';
+    //   return `${initial} ${lastName}`;
+    // });
 
-    const submitted = quoteStats.map(d => d.submitted);
-    const accepted  = quoteStats.map(d => d.accepted);
-    const canceled  = quoteStats.map(d => d.canceled);
-    const rejected  = quoteStats.map(d => d.rejected);
-    const draft     = quoteStats.map(d => d.draft);
+    // const submitted = quoteStats.map(d => d.submitted);
+    // const accepted  = quoteStats.map(d => d.accepted);
+    // const canceled  = quoteStats.map(d => d.canceled);
+    // const rejected  = quoteStats.map(d => d.rejected);
+    // const draft     = quoteStats.map(d => d.draft);
 
-    // compute total per user
-    const total = quoteStats.map(d =>
-      d.submitted + d.accepted + d.canceled + d.rejected + d.draft
-    );
+    // // compute total per user
+    // const total = quoteStats.map(d =>
+    //   d.submitted + d.accepted + d.canceled + d.rejected + d.draft
+    // );
 
-    // Destroy existing instance if present
-    charts.quoteStatisticsByUserChart?.destroy();
-    charts.quoteStatisticsByUserChart = new Chart(
-      document.getElementById("quoteStatisticsByUserChart").getContext("2d"),
-      {
-        data: {
-          labels: displayNames,
-          datasets: [
-            { label: "Submitted", data: submitted, type: 'bar', backgroundColor: "#4e79a7" },
-            { label: "Accepted",  data: accepted,  type: 'bar', backgroundColor: "#59a14f" },
-            { label: "Canceled",  data: canceled,  type: 'bar', backgroundColor: "#e15759" },
-            { label: "Rejected",  data: rejected,  type: 'bar', backgroundColor: "#f28e2b" },
-            { label: "Draft",     data: draft,     type: 'bar', backgroundColor: "#bab0ac" },
-            {
-              label: "Total",
-              data: total,
-              type: 'line',
-              yAxisID: 'y1',
-              borderWidth: 2,
-              fill: false,
-              pointRadius: 4,
-              borderColor: '#c6d6ec',
-              backgroundColor: '#c6d6ec'
-            }
-          ]
-        },
-        options: {
-          responsive: true,
-          interaction: { mode: 'index', intersect: false },
-          plugins: {
-            legend: { position: "top" },
-            tooltip: {
-              mode: 'index',
-              intersect: false,
-              callbacks: {
-                label: function(context) {
-                  const label = context.dataset.label || '';
-                  const value = context.parsed.y;
-                  const userTotal = total[context.dataIndex] || 0;
-                  const pct = userTotal
-                    ? Math.round((value / userTotal) * 100)
-                    : 0;
-                  return `${label}: ${value} (${pct}%)`;
-                }
-              }
-            }
-          },
-          scales: {
-            x: { stacked: false },
-            y: {
-              beginAtZero: true,
-              title: { display: true, text: "Number of Quotes" }
-            },
-            y1: {
-              position: 'right',
-              beginAtZero: true,
-              grid: { drawOnChartArea: false },
-              title: { display: true, text: "Total Quotes" }
-            }
-          }
-        }
-      }
-    );
+    // // Destroy existing instance if present
+    // charts.quoteStatisticsByUserChart?.destroy();
+    // charts.quoteStatisticsByUserChart = new Chart(
+    //   document.getElementById("quoteStatisticsByUserChart").getContext("2d"),
+    //   {
+    //     data: {
+    //       labels: displayNames,
+    //       datasets: [
+    //         { label: "Submitted", data: submitted, type: 'bar', backgroundColor: "#4e79a7" },
+    //         { label: "Accepted",  data: accepted,  type: 'bar', backgroundColor: "#59a14f" },
+    //         { label: "Canceled",  data: canceled,  type: 'bar', backgroundColor: "#e15759" },
+    //         { label: "Rejected",  data: rejected,  type: 'bar', backgroundColor: "#f28e2b" },
+    //         { label: "Draft",     data: draft,     type: 'bar', backgroundColor: "#bab0ac" },
+    //         {
+    //           label: "Total",
+    //           data: total,
+    //           type: 'line',
+    //           yAxisID: 'y1',
+    //           borderWidth: 2,
+    //           fill: false,
+    //           pointRadius: 4,
+    //           borderColor: '#c6d6ec',
+    //           backgroundColor: '#c6d6ec'
+    //         }
+    //       ]
+    //     },
+    //     options: {
+    //       responsive: true,
+    //       interaction: { mode: 'index', intersect: false },
+    //       plugins: {
+    //         legend: { position: "top" },
+    //         tooltip: {
+    //           mode: 'index',
+    //           intersect: false,
+    //           callbacks: {
+    //             label: function(context) {
+    //               const label = context.dataset.label || '';
+    //               const value = context.parsed.y;
+    //               const userTotal = total[context.dataIndex] || 0;
+    //               const pct = userTotal
+    //                 ? Math.round((value / userTotal) * 100)
+    //                 : 0;
+    //               return `${label}: ${value} (${pct}%)`;
+    //             }
+    //           }
+    //         }
+    //       },
+    //       scales: {
+    //         x: { stacked: false },
+    //         y: {
+    //           beginAtZero: true,
+    //           title: { display: true, text: "Number of Quotes" }
+    //         },
+    //         y1: {
+    //           position: 'right',
+    //           beginAtZero: true,
+    //           grid: { drawOnChartArea: false },
+    //           title: { display: true, text: "Total Quotes" }
+    //         }
+    //       }
+    //     }
+    //   }
+    // );
 
     
     // // --- Quoting Accuracy by User (Grouped Bar Chart) ---

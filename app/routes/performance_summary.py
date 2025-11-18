@@ -383,7 +383,8 @@ def get_detailed_quote_job_stats(session, window_start, window_end):
             joinedload(Quote.items),                        # quote → quote_items
             joinedload(Job.clock_events),                   # job → clock events
             joinedload(Job.invoice_items)                   # job → invoice items
-        )
+        ) \
+        .limit(250) \
         .all()
     )
 
@@ -695,7 +696,6 @@ def get_quote_cost_comparison_by_job_type(window_start, window_end):
 
 
 
-
 def get_quote_statistics_by_user(window_start, window_end):
     """
     Returns a list of dicts, one per owner_email, with counts of:
@@ -735,6 +735,7 @@ def get_quote_statistics_by_user(window_start, window_end):
         }
         for row in stats
     ]
+
 
 
 def get_deficiencies_created_by_tech_service_line(window_start, window_end):
