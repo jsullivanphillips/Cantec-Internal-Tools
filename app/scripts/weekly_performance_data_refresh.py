@@ -25,7 +25,7 @@ if __name__ == "__main__":
             
             if args.temp_backfill_quotes:
                 end = datetime.now()
-                start = end - timedelta(days=50)
+                start = end - timedelta(days=180)
 
                 update_quotes(start_date=start, end_date=end)
                 print("✅ All data updated successfully.")
@@ -35,7 +35,7 @@ if __name__ == "__main__":
             if datetime.now().weekday() == 5:
                 # Run for the last 7 days
                 end = datetime.now()
-                start = end - timedelta(days=50)
+                start = end - timedelta(days=8)
 
                 update_all_data(start_date=start, end_date=end)
                 print("✅ All data updated successfully.")

@@ -4,6 +4,33 @@ const PerformanceSummary = (() => {
   let topNValue = 5; // default to Top 5
   let latestData = null;
 
+  async function fetchAllSections(startDate, endDate) {
+    const params = `?start_date=${startDate}&end_date=${endDate}`;
+
+    const [
+      jobsRevenue,
+      deficiencies,
+      technicians,
+      quotes,
+      customersLocations
+    ] = await Promise.all([
+      fetch(`/api/performance/jobs_revenue${params}`).then(r => r.json()),
+      fetch(`/api/performance/deficiencies${params}`).then(r => r.json()),
+      fetch(`/api/performance/technicians${params}`).then(r => r.json()),
+      fetch(`/api/performance/quotes${params}`).then(r => r.json()),
+      fetch(`/api/performance/customers_locations${params}`).then(r => r.json())
+    ]);
+
+    return {
+      ...jobsRevenue,
+      ...deficiencies,
+      ...technicians,
+      ...quotes,
+      ...customersLocations
+    };
+  }
+
+
   function formatLabelName(camelCaseLabel) {
     return camelCaseLabel
       .replace(/_/g, ' ')
@@ -179,91 +206,102 @@ const PerformanceSummary = (() => {
   }
 
   function renderDeficiencyInsights(data) {
-    // --- Funnel Chart (unchanged) ---
-    const funnelValues = [
-      data.deficiency_insights.total_deficiencies,
-      data.deficiency_insights.quoted_deficiencies,
-      data.deficiency_insights.quoted_with_job,
-      data.deficiency_insights.quoted_with_completed_job
-    ];
-    const labels = [
-      "Deficiencies Created",
-      "Quoted",
-      "Quoted → Job Created",
-      "Quoted → Job Completed"
-    ];
-    const trace = {
-      type: "funnel",
-      y: labels,
-      x: funnelValues,
-      textinfo: "value+percent initial",
-      textposition: "inside",
-      marker: {
-        color: ["#4e79a7", "#f28e2b", "#e15759", "#76b7b2"]
-      }
-    };
-    const layout = {
-      margin: { l: 180, r: 30, t: 20, b: 40 },
-      height: 400,
-      autosize: true
-    };
-    Plotly.newPlot("deficiencyFunnelChart", [trace], layout, {
-      responsive: true,
-      displayModeBar: false
-    });
+      const total_d = data.deficiency_insights.total_deficiencies;
+      const p = data.deficiency_insights.percentages;
 
-    // --- Time-to-Quote / Time-to-Job Cards (unchanged) ---
-    document.getElementById("avgDefToQuote").textContent =
-      data.time_to_quote_metrics.avg_days_deficiency_to_quote + " days";
-    document.getElementById("avgQuoteToJob").textContent =
-      data.time_to_quote_metrics.avg_days_quote_to_job + " days";
+      // --- Funnel values ---
+      const funnelValues = [
+        total_d,
+        data.deficiency_insights.quoted_deficiencies,
+        data.deficiency_insights.quoted_with_job,
+        data.deficiency_insights.quoted_with_completed_job
+      ];
 
-    // --- Deficiencies by Service Line (Stacked Bar) ---
-    let svcData = data.deficiencies_by_service_line
-      // make a copy and sort by “quoted_to_complete” descending
-      .slice()
-      .sort((a, b) => b.quoted_to_complete - a.quoted_to_complete);
+      // --- Labels will now show percentages beside each step ---
+      const labels = [
+        `Deficiencies Created (${total_d})`,
+        `Quoted (${p.quoted_pct}% of total)`,
+        `Job Created (${p.job_created_pct}% of total)`,
+        `Job Completed (${p.job_completed_pct}% of total)`
+      ];
 
-    // then apply your Top-N if you had one (you didn’t specify here, so we take all):
-    // svcData = svcData.slice(0, topCount);
+      const trace = {
+        type: "funnel",
+        y: labels,
+        x: funnelValues,
+        textinfo: "value+percent initial",
+        textposition: "inside",
+        marker: {
+          color: ["#4e79a7", "#f28e2b", "#e15759", "#76b7b2"]
+        }
+      };
 
-    const serviceLines      = svcData.map(d => d.service_line);
-    const noQuote           = svcData.map(d => d.no_quote);
-    const quotedNoJob       = svcData.map(d => d.quoted_no_job);
-    const quotedToJob       = svcData.map(d => d.quoted_to_job);
-    const quotedToComplete  = svcData.map(d => d.quoted_to_complete);
+      const layout = {
+        margin: { l: 220, r: 30, t: 20, b: 40 },
+        height: 400,
+        autosize: true
+      };
 
-    charts.deficienciesByServiceLineChart?.destroy();
-    charts.deficienciesByServiceLineChart = new Chart(
-      document.getElementById("deficienciesByServiceLineChart").getContext("2d"),
-      {
-        type: "bar",
-        data: {
-          labels: serviceLines,
-          datasets: [
-            { label: "No Quote",            data: noQuote,          backgroundColor: "#4e79a7" },
-            { label: "Quoted, No Job",      data: quotedNoJob,      backgroundColor: "#f28e2b" },
-            { label: "Quoted → Job Created", data: quotedToJob,      backgroundColor: "#e15759" },
-            { label: "Job → Completed",      data: quotedToComplete, backgroundColor: "#76b7b2" }
-          ]
-        },
-        options: {
-          responsive: true,
-          plugins: {
-            legend: { position: "top" },
-            tooltip: { mode: "index", intersect: false }
+      Plotly.newPlot("deficiencyFunnelChart", [trace], layout, {
+        responsive: true,
+        displayModeBar: false
+      });
+
+      // --- Time-to-Quote / Time-to-Job Cards (unchanged) ---
+      document.getElementById("avgDefToQuote").textContent =
+        data.time_to_quote_metrics.avg_days_deficiency_to_quote + " days";
+      document.getElementById("avgQuoteToJob").textContent =
+        data.time_to_quote_metrics.avg_days_quote_to_job + " days";
+
+      // --- Deficiencies by Service Line (Stacked Bar) ---
+      let svcData = data.deficiencies_by_service_line
+        // make a copy and sort by “quoted_to_complete” descending
+        .slice()
+        .sort((a, b) => b.quoted_to_complete - a.quoted_to_complete);
+
+      // then apply your Top-N if you had one (you didn’t specify here, so we take all):
+      // svcData = svcData.slice(0, topCount);
+
+      const serviceLines      = svcData.map(d => d.service_line);
+      const noQuote           = svcData.map(d => d.no_quote);
+      const quotedNoJob       = svcData.map(d => d.quoted_no_job);
+      const quotedToJob       = svcData.map(d => d.quoted_to_job);
+      const quotedToComplete  = svcData.map(d => d.quoted_to_complete);
+
+      charts.deficienciesByServiceLineChart?.destroy();
+      charts.deficienciesByServiceLineChart = new Chart(
+        document.getElementById("deficienciesByServiceLineChart").getContext("2d"),
+        {
+          type: "bar",
+          data: {
+            labels: serviceLines,
+            datasets: [
+              { label: "No Quote",            data: noQuote,          backgroundColor: "#4e79a7" },
+              { label: "Quoted, No Job",      data: quotedNoJob,      backgroundColor: "#f28e2b" },
+              { label: "Quoted → Job Created", data: quotedToJob,      backgroundColor: "#e15759" },
+              { label: "Job → Completed",      data: quotedToComplete, backgroundColor: "#76b7b2" }
+            ]
           },
-          scales: {
-            x: { stacked: true },
-            y: {
-              stacked: true,
-              beginAtZero: true,
-              title: { display: true, text: "Number of Deficiencies" }
+          options: {
+            responsive: true,
+            plugins: {
+              legend: { position: "top" },
+              tooltip: { mode: "index", intersect: false }
+            },
+            scales: {
+              x: { stacked: true },
+              y: {
+                stacked: true,
+                beginAtZero: true,
+                title: { display: true, text: "Number of Deficiencies" }
+              }
             }
           }
         }
-      }
     );
+
+
+
     // --- Quotes Sent / Accepted / Canceled / Rejected / Draft by User (Grouped Bar + Total Line + % in Tooltip) ---
     let quoteStats = data.quote_statistics_by_user || [];
 
@@ -1127,9 +1165,7 @@ const PerformanceSummary = (() => {
     const topCust = allCustomerRevenue
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, topCount);
-
-      console.log('top_customer_revenue sample:', (data.top_customer_revenue || [])[0]);
-      console.log('location_service_type_counts sample:', (data.location_service_type_counts || [])[0]);    
+   
     charts.topCustomerRevenueChart = new Chart(
       document.getElementById("topCustomerRevenueChart").getContext("2d"),
       {
@@ -1278,7 +1314,6 @@ const PerformanceSummary = (() => {
 
 
 
-
   function init() {
     document.addEventListener("DOMContentLoaded", () => {
       const topNControl = document.getElementById('topNFilter');
@@ -1309,49 +1344,45 @@ const PerformanceSummary = (() => {
       startInput.value = defaultStart;
       endInput.value = defaultEnd;
 
-      function fetchAndRenderWithDateRange(startDate, endDate) {
+      async function fetchAndRenderWithDateRange(startDate, endDate) {
         document.getElementById("loadingMessage").style.display = "block";
         document.getElementById("reportContent").style.display = "none";
 
-        const url = new URL("/api/performance_summary_data", window.location.origin);
-        if (startDate) url.searchParams.append("start_date", startDate);
-        if (endDate) url.searchParams.append("end_date", endDate);
+        const data = await fetchAllSections(startDate, endDate);
+        latestData = data;
 
-        fetch(url)
-          .then(res => res.json())
-          .then(data => {
-            latestData = data;
-            document.getElementById("loadingMessage").style.display = "none";
-            document.getElementById("reportContent").style.display = "block";
+        document.getElementById("loadingMessage").style.display = "none";
+        document.getElementById("reportContent").style.display = "block";
 
-            renderJobsAndRevenueKPIs(data);
-            renderJobAndRevenue(data);
-            renderDeficiencyInsights(data);
-            renderTechnicianMetrics(data);
-            renderCustomerAndLocationMetrics(data);
-            renderQuoteCostBreakdownLog(data);
+        // Re-render all sections
+        renderJobsAndRevenueKPIs(data);
+        renderJobAndRevenue(data);
+        renderDeficiencyInsights(data);
+        renderTechnicianMetrics(data);
+        renderCustomerAndLocationMetrics(data);
+        renderQuoteCostBreakdownLog(data);
 
-            const avgRevenueEntries = Object.entries(data.avg_revenue_by_job_type);
-            avgRevenueEntries.sort((a, b) => b[1] - a[1]);
+        // Combo chart logic unchanged
+        const avgRevenueEntries = Object.entries(data.avg_revenue_by_job_type)
+          .sort((a, b) => b[1] - a[1]);
 
-            const sortedLabels = avgRevenueEntries.map(([jt]) => jt);
-            const sortedAvgRevenue = avgRevenueEntries.map(([, rev]) => rev);
-            const sortedAvgHours = sortedLabels.map(jt => {
-              const totalHours = data.hours_by_job_type[jt] || 0;
-              const jobCount = data.job_type_counts[jt] || 1;
-              return totalHours / jobCount;
-            });
+        const sortedLabels = avgRevenueEntries.map(([jt]) => jt);
+        const sortedAvgRevenue = avgRevenueEntries.map(([, rev]) => rev);
+        const sortedAvgHours = sortedLabels.map(jt => {
+          const totalHours = data.hours_by_job_type[jt] || 0;
+          const jobCount = data.job_type_counts[jt] || 1;
+          return totalHours / jobCount;
+      });
 
-            if (charts.combo) charts.combo.destroy();
+      if (charts.combo) charts.combo.destroy();
 
-            charts.combo = renderComboChart(
-              document.getElementById('comboRevenueHoursChart').getContext('2d'),
-              sortedLabels,
-              sortedAvgRevenue,
-              sortedAvgHours
-            );
-          });
-      }
+      charts.combo = renderComboChart(
+        document.getElementById('comboRevenueHoursChart').getContext('2d'),
+        sortedLabels,
+        sortedAvgRevenue,
+        sortedAvgHours
+      );
+    }
 
       
 

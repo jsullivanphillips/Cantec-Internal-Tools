@@ -99,79 +99,107 @@ def _parse_date_param(value: str | None, end_of_day: bool) -> datetime | None:
 
     return dt_pacific.astimezone(timezone.utc)
 
-
-@performance_summary_bp.route('/api/performance_summary_data', methods=['GET'])
-def performance_summary_data():
-    # Parse optional start/end from query
+def get_date_window():
     start_param = request.args.get("start_date")
     end_param   = request.args.get("end_date")
 
-    # Defaults (snap to Pacific SOD/EOD, then to UTC)
-    default_start_pacific = datetime(2024, 5, 1, 0, 0, 0, tzinfo=PACIFIC_TZ)
-    default_end_pacific   = datetime(2025, 4, 30, 23, 59, 59, 999_999, tzinfo=PACIFIC_TZ)
-    window_start = default_start_pacific.astimezone(timezone.utc)
-    window_end   = default_end_pacific.astimezone(timezone.utc)
+    default_start = datetime(2024, 5, 1, 0, 0, tzinfo=PACIFIC_TZ)
+    default_end   = datetime(2025, 4, 30, 23, 59, 59, tzinfo=PACIFIC_TZ)
 
-    # Override with inputs if provided
+    window_start = default_start.astimezone(timezone.utc)
+    window_end   = default_end.astimezone(timezone.utc)
+
     parsed_start = _parse_date_param(start_param, end_of_day=False)
-    parsed_end   = _parse_date_param(end_param,   end_of_day=True)
+    parsed_end   = _parse_date_param(end_param, end_of_day=True)
 
     if parsed_start:
         window_start = parsed_start
     if parsed_end:
         window_end = parsed_end
-    
+
+    return window_start, window_end
+
+
+@performance_summary_bp.route('/api/performance/jobs_revenue')
+def performance_jobs_revenue():
+    window_start, window_end = get_date_window()
+
     completed_filter = and_(
         Job.completed_on.isnot(None),
         Job.completed_on >= window_start,
         Job.completed_on <= window_end
     )
 
+    # Base aggregates
     job_type_counts = get_job_type_counts(completed_filter)
     revenue_by_job_type = get_revenue_by_job_type(completed_filter)
     hours_by_job_type = get_hours_by_job_type(completed_filter)
-    total_hours_by_tech = get_total_hours_by_tech(completed_filter)
 
-    avg_revenue_by_job_type, jobs_by_job_type, bubble_data_by_type = get_job_type_analytics(
+    # Existing analytics (avg revenue per job, bubble data, etc.)
+    avg_revenue_by_job_type, jobs_by_job_type, bubble_data = get_job_type_analytics(
         job_type_counts, revenue_by_job_type, completed_filter
     )
 
-    avg_revenue_per_hour_by_job_type = get_avg_revenue_per_hour(revenue_by_job_type, hours_by_job_type)
-    deficiency_insights = get_deficiency_insights(window_start, window_end)
-    time_to_quote_metrics = get_time_to_quote_metrics(window_start, window_end)
-    technician_metrics = get_technician_metrics(window_start, window_end)
-    weekly_revenue_over_time = get_weekly_revenue_over_time(window_start, window_end)
-    location_service_type_counts = get_top_locations_by_service_type(window_start, window_end)
-    top_customer_revenue = get_top_customers_by_revenue(window_start, window_end)
-    deficiencies_by_tech_sl = get_deficiencies_created_by_tech_service_line(window_start, window_end)
-    attachments_by_tech = get_attachments_by_technician(window_start, window_end)
-    quote_statistics_by_user = get_quote_statistics_by_user(window_start, window_end)
-    job_items_created_by_tech = get_job_items_created_count_by_tech(window_start, window_end, include_debug=False)
-
+    # NEW: average revenue per hour by job type
+    avg_revenue_per_hour_by_job_type = get_avg_revenue_per_hour_by_job_type(
+        hours_by_job_type,
+        revenue_by_job_type,
+    )
 
     return jsonify({
-        "job_type_counts": {jt or "Unknown": count for jt, count in job_type_counts.items()},
-        "revenue_by_job_type": {jt or "Unknown": rev or 0 for jt, rev in revenue_by_job_type.items()},
-        "hours_by_job_type": {jt or "Unknown": hrs or 0 for jt, hrs in hours_by_job_type.items()},
+        "job_type_counts": job_type_counts,
+        "revenue_by_job_type": revenue_by_job_type,
+        "hours_by_job_type": hours_by_job_type,
         "avg_revenue_by_job_type": avg_revenue_by_job_type,
         "avg_revenue_per_hour_by_job_type": avg_revenue_per_hour_by_job_type,
-        "total_hours_by_tech": {tech or "Unknown": hrs or 0 for tech, hrs in total_hours_by_tech.items()},
         "jobs_by_job_type": jobs_by_job_type,
-        "bubble_data_by_type": bubble_data_by_type,
-        "deficiency_insights": deficiency_insights,
-        "time_to_quote_metrics": time_to_quote_metrics,
-        "technician_metrics": technician_metrics,
-        "weekly_revenue_over_time": weekly_revenue_over_time,
-        "weekly_jobs_over_time":     get_weekly_jobs_over_time(window_start, window_end),
-        "location_service_type_counts": location_service_type_counts,
-        "top_customer_revenue": top_customer_revenue,
-        "deficiencies_by_service_line": get_deficiencies_by_service_line(window_start, window_end),
-        "deficiencies_by_tech_service_line": deficiencies_by_tech_sl,
-        "attachments_by_tech": attachments_by_tech,
-        "quote_statistics_by_user": quote_statistics_by_user,
+        "bubble_data_by_type": bubble_data,
+        "weekly_revenue_over_time": get_weekly_revenue_over_time(window_start, window_end),
+        "weekly_jobs_over_time": get_weekly_jobs_over_time(window_start, window_end),
+    })
+
+
+
+@performance_summary_bp.route('/api/performance/deficiencies')
+def performance_deficiencies():
+    window_start, window_end = get_date_window()
+
+    return jsonify({
+        "deficiency_insights": get_deficiency_insights(window_start, window_end),
+        "time_to_quote_metrics": get_time_to_quote_metrics(window_start, window_end),
+        "deficiencies_by_service_line": get_deficiencies_by_service_line(window_start, window_end)
+    })
+
+@performance_summary_bp.route('/api/performance/technicians')
+def performance_technicians():
+    window_start, window_end = get_date_window()
+
+    return jsonify({
+        "technician_metrics": get_technician_metrics(window_start, window_end),
+        "deficiencies_by_tech_service_line": 
+            get_deficiencies_created_by_tech_service_line(window_start, window_end),
+        "attachments_by_tech": get_attachments_by_technician(window_start, window_end),
+        "job_items_created_by_tech":
+            get_job_items_created_count_by_tech(window_start, window_end)
+    })
+
+@performance_summary_bp.route('/api/performance/quotes')
+def performance_quotes():
+    window_start, window_end = get_date_window()
+
+    return jsonify({
+        "quote_statistics_by_user": get_quote_statistics_by_user(window_start, window_end),
         "quote_cost_comparison_by_job_type": get_quote_cost_comparison_by_job_type(window_start, window_end),
-        "quote_cost_breakdown_log": get_detailed_quote_job_stats(db.session, window_start, window_end),
-        "job_items_created_by_tech": job_items_created_by_tech,
+        "quote_cost_breakdown_log": get_detailed_quote_job_stats(db.session, window_start, window_end)
+    })
+
+@performance_summary_bp.route('/api/performance/customers_locations')
+def performance_customers_locations():
+    window_start, window_end = get_date_window()
+
+    return jsonify({
+        "location_service_type_counts": get_top_locations_by_service_type(window_start, window_end),
+        "top_customer_revenue": get_top_customers_by_revenue(window_start, window_end)
     })
 
 
@@ -1062,6 +1090,32 @@ def get_total_hours_by_tech(completed_filter):
         .all()
     )
 
+
+def get_avg_revenue_per_hour_by_job_type(hours_by_job_type, revenue_by_job_type):
+    """
+    Compute average revenue per on-site hour for each job type.
+
+    hours_by_job_type:   { job_type: total_hours }
+    revenue_by_job_type: { job_type: total_revenue }
+    """
+    avg_rev_per_hour = {}
+
+    all_job_types = set(hours_by_job_type.keys()) | set(revenue_by_job_type.keys())
+
+    for jt in all_job_types:
+        hours = hours_by_job_type.get(jt, 0) or 0
+        revenue = revenue_by_job_type.get(jt, 0) or 0
+
+        key = jt or "Unknown"
+
+        if hours > 0:
+            avg_rev_per_hour[key] = round(revenue / hours, 2)
+        else:
+            avg_rev_per_hour[key] = 0
+
+    return avg_rev_per_hour
+
+
 def get_job_type_analytics(job_type_counts, revenue_by_job_type, completed_filter):
     avg_revenue_by_job_type = {}
     jobs_by_job_type = {}
@@ -1108,49 +1162,59 @@ def get_deficiency_insights(start_date, end_date):
     )
 
     # Total deficiencies created
-    total_deficiencies = db.session.query(Deficiency)\
-        .filter(base_filter)\
+    total_deficiencies = db.session.query(Deficiency) \
+        .filter(base_filter) \
         .count()
+
+    # Avoid division-by-zero
+    def pct(value):
+        return round((value / total_deficiencies) * 100, 2) if total_deficiencies else 0
 
     # All linked deficiencies (distinct)
-    quoted_deficiencies = db.session.query(QuoteDeficiencyLink.deficiency_id)\
-        .join(Deficiency, QuoteDeficiencyLink.deficiency_id == Deficiency.deficiency_id)\
-        .filter(base_filter)\
-        .distinct()\
+    quoted_deficiencies = db.session.query(QuoteDeficiencyLink.deficiency_id) \
+        .join(Deficiency, QuoteDeficiencyLink.deficiency_id == Deficiency.deficiency_id) \
+        .filter(base_filter) \
+        .distinct() \
         .count()
-    
-    print("QUOTED DEFICIECNIOES: ", quoted_deficiencies)
 
     # Quoted + job created
-    quoted_with_job = db.session.query(QuoteDeficiencyLink.deficiency_id)\
-        .join(Quote, Quote.quote_id == QuoteDeficiencyLink.quote_id)\
-        .join(Deficiency, QuoteDeficiencyLink.deficiency_id == Deficiency.deficiency_id)\
+    quoted_with_job = db.session.query(QuoteDeficiencyLink.deficiency_id) \
+        .join(Quote, Quote.quote_id == QuoteDeficiencyLink.quote_id) \
+        .join(Deficiency, QuoteDeficiencyLink.deficiency_id == Deficiency.deficiency_id) \
         .filter(
             base_filter,
             Quote.job_created.is_(True)
-        )\
-        .distinct()\
+        ) \
+        .distinct() \
         .count()
 
     # Quoted + job completed
-    quoted_with_completed_job = db.session.query(QuoteDeficiencyLink.deficiency_id)\
-        .join(Quote, Quote.quote_id == QuoteDeficiencyLink.quote_id)\
-        .join(Job, Quote.job_id == Job.job_id)\
-        .join(Deficiency, QuoteDeficiencyLink.deficiency_id == Deficiency.deficiency_id)\
+    quoted_with_completed_job = db.session.query(QuoteDeficiencyLink.deficiency_id) \
+        .join(Quote, Quote.quote_id == QuoteDeficiencyLink.quote_id) \
+        .join(Job, Quote.job_id == Job.job_id) \
+        .join(Deficiency, QuoteDeficiencyLink.deficiency_id == Deficiency.deficiency_id) \
         .filter(
             base_filter,
             Quote.job_created.is_(True),
             Job.completed_on.isnot(None)
-        )\
-        .distinct()\
+        ) \
+        .distinct() \
         .count()
 
     return {
         "total_deficiencies": total_deficiencies,
         "quoted_deficiencies": quoted_deficiencies,
         "quoted_with_job": quoted_with_job,
-        "quoted_with_completed_job": quoted_with_completed_job
+        "quoted_with_completed_job": quoted_with_completed_job,
+
+        # 🔥 NEW: Percentages of the original total
+        "percentages": {
+            "quoted_pct": pct(quoted_deficiencies),
+            "job_created_pct": pct(quoted_with_job),
+            "job_completed_pct": pct(quoted_with_completed_job)
+        }
     }
+
 
 
 
