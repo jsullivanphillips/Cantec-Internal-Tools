@@ -316,7 +316,7 @@ class QuoteDeficiencyLink(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     quote_id = db.Column(db.BIGINT, db.ForeignKey("quote.quote_id"), nullable=False)
-    deficiency_id = db.Column(db.Integer, db.ForeignKey("deficiency.id"), nullable=False)
+    deficiency_id = db.Column(db.BIGINT, db.ForeignKey("deficiency.deficiency_id"), nullable=False)
 
 
 class Quote(db.Model):

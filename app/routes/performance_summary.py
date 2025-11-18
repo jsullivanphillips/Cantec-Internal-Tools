@@ -819,9 +819,6 @@ def get_top_customers_by_revenue(window_start, window_end):
 
     sorted_customers = sorted(customer_map.items(), key=lambda x: x[1], reverse=True)
 
-
-    for name, revenue in sorted_customers:
-        print(f"{name:<40} ${revenue:,.2f}")
         
     return [
         {"customer": name, "revenue": round(revenue, 2)}
@@ -1121,6 +1118,8 @@ def get_deficiency_insights(start_date, end_date):
         .filter(base_filter)\
         .distinct()\
         .count()
+    
+    print("QUOTED DEFICIECNIOES: ", quoted_deficiencies)
 
     # Quoted + job created
     quoted_with_job = db.session.query(QuoteDeficiencyLink.deficiency_id)\
@@ -1899,6 +1898,7 @@ def query_quote_by_id(quote_id):
     data = response.json().get("data", {})
     print(json.dumps(data, indent=4))
 
+
 def update_quotes(start_date=None, end_date=None):
     authenticate()
 
@@ -1906,57 +1906,62 @@ def update_quotes(start_date=None, end_date=None):
         start_date = datetime(2024, 5, 1, 0, 0)
         end_date   = datetime(2025, 4, 30, 23, 59)
 
-    start_ts = datetime.timestamp(start_date)
-    end_ts   = datetime.timestamp(end_date)
+    start_ts = int(start_date.timestamp())
+    end_ts   = int(end_date.timestamp())
 
     base_params = {
         "createdAfter": start_ts,
         "createdBefore": end_ts,
     }
 
-    # --- 1. Fetch all quotes within the timeframe
+    # -----------------------------------------------
+    # 1. Fetch all quotes in date window
+    # -----------------------------------------------
     all_quotes = get_quotes_with_params(params=base_params)
-    tqdm.write(f"✅ Found {len(all_quotes)} quotes in {start_date} - {end_date}")
+    tqdm.write(f"✅ Found {len(all_quotes)} quotes in range.")
 
-    # --- 2. Fetch deficiency-linked quotes in same window
-    # FIX: use Deficiency.id (or whatever your new field is)
-    known_deficiencies = Deficiency.query.with_entities(Deficiency.id).all()
-    deficiency_ids = [d[0] for d in known_deficiencies]
+    # -----------------------------------------------
+    # 2. Fetch deficiencies created in same window
+    # -----------------------------------------------
+    filtered_defs = (
+        Deficiency.query
+        .filter(Deficiency.deficiency_created_on >= start_date)
+        .filter(Deficiency.deficiency_created_on <= end_date)
+        .all()
+    )
 
-    linked_quotes = []
+    st_def_ids = [d.deficiency_id for d in filtered_defs]
+    tqdm.write(f"🔗 Found {len(st_def_ids)} deficiencies in date window")
 
-    for d_id in tqdm(deficiency_ids, desc="Fetching linked quotes"):
-        params = {
-            "createdAfter": start_ts,
-            "createdBefore": end_ts,
-            "deficiencyId": d_id,   # this must match whatever ID ST expects
-        }
-        quotes = get_quotes_with_params(params=params)
+    # -----------------------------------------------
+    # 3. Build mapping: quote_id → {deficiency_ids}
+    # -----------------------------------------------
+    quote_to_def_ids = {}  # quote_id → set(def_ids)
+
+    for st_def_id in tqdm(st_def_ids, desc="Fetching linked quotes"):
+        quotes = get_quotes_with_params(params={"deficiencyId": st_def_id})
 
         for q in quotes:
-            # Attach a LIST of deficiencies (append, don't overwrite)
-            q.setdefault("linked_deficiency_ids", []).append(d_id)
+            qid = q["id"]
+            quote_to_def_ids.setdefault(qid, set()).add(st_def_id)
 
-        linked_quotes.extend(quotes)
+    # -----------------------------------------------
+    # 4. Save all quotes & link rows (batch commits)
+    # -----------------------------------------------
+    BATCH_SIZE = 250
+    processed = 0
 
-    # Index linked quotes by ID for later matching
-    quote_def_map = {}
-    for q in linked_quotes:
-        qid = q["id"]
-        if qid not in quote_def_map:
-            quote_def_map[qid] = set()
-        quote_def_map[qid].update(q["linked_deficiency_ids"])
-
-    # --- 3. Save all quotes, with any link if present
     with tqdm(total=len(all_quotes), desc="Saving quotes to DB") as pbar:
         for q in all_quotes:
             try:
                 quote_id = q["id"]
+
+                # Load or create
                 quote = Quote.query.filter_by(quote_id=quote_id).first()
                 if not quote:
                     quote = Quote(quote_id=quote_id)
 
-                # --- Standard fields ---
+                # ---- Standard quote fields ----
                 quote.customer_name = q["customer"]["name"]
                 quote.location_id = q["location"]["id"]
                 quote.location_address = q["location"]["address"]["street"]
@@ -1974,35 +1979,45 @@ def update_quotes(start_date=None, end_date=None):
                 quote.owner_id = q["owner"]["id"]
                 quote.owner_email = q["owner"]["email"]
 
-                quote.job_created = len(q["jobs"]) > 0
+                quote.job_created = len(q.get("jobs", [])) > 0
                 quote.job_id = q["jobs"][0]["id"] if quote.job_created else None
 
                 db.session.add(quote)
-                db.session.flush()  # ensures quote.id and quote.quote_id are available
+                db.session.flush()  # ensures quote.quote_id exists (DB PK)
 
-                # --- NEW: insert link rows ---
-                linked_def_ids = quote_def_map.get(quote_id, [])
-                for d_id in linked_def_ids:
+                # ---- Insert deficiency links ----
+                linked_def_ids = quote_to_def_ids.get(quote_id, [])
+
+                for st_def_id in linked_def_ids:
                     exists = QuoteDeficiencyLink.query.filter_by(
                         quote_id=quote.quote_id,
-                        deficiency_id=d_id,
+                        deficiency_id=st_def_id
                     ).first()
 
                     if not exists:
                         db.session.add(
                             QuoteDeficiencyLink(
                                 quote_id=quote.quote_id,
-                                deficiency_id=d_id,
+                                deficiency_id=st_def_id  # <-- ST deficiency ID
                             )
                         )
 
             except Exception as e:
                 tqdm.write(f"[WARNING] Skipped quote {q.get('id')} | Error: {e}")
 
+            processed += 1
             pbar.update(1)
 
+            # ---- Batch commit every N rows ----
+            if processed % BATCH_SIZE == 0:
+                db.session.commit()
+                tqdm.write(f"💾 Batch commit completed at {processed} quotes.")
+
+    # Final commit for leftover rows
     db.session.commit()
-    tqdm.write("✅ All quotes processed and saved.")
+    tqdm.write("🎉 All quotes processed and saved.")
+
+
 
 
 
