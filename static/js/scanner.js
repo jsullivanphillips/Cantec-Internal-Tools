@@ -1,70 +1,62 @@
-import Quagga from "quagga";
+import { BrowserMultiFormatReader, NotFoundException } from '@zxing/browser';
 
 const startBtn = document.getElementById("start-btn");
 const scannerContainer = document.getElementById("scanner-container");
 const message = document.getElementById("message");
 
-let scannerRunning = false;
+let codeReader = null;
+let activeStream = null;
 
-startBtn.addEventListener("click", () => {
-    console.log("Start Scanner Clicked");
-    if (!scannerRunning) startScanner();
-});
+startBtn.addEventListener("click", startScanner);
 
-function startScanner() {
+async function startScanner() {
     scannerContainer.style.display = "block";
     message.textContent = "Scanning...";
 
-    Quagga.init({
-        inputStream: {
-            type: "LiveStream",
-            target: scannerContainer,
-            constraints: {
-                width: { ideal: 1280 },
-                height: { ideal: 720 },
-                facingMode: "environment"
-            }
-        },
-        locator: {
-            patchSize: "medium",
-            halfSample: true
-        },
-        numOfWorkers: 0,   // REQUIRED for iPhone
-        frequency: 10,
-        decoder: {
-            readers: [
-                "code_128_reader",
-                "code_39_reader",
-                "ean_reader",
-                "upc_reader"
-            ],
-            multiple: false,
-            singleChannel: false   // REQUIRED for iPhone
-        },
-        locate: true
-    }, function(err) {
-        if (err) {
-            console.error("Quagga init error:", err);
-            message.textContent = "Failed to start scanner.";
-            return;
-        }
+    codeReader = new BrowserMultiFormatReader();
 
-        console.log("Quagga started on iPhone");
-        Quagga.start();
-        scannerRunning = true;
+    try {
+        activeStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: "environment" }
+        });
 
-        // MUST be inside init callback for iPhone
-        Quagga.onDetected(onDetected);
-    });
+        const videoElement = document.createElement("video");
+        videoElement.setAttribute("playsinline", true); // IMPORTANT for iPhone
+        videoElement.srcObject = activeStream;
+        scannerContainer.appendChild(videoElement);
+        await videoElement.play();
+
+        scanLoop(videoElement);
+
+    } catch (err) {
+        console.error("Camera error:", err);
+        message.textContent = "Could not access camera.";
+    }
 }
 
-function onDetected(result) {
-    const code = result.codeResult.code;
+async function scanLoop(video) {
+    try {
+        const result = await codeReader.decodeFromVideoElement(video);
+        if (result) {
+            console.log("Detected:", result.text);
 
-    console.log("Detected:", code);
+            stopScanner();
+            window.location.href = `/key/${result.text}`;
+            return;
+        }
+    } catch (err) {
+        if (!(err instanceof NotFoundException)) {
+            console.error("Decode error:", err);
+        }
+    }
 
-    Quagga.stop();
-    scannerRunning = false;
+    // Keep scanning
+    requestAnimationFrame(() => scanLoop(video));
+}
 
-    window.location.href = `/key/${code}`;
+function stopScanner() {
+    if (activeStream) {
+        activeStream.getTracks().forEach(track => track.stop());
+    }
+    scannerContainer.innerHTML = "";
 }
