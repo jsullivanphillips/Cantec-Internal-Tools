@@ -12,7 +12,7 @@ from .limbo_job_tracker import limbo_job_tracker_bp
 from .performance_summary import performance_summary_bp
 from .pink_folder import pink_folder_bp
 from .webhook import webhook_bp
-
+from .ipad_scanner import ipad_scanner_bp
 
 
 def register_blueprints(app):
@@ -29,5 +29,6 @@ def register_blueprints(app):
     app.register_blueprint(performance_summary_bp)
     app.register_blueprint(pink_folder_bp)
     app.register_blueprint(webhook_bp)
+    app.register_blueprint(ipad_scanner_bp)
     init_cache(app)
 

@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Barcode Scanner</title>
+    <style>
+        #scanner-container {
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+            position: relative;
+        }
+
+        #scanner-container video {
+            width: 100%;
+            border-radius: 8px;
+        }
+
+        #scanner-overlay {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            border: 3px solid rgba(0, 255, 0, 0.5);
+            box-sizing: border-box;
+            border-radius: 8px;
+        }
+
+        #message {
+            text-align: center;
+            font-size: 1.2rem;
+            margin-top: 1rem;
+            color: #444;
+        }
+
+        button {
+            padding: 12px 18px;
+            margin: 10px auto;
+            display: block;
+            font-size: 1rem;
+        }
+    </style>
+</head>
+<body>
+
+    <h2 style="text-align:center;">Key Barcode Scanner</h2>
+
+    <button id="start-btn">Start Scanner</button>
+
+    <div id="scanner-container" style="display:none;">
+        <div id="scanner-overlay"></div>
+    </div>
+
+    <div id="message">Tap “Start Scanner” to begin.</div>
+
+    <script type="module" src="/js/scanner.js"></script>
+
+</body>
+</html>
