@@ -21,32 +21,20 @@ function startScanner() {
             name: "Live",
             type: "LiveStream",
             target: scannerContainer,
-            constraints: {
-                facingMode: "environment" // back camera
-            }
+            constraints: { facingMode: "environment" }
         },
         decoder: {
-            readers: [
-                "code_128_reader",
-                "code_39_reader",
-                "ean_reader",
-                "ean_8_reader",
-                "upc_reader",
-                "upc_e_reader",
-                "codabar_reader"
-            ]
-        },
-        locate: true,
-    }, function (err) {
+            readers: ["code_128_reader", "code_39_reader"]
+        }
+    }, function(err) {
         if (err) {
-            console.error("Quagga init failed:", err);
-            message.textContent = "Camera access denied or unavailable.";
+            console.error(err);
+            message.textContent = "Camera unavailable.";
             return;
         }
 
         Quagga.start();
         scannerRunning = true;
-        console.log("Scanner started");
     });
 
     Quagga.onDetected(onDetected);
@@ -55,13 +43,8 @@ function startScanner() {
 function onDetected(result) {
     const code = result.codeResult.code;
 
-    console.log("Scanned:", code);
-    message.textContent = `Scanned: ${code}`;
-
-    // Stop the scanner to prevent multiple triggers
     Quagga.stop();
     scannerRunning = false;
 
-    // Redirect to your website’s key page
     window.location.href = `/key/${code}`;
 }
