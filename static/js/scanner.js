@@ -7,9 +7,8 @@ const message = document.getElementById("message");
 let scannerRunning = false;
 
 startBtn.addEventListener("click", () => {
-    if (!scannerRunning) {
-        startScanner();
-    }
+    console.log("Start Scanner Clicked");
+    if (!scannerRunning) startScanner();
 });
 
 function startScanner() {
@@ -18,30 +17,51 @@ function startScanner() {
 
     Quagga.init({
         inputStream: {
-            name: "Live",
             type: "LiveStream",
             target: scannerContainer,
-            constraints: { facingMode: "environment" }
+            constraints: {
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+                facingMode: "environment"
+            }
         },
+        locator: {
+            patchSize: "medium",
+            halfSample: true
+        },
+        numOfWorkers: 0,   // REQUIRED for iPhone
+        frequency: 10,
         decoder: {
-            readers: ["code_128_reader", "code_39_reader"]
-        }
+            readers: [
+                "code_128_reader",
+                "code_39_reader",
+                "ean_reader",
+                "upc_reader"
+            ],
+            multiple: false,
+            singleChannel: false   // REQUIRED for iPhone
+        },
+        locate: true
     }, function(err) {
         if (err) {
-            console.error(err);
-            message.textContent = "Camera unavailable.";
+            console.error("Quagga init error:", err);
+            message.textContent = "Failed to start scanner.";
             return;
         }
 
+        console.log("Quagga started on iPhone");
         Quagga.start();
         scannerRunning = true;
-    });
 
-    Quagga.onDetected(onDetected);
+        // MUST be inside init callback for iPhone
+        Quagga.onDetected(onDetected);
+    });
 }
 
 function onDetected(result) {
     const code = result.codeResult.code;
+
+    console.log("Detected:", code);
 
     Quagga.stop();
     scannerRunning = false;
