@@ -21,7 +21,6 @@
         </div>
     </div>
 
-
     <p id="message" class="text-center mt-3 text-muted">
         Tap “Start Scanner” to begin.
     </p>
@@ -36,49 +35,36 @@ window.addEventListener('load', async function () {
 
     console.log("🌐 Page loaded.");
 
+    const startBtn = document.getElementById("start-btn");
+    const scannerContainer = document.getElementById("scanner-container");
+    const videoElem = document.getElementById("video");
+
     const codeReader = new ZXingBrowser.BrowserQRCodeReader();
     console.log("📦 ZXing initialized:", codeReader);
 
     try {
         const videoInputDevices = await ZXingBrowser.BrowserCodeReader.listVideoInputDevices();
-        console.log("🎥 Video devices:", videoInputDevices);
+        const selectedDeviceId = videoInputDevices[0].deviceId;
+        console.log(`Started decode from camera with id ${selectedDeviceId}`);
 
-        if (videoInputDevices.length === 0) {
-            console.error("❌ No cameras found.");
-            alert("No camera available.");
-            return;
-        }
+        
 
-        let selectedDeviceId =
-            videoInputDevices.find(d => d.label.toLowerCase().includes("back"))?.deviceId
-            || videoInputDevices[0].deviceId;
-
-        console.log("📸 Using camera:", selectedDeviceId);
-
-        const previewElem = document.createElement("video");
-        previewElem.setAttribute("playsinline", true);
-        previewElem.style.width = "100%";
-        document.body.appendChild(previewElem);
-
-        console.log("🔍 Starting decode...");
-
-        codeReader.decodeFromVideoDevice(
+        const controls = await codeReader.decodeFromVideoDevice(
             selectedDeviceId,
-            previewElem,
-            (result, err) => {
+            videoElem,
+            (result, error, controls) => {
                 if (result) {
-                    console.log("🎉 BARCODE FOUND:", result.text);
+                    console.log("🎉 BARCODE:", result.text);
                     alert("Decoded: " + result.text);
-                    codeReader.reset();
+                    controls.stop();
                 }
-                if (err && !(err instanceof ZXing.NotFoundException)) {
-                    console.warn("⚠️ Scan error:", err);
+                if (error && !(error instanceof ZXingBrowser.NotFoundException)) {
+                    console.warn("⚠️ Scan error:", error);
                 }
             }
         );
-
-    }catch (err){
-        console.log(err);
+    } catch (err){
+        console.log(err)
     }
 });
 </script>
