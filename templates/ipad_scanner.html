@@ -62,20 +62,39 @@
             if (!hasCamera) return;
 
             const quaggaConf = {
-                inputStream: {
-                    target: document.querySelector("#camera"),
-                    type: "LiveStream",
-                    constraints: {
-                        width: { min: 640 },
-                        height: { min: 480 },
-                        facingMode: "environment",
-                        aspectRatio: { min: 1, max: 2 }
-                    }
-                },
-                decoder: {
-                    readers: ['code_128_reader']
-                },
-            };
+              inputStream: {
+                  target: document.querySelector("#camera"),
+                  type: "LiveStream",
+                  constraints: {
+                      width: { min: 1280 },
+                      height: { min: 720 },
+                      facingMode: "environment"
+                  }
+              },
+              locate: true,
+              numOfWorkers: 4,
+              decoder: {
+                  readers: [
+                      "code_128_reader",
+                      "code_39_reader",
+                      "code_93_reader",
+                      "i2of5_reader"
+                  ],
+                  multiple: false
+              },
+              locator: {
+                  halfSample: false,
+                  patchSize: "medium" // "small", "medium", "large"
+              },
+              debug: {
+                  drawBoundingBox: true,
+                  showCanvas: true,
+                  showPatches: true,
+                  showFoundPatches: true,
+                  showSkeleton: true
+              }
+          };
+
 
             Quagga.init(quaggaConf, function (err) {
                 if (err) {
