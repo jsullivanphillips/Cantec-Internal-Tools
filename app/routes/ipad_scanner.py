@@ -1,6 +1,6 @@
 from flask import render_template, Blueprint
 
-ipad_scanner_bp = Blueprint('ipad_scanner', __name__, template_folder='../templates')
+ipad_scanner_bp = Blueprint("ipad_scanner", __name__)
 
 # Replace these with your actual ServiceTrade API credentials and endpoint details.
 SERVICE_TRADE_API_BASE = "https://api.servicetrade.com/api"
