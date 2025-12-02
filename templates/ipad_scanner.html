@@ -44,10 +44,13 @@ window.addEventListener('load', async function () {
 
     try {
         const videoInputDevices = await ZXingBrowser.BrowserCodeReader.listVideoInputDevices();
+        console.log("All input devices: ", videoInputDevices);
+        if (videoInputDevices.length == 0){
+            return;
+        }
+
         const selectedDeviceId = videoInputDevices[0].deviceId;
         console.log(`Started decode from camera with id ${selectedDeviceId}`);
-
-        
 
         const controls = await codeReader.decodeFromVideoDevice(selectedDeviceId, videoElem, (result, error, controls) => {
         // use the result and error values to choose your actions
@@ -60,6 +63,7 @@ window.addEventListener('load', async function () {
                 console.warn("Scan error: ", error);
             }
         });
+        setTimeout(() => controls.stop(), 500);
     } catch (err){
         console.log(err)
     }
