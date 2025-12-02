@@ -43,15 +43,15 @@ window.addEventListener('load', async function () {
         const videoInputDevices = await ZXingBrowser.BrowserCodeReader.listVideoInputDevices();
         console.log("🎥 Video devices:", videoInputDevices);
 
-        if (devices.length === 0) {
+        if (videoInputDevices.length === 0) {
             console.error("❌ No cameras found.");
             alert("No camera available.");
             return;
         }
 
         let selectedDeviceId =
-            devices.find(d => d.label.toLowerCase().includes("back"))?.deviceId
-            || devices[0].deviceId;
+            videoInputDevices.find(d => d.label.toLowerCase().includes("back"))?.deviceId
+            || videoInputDevices[0].deviceId;
 
         console.log("📸 Using camera:", selectedDeviceId);
 
