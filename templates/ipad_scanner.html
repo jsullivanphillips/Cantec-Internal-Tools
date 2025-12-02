@@ -2,11 +2,11 @@
 <html lang="en">
 <head>
     <meta charset="utf-8"/>
-    <title>QuaggaJS Scanner</title>
+    <title>ZXing Scanner</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 
     <style>
-        #camera video {
+        video {
             width: 100%;
             max-width: 640px;
         }
@@ -28,88 +28,48 @@
 </head>
 
 <body>
-    <div id="camera"></div>
+    <video id="preview"></video>
 
     <div id="resultBox">Scan a barcode…</div>
     <div id="noCameraMsg" style="display:none;">No camera devices detected.</div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
+    <!-- ZXing Browser library -->
+    <script src="https://unpkg.com/@zxing/browser@latest"></script>
+
     <script>
         const resultBox = document.getElementById("resultBox");
         const noCameraMsg = document.getElementById("noCameraMsg");
+        const videoElem = document.getElementById("preview");
 
-        async function checkCameras() {
+        async function startScanner() {
+            // Check for camera devices
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const videoInputs = devices.filter(d => d.kind === "videoinput");
+
+            if (videoInputs.length === 0) {
+                noCameraMsg.style.display = "block";
+                return;
+            }
+
+            // Create the barcode reader
+            const codeReader = new ZXingBrowser.BrowserMultiFormatReader();
+
             try {
-                const devices = await navigator.mediaDevices.enumerateDevices();
-                const videoInputs = devices.filter(d => d.kind === "videoinput");
-
-                if (videoInputs.length === 0) {
-                    noCameraMsg.style.display = "block";
-                    return false;
-                }
-                return true;
+                await codeReader.decodeFromVideoDevice(
+                    null,      // auto-select camera
+                    videoElem, // video element
+                    (result, err) => {
+                        if (result) {
+                            resultBox.textContent = "Scanned Barcode: " + result.text;
+                        }
+                    }
+                );
 
             } catch (e) {
                 console.error(e);
-                noCameraMsg.textContent = "Unable to access camera permissions.";
+                noCameraMsg.textContent = "Camera initialization error.";
                 noCameraMsg.style.display = "block";
-                return false;
             }
-        }
-
-        async function startScanner() {
-            const hasCamera = await checkCameras();
-            if (!hasCamera) return;
-
-            const quaggaConf = {
-              inputStream: {
-                  target: document.querySelector("#camera"),
-                  type: "LiveStream",
-                  constraints: {
-                      width: { min: 1280 },
-                      height: { min: 720 },
-                      facingMode: "environment"
-                  }
-              },
-              locate: true,
-              numOfWorkers: 4,
-              decoder: {
-                  readers: [
-                      "code_128_reader",
-                      "code_39_reader",
-                      "code_93_reader",
-                      "i2of5_reader"
-                  ],
-                  multiple: false
-              },
-              locator: {
-                  halfSample: false,
-                  patchSize: "medium" // "small", "medium", "large"
-              },
-              debug: {
-                  drawBoundingBox: true,
-                  showCanvas: true,
-                  showPatches: true,
-                  showFoundPatches: true,
-                  showSkeleton: true
-              }
-          };
-
-
-            Quagga.init(quaggaConf, function (err) {
-                if (err) {
-                    console.error(err);
-                    noCameraMsg.textContent = "Camera initialization error.";
-                    noCameraMsg.style.display = "block";
-                    return;
-                }
-                Quagga.start();
-            });
-
-            Quagga.onDetected(function (result) {
-                const code = result.codeResult.code;
-                resultBox.textContent = "Scanned Barcode: " + code;
-            });
         }
 
         startScanner();
