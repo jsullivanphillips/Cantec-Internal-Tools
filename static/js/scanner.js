@@ -1,94 +1,87 @@
-console.log("ZXingBrowser global:", ZXingBrowser);
+console.log("ZXingBrowser global object:", window.ZXingBrowser);
 
-const { BrowserMultiFormatReader, NotFoundException } = ZXingBrowser;
+import { BrowserQRCodeReader } from '@zxing/browser';
 
-console.log("📦 ZXing scanner script loaded");
+const codeReader = new BrowserQRCodeReader();
+let activeStream = null;
+let videoEl = null;
 
 const startBtn = document.getElementById("start-btn");
 const scannerContainer = document.getElementById("scanner-container");
 const message = document.getElementById("message");
 
-let codeReader = null;
-let activeStream = null;
-
-console.log("🔧 Initializing event listeners...");
-
 startBtn.addEventListener("click", () => {
-    console.log("👉 Start Scanner button clicked");
+    console.log("👉 Start Scanner");
     startScanner();
 });
 
 async function startScanner() {
-    console.log("🚀 startScanner() triggered");
+    console.log("🚀 Initializing scanner...");
 
     scannerContainer.style.display = "block";
     message.textContent = "Scanning...";
 
-    console.log("📦 Creating ZXing reader...");
     codeReader = new BrowserMultiFormatReader();
 
     try {
-        console.log("🎥 Requesting camera (getUserMedia)...");
-        
+        console.log("🎥 Requesting camera...");
+
         activeStream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: "environment" }
+            video: {
+                facingMode: { ideal: "environment" },
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
+            },
+            audio: false
         });
 
-        console.log("✅ Camera stream received:", activeStream);
+        videoEl = document.createElement("video");
+        videoEl.setAttribute("playsinline", true);
+        videoEl.setAttribute("webkit-playsinline", true);
+        videoEl.muted = true; // REQUIRED for iOS autoplay
 
-        const videoElement = document.createElement("video");
-        videoElement.setAttribute("playsinline", true); // iPhone requirement
-        videoElement.srcObject = activeStream;
+        videoEl.srcObject = activeStream;
+        scannerContainer.appendChild(videoEl);
 
-        console.log("🎞️ Created video element, attaching to DOM...");
-        scannerContainer.appendChild(videoElement);
+        await videoEl.play();
 
-        console.log("▶️ Attempting to play video...");
-        await videoElement.play();
-        console.log("✅ Video is playing");
-
-        console.log("🔍 Starting scanLoop...");
-        scanLoop(videoElement);
+        console.log("▶️ Video playing");
+        scanLoop(videoEl);
 
     } catch (err) {
-        console.error("❌ Camera error:", err);
+        console.error("❌ Camera access error:", err);
         message.textContent = "Could not access camera.";
     }
 }
 
 async function scanLoop(video) {
-    console.log("🔄 scanLoop() running...");
-
+    // iOS Safari needs a manual loop
     try {
-        const result = await codeReader.decodeFromVideoElement(video);
-        if (result) {
-            console.log("🎉 BARCODE DETECTED:", result.text);
+        const result = await codeReader.decodeOnceFromVideoElement(video);
 
+        if (result) {
+            console.log("🎉 DECODED:", result.text);
             stopScanner();
             window.location.href = `/key/${result.text}`;
             return;
         }
     } catch (err) {
         if (err instanceof NotFoundException) {
-            // Normal: no barcode in this frame
-            console.log("⏳ Frame processed — no barcode found");
+            // No barcode found this frame — totally normal
         } else {
             console.error("⚠️ Decode error:", err);
         }
     }
 
-    // Keep scanning
     requestAnimationFrame(() => scanLoop(video));
 }
 
 function stopScanner() {
-    console.log("🛑 Stopping scanner...");
-
     if (activeStream) {
-        console.log("🔇 Stopping video tracks...");
         activeStream.getTracks().forEach(track => track.stop());
     }
-
-    console.log("🧹 Clearing scanner container...");
+    if (videoEl) {
+        videoEl.srcObject = null;
+    }
     scannerContainer.innerHTML = "";
 }

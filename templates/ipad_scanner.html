@@ -12,11 +12,15 @@
 
     <button id="start-btn" class="btn btn-primary w-100 mt-3">Start Scanner</button>
 
-    <div id="scanner-container" style="display:none; margin-top:20px; position:relative;">
+    <div id="scanner-container" 
+        style="display:none; margin-top:20px; position:relative;">
+        <video id="video" style="width:100%; border-radius:10px;" playsinline></video>
+
         <div id="scanner-overlay"
-             style="position:absolute; top:0; left:0; right:0; bottom:0; border:3px solid rgba(0,255,0,0.4);">
+            style="position:absolute; top:0; left:0; right:0; bottom:0; border:3px solid rgba(0,255,0,0.4);">
         </div>
     </div>
+
 
     <p id="message" class="text-center mt-3 text-muted">
         Tap “Start Scanner” to begin.
@@ -26,6 +30,21 @@
 {% endblock %}
 
 {% block extra_scripts %}
-<script src="https://cdn.jsdelivr.net/npm/@zxing/browser@latest"></script>
-<script src="{{ url_for('static', filename='js/scanner.js') }}"></script>
+<script type="text/javascript" src="https://unpkg.com/@zxing/browser@latest"></script>
+<script type="text/javascript">
+window.addEventListener('load', async function () {
+
+    console.log("🌐 Page loaded.");
+
+    const codeReader = new ZXingBrowser.BrowserQRCodeReader();
+    console.log("📦 ZXing initialized:", codeReader);
+
+    try {
+        const videoInputDevices = await ZXingBrowser.BrowserCodeReader.listVideoInputDevices();
+    }catch (err){
+        console.log(err);
+    }
+});
+</script>
 {% endblock %}
+
