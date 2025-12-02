@@ -26,5 +26,6 @@
 {% endblock %}
 
 {% block extra_scripts %}
-<script type="module" src="{{ url_for('ipad_scanner.ipad_scanner', filename='scanner.js') }}"></script>
+<script src="https://cdn.jsdelivr.net/npm/@zxing/browser@latest"></script>
+<script src="{{ url_for('ipad_scanner.static', filename='scanner.js') }}"></script>
 {% endblock %}

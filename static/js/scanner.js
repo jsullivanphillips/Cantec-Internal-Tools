@@ -1,4 +1,6 @@
-import { BrowserMultiFormatReader, NotFoundException } from '@zxing/browser';
+console.log("ZXingBrowser global:", ZXingBrowser);
+
+const { BrowserMultiFormatReader, NotFoundException } = ZXingBrowser;
 
 console.log("📦 ZXing scanner script loaded");
 
