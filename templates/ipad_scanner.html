@@ -6,70 +6,83 @@
 {% endblock %}
 
 {% block content %}
-<main class="wrapper" style="padding-top:2em">
-    <section class="container" id="demo-content">
-      <h1 class="title">ZXing Barcode Scanner</h1>
-      <p>
-        <a class="button-small button-outline" href="../../index.html">HOME 🏡</a>
-      </p>
-      <p>Scan any supported 1D/2D code with ZXing javascript library from the device video
-        camera.</p>
-      <div>
-        <a class="button" id="startButton">Start</a>
-        <a class="button" id="resetButton">Reset</a>
-      </div>
-      <div>
-        <video id="video" width="300" height="200" style="border: 1px solid gray"></video>
-      </div>
-      <div id="sourceSelectPanel" style="display:none">
-        <label for="sourceSelect">Change video source:</label>
-        <select id="sourceSelect" style="max-width:400px">
-        </select>
-      </div>
-      <label>Result:</label>
-      <pre><code id="result"></code></pre>
-    </section>
-  </main>
+<div class="container mt-4">
+
+    <h2 class="text-center">iPad Barcode Scanner</h2>
+
+    <button id="start-btn" class="btn btn-primary w-100 mt-3">Start Scanner</button>
+
+    <div id="scanner-container" 
+        style="display:none; margin-top:20px; position:relative;">
+        <video id="video" style="width:100%; border-radius:10px;" playsinline></video>
+
+        <div id="scanner-overlay"
+            style="position:absolute; top:0; left:0; right:0; bottom:0; border:3px solid rgba(0,255,0,0.4);">
+        </div>
+    </div>
+
+    <p id="message" class="text-center mt-3 text-muted">
+        Tap “Start Scanner” to begin.
+    </p>
+
+</div>
 {% endblock %}
 
 {% block extra_scripts %}
 <script type="text/javascript" src="https://unpkg.com/@zxing/browser@latest"></script>
-<script type="text/javascript">
-window.addEventListener('load', async function () {
-
+<script>
+window.addEventListener('load', async () => {
     console.log("🌐 Page loaded.");
 
     const startBtn = document.getElementById("start-btn");
     const scannerContainer = document.getElementById("scanner-container");
     const videoElem = document.getElementById("video");
 
-    const codeReader = new ZXingBrowser.BrowserMultiFormatReader();
-    console.log("📦 ZXing initialized:", codeReader);
+    startBtn.addEventListener("click", startCamera);
 
-    try {
-        const videoInputDevices = await codeReader.listVideoInputDevices();
-        console.log("All input devices: ", videoInputDevices);
-        if (videoInputDevices.length == 0){
-            return;
+    async function startCamera() {
+        console.log("▶️ Starting camera…");
+
+        scannerContainer.style.display = "block";
+
+        // MUST SET FOR SAFARI
+        videoElem.setAttribute("playsinline", true);
+        videoElem.setAttribute("webkit-playsinline", true);
+        videoElem.muted = true;
+
+        // Setup ZXing
+        const reader = new ZXingBrowser.BrowserQRCodeReader();
+        console.log("📦 ZXing loaded:", reader);
+
+        try {
+            // Get list of cameras
+            const devices = await reader.listVideoInputDevices();
+            console.log("🎥 Cameras:", devices);
+
+            if (devices.length === 0) {
+                alert("No camera found.");
+                return;
+            }
+
+            // Use BACK camera if available
+            const backCam =
+                devices.find(d => d.label.toLowerCase().includes("back")) ||
+                devices[0];
+
+            console.log("📸 Using camera:", backCam);
+
+            // Start the video stream ONLY
+            const controls = await reader.decodeFromVideoDevice(
+                backCam.deviceId,
+                videoElem,
+                () => {} // no decoding yet
+            );
+
+            console.log("▶️ Camera stream started.");
+
+        } catch (err) {
+            console.error("❌ Camera error:", err);
         }
-
-        const selectedDeviceId = videoInputDevices[0].deviceId;
-        console.log(`Started decode from camera with id ${selectedDeviceId}`);
-
-        const controls = await codeReader.decodeFromVideoDevice(selectedDeviceId, videoElem, (result, error, controls) => {
-        // use the result and error values to choose your actions
-        // you can also use controls API in this scope like the controls
-        // returned from the method.
-            if(result) {
-                console.log("RESULT!");
-            }
-            if (error) {
-                console.warn("Scan error: ", error);
-            }
-        });
-        setTimeout(() => controls.stop(), 500);
-    } catch (err){
-        console.log(err)
     }
 });
 </script>
