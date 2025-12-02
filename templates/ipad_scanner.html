@@ -1,174 +1,49 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<title>ZXing iPhone Scanner Demo</title>
-
-<style>
-  body {
-    font-family: Arial, sans-serif;
-    padding: 20px;
-  }
-
-  #video {
-    width: 100%;
-    max-width: 420px;
-    border-radius: 10px;
-    background: #000;
-  }
-
-  #overlay {
-    position: absolute;
-    border: 3px solid rgba(0,255,0,0.5);
-    pointer-events: none;
-  }
-
-  #video-container {
-    position: relative;
-    display: inline-block;
-    margin-top: 20px;
-  }
-</style>
+    <meta charset="utf-8"/>
+    <title>QuaggaJS</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
+    <style>
+        #camera video{
+            width:100%;
+            max-width: 640px;
+        }
+    </style>
 </head>
+
 <body>
+    <div id="camera" style="width:100%"></div>
 
-<h2>iPhone / iPad ZXing Scanner</h2>
-
-<button id="start-btn">Start Scanner</button>
-
-<div id="video-container" style="display:none;">
-  <video id="video" playsinline webkit-playsinline muted></video>
-  <div id="overlay"></div>
-</div>
-
-<p id="message">Tap “Start Scanner” to begin.</p>
-
-<!-- ✅ Correct ZXing UMD build (defines window.ZXingBrowser) -->
-<script src="https://unpkg.com/@zxing/browser@0.1.4/umd/index.min.js"></script>
-
-<script>
-window.addEventListener('load', () => {
-
-  console.log("🌐 Page loaded. ZXingBrowser =", window.ZXingBrowser);
-
-  const startBtn = document.getElementById("start-btn");
-  const videoContainer = document.getElementById("video-container");
-  const video = document.getElementById("video");
-  const overlay = document.getElementById("overlay");
-  const message = document.getElementById("message");
-
-  const reader = new ZXingBrowser.BrowserMultiFormatReader();
-  console.log("📦 ZXing initialized:", reader);
-
-  startBtn.addEventListener("click", startScanner);
-
-  async function startScanner() {
-    console.log("▶️ Starting camera…");
-    videoContainer.style.display = "inline-block";
-    message.textContent = "Starting camera...";
-
-    // Required for iPhone autoplay
-    video.setAttribute("playsinline", true);
-    video.setAttribute("webkit-playsinline", true);
-    video.muted = true;
-
-    // Step 1: get cameras
-    let devices = [];
-    try {
-      devices = await reader.listVideoInputDevices();
-      console.log("🎥 Cameras:", devices);
-    } catch (err) {
-      console.error("❌ Could not list cameras:", err);
-      message.textContent = "Camera permissions required.";
-      return;
+    <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
+    <script>
+    const quaggaConf = {
+        inputStream: {
+            target: document.querySelector("#camera"),
+            // new
+            type: "LiveStream",
+            constraints: {
+                width: { min: 640 },
+                height: { min: 480 },
+                facingMode: "environment",
+                aspectRatio: { min: 1, max: 2 }
+            }
+        },
+        decoder: {
+            readers: ['code_128_reader']
+        },
     }
 
-    if (devices.length === 0) {
-      alert("No cameras found.");
-      return;
-    }
+    Quagga.init(quaggaConf, function (err) {
+        if (err) {
+            return console.log(err);
+        }
+        Quagga.start();
+    });
 
-    // Prefer back camera
-    const backCam =
-      devices.find(d => d.label.toLowerCase().includes("back")) ||
-      devices[0];
-
-    // Step 2: Start camera preview
-    const constraints = {
-      video: {
-        deviceId: backCam.deviceId,
-        facingMode: { ideal: "environment" },
-        width: { ideal: 1280 },
-        height: { ideal: 720 }
-      },
-      audio: false
-    };
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      video.srcObject = stream;
-
-      video.onloadedmetadata = () => {
-        video.play();
-        message.textContent = "Camera active. Scanning...";
-        scanLoop();
-      };
-
-    } catch (err) {
-      console.error("❌ Camera error:", err);
-      message.textContent = "Could not start camera.";
-      return;
-    }
-  }
-
-  async function scanLoop() {
-    if (video.readyState !== video.HAVE_ENOUGH_DATA) {
-      requestAnimationFrame(scanLoop);
-      return;
-    }
-
-    const w = video.videoWidth;
-    const h = video.videoHeight;
-
-    if (!w || !h) {
-      requestAnimationFrame(scanLoop);
-      return;
-    }
-
-    // Create a hidden canvas to read frames
-    const canvas = document.createElement("canvas");
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext("2d");
-
-    ctx.drawImage(video, 0, 0, w, h);
-
-    // Crop center 50%
-    const cropW = w * 0.5;
-    const cropH = h * 0.5;
-    const cropX = (w - cropW) / 2;
-    const cropY = (h - cropH) / 2;
-
-    // Overlay box (UI)
-    overlay.style.left = cropX * (video.clientWidth / w) + "px";
-    overlay.style.top = cropY * (video.clientHeight / h) + "px";
-    overlay.style.width = cropW * (video.clientWidth / w) + "px";
-    overlay.style.height = cropH * (video.clientHeight / h) + "px";
-
-    try {
-      const result = await reader.decodeFromCanvas(canvas, cropX, cropY, cropW, cropH);
-      console.log("🎉 DECODED:", result.text);
-      alert("Scanned: " + result.text);
-      return; // stop scanning after success
-    } catch (err) {
-      // Most frames: NotFoundException — ignore
-    }
-
-    requestAnimationFrame(scanLoop);
-  }
-
-});
-</script>
-
+    Quagga.onDetected(function (result) {
+        alert("Detected barcode: " + result.codeResult.code);
+    });
+  </script>
 </body>
 </html>
