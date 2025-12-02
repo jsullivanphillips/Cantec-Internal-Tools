@@ -1,90 +1,174 @@
-{% extends "base.html" %}
-{% block title %}iPad Scanner{% endblock %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>ZXing iPhone Scanner Demo</title>
 
-{% block extra_head %}
-<!-- You can add page-specific CSS here -->
-{% endblock %}
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    padding: 20px;
+  }
 
-{% block content %}
-<div class="container mt-4">
+  #video {
+    width: 100%;
+    max-width: 420px;
+    border-radius: 10px;
+    background: #000;
+  }
 
-    <h2 class="text-center">iPad Barcode Scanner</h2>
+  #overlay {
+    position: absolute;
+    border: 3px solid rgba(0,255,0,0.5);
+    pointer-events: none;
+  }
 
-    <button id="start-btn" class="btn btn-primary w-100 mt-3">Start Scanner</button>
+  #video-container {
+    position: relative;
+    display: inline-block;
+    margin-top: 20px;
+  }
+</style>
+</head>
+<body>
 
-    <div id="scanner-container" 
-        style="display:none; margin-top:20px; position:relative;">
-        <video id="video" style="width:100%; border-radius:10px;" playsinline></video>
+<h2>iPhone / iPad ZXing Scanner</h2>
 
-        <div id="scanner-overlay"
-            style="position:absolute; top:0; left:0; right:0; bottom:0; border:3px solid rgba(0,255,0,0.4);">
-        </div>
-    </div>
+<button id="start-btn">Start Scanner</button>
 
-    <p id="message" class="text-center mt-3 text-muted">
-        Tap “Start Scanner” to begin.
-    </p>
-
+<div id="video-container" style="display:none;">
+  <video id="video" playsinline webkit-playsinline muted></video>
+  <div id="overlay"></div>
 </div>
-{% endblock %}
 
-{% block extra_scripts %}
-<script type="text/javascript" src="https://unpkg.com/@zxing/browser@latest"></script>
+<p id="message">Tap “Start Scanner” to begin.</p>
+
+<!-- ✅ Correct ZXing UMD build (defines window.ZXingBrowser) -->
+<script src="https://unpkg.com/@zxing/browser@0.1.4/umd/index.min.js"></script>
+
 <script>
-window.addEventListener('load', async () => {
-    console.log("🌐 Page loaded.");
+window.addEventListener('load', () => {
 
-    const startBtn = document.getElementById("start-btn");
-    const scannerContainer = document.getElementById("scanner-container");
-    const videoElem = document.getElementById("video");
+  console.log("🌐 Page loaded. ZXingBrowser =", window.ZXingBrowser);
 
-    startBtn.addEventListener("click", startCamera);
+  const startBtn = document.getElementById("start-btn");
+  const videoContainer = document.getElementById("video-container");
+  const video = document.getElementById("video");
+  const overlay = document.getElementById("overlay");
+  const message = document.getElementById("message");
 
-    async function startCamera() {
-        console.log("▶️ Starting camera…");
+  const reader = new ZXingBrowser.BrowserMultiFormatReader();
+  console.log("📦 ZXing initialized:", reader);
 
-        scannerContainer.style.display = "block";
+  startBtn.addEventListener("click", startScanner);
 
-        // MUST SET FOR SAFARI
-        videoElem.setAttribute("playsinline", true);
-        videoElem.setAttribute("webkit-playsinline", true);
-        videoElem.muted = true;
+  async function startScanner() {
+    console.log("▶️ Starting camera…");
+    videoContainer.style.display = "inline-block";
+    message.textContent = "Starting camera...";
 
-        // Setup ZXing
-        const reader = new ZXingBrowser.BrowserQRCodeReader();
-        console.log("📦 ZXing loaded:", reader);
+    // Required for iPhone autoplay
+    video.setAttribute("playsinline", true);
+    video.setAttribute("webkit-playsinline", true);
+    video.muted = true;
 
-        try {
-            // Get list of cameras
-            const devices = await reader.listVideoInputDevices();
-            console.log("🎥 Cameras:", devices);
-
-            if (devices.length === 0) {
-                alert("No camera found.");
-                return;
-            }
-
-            // Use BACK camera if available
-            const backCam =
-                devices.find(d => d.label.toLowerCase().includes("back")) ||
-                devices[0];
-
-            console.log("📸 Using camera:", backCam);
-
-            // Start the video stream ONLY
-            const controls = await reader.decodeFromVideoDevice(
-                backCam.deviceId,
-                videoElem,
-                () => {} // no decoding yet
-            );
-
-            console.log("▶️ Camera stream started.");
-
-        } catch (err) {
-            console.error("❌ Camera error:", err);
-        }
+    // Step 1: get cameras
+    let devices = [];
+    try {
+      devices = await reader.listVideoInputDevices();
+      console.log("🎥 Cameras:", devices);
+    } catch (err) {
+      console.error("❌ Could not list cameras:", err);
+      message.textContent = "Camera permissions required.";
+      return;
     }
+
+    if (devices.length === 0) {
+      alert("No cameras found.");
+      return;
+    }
+
+    // Prefer back camera
+    const backCam =
+      devices.find(d => d.label.toLowerCase().includes("back")) ||
+      devices[0];
+
+    // Step 2: Start camera preview
+    const constraints = {
+      video: {
+        deviceId: backCam.deviceId,
+        facingMode: { ideal: "environment" },
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      },
+      audio: false
+    };
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      video.srcObject = stream;
+
+      video.onloadedmetadata = () => {
+        video.play();
+        message.textContent = "Camera active. Scanning...";
+        scanLoop();
+      };
+
+    } catch (err) {
+      console.error("❌ Camera error:", err);
+      message.textContent = "Could not start camera.";
+      return;
+    }
+  }
+
+  async function scanLoop() {
+    if (video.readyState !== video.HAVE_ENOUGH_DATA) {
+      requestAnimationFrame(scanLoop);
+      return;
+    }
+
+    const w = video.videoWidth;
+    const h = video.videoHeight;
+
+    if (!w || !h) {
+      requestAnimationFrame(scanLoop);
+      return;
+    }
+
+    // Create a hidden canvas to read frames
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+
+    ctx.drawImage(video, 0, 0, w, h);
+
+    // Crop center 50%
+    const cropW = w * 0.5;
+    const cropH = h * 0.5;
+    const cropX = (w - cropW) / 2;
+    const cropY = (h - cropH) / 2;
+
+    // Overlay box (UI)
+    overlay.style.left = cropX * (video.clientWidth / w) + "px";
+    overlay.style.top = cropY * (video.clientHeight / h) + "px";
+    overlay.style.width = cropW * (video.clientWidth / w) + "px";
+    overlay.style.height = cropH * (video.clientHeight / h) + "px";
+
+    try {
+      const result = await reader.decodeFromCanvas(canvas, cropX, cropY, cropW, cropH);
+      console.log("🎉 DECODED:", result.text);
+      alert("Scanned: " + result.text);
+      return; // stop scanning after success
+    } catch (err) {
+      // Most frames: NotFoundException — ignore
+    }
+
+    requestAnimationFrame(scanLoop);
+  }
+
 });
 </script>
-{% endblock %}
 
+</body>
+</html>
