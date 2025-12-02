@@ -2,48 +2,98 @@
 <html lang="en">
 <head>
     <meta charset="utf-8"/>
-    <title>QuaggaJS</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
+    <title>QuaggaJS Scanner</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+
     <style>
-        #camera video{
-            width:100%;
+        #camera video {
+            width: 100%;
             max-width: 640px;
+        }
+
+        #resultBox {
+            margin-top: 20px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #2a6;
+        }
+
+        #noCameraMsg {
+            margin-top: 20px;
+            font-size: 1.1rem;
+            color: #c22;
+            font-weight: bold;
         }
     </style>
 </head>
 
 <body>
-    <div id="camera" style="width:100%"></div>
+    <div id="camera"></div>
+
+    <div id="resultBox">Scan a barcode…</div>
+    <div id="noCameraMsg" style="display:none;">No camera devices detected.</div>
 
     <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
     <script>
-    const quaggaConf = {
-        inputStream: {
-            target: document.querySelector("#camera"),
-            // new
-            type: "LiveStream",
-            constraints: {
-                width: { min: 640 },
-                height: { min: 480 },
-                facingMode: "environment",
-                aspectRatio: { min: 1, max: 2 }
+        const resultBox = document.getElementById("resultBox");
+        const noCameraMsg = document.getElementById("noCameraMsg");
+
+        async function checkCameras() {
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const videoInputs = devices.filter(d => d.kind === "videoinput");
+
+                if (videoInputs.length === 0) {
+                    noCameraMsg.style.display = "block";
+                    return false;
+                }
+                return true;
+
+            } catch (e) {
+                console.error(e);
+                noCameraMsg.textContent = "Unable to access camera permissions.";
+                noCameraMsg.style.display = "block";
+                return false;
             }
-        },
-        decoder: {
-            readers: ['code_128_reader']
-        },
-    }
-
-    Quagga.init(quaggaConf, function (err) {
-        if (err) {
-            return console.log(err);
         }
-        Quagga.start();
-    });
 
-    Quagga.onDetected(function (result) {
-        alert("Detected barcode: " + result.codeResult.code);
-    });
-  </script>
+        async function startScanner() {
+            const hasCamera = await checkCameras();
+            if (!hasCamera) return;
+
+            const quaggaConf = {
+                inputStream: {
+                    target: document.querySelector("#camera"),
+                    type: "LiveStream",
+                    constraints: {
+                        width: { min: 640 },
+                        height: { min: 480 },
+                        facingMode: "environment",
+                        aspectRatio: { min: 1, max: 2 }
+                    }
+                },
+                decoder: {
+                    readers: ['code_128_reader']
+                },
+            };
+
+            Quagga.init(quaggaConf, function (err) {
+                if (err) {
+                    console.error(err);
+                    noCameraMsg.textContent = "Camera initialization error.";
+                    noCameraMsg.style.display = "block";
+                    return;
+                }
+                Quagga.start();
+            });
+
+            Quagga.onDetected(function (result) {
+                const code = result.codeResult.code;
+                resultBox.textContent = "Scanned Barcode: " + code;
+            });
+        }
+
+        startScanner();
+    </script>
 </body>
 </html>
