@@ -35,50 +35,43 @@
 {% block extra_scripts %}
 <script type="text/javascript" src="https://unpkg.com/@zxing/browser@latest"></script>
 <script type="text/javascript">
-window.addEventListener('load', function () {
-    let selectedDeviceId;
-    const codeReader = new ZXing.BrowserMultiFormatReader()
-    console.log('ZXing code reader initialized')
-    codeReader.listVideoInputDevices()
-      .then((videoInputDevices) => {
-        const sourceSelect = document.getElementById('sourceSelect')
-        selectedDeviceId = videoInputDevices[0].deviceId
-        if (videoInputDevices.length >= 1) {
-          videoInputDevices.forEach((element) => {
-            const sourceOption = document.createElement('option')
-            sourceOption.text = element.label
-            sourceOption.value = element.deviceId
-            sourceSelect.appendChild(sourceOption)
-          })
-          sourceSelect.onchange = () => {
-            selectedDeviceId = sourceSelect.value;
-          };
-          const sourceSelectPanel = document.getElementById('sourceSelectPanel')
-          sourceSelectPanel.style.display = 'block'
+window.addEventListener('load', async function () {
+
+    console.log("🌐 Page loaded.");
+
+    const startBtn = document.getElementById("start-btn");
+    const scannerContainer = document.getElementById("scanner-container");
+    const videoElem = document.getElementById("video");
+
+    const codeReader = new ZXingBrowser.BrowserMultiFormatReader();
+    console.log("📦 ZXing initialized:", codeReader);
+
+    try {
+        const videoInputDevices = await codeReader.listVideoInputDevices();
+        console.log("All input devices: ", videoInputDevices);
+        if (videoInputDevices.length == 0){
+            return;
         }
-        document.getElementById('startButton').addEventListener('click', () => {
-          codeReader.decodeFromVideoDevice(selectedDeviceId, 'video', (result, err) => {
-            if (result) {
-              console.log(result)
-              document.getElementById('result').textContent = result.text
+
+        const selectedDeviceId = videoInputDevices[0].deviceId;
+        console.log(`Started decode from camera with id ${selectedDeviceId}`);
+
+        const controls = await codeReader.decodeFromVideoDevice(selectedDeviceId, videoElem, (result, error, controls) => {
+        // use the result and error values to choose your actions
+        // you can also use controls API in this scope like the controls
+        // returned from the method.
+            if(result) {
+                console.log("RESULT!");
             }
-            if (err && !(err instanceof ZXing.NotFoundException)) {
-              console.error(err)
-              document.getElementById('result').textContent = err
+            if (error) {
+                console.warn("Scan error: ", error);
             }
-          })
-          console.log(`Started continous decode from camera with id ${selectedDeviceId}`)
-        })
-        document.getElementById('resetButton').addEventListener('click', () => {
-          codeReader.reset()
-          document.getElementById('result').textContent = '';
-          console.log('Reset.')
-        })
-      })
-      .catch((err) => {
-        console.error(err)
-      })
-  })
+        });
+        setTimeout(() => controls.stop(), 500);
+    } catch (err){
+        console.log(err)
+    }
+});
 </script>
 {% endblock %}
 
