@@ -41,6 +41,42 @@ window.addEventListener('load', async function () {
 
     try {
         const videoInputDevices = await ZXingBrowser.BrowserCodeReader.listVideoInputDevices();
+        console.log("🎥 Video devices:", videoInputDevices);
+
+        if (devices.length === 0) {
+            console.error("❌ No cameras found.");
+            alert("No camera available.");
+            return;
+        }
+
+        let selectedDeviceId =
+            devices.find(d => d.label.toLowerCase().includes("back"))?.deviceId
+            || devices[0].deviceId;
+
+        console.log("📸 Using camera:", selectedDeviceId);
+
+        const previewElem = document.createElement("video");
+        previewElem.setAttribute("playsinline", true);
+        previewElem.style.width = "100%";
+        document.body.appendChild(previewElem);
+
+        console.log("🔍 Starting decode...");
+
+        codeReader.decodeFromVideoDevice(
+            selectedDeviceId,
+            previewElem,
+            (result, err) => {
+                if (result) {
+                    console.log("🎉 BARCODE FOUND:", result.text);
+                    alert("Decoded: " + result.text);
+                    codeReader.reset();
+                }
+                if (err && !(err instanceof ZXing.NotFoundException)) {
+                    console.warn("⚠️ Scan error:", err);
+                }
+            }
+        );
+
     }catch (err){
         console.log(err);
     }
