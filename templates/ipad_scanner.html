@@ -49,20 +49,17 @@ window.addEventListener('load', async function () {
 
         
 
-        const controls = await codeReader.decodeFromVideoDevice(
-            selectedDeviceId,
-            videoElem,
-            (result, error, controls) => {
-                if (result) {
-                    console.log("🎉 BARCODE:", result.text);
-                    alert("Decoded: " + result.text);
-                    controls.stop();
-                }
-                if (error && !(error instanceof ZXingBrowser.NotFoundException)) {
-                    console.warn("⚠️ Scan error:", error);
-                }
+        const controls = await codeReader.decodeFromVideoDevice(selectedDeviceId, videoElem, (result, error, controls) => {
+        // use the result and error values to choose your actions
+        // you can also use controls API in this scope like the controls
+        // returned from the method.
+            if(result) {
+                console.log("RESULT!");
             }
-        );
+            if (error) {
+                console.warn("Scan error: ", error);
+            }
+        });
     } catch (err){
         console.log(err)
     }
