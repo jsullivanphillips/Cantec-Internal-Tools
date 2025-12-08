@@ -589,13 +589,13 @@ def main():
                     if has_new_comment and new_comment_text:
                         try:
                             comment_url = f"{SERVICE_TRADE_API_BASE}/comment"
-                            params = {
+                            payload = {
                                 "entityId": asset_id,
                                 "entityType": entity_type,
                                 "content": new_comment_text,
                                 "visibility": ["tech"],
                             }
-                            post_resp = api_session.post(comment_url, params=params)
+                            post_resp = api_session.post(comment_url, json=payload)
                             post_resp.raise_for_status()
                             print(f" Posted new comment for asset {asset_id}")
                         except Exception as e:

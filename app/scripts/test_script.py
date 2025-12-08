@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 import requests
 import os
+import json
 from app import create_app
 
 
@@ -63,10 +64,36 @@ def find_report_conversion_jobs():
         return len(locations), jobs
 
 
+def test_posting_tech_comment():
+    app = create_app()
+    with app.app_context():
+        username = os.getenv("PROCESSING_USERNAME")
+        password = os.getenv("PROCESSING_PASSWORD")
+        if not username or not password:
+            raise SystemExit("Missing PROCESSING_USERNAME/PROCESSING_PASSWORD environment vars.")
+        authenticate(username, password)
+        try:
+            comment_url = f"{SERVICE_TRADE_API_BASE}/comment"
+            payload = {
+                "entityId": 1290704424179777,
+                "entityType": 2,
+                "content": "This is a test comment for ensuring comments are visible for techs",
+                "visibility":["tech"],
+            }
+            print("payload:", payload)
+            post_resp = api_session.post(comment_url, json=payload)
+            post_resp.raise_for_status()
+            print("  Successfully posted comment\n", json.dumps(post_resp.json(), indent=4))
+        except Exception as e:
+            print(f"  Error posting comment: {e}")
+
+    # 3 is job, 2 is asset
+
+
 
 
 def main():
-    find_report_conversion_jobs()
+    test_posting_tech_comment()
 
 if __name__ == "__main__":
     main()
