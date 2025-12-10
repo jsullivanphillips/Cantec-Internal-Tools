@@ -557,7 +557,7 @@ def get_jobs_to_be_marked_complete():
 # -------------------------------------------------------
 # TOTAL JOBS & TECH HOURS PROCESSED IN THE TIME FRAME
 # -------------------------------------------------------
-@processing_attack_bp.route('/processing_attack/processed_data', methods=['POST'])
+@processing_attack_bp.route('/processing_attack/processed_data', methods=['POST', 'GET'])
 def processing_attack_processed_data():
     """
     Returns:
@@ -581,7 +581,7 @@ def processing_attack_processed_data():
     current_summary = JobSummary.query.filter_by(week_start=selected_monday_date).first()
     # Query for precomputed data for the previous week.
     prev_summary = JobSummary.query.filter_by(week_start=previous_monday_date).first()
-
+    
     # If either record is missing, return an error.
     if not current_summary or not prev_summary:
         return jsonify({

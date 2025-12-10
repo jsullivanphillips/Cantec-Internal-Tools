@@ -103,7 +103,11 @@ const ProcessingAttack = (() => {
       const fridayStr = currentFriday.toLocaleDateString('en-US', optionsFormat);
       const year = currentMonday.getFullYear();
       const displayText = `${mondayStr} - ${fridayStr}, ${year}`;
-      const value = currentMonday.toISOString().slice(0, 10);
+      const value = `${currentMonday.getFullYear()}-${
+        String(currentMonday.getMonth() + 1).padStart(2, '0')
+      }-${
+        String(currentMonday.getDate()).padStart(2, '0')
+      }`;
       options.push({ value, text: displayText });
       currentMonday.setDate(currentMonday.getDate() - 7);
     }
@@ -335,7 +339,6 @@ const ProcessingAttack = (() => {
     })
       .then(response => response.json())
       .then(data => {
-        console.log("Complete jobs data:", data);
         document.getElementById("jobsToBeMarkedComplete").textContent = data.jobs_to_be_marked_complete;
 
 
@@ -523,7 +526,6 @@ const ProcessingAttack = (() => {
     })
       .then(response => response.json())
       .then(data => {
-        console.log("Processed data:", data);
         // Update KPI numbers.
         const thisWeekJobs = data.total_jobs_processed;
         const lastWeekJobs = data.total_jobs_processed_previous_week;
@@ -618,7 +620,6 @@ const ProcessingAttack = (() => {
     })
       .then(response => response.json())
       .then(data => {
-        console.log("Processed data:", data);
         // Update jobsProcessedByProcessorChart.
         if (data.jobs_processed_by_processor) {
           loadingJobsEl.style.display = "none";
@@ -737,7 +738,6 @@ const ProcessingAttack = (() => {
     const oldestElemCard = document.getElementById("oldestJobsCard");
     const oldestJobs = data.oldest_jobs_to_be_marked_complete;
     const firstJobId = Object.keys(oldestJobs)[0]
-    console.log("Raw date string:", oldestJobs[firstJobId].oldest_job_date);
     const oldestDate = new Date(oldestJobs[firstJobId].oldest_job_date);
     const currentDate = new Date();
     const diffDays = (currentDate - oldestDate) / (1000 * 60 * 60 * 24);
@@ -847,16 +847,20 @@ const ProcessingAttack = (() => {
 
   // Update the week display (e.g., "Week of March 24 - 28").
   function updateWeekDisplay(selectedMondayStr) {
-    const display = document.getElementById("selected-week-display");
-    const [year, month, day] = selectedMondayStr.split("-").map(Number);
-    const selectedMondayDate = new Date(year, month - 1, day);
-    const selectedFridayDate = new Date(selectedMondayDate);
-    selectedFridayDate.setDate(selectedFridayDate.getDate() + 4);
-    const optionsMonthDay = { month: "long", day: "numeric" };
-    const optionsDayOnly = { day: "numeric" };
-    const mondayStr = selectedMondayDate.toLocaleDateString("en-US", optionsMonthDay);
-    const fridayStr = selectedFridayDate.toLocaleDateString("en-US", optionsDayOnly);
-    display.textContent = `Week of ${mondayStr} - ${fridayStr}`;
+      const display = document.getElementById("selected-week-display");
+      const [year, month, day] = selectedMondayStr.split("-").map(Number);
+
+      // Create dates in UTC to avoid timezone day-shifting
+      const selectedMondayDate = new Date(Date.UTC(year, month - 1, day));
+      const selectedFridayDate = new Date(Date.UTC(year, month - 1, day + 4));
+
+      const optionsMonthDay = { month: "long", day: "numeric", timeZone: "UTC" };
+      const optionsDayOnly = { day: "numeric", timeZone: "UTC" };
+
+      const mondayStr = selectedMondayDate.toLocaleDateString("en-US", optionsMonthDay);
+      const fridayStr = selectedFridayDate.toLocaleDateString("en-US", optionsDayOnly);
+
+      display.textContent = `Week of ${mondayStr} - ${fridayStr}`;
   }
 
   
@@ -1009,7 +1013,6 @@ const ProcessingAttack = (() => {
     const weekSelect = document.getElementById("week-select");
     document.getElementById("submitWeekBtn").addEventListener("click", function () {
       const selectedMonday = weekSelect.value;
-      console.log("Selected Monday:", selectedMonday);
       loadProcessedData(selectedMonday);
       loadProcessedDataByProcessor(selectedMonday);
       updateWeekDisplay(selectedMonday);
