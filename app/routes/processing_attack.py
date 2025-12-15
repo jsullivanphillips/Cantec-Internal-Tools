@@ -552,6 +552,62 @@ def get_jobs_to_be_marked_complete():
 
     return jobs_to_be_marked_complete, oldest_job_ids, oldest_inspection_job_id, job_date
 
+@processing_attack_bp.route('/processing_attack/overall_stats', methods=['GET'])
+def processing_attack_overall_stats():
+    """
+    Returns all-time weekly records from JobSummary.
+    """
+    most_jobs = (
+        JobSummary.query
+        .order_by(JobSummary.total_jobs_processed.desc())
+        .first()
+    )
+
+    most_hours = (
+        JobSummary.query
+        .order_by(JobSummary.total_tech_hours_processed.desc())
+        .first()
+    )
+
+    if not most_jobs or not most_hours:
+        return jsonify({"error": "No summary data available"}), 404
+
+    return jsonify({
+        "most_jobs_processed": most_jobs.total_jobs_processed,
+        "most_jobs_week": most_jobs.week_start.strftime("%B %d, %Y"),
+        "most_hours_processed": round(most_hours.total_tech_hours_processed, 1),
+        "most_hours_week": most_hours.week_start.strftime("%B %d, %Y"),
+    })
+
+@processing_attack_bp.route(
+    "/processing_attack/overall_weekly_trend",
+    methods=["GET"]
+)
+def processing_attack_overall_weekly_trend():
+    """
+    Returns weekly jobs & hours for all recorded weeks.
+    """
+    summaries = (
+        JobSummary.query
+        .order_by(JobSummary.week_start.asc())
+        .all()
+    )
+
+    weeks = []
+    jobs = []
+    hours = []
+
+    for s in summaries:
+        weeks.append(s.week_start.strftime("%b %d, %Y"))
+        jobs.append(s.total_jobs_processed)
+        hours.append(round(s.total_tech_hours_processed, 1))
+
+    return jsonify({
+        "weeks": weeks,
+        "jobs": jobs,
+        "hours": hours
+    })
+
 
 
 # -------------------------------------------------------
