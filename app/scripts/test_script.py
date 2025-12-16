@@ -25,10 +25,6 @@ SCOPE = ["https://graph.microsoft.com/.default"]
 USER_EMAIL = "service@cantec.ca"
 PORTAL_LINK = "https://crims.crd.bc.ca/ccc-portal/device-testers/"
 
-SERVICE_TRADE_API_BASE = "https://api.servicetrade.com/api"
-api_session = requests.Session()
-api_session.headers.update({"Accept": "application/json"})
-
 def authenticate(username: str, password: str) -> None:
     auth_url = f"{SERVICE_TRADE_API_BASE}/auth"
     resp = api_session.post(auth_url, json={"username": username, "password": password})
@@ -87,7 +83,6 @@ def find_report_conversion_jobs():
             print(f"{job.get("location").get("address").get("street")}: {job.get("id")} : Scheduled -> {datetime.fromtimestamp(job.get("scheduledDate"))}")
 
         return len(locations), jobs
-
 
 
 def update_backflow_visibility():

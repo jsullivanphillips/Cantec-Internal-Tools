@@ -18,6 +18,36 @@ body {
   padding: 0;
 }
 
+.bg-orange {
+  background-color: #cd7f32;
+  color: #fff;
+}
+
+.badge-silver {
+  background: linear-gradient(135deg, #e5e7eb, #cfd4da);
+  color: #212529;
+}
+
+.badge-gold {
+  background-color: #f6c343;
+  color: #212529;
+  animation: goldGlow 2s ease-in-out infinite;
+}
+
+
+@keyframes goldGlow {
+  0% {
+    box-shadow: 0 0 4px rgba(246, 195, 67, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 10px rgba(246, 195, 67, 0.9);
+  }
+  100% {
+    box-shadow: 0 0 4px rgba(246, 195, 67, 0.4);
+  }
+}
+
+
 
 /* ========================================
    2. Navbar Styles

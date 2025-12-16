@@ -14,6 +14,7 @@ from .pink_folder import pink_folder_bp
 from .webhook import webhook_bp
 from .ipad_scanner import ipad_scanner_bp
 from .key_page import key_page_bp
+from . monthly_specialists import monthly_specialist_bp
 
 
 def register_blueprints(app):
@@ -32,5 +33,6 @@ def register_blueprints(app):
     app.register_blueprint(webhook_bp)
     app.register_blueprint(ipad_scanner_bp)
     app.register_blueprint(key_page_bp)
+    app.register_blueprint(monthly_specialist_bp)
     init_cache(app)
 

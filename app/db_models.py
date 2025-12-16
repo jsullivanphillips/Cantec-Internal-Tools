@@ -5,6 +5,7 @@ from sqlalchemy import (
     UniqueConstraint
 )
 from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.dialects.postgresql import JSONB
 
 
 db = SQLAlchemy()
@@ -463,7 +464,34 @@ class Technician(db.Model):
     def __repr__(self):
         return f"<Technician {self.name} | {self.type or 'Unassigned'}>"
 
+class MonthlyRouteSnapshot(db.Model):
+    __tablename__ = "monthly_route_snapshot"
 
+    id = db.Column(db.BigInteger, primary_key=True)
+
+    # Route / location
+    location_id = db.Column(db.BigInteger, nullable=False, unique=True, index=True)
+    location_name = db.Column(db.String(255), nullable=False)
+
+    completed_jobs_count = db.Column(db.Integer, nullable=False, default=0)
+
+    # 🔥 Precomputed top 5 technicians
+    # Example value:
+    # [
+    #   {"tech_name": "John Smith", "jobs": 42},
+    #   {"tech_name": "Jane Doe", "jobs": 38}
+    # ]
+    top_technicians = db.Column(JSONB, nullable=False)
+
+    last_updated_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        index=True,
+    )
+
+    def __repr__(self):
+        return f"<MonthlyRouteSnapshot {self.location_name}>"
 
 
 if __name__ == '__main__':
