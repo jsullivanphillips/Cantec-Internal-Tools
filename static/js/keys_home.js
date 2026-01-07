@@ -7,8 +7,23 @@
   const signedOutError = document.getElementById("signedOutError");
   const signedOutList = document.getElementById("signedOutList");
 
+  // -----------------------------
+  // Scanner elements
+  // -----------------------------
+  const openScannerBtn = document.getElementById("openScannerBtn");
+  const closeScannerBtn = document.getElementById("closeScannerBtn");
+  const scannerPanel = document.getElementById("scannerPanel");
+  const resultBox = document.getElementById("resultBox");
+  const noCameraMsg = document.getElementById("noCameraMsg");
+  const videoElem = document.getElementById("preview");
+
   let debounceTimer = null;
   let lastQuery = "";
+
+  // Scanner state
+  let codeReader = null;
+  let hasNavigated = false;
+  let scanning = false;
 
   function escapeHtml(str) {
     return String(str)
@@ -17,6 +32,103 @@
       .replaceAll(">", "&gt;")
       .replaceAll('"', "&quot;")
       .replaceAll("'", "&#039;");
+  }
+
+  // -----------------------------
+  // Scanner helpers
+  // -----------------------------
+  async function startScanner() {
+    if (scanning) return;
+    if (!videoElem || !scannerPanel || !resultBox || !noCameraMsg) return;
+
+    // ZXing not loaded
+    if (typeof ZXingBrowser === "undefined") {
+      noCameraMsg.textContent = "Scanner library failed to load.";
+      noCameraMsg.style.display = "block";
+      return;
+    }
+
+    hasNavigated = false;
+    scanning = true;
+
+    resultBox.textContent = "Scan a barcode…";
+    noCameraMsg.style.display = "none";
+
+    // show UI before requesting camera (feels faster)
+    scannerPanel.style.display = "block";
+
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoInputs = devices.filter((d) => d.kind === "videoinput");
+
+      if (videoInputs.length === 0) {
+        noCameraMsg.textContent = "No camera devices detected.";
+        noCameraMsg.style.display = "block";
+        scanning = false;
+        return;
+      }
+
+      codeReader = new ZXingBrowser.BrowserMultiFormatReader();
+
+      await codeReader.decodeFromVideoDevice(null, videoElem, (result, err) => {
+        if (!result || hasNavigated) return;
+
+        const barcodeText = (result.text || "").trim();
+        if (!barcodeText) return;
+
+        hasNavigated = true;
+        resultBox.textContent = "Scanned Barcode: " + barcodeText;
+
+        // stop scanning before navigating
+        stopScanner();
+
+        window.location.href = `/keys/by-barcode/${encodeURIComponent(barcodeText)}`;
+      });
+    } catch (e) {
+      console.error(e);
+      noCameraMsg.textContent = "Camera initialization error.";
+      noCameraMsg.style.display = "block";
+      scanning = false;
+    }
+  }
+
+  function stopScanner() {
+    scanning = false;
+
+    // Stop ZXing
+    if (codeReader) {
+      try {
+        codeReader.reset();
+      } catch (_) {}
+      codeReader = null;
+    }
+
+    // Force-stop camera stream so iOS releases camera immediately
+    if (videoElem && videoElem.srcObject) {
+      try {
+        const tracks = videoElem.srcObject.getTracks?.() || [];
+        tracks.forEach((t) => t.stop());
+      } catch (_) {}
+      videoElem.srcObject = null;
+    }
+  }
+
+  function initScannerUI() {
+    if (!openScannerBtn || !closeScannerBtn || !scannerPanel) return;
+
+    openScannerBtn.addEventListener("click", () => {
+      startScanner();
+    });
+
+    closeScannerBtn.addEventListener("click", () => {
+      stopScanner();
+      scannerPanel.style.display = "none";
+    });
+
+    // If user navigates away / refresh, ensure camera stops
+    window.addEventListener("beforeunload", () => {
+      stopScanner();
+    });
   }
 
   // -----------------------------
@@ -159,5 +271,7 @@
     }
   }
 
+  // Init
+  initScannerUI();
   loadSignedOut();
 })();

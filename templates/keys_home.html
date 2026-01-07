@@ -15,6 +15,36 @@
   </div>
 
   <div class="keys-home__grid">
+
+    <!-- Scan -->
+    <div class="keys-home__card">
+      <div class="keys-home__cardHeader">
+        <h3>Scan a barcode</h3>
+        <div class="keys-home__muted">Use the iPad camera to scan a key barcode.</div>
+      </div>
+
+      <div class="keys-home__cardBody">
+        <button id="openScannerBtn" type="button" class="btn btn-primary w-100">
+          Scan barcode
+        </button>
+
+        <div id="scannerPanel" class="keys-home__scanner" style="display:none;">
+          <div class="keys-home__scannerTop">
+            <div id="resultBox" class="keys-home__scannerResult">Scan a barcode…</div>
+            <button id="closeScannerBtn" type="button" class="btn btn-outline-secondary">
+              Close
+            </button>
+          </div>
+
+          <video id="preview" playsinline></video>
+
+          <div id="noCameraMsg" class="keys-home__error" style="display:none;">
+            No camera devices detected.
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Search -->
     <div class="keys-home__card">
       <div class="keys-home__cardHeader">
@@ -50,11 +80,14 @@
         <div id="signedOutList" class="keys-home__signedOutList"></div>
       </div>
     </div>
-  </div>
 
+  </div>
 </div>
 {% endblock %}
 
 {% block extra_scripts %}
+  <!-- ZXing Browser library -->
+  <script src="https://unpkg.com/@zxing/browser@latest"></script>
+
   <script src="{{ url_for('static', filename='js/keys_home.js') }}"></script>
 {% endblock %}
