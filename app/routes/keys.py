@@ -18,6 +18,18 @@ def key_detail(key_id: int):
         abort(404, description="Key not found")
     return render_template("key_detail.html", key=key)
 
+@keys_bp.get("/keys/by-barcode/<int:barcode>")
+def key_detail_by_barcode(barcode: int):
+    key = db.session.scalar(
+        db.select(Key).where(Key.barcode == barcode)
+    )
+
+    if key is None:
+        abort(404, description="Key not found")
+
+    return render_template("key_detail.html", key=key)
+
+
 
 @keys_bp.get("/api/keys/search")
 def api_keys_search():

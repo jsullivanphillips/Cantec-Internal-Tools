@@ -36,7 +36,7 @@ async function startScanner() {
         }
 
         // Navigate to the key page
-        window.location.href = `/keys/${encodeURIComponent(barcodeText)}`;
+        window.location.href = `/keys/by-barcode/${encodeURIComponent(barcodeText)}`;
       }
     );
   } catch (e) {
