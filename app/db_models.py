@@ -1,8 +1,11 @@
 from datetime import datetime, timezone
 from flask_sqlalchemy import SQLAlchemy
 from zoneinfo import ZoneInfo
+from sqlalchemy.orm import relationship
 from sqlalchemy import (
-    UniqueConstraint
+    UniqueConstraint,
+    Index,
+    ForeignKey
 )
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.dialects.postgresql import JSONB
@@ -492,6 +495,89 @@ class MonthlyRouteSnapshot(db.Model):
 
     def __repr__(self):
         return f"<MonthlyRouteSnapshot {self.location_name}>"
+
+
+class Key(db.Model):
+    __tablename__ = "keys"
+
+    id = db.Column(db.BigInteger, primary_key=True)
+
+    # UNIQUE KEY for upsert
+    keycode = db.Column(db.String(255), nullable=False, unique=True, index=True)
+
+    # Keep nullable. Use BigInteger in case barcodes exceed 32-bit.
+    barcode = db.Column(db.BigInteger, nullable=True, index=True)
+
+    route = db.Column(db.String(255), nullable=True)
+    home_location = db.Column(db.String(255), nullable=True)
+    annual_month = db.Column(db.String(255), nullable=True)
+    area = db.Column(db.String(255), nullable=True)
+
+    site_status = db.Column(db.String(255), nullable=True)
+
+    addresses = relationship(
+        "KeyAddress",
+        back_populates="key",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+
+    status = relationship(
+        "KeyStatus",
+        back_populates="key",
+        cascade="all, delete-orphan",
+        uselist=False,      # one-to-one (current status row)
+        lazy="selectin",
+    )
+
+    __table_args__ = (
+        Index("ix_keys_route", "route"),
+    )
+
+
+class KeyAddress(db.Model):
+    __tablename__ = "key_addresses"
+
+    id = db.Column(db.BigInteger, primary_key=True)
+
+    address = db.Column(db.String(255), nullable=False)
+
+    key_id = db.Column(
+        db.BigInteger,
+        ForeignKey("keys.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    key = relationship("Key", back_populates="addresses")
+
+    __table_args__ = (
+        # Prevent duplicates for the same key
+        UniqueConstraint("key_id", "address", name="uq_key_addresses_key_id_address"),
+    )
+
+
+class KeyStatus(db.Model):
+    __tablename__ = "key_status"
+
+    id = db.Column(db.BigInteger, primary_key=True)
+
+    key_id = db.Column(
+        db.BigInteger,
+        ForeignKey("keys.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    status = db.Column(db.String(255), nullable=False)
+    key_location = db.Column(db.String(255), nullable=False)
+
+    inserted_at = db.Column(db.DateTime(timezone=True),
+                                server_default=db.func.now(), nullable=False)
+
+    key = relationship("Key", back_populates="status")
+    
+
 
 
 if __name__ == '__main__':

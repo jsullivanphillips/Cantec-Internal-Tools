@@ -2,35 +2,48 @@ const resultBox = document.getElementById("resultBox");
 const noCameraMsg = document.getElementById("noCameraMsg");
 const videoElem = document.getElementById("preview");
 
+let hasNavigated = false;
+
 async function startScanner() {
-    // Check for camera devices
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    const videoInputs = devices.filter(d => d.kind === "videoinput");
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const videoInputs = devices.filter((d) => d.kind === "videoinput");
 
-    if (videoInputs.length === 0) {
-        noCameraMsg.style.display = "block";
-        return;
-    }
+  if (videoInputs.length === 0) {
+    noCameraMsg.style.display = "block";
+    return;
+  }
 
-    // Create the barcode reader
-    const codeReader = new ZXingBrowser.BrowserMultiFormatReader();
+  const codeReader = new ZXingBrowser.BrowserMultiFormatReader();
 
-    try {
-        await codeReader.decodeFromVideoDevice(
-            null,      // auto-select camera
-            videoElem, // video element
-            (result, err) => {
-                if (result) {
-                    resultBox.textContent = "Scanned Barcode: " + result.text;
-                }
-            }
-        );
+  try {
+    await codeReader.decodeFromVideoDevice(
+      null,
+      videoElem,
+      async (result, err) => {
+        if (!result || hasNavigated) return;
 
-    } catch (e) {
-        console.error(e);
-        noCameraMsg.textContent = "Camera initialization error.";
-        noCameraMsg.style.display = "block";
-    }
+        const barcodeText = (result.text || "").trim();
+        if (!barcodeText) return;
+
+        hasNavigated = true;
+        resultBox.textContent = "Scanned Barcode: " + barcodeText;
+
+        // Stop scanning to prevent multiple triggers
+        try {
+          codeReader.reset();
+        } catch (e) {
+          // ignore
+        }
+
+        // Navigate to the key page
+        window.location.href = `/keys/by-barcode/${encodeURIComponent(barcodeText)}`;
+      }
+    );
+  } catch (e) {
+    console.error(e);
+    noCameraMsg.textContent = "Camera initialization error.";
+    noCameraMsg.style.display = "block";
+  }
 }
 
 startScanner();

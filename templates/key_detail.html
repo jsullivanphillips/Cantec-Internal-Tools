@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Key Details</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+</head>
+<body>
+  <h1>Key</h1>
+
+  <div><strong>Keycode:</strong> {{ key.keycode }}</div>
+  <div><strong>Barcode:</strong> {{ key.barcode }}</div>
+  <div><strong>Area:</strong> {{ key.area or "" }}</div>
+  <div><strong>Route:</strong> {{ key.route or "" }}</div>
+  <div><strong>Home Location:</strong> {{ key.home_location or "" }}</div>
+  <div><strong>Annual Month:</strong> {{ key.annual_month or "" }}</div>
+  <div><strong>Site Status:</strong> {{ key.site_status or "" }}</div>
+
+  <h2>Addresses</h2>
+  <ul>
+    {% for addr in key.addresses %}
+      <li>{{ addr.address }}</li>
+    {% else %}
+      <li>No addresses.</li>
+    {% endfor %}
+  </ul>
+
+  <p><a href="/ipad_scanner">Scan another</a></p>
+</body>
+</html>
