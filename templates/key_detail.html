@@ -43,9 +43,9 @@
 
           <div class="keyd-status-title">
             {% if is_out %}
-              Signed out to <span class="keyd-status-strong">{{ current_loc or "Unknown" }}</span>
+              Signed out to <span class="keyd-status-strong">{{ current_loc or "Unknown" }}</span> - AirTag {{cs.air_tag if cs and cs.air_tag else "-"}}
             {% elif is_in %}
-              Returned to <span class="keyd-status-strong">{{ home_loc or "Home" }}</span>
+              In <span class="keyd-status-strong">{{ home_loc or "Home" }}</span>
             {% else %}
               {{ status_text }}
             {% endif %}
