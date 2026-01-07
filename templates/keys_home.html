@@ -1,118 +1,60 @@
+{# templates/keys_home.html #}
 {% extends "base.html" %}
 
 {% block title %}Key Asset Tracker{% endblock %}
 
+{% block extra_head %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/keys_home.css') }}">
+{% endblock %}
+
 {% block content %}
-<div class="container py-4">
-  <div class="d-flex align-items-center justify-content-between mb-3">
-    <h2 class="mb-0">Key Page</h2>
+<div class="container py-4 keys-home">
+
+  <div class="keys-home__header">
+    <h2 class="keys-home__title">Key Page</h2>
   </div>
 
-  <div class="mb-3">
-    <label for="keySearch" class="form-label">Find a key</label>
-    <input
-      id="keySearch"
-      class="form-control"
-      type="text"
-      placeholder="Search by keycode or address…"
-      autocomplete="off"
-    />
-    <div class="form-text">Type at least 2 characters.</div>
+  <div class="keys-home__grid">
+    <!-- Search -->
+    <div class="keys-home__card">
+      <div class="keys-home__cardHeader">
+        <h3>Find a key</h3>
+        <div class="keys-home__muted">Search by keycode or address.</div>
+      </div>
+
+      <div class="keys-home__cardBody">
+        <label for="keySearch" class="keys-home__label">Search</label>
+        <input
+          id="keySearch"
+          class="keys-home__input"
+          type="text"
+          placeholder="Type at least 2 characters…"
+          autocomplete="off"
+        />
+        <div class="keys-home__hint">Tip: You can paste an address fragment too.</div>
+
+        <div id="searchResults" class="keys-home__results" style="display:none;"></div>
+      </div>
+    </div>
+
+    <!-- Signed out -->
+    <div class="keys-home__card">
+      <div class="keys-home__cardHeader keys-home__cardHeader--status">
+        <h3>Currently Signed Out</h3>
+        <div class="keys-home__muted">Keys that are out right now, with who has them.</div>
+      </div>
+
+      <div class="keys-home__cardBody">
+        <div id="signedOutLoading" class="keys-home__muted">Loading…</div>
+        <div id="signedOutError" class="keys-home__error" style="display:none;"></div>
+        <div id="signedOutList" class="keys-home__signedOutList"></div>
+      </div>
+    </div>
   </div>
 
-  <div id="searchResults" class="list-group" style="display:none;"></div>
 </div>
 {% endblock %}
 
 {% block extra_scripts %}
-<script>
-  const input = document.getElementById("keySearch");
-  const resultsBox = document.getElementById("searchResults");
-
-  let debounceTimer = null;
-  let lastQuery = "";
-
-  function hideResults() {
-    resultsBox.style.display = "none";
-    resultsBox.innerHTML = "";
-  }
-
-  function renderResults(items) {
-    if (!items.length) {
-      resultsBox.style.display = "block";
-      resultsBox.innerHTML = `
-        <div class="list-group-item text-muted">
-          No matches found.
-        </div>
-      `;
-      return;
-    }
-
-    resultsBox.style.display = "block";
-    resultsBox.innerHTML = items.map((k) => {
-      const addresses = (k.addresses || []).join(" • ");
-      const subtitleParts = [];
-
-      if (k.area) subtitleParts.push(k.area);
-      if (k.route) subtitleParts.push(k.route);
-      if (k.barcode) subtitleParts.push("Barcode " + k.barcode);
-
-      const subtitle = subtitleParts.join(" • ");
-
-      return `
-        <a class="list-group-item list-group-item-action" href="/keys/${k.id}">
-          <div class="d-flex w-100 justify-content-between">
-            <div><strong>${escapeHtml(k.keycode || "(no keycode)")}</strong></div>
-          </div>
-          ${subtitle ? `<div class="small text-muted">${escapeHtml(subtitle)}</div>` : ""}
-          ${addresses ? `<div class="small">${escapeHtml(addresses)}</div>` : ""}
-        </a>
-      `;
-    }).join("");
-  }
-
-  function escapeHtml(str) {
-    return String(str)
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&#039;");
-  }
-
-  async function runSearch(q) {
-    if (q.length < 2) {
-      hideResults();
-      return;
-    }
-
-    lastQuery = q;
-
-    const resp = await fetch(`/api/keys/search?q=${encodeURIComponent(q)}`);
-    if (!resp.ok) {
-      hideResults();
-      return;
-    }
-
-    const json = await resp.json();
-    // Guard against out-of-order responses
-    if (q !== lastQuery) return;
-
-    renderResults(json.data || []);
-  }
-
-  input.addEventListener("input", (e) => {
-    const q = e.target.value.trim();
-
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => runSearch(q), 200);
-  });
-
-  // Click outside hides
-  document.addEventListener("click", (e) => {
-    if (!resultsBox.contains(e.target) && e.target !== input) {
-      hideResults();
-    }
-  });
-</script>
+  <script src="{{ url_for('static', filename='js/keys_home.js') }}"></script>
 {% endblock %}

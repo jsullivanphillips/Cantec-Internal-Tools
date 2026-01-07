@@ -1,30 +1,211 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <title>Key Details</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-</head>
-<body>
-  <h1>Key</h1>
+{% extends "base.html" %}
 
-  <div><strong>Keycode:</strong> {{ key.keycode }}</div>
-  <div><strong>Barcode:</strong> {{ key.barcode }}</div>
-  <div><strong>Area:</strong> {{ key.area or "" }}</div>
-  <div><strong>Route:</strong> {{ key.route or "" }}</div>
-  <div><strong>Home Location:</strong> {{ key.home_location or "" }}</div>
-  <div><strong>Annual Month:</strong> {{ key.annual_month or "" }}</div>
-  <div><strong>Site Status:</strong> {{ key.site_status or "" }}</div>
+{% block title %}Key Details{% endblock %}
 
-  <h2>Addresses</h2>
-  <ul>
-    {% for addr in key.addresses %}
-      <li>{{ addr.address }}</li>
-    {% else %}
-      <li>No addresses.</li>
-    {% endfor %}
-  </ul>
+{% block extra_head %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/key_detail.css') }}">
+{% endblock %}
 
-  <p><a href="/ipad_scanner">Scan another</a></p>
-</body>
-</html>
+{% block content %}
+{% set cs = key.current_status %}
+{% set status_text = (cs.status if cs else "Unknown") %}
+{% set current_loc = (cs.key_location if cs else "") %}
+{% set home_loc = (key.home_location or "") %}
+{% set route = (key.route or "") %}
+
+{% set is_out = status_text|lower in ["signed out", "out"] %}
+{% set is_in = (not is_out) and (
+  status_text|lower in ["returned", "in", "available"] or
+  (home_loc and current_loc and home_loc|lower == current_loc|lower)
+) %}
+
+<div class="keyd-wrap container py-3" data-key-id="{{ key.id }}">
+
+  <!-- TOP HERO (mobile-first) -->
+  <section class="keyd-hero">
+    <div class="keyd-hero__top">
+      <div class="keyd-hero__titleBlock">
+        <div class="keyd-hero__eyebrow">Key Code</div>
+        <h1 class="keyd-hero__keycode">{{ key.keycode }}</h1>
+
+        <div class="keyd-hero__meta">
+          <span class="keyd-hero__metaItem">Barcode: <strong>{{ key.barcode or "-" }}</strong></span>
+          {% if route %}
+            <span class="keyd-hero__metaDivider">•</span>
+            <span class="keyd-hero__metaItem">Route: <strong>{{ route }}</strong></span>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="keyd-status-hero {{ 'is-out' if is_out else 'is-in' if is_in else 'is-unknown' }}">
+        <div class="keyd-status-top">
+          <div class="keyd-status-label">{{ "OUT" if is_out else "IN" if is_in else "UNKNOWN" }}</div>
+
+          <div class="keyd-status-title">
+            {% if is_out %}
+              Signed out to <span class="keyd-status-strong">{{ current_loc or "Unknown" }}</span>
+            {% elif is_in %}
+              Returned to <span class="keyd-status-strong">{{ home_loc or "Home" }}</span>
+            {% else %}
+              {{ status_text }}
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="keyd-status-sub">
+          {% if cs and cs.inserted_at %}
+            Updated {{ cs.inserted_at.strftime("%Y-%m-%d %H:%M") }}
+          {% else %}
+            Updated -
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- IMPORTANT: Addresses -->
+    <div class="keyd-hero__addresses">
+      <div class="keyd-sectionHead">
+        <h2 class="keyd-sectionHead__title">Key Addresses</h2>
+      </div>
+
+      <ul class="keyd-addrChips">
+        {% for addr in key.addresses %}
+          <li class="keyd-addrChip">{{ addr.address }}</li>
+        {% else %}
+          <li class="keyd-addrChip keyd-addrChip--muted">No addresses.</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </section>
+
+  <!-- ACTIONS (big + sticky-ish on iPad) -->
+  <section class="keyd-actionsBar">
+    <div class="keyd-card keyd-card--actions">
+      <div class="keyd-card-body">
+
+        <!-- Sign out (PRIMARY, always visible) -->
+        <form method="post"
+              action="{{ url_for('keys.sign_out_key', key_id=key.id) }}"
+              class="keyd-form"
+              id="signOutForm">
+          <div class="keyd-field keyd-field--inline">
+            <label class="keyd-label" for="signedOutTo">Sign out to</label>
+            <input class="keyd-input"
+                   type="text"
+                   name="key_location"
+                   id="signedOutTo"
+                   placeholder="Person name (required)"
+                   autocomplete="off"
+                   required>
+          </div>
+
+          <button type="submit" class="keyd-btn keyd-btn-primary keyd-btn-xl">
+            Sign Out Key
+          </button>
+
+          <div class="keyd-error" id="signOutError"></div>
+        </form>
+
+        <!-- Return (only show if OUT) -->
+        {% if is_out %}
+          <div class="keyd-spacer-sm"></div>
+
+          <form method="post"
+                action="{{ url_for('keys.return_key', key_id=key.id) }}"
+                class="keyd-form"
+                id="returnForm">
+            <button type="submit" class="keyd-btn keyd-btn-secondary keyd-btn-xl">
+              Return Key to Home Location
+            </button>
+
+            <div class="keyd-help">
+              Returns to <strong>{{ key.home_location or "Office" }}</strong>.
+            </div>
+
+            <div class="keyd-error" id="returnError"></div>
+          </form>
+        {% endif %}
+
+        <div class="keyd-spacer-sm"></div>
+
+        <div class="keyd-links">
+          <a class="keyd-link" href="{{ url_for('ipad_scanner.ipad_scanner') }}">Scan another</a>
+          <a class="keyd-link" href="{{ url_for('keys.keys_home') }}">Back to search</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- LOW-PRIORITY DETAILS (collapsed) -->
+  <section class="keyd-details">
+    <button class="keyd-collapseBtn"
+            type="button"
+            id="toggleDetailsBtn"
+            aria-expanded="false"
+            aria-controls="detailsPanel">
+      <span id="detailsBtnLabel">Show Details</span>
+      <span class="keyd-collapseChevron" aria-hidden="true">›</span>
+    </button>
+
+    <div class="keyd-card keyd-card--details keyd-hidden" id="detailsPanel">
+      <div class="keyd-card-body">
+        <div class="keyd-kv">
+          <div class="k">Area</div><div class="v">{{ key.area or "-" }}</div>
+          <div class="k">Home Location</div><div class="v">{{ key.home_location or "-" }}</div>
+          <div class="k">Annual Month</div><div class="v">{{ key.annual_month or "-" }}</div>
+          <div class="k">Site Status</div><div class="v">{{ key.site_status or "-" }}</div>
+          <div class="k">Key Status</div><div class="v">{{ cs.status if cs else "-" }}</div>
+          <div class="k">Key Location</div><div class="v">{{ cs.key_location if cs else "-" }}</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- HISTORY (JS rendered) -->
+  <section class="keyd-historySection">
+    <div class="keyd-sectionHead keyd-sectionHead--tight">
+      <h2 class="keyd-sectionHead__title">Recent History</h2>
+      <div class="keyd-sectionHead__sub">Last 5 key status events (excluding Home).</div>
+    </div>
+
+    <div class="keyd-card">
+      <div class="keyd-card-body">
+
+        <div id="historyEmpty" class="muted" style="display:none;">
+          No history yet.
+        </div>
+
+        <div class="keyd-history" id="historyWrap" style="display:none;">
+          <table class="keyd-table" id="historyTable">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Status</th>
+                <th>Location / Person</th>
+              </tr>
+            </thead>
+            <tbody id="historyTbody"></tbody>
+          </table>
+
+          <div class="keyd-historyActions">
+            <button type="button" class="keyd-btn keyd-btn-tertiary" id="loadMoreHistoryBtn" style="display:none;">
+              Load more
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+
+
+
+
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+  <script src="{{ url_for('static', filename='js/key_details.js') }}"></script>
+{% endblock %}

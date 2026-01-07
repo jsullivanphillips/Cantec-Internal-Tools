@@ -1,0 +1,190 @@
+/* static/css/keys_home.css */
+/* Scoped to the key home page */
+.keys-home__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.keys-home__title {
+  margin: 0;
+  font-weight: 800;
+}
+
+.keys-home__grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+@media (max-width: 900px) {
+  .keys-home__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.keys-home__card {
+  background: #fff;
+  border: 1px solid rgba(0,0,0,0.10);
+  border-radius: 14px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.06);
+  overflow: hidden;
+}
+
+.keys-home__cardHeader {
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid rgba(0,0,0,0.08);
+  background: linear-gradient(180deg, rgba(0,0,0,0.02), rgba(0,0,0,0));
+}
+
+.keys-home__cardHeader--status {
+  border-bottom-color: rgba(0,0,0,0.10);
+}
+
+.keys-home__cardHeader h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.keys-home__cardBody {
+  padding: 1rem;
+}
+
+.keys-home__muted {
+  color: rgba(0,0,0,0.60);
+  font-size: 0.9rem;
+  margin-top: 0.25rem;
+}
+
+.keys-home__label {
+  display: block;
+  font-weight: 700;
+  color: rgba(0,0,0,0.70);
+  margin-bottom: 0.35rem;
+}
+
+.keys-home__input {
+  width: 100%;
+  border: 1px solid rgba(0,0,0,0.14);
+  border-radius: 10px;
+  padding: 0.65rem 0.75rem;
+  font-weight: 600;
+  outline: none;
+}
+
+.keys-home__input:focus {
+  border-color: rgba(12,98,166,0.55);
+  box-shadow: 0 0 0 4px rgba(12,98,166,0.08);
+}
+
+.keys-home__hint {
+  margin-top: 0.4rem;
+  font-size: 0.85rem;
+  color: rgba(0,0,0,0.55);
+}
+
+/* Search results */
+.keys-home__results {
+  margin-top: 0.75rem;
+  border: 1px solid rgba(0,0,0,0.10);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.keys-home__resultItem {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  padding: 0.75rem 0.85rem;
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+  background: #fff;
+}
+
+.keys-home__resultItem:hover {
+  background: rgba(12,98,166,0.05);
+}
+
+.keys-home__resultItem:last-child {
+  border-bottom: none;
+}
+
+.keys-home__resultItem--muted {
+  color: rgba(0,0,0,0.55);
+}
+
+.keys-home__resultTop {
+  display: flex;
+  justify-content: space-between;
+}
+
+.keys-home__resultSub {
+  margin-top: 0.15rem;
+  font-size: 0.85rem;
+  color: rgba(0,0,0,0.65);
+}
+
+.keys-home__resultAddr {
+  margin-top: 0.15rem;
+  font-size: 0.85rem;
+}
+
+/* Signed out list */
+.keys-home__signedOutList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.keys-home__signedOutItem {
+  text-decoration: none;
+  color: inherit;
+  border: 1px solid rgba(0,0,0,0.10);
+  border-radius: 12px;
+  padding: 0.75rem 0.85rem;
+  background: #fff;
+  transition: box-shadow 0.15s ease, transform 0.03s ease;
+}
+
+.keys-home__signedOutItem:hover {
+  box-shadow: 0 10px 20px rgba(0,0,0,0.08);
+  transform: translateY(-1px);
+}
+
+.keys-home__signedOutRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.keys-home__signedOutMeta {
+  margin-top: 0.2rem;
+  font-size: 0.85rem;
+  color: rgba(0,0,0,0.65);
+}
+
+.keys-home__signedOutBadge {
+  background: rgba(0,0,0,0.08);
+  border: 1px solid rgba(0,0,0,0.16);
+  border-radius: 999px;
+  padding: 0.35rem 0.6rem;
+  font-weight: 900;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.keys-home__empty {
+  color: rgba(0,0,0,0.60);
+  font-weight: 700;
+  padding: 0.5rem 0;
+}
+
+.keys-home__error {
+  background: rgba(177,74,58,0.10);
+  border: 1px solid rgba(177,74,58,0.25);
+  color: #7a2e24;
+  border-radius: 10px;
+  padding: 0.6rem 0.75rem;
+  font-weight: 800;
+}

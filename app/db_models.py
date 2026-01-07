@@ -522,13 +522,17 @@ class Key(db.Model):
         lazy="selectin",
     )
 
-    status = relationship(
+    statuses = relationship(
         "KeyStatus",
         back_populates="key",
         cascade="all, delete-orphan",
-        uselist=False,      # one-to-one (current status row)
         lazy="selectin",
+        order_by="desc(KeyStatus.inserted_at)",  # newest first
     )
+
+    @property
+    def current_status(self):
+        return self.statuses[0] if self.statuses else None
 
     __table_args__ = (
         Index("ix_keys_route", "route"),
@@ -575,7 +579,7 @@ class KeyStatus(db.Model):
     inserted_at = db.Column(db.DateTime(timezone=True),
                                 server_default=db.func.now(), nullable=False)
 
-    key = relationship("Key", back_populates="status")
+    key = relationship("Key", back_populates="statuses")
     
 
 
