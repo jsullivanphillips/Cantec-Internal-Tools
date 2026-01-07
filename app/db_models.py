@@ -575,6 +575,7 @@ class KeyStatus(db.Model):
 
     status = db.Column(db.String(255), nullable=False)
     key_location = db.Column(db.String(255), nullable=False)
+    air_tag = db.Column(db.String(55), nullable=True)
 
     inserted_at = db.Column(db.DateTime(timezone=True),
                                 server_default=db.func.now(), nullable=False)

@@ -99,6 +99,17 @@
                    required>
           </div>
 
+          <div class="keyd-field keyd-field--inline">
+            <label class="keyd-label" for="airTag">Air tag (optional)</label>
+            <input class="keyd-input"
+                  type="text"
+                  name="air_tag"
+                  id="airTag"
+                  placeholder="AirTag ID / label (optional)"
+                  autocomplete="off">
+          </div>
+
+
           <button type="submit" class="keyd-btn keyd-btn-primary keyd-btn-xl">
             Sign Out Key
           </button>
@@ -155,6 +166,7 @@
           <div class="k">Annual Month</div><div class="v">{{ key.annual_month or "-" }}</div>
           <div class="k">Site Status</div><div class="v">{{ key.site_status or "-" }}</div>
           <div class="k">Key Status</div><div class="v">{{ cs.status if cs else "-" }}</div>
+          <div class="k">Air tag</div><div class="v">{{ cs.air_tag if cs and cs.air_tag else "-" }}</div>
           <div class="k">Key Location</div><div class="v">{{ cs.key_location if cs else "-" }}</div>
         </div>
       </div>

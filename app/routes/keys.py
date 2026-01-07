@@ -110,14 +110,16 @@ def sign_out_key(key_id: int):
     if not signed_out_to:
         abort(400, description="key_location is required (name of person signing out).")
 
+    air_tag = (data.get("air_tag") or "").strip() or None
+
     db.session.add(KeyStatus(
         key_id=key.id,
         status="Signed Out",
         key_location=signed_out_to,
+        air_tag=air_tag,   # ✅ store it only on the signed-out event
     ))
     _commit_or_500()
 
-    # reload current status safely (or just compute latest)
     db.session.refresh(key)
 
     if request.accept_mimetypes.accept_html and not request.is_json:
@@ -130,9 +132,11 @@ def sign_out_key(key_id: int):
             "id": key.id,
             "status": cs.status if cs else None,
             "key_location": cs.key_location if cs else None,
+            "air_tag": getattr(cs, "air_tag", None) if cs else None,
             "inserted_at": cs.inserted_at.isoformat() if cs and cs.inserted_at else None,
         }
     })
+
 
 
 @keys_bp.post("/keys/<int:key_id>/return")
