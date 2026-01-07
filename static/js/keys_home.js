@@ -16,6 +16,7 @@
   const resultBox = document.getElementById("resultBox");
   const noCameraMsg = document.getElementById("noCameraMsg");
   const videoElem = document.getElementById("preview");
+  const scannerCard = document.getElementById("scannerCard");
 
   let debounceTimer = null;
   let lastQuery = "";
@@ -114,7 +115,13 @@
   }
 
   function initScannerUI() {
-    if (!openScannerBtn || !closeScannerBtn || !scannerPanel) return;
+    if (!openScannerBtn || !scannerPanel) return;
+
+    // Hide scanner entirely if camera APIs are unavailable
+    if (!canUseCamera()) {
+      scannerCard.style.display = "none";
+      return;
+    }
 
     openScannerBtn.addEventListener("click", () => {
       startScanner();
@@ -125,11 +132,11 @@
       scannerPanel.style.display = "none";
     });
 
-    // If user navigates away / refresh, ensure camera stops
     window.addEventListener("beforeunload", () => {
       stopScanner();
     });
   }
+
 
   // -----------------------------
   // Search
@@ -248,6 +255,15 @@
       })
       .join("");
   }
+
+  function canUseCamera() {
+    return (
+      typeof navigator !== "undefined" &&
+      navigator.mediaDevices &&
+      typeof navigator.mediaDevices.enumerateDevices === "function"
+    );
+  }
+
 
   async function loadSignedOut() {
     if (!signedOutList) return;
