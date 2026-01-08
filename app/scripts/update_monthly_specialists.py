@@ -5,6 +5,7 @@ import requests
 from app import create_app, db
 from dotenv import load_dotenv
 from sqlalchemy.dialects.postgresql import insert
+from app.routes.scheduling_attack import get_active_techs
 
 from app.db_models import MonthlyRouteSnapshot 
 
@@ -25,6 +26,9 @@ def authenticate(username: str, password: str) -> None:
 def safe_str(v) -> str:
     return (v or "").strip()
 
+def _norm_name(s: str) -> str:
+    # strip + collapse whitespace + casefold for robust matching
+    return " ".join((s or "").strip().split()).casefold()
 
 def monthly_specialists():
     MONTHLY_COMPANY_ID = 5004069
@@ -36,6 +40,18 @@ def monthly_specialists():
         if not username or not password:
             raise SystemExit("Missing PROCESSING_USERNAME/PROCESSING_PASSWORD environment vars.")
         authenticate(username, password)
+
+        # ✅ Build active tech name set ONCE (filter to active + isTech)
+        active_techs = get_active_techs() or []
+        active_name_set = {
+            _norm_name(t.get("name"))
+            for t in active_techs
+            if str(t.get("status", "")).lower() == "active"
+            and t.get("isTech") is True
+            and safe_str(t.get("name"))
+        }
+
+        print("Active techs:", len(active_name_set))
 
         # --- fetch routes (locations) ---
         params = {"companyId": MONTHLY_COMPANY_ID, "limit": 1000, "status": "active"}
@@ -72,13 +88,14 @@ def monthly_specialists():
                         name = safe_str(tech.get("name"))
                         if not name:
                             continue
+                        if _norm_name(name) not in active_name_set:
+                            continue  # ✅ filter out non-active techs BEFORE counting
                         tech_counts[name] = tech_counts.get(name, 0) + 1
                     continue
 
                 # Multiple appointments: exclude Office Clerical service requests (per your logic)
                 appointment_ids = [str(a.get("id")) for a in appointments if a.get("id")]
                 for i, appt_id in enumerate(appointment_ids):
-                    # Techs pulled from the original appointments list (your existing behavior)
                     techs = (appointments[i].get("techs", []) or []) if i < len(appointments) else []
 
                     appt_response = api_session.get(f"{SERVICE_TRADE_API_BASE}/appointment/{appt_id}")
@@ -97,18 +114,18 @@ def monthly_specialists():
                             name = safe_str(tech.get("name"))
                             if not name:
                                 continue
+                            if _norm_name(name) not in active_name_set:
+                                continue  # ✅ filter out non-active techs BEFORE counting
                             tech_counts[name] = tech_counts.get(name, 0) + 1
 
-            # Build top 5 list for JSONB
+            # Build top 5 list for JSONB (already filtered)
             top_5 = [
                 {"tech_name": tech_name, "jobs": count}
                 for tech_name, count in sorted(tech_counts.items(), key=lambda x: x[1], reverse=True)[:5]
             ]
 
-            # Some routes may have 0 jobs or 0 counted techs, still store row for consistency
             now = datetime.now(timezone.utc)
 
-            # ✅ UPSERT (one row per route/location_id)
             stmt = insert(MonthlyRouteSnapshot).values(
                 location_id=route_id,
                 location_name=route_name,
@@ -117,9 +134,6 @@ def monthly_specialists():
                 last_updated_at=now,
             )
 
-            # IMPORTANT:
-            # This assumes you have a UNIQUE constraint on location_id
-            # (as in the schema we discussed).
             stmt = stmt.on_conflict_do_update(
                 index_elements=["location_id"],
                 set_={
@@ -133,10 +147,9 @@ def monthly_specialists():
             db.session.execute(stmt)
             db.session.commit()
 
-            # Console output (optional)
             print(f"\n------\n{route_name} - {len(jobs)} completed jobs.\n------\n")
             if not top_5:
-                print("No technicians found for last 100 completed jobs.")
+                print("No ACTIVE technicians found for last 100 completed jobs.")
             else:
                 for row in top_5:
                     print(f"{row['tech_name']}: {row['jobs']} jobs completed.")
