@@ -29,6 +29,7 @@
         <h1 class="keyd-hero__keycode">{{ key.keycode }}</h1>
 
         <div class="keyd-hero__meta">
+          <a class="keyd-link" href="{{ url_for('keys.keys_home') }}">Back to Key Page</a>
           <span class="keyd-hero__metaItem">Barcode: <strong>{{ key.barcode or "-" }}</strong></span>
           {% if route %}
             <span class="keyd-hero__metaDivider">•</span>
