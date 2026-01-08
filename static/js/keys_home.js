@@ -216,6 +216,20 @@
     });
   }
 
+  function formatShortDateTime(iso) {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+
+    return d.toLocaleString(undefined, {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
   // -----------------------------
   // Signed out list
   // -----------------------------
@@ -232,7 +246,9 @@
     signedOutList.innerHTML = items
       .map((k) => {
         const who = k.key_location ? escapeHtml(k.key_location) : "Unknown";
-        const when = k.inserted_at ? escapeHtml(k.inserted_at) : "";
+        const when = k.inserted_at
+          ? escapeHtml(formatShortDateTime(k.inserted_at))
+          : "";
         const meta = [
           k.area ? escapeHtml(k.area) : null,
           k.route ? escapeHtml(k.route) : null,

@@ -40,28 +40,9 @@
   }
 
   function initActiveTechsPicker() {
-    const form = document.getElementById("signOutForm");
-    const input = document.getElementById("signedOutTo");
-    const techIdField = document.getElementById("signedOutTechId");
     const datalist = document.getElementById("activeTechs");
     const hint = document.getElementById("activeTechsHint");
-    const pickErr = document.getElementById("techPickError");
-
-    if (!form || !input || !techIdField || !datalist) return;
-
-    let nameToId = new Map(); // lowercase name -> id
-
-    function showPickError(msg) {
-      if (!pickErr) return;
-      pickErr.textContent = msg;
-      pickErr.style.display = "block";
-    }
-
-    function clearPickError() {
-      if (!pickErr) return;
-      pickErr.textContent = "";
-      pickErr.style.display = "none";
-    }
+    if (!datalist) return;
 
     function normalizeName(s) {
       return String(s || "").trim().replace(/\s+/g, " ");
@@ -77,16 +58,10 @@
         const json = await resp.json();
         const techs = json?.data || [];
 
-        nameToId = new Map();
         const optionsHtml = [];
-
         for (const t of techs) {
-          const id = t?.id;
           const name = normalizeName(t?.name);
-          if (!id || !name) continue;
-
-          // if duplicate names exist, last one wins (or handle differently if needed)
-          nameToId.set(name.toLowerCase(), String(id));
+          if (!name) continue;
           optionsHtml.push(`<option value="${escapeHtml(name)}"></option>`);
         }
 
@@ -97,29 +72,9 @@
       }
     }
 
-    // When user types/selects a name, set tech_id if it matches
-    function syncTechIdFromInput() {
-      clearPickError();
-      const name = normalizeName(input.value);
-      const id = nameToId.get(name.toLowerCase());
-      techIdField.value = id || "";
-    }
-
-    input.addEventListener("input", syncTechIdFromInput);
-    input.addEventListener("change", syncTechIdFromInput);
-
-    // Enforce: must match an active tech at submit time
-    form.addEventListener("submit", (e) => {
-      syncTechIdFromInput();
-      if (!techIdField.value) {
-        e.preventDefault();
-        showPickError("Please select an active technician from the list.");
-        input.focus();
-      }
-    });
-
     loadTechs();
   }
+
 
 
 

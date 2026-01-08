@@ -95,21 +95,18 @@
             <input class="keyd-input"
                   type="text"
                   id="signedOutTo"
-                  placeholder="Start typing technician name…"
+                  name="signed_out_to"
+                  placeholder="Start typing name…"
                   autocomplete="off"
                   list="activeTechs"
                   required>
 
-            <!-- This is what we actually submit -->
-            <input type="hidden" name="tech_id" id="signedOutTechId" required>
-
             <datalist id="activeTechs"></datalist>
 
             <div class="keyd-help" id="activeTechsHint" style="display:none;">
-              Could not load active techs.
+              Could not load active tech suggestions.
             </div>
 
-            <div class="keyd-error" id="techPickError" style="display:none;"></div>
           </div>
 
 

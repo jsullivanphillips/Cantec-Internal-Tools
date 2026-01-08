@@ -125,31 +125,16 @@ def sign_out_key(key_id: int):
     key = _get_key_or_404(key_id)
     data = _payload()
 
-    tech_id_raw = (data.get("tech_id") or "").strip()
-    if not tech_id_raw:
-        abort(400, description="tech_id is required (must pick an active technician).")
-
-    try:
-        tech_id = int(tech_id_raw)
-    except ValueError:
-        abort(400, description="tech_id must be an integer.")
-
-    # Fetch current active techs and validate membership
-    techs = get_active_techs() or []
-    match = next((t for t in techs if int(t.get("id") or 0) == tech_id), None)
-    if not match:
-        abort(400, description="Selected technician is not currently active. Refresh and try again.")
-
-    signed_out_to = (match.get("name") or "").strip()
+    signed_out_to = (data.get("signed_out_to") or "").strip()
     if not signed_out_to:
-        abort(400, description="Selected technician has no name.")
+        abort(400, description="signed_out_to is required.")
 
     air_tag = (data.get("air_tag") or "").strip() or None
 
     db.session.add(KeyStatus(
         key_id=key.id,
         status="Signed Out",
-        key_location=signed_out_to,  # store display name
+        key_location=signed_out_to,
         air_tag=air_tag,
     ))
     _commit_or_500()
@@ -170,6 +155,7 @@ def sign_out_key(key_id: int):
             "inserted_at": cs.inserted_at.isoformat() if cs and cs.inserted_at else None,
         }
     })
+
 
 
 
