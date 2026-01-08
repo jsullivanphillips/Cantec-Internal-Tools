@@ -2,6 +2,7 @@
 from flask import Blueprint, render_template, request, jsonify, abort, redirect, url_for
 from sqlalchemy import or_, func
 from sqlalchemy.orm import selectinload, aliased
+from .scheduling_attack import get_active_techs
 
 from app.db_models import db, Key, KeyAddress, KeyStatus
 
@@ -45,6 +46,24 @@ def _payload():
 @keys_bp.get("/keys")
 def keys_home():
     return render_template("keys_home.html")
+
+
+@keys_bp.get("/keys/active_techs")
+def get_active_techs_route():
+    techs = get_active_techs()  # currently returns big dicts
+
+    slim = []
+    for t in techs or []:
+        # Keep only what we need
+        tech_id = t.get("id")
+        name = (t.get("name") or "").strip()
+        if tech_id and name:
+            slim.append({"id": tech_id, "name": name})
+
+    # Optional: sort alphabetically
+    slim.sort(key=lambda x: x["name"].lower())
+
+    return jsonify({"data": slim})
 
 
 @keys_bp.get("/keys/<int:key_id>")
@@ -106,17 +125,32 @@ def sign_out_key(key_id: int):
     key = _get_key_or_404(key_id)
     data = _payload()
 
-    signed_out_to = (data.get("key_location") or "").strip()
+    tech_id_raw = (data.get("tech_id") or "").strip()
+    if not tech_id_raw:
+        abort(400, description="tech_id is required (must pick an active technician).")
+
+    try:
+        tech_id = int(tech_id_raw)
+    except ValueError:
+        abort(400, description="tech_id must be an integer.")
+
+    # Fetch current active techs and validate membership
+    techs = get_active_techs() or []
+    match = next((t for t in techs if int(t.get("id") or 0) == tech_id), None)
+    if not match:
+        abort(400, description="Selected technician is not currently active. Refresh and try again.")
+
+    signed_out_to = (match.get("name") or "").strip()
     if not signed_out_to:
-        abort(400, description="key_location is required (name of person signing out).")
+        abort(400, description="Selected technician has no name.")
 
     air_tag = (data.get("air_tag") or "").strip() or None
 
     db.session.add(KeyStatus(
         key_id=key.id,
         status="Signed Out",
-        key_location=signed_out_to,
-        air_tag=air_tag,   # ✅ store it only on the signed-out event
+        key_location=signed_out_to,  # store display name
+        air_tag=air_tag,
     ))
     _commit_or_500()
 
@@ -136,6 +170,7 @@ def sign_out_key(key_id: int):
             "inserted_at": cs.inserted_at.isoformat() if cs and cs.inserted_at else None,
         }
     })
+
 
 
 

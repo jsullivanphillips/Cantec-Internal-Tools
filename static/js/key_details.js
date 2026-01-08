@@ -39,6 +39,90 @@
     });
   }
 
+  function initActiveTechsPicker() {
+    const form = document.getElementById("signOutForm");
+    const input = document.getElementById("signedOutTo");
+    const techIdField = document.getElementById("signedOutTechId");
+    const datalist = document.getElementById("activeTechs");
+    const hint = document.getElementById("activeTechsHint");
+    const pickErr = document.getElementById("techPickError");
+
+    if (!form || !input || !techIdField || !datalist) return;
+
+    let nameToId = new Map(); // lowercase name -> id
+
+    function showPickError(msg) {
+      if (!pickErr) return;
+      pickErr.textContent = msg;
+      pickErr.style.display = "block";
+    }
+
+    function clearPickError() {
+      if (!pickErr) return;
+      pickErr.textContent = "";
+      pickErr.style.display = "none";
+    }
+
+    function normalizeName(s) {
+      return String(s || "").trim().replace(/\s+/g, " ");
+    }
+
+    async function loadTechs() {
+      try {
+        const resp = await fetch("/keys/active_techs", {
+          headers: { "Accept": "application/json" },
+        });
+        if (!resp.ok) throw new Error("Failed");
+
+        const json = await resp.json();
+        const techs = json?.data || [];
+
+        nameToId = new Map();
+        const optionsHtml = [];
+
+        for (const t of techs) {
+          const id = t?.id;
+          const name = normalizeName(t?.name);
+          if (!id || !name) continue;
+
+          // if duplicate names exist, last one wins (or handle differently if needed)
+          nameToId.set(name.toLowerCase(), String(id));
+          optionsHtml.push(`<option value="${escapeHtml(name)}"></option>`);
+        }
+
+        datalist.innerHTML = optionsHtml.join("");
+        if (hint) hint.style.display = "none";
+      } catch (e) {
+        if (hint) hint.style.display = "block";
+      }
+    }
+
+    // When user types/selects a name, set tech_id if it matches
+    function syncTechIdFromInput() {
+      clearPickError();
+      const name = normalizeName(input.value);
+      const id = nameToId.get(name.toLowerCase());
+      techIdField.value = id || "";
+    }
+
+    input.addEventListener("input", syncTechIdFromInput);
+    input.addEventListener("change", syncTechIdFromInput);
+
+    // Enforce: must match an active tech at submit time
+    form.addEventListener("submit", (e) => {
+      syncTechIdFromInput();
+      if (!techIdField.value) {
+        e.preventDefault();
+        showPickError("Please select an active technician from the list.");
+        input.focus();
+      }
+    });
+
+    loadTechs();
+  }
+
+
+
   function initDetailsToggle() {
     const btn = document.getElementById("toggleDetailsBtn");
     const panel = document.getElementById("detailsPanel");
@@ -165,6 +249,7 @@
   // Init
   handleFormSubmit("signOutForm", "signOutError");
   handleFormSubmit("returnForm", "returnError");
+  initActiveTechsPicker();
   initDetailsToggle();
   initHistory();
 })();

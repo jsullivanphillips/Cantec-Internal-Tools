@@ -91,14 +91,27 @@
               id="signOutForm">
           <div class="keyd-field keyd-field--inline">
             <label class="keyd-label" for="signedOutTo">Sign out to</label>
+
             <input class="keyd-input"
-                   type="text"
-                   name="key_location"
-                   id="signedOutTo"
-                   placeholder="Person name (required)"
-                   autocomplete="off"
-                   required>
+                  type="text"
+                  id="signedOutTo"
+                  placeholder="Start typing technician name…"
+                  autocomplete="off"
+                  list="activeTechs"
+                  required>
+
+            <!-- This is what we actually submit -->
+            <input type="hidden" name="tech_id" id="signedOutTechId" required>
+
+            <datalist id="activeTechs"></datalist>
+
+            <div class="keyd-help" id="activeTechsHint" style="display:none;">
+              Could not load active techs.
+            </div>
+
+            <div class="keyd-error" id="techPickError" style="display:none;"></div>
           </div>
+
 
           <div class="keyd-field keyd-field--inline">
             <label class="keyd-label" for="airTag">Air tag (optional)</label>
