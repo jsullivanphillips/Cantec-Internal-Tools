@@ -1,8 +1,12 @@
 // static/js/key_detail.js
 (function () {
+
+  
+
   async function handleFormSubmit(formId, errorId, opts = {}) {
     const form = document.getElementById(formId);
     const errBox = document.getElementById(errorId);
+    
     if (!form || !errBox) return;
 
     form.addEventListener("submit", async (e) => {
@@ -116,6 +120,27 @@
         .replaceAll("'", "&#039;");
     }
 
+  function setButtonLoading(btn, isLoading, loadingText = "Working…") {
+    if (!btn) return;
+
+    if (isLoading) {
+      btn.disabled = true;
+      if (!btn.dataset.originalText) btn.dataset.originalText = btn.innerHTML;
+
+      btn.innerHTML = `
+        <span class="keyd-spinner" aria-hidden="true"></span>
+        <span style="margin-left:8px;">${escapeHtml(loadingText)}</span>
+      `;
+    } else {
+      btn.disabled = false;
+      if (btn.dataset.originalText) {
+        btn.innerHTML = btn.dataset.originalText;
+        delete btn.dataset.originalText;
+      }
+    }
+  }
+
+
     function formatDate(iso) {
     if (!iso) return "-";
     const d = new Date(iso);
@@ -132,6 +157,7 @@
 
     function initSignOutWithAirTagWarning() {
       const form = document.getElementById("signOutForm");
+      const submitBtn = form.querySelector('button[type="submit"]');
       const errBox = document.getElementById("signOutError");
       const wrap = document.querySelector(".keyd-wrap");
       const keyId = wrap?.getAttribute("data-key-id");
@@ -184,6 +210,8 @@
       });
 
       async function postSignOut(formData) {
+        setButtonLoading(submitBtn, true, "Signing out…");
+
         try {
           const resp = await fetch(form.action, {
             method: "POST",
@@ -199,6 +227,7 @@
             } catch (_) {}
             errBox.textContent = msg;
             errBox.style.display = "block";
+            setButtonLoading(submitBtn, false);
             return;
           }
 
@@ -206,6 +235,7 @@
         } catch (err) {
           errBox.textContent = "Network error. Please try again.";
           errBox.style.display = "block";
+          setButtonLoading(submitBtn, false);
         }
       }
 
@@ -384,7 +414,7 @@
         }
 
         submitting = true;
-        confirmBtn.disabled = true;
+        setButtonLoading(confirmBtn, true, "Returning…");
         cancelBtn.disabled = true;
 
         // Build form data to POST to the existing return endpoint
@@ -416,7 +446,7 @@
           errBox.style.display = "block";
         } finally {
           submitting = false;
-          confirmBtn.disabled = false;
+          setButtonLoading(confirmBtn, false);
           cancelBtn.disabled = false;
           closeModal();
         }
