@@ -167,6 +167,9 @@ def return_key(key_id: int):
     cs = key.current_status
     current_status = (cs.status or "").lower() if cs else ""
 
+    # NEW: returned_by input (required when actually performing a return)
+    returned_by = (request.form.get("returned_by") or "").strip()
+
     # If already returned / in, do nothing (idempotent)
     if current_status in ["returned", "in", "available"]:
         if request.accept_mimetypes.accept_html and not request.is_json:
@@ -179,9 +182,22 @@ def return_key(key_id: int):
                 "id": key.id,
                 "status": cs.status if cs else None,
                 "key_location": cs.key_location if cs else None,
+                "returned_by": cs.returned_by if cs else None,  # NEW
                 "inserted_at": cs.inserted_at.isoformat() if cs and cs.inserted_at else None,
             }
         })
+
+    # If we're actually returning it, require returned_by
+    if not returned_by:
+        # HTML: bounce back (or you can flash a message)
+        if request.accept_mimetypes.accept_html and not request.is_json:
+            return redirect(url_for("keys.key_detail", key_id=key.id))
+
+        return jsonify({
+            "ok": False,
+            "error": "Please enter who is returning the key.",
+            "code": "missing_returned_by",
+        }), 400
 
     # Otherwise, perform the return
     returned_to = (key.home_location or "").strip() or "Office"
@@ -190,6 +206,9 @@ def return_key(key_id: int):
         key_id=key.id,
         status="Returned",
         key_location=returned_to,
+        returned_by=returned_by,  # NEW
+        # optional: clear air_tag on return if you want
+        # air_tag=None,
     ))
     _commit_or_500()
     db.session.refresh(key)
@@ -205,6 +224,7 @@ def return_key(key_id: int):
             "id": key.id,
             "status": cs.status if cs else None,
             "key_location": cs.key_location if cs else None,
+            "returned_by": cs.returned_by if cs else None,  # NEW
             "inserted_at": cs.inserted_at.isoformat() if cs and cs.inserted_at else None,
         }
     })
@@ -297,6 +317,7 @@ def api_key_history(key_id: int):
             "id": r.id,
             "status": r.status,
             "key_location": r.key_location,
+            "returned_by": r.returned_by,
             "inserted_at": r.inserted_at.isoformat() if r.inserted_at else None,
         })
 

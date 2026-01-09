@@ -438,3 +438,37 @@
   border-color: rgba(0,0,0,0.10);
   color: rgba(0,0,0,0.70);
 }
+
+
+/* Return modal */
+.keyd-modalBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 9999;
+}
+
+.keyd-modal {
+  width: min(520px, 100%);
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 14px 40px rgba(0,0,0,0.22);
+  padding: 1.25rem;
+}
+
+.keyd-modalTitle {
+  margin: 0 0 1rem 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.keyd-modalActions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+  margin-top: 1rem;
+}

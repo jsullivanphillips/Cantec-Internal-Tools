@@ -1,6 +1,6 @@
 // static/js/key_detail.js
 (function () {
-  async function handleFormSubmit(formId, errorId) {
+  async function handleFormSubmit(formId, errorId, opts = {}) {
     const form = document.getElementById(formId);
     const errBox = document.getElementById(errorId);
     if (!form || !errBox) return;
@@ -10,6 +10,11 @@
 
       errBox.style.display = "none";
       errBox.textContent = "";
+
+      if (typeof opts.beforeSubmit === "function") {
+        const ok = opts.beforeSubmit(form, errBox);
+        if (ok === false) return;
+      }
 
       const formData = new FormData(form);
 
@@ -38,6 +43,7 @@
       }
     });
   }
+
 
   function initActiveTechsPicker() {
     const datalist = document.getElementById("activeTechs");
@@ -131,6 +137,110 @@
     return "keyd-badge-neutral";
     }
 
+    function initReturnModal() {
+      const form = document.getElementById("returnForm");
+      const errBox = document.getElementById("returnError");
+
+      const backdrop = document.getElementById("returnModalBackdrop");
+      const modalName = document.getElementById("returnModalName");
+      const cancelBtn = document.getElementById("returnModalCancelBtn");
+      const confirmBtn = document.getElementById("returnModalConfirmBtn");
+
+      // If key isn't OUT, return form doesn't exist; fail quietly
+      if (!form || !errBox || !backdrop || !modalName || !cancelBtn || !confirmBtn) return;
+
+      let submitting = false;
+
+      function openModal() {
+        errBox.style.display = "none";
+        errBox.textContent = "";
+
+        backdrop.style.display = "flex";
+        backdrop.setAttribute("aria-hidden", "false");
+
+        // reset input each open (optional)
+        modalName.value = "";
+        setTimeout(() => modalName.focus(), 0);
+      }
+
+      function closeModal() {
+        backdrop.style.display = "none";
+        backdrop.setAttribute("aria-hidden", "true");
+      }
+
+      // Intercept the return form submit and open modal instead
+      form.addEventListener("submit", (e) => {
+        e.preventDefault();
+        openModal();
+      });
+
+      // Clicking backdrop closes (but clicking modal content does not)
+      backdrop.addEventListener("click", (e) => {
+        if (e.target === backdrop) closeModal();
+      });
+
+      cancelBtn.addEventListener("click", () => closeModal());
+
+      // ESC closes modal
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && backdrop.style.display !== "none") {
+          closeModal();
+        }
+      });
+
+      confirmBtn.addEventListener("click", async () => {
+        if (submitting) return;
+
+        const name = (modalName.value || "").trim();
+        if (!name) {
+          // show error on the page (same box you already use)
+          errBox.textContent = "Please enter who is returning the key.";
+          errBox.style.display = "block";
+          modalName.focus();
+          return;
+        }
+
+        submitting = true;
+        confirmBtn.disabled = true;
+        cancelBtn.disabled = true;
+
+        // Build form data to POST to the existing return endpoint
+        const formData = new FormData(form);
+        formData.set("returned_by", name);
+
+        try {
+          const resp = await fetch(form.action, {
+            method: "POST",
+            body: formData,
+            headers: { "Accept": "application/json" },
+          });
+
+          if (!resp.ok) {
+            let msg = "Request failed.";
+            try {
+              const data = await resp.json();
+              msg = data?.message || data?.error || msg;
+            } catch (_) {}
+            errBox.textContent = msg;
+            errBox.style.display = "block";
+            return;
+          }
+
+          // success
+          window.location.reload();
+        } catch (err) {
+          errBox.textContent = "Network error. Please try again.";
+          errBox.style.display = "block";
+        } finally {
+          submitting = false;
+          confirmBtn.disabled = false;
+          cancelBtn.disabled = false;
+          closeModal();
+        }
+      });
+    }
+
+
     async function initHistory() {
         const wrap = document.querySelector(".keyd-wrap");
         const keyId = wrap?.getAttribute("data-key-id");
@@ -149,26 +259,34 @@
             tbody.innerHTML = "";
 
             if (!events.length) {
-            historyWrap.style.display = "none";
-            loadMoreBtn.style.display = "none";
-            empty.style.display = "block";
-            return;
+              historyWrap.style.display = "none";
+              loadMoreBtn.style.display = "none";
+              empty.style.display = "block";
+              return;
             }
 
             empty.style.display = "none";
             historyWrap.style.display = "block";
 
             const slice = events.slice(0, visibleCount);
+
             tbody.innerHTML = slice.map((e) => {
-            const badgeClass = badgeClassForStatus(e.status);
-            return `
+              const badgeClass = badgeClassForStatus(e.status);
+
+              // Prefer returned_by when present; otherwise use key_location
+              const locOrPerson = e.returned_by
+                ? `Returned by ${e.returned_by}`
+                : e.key_location;
+
+              return `
                 <tr>
-                <td>${escapeHtml(formatDate(e.inserted_at))}</td>
-                <td><span class="keyd-badge ${badgeClass}">${escapeHtml(e.status)}</span></td>
-                <td>${escapeHtml(e.key_location)}</td>
+                  <td>${escapeHtml(formatDate(e.inserted_at))}</td>
+                  <td><span class="keyd-badge ${badgeClass}">${escapeHtml(e.status)}</span></td>
+                  <td>${escapeHtml(locOrPerson)}</td>
                 </tr>
-            `;
+              `;
             }).join("");
+
 
             if (visibleCount < events.length) {
             loadMoreBtn.style.display = "inline-block";
@@ -203,7 +321,7 @@
 
   // Init
   handleFormSubmit("signOutForm", "signOutError");
-  handleFormSubmit("returnForm", "returnError");
+  initReturnModal();             
   initActiveTechsPicker();
   initDetailsToggle();
   initHistory();

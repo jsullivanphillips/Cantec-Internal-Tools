@@ -132,6 +132,7 @@
         {% if is_out %}
           <div class="keyd-spacer-sm"></div>
 
+          <!-- Return (only show if OUT) -->
           <form method="post"
                 action="{{ url_for('keys.return_key', key_id=key.id) }}"
                 class="keyd-form"
@@ -146,7 +147,33 @@
 
             <div class="keyd-error" id="returnError"></div>
           </form>
+
+          <!-- Return Modal (hidden until opened) -->
+          <div class="keyd-modalBackdrop" id="returnModalBackdrop" style="display:none;" aria-hidden="true">
+            <div class="keyd-modal" role="dialog" aria-modal="true" aria-labelledby="returnModalTitle">
+              <h2 class="keyd-modalTitle" id="returnModalTitle">Please enter name of person returning key</h2>
+
+              <div class="keyd-field">
+                <label class="keyd-label" for="returnModalName">Returned by</label>
+                <input class="keyd-input"
+                      type="text"
+                      id="returnModalName"
+                      placeholder="Type any name…"
+                      autocomplete="off">
+              </div>
+
+              <div class="keyd-modalActions">
+                <button type="button" class="keyd-btn keyd-btn-tertiary" id="returnModalCancelBtn">
+                  Cancel
+                </button>
+                <button type="button" class="keyd-btn keyd-btn-secondary" id="returnModalConfirmBtn">
+                  Return Key
+                </button>
+              </div>
+            </div>
+          </div>
         {% endif %}
+
 
         <div class="keyd-spacer-sm"></div>
 
