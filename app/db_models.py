@@ -579,6 +579,8 @@ class KeyStatus(db.Model):
 
     returned_by = db.Column(db.String(255), nullable=True)
 
+    is_on_monthly = db.Column(db.Boolean, default=False, nullable=True)
+
     inserted_at = db.Column(
         db.DateTime(timezone=True),
         server_default=db.func.now(),

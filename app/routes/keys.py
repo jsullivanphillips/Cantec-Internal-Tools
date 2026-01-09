@@ -1,8 +1,9 @@
 # meadow_backend/routes/keys.py
 from flask import Blueprint, render_template, request, jsonify, abort, redirect, url_for
-from sqlalchemy import or_, func
+from sqlalchemy import or_, func, and_
 from sqlalchemy.orm import selectinload, aliased
 from .scheduling_attack import get_active_techs
+import re
 
 from app.db_models import db, Key, KeyAddress, KeyStatus
 
@@ -25,6 +26,13 @@ def _get_key_or_404(key_id: int) -> Key:
     if key is None:
         abort(404, description="Key not found")
     return key
+
+_ROUTE_BAG_RE = re.compile(r"^R\d+$", re.IGNORECASE)
+
+def is_route_bag_keycode(keycode: str) -> bool:
+    if not keycode:
+        return False
+    return bool(_ROUTE_BAG_RE.match(str(keycode).strip()))
 
 
 def _commit_or_500():
@@ -69,7 +77,7 @@ def get_active_techs_route():
 @keys_bp.get("/keys/<int:key_id>")
 def key_detail(key_id: int):
     key = _get_key_or_404(key_id)
-    return render_template("key_detail.html", key=key)
+    return render_template("key_detail.html", key=key, is_key_bag=is_route_bag_keycode(key.keycode))
 
 
 @keys_bp.get("/keys/by-barcode/<int:barcode>")
@@ -82,7 +90,7 @@ def key_detail_by_barcode(barcode: int):
     )
     if key is None:
         abort(404, description="Key not found")
-    return render_template("key_detail.html", key=key)
+    return render_template("key_detail.html", key=key, is_key_bag=is_route_bag_keycode(key.keycode))
 
 
 @keys_bp.get("/api/keys/search")
@@ -131,14 +139,66 @@ def sign_out_key(key_id: int):
 
     air_tag = (data.get("air_tag") or "").strip() or None
 
+    bag_code = (key.keycode or "").strip()
+    is_bag = is_route_bag_keycode(bag_code)
+
+    # 1) Always sign out the bag (or normal key) itself (NOT monthly)
     db.session.add(KeyStatus(
         key_id=key.id,
         status="Signed Out",
         key_location=signed_out_to,
         air_tag=air_tag,
+        is_on_monthly=False,
     ))
-    _commit_or_500()
 
+    # 2) If it's a route bag, bulk sign-out all keys on that route that are NOT already out
+    if is_bag:
+        KS = KeyStatus
+
+        latest = (
+            db.session.query(
+                KS.key_id.label("key_id"),
+                func.max(KS.inserted_at).label("max_inserted_at"),
+            )
+            .group_by(KS.key_id)
+            .subquery()
+        )
+
+        ks_latest = aliased(KS)
+
+        # Keys on this route, with either:
+        # - no status history yet, OR
+        # - latest status is not "Signed Out"
+        keys_to_sign_out = (
+            db.session.query(Key.id)
+            .outerjoin(latest, latest.c.key_id == Key.id)
+            .outerjoin(
+                ks_latest,
+                (ks_latest.key_id == latest.c.key_id)
+                & (ks_latest.inserted_at == latest.c.max_inserted_at),
+            )
+            .filter(Key.route == bag_code)
+            .filter(
+                (ks_latest.id.is_(None)) |
+                (func.lower(ks_latest.status) != "signed out")
+            )
+            .all()
+        )
+
+        bulk = []
+        for (kid,) in keys_to_sign_out:
+            bulk.append(KeyStatus(
+                key_id=kid,
+                status="Signed Out",
+                key_location=signed_out_to,
+                air_tag=None,              # don’t copy bag airtag to every key
+                is_on_monthly=True,
+            ))
+
+        if bulk:
+            db.session.bulk_save_objects(bulk)
+
+    _commit_or_500()
     db.session.refresh(key)
 
     if request.accept_mimetypes.accept_html and not request.is_json:
@@ -160,17 +220,15 @@ def sign_out_key(key_id: int):
 
 
 
+
 @keys_bp.post("/keys/<int:key_id>/return")
 def return_key(key_id: int):
     key = _get_key_or_404(key_id)
-
     cs = key.current_status
     current_status = (cs.status or "").lower() if cs else ""
 
-    # NEW: returned_by input (required when actually performing a return)
     returned_by = (request.form.get("returned_by") or "").strip()
 
-    # If already returned / in, do nothing (idempotent)
     if current_status in ["returned", "in", "available"]:
         if request.accept_mimetypes.accept_html and not request.is_json:
             return redirect(url_for("keys.key_detail", key_id=key.id))
@@ -182,14 +240,12 @@ def return_key(key_id: int):
                 "id": key.id,
                 "status": cs.status if cs else None,
                 "key_location": cs.key_location if cs else None,
-                "returned_by": cs.returned_by if cs else None,  # NEW
+                "returned_by": cs.returned_by if cs else None,
                 "inserted_at": cs.inserted_at.isoformat() if cs and cs.inserted_at else None,
             }
         })
 
-    # If we're actually returning it, require returned_by
     if not returned_by:
-        # HTML: bounce back (or you can flash a message)
         if request.accept_mimetypes.accept_html and not request.is_json:
             return redirect(url_for("keys.key_detail", key_id=key.id))
 
@@ -199,17 +255,62 @@ def return_key(key_id: int):
             "code": "missing_returned_by",
         }), 400
 
-    # Otherwise, perform the return
     returned_to = (key.home_location or "").strip() or "Office"
 
+    bag_code = (key.keycode or "").strip()
+    is_bag = is_route_bag_keycode(bag_code)
+
+    # 1) Return the bag (or normal key) itself (NOT monthly)
     db.session.add(KeyStatus(
         key_id=key.id,
         status="Returned",
         key_location=returned_to,
-        returned_by=returned_by,  # NEW
-        # optional: clear air_tag on return if you want
-        # air_tag=None,
+        returned_by=returned_by,
+        is_on_monthly=False,
     ))
+
+    # 2) If bag, return all keys on this route that are currently out AND were out via monthly (is_on_monthly=True)
+    if is_bag:
+        KS = KeyStatus
+
+        latest = (
+            db.session.query(
+                KS.key_id.label("key_id"),
+                func.max(KS.inserted_at).label("max_inserted_at"),
+            )
+            .group_by(KS.key_id)
+            .subquery()
+        )
+
+        ks_latest = aliased(KS)
+
+        keys_to_return = (
+            db.session.query(Key.id)
+            .join(latest, latest.c.key_id == Key.id)
+            .join(
+                ks_latest,
+                (ks_latest.key_id == latest.c.key_id)
+                & (ks_latest.inserted_at == latest.c.max_inserted_at),
+            )
+            .filter(Key.route == bag_code)
+            .filter(func.lower(ks_latest.status) == "signed out")
+            .filter(ks_latest.is_on_monthly.is_(True))
+            .all()
+        )
+
+        bulk = []
+        for (kid,) in keys_to_return:
+            bulk.append(KeyStatus(
+                key_id=kid,
+                status="Returned",
+                key_location="Office",     # route keys return to office
+                returned_by=returned_by,
+                is_on_monthly=False,       # they are no longer “on monthly” once returned
+            ))
+
+        if bulk:
+            db.session.bulk_save_objects(bulk)
+
     _commit_or_500()
     db.session.refresh(key)
 
@@ -224,10 +325,11 @@ def return_key(key_id: int):
             "id": key.id,
             "status": cs.status if cs else None,
             "key_location": cs.key_location if cs else None,
-            "returned_by": cs.returned_by if cs else None,  # NEW
+            "returned_by": cs.returned_by if cs else None,
             "inserted_at": cs.inserted_at.isoformat() if cs and cs.inserted_at else None,
         }
     })
+
 
 
 
@@ -261,6 +363,7 @@ def api_keys_signed_out():
             & (ks_latest.inserted_at == latest.c.max_inserted_at),
         )
         .filter(func.lower(ks_latest.status) == "signed out")
+        .filter((ks_latest.is_on_monthly.is_(False)) | (ks_latest.is_on_monthly.is_(None)))
         .order_by(ks_latest.inserted_at.desc())
         .limit(100)
         .all()
@@ -277,6 +380,7 @@ def api_keys_signed_out():
             "key_location": ks.key_location,
             "status": ks.status,
             "inserted_at": ks.inserted_at.isoformat() if ks.inserted_at else None,
+            "is_key_bag": is_route_bag_keycode(key.keycode),
         })
 
     return jsonify({"data": data})

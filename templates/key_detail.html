@@ -122,7 +122,7 @@
 
 
           <button type="submit" class="keyd-btn keyd-btn-primary keyd-btn-xl">
-            Sign Out Key
+            {{ "Sign Out Bag" if is_key_bag else "Sign Out Key" }}
           </button>
 
           <div class="keyd-error" id="signOutError"></div>
@@ -138,7 +138,7 @@
                 class="keyd-form"
                 id="returnForm">
             <button type="submit" class="keyd-btn keyd-btn-secondary keyd-btn-xl">
-              Return Key to Home Location
+              {{ "Return Bag" if is_key_bag else "Return Key to Home Location"  }}
             </button>
 
             <div class="keyd-help">
@@ -169,7 +169,7 @@
                 <button type="button"
                       class="keyd-btn keyd-btn-primary"
                       id="returnModalConfirmBtn">
-                Return Key
+                {{ "Return Bag" if is_key_bag else "Return Key"  }}
               </button>
               </div>
             </div>

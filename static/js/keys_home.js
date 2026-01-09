@@ -245,6 +245,7 @@
 
     signedOutList.innerHTML = items
       .map((k) => {
+        const isBag = !!k.is_key_bag;
         const who = k.key_location ? escapeHtml(k.key_location) : "Unknown";
         const when = k.inserted_at
           ? escapeHtml(formatShortDateTime(k.inserted_at))
@@ -259,11 +260,14 @@
           <a class="keys-home__signedOutItem" href="/keys/${k.id}">
             <div class="keys-home__signedOutRow">
               <div class="keys-home__signedOutLeft">
-                <div class="keys-home__signedOutKey"><strong>${escapeHtml(k.keycode || "(no keycode)")}</strong></div>
+                <div class="keys-home__signedOutKey">
+                  <strong>${escapeHtml(k.keycode || "(no keycode)")}</strong>
+                  ${isBag ? `<span class="keys-home__muted" style="margin-left:8px;">(Key bag)</span>` : ``}
+                </div>
                 ${meta ? `<div class="keys-home__signedOutMeta">${meta}</div>` : ""}
               </div>
               <div class="keys-home__signedOutBadge">
-                OUT — ${who}
+                ${isBag ? `BAG OUT — ${who}` : `OUT — ${who}`}
               </div>
             </div>
           </a>
