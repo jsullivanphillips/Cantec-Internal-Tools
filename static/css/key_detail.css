@@ -239,6 +239,9 @@
   cursor: pointer;
   background: #fff;
   transition: transform 0.03s ease, box-shadow 0.15s ease, background 0.15s ease;
+  color: rgba(0,0,0,0.88); /* NEW: force readable text on all buttons */
+  -webkit-appearance: none; /* helps iOS Safari consistency */
+  appearance: none;
 }
 
 .keyd-btn:active {
@@ -262,6 +265,7 @@
 
 .keyd-btn-secondary {
   background: #FAF9F7;
+  color: rgba(0,0,0,0.88);
 }
 
 .keyd-btn-secondary:hover {
@@ -472,3 +476,13 @@
   justify-content: flex-end;
   margin-top: 1rem;
 }
+
+/* Emphasize primary action inside confirmation modal */
+.keyd-modalActions .keyd-btn-primary {
+  box-shadow: 0 12px 26px rgba(12,98,166,0.28);
+}
+
+.keyd-modalActions .keyd-btn-primary:hover {
+  box-shadow: 0 14px 32px rgba(12,98,166,0.35);
+}
+
