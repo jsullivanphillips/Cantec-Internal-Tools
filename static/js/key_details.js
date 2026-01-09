@@ -130,6 +130,189 @@
     });
     }
 
+    function initSignOutWithAirTagWarning() {
+      const form = document.getElementById("signOutForm");
+      const errBox = document.getElementById("signOutError");
+      const wrap = document.querySelector(".keyd-wrap");
+      const keyId = wrap?.getAttribute("data-key-id");
+
+      const backdrop = document.getElementById("airTagModalBackdrop");
+      const body = document.getElementById("airTagModalBody");
+      const cancelBtn = document.getElementById("airTagModalCancelBtn");
+      const continueBtn = document.getElementById("airTagModalContinueBtn");
+
+      if (!form || !errBox) return;
+
+      let submitting = false;
+      let pendingFormData = null;
+
+      function openModal(messageHtml) {
+        if (!backdrop || !body || !cancelBtn || !continueBtn) {
+          // If modal isn't present for some reason, fall back to normal submit
+          return false;
+        }
+        body.innerHTML = messageHtml;
+        backdrop.style.display = "flex";
+        backdrop.setAttribute("aria-hidden", "false");
+        return true;
+      }
+
+      function closeModal() {
+        if (!backdrop) return;
+        backdrop.style.display = "none";
+        backdrop.setAttribute("aria-hidden", "true");
+      }
+
+      // backdrop click closes
+      if (backdrop) {
+        backdrop.addEventListener("click", (e) => {
+          if (e.target === backdrop) closeModal();
+        });
+      }
+
+      if (cancelBtn) cancelBtn.addEventListener("click", () => {
+        pendingFormData = null;
+        closeModal();
+      });
+
+      // ESC closes
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && backdrop && backdrop.style.display !== "none") {
+          pendingFormData = null;
+          closeModal();
+        }
+      });
+
+      async function postSignOut(formData) {
+        try {
+          const resp = await fetch(form.action, {
+            method: "POST",
+            body: formData,
+            headers: { "Accept": "application/json" },
+          });
+
+          if (!resp.ok) {
+            let msg = "Request failed.";
+            try {
+              const data = await resp.json();
+              msg = data?.message || data?.error || msg;
+            } catch (_) {}
+            errBox.textContent = msg;
+            errBox.style.display = "block";
+            return;
+          }
+
+          window.location.reload();
+        } catch (err) {
+          errBox.textContent = "Network error. Please try again.";
+          errBox.style.display = "block";
+        }
+      }
+
+      if (continueBtn) {
+        continueBtn.addEventListener("click", async () => {
+          if (!pendingFormData || submitting) return;
+          closeModal();
+          submitting = true;
+          continueBtn.disabled = true;
+          if (cancelBtn) cancelBtn.disabled = true;
+
+          try {
+            await postSignOut(pendingFormData);
+          } finally {
+            submitting = false;
+            continueBtn.disabled = false;
+            if (cancelBtn) cancelBtn.disabled = false;
+            pendingFormData = null;
+          }
+        });
+      }
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+
+        if (submitting) return;
+
+        errBox.style.display = "none";
+        errBox.textContent = "";
+
+        const formData = new FormData(form);
+
+        const airTag = String(formData.get("air_tag") || "").trim();
+        if (!airTag) {
+          // No airtag, no warning logic needed
+          submitting = true;
+          try {
+            await postSignOut(formData);
+          } finally {
+            submitting = false;
+          }
+          return;
+        }
+
+        // Check conflict
+        try {
+          const params = new URLSearchParams();
+          params.set("air_tag", airTag);
+          if (keyId) params.set("exclude_key_id", keyId);
+
+          const resp = await fetch(`/api/keys/airtag-conflict?${params.toString()}`, {
+            headers: { "Accept": "application/json" },
+          });
+
+          if (!resp.ok) throw new Error("Conflict check failed");
+
+          const json = await resp.json();
+          if (json?.conflict && json?.data) {
+            const d = json.data;
+            const keycode = d.keycode || "-";
+            const address = d.address || "-";
+            const who = d.signed_out_to || "Unknown";
+
+            pendingFormData = formData;
+
+            const msg = `
+              <div><strong>Warning:</strong> AirTag <strong>${escapeHtml(airTag)}</strong> is already signed out.</div>
+              <div style="margin-top:6px;">
+                <div><strong>Key:</strong> ${escapeHtml(keycode)}</div>
+                <div><strong>Address:</strong> ${escapeHtml(address)}</div>
+                <div><strong>Signed out to:</strong> ${escapeHtml(who)}</div>
+              </div>
+            `;
+
+            const opened = openModal(msg);
+            if (!opened) {
+              // no modal present; proceed anyway
+              submitting = true;
+              try {
+                await postSignOut(formData);
+              } finally {
+                submitting = false;
+              }
+            }
+            return;
+          }
+
+          // No conflict -> proceed
+          submitting = true;
+          try {
+            await postSignOut(formData);
+          } finally {
+            submitting = false;
+          }
+        } catch (err) {
+          // If the check fails, don't block the user — proceed with normal sign out
+          submitting = true;
+          try {
+            await postSignOut(formData);
+          } finally {
+            submitting = false;
+          }
+        }
+      });
+    }
+
+
     function badgeClassForStatus(statusRaw) {
     const st = String(statusRaw || "").toLowerCase().trim();
     if (st === "signed out" || st === "out") return "keyd-badge-out";
@@ -320,7 +503,7 @@
 
 
   // Init
-  handleFormSubmit("signOutForm", "signOutError");
+  initSignOutWithAirTagWarning();
   initReturnModal();             
   initActiveTechsPicker();
   initDetailsToggle();

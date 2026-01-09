@@ -386,6 +386,76 @@ def api_keys_signed_out():
     return jsonify({"data": data})
 
 
+@keys_bp.get("/api/keys/airtag-conflict")
+def api_airtag_conflict():
+    """
+    Checks whether an AirTag is currently in-use on a different key whose latest status is Signed Out.
+    Returns keycode + address + signed_out_to (key_location) for warning modal.
+    """
+    air_tag = (request.args.get("air_tag") or "").strip()
+    exclude_key_id_raw = (request.args.get("exclude_key_id") or "").strip()
+
+    if not air_tag:
+        return jsonify({"conflict": False})
+
+    exclude_key_id = None
+    if exclude_key_id_raw:
+        try:
+            exclude_key_id = int(exclude_key_id_raw)
+        except ValueError:
+            exclude_key_id = None
+
+    KS = KeyStatus
+
+    latest = (
+        db.session.query(
+            KS.key_id.label("key_id"),
+            func.max(KS.inserted_at).label("max_inserted_at"),
+        )
+        .group_by(KS.key_id)
+        .subquery()
+    )
+
+    ks_latest = aliased(KS)
+
+    q = (
+        db.session.query(Key, ks_latest)
+        .options(selectinload(Key.addresses))
+        .join(latest, latest.c.key_id == Key.id)
+        .join(
+            ks_latest,
+            (ks_latest.key_id == latest.c.key_id)
+            & (ks_latest.inserted_at == latest.c.max_inserted_at),
+        )
+        .filter(func.lower(ks_latest.status) == "signed out")
+        .filter(func.lower(ks_latest.air_tag) == air_tag.lower())
+    )
+
+    if exclude_key_id is not None:
+        q = q.filter(Key.id != exclude_key_id)
+
+    row = q.order_by(ks_latest.inserted_at.desc()).first()
+    if not row:
+        return jsonify({"conflict": False})
+
+    key, ks = row
+    address = None
+    if getattr(key, "addresses", None):
+        address = key.addresses[0].address if key.addresses else None
+
+    return jsonify({
+        "conflict": True,
+        "data": {
+            "key_id": key.id,
+            "keycode": key.keycode,
+            "address": address,
+            "signed_out_to": ks.key_location,
+            "air_tag": ks.air_tag,
+        }
+    })
+
+
+
 @keys_bp.get("/api/keys/<int:key_id>/history")
 def api_key_history(key_id: int):
     """
