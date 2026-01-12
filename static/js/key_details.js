@@ -157,66 +157,196 @@
 
     function initSignOutWithAirTagWarning() {
       const form = document.getElementById("signOutForm");
-      const submitBtn = form.querySelector('button[type="submit"]');
       const errBox = document.getElementById("signOutError");
-      const wrap = document.querySelector(".keyd-wrap");
-      const keyId = wrap?.getAttribute("data-key-id");
-
-      const backdrop = document.getElementById("airTagModalBackdrop");
-      const body = document.getElementById("airTagModalBody");
-      const cancelBtn = document.getElementById("airTagModalCancelBtn");
-      const continueBtn = document.getElementById("airTagModalContinueBtn");
-
       if (!form || !errBox) return;
 
-      let submitting = false;
-      let pendingFormData = null;
+      const submitBtn = form.querySelector('button[type="submit"]');
 
-      function openModal(messageHtml) {
-        if (!backdrop || !body || !cancelBtn || !continueBtn) {
-          // If modal isn't present for some reason, fall back to normal submit
-          return false;
-        }
-        body.innerHTML = messageHtml;
-        backdrop.style.display = "flex";
-        backdrop.setAttribute("aria-hidden", "false");
-        return true;
+      const wrap = document.querySelector(".keyd-wrap");
+      const keyId = wrap?.getAttribute("data-key-id");
+      const isKeyBag = (wrap?.getAttribute("data-is-key-bag") || "").trim() === "1";
+      const bagCode = (wrap?.getAttribute("data-bag-code") || "").trim();
+
+      // AirTag modal elements
+      const airBackdrop = document.getElementById("airTagModalBackdrop");
+      const airBody = document.getElementById("airTagModalBody");
+      const airCancelBtn = document.getElementById("airTagModalCancelBtn");
+      const airContinueBtn = document.getElementById("airTagModalContinueBtn");
+
+      // Bag modal elements
+      const bagBackdrop = document.getElementById("bagModalBackdrop");
+      const bagBody = document.getElementById("bagModalBody");
+      const bagCancelBtn = document.getElementById("bagModalCancelBtn");
+      const bagContinueBtn = document.getElementById("bagModalContinueBtn");
+
+      let isPosting = false;
+      let isModalOpen = false;
+
+      function showError(msg) {
+        errBox.textContent = msg || "Request failed.";
+        errBox.style.display = "block";
       }
 
-      function closeModal() {
+      function clearError() {
+        errBox.style.display = "none";
+        errBox.textContent = "";
+      }
+
+      function openBackdrop(backdrop) {
+        if (!backdrop) return;
+        backdrop.style.display = "flex";
+        backdrop.setAttribute("aria-hidden", "false");
+      }
+
+      function closeBackdrop(backdrop) {
         if (!backdrop) return;
         backdrop.style.display = "none";
         backdrop.setAttribute("aria-hidden", "true");
       }
 
-      // backdrop click closes
-      if (backdrop) {
-        backdrop.addEventListener("click", (e) => {
-          if (e.target === backdrop) closeModal();
+      function disableModalButtons(cancelBtn, continueBtn, disabled) {
+        if (cancelBtn) cancelBtn.disabled = !!disabled;
+        if (continueBtn) continueBtn.disabled = !!disabled;
+      }
+
+      function confirmWithModal({ backdrop, bodyEl, cancelBtn, continueBtn, html }) {
+        return new Promise((resolve) => {
+          // If modal is missing for any reason, fail open (treat as "continue")
+          if (!backdrop || !bodyEl || !cancelBtn || !continueBtn) {
+            resolve(true);
+            return;
+          }
+
+          // Prevent opening multiple modals at once
+          if (isModalOpen) {
+            resolve(false);
+            return;
+          }
+
+          isModalOpen = true;
+          bodyEl.innerHTML = html;
+          openBackdrop(backdrop);
+
+          const cleanup = () => {
+            // remove listeners
+            cancelBtn.removeEventListener("click", onCancel);
+            continueBtn.removeEventListener("click", onContinue);
+            backdrop.removeEventListener("click", onBackdropClick);
+            document.removeEventListener("keydown", onKeyDown);
+
+            // close UI + reset
+            closeBackdrop(backdrop);
+            disableModalButtons(cancelBtn, continueBtn, false);
+            isModalOpen = false;
+          };
+
+          const onCancel = () => {
+            cleanup();
+            resolve(false);
+          };
+
+          const onContinue = () => {
+            // lock buttons to prevent double tap
+            disableModalButtons(cancelBtn, continueBtn, true);
+            cleanup();
+            resolve(true);
+          };
+
+          const onBackdropClick = (e) => {
+            if (e.target === backdrop) onCancel();
+          };
+
+          const onKeyDown = (e) => {
+            if (e.key === "Escape") onCancel();
+          };
+
+          cancelBtn.addEventListener("click", onCancel);
+          continueBtn.addEventListener("click", onContinue);
+          backdrop.addEventListener("click", onBackdropClick);
+          document.addEventListener("keydown", onKeyDown);
         });
       }
 
-      if (cancelBtn) cancelBtn.addEventListener("click", () => {
-        pendingFormData = null;
-        closeModal();
-      });
+      async function confirmBag(items) {
+        const maxShow = 10;
+        const shown = items.slice(0, maxShow);
 
-      // ESC closes
-      document.addEventListener("keydown", (e) => {
-        if (e.key === "Escape" && backdrop && backdrop.style.display !== "none") {
-          pendingFormData = null;
-          closeModal();
-        }
-      });
+        const rows = shown
+          .map((it) => {
+            const keycode = it.keycode || "-";
+            const address = it.address || "-";
+            const who = it.signed_out_to || "Unknown";
+            return `
+              <li style="margin: 6px 0;">
+                <div><strong>${escapeHtml(keycode)}</strong> — ${escapeHtml(address)}</div>
+                <div class="muted" style="margin-top:2px;">Signed out to ${escapeHtml(who)}</div>
+              </li>
+            `;
+          })
+          .join("");
+
+        const more =
+          items.length > maxShow
+            ? `<div style="margin-top:8px;" class="muted">...and ${items.length - maxShow} more</div>`
+            : "";
+
+        const html = `
+          <div><strong>Warning:</strong> ${items.length} key(s) on route <strong>${escapeHtml(
+            bagCode
+          )}</strong> are already signed out.</div>
+          <div style="margin-top:8px;">
+            <ul style="padding-left:18px; margin:0;">
+              ${rows}
+            </ul>
+            ${more}
+          </div>
+          <div style="margin-top:10px;">If you continue, the bag will still be signed out, but those already-signed-out keys will remain unchanged.</div>
+        `;
+
+        return confirmWithModal({
+          backdrop: bagBackdrop,
+          bodyEl: bagBody,
+          cancelBtn: bagCancelBtn,
+          continueBtn: bagContinueBtn,
+          html,
+        });
+      }
+
+      async function confirmAirtag(airTag, d) {
+        const keycode = d.keycode || "-";
+        const address = d.address || "-";
+        const who = d.signed_out_to || "Unknown";
+
+        const html = `
+          <div><strong>Warning:</strong> AirTag <strong>${escapeHtml(
+            airTag
+          )}</strong> is already signed out.</div>
+          <div style="margin-top:6px;">
+            <div><strong>Key:</strong> ${escapeHtml(keycode)}</div>
+            <div><strong>Address:</strong> ${escapeHtml(address)}</div>
+            <div><strong>Signed out to:</strong> ${escapeHtml(who)}</div>
+          </div>
+        `;
+
+        return confirmWithModal({
+          backdrop: airBackdrop,
+          bodyEl: airBody,
+          cancelBtn: airCancelBtn,
+          continueBtn: airContinueBtn,
+          html,
+        });
+      }
 
       async function postSignOut(formData) {
+        if (isPosting) return;
+        isPosting = true;
         setButtonLoading(submitBtn, true, "Signing out…");
 
         try {
           const resp = await fetch(form.action, {
             method: "POST",
             body: formData,
-            headers: { "Accept": "application/json" },
+            headers: { Accept: "application/json" },
           });
 
           if (!resp.ok) {
@@ -225,122 +355,84 @@
               const data = await resp.json();
               msg = data?.message || data?.error || msg;
             } catch (_) {}
-            errBox.textContent = msg;
-            errBox.style.display = "block";
-            setButtonLoading(submitBtn, false);
+            showError(msg);
             return;
           }
 
           window.location.reload();
         } catch (err) {
-          errBox.textContent = "Network error. Please try again.";
-          errBox.style.display = "block";
+          showError("Network error. Please try again.");
+        } finally {
+          isPosting = false;
           setButtonLoading(submitBtn, false);
         }
       }
 
-      if (continueBtn) {
-        continueBtn.addEventListener("click", async () => {
-          if (!pendingFormData || submitting) return;
-          closeModal();
-          submitting = true;
-          continueBtn.disabled = true;
-          if (cancelBtn) cancelBtn.disabled = true;
+      async function fetchBagConflicts() {
+        const params = new URLSearchParams();
+        params.set("bag_code", bagCode);
+        if (keyId) params.set("exclude_key_id", keyId);
 
-          try {
-            await postSignOut(pendingFormData);
-          } finally {
-            submitting = false;
-            continueBtn.disabled = false;
-            if (cancelBtn) cancelBtn.disabled = false;
-            pendingFormData = null;
-          }
+        const resp = await fetch(`/api/keys/bag-signed-out?${params.toString()}`, {
+          headers: { Accept: "application/json" },
         });
+        if (!resp.ok) throw new Error("Bag check failed");
+        const json = await resp.json();
+        return json?.data || [];
+      }
+
+      async function fetchAirtagConflict(airTag) {
+        const params = new URLSearchParams();
+        params.set("air_tag", airTag);
+        if (keyId) params.set("exclude_key_id", keyId);
+
+        const resp = await fetch(`/api/keys/airtag-conflict?${params.toString()}`, {
+          headers: { Accept: "application/json" },
+        });
+        if (!resp.ok) throw new Error("Airtag check failed");
+        return await resp.json();
       }
 
       form.addEventListener("submit", async (e) => {
         e.preventDefault();
+        if (isPosting) return;
 
-        if (submitting) return;
-
-        errBox.style.display = "none";
-        errBox.textContent = "";
+        clearError();
 
         const formData = new FormData(form);
 
-        const airTag = String(formData.get("air_tag") || "").trim();
-        if (!airTag) {
-          // No airtag, no warning logic needed
-          submitting = true;
+        // 1) Bag warning (only for route bags)
+        if (isKeyBag && bagCode) {
           try {
-            await postSignOut(formData);
-          } finally {
-            submitting = false;
-          }
-          return;
-        }
-
-        // Check conflict
-        try {
-          const params = new URLSearchParams();
-          params.set("air_tag", airTag);
-          if (keyId) params.set("exclude_key_id", keyId);
-
-          const resp = await fetch(`/api/keys/airtag-conflict?${params.toString()}`, {
-            headers: { "Accept": "application/json" },
-          });
-
-          if (!resp.ok) throw new Error("Conflict check failed");
-
-          const json = await resp.json();
-          if (json?.conflict && json?.data) {
-            const d = json.data;
-            const keycode = d.keycode || "-";
-            const address = d.address || "-";
-            const who = d.signed_out_to || "Unknown";
-
-            pendingFormData = formData;
-
-            const msg = `
-              <div><strong>Warning:</strong> AirTag <strong>${escapeHtml(airTag)}</strong> is already signed out.</div>
-              <div style="margin-top:6px;">
-                <div><strong>Key:</strong> ${escapeHtml(keycode)}</div>
-                <div><strong>Address:</strong> ${escapeHtml(address)}</div>
-                <div><strong>Signed out to:</strong> ${escapeHtml(who)}</div>
-              </div>
-            `;
-
-            const opened = openModal(msg);
-            if (!opened) {
-              // no modal present; proceed anyway
-              submitting = true;
-              try {
-                await postSignOut(formData);
-              } finally {
-                submitting = false;
-              }
+            const items = await fetchBagConflicts();
+            if (items.length) {
+              const ok = await confirmBag(items);
+              if (!ok) return;
             }
-            return;
-          }
-
-          // No conflict -> proceed
-          submitting = true;
-          try {
-            await postSignOut(formData);
-          } finally {
-            submitting = false;
-          }
-        } catch (err) {
-          // If the check fails, don't block the user — proceed with normal sign out
-          submitting = true;
-          try {
-            await postSignOut(formData);
-          } finally {
-            submitting = false;
+          } catch (_) {
+            // Fail open if bag check fails
           }
         }
+
+        // 2) AirTag warning
+        const airTag = String(formData.get("air_tag") || "").trim();
+        if (airTag) {
+          try {
+            const json = await fetchAirtagConflict(airTag);
+            if (json?.conflict && json?.data) {
+              const ok = await confirmAirtag(airTag, json.data);
+              if (!ok) return;
+            }
+          } catch (_) {
+            // Fail open if airtag check fails
+          }
+        }
+
+        // 3) Final POST
+        await postSignOut(formData);
       });
     }
+
 
 
     function badgeClassForStatus(statusRaw) {

@@ -250,11 +250,15 @@
         const when = k.inserted_at
           ? escapeHtml(formatShortDateTime(k.inserted_at))
           : "";
+
         const meta = [
           k.area ? escapeHtml(k.area) : null,
           k.route ? escapeHtml(k.route) : null,
           when ? `Last update ${when}` : null,
         ].filter(Boolean).join(" • ");
+
+        // ✅ NEW: addresses line
+        const addresses = Array.isArray(k.addresses) ? k.addresses.join(" • ") : "";
 
         return `
           <a class="keys-home__signedOutItem" href="/keys/${k.id}">
@@ -265,6 +269,7 @@
                   ${isBag ? `<span class="keys-home__muted" style="margin-left:8px;">(Key bag)</span>` : ``}
                 </div>
                 ${meta ? `<div class="keys-home__signedOutMeta">${meta}</div>` : ""}
+                ${addresses ? `<div class="keys-home__signedOutAddr">${escapeHtml(addresses)}</div>` : ""}
               </div>
               <div class="keys-home__signedOutBadge">
                 ${isBag ? `BAG OUT — ${who}` : `OUT — ${who}`}
@@ -275,6 +280,7 @@
       })
       .join("");
   }
+
 
   function canUseCamera() {
     return (

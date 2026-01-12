@@ -340,6 +340,7 @@ def return_key(key_id: int):
 def api_keys_signed_out():
     """
     Returns keys whose LATEST KeyStatus row is 'Signed Out'
+    Includes key addresses (KeyAddress table).
     """
     KS = KeyStatus
 
@@ -373,12 +374,15 @@ def api_keys_signed_out():
 
     data = []
     for key, ks in rows:
+        addresses = [a.address for a in (key.addresses or []) if a.address]
+
         data.append({
             "id": key.id,
             "keycode": key.keycode,
             "barcode": key.barcode,
             "area": key.area,
             "route": key.route,
+            "addresses": addresses,  # ✅ added
             "key_location": ks.key_location,
             "status": ks.status,
             "inserted_at": ks.inserted_at.isoformat() if ks.inserted_at else None,
@@ -387,6 +391,77 @@ def api_keys_signed_out():
 
     return jsonify({"data": data})
 
+
+@keys_bp.get("/api/keys/bag-signed-out")
+def api_bag_signed_out():
+    """
+    For a given route bag code (e.g., R12), return keys on that route whose LATEST status is Signed Out
+    (excluding monthly bulk signouts), so the UI can warn before a bag bulk signout.
+    """
+    bag_code = (request.args.get("bag_code") or "").strip()
+    exclude_key_id_raw = (request.args.get("exclude_key_id") or "").strip()
+
+    if not bag_code or not is_route_bag_keycode(bag_code):
+        return jsonify({"ok": True, "data": []})
+
+    exclude_key_id = None
+    if exclude_key_id_raw:
+        try:
+            exclude_key_id = int(exclude_key_id_raw)
+        except ValueError:
+            exclude_key_id = None
+
+    KS = KeyStatus
+
+    latest = (
+        db.session.query(
+            KS.key_id.label("key_id"),
+            func.max(KS.inserted_at).label("max_inserted_at"),
+        )
+        .group_by(KS.key_id)
+        .subquery()
+    )
+
+    ks_latest = aliased(KS)
+
+    q = (
+        db.session.query(Key, ks_latest)
+        .options(selectinload(Key.addresses))
+        .join(latest, latest.c.key_id == Key.id)
+        .join(
+            ks_latest,
+            (ks_latest.key_id == latest.c.key_id)
+            & (ks_latest.inserted_at == latest.c.max_inserted_at),
+        )
+        .filter(Key.route == bag_code)
+        .filter(func.lower(func.trim(ks_latest.status)) == "signed out")
+        # Exclude "monthly bag" signouts (those are bookkeeping, not an actual separate signout)
+        .filter((ks_latest.is_on_monthly.is_(False)) | (ks_latest.is_on_monthly.is_(None)))
+    )
+
+    # Exclude the bag key itself (its keycode is the bag code), and optionally exclude by id too
+    q = q.filter(func.lower(func.trim(Key.keycode)) != bag_code.lower())
+
+    if exclude_key_id is not None:
+        q = q.filter(Key.id != exclude_key_id)
+
+    rows = q.order_by(ks_latest.inserted_at.desc()).limit(50).all()
+
+    data = []
+    for key, ks in rows:
+        address = None
+        if getattr(key, "addresses", None):
+            address = key.addresses[0].address if key.addresses else None
+
+        data.append({
+            "key_id": key.id,
+            "keycode": key.keycode,
+            "address": address,
+            "signed_out_to": ks.key_location,
+            "inserted_at": ks.inserted_at.isoformat() if ks.inserted_at else None,
+        })
+    print(data)
+    return jsonify({"ok": True, "data": data})
 
 @keys_bp.get("/api/keys/airtag-conflict")
 def api_airtag_conflict():

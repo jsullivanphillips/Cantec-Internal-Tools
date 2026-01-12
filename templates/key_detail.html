@@ -19,7 +19,7 @@
   (home_loc and current_loc and home_loc|lower == current_loc|lower)
 ) %}
 
-<div class="keyd-wrap container py-3" data-key-id="{{ key.id }}">
+<div class="keyd-wrap container py-3" data-key-id="{{ key.id }}" data-is-key-bag="{{ 1 if is_key_bag else 0 }}" data-bag-code="{{ key.keycode if is_key_bag else '' }}">
 
   <!-- TOP HERO (mobile-first) -->
   <section class="keyd-hero">
@@ -128,6 +128,8 @@
           <div class="keyd-error" id="signOutError"></div>
         </form>
 
+        </form>
+
         <!-- AirTag Warning Modal (hidden until opened) -->
         <div class="keyd-modalBackdrop" id="airTagModalBackdrop" style="display:none;" aria-hidden="true">
           <div class="keyd-modal" role="dialog" aria-modal="true" aria-labelledby="airTagModalTitle">
@@ -142,6 +144,26 @@
                 Cancel
               </button>
               <button type="button" class="keyd-btn keyd-btn-primary" id="airTagModalContinueBtn">
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bag Warning Modal (hidden until opened) -->
+        <div class="keyd-modalBackdrop" id="bagModalBackdrop" style="display:none;" aria-hidden="true">
+          <div class="keyd-modal" role="dialog" aria-modal="true" aria-labelledby="bagModalTitle">
+            <h2 class="keyd-modalTitle" id="bagModalTitle">Some keys in this bag are already signed out</h2>
+
+            <div class="keyd-help" id="bagModalBody" style="margin-top: 8px;">
+              <!-- JS fills this -->
+            </div>
+
+            <div class="keyd-modalActions">
+              <button type="button" class="keyd-btn keyd-btn-tertiary" id="bagModalCancelBtn">
+                Cancel
+              </button>
+              <button type="button" class="keyd-btn keyd-btn-primary" id="bagModalContinueBtn">
                 Continue
               </button>
             </div>

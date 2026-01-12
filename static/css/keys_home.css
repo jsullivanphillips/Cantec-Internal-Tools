@@ -229,3 +229,9 @@
   border-radius: 12px;
   border: 1px solid var(--color-border);
 }
+
+.keys-home__signedOutAddr {
+  margin-top: 4px;
+  font-size: 0.9em;
+  opacity: 0.85;
+}
