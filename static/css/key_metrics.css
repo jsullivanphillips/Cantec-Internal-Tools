@@ -1,0 +1,171 @@
+.km-wrap {
+  max-width: 1100px;
+}
+
+.km-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.km-title {
+  margin: 0;
+  font-weight: 900;
+  font-size: 1.6rem;
+}
+
+.km-sub {
+  margin-top: 4px;
+  color: rgba(0,0,0,0.65);
+  font-weight: 700;
+}
+
+.km-filters {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.km-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.km-field label {
+  font-size: 0.9rem;
+  font-weight: 900;
+  color: rgba(0,0,0,0.70);
+}
+
+.km-field input {
+  border: 1px solid rgba(0,0,0,0.14);
+  border-radius: 10px;
+  padding: 0.6rem 0.7rem;
+  font-weight: 800;
+}
+
+.km-btn {
+  border: 1px solid rgba(0,0,0,0.14);
+  border-radius: 10px;
+  padding: 0.65rem 0.9rem;
+  font-weight: 900;
+  background: #0C62A6;
+  color: #fff;
+  cursor: pointer;
+}
+
+.km-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.km-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 1050px) {
+  .km-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+.km-card {
+  background: #fff;
+  border: 1px solid rgba(0,0,0,0.10);
+  border-radius: 14px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.06);
+  padding: 12px;
+}
+
+.km-card--warn {
+  border-left: 6px solid rgba(177,74,58,0.55);
+}
+
+.km-cardLabel {
+  font-weight: 900;
+  color: rgba(0,0,0,0.70);
+  font-size: 0.9rem;
+}
+
+.km-cardValue {
+  font-weight: 900;
+  font-size: 1.4rem;
+  margin-top: 6px;
+}
+
+.km-cardHint {
+  margin-top: 6px;
+  color: rgba(0,0,0,0.60);
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.km-section {
+  margin-top: 14px;
+}
+
+.km-h2 {
+  margin: 0 0 8px 0;
+  font-weight: 900;
+  font-size: 1.1rem;
+}
+
+.km-tableWrap {
+  background: #fff;
+  border: 1px solid rgba(0,0,0,0.10);
+  border-radius: 14px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.06);
+  overflow: hidden;
+}
+
+.km-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.km-table thead th {
+  text-align: left;
+  font-size: 0.95rem;
+  font-weight: 900;
+  color: rgba(0,0,0,0.70);
+  background: rgba(0,0,0,0.03);
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(0,0,0,0.08);
+}
+
+.km-table tbody td {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+  font-weight: 800;
+}
+
+.km-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.km-empty {
+  color: rgba(0,0,0,0.55);
+  font-weight: 800;
+}
+
+/* KPI card signaling */
+.km-card--good {
+  border-left: 6px solid rgba(76,124,82,0.70);
+  background: linear-gradient(180deg, rgba(76,124,82,0.12), #fff);
+}
+
+.km-card--warn {
+  border-left: 6px solid rgba(232,162,44,0.75);
+  background: linear-gradient(180deg, rgba(232,162,44,0.12), #fff);
+}
+
+.km-card--bad {
+  border-left: 6px solid rgba(177,74,58,0.70);
+  background: linear-gradient(180deg, rgba(177,74,58,0.12), #fff);
+}

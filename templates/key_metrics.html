@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}Key Metrics{% endblock %}
+
+{% block extra_head %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/key_metrics.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="km-wrap container py-3">
+
+  <div class="km-head">
+    <div>
+      <h1 class="km-title">Key System Metrics</h1>
+      <div class="km-sub">Adoption + usage quality signals</div>
+    </div>
+
+    <div class="km-filters">
+      <div class="km-field">
+        <label for="kmStart">Start</label>
+        <input type="date" id="kmStart">
+      </div>
+      <div class="km-field">
+        <label for="kmEnd">End</label>
+        <input type="date" id="kmEnd">
+      </div>
+      <button class="km-btn" id="kmApplyBtn" type="button">Apply</button>
+    </div>
+  </div>
+
+  <div class="km-grid">
+    <div class="km-card" id="cardTotalSignouts">
+      <div class="km-cardLabel">Total Sign-outs</div>
+      <div class="km-cardValue" id="kpiTotalSignouts">—</div>
+      <div class="km-cardHint" id="kpiRange">—</div>
+    </div>
+
+    <div class="km-card" id="cardReturnedBy">
+      <div class="km-cardLabel">% Returns with “Returned by”</div>
+      <div class="km-cardValue" id="kpiReturnedByRate">—</div>
+      <div class="km-cardHint" id="kpiReturnedByCounts">—</div>
+    </div>
+
+    <div class="km-card" id="cardAirTag">
+      <div class="km-cardLabel">% Sign-outs with AirTag</div>
+      <div class="km-cardValue" id="kpiAirTagRate">—</div>
+      <div class="km-cardHint" id="kpiAirTagCounts">—</div>
+    </div>
+
+    <div class="km-card" id="cardAvgOut">
+      <div class="km-cardLabel">Avg Time Out</div>
+      <div class="km-cardValue" id="kpiAvgOut">—</div>
+      <div class="km-cardHint">From sign-out → next return</div>
+    </div>
+
+    <div class="km-card" id="cardDoubleSignouts">
+      <div class="km-cardLabel">Double Sign-outs</div>
+      <div class="km-cardValue" id="kpiDoubleSignouts">—</div>
+      <div class="km-cardHint">Sign-out attempted while already out</div>
+    </div>
+  </div>
+
+  <div class="km-section">
+    <h2 class="km-h2">Sign-outs by Day</h2>
+    <div class="km-tableWrap">
+      <table class="km-table">
+        <thead>
+          <tr><th>Date</th><th>Sign-outs</th></tr>
+        </thead>
+        <tbody id="tblSignoutsByDay"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="km-section">
+    <h2 class="km-h2">Unique Sign-out Users by Week</h2>
+    <div class="km-tableWrap">
+      <table class="km-table">
+        <thead>
+          <tr><th>Week Starting</th><th>Unique Users</th></tr>
+        </thead>
+        <tbody id="tblUniqueUsersByWeek"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="km-section">
+    <h2 class="km-h2">Double Sign-outs by Day</h2>
+    <div class="km-tableWrap">
+      <table class="km-table">
+        <thead>
+          <tr><th>Date</th><th>Double Sign-outs</th></tr>
+        </thead>
+        <tbody id="tblDoubleByDay"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+  <script src="{{ url_for('static', filename='js/key_metrics.js') }}"></script>
+{% endblock %}

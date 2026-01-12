@@ -1,6 +1,8 @@
 # meadow_backend/routes/keys.py
 from flask import Blueprint, render_template, request, jsonify, abort, redirect, url_for
-from sqlalchemy import or_, func, and_
+from sqlalchemy import or_, func
+from sqlalchemy.sql import over
+from datetime import datetime, timedelta
 from sqlalchemy.orm import selectinload, aliased
 from .scheduling_attack import get_active_techs
 import re
@@ -496,3 +498,252 @@ def api_key_history(key_id: int):
         })
 
     return jsonify({"data": data})
+
+
+@keys_bp.get("/keys/metrics")
+def key_metrics_page():
+    return render_template("key_metrics.html")
+
+@keys_bp.get("/api/keys/metrics")
+def api_key_metrics():
+    """
+    Metrics implemented:
+      1) Signed-outs per day
+      2) Unique users signing out per week (distinct key_location on signout rows)
+      4) % of returns with returned_by
+      5) % of signouts with air_tag
+      6) Avg duration a key is out (signout -> next return)
+      9) Double sign-outs (signout when previous status was already out)
+    """
+    # -----------------------------
+    # Date range parsing
+    # -----------------------------
+    def parse_ymd(s: str):
+        if not s:
+            return None
+        try:
+            return datetime.strptime(s, "%Y-%m-%d")
+        except ValueError:
+            return None
+
+    start = parse_ymd(request.args.get("start"))
+    end = parse_ymd(request.args.get("end"))
+
+    # Default: last 30 days (inclusive)
+    if not end:
+        end = datetime.now()
+    if not start:
+        start = end - timedelta(days=30)
+
+    # Clamp end >= start
+    if end < start:
+        start, end = end, start
+
+    # Make end exclusive by adding 1 day (so "2026-01-12" includes that date)
+    end_excl = end + timedelta(days=1)
+
+    SIGNOUT_STATUSES = ("signed out", "out")
+    RETURN_STATUSES = ("returned", "in", "available")
+
+    non_monthly = func.coalesce(KeyStatus.is_on_monthly, False).is_(False)
+
+    # Normalize status in SQL
+    status_norm = func.lower(func.trim(KeyStatus.status))
+
+    # -----------------------------
+    # Metric 1: signouts per day
+    # -----------------------------
+    signouts_by_day_rows = (
+        db.session.query(
+            func.date_trunc("day", KeyStatus.inserted_at).label("day"),
+            func.count().label("count"),
+        )
+        .filter(KeyStatus.inserted_at >= start, KeyStatus.inserted_at < end_excl)
+        .filter(non_monthly)
+        .filter(status_norm.in_(SIGNOUT_STATUSES))
+        .group_by(func.date_trunc("day", KeyStatus.inserted_at))
+        .order_by(func.date_trunc("day", KeyStatus.inserted_at).asc())
+        .all()
+    )
+
+    signouts_by_day = [
+        {"day": r.day.date().isoformat(), "count": int(r.count)}
+        for r in signouts_by_day_rows
+    ]
+
+    total_signouts = sum(x["count"] for x in signouts_by_day)
+
+    # -----------------------------
+    # Metric 2: unique users signing out per week
+    # (distinct key_location on signout rows)
+    # -----------------------------
+    # Treat blank key_location as NULL so it doesn't inflate distinct counts
+    key_location_norm = func.nullif(func.trim(KeyStatus.key_location), "")
+
+    unique_users_by_week_rows = (
+        db.session.query(
+            func.date_trunc("week", KeyStatus.inserted_at).label("week"),
+            func.count(func.distinct(key_location_norm)).label("count"),
+        )
+        .filter(KeyStatus.inserted_at >= start, KeyStatus.inserted_at < end_excl)
+        .filter(non_monthly)
+        .filter(status_norm.in_(SIGNOUT_STATUSES))
+        .group_by(func.date_trunc("week", KeyStatus.inserted_at))
+        .order_by(func.date_trunc("week", KeyStatus.inserted_at).asc())
+        .all()
+    )
+
+    unique_users_by_week = [
+        {"week": r.week.date().isoformat(), "count": int(r.count)}
+        for r in unique_users_by_week_rows
+    ]
+
+    # -----------------------------
+    # Metric 4: % returns with returned_by
+    # -----------------------------
+    returned_by_norm = func.nullif(func.trim(KeyStatus.returned_by), "")
+
+    returns_tot = (
+        db.session.query(func.count())
+        .filter(KeyStatus.inserted_at >= start, KeyStatus.inserted_at < end_excl)
+        .filter(non_monthly)
+        .filter(status_norm.in_(RETURN_STATUSES))
+        .scalar()
+    ) or 0
+
+    returns_with_returned_by = (
+        db.session.query(func.count())
+        .filter(KeyStatus.inserted_at >= start, KeyStatus.inserted_at < end_excl)
+        .filter(non_monthly)
+        .filter(status_norm.in_(RETURN_STATUSES))
+        .filter(returned_by_norm.isnot(None))
+        .scalar()
+    ) or 0
+
+    returned_by_rate = (returns_with_returned_by / returns_tot) if returns_tot else None
+
+    # -----------------------------
+    # Metric 5: % signouts with air_tag
+    # -----------------------------
+    air_tag_norm = func.nullif(func.trim(KeyStatus.air_tag), "")
+
+    signouts_tot = (
+        db.session.query(func.count())
+        .filter(KeyStatus.inserted_at >= start, KeyStatus.inserted_at < end_excl)
+        .filter(non_monthly)
+        .filter(status_norm.in_(SIGNOUT_STATUSES))
+        .scalar()
+    ) or 0
+
+    signouts_with_airtag = (
+        db.session.query(func.count())
+        .filter(KeyStatus.inserted_at >= start, KeyStatus.inserted_at < end_excl)
+        .filter(non_monthly)
+        .filter(status_norm.in_(SIGNOUT_STATUSES))
+        .filter(air_tag_norm.isnot(None))
+        .scalar()
+    ) or 0
+
+    airtag_rate = (signouts_with_airtag / signouts_tot) if signouts_tot else None
+
+    # -----------------------------
+    # Metric 6: average duration out (signout -> next return)
+    # Compute LEAD() in a subquery, then filter outer query
+    # -----------------------------
+    next_status = func.lead(status_norm).over(
+        partition_by=KeyStatus.key_id,
+        order_by=KeyStatus.inserted_at.asc(),
+    )
+    next_time = func.lead(KeyStatus.inserted_at).over(
+        partition_by=KeyStatus.key_id,
+        order_by=KeyStatus.inserted_at.asc(),
+    )
+
+    dur_base = (
+        db.session.query(
+            KeyStatus.key_id.label("key_id"),
+            KeyStatus.inserted_at.label("signed_out_at"),
+            status_norm.label("status_norm"),
+            next_status.label("next_status"),
+            next_time.label("next_time"),
+        )
+        # include enough rows to find "next" events for signouts in-range
+        .filter(KeyStatus.inserted_at < end_excl)
+        .filter(non_monthly)
+        .subquery()
+    )
+
+    duration_seconds_expr = func.extract("epoch", dur_base.c.next_time - dur_base.c.signed_out_at)
+
+    avg_out_duration_seconds = (
+        db.session.query(func.avg(duration_seconds_expr))
+        .filter(dur_base.c.signed_out_at >= start, dur_base.c.signed_out_at < end_excl)
+        .filter(dur_base.c.status_norm.in_(SIGNOUT_STATUSES))  # originating row is a signout
+        .filter(dur_base.c.next_status.in_(RETURN_STATUSES))   # next row is a return
+        .filter(dur_base.c.next_time.isnot(None))
+        .scalar()
+    )
+
+    # ensure it's a plain float for JSON
+    avg_out_duration_seconds = float(avg_out_duration_seconds) if avg_out_duration_seconds is not None else None
+
+
+    # -----------------------------
+    # Metric 9: double signouts (signout where previous status was already out)
+    # Must compute LAG in a subquery (Postgres forbids window funcs in WHERE)
+    # -----------------------------
+    prev_status = func.lag(status_norm).over(
+        partition_by=KeyStatus.key_id,
+        order_by=KeyStatus.inserted_at.asc(),
+    )
+
+    double_base = (
+        db.session.query(
+            KeyStatus.inserted_at.label("inserted_at"),
+            status_norm.label("status_norm"),
+            prev_status.label("prev_status"),
+        )
+        .filter(KeyStatus.inserted_at >= start, KeyStatus.inserted_at < end_excl)
+        .filter(non_monthly)
+        .subquery()
+    )
+
+    double_signouts_by_day_rows = (
+        db.session.query(
+            func.date_trunc("day", double_base.c.inserted_at).label("day"),
+            func.count().label("count"),
+        )
+        .filter(double_base.c.status_norm.in_(SIGNOUT_STATUSES))
+        .filter(double_base.c.prev_status.in_(SIGNOUT_STATUSES))
+        .group_by(func.date_trunc("day", double_base.c.inserted_at))
+        .order_by(func.date_trunc("day", double_base.c.inserted_at).asc())
+        .all()
+    )
+
+    double_signouts_by_day = [
+        {"day": r.day.date().isoformat(), "count": int(r.count)}
+        for r in double_signouts_by_day_rows
+    ]
+
+    double_signouts_total = sum(x["count"] for x in double_signouts_by_day)
+
+
+    return jsonify({
+        "ok": True,
+        "range": {"start": start.date().isoformat(), "end": end.date().isoformat()},
+        "kpis": {
+            "total_signouts": int(signouts_tot),
+            "total_returns": int(returns_tot),
+            "returns_with_returned_by": int(returns_with_returned_by),
+            "signouts_with_airtag": int(signouts_with_airtag),
+            "returned_by_rate": returned_by_rate,  # float 0..1 or None
+            "airtag_rate": airtag_rate,            # float 0..1 or None
+            "avg_out_duration_seconds": avg_out_duration_seconds,  # float or None
+            "double_signouts_total": int(double_signouts_total),
+        },
+        "series": {
+            "signouts_by_day": signouts_by_day,
+            "unique_users_by_week": unique_users_by_week,
+            "double_signouts_by_day": double_signouts_by_day,
+        }
+    })
