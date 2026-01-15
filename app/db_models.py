@@ -423,6 +423,7 @@ class ServiceOccurrence(db.Model):
 
     # Status snapshot (optional but useful to query quickly)
     status = db.Column(db.String(32), nullable=False, default="created")     # 'created' | 'scheduled' | 'completed' | 'cancelled'
+    is_confirmed = db.Column(db.Boolean, nullable=False, default=False)        # location confirmed job
 
     # location on hold?
     location_on_hold = db.Column(db.Boolean, nullable=False, default=False)
@@ -589,7 +590,84 @@ class KeyStatus(db.Model):
 
     key = relationship("Key", back_populates="statuses")
 
-    
+
+class SchedulingCancelled(db.Model):
+    __tablename__ = "scheduling_cancelled"
+
+    id = db.Column(db.BigInteger, primary_key=True)
+
+    # ServiceTrade location id (matches Location.location_id)
+    location_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("location.location_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    # First of month (date) for the selected month
+    observed_month = db.Column(db.Date, nullable=False, index=True)
+
+    # Optional audit fields (keep simple)
+    cancelled_by = db.Column(db.String(255), nullable=True)
+    cancelled_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    note = db.Column(db.Text, nullable=True)
+
+    __table_args__ = (
+        db.UniqueConstraint("location_id", "observed_month", name="uq_cancelled_loc_month"),
+    )
+
+    def __repr__(self):
+        return f"<SchedulingCancelled loc={self.location_id} month={self.observed_month}>"  
+
+
+class SchedulingReachedOut(db.Model):
+    __tablename__ = "scheduling_reached_out"
+
+    id = db.Column(db.BigInteger, primary_key=True)
+
+    # If you have a job_id, use it. (nullable so you can still record by address)
+    job_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("service_occurrence.job_id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+        unique=True,  # Postgres allows multiple NULLs; non-null job_ids are unique
+    )
+
+    # For fallback identification and filtering
+    location_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("location.location_id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    address = db.Column(db.String(255), nullable=True, index=True)
+    scheduled_for = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
+
+    reached_out_by = db.Column(db.String(255), nullable=True)
+    reached_out_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        index=True,
+    )
+    note = db.Column(db.Text, nullable=True)
+
+    # Fallback uniqueness to prevent duplicates when job_id is NULL.
+    __table_args__ = (
+        db.UniqueConstraint(
+            "location_id", "address", "scheduled_for",
+            name="uq_reachedout_loc_addr_sched"
+        ),
+    )
+
+    def __repr__(self):
+        return f"<SchedulingReachedOut job={self.job_id} loc={self.location_id}>"
+
 
 
 

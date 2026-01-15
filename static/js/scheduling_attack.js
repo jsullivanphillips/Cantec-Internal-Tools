@@ -3,20 +3,36 @@ const SchedulingAttack = (() => {
   let chartHours;
   let chartJobs;
   let includeTravel = true;  // default matches current behavior (incl. travel)
+  // --- Scheduling Attack charts ---
+  let chartVolume;
 
-  function init() {
-    // Toggle handling
-    const travelToggle = document.getElementById("sa-include-travel");
-    if (travelToggle) {
-      includeTravel = !!travelToggle.checked;
-      travelToggle.addEventListener("change", () => {
+
+    function init() {
+      // Toggle handling (Forecast tab)
+      const travelToggle = document.getElementById("sa-include-travel");
+      if (travelToggle) {
         includeTravel = !!travelToggle.checked;
-        loadMetrics();
-      });
+        travelToggle.addEventListener("change", () => {
+          includeTravel = !!travelToggle.checked;
+          loadMetrics();
+        });
+      }
+
+      // Init Scheduling Attack UI wiring (status tab)
+      initSchedulingAttackUI();
+
+      // Load Forecast metrics (existing)
+      loadMetrics();
+
+      // If status tab is default active (it is in your HTML), load all 3 panes immediately:
+      loadAttackSummary();
+
+      const monthInput = document.getElementById("sa-outstanding-month");
+      if (monthInput?.value) loadOutstandingForMonth(monthInput.value);
+
+      loadVolumePast6Weeks();
     }
 
-    loadMetrics();
-  }
 
   function loadMetrics() {
     const params = new URLSearchParams();
@@ -294,18 +310,17 @@ const SchedulingAttack = (() => {
   // Optional: auto-load on tab show if a value exists
   document.addEventListener("shown.bs.tab", (ev) => {
     if (ev.target?.id === "status-tab") {
-      const input = document.getElementById("sa-status-month");
-      if (input?.value) loadStatus(input.value);
+      loadAttackSummary();
+
+      const monthInput = document.getElementById("sa-outstanding-month");
+      if (monthInput?.value) loadOutstandingForMonth(monthInput.value);
+
+      loadVolumePast6Weeks();
     }
 
     if (ev.target?.id === "efficiency-tab") {
       const wk = document.getElementById("sa-eff-week");
-      // If you want auto-load on tab open:
-      if (wk?.value) {
-        // derive Monday from the week input the same way the inline script does,
-        // but easiest is: just click-load programmatically:
-        document.getElementById("sa-eff-load")?.click();
-      }
+      if (wk?.value) document.getElementById("sa-eff-load")?.click();
     }
   });
 
@@ -680,6 +695,456 @@ const SchedulingAttack = (() => {
       document.getElementById("srJobsChart").parentElement.style.minHeight = "360px";
     }
   }
+
+  // =========================================================
+  // Scheduling Attack (Status Tab)
+  // =========================================================
+
+  function initSchedulingAttackUI() {
+    // Month selector wiring for Outstanding pane (inside status tab)
+    const input = document.getElementById("sa-outstanding-month");
+    const btnPrev = document.getElementById("sa-outstanding-prev");
+    const btnNext = document.getElementById("sa-outstanding-next");
+    const btnToday = document.getElementById("sa-outstanding-today");
+    const btnLoad = document.getElementById("sa-outstanding-load");
+
+    function setMonth(date) {
+      const y = date.getUTCFullYear();
+      const m = String(date.getUTCMonth() + 1).padStart(2, "0");
+      input.value = `${y}-${m}`;
+    }
+
+    function getMonthDate() {
+      if (!input.value) return new Date();
+      const [y, m] = input.value.split("-").map(Number);
+      return new Date(Date.UTC(y, m - 1, 1));
+    }
+
+    btnPrev?.addEventListener("click", () => {
+      const d = getMonthDate();
+      d.setUTCMonth(d.getUTCMonth() - 1);
+      setMonth(d);
+    });
+
+    btnNext?.addEventListener("click", () => {
+      const d = getMonthDate();
+      d.setUTCMonth(d.getUTCMonth() + 1);
+      setMonth(d);
+    });
+
+    btnToday?.addEventListener("click", () => setMonth(new Date()));
+
+    btnLoad?.addEventListener("click", () => {
+      loadOutstandingForMonth(input.value);
+    });
+
+    // Default month
+    if (input && !input.value) setMonth(new Date());
+
+    // Button delegation for "Reached Out" + "Cancelled"
+    const unconfirmedTbody = document.getElementById("sa-out-unconfirmed-tbody");
+    unconfirmedTbody?.addEventListener("click", async (e) => {
+      const btn = e.target?.closest?.("[data-action]");
+      if (!btn) return;
+
+      const action = btn.getAttribute("data-action");
+      const month = btn.getAttribute("data-month") || input?.value;
+      const address = btn.getAttribute("data-address");
+
+      if (!month || !address) return;
+
+      if (action === "reached_out_on" || action === "reached_out_off") {
+        const reachedOut = action === "reached_out_on";
+        await postReachedOut(month, address, reachedOut);
+        await loadOutstandingForMonth(month);
+      }
+    });
+
+    const unscheduledTbody = document.getElementById("sa-out-unscheduled-tbody");
+    unscheduledTbody?.addEventListener("click", async (e) => {
+      const btn = e.target?.closest?.("[data-action]");
+      if (!btn) return;
+
+      const action = btn.getAttribute("data-action");
+      const month = btn.getAttribute("data-month") || input?.value;
+      const address = btn.getAttribute("data-address");
+
+      if (!month || !address) return;
+
+      if (action === "cancel_on" || action === "cancel_off") {
+        const cancelled = action === "cancel_on";
+        await postCancelled(month, address, cancelled);
+        await loadOutstandingForMonth(month);
+      }
+    });
+  }
+
+  async function loadAttackSummary() {
+    // Proposed backend:
+    // GET /scheduling_attack/attack_summary
+    // -> { generated_at, forward_coverage_pct, confirmations: { pct, confirmed, total } }
+    const url = `/scheduling_attack/attack_summary`;
+
+    try {
+      const r = await fetch(url, { headers: { "Accept": "application/json" } });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      renderAttackSummary(data);
+    } catch (err) {
+      console.error("Failed to load attack summary", err);
+      const updatedEl = document.getElementById("sa-attack-updated");
+      const kpisWrap = document.getElementById("sa-attack-kpis");
+      const hint = document.getElementById("sa-attack-hint");
+      if (updatedEl) updatedEl.textContent = new Date().toISOString();
+      if (kpisWrap) kpisWrap.hidden = true;
+      if (hint) hint.textContent = "Failed to load summary metrics.";
+    }
+  }
+
+  function renderAttackSummary(data) {
+    const kpisWrap = document.getElementById("sa-attack-kpis");
+    const updatedEl = document.getElementById("sa-attack-updated");
+    const hint = document.getElementById("sa-attack-hint");
+
+    const fmtPct = (x) => `${(typeof x === "number" ? x : 0).toFixed(1)}%`;
+
+    const elCoverage = document.getElementById("sa-kpi-forward-coverage");
+    const elConfirmedPct = document.getElementById("sa-kpi-confirmed-pct");
+    const elConfirmedCounts = document.getElementById("sa-kpi-confirmed-counts");
+
+    const conf = data?.confirmations || {};
+    const total = typeof conf.total === "number" ? conf.total : 0;
+    const confirmed = typeof conf.confirmed === "number" ? conf.confirmed : 0;
+    const pct = (typeof conf.pct === "number")
+      ? conf.pct
+      : (total ? (confirmed / total) * 100 : 0);
+
+    if (elCoverage) elCoverage.textContent = fmtPct(data?.forward_coverage_pct);
+    if (elConfirmedPct) elConfirmedPct.textContent = fmtPct(pct);
+    if (elConfirmedCounts) elConfirmedCounts.textContent = `${confirmed.toLocaleString()} / ${total.toLocaleString()}`;
+
+    if (updatedEl) updatedEl.textContent = data?.generated_at || "";
+    if (kpisWrap) kpisWrap.hidden = false;
+    if (hint) hint.textContent = "";
+  }
+
+  async function loadOutstandingForMonth(monthStr) {
+    if (!monthStr) return;
+
+    // Proposed backend:
+    // GET /scheduling_attack/outstanding?month=YYYY-MM
+    // -> {
+    //   month, generated_at,
+    //   totals: { total_needed, scheduled, unscheduled, cancelled, confirmed, unconfirmed },
+    //   unconfirmed_scheduled: [ { address, scheduled_for, reached_out } ],
+    //   unscheduled: [ { address, cancelled } ]
+    // }
+    const url = `/scheduling_attack/outstanding?month=${encodeURIComponent(monthStr)}`;
+
+    try {
+      const r = await fetch(url, { headers: { "Accept": "application/json" } });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      renderOutstandingForMonth(data);
+    } catch (err) {
+      console.error("Failed to load outstanding jobs", err);
+      const titleEl = document.getElementById("sa-outstanding-title");
+      const updatedEl = document.getElementById("sa-outstanding-updated");
+      const kpisWrap = document.getElementById("sa-outstanding-kpis");
+      const t1 = document.getElementById("sa-out-unconfirmed-tbody");
+      const t2 = document.getElementById("sa-out-unscheduled-tbody");
+
+      if (titleEl) titleEl.textContent = "Outstanding Jobs (failed to load)";
+      if (updatedEl) updatedEl.textContent = new Date().toISOString();
+      if (kpisWrap) kpisWrap.hidden = true;
+      if (t1) t1.innerHTML = "";
+      if (t2) t2.innerHTML = "";
+    }
+  }
+
+  function renderOutstandingForMonth(data) {
+    const monthStr = data?.month || "";
+    const niceMonth = (() => {
+      if (!monthStr) return "(unknown month)";
+      const [y, m] = monthStr.split("-").map(Number);
+      const dt = new Date(Date.UTC(y || 1970, (m || 1) - 1, 1));
+      return dt.toLocaleString(undefined, { month: "long", year: "numeric" });
+    })();
+
+    const titleEl = document.getElementById("sa-outstanding-title");
+    const updatedEl = document.getElementById("sa-outstanding-updated");
+    const kpisWrap = document.getElementById("sa-outstanding-kpis");
+
+    if (titleEl) titleEl.textContent = `Outstanding Jobs — ${niceMonth}`;
+    if (updatedEl) updatedEl.textContent = data?.generated_at || "";
+
+    const totals = data?.totals || {};
+    const n = (x) => (typeof x === "number" ? x : 0).toLocaleString();
+
+    const elTotal = document.getElementById("sa-out-total");
+    const elScheduled = document.getElementById("sa-out-scheduled");
+    const elUnscheduled = document.getElementById("sa-out-unscheduled");
+    const elCancelled = document.getElementById("sa-out-cancelled");
+    const elConfirmed = document.getElementById("sa-out-confirmed");
+    const elUnconfirmed = document.getElementById("sa-out-unconfirmed");
+
+    if (elTotal) elTotal.textContent = n(totals.total_needed);
+    if (elScheduled) elScheduled.textContent = n(totals.scheduled);
+    if (elUnscheduled) elUnscheduled.textContent = n(totals.unscheduled);
+    if (elCancelled) elCancelled.textContent = n(totals.cancelled);
+    if (elConfirmed) elConfirmed.textContent = n(totals.confirmed);
+    if (elUnconfirmed) elUnconfirmed.textContent = n(totals.unconfirmed);
+
+    if (kpisWrap) kpisWrap.hidden = false;
+
+    // Unconfirmed scheduled table
+    const tbody1 = document.getElementById("sa-out-unconfirmed-tbody");
+    if (tbody1) {
+      tbody1.innerHTML = "";
+      (data?.unconfirmed_scheduled || []).forEach((row) => {
+        const tr = document.createElement("tr");
+
+        const tdAddr = document.createElement("td");
+        tdAddr.textContent = row?.address || "—";
+
+        const tdSched = document.createElement("td");
+        tdSched.textContent = formatDateTime(row?.scheduled_for);
+
+        const tdRO = document.createElement("td");
+        tdRO.textContent = row?.reached_out ? "Yes" : "No";
+
+        const tdAction = document.createElement("td");
+        tdAction.innerHTML = `
+          <div class="btn-group btn-group-sm" role="group">
+            <button class="btn btn-outline-primary"
+              data-action="reached_out_on"
+              data-month="${escapeAttr(monthStr)}"
+              data-address="${escapeAttr(row?.address || "")}"
+              ${row?.reached_out ? "disabled" : ""}>
+              Mark Reached Out
+            </button>
+            <button class="btn btn-outline-secondary"
+              data-action="reached_out_off"
+              data-month="${escapeAttr(monthStr)}"
+              data-address="${escapeAttr(row?.address || "")}"
+              ${row?.reached_out ? "" : "disabled"}>
+              Undo
+            </button>
+          </div>
+        `;
+
+        tr.appendChild(tdAddr);
+        tr.appendChild(tdSched);
+        tr.appendChild(tdRO);
+        tr.appendChild(tdAction);
+        tbody1.appendChild(tr);
+      });
+    }
+
+    // Unscheduled table (manual cancelled)
+    const tbody2 = document.getElementById("sa-out-unscheduled-tbody");
+    if (tbody2) {
+      tbody2.innerHTML = "";
+      (data?.unscheduled || []).forEach((row) => {
+        const tr = document.createElement("tr");
+
+        const tdAddr = document.createElement("td");
+        tdAddr.textContent = row?.address || "—";
+
+        const tdCancelled = document.createElement("td");
+        tdCancelled.textContent = row?.cancelled ? "Yes" : "No";
+
+        const tdAction = document.createElement("td");
+        tdAction.innerHTML = `
+          <div class="btn-group btn-group-sm" role="group">
+            <button class="btn btn-outline-danger"
+              data-action="cancel_on"
+              data-month="${escapeAttr(monthStr)}"
+              data-address="${escapeAttr(row?.address || "")}"
+              ${row?.cancelled ? "disabled" : ""}>
+              Mark Cancelled
+            </button>
+            <button class="btn btn-outline-secondary"
+              data-action="cancel_off"
+              data-month="${escapeAttr(monthStr)}"
+              data-address="${escapeAttr(row?.address || "")}"
+              ${row?.cancelled ? "" : "disabled"}>
+              Undo
+            </button>
+          </div>
+        `;
+
+        tr.appendChild(tdAddr);
+        tr.appendChild(tdCancelled);
+        tr.appendChild(tdAction);
+        tbody2.appendChild(tr);
+      });
+    }
+  }
+
+  async function postReachedOut(monthStr, address, reachedOut) {
+    // Proposed backend:
+    // POST /scheduling_attack/reached_out
+    // body: { month: "YYYY-MM", address: "...", reached_out: true/false }
+    const url = `/scheduling_attack/reached_out`;
+
+    try {
+      const r = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
+        body: JSON.stringify({ month: monthStr, address, reached_out: !!reachedOut }),
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return await r.json();
+    } catch (err) {
+      console.error("Failed to set reached_out", err);
+    }
+  }
+
+  async function postCancelled(monthStr, address, cancelled) {
+    // Proposed backend:
+    // POST /scheduling_attack/cancelled
+    // body: { month: "YYYY-MM", address: "...", cancelled: true/false }
+    const url = `/scheduling_attack/cancelled`;
+
+    try {
+      const r = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
+        body: JSON.stringify({ month: monthStr, address, cancelled: !!cancelled }),
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return await r.json();
+    } catch (err) {
+      console.error("Failed to set cancelled", err);
+    }
+  }
+
+  async function loadVolumePast6Weeks() {
+    // Proposed backend:
+    // GET /scheduling_attack/weekly_volume?weeks=6
+    // -> {
+    //   generated_at,
+    //   days: [ { date: "YYYY-MM-DD", scheduled: 0, released: 0 } ]
+    // }
+    const url = `/scheduling_attack/weekly_volume?weeks=6`;
+
+    try {
+      const r = await fetch(url, { headers: { "Accept": "application/json" } });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      renderVolumePast6Weeks(data);
+    } catch (err) {
+      console.error("Failed to load scheduling volume", err);
+      const updatedEl = document.getElementById("sa-volume-updated");
+      const tbody = document.getElementById("sa-volume-tbody");
+      if (updatedEl) updatedEl.textContent = new Date().toISOString();
+      if (tbody) tbody.innerHTML = "";
+      if (chartVolume) { chartVolume.destroy(); chartVolume = null; }
+    }
+  }
+
+  function renderVolumePast6Weeks(data) {
+    const updatedEl = document.getElementById("sa-volume-updated");
+    if (updatedEl) updatedEl.textContent = data?.generated_at || "";
+
+    const days = data?.days || [];
+    const labels = days.map(d => d?.date || "");
+    const scheduled = days.map(d => (typeof d?.scheduled === "number" ? d.scheduled : 0));
+    const released = days.map(d => (typeof d?.released === "number" ? d.released : 0));
+
+    // Table
+    const tbody = document.getElementById("sa-volume-tbody");
+    if (tbody) {
+      tbody.innerHTML = "";
+      days.forEach(d => {
+        const tr = document.createElement("tr");
+
+        const tdDate = document.createElement("td");
+        tdDate.textContent = formatDate(d?.date);
+
+        const tdS = document.createElement("td");
+        tdS.textContent = (typeof d?.scheduled === "number" ? d.scheduled : 0).toLocaleString();
+
+        const tdR = document.createElement("td");
+        tdR.textContent = (typeof d?.released === "number" ? d.released : 0).toLocaleString();
+
+        tr.appendChild(tdDate);
+        tr.appendChild(tdS);
+        tr.appendChild(tdR);
+        tbody.appendChild(tr);
+      });
+    }
+
+    // Chart
+    const ctx = document.getElementById("saVolumeChart")?.getContext("2d");
+    if (ctx) {
+      if (chartVolume) chartVolume.destroy();
+      chartVolume = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels,
+          datasets: [
+            { label: "Scheduled", data: scheduled, tension: 0.25, pointRadius: 0 },
+            { label: "Released", data: released, tension: 0.25, pointRadius: 0 }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: true },
+            tooltip: { mode: "index", intersect: false }
+          },
+          scales: {
+            x: {
+              ticks: {
+                maxRotation: 0,
+                callback: function(value) {
+                  // Show fewer labels (about weekly)
+                  const i = Number(value);
+                  if (!Number.isFinite(i)) return "";
+                  return (i % 7 === 0) ? this.getLabelForValue(value) : "";
+                }
+              }
+            },
+            y: { beginAtZero: true }
+          }
+        }
+      });
+      document.getElementById("saVolumeChart").parentElement.style.minHeight = "320px";
+    }
+  }
+
+  // Helpers
+  function formatDate(iso) {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    return isNaN(d) ? String(iso) : d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  }
+
+  function formatDateTime(v) {
+    if (v == null) return "—";
+    if (typeof v === "number") {
+      const d = new Date(v * 1000);
+      return isNaN(d) ? "—" : d.toLocaleString();
+    }
+    if (typeof v === "string") {
+      const d = new Date(v);
+      return isNaN(d) ? v : d.toLocaleString();
+    }
+    return "—";
+  }
+
+  function escapeAttr(s) {
+    return String(s ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#39;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;");
+  }
+
 
   return { init };
 })();

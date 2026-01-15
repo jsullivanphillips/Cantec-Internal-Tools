@@ -594,6 +594,7 @@ def upsert_service_occurrences(rows: list[dict]) -> int:
 
             # Status snapshot
             "status":                      r.get("status") or "created",
+            "is_confirmed":                bool(r.get("is_confirmed")),
 
             # Location mark
             "location_on_hold":            bool(r.get("location_on_hold")),
@@ -723,23 +724,46 @@ def main():
                         appointments_iter = iter(stream_appointments_for_job(job_id))
                         first_appt = next(appointments_iter, None)
                         if first_appt is None:
-                            # No appointments: keep all minutes & streaks at 0; still emit a record if you want
-                            # or skip this job entirely:
-                            log.info("Job %s has no appointments; skipping streak/time calc.", job_id)
-                            # Consider skipping:
+                            log.info("Job %s has no appointments; writing stub occurrence.", job_id)
+
+                            insert_vals = {
+                                "location_name": location_name,
+                                "job_id": job_id,
+                                "location_id": loc_id,
+                                "job_type": job_type,
+                                "job_created_at": created_at,
+                                "scheduled_for": scheduled_on,          # use job scheduledDate
+                                "completed_at": completed_on,
+                                "observed_month": scheduled_on,         # or completed_on if you prefer
+                                "is_recurring": is_recurring,
+                                "spr_hours_actual": 0,
+                                "fa_hours_actual": 0,
+                                "number_of_fa_days": 0,
+                                "number_of_spr_days": 0,
+                                "number_of_fa_techs": 0,
+                                "number_of_spr_techs": 0,
+                                "travel_minutes_per_appt": travel_time,
+                                "travel_minutes_total": 0,
+                                "status": status,
+                                "is_confirmed": False,
+                                "meta": "no appointments",
+                                "location_on_hold": is_location_on_hold,
+                            }
+                            insert_vals_list.append(insert_vals)
+                            job_processed += 1
                             skipped += 1
                             continue
-                            # Or, if you want to process anyway: seed the loop with an empty list
-                            appts_source = []
                         else:
                             appts_source = [first_appt]
                             appts_source.extend(appointments_iter)
 
                         earliest_appt_ts = None
                         for appts in appts_source:
+                            # capture released appointments 
                             is_spr_appt = False
                             services_on_appt = appts.get("serviceRequests", []) or []
                             techs_on_appt = appts.get("techs", []) or []
+                            released = appts.get("released", False)
                             if not techs_on_appt:
                                 # No techs yet → keep FA/SPR sets empty; still record appointment so day aggregation works
                                 log.debug("Job %s appt %s has no techs assigned yet.", job_id, appts.get("id"))
@@ -772,6 +796,7 @@ def main():
                                 "only_spr_techs_on_appt": (len(fa_techs) == 0 and len(spr_techs) > 0),
                                 "fa_techs": fa_techs,
                                 "spr_techs": spr_techs,
+                                "is_released": released,
                                 # event_time filled in later from clockevents
                             }
 
@@ -816,7 +841,7 @@ def main():
                                     appt["event_time"] = appt.get("scheduled_on")  # fallback to scheduled timestamp (unix)
 
 
-                        # ---------- NEW: compute required FA/SPR tech counts ----------
+                        # ---------- compute required FA/SPR tech counts ----------
                         fa_techs_by_day = defaultdict(set)
                         spr_techs_by_day = defaultdict(set)
 
@@ -849,11 +874,13 @@ def main():
                         cur_spr_streak = 0
                         prev_fa_day = None
                         prev_spr_day = None
+                        confirmed = False
 
                         # iterate in chronological order
                         for appt_id in sorted(appointments_data, key=lambda k: _safe_ts(appointments_data[k])):
                             appt = appointments_data[appt_id]
                             ts = _safe_ts(appt)
+                            confirmed = confirmed or appt.get("released", False)
                             if not ts:
                                 # nothing to work with; skip safely
                                 log.debug("Job %s appt %s has no usable timestamp.", job_id, appt_id)
@@ -914,6 +941,7 @@ def main():
                             "travel_minutes_per_appt": travel_time,
                             "travel_minutes_total": travel_time * num_unique_tech_appt,
                             "status": status,
+                            "is_confirmed": confirmed,
                             "meta": "timing from past job",
                             "location_on_hold": is_location_on_hold
                         }
@@ -981,14 +1009,35 @@ def main():
                             appointments_iter = iter(stream_appointments_for_job(job_id))
                             first_appt = next(appointments_iter, None)
                             if first_appt is None:
-                                # No appointments: keep all minutes & streaks at 0; still emit a record if you want
-                                # or skip this job entirely:
-                                log.info("Job %s has no appointments; skipping streak/time calc.", job_id)
-                                # Consider skipping:
+                                log.info("Job %s has no appointments; writing stub occurrence.", job_id)
+
+                                insert_vals = {
+                                    "location_name": location_name,
+                                    "job_id": job_id,
+                                    "location_id": loc_id,
+                                    "job_type": job_type,
+                                    "job_created_at": created_at,
+                                    "scheduled_for": scheduled_on,          # use job scheduledDate
+                                    "completed_at": completed_on,
+                                    "observed_month": scheduled_on,         # or completed_on if you prefer
+                                    "is_recurring": is_recurring,
+                                    "spr_hours_actual": 0,
+                                    "fa_hours_actual": 0,
+                                    "number_of_fa_days": 0,
+                                    "number_of_spr_days": 0,
+                                    "number_of_fa_techs": 0,
+                                    "number_of_spr_techs": 0,
+                                    "travel_minutes_per_appt": travel_time,
+                                    "travel_minutes_total": 0,
+                                    "status": status,
+                                    "is_confirmed": False,
+                                    "meta": "no appointments",
+                                    "location_on_hold": is_location_on_hold,
+                                }
+                                insert_vals_list.append(insert_vals)
+                                job_processed += 1
                                 skipped += 1
                                 continue
-                                # Or, if you want to process anyway: seed the loop with an empty list
-                                appts_source = []
                             else:
                                 appts_source = [first_appt]
                                 appts_source.extend(appointments_iter)
@@ -1030,6 +1079,7 @@ def main():
                                     "only_spr_techs_on_appt": (len(fa_techs) == 0 and len(spr_techs) > 0),
                                     "fa_techs": fa_techs,
                                     "spr_techs": spr_techs,
+                                    "is_released": appts.get("released", False),
                                     # event_time filled in later from clockevents
                                 }
 
@@ -1112,6 +1162,7 @@ def main():
                             for appt_id in sorted(appointments_data, key=lambda k: _safe_ts(appointments_data[k])):
                                 appt = appointments_data[appt_id]
                                 ts = _safe_ts(appt)
+                                confirmed = confirmed or appt.get("released", False)
                                 if not ts:
                                     # nothing to work with; skip safely
                                     log.debug("Job %s appt %s has no usable timestamp.", job_id, appt_id)
@@ -1171,6 +1222,7 @@ def main():
                                 "travel_minutes_per_appt": travel_time,
                                 "travel_minutes_total": travel_time * num_unique_tech_appt,
                                 "status": status,
+                                "is_confirmed": confirmed,
                                 "meta": "timing from past job",
                                 "location_on_hold": is_location_on_hold
                             }
@@ -1219,6 +1271,7 @@ def main():
                     job_id = None
                     scheduled_for = None
                     job_created_at = None
+                    confirmed = False
                     if jobs is not None:
                         scheduled_job_found = True
                         meta = "timing from tags. Month from scheduled job"
@@ -1227,7 +1280,49 @@ def main():
                             scheduled_for = job.get("scheduledDate")
                             job_created_at = job.get("created")
                             month = scheduled_for
+
+                            appointments_iter = iter(stream_appointments_for_job(job_id))
+                            first_appt = next(appointments_iter, None)
+                            if first_appt is None:
+                                log.info("Job %s has no appointments; writing stub occurrence.", job_id)
+
+                                insert_vals = {
+                                    "location_name": location_name,
+                                    "job_id": job_id,
+                                    "location_id": loc_id,
+                                    "job_type": job_type,
+                                    "job_created_at": created_at,
+                                    "scheduled_for": scheduled_on,          # use job scheduledDate
+                                    "completed_at": completed_on,
+                                    "observed_month": scheduled_on,         # or completed_on if you prefer
+                                    "is_recurring": is_recurring,
+                                    "spr_hours_actual": 0,
+                                    "fa_hours_actual": 0,
+                                    "number_of_fa_days": 0,
+                                    "number_of_spr_days": 0,
+                                    "number_of_fa_techs": 0,
+                                    "number_of_spr_techs": 0,
+                                    "travel_minutes_per_appt": travel_time,
+                                    "travel_minutes_total": 0,
+                                    "status": status,
+                                    "is_confirmed": False,
+                                    "meta": "no appointments",
+                                    "location_on_hold": is_location_on_hold,
+                                }
+                                insert_vals_list.append(insert_vals)
+                                job_processed += 1
+                                skipped += 1
+                                continue
+                            else:
+                                appts_source = [first_appt]
+                                appts_source.extend(appointments_iter)
+                                
+                                for appt in appts_source:
+                                    confirmed = confirmed or appt.get("released", False)
+
+                            earliest_appt_ts = None
                             
+                                
 
                     if not scheduled_job_found:
                         # Recurrences
@@ -1269,6 +1364,7 @@ def main():
                             "travel_minutes_per_appt": travel_time,
                             "travel_minutes_total": (travel_time * (num_fa_techs * num_days)) + (travel_time * num_spr_techs),
                             "status": "new",
+                            "is_confirmed": confirmed,
                             "meta": meta,
                             "location_on_hold": is_location_on_hold
                         }
@@ -1316,6 +1412,7 @@ def main():
                     Travel Minutes/Appt:     {insert_vals['travel_minutes_per_appt']}
                     Travel Minutes (total):  {insert_vals['travel_minutes_total']}
                     Status:                  {insert_vals['status']}
+                    Is Confirmed?:           {insert_vals['is_confirmed']}
                     Meta:                    {insert_vals['meta']}
                     Is Location on Hold?:    {insert_vals['location_on_hold']}
                     """)
