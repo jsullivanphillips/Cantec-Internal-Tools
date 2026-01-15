@@ -31,8 +31,146 @@ const SchedulingAttack = (() => {
       .catch(err => console.error("Failed to load metrics", err));
   }
 
-  // --- Scheduling Status (month-scoped) ---
+  // --- Scheduling Efficiency (week-scoped) ---
 
+  let chartEff;
+
+  function loadEfficiency(weekStartISO) {
+    if (!weekStartISO) return;
+
+    // Backend route later. For now this will 404 until we add it.
+    const url = `/scheduling_attack/efficiency?week_start=${encodeURIComponent(weekStartISO)}`;
+
+    fetch(url, { headers: { "Accept": "application/json" } })
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then(renderEfficiencyForWeek)
+      .catch(err => {
+        console.error("Failed to load scheduling efficiency", err);
+        const titleEl = document.getElementById("sa-eff-title");
+        const updatedEl = document.getElementById("sa-eff-updated");
+        const tbody = document.getElementById("saEffTableBody");
+        const kpisWrap = document.getElementById("sa-eff-kpis");
+
+        if (titleEl) titleEl.textContent = "Scheduling Efficiency (failed to load)";
+        if (updatedEl) updatedEl.textContent = new Date().toISOString();
+        if (tbody) tbody.innerHTML = "";
+        if (kpisWrap) kpisWrap.hidden = true;
+
+        if (chartEff) {
+          chartEff.destroy();
+          chartEff = null;
+        }
+      });
+  }
+
+  function renderEfficiencyForWeek(data) {
+
+
+    const titleEl = document.getElementById("sa-eff-title");
+    const updatedEl = document.getElementById("sa-eff-updated");
+    const kpisWrap = document.getElementById("sa-eff-kpis");
+
+    const totals = data?.totals || {};
+    const fmt = (x, digits=1) =>
+      (typeof x === "number" ? x : 0).toLocaleString(undefined, { maximumFractionDigits: digits });
+
+    const pct = (typeof totals.efficiency_pct === "number")
+      ? totals.efficiency_pct
+      : (totals.available_hours ? (totals.clocked_hours / totals.available_hours) * 100 : 0);
+
+    if (titleEl) titleEl.textContent = `Scheduling Efficiency — ${data?.week_label || data?.week_start || ""}`;
+    if (updatedEl) updatedEl.textContent = data?.generated_at || "";
+
+    const elPct = document.getElementById("sa-eff-percent");
+    const elClocked = document.getElementById("sa-eff-clocked");
+    const elAvail = document.getElementById("sa-eff-available");
+
+    // NEW:
+    const elTechs = document.getElementById("sa-eff-techs");
+
+
+    if (elPct) elPct.textContent = `${fmt(pct, 1)}%`;
+    if (elClocked) elClocked.textContent = fmt(totals.clocked_hours || 0, 1);
+    if (elAvail) elAvail.textContent = fmt(totals.available_hours || 0, 1);
+
+    const fmtInt = (x) => (typeof x === "number" ? x : 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
+
+    if (elTechs) elTechs.textContent = fmtInt(totals.active_tech_count || 0);
+
+    if (kpisWrap) kpisWrap.hidden = false;
+
+      
+
+    // Table
+    const tbody = document.getElementById("saEffTableBody");
+    if (tbody) {
+      tbody.innerHTML = "";
+      (data?.days || []).forEach(d => {
+        const tr = document.createElement("tr");
+
+        const tdDay = document.createElement("td");
+        const dt = d?.date ? new Date(d.date) : null;
+        tdDay.textContent = (dt && !isNaN(dt)) ? dt.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }) : (d?.date || "—");
+
+        const tdC = document.createElement("td");
+        tdC.textContent = fmt(d?.clocked_hours || 0, 2);
+
+        const tdA = document.createElement("td");
+        tdA.textContent = fmt(d?.available_hours || 0, 2);
+
+        const tdP = document.createElement("td");
+        const dpct = (typeof d?.efficiency_pct === "number")
+          ? d.efficiency_pct
+          : (d?.available_hours ? (d.clocked_hours / d.available_hours) * 100 : 0);
+        tdP.textContent = `${fmt(dpct, 1)}%`;
+
+        tr.appendChild(tdDay);
+        tr.appendChild(tdC);
+        tr.appendChild(tdA);
+        tr.appendChild(tdP);
+        tbody.appendChild(tr);
+      });
+    }
+
+    // Chart (optional): daily clocked vs available
+    const labels = (data?.days || []).map(d => d?.date || "");
+    const clocked = (data?.days || []).map(d => (typeof d?.clocked_hours === "number" ? d.clocked_hours : 0));
+    const available = (data?.days || []).map(d => (typeof d?.available_hours === "number" ? d.available_hours : 0));
+
+    const ctx = document.getElementById("saEffChart")?.getContext("2d");
+    if (ctx) {
+      if (chartEff) chartEff.destroy();
+      chartEff = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels,
+          datasets: [
+            { label: "Clocked Hours", data: clocked },
+            { label: "Available Hours", data: available }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: true },
+            tooltip: { mode: "index", intersect: false }
+          },
+          scales: {
+            x: { stacked: false },
+            y: { beginAtZero: true }
+          }
+        }
+      });
+      document.getElementById("saEffChart").parentElement.style.minHeight = "320px";
+    }
+  }
+
+
+  // --- Scheduling Status (month-scoped) ---
   function loadStatus(monthStr) {
     if (!monthStr) return;
     const url = `/scheduling_attack/status?month=${encodeURIComponent(monthStr)}`;
@@ -148,13 +286,29 @@ const SchedulingAttack = (() => {
     loadStatus(month);
   });
 
+  window.addEventListener("sa:load-efficiency", (e) => {
+    const weekStart = e?.detail?.week_start; // "YYYY-MM-DD" (Monday)
+    loadEfficiency(weekStart);
+  });
+
   // Optional: auto-load on tab show if a value exists
   document.addEventListener("shown.bs.tab", (ev) => {
     if (ev.target?.id === "status-tab") {
       const input = document.getElementById("sa-status-month");
       if (input?.value) loadStatus(input.value);
     }
+
+    if (ev.target?.id === "efficiency-tab") {
+      const wk = document.getElementById("sa-eff-week");
+      // If you want auto-load on tab open:
+      if (wk?.value) {
+        // derive Monday from the week input the same way the inline script does,
+        // but easiest is: just click-load programmatically:
+        document.getElementById("sa-eff-load")?.click();
+      }
+    }
   });
+
 
   // Optional: fire once on page load if the status tab is the default
   (() => {
@@ -526,12 +680,6 @@ const SchedulingAttack = (() => {
       document.getElementById("srJobsChart").parentElement.style.minHeight = "360px";
     }
   }
-    window.addEventListener('sa:load-status', (e) => {
-    const month = e.detail.month; // "YYYY-MM"
-    fetch(`/scheduling_attack/status?month=${encodeURIComponent(month)}`)
-      .then(r => r.json())
-      .then(renderStatusForMonth); // implement this to fill #saStatusChart, #saStatusTableBody, KPIs, etc.
-  });
 
   return { init };
 })();

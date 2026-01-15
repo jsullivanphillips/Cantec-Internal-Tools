@@ -10,6 +10,7 @@ from sqlalchemy import or_, func, cast, Float, case
 from app.db_models import db, ServiceOccurrence, Location, ServiceRecurrence
 from tqdm import tqdm 
 from collections import Counter
+from collections import defaultdict
 import calendar
 
 log = logging.getLogger("month-conflicts")
@@ -793,7 +794,7 @@ def update_service_recurrence_time(
 
 
 def get_active_techs():
-    authenticate()
+    
     # Authenticate and call the ServiceTrade API for active tech users
     tech_response = call_service_trade_api("user", params={"isTech": "true", "status": "active"})
     
@@ -811,7 +812,6 @@ def get_active_techs():
 # -----------------------
 # Helpers
 # -----------------------
-
 def _month_range(year, month):
     last_day = calendar.monthrange(year, month)[1]
     return date(year, month, 1), date(year, month, last_day)
@@ -1018,6 +1018,133 @@ def calculate_monthly_available_hours(
 
 
 
+def calculate_weekly_available_hours(
+    active_techs,
+    week_start_local_dt,              # tz-aware datetime at local midnight Monday
+    holiday_policy="bc_richer",
+    dec_shutdown=True,
+    vacation_days=10,
+    sick_days=5,
+    lunch_hours_per_day=0.5,
+    meeting_hours_per_month=0.5,      # spread across that month's workdays
+    inventory_months=(4, 7, 10, 1),   # spread across that month's workdays
+    loadups_by_mondays=True,
+):
+    """
+    Returns:
+      days: list of dicts [{date, available_hours}, ...] for Mon..Sun
+      totals: {available_hours}
+    available_hours are for ALL techs combined.
+    """
+    tz = week_start_local_dt.tzinfo
+    number_of_techs = len(active_techs)
+
+    # Week boundaries (Mon 00:00 to next Mon 00:00)
+    week_start_date = week_start_local_dt.date()
+    week_end_date = (week_start_local_dt + timedelta(days=6)).date()  # Sunday
+
+    year = week_start_date.year  # good enough for holidays; week won't span years often, but still fine for checks below
+    hol = _bc_richer_holidays(year) if holiday_policy == "bc_richer" else _company_9_holidays(year)
+    holiday_dates = set(hol.values())
+
+    # ---- annual_workdays calc (same as your monthly function) ----
+    holidays_by_month = {}
+    for _, dt in hol.items():
+        holidays_by_month.setdefault(dt.month, []).append(dt)
+
+    annual_workdays = 0
+    for m in range(1, 13):
+        s, e = _month_range(year, m)
+        wd = list(_iter_workdays(s, e))
+        wd_set = set(wd)
+
+        for hdt in holidays_by_month.get(m, []):
+            if hdt in wd_set:
+                wd_set.remove(hdt)
+
+        if dec_shutdown and m == 12:
+            cur = date(year, 12, 25)
+            while cur <= date(year, 12, 31):
+                wd_set.discard(cur)
+                cur += timedelta(days=1)
+
+        annual_workdays += len(wd_set)
+
+    # Build per-day available hours
+    days = []
+    total_available_all_techs = 0.0
+
+    cur = week_start_date
+    while cur <= week_end_date:
+        # default: 0 for weekends / non-workdays
+        available_per_tech = 0.0
+
+        # is it a normal workday (Mon-Fri)?
+        if cur.weekday() < 5:
+            # holiday?
+            is_holiday = cur in holiday_dates
+
+            # dec shutdown day?
+            is_shutdown = dec_shutdown and (cur.month == 12) and (date(cur.year, 12, 25) <= cur <= date(cur.year, 12, 31))
+
+            if (not is_holiday) and (not is_shutdown):
+                # --- base day ---
+                base = 8.0
+
+                # lunch
+                lunch = lunch_hours_per_day
+
+                # loadup: 1 hr per Monday
+                loadup = 1.0 if (loadups_by_mondays and cur.weekday() == 0) else 0.0
+
+                # meetings: spread across workdays in this month (after holiday/shutdown removal)
+                month_first, month_last = _month_range(cur.year, cur.month)
+                month_workdays = list(_iter_workdays(month_first, month_last))
+                month_wd_set = set(month_workdays)
+                # remove holidays
+                for hdt in holidays_by_month.get(cur.month, []):
+                    month_wd_set.discard(hdt)
+                # remove shutdown in Dec
+                if dec_shutdown and cur.month == 12:
+                    c2 = date(cur.year, 12, 25)
+                    while c2 <= date(cur.year, 12, 31):
+                        month_wd_set.discard(c2)
+                        c2 += timedelta(days=1)
+                month_workdays = sorted(month_wd_set)
+                month_workday_count = len(month_workdays) or 1
+
+                meeting = float(meeting_hours_per_month) / month_workday_count
+
+                # inventory: 1 hour in certain months, spread across month workdays
+                inventory = (1.0 / month_workday_count) if cur.month in set(inventory_months) else 0.0
+
+                # vacation/sick: spread by workday share of the year (same approach as monthly)
+                # Each actual working day counts as 1 "share unit"
+                share = (1.0 / annual_workdays) if annual_workdays else 0.0
+                vac = vacation_days * 8.0 * share
+                sick = sick_days * 8.0 * share
+
+                available_per_tech = base - (lunch + loadup + meeting + inventory + vac + sick)
+                if available_per_tech < 0:
+                    available_per_tech = 0.0
+
+        available_all_techs = available_per_tech * number_of_techs
+        total_available_all_techs += available_all_techs
+
+        days.append({
+            "date": cur.isoformat(),
+            "available_hours": round(available_all_techs, 2),
+        })
+
+        cur += timedelta(days=1)
+
+    return {
+        "days": days,
+        "totals": {"available_hours": round(total_available_all_techs, 2)},
+    }
+
+
+
 
 # "frequency": "yearly",
 # "interval": 1,
@@ -1037,6 +1164,85 @@ def calculate_monthly_available_hours(
 def scheduling_attack():
     return render_template("scheduling_attack.html")
 
+
+# ---------- Helpers (drop these near your other helpers) ----------
+
+def _to_unix_seconds(x):
+    if x is None:
+        return None
+    n = int(x)
+    # If value is in ms (very large), convert to seconds
+    return n // 1000 if n > 10_000_000_000 else n
+
+def _pair_clock_events(clock_events):
+    """
+    Pair clock-in -> next clock-out per (user, job, appointment, activity).
+    Returns list of intervals:
+      [{user_id, job_id, appointment_id, activity, start_ts, end_ts, seconds}, ...]
+    """
+    buckets = defaultdict(list)
+
+    for ev in clock_events or []:
+        user = ev.get("user") or {}
+        job = ev.get("job") or {}
+        appt = ev.get("appointment") or {}
+
+        user_id = user.get("id")
+        if not user_id:
+            continue
+
+        ts = _to_unix_seconds(ev.get("eventTime"))
+        if not ts:
+            continue
+
+        key = (
+            user_id,
+            job.get("id"),
+            appt.get("id"),
+            ev.get("activity"),
+        )
+
+        buckets[key].append({"ts": ts, "type": ev.get("eventType")})
+
+    paired = []
+
+    for key, items in buckets.items():
+        items.sort(key=lambda x: x["ts"])
+
+        open_start = None
+        for it in items:
+            etype = it["type"]
+            ts = it["ts"]
+
+            if etype == "clock-in":
+                # If multiple clock-ins in a row, keep the first
+                if open_start is None:
+                    open_start = ts
+
+            elif etype == "clock-out":
+                # Ignore clock-out without a prior clock-in
+                if open_start is None:
+                    continue
+
+                start_ts = open_start
+                end_ts = ts
+                if end_ts > start_ts:
+                    user_id, job_id, appt_id, activity = key
+                    paired.append({
+                        "user_id": user_id,
+                        "job_id": job_id,
+                        "appointment_id": appt_id,
+                        "activity": activity,
+                        "start_ts": start_ts,
+                        "end_ts": end_ts,
+                        "seconds": end_ts - start_ts,
+                    })
+
+                open_start = None
+
+        # Dangling open_start (missing clock-out) is ignored
+
+    return paired
 
 # routes/scheduling_attack.py
 from sqlalchemy import func, cast, Float
@@ -1240,10 +1446,157 @@ def scheduled_jobs_metrics():
     })
 
 
+@scheduling_attack_bp.route("/scheduling_attack/efficiency", methods=["GET"])
+def scheduling_efficiency():
+    week_start = request.args.get("week_start")  # "YYYY-MM-DD"
+    authenticate()
+
+    if not week_start:
+        return {"error": "Missing week_start (YYYY-MM-DD)"}, 400
+
+    tz = ZoneInfo("America/Vancouver")
+
+    try:
+        # Local midnight Monday
+        start_local = datetime.strptime(week_start, "%Y-%m-%d").replace(tzinfo=tz)
+    except ValueError:
+        return {"error": "Invalid week_start format. Expected YYYY-MM-DD."}, 400
+
+    end_local = start_local + timedelta(days=7)
+
+    week_start_dt = start_local
+    week_end_dt = end_local
+
+    # ServiceTrade /clock uses unix seconds
+    schedule_date_from = int(week_start_dt.timestamp())
+    schedule_date_to = int(week_end_dt.timestamp())
+
+    # Active tech roster (you already wrote this)
+    active_techs = get_active_techs()
+
+    # 1) Available hours per day (ALL techs)
+    avail = calculate_weekly_available_hours(
+        active_techs=active_techs,
+        week_start_local_dt=start_local,
+        holiday_policy="bc_richer",
+        dec_shutdown=True,
+        vacation_days=10,
+        sick_days=5,
+        lunch_hours_per_day=0.5,
+        meeting_hours_per_month=0.5,
+        inventory_months=(4, 7, 10, 1),
+        loadups_by_mondays=True,
+    )
+
+    # 2) Clocked hours per day from ServiceTrade (/clock)
+    endpoint = "clock"
+    params = {
+        "startTime": schedule_date_from,
+        "endTime": schedule_date_to,
+        "activity": "onsite",
+    }
+    resp = call_service_trade_api(endpoint, params=params)
+    clock_events = (resp or {}).get("data", {}).get("events", [])
+    if not isinstance(clock_events, list):
+        clock_events = []
+
+    # Debug (optional)
+    # print("clock events found:", len(clock_events))
+    # print("clock event sample:", clock_events[:2])
+
+    total_events = len(clock_events)
+
+    paired_intervals = _pair_clock_events(clock_events)
+    total_intervals = len(paired_intervals)
+
+    clocked_by_date = defaultdict(float)
+    skipped_events = 0  # skipped intervals after clipping
+
+    for interval in paired_intervals:
+        start_ts = interval["start_ts"]
+        end_ts = interval["end_ts"]
+
+        start_time = datetime.fromtimestamp(start_ts, tz=tz)
+        end_time = datetime.fromtimestamp(end_ts, tz=tz)
+
+        # Clip to week window (safe even if API ever includes boundary events)
+        effective_start = max(start_time, week_start_dt)
+        effective_end = min(end_time, week_end_dt)
+
+        if effective_end <= effective_start:
+            skipped_events += 1
+            continue
+
+        hrs = (effective_end - effective_start).total_seconds() / 3600.0
+        day_key = effective_start.date().isoformat()
+        clocked_by_date[day_key] += hrs
+
+    # 3) Build days payload + totals
+    days_payload = []
+    total_clocked = 0.0
+    total_available = 0.0
+
+    for d in avail["days"]:
+        day = d["date"]  # "YYYY-MM-DD"
+        available_hours = float(d["available_hours"])
+        clocked_hours = float(clocked_by_date.get(day, 0.0))
+
+        total_clocked += clocked_hours
+        total_available += available_hours
+
+        eff = (clocked_hours / available_hours * 100.0) if available_hours else 0.0
+        
+        if available_hours == float(0.0):
+            print("skipping")
+            continue
+        print(day, clocked_hours, available_hours, eff)
+        days_payload.append({
+            "date": day,
+            "clocked_hours": round(clocked_hours, 2),
+            "available_hours": round(available_hours, 2),
+            "efficiency_pct": round(eff, 1),
+        })
+
+    efficiency_pct = (total_clocked / total_available * 100.0) if total_available else 0.0
+
+    # 4) Nice label (Mon–Sun) (Windows-safe)
+    week_end_inclusive = week_end_dt - timedelta(days=1)
+    if week_start_dt.month == week_end_inclusive.month:
+        week_label = (
+            f"{week_start_dt.strftime('%b')} {week_start_dt.day}–"
+            f"{week_end_inclusive.day}, {week_end_inclusive.year}"
+        )
+    else:
+        week_label = (
+            f"{week_start_dt.strftime('%b')} {week_start_dt.day}–"
+            f"{week_end_inclusive.strftime('%b')} {week_end_inclusive.day}, {week_end_inclusive.year}"
+        )
+
+    return {
+        "week_start": week_start_dt.date().isoformat(),
+        "week_label": week_label,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "totals": {
+            "clocked_hours": round(total_clocked, 2),
+            "available_hours": round(total_available, 2),
+            "efficiency_pct": round(efficiency_pct, 1),
+            "total_events": total_events,          # raw /clock events
+            "skipped_events": skipped_events,      # skipped paired intervals after clipping
+            "active_tech_count": len(active_techs),
+            "total_intervals": total_intervals,    # helpful debug (optional)
+        },
+        "days": days_payload,
+    }
+    
+
+    
 
 #region Ingest
 def epoch_to_aware(epoch: int, tz=BUSINESS_TZ) -> datetime:
     return datetime.fromtimestamp(int(epoch), tz=timezone.utc).astimezone(tz)
+
+
+
 
 
 def coalesce_updated_on(rec: dict) -> datetime:

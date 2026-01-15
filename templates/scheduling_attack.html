@@ -19,6 +19,12 @@
         Scheduling Status
       </button>
     </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="efficiency-tab" data-bs-toggle="tab" data-bs-target="#scheduling-efficiency"
+              type="button" role="tab" aria-controls="scheduling-efficiency" aria-selected="false">
+        Scheduling Efficiency
+      </button>
+    </li>
   </ul>
 
   <div class="tab-content pt-3" id="saTabsContent">
@@ -148,6 +154,100 @@
         </div>
       </div>
     </div>
+
+    <!-- === SCHEDULING EFFICIENCY TAB (new) === -->
+    <div class="tab-pane fade" id="scheduling-efficiency" role="tabpanel" aria-labelledby="efficiency-tab" tabindex="0">
+      <h2 class="h5 mb-3">Scheduling Efficiency</h2>
+
+      <!-- Week selector -->
+      <div class="sa-card mb-3">
+        <div class="card-body d-flex flex-wrap align-items-end gap-2">
+          <div class="me-3">
+            <label for="sa-eff-week" class="form-label mb-1">Select Week (Mon–Sun)</label>
+            <input
+              type="week"
+              id="sa-eff-week"
+              class="form-control"
+              aria-label="Choose week for scheduling efficiency"
+            >
+            <div class="form-text">
+              Only past weeks are selectable.
+            </div>
+          </div>
+
+          <div class="btn-group" role="group" aria-label="Week navigation">
+            <button class="btn btn-outline-secondary" id="sa-eff-prev" type="button">← Prev</button>
+            <button class="btn btn-outline-secondary" id="sa-eff-last" type="button">Last Week</button>
+            <button class="btn btn-outline-secondary" id="sa-eff-next" type="button">Next →</button>
+          </div>
+
+          <button class="btn btn-primary ms-auto" id="sa-eff-load" type="button">
+            Load Efficiency
+          </button>
+        </div>
+      </div>
+
+      <!-- Efficiency results -->
+      <div class="sa-card">
+        <div class="card-header d-flex align-items-center">
+          <span id="sa-eff-title">Scheduling Efficiency</span>
+          <span class="ms-auto small text-muted" id="sa-eff-updated"></span>
+        </div>
+        <div class="card-body">
+          <!-- KPIs -->
+          <div class="sa-kpis" id="sa-eff-kpis" hidden>
+            <div class="sa-kpi">
+              <span class="value" id="sa-eff-percent">0%</span>
+              <span class="label">Efficiency (clocked ÷ available)</span>
+            </div>
+            <div class="sa-kpi">
+              <span class="value" id="sa-eff-clocked">0</span>
+              <span class="label">Clocked Hours</span>
+            </div>
+            <div class="sa-kpi">
+              <span class="value" id="sa-eff-available">0</span>
+              <span class="label">Available Hours</span>
+            </div>
+
+            <div class="sa-kpi">
+              <span class="value" id="sa-eff-techs">0</span>
+              <span class="label">Active Techs</span>
+            </div>
+          </div>
+
+
+          <!-- Chart (optional) -->
+          <div class="mt-3">
+            <canvas id="saEffChart" class="sa-chart" aria-label="Scheduling Efficiency for Selected Week" role="img"></canvas>
+          </div>
+
+          <!-- Breakdown table (optional) -->
+          <div class="sa-table-wrapper mt-3">
+            <table class="sa-table" aria-describedby="sa-eff-title">
+              <thead>
+                <tr>
+                  <th scope="col">Day</th>
+                  <th scope="col">Clocked</th>
+                  <th scope="col">Available</th>
+                  <th scope="col">Efficiency</th>
+                </tr>
+              </thead>
+              <tbody id="saEffTableBody">
+                <!-- Filled by JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card-footer">
+          <small class="text-muted">
+            This will be based on clock events vs technician available hours per day.
+          </small>
+        </div>
+      </div>
+    </div>
+
+
+
   </div>
 </div>
 
@@ -200,6 +300,129 @@
 
     // Initialize default to current month if empty
     if (!input.value) setMonth(new Date());
+    (function() {
+    // ---------- existing month selector wiring above stays as-is ----------
+
+    // ---------- Scheduling Efficiency week selector wiring ----------
+    const weekInput = document.getElementById('sa-eff-week');
+    const btnPrevW  = document.getElementById('sa-eff-prev');
+    const btnNextW  = document.getElementById('sa-eff-next');
+    const btnLastW  = document.getElementById('sa-eff-last');
+    const btnLoadW  = document.getElementById('sa-eff-load');
+
+    // ISO week helpers
+    function startOfWeekUTC(d) {
+      // Monday as start
+      const x = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+      const day = x.getUTCDay(); // 0=Sun..6=Sat
+      const diff = (day === 0 ? -6 : 1 - day); // move to Monday
+      x.setUTCDate(x.getUTCDate() + diff);
+      x.setUTCHours(0,0,0,0);
+      return x;
+    }
+
+    function getISOWeekYearAndNumber(dateUTC) {
+      // dateUTC should be UTC midnight-ish
+      const d = new Date(Date.UTC(dateUTC.getUTCFullYear(), dateUTC.getUTCMonth(), dateUTC.getUTCDate()));
+      // Thursday in current week decides the year
+      d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+      const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+      const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+      return { year: d.getUTCFullYear(), week: weekNo };
+    }
+
+    function isoWeekToMondayUTC(year, week) {
+      // ISO week 1 is the week with Jan 4th in it
+      const jan4 = new Date(Date.UTC(year, 0, 4));
+      const jan4Mon = startOfWeekUTC(jan4);
+      const mon = new Date(jan4Mon);
+      mon.setUTCDate(jan4Mon.getUTCDate() + (week - 1) * 7);
+      return mon;
+    }
+
+    function setWeekInputFromDate(dUTC) {
+      const { year, week } = getISOWeekYearAndNumber(dUTC);
+      const w = String(week).padStart(2, "0");
+      weekInput.value = `${year}-W${w}`;
+    }
+
+    function parseWeekInput(val) {
+      // "YYYY-Www"
+      if (!val) return null;
+      const m = val.match(/^(\d{4})-W(\d{2})$/);
+      if (!m) return null;
+      const year = Number(m[1]);
+      const week = Number(m[2]);
+      if (!year || !week) return null;
+      return { year, week };
+    }
+
+    function lastWeekMondayUTC() {
+      const now = new Date();
+      const thisMon = startOfWeekUTC(now);
+      const lastMon = new Date(thisMon);
+      lastMon.setUTCDate(thisMon.getUTCDate() - 7);
+      return lastMon;
+    }
+
+    function maxSelectableWeekStr() {
+      // max = last week (not current week)
+      const lastMon = lastWeekMondayUTC();
+      const { year, week } = getISOWeekYearAndNumber(lastMon);
+      return `${year}-W${String(week).padStart(2, "0")}`;
+    }
+
+    function clampToPastWeek() {
+      if (!weekInput) return;
+      const max = maxSelectableWeekStr();
+      // Set input max so browser blocks future/current in UI where supported
+      weekInput.max = max;
+
+      // Also clamp programmatically if user typed something
+      if (weekInput.value && weekInput.value > max) {
+        weekInput.value = max;
+      }
+    }
+
+    function stepWeek(delta) {
+      const parsed = parseWeekInput(weekInput.value);
+      const baseMon = parsed ? isoWeekToMondayUTC(parsed.year, parsed.week) : lastWeekMondayUTC();
+      baseMon.setUTCDate(baseMon.getUTCDate() + (delta * 7));
+      setWeekInputFromDate(baseMon);
+      clampToPastWeek();
+    }
+
+    btnPrevW?.addEventListener('click', () => stepWeek(-1));
+    btnNextW?.addEventListener('click', () => stepWeek(1));
+    btnLastW?.addEventListener('click', () => {
+      setWeekInputFromDate(lastWeekMondayUTC());
+      clampToPastWeek();
+    });
+
+    btnLoadW?.addEventListener('click', () => {
+      clampToPastWeek();
+      const parsed = parseWeekInput(weekInput.value);
+      if (!parsed) return;
+
+      const weekStart = isoWeekToMondayUTC(parsed.year, parsed.week); // Monday
+      const weekStartISO = weekStart.toISOString().slice(0, 10); // YYYY-MM-DD
+
+      const ev = new CustomEvent('sa:load-efficiency', {
+        detail: {
+          week: weekInput.value,          // YYYY-Www
+          week_start: weekStartISO        // YYYY-MM-DD (Monday)
+        }
+      });
+      window.dispatchEvent(ev);
+    });
+
+    // Init default to last week
+    if (weekInput) {
+      setWeekInputFromDate(lastWeekMondayUTC());
+      clampToPastWeek();
+      weekInput.addEventListener("change", clampToPastWeek);
+    }
+  })();
   })();
 </script>
 {% endblock %}
