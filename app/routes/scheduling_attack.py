@@ -45,8 +45,8 @@ APPOINTMENT_SERVICE_LINE_IDS = [168, 3, 1, 2, 556]
 ## Helpers
 ## ------
 def _get_st_creds():
-    if has_request_context():  # running in a real HTTP request
-        return session.get("username"), session.get("password")
+    # if has_request_context():  # running in a real HTTP request
+    #     return session.get("username"), session.get("password")
     # running from a script/CLI
     return os.getenv("PROCESSING_USERNAME"), os.getenv("PROCESSING_PASSWORD")
 
