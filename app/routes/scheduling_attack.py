@@ -1847,6 +1847,8 @@ def scheduling_attack_v2_set_notes():
     except (TypeError, ValueError):
         return jsonify({"error": "id must be an integer"}), 400
 
+    print("user supplied notes: [", notes, "]")
+
     # Allow clearing notes to empty string
     if notes is None:
         notes = ""

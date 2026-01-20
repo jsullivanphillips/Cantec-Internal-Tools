@@ -1226,8 +1226,11 @@ const SchedulingAttack = (() => {
         if (action === "v2_save_notes") {
           // Find the sibling input in the same row/cell
           const rowEl = btn.closest("tr") || btn.parentElement;
-          const input = rowEl?.querySelector?.('input[data-notes-input="1"][data-id]');
-          const notes = input ? String(input.value || "") : "";
+
+          // Support textarea OR input (in case you switch again)
+          const notesEl = rowEl?.querySelector?.('[data-notes-input="1"][data-id]');
+
+          const notes = notesEl ? String(notesEl.value || "") : "";
 
           await postV2Notes(id, notes);
           await loadSchedulingAttackV2ForMonth(month);
@@ -1244,12 +1247,17 @@ const SchedulingAttack = (() => {
     });
 
     actionCard?.addEventListener("keydown", (e) => {
-      const input = e.target?.closest?.('input[data-notes-input="1"]');
-      if (!input) return;
+      const notesEl = e.target?.closest?.('[data-notes-input="1"]');
+      if (!notesEl) return;
+
+      // Only save on Enter for INPUTs. For TEXTAREA, Enter should create a newline.
+      const isTextarea = notesEl.tagName === "TEXTAREA";
+      if (isTextarea) return;
+
       if (e.key !== "Enter") return;
 
       e.preventDefault();
-      const tr = input.closest("tr");
+      const tr = notesEl.closest("tr");
       const saveBtn = tr?.querySelector?.('[data-action="v2_save_notes"]');
       saveBtn?.click();
     });

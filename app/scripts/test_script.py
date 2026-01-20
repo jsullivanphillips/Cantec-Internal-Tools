@@ -2,8 +2,10 @@ from datetime import datetime, timedelta
 import requests
 import os
 import json
+from datetime import datetime, timedelta, timezone
+from dateutil.relativedelta import relativedelta
+
 from app import create_app
-import msal
 from dotenv import load_dotenv
 from app.scripts.backflow_automation import get_graph_token, get_recent_messages, get_full_message, normalize, extract_street_search, handle_test_result, handle_device_assignment
 
@@ -36,6 +38,35 @@ def call_service_trade_api(endpoint: str, params=None):
     resp = api_session.get(url, params=params or {})
     resp.raise_for_status()
     return resp.json()
+
+def is_relevant_annual_recurrence(rec: dict) -> bool:
+    if rec.get("frequency") != "yearly" or int(rec.get("interval", 0)) != 1:
+        return False
+  
+    sl_id = (rec.get("serviceLine") or {}).get("id", "")
+    if sl_id not in {1, 2, 3, 168, 556}:
+        return False
+    return True
+
+def normalized_service_month(first_start_ts: int, now: datetime | None = None) -> datetime:
+    """
+    Returns a month anchor (1st day 00:00) that is always >= start of previous month,
+    preferring the future (or current month), except allowing the directly previous month.
+    """
+    now = now or datetime.now(timezone.utc)
+
+    # window start = first day of previous month at 00:00
+    window_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0) - relativedelta(months=1)
+
+    month_anchor = datetime.fromtimestamp(first_start_ts, tz=timezone.utc).replace(
+        day=1, hour=0, minute=0, second=0, microsecond=0
+    )
+
+    # If it’s too far in the past, roll it forward by years until it's in range
+    while month_anchor < window_start:
+        month_anchor += relativedelta(years=1)
+
+    return month_anchor
 
 # Wanna try and find all scheduled jobs that have a report_conversion or v8_conversion tag
 # Return the number of jobs and the earliest scheduled job that requires report conversion
@@ -220,10 +251,38 @@ def update_backflow_visibility():
 
                         print(f"-----\n[{loc.get("address").get("street")} - {loc.get("id")}]\nUpdated comment for tech visibility.\nPrevious visibility: {comment.get("visibility")}\nResponse: {update_resp.json().get("data").get("visibility")}")
                         
+def query_services_for_location():
+    app = create_app()
+    with app.app_context():
+        # Authenticate with ServiceTrade API
+        username = os.getenv("PROCESSING_USERNAME")
+        password = os.getenv("PROCESSING_PASSWORD")
+        if not username or not password:
+            raise SystemExit("Missing PROCESSING_USERNAME/PROCESSING_PASSWORD environment vars.")
+        authenticate(username, password)
+        location_id = 6261376
+
+        params = {"locationIds": str(location_id), "limit": 500}
+        location_services_response = call_service_trade_api("servicerecurrence", params=params)
+        location_services = location_services_response.get("data", {}).get("serviceRecurrences")
+
+        relevant_annual_services = []
+        for service in location_services:
+            # When there is a recurring service, the ServiceTrade's API creates a new service each time
+            # the service is completed. The completed service instance has it's "endsOn" value set to the date that the service was completed.
+            # A new identical service is then created with its "endsOn" set to None. 
+            if service.get("endsOn") is None:
+                # Only track relevant annual service lines (annual inspections)
+                if is_relevant_annual_recurrence(service):
+                    print(json.dumps(service, indent=2))
+                    relevant_annual_services.append(service)
+        
+        for service in relevant_annual_services:
+            print(normalized_service_month(service["firstStart"]))
 
 
 def main():
-    update_backflow_visibility()
+    query_services_for_location()
 
 if __name__ == "__main__":
     main()
