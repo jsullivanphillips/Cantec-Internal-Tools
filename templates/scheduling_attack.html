@@ -81,9 +81,6 @@
 
 
     <div class="tab-pane fade show active" id="scheduling-status" role="tabpanel" aria-labelledby="status-tab" tabindex="0">
-      
-
-
       <div class="card-body">
         <!-- Month selector -->
         <div class="d-flex flex-wrap align-items-end gap-2 mb-3">
@@ -176,6 +173,74 @@
             </div>
           </div>
         </div>
+        <!-- End of funnel -->
+
+        <!-- Jobs requiring action -->
+        <div class="sa-card mt-3" id="sa-v2-action-card" hidden>
+          <div class="card-header d-flex align-items-center">
+            <span>Jobs Requiring Action</span>
+            <span class="ms-auto small text-muted" id="sa-v2-action-subtitle"></span>
+          </div>
+
+          <div class="card-body">
+            <div class="row g-3">
+              <!-- Unscheduled -->
+              <div class="col-12 col-lg-6">
+                <div class="border rounded-3 p-3 h-100">
+                  <div class="d-flex align-items-center mb-2">
+                    <strong>Unscheduled</strong>
+                    <span class="ms-auto badge text-bg-secondary" id="sa-v2-action-unscheduled-count">0</span>
+                  </div>
+
+                  <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                      <thead>
+                        <tr>
+                          <th>Address</th>
+                          <th class="text-end">Notes</th>
+                        </tr>
+                      </thead>
+                      <tbody id="sa-v2-action-unscheduled-tbody">
+                        <!-- rows injected -->
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
+              <!-- To be reached out -->
+              <div class="col-12 col-lg-6">
+                <div class="border rounded-3 p-3 h-100">
+                  <div class="d-flex align-items-center mb-2">
+                    <strong>Unconfirmed — Needs Outreach</strong>
+                    <span class="ms-auto badge text-bg-primary" id="sa-v2-action-outreach-count">0</span>
+                  </div>
+
+                  <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                      <thead>
+                        <tr>
+                          <th>Address</th>
+                          <th>Scheduled</th>
+                          <th class="text-end">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody id="sa-v2-action-outreach-tbody">
+                        <!-- rows injected -->
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="small text-muted mt-2">
+              Unscheduled = not scheduled (and not canceled). Needs outreach = scheduled, unconfirmed, and not yet reached out.
+            </div>
+          </div>
+        </div>
+        <!-- End jobs requiring action -->
+
       </div>
        
     </div>

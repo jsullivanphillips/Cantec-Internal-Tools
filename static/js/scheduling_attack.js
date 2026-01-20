@@ -53,6 +53,171 @@ const SchedulingAttack = (() => {
       .catch(err => console.error("Failed to load metrics", err));
   }
 
+  async function postV2Notes(id, notes) {
+    const r = await fetch("/scheduling_attack/v2/notes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      body: JSON.stringify({ id, notes }),
+    });
+    if (!r.ok) {
+      const txt = await r.text().catch(() => "");
+      throw new Error(`Failed to update notes (HTTP ${r.status}): ${txt}`);
+    }
+    return r.json();
+  }
+
+
+  async function postV2ReachedOut(id, reachedOut) {
+    const r = await fetch("/scheduling_attack/v2/reached_out", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      body: JSON.stringify({ id, reached_out: reachedOut }),
+    });
+    if (!r.ok) {
+      const txt = await r.text().catch(() => "");
+      throw new Error(`Failed to update reached_out (HTTP ${r.status}): ${txt}`);
+    }
+    return r.json();
+  }
+
+  function renderV2JobsRequiringAction(rows, monthStr) {
+    const card = document.getElementById("sa-v2-action-card");
+    const subtitleEl = document.getElementById("sa-v2-action-subtitle");
+
+    const tbodyUnscheduled = document.getElementById("sa-v2-action-unscheduled-tbody");
+    const tbodyOutreach = document.getElementById("sa-v2-action-outreach-tbody");
+
+    const elUnscheduledCount = document.getElementById("sa-v2-action-unscheduled-count");
+    const elOutreachCount = document.getElementById("sa-v2-action-outreach-count");
+
+    if (!card || !tbodyUnscheduled || !tbodyOutreach) return;
+
+    // Mirror your funnel logic
+    const isCanceled = (r) => !!r?.canceled;
+    const isScheduledLike = (r) => !!r?.scheduled || !!r?.completed; // completed counts as scheduled
+    const isConfirmed = (r) => !!r?.confirmed;
+    const isReachedOut = (r) => !!r?.reached_out;
+
+    // Unscheduled = not canceled and not scheduled-like
+    const unscheduled = rows.filter((r) => !isCanceled(r) && !isScheduledLike(r));
+
+    // Needs outreach = scheduled-like, unconfirmed, and NOT reached out (also not canceled)
+    const needsOutreach = rows.filter((r) => {
+      if (isCanceled(r)) return false;
+      if (!isScheduledLike(r)) return false;
+      if (isConfirmed(r)) return false;
+      if (isReachedOut(r)) return false;
+      return true;
+    });
+
+    // Counts + subtitle
+    if (elUnscheduledCount) elUnscheduledCount.textContent = String(unscheduled.length);
+    if (elOutreachCount) elOutreachCount.textContent = String(needsOutreach.length);
+    if (subtitleEl) subtitleEl.textContent = `${unscheduled.length} unscheduled • ${needsOutreach.length} need outreach`;
+
+    // Render tables
+    tbodyUnscheduled.innerHTML = "";
+    if (!unscheduled.length) {
+      tbodyUnscheduled.innerHTML = `<tr><td colspan="2" class="text-muted">No unscheduled jobs 🎉</td></tr>`;
+    } else {
+      unscheduled.forEach((r) => {
+        const tr = document.createElement("tr");
+
+        const tdAddr = document.createElement("td");
+
+        if (r?.location_id) {
+          const a = document.createElement("a");
+          a.href = `https://app.servicetrade.com/locations/${encodeURIComponent(r.location_id)}`;
+          a.target = "_blank";
+          a.rel = "noopener noreferrer";
+          a.textContent = r.address || "—";
+          tdAddr.appendChild(a);
+        } else {
+          tdAddr.textContent = r?.address || "—";
+        }
+
+
+        const tdNotes = document.createElement("td");
+        tdNotes.className = "text-end";
+
+        const curNotes = (r?.notes || "").trim();
+
+        tdNotes.innerHTML = `
+          <div class="d-flex gap-2 justify-content-end align-items-start">
+            <textarea
+              class="form-control form-control-sm sa-v2-notes"
+              rows="2"
+              placeholder="Add notes…"
+              data-notes-input="1"
+              data-id="${escapeAttr(r?.id)}"
+            >${escapeAttr(curNotes)}</textarea>
+
+            <button
+              class="btn btn-sm btn-outline-secondary"
+              data-action="v2_save_notes"
+              data-id="${escapeAttr(r?.id)}"
+              data-month="${escapeAttr(monthStr)}"
+              ${r?.id == null ? "disabled" : ""}>
+              Save
+            </button>
+          </div>
+        `;
+
+        tr.appendChild(tdAddr);
+        tr.appendChild(tdNotes);
+        tbodyUnscheduled.appendChild(tr);
+      });
+    }
+
+    tbodyOutreach.innerHTML = "";
+    if (!needsOutreach.length) {
+      tbodyOutreach.innerHTML = `<tr><td colspan="3" class="text-muted">No outreach needed 🎉</td></tr>`;
+    } else {
+      needsOutreach.forEach((r) => {
+        const tr = document.createElement("tr");
+
+        const tdAddr = document.createElement("td");
+
+        if (r?.location_id) {
+          const a = document.createElement("a");
+          a.href = `https://app.servicetrade.com/locations/${encodeURIComponent(r.location_id)}`;
+          a.target = "_blank";
+          a.rel = "noopener noreferrer";
+          a.textContent = r.address || "—";
+          tdAddr.appendChild(a);
+        } else {
+          tdAddr.textContent = r?.address || "—";
+        }
+
+
+        const tdSched = document.createElement("td");
+        tdSched.textContent = formatDateTime(r?.scheduled_date);
+
+        const tdAction = document.createElement("td");
+        tdAction.className = "text-end";
+        tdAction.innerHTML = `
+          <button
+            class="btn btn-sm btn-outline-primary"
+            data-action="v2_reached_out_on"
+            data-id="${escapeAttr(r?.id)}"
+            data-month="${escapeAttr(monthStr)}"
+            ${r?.id == null ? "disabled" : ""}>
+            Mark Reached Out
+          </button>
+        `;
+
+        tr.appendChild(tdAddr);
+        tr.appendChild(tdSched);
+        tr.appendChild(tdAction);
+        tbodyOutreach.appendChild(tr);
+      });
+    }
+
+    // Show/hide card
+    card.hidden = (unscheduled.length + needsOutreach.length) === 0;
+  }
+
+
   function initSchedulingAttackV2UI() {
     const input = document.getElementById("sa-v2-month");
     const btnPrev = document.getElementById("sa-v2-prev");
@@ -182,6 +347,8 @@ const SchedulingAttack = (() => {
     }
 
     if (funnelCard) funnelCard.hidden = false;
+
+    renderV2JobsRequiringAction(rows, monthStr);
 
     function pctOf(n, d) {
       if (!d) return 0;
@@ -1033,6 +1200,62 @@ const SchedulingAttack = (() => {
         await loadOutstandingForMonth(month);
       }
     });
+
+    // Button delegation for V2 action card
+    const actionCard = document.getElementById("sa-v2-action-card");
+    actionCard?.addEventListener("click", async (e) => {
+      const btn = e.target?.closest?.("[data-action]");
+      if (!btn) return;
+
+      const action = btn.getAttribute("data-action");
+      const id = Number(btn.getAttribute("data-id"));
+      const month = btn.getAttribute("data-month") || document.getElementById("sa-v2-month")?.value;
+
+      if (!id || !month) return;
+
+      // Disable while working
+      btn.disabled = true;
+
+      try {
+        if (action === "v2_reached_out_on") {
+          await postV2ReachedOut(id, true);
+          await loadSchedulingAttackV2ForMonth(month);
+          return;
+        }
+
+        if (action === "v2_save_notes") {
+          // Find the sibling input in the same row/cell
+          const rowEl = btn.closest("tr") || btn.parentElement;
+          const input = rowEl?.querySelector?.('input[data-notes-input="1"][data-id]');
+          const notes = input ? String(input.value || "") : "";
+
+          await postV2Notes(id, notes);
+          await loadSchedulingAttackV2ForMonth(month);
+          return;
+        }
+
+      } catch (err) {
+        console.error(err);
+        alert("Action failed. See console for details.");
+      } finally {
+        // If we didn't reload for some reason, re-enable
+        btn.disabled = false;
+      }
+    });
+
+    actionCard?.addEventListener("keydown", (e) => {
+      const input = e.target?.closest?.('input[data-notes-input="1"]');
+      if (!input) return;
+      if (e.key !== "Enter") return;
+
+      e.preventDefault();
+      const tr = input.closest("tr");
+      const saveBtn = tr?.querySelector?.('[data-action="v2_save_notes"]');
+      saveBtn?.click();
+    });
+
+
+
   }
 
   
@@ -1197,16 +1420,29 @@ const SchedulingAttack = (() => {
 
   function formatDateTime(v) {
     if (v == null) return "—";
+
+    let d;
     if (typeof v === "number") {
-      const d = new Date(v * 1000);
-      return isNaN(d) ? "—" : d.toLocaleString();
+      d = new Date(v * 1000); // unix seconds
+    } else if (typeof v === "string") {
+      d = new Date(v); // ISO string
+    } else {
+      return "—";
     }
-    if (typeof v === "string") {
-      const d = new Date(v);
-      return isNaN(d) ? v : d.toLocaleString();
-    }
-    return "—";
+
+    if (isNaN(d)) return "—";
+
+    return d.toLocaleString("en-CA", {
+      timeZone: "America/Vancouver",
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
   }
+
 
   function escapeAttr(s) {
     return String(s ?? "")

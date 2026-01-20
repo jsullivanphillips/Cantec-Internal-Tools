@@ -1068,3 +1068,9 @@ button {
   fill: rgba(13,110,253,1);
 }
 
+.sa-v2-notes {
+  min-width: 220px;
+  max-width: 220px;
+  resize: vertical;
+  line-height: 1.3;
+}

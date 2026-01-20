@@ -328,7 +328,7 @@ def main():
                             for appointment in appointments:
                                 if appointment.get("windowStart"):
                                     jobs_processed += 1
-                                    location_values["scheduled_date"] = datetime.fromtimestamp(appointment.get("windowStart"))
+                                    location_values["scheduled_date"] = datetime.fromtimestamp(appointment.get("windowStart"), tz=timezone.utc)
                                     location_values["canceled"] = True
                                     upsert_into_database(location_values)
                                     continue
@@ -346,7 +346,7 @@ def main():
                     if not inspection_job.get("scheduledDate"):
                         log.warning(f"Job [{inspection_job.get("id")} has no scheduledDate]")
                         continue
-                    location_values["scheduled_date"] = datetime.fromtimestamp(inspection_job.get("scheduledDate"))
+                    location_values["scheduled_date"] = datetime.fromtimestamp(inspection_job.get("scheduledDate"), tz=timezone.utc)
                     
                     if inspection_job.get("status") == "completed":
                         # CASE 2: Service exists, job is completed.

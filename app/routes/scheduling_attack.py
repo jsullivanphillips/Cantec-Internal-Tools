@@ -12,6 +12,7 @@ from tqdm import tqdm
 from collections import Counter
 from collections import defaultdict
 import calendar
+from sqlalchemy.exc import SQLAlchemyError
 
 log = logging.getLogger("month-conflicts")
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -1758,6 +1759,7 @@ def scheduling_attack_v2_for_month():
     for r in rows:
         payload_rows.append(
             {
+                "id": int(r.id),
                 "location_id": int(r.location_id),
                 "address": r.address,
                 "scheduled": bool(r.scheduled),
@@ -1770,10 +1772,109 @@ def scheduling_attack_v2_for_month():
             }
         )
 
+
     return jsonify(
         {
             "generated_at": _utc_now_iso(),
             "month": month_str,
             "rows": payload_rows,
+        }
+    ), 200
+
+
+@scheduling_attack_bp.post("/scheduling_attack/v2/reached_out")
+def scheduling_attack_v2_set_reached_out():
+    """
+    POST /scheduling_attack/v2/reached_out
+    Body:
+      { "id": 123, "reached_out": true }
+
+    Updates SchedulingAttackV2.reached_out for the given row id.
+    """
+    body = request.get_json(silent=True) or {}
+    row_id = body.get("id")
+    reached_out = body.get("reached_out")
+
+    if row_id is None:
+        return jsonify({"error": "Missing required field: id"}), 400
+    try:
+        row_id = int(row_id)
+    except (TypeError, ValueError):
+        return jsonify({"error": "id must be an integer"}), 400
+
+    if reached_out is None or not isinstance(reached_out, bool):
+        return jsonify({"error": "reached_out must be a boolean"}), 400
+
+    row = db.session.get(SchedulingAttackV2, row_id)
+    if not row:
+        return jsonify({"error": f"SchedulingAttackV2 row not found for id={row_id}"}), 404
+
+    row.reached_out = reached_out
+
+    try:
+        db.session.commit()
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return jsonify({"error": "Failed to update reached_out"}), 500
+
+    return jsonify(
+        {
+            "ok": True,
+            "id": int(row.id),
+            "reached_out": bool(row.reached_out),
+            "updated_at": _utc_now_iso(),
+        }
+    ), 200
+
+
+@scheduling_attack_bp.post("/scheduling_attack/v2/notes")
+def scheduling_attack_v2_set_notes():
+    """
+    POST /scheduling_attack/v2/notes
+    Body:
+      { "id": 123, "notes": "some text" }
+
+    Updates SchedulingAttackV2.notes for the given row id.
+    """
+    body = request.get_json(silent=True) or {}
+    row_id = body.get("id")
+    notes = body.get("notes")
+
+    if row_id is None:
+        return jsonify({"error": "Missing required field: id"}), 400
+    try:
+        row_id = int(row_id)
+    except (TypeError, ValueError):
+        return jsonify({"error": "id must be an integer"}), 400
+
+    # Allow clearing notes to empty string
+    if notes is None:
+        notes = ""
+    if not isinstance(notes, str):
+        return jsonify({"error": "notes must be a string"}), 400
+
+    # Optional: keep it within your DB column (1020)
+    notes = notes.strip()
+    if len(notes) > 1020:
+        return jsonify({"error": "notes too long (max 1020 chars)"}), 400
+
+    row = db.session.get(SchedulingAttackV2, row_id)
+    if not row:
+        return jsonify({"error": f"SchedulingAttackV2 row not found for id={row_id}"}), 404
+
+    row.notes = notes
+
+    try:
+        db.session.commit()
+    except SQLAlchemyError:
+        db.session.rollback()
+        return jsonify({"error": "Failed to update notes"}), 500
+
+    return jsonify(
+        {
+            "ok": True,
+            "id": int(row.id),
+            "notes": row.notes or "",
+            "updated_at": _utc_now_iso(),
         }
     ), 200
