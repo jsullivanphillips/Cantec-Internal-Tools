@@ -30,7 +30,7 @@
   <div class="tab-content pt-3" id="saTabsContent">
     <!-- === FORECAST TAB (existing content) === -->
     <div class="tab-pane fade" id="forecast" role="tabpanel" aria-labelledby="forecast-tab" tabindex="0">
-      <h2 class="h5 mb-3">Forecast &amp; Actuals</h2>
+      
 
       <!-- Toggle -->
       <div class="form-check form-switch ms-auto">
@@ -81,150 +81,134 @@
 
 
     <div class="tab-pane fade show active" id="scheduling-status" role="tabpanel" aria-labelledby="status-tab" tabindex="0">
+      
 
-      <div class="sa-card mb-3">
-        <div class="card-header d-flex align-items-center">
-          <span id="sa-v2-title">Scheduling Attack</span>
-          <span class="ms-auto small text-muted" id="sa-v2-updated"></span>
-        </div>
 
-        <div class="card-body">
-          <!-- Month selector -->
-          <div class="d-flex flex-wrap align-items-end gap-2 mb-3">
-            <div>
-              <label for="sa-v2-month" class="form-label mb-1">Select Month</label>
-              <input type="month" id="sa-v2-month" class="form-control" aria-label="Choose month for scheduling attack v2">
-            </div>
-
-            <div class="btn-group" role="group" aria-label="Month navigation">
-              <button class="btn btn-outline-secondary" id="sa-v2-prev" type="button">← Prev</button>
-              <button class="btn btn-outline-secondary" id="sa-v2-this" type="button">This Month</button>
-              <button class="btn btn-outline-secondary" id="sa-v2-next" type="button">Next →</button>
-            </div>
-
-            <button class="btn btn-primary ms-auto" id="sa-v2-load" type="button">
-              Load
-            </button>
+      <div class="card-body">
+        <!-- Month selector -->
+        <div class="d-flex flex-wrap align-items-end gap-2 mb-3">
+          <div>
+            <label for="sa-v2-month" class="form-label mb-1">Select Month</label>
+            <input type="month" id="sa-v2-month" class="form-control" aria-label="Choose month for scheduling attack v2">
           </div>
 
-          <!-- Funnel -->
-          <div class="sa-card mt-3" id="sa-v2-funnel-card" hidden>
-            <div class="card-header d-flex align-items-center">
-              <span>Scheduling Funnel</span>
-              <span class="ms-auto small text-muted" id="sa-v2-funnel-subtitle"></span>
-            </div>
+          <div class="btn-group" role="group" aria-label="Month navigation">
+            <button class="btn btn-outline-secondary" id="sa-v2-prev" type="button">← Prev</button>
+            <button class="btn btn-outline-secondary" id="sa-v2-this" type="button">This Month</button>
+            <button class="btn btn-outline-secondary" id="sa-v2-next" type="button">Next →</button>
+          </div>
 
-            <div class="card-body">
-              <div class="sa-v2-funnel" id="sa-v2-funnel">
-                <!-- arrows overlay -->
-                <svg class="sa-v2-arrows" id="sa-v2-arrows" aria-hidden="true"></svg>
+          <button class="btn btn-primary ms-auto" id="sa-v2-load" type="button">
+            Load
+          </button>
+        </div>
 
-                <!-- Total -->
-                <div class="sa-v2-funnel-row sa-v2-funnel-total">
-                  <div class="sa-v2-funnel-box" id="sa-v2-box-total">
-                    <div class="k">Total Due</div>
-                    <div class="v" id="sa-v2-total">0</div>
-                  </div>
+        <!-- Funnel -->
+        <div class="sa-card mt-3" id="sa-v2-funnel-card" hidden>
+          <div class="card-header d-flex align-items-center">
+            <span>Scheduling Funnel</span>
+            <span class="ms-auto small text-muted" id="sa-v2-funnel-subtitle"></span>
+          </div>
+
+          <div class="card-body">
+            <div class="sa-v2-funnel" id="sa-v2-funnel">
+              <!-- arrows overlay -->
+              <svg class="sa-v2-arrows" id="sa-v2-arrows" aria-hidden="true"></svg>
+
+              <!-- Total -->
+              <div class="sa-v2-funnel-row sa-v2-funnel-total">
+                <div class="sa-v2-funnel-box" id="sa-v2-box-total">
+                  <div class="k">Total Due</div>
+                  <div class="v" id="sa-v2-total">0</div>
+                </div>
+              </div>
+
+              <!-- Split 1 -->
+              <div class="sa-v2-funnel-row sa-v2-funnel-split3">
+                <div class="sa-v2-funnel-box" id="sa-v2-box-scheduled">
+                  <div class="k">Scheduled</div>
+                  <div class="v" id="sa-v2-scheduled">0</div>
+                  <div class="p"><div class="sa-v2-bar"><div id="sa-v2-bar-scheduled" class="sa-v2-bar-fill"></div></div></div>
                 </div>
 
-                <!-- Split 1 -->
-                <div class="sa-v2-funnel-row sa-v2-funnel-split3">
-                  <div class="sa-v2-funnel-box" id="sa-v2-box-scheduled">
-                    <div class="k">Scheduled</div>
-                    <div class="v" id="sa-v2-scheduled">0</div>
-                    <div class="p"><div class="sa-v2-bar"><div id="sa-v2-bar-scheduled" class="sa-v2-bar-fill"></div></div></div>
-                  </div>
-
-                  <div class="sa-v2-funnel-box" id="sa-v2-box-unscheduled">
-                    <div class="k">Unscheduled</div>
-                    <div class="v" id="sa-v2-unscheduled">0</div>
-                    <div class="p"><div class="sa-v2-bar"><div id="sa-v2-bar-unscheduled" class="sa-v2-bar-fill"></div></div></div>
-                  </div>
-
-                  <div class="sa-v2-funnel-box" id="sa-v2-box-canceled">
-                    <div class="k">Canceled</div>
-                    <div class="v" id="sa-v2-canceled">0</div>
-                    <div class="p"><div class="sa-v2-bar"><div id="sa-v2-bar-canceled" class="sa-v2-bar-fill"></div></div></div>
-                  </div>
+                <div class="sa-v2-funnel-box" id="sa-v2-box-unscheduled">
+                  <div class="k">Unscheduled</div>
+                  <div class="v" id="sa-v2-unscheduled">0</div>
+                  <div class="p"><div class="sa-v2-bar"><div id="sa-v2-bar-unscheduled" class="sa-v2-bar-fill"></div></div></div>
                 </div>
 
-                <!-- Split 2 (from Scheduled) -->
-                <div class="sa-v2-funnel-row sa-v2-funnel-split2">
-                  <div class="sa-v2-funnel-box" id="sa-v2-box-confirmed">
-                    <div class="k">Confirmed</div>
-                    <div class="v" id="sa-v2-confirmed">0</div>
-                    <div class="p"><div class="sa-v2-bar"><div id="sa-v2-bar-confirmed" class="sa-v2-bar-fill"></div></div></div>
-                  </div>
+                <div class="sa-v2-funnel-box" id="sa-v2-box-canceled">
+                  <div class="k">Canceled</div>
+                  <div class="v" id="sa-v2-canceled">0</div>
+                  <div class="p"><div class="sa-v2-bar"><div id="sa-v2-bar-canceled" class="sa-v2-bar-fill"></div></div></div>
+                </div>
+              </div>
 
-                  <div class="sa-v2-funnel-box" id="sa-v2-box-unconfirmed">
-                    <div class="k">Unconfirmed</div>
-                    <div class="v" id="sa-v2-unconfirmed">0</div>
-                    <div class="p"><div class="sa-v2-bar"><div id="sa-v2-bar-unconfirmed" class="sa-v2-bar-fill"></div></div></div>
-                  </div>
+              <!-- Split 2 (from Scheduled) -->
+              <div class="sa-v2-funnel-row sa-v2-funnel-split2">
+                <div class="sa-v2-funnel-box" id="sa-v2-box-confirmed">
+                  <div class="k">Confirmed</div>
+                  <div class="v" id="sa-v2-confirmed">0</div>
+                  <div class="p"><div class="sa-v2-bar"><div id="sa-v2-bar-confirmed" class="sa-v2-bar-fill"></div></div></div>
                 </div>
 
-                <!-- Split 3 (from Unconfirmed) -->
-                <div class="sa-v2-funnel-row sa-v2-funnel-split2">
-                  <div class="sa-v2-funnel-box" id="sa-v2-box-reached-out">
-                    <div class="k">Reached Out</div>
-                    <div class="v" id="sa-v2-reached-out">0</div>
-                    <div class="p"><div class="sa-v2-bar"><div id="sa-v2-bar-reached-out" class="sa-v2-bar-fill"></div></div></div>
-                  </div>
+                <div class="sa-v2-funnel-box" id="sa-v2-box-unconfirmed">
+                  <div class="k">Unconfirmed</div>
+                  <div class="v" id="sa-v2-unconfirmed">0</div>
+                  <div class="p"><div class="sa-v2-bar"><div id="sa-v2-bar-unconfirmed" class="sa-v2-bar-fill"></div></div></div>
+                </div>
+              </div>
 
-                  <div class="sa-v2-funnel-box" id="sa-v2-box-to-be-reached-out">
-                    <div class="k">To Be Reached Out</div>
-                    <div class="v" id="sa-v2-to-be-reached-out">0</div>
-                    <div class="p"><div class="sa-v2-bar"><div id="sa-v2-bar-to-be-reached-out" class="sa-v2-bar-fill"></div></div></div>
-                  </div>
+              <!-- Split 3 (from Unconfirmed) -->
+              <div class="sa-v2-funnel-row sa-v2-funnel-split2">
+                <div class="sa-v2-funnel-box" id="sa-v2-box-reached-out">
+                  <div class="k">Reached Out</div>
+                  <div class="v" id="sa-v2-reached-out">0</div>
+                  <div class="p"><div class="sa-v2-bar"><div id="sa-v2-bar-reached-out" class="sa-v2-bar-fill"></div></div></div>
+                </div>
+
+                <div class="sa-v2-funnel-box" id="sa-v2-box-to-be-reached-out">
+                  <div class="k">To Be Reached Out</div>
+                  <div class="v" id="sa-v2-to-be-reached-out">0</div>
+                  <div class="p"><div class="sa-v2-bar"><div id="sa-v2-bar-to-be-reached-out" class="sa-v2-bar-fill"></div></div></div>
                 </div>
               </div>
             </div>
           </div>
         </div>
-      </div>  
+      </div>
+       
     </div>
 
 
 
     <!-- === SCHEDULING EFFICIENCY TAB (new) === -->
     <div class="tab-pane fade" id="scheduling-efficiency" role="tabpanel" aria-labelledby="efficiency-tab" tabindex="0">
-      <h2 class="h5 mb-3">Scheduling Efficiency</h2>
-
-      <!-- Week selector -->
-      <div class="sa-card mb-3">
-        <div class="card-body d-flex flex-wrap align-items-end gap-2">
-          <div class="me-3">
-            <label for="sa-eff-week" class="form-label mb-1">Select Week (Mon–Sun)</label>
-            <input
-              type="week"
-              id="sa-eff-week"
-              class="form-control"
-              aria-label="Choose week for scheduling efficiency"
-            >
-            <div class="form-text">
-              Only past weeks are selectable.
-            </div>
-          </div>
-
-          <div class="btn-group" role="group" aria-label="Week navigation">
-            <button class="btn btn-outline-secondary" id="sa-eff-prev" type="button">← Prev</button>
-            <button class="btn btn-outline-secondary" id="sa-eff-last" type="button">Last Week</button>
-            <button class="btn btn-outline-secondary" id="sa-eff-next" type="button">Next →</button>
-          </div>
-
-          <button class="btn btn-primary ms-auto" id="sa-eff-load" type="button">
-            Load Efficiency
-          </button>
-        </div>
-      </div>
-
-      <!-- Efficiency results -->
       <div class="sa-card">
-        <div class="card-header d-flex align-items-center">
-          <span id="sa-eff-title">Scheduling Efficiency</span>
-          <span class="ms-auto small text-muted" id="sa-eff-updated"></span>
-        </div>
-        <div class="card-body">
+          <div class="card-header d-flex align-items-center">
+            <span id="sa-eff-title">Scheduling Efficiency</span>
+            <span class="ms-auto small text-muted" id="sa-eff-updated"></span>
+          </div>
+          <div class="card-body">
+            <div class="d-flex flex-wrap align-items-end gap-2 mb-3">
+            <div>
+              <label for="sa-eff-week" class="form-label mb-1">Select Week (Mon–Sun)</label>
+              <input type="week" id="sa-eff-week" class="form-control"aria-label="Choose week for scheduling efficiency">
+              <div class="form-text">
+                Only past weeks are selectable.
+              </div>
+            </div>
+
+            <div class="btn-group" role="group" aria-label="Week navigation">
+              <button class="btn btn-outline-secondary" id="sa-eff-prev" type="button">← Prev</button>
+              <button class="btn btn-outline-secondary" id="sa-eff-last" type="button">Last Week</button>
+              <button class="btn btn-outline-secondary" id="sa-eff-next" type="button">Next →</button>
+            </div>
+
+            <button class="btn btn-primary ms-auto" id="sa-eff-load" type="button">
+              Load
+            </button>
+          </div>
           <!-- KPIs -->
           <div class="sa-kpis" id="sa-eff-kpis" hidden>
             <div class="sa-kpi">

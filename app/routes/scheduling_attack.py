@@ -1765,6 +1765,7 @@ def scheduling_attack_v2_for_month():
                 "confirmed": bool(r.confirmed),
                 "reached_out": bool(r.reached_out),
                 "completed": bool(r.completed),
+                "canceled": bool(r.canceled),
                 "notes": r.notes or "",
             }
         )
