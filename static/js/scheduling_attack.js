@@ -5,7 +5,7 @@ const SchedulingAttack = (() => {
   let includeTravel = true;  // default matches current behavior (incl. travel)
   // --- Scheduling Attack charts ---
   let chartVolume;
-
+  let saV2ResizeBound = false;
 
     function init() {
       // Toggle handling (Forecast tab)
@@ -24,15 +24,21 @@ const SchedulingAttack = (() => {
       // Load Forecast metrics (existing)
       loadMetrics();
 
-      // If status tab is default active (it is in your HTML), load all 3 panes immediately:
-      loadAttackSummary();
+      // Scheduling Attack V2 (DB-backed)
+      initSchedulingAttackV2UI();
 
-      const monthInput = document.getElementById("sa-outstanding-month");
-      if (monthInput?.value) loadOutstandingForMonth(monthInput.value);
-
-      loadVolumePast6Weeks();
+      // If status tab is default active, load immediately
+      const v2Month = document.getElementById("sa-v2-month");
+      if (v2Month?.value) loadSchedulingAttackV2ForMonth(v2Month.value);
     }
 
+    function debounce(fn, ms) {
+      let t;
+      return (...args) => {
+        clearTimeout(t);
+        t = setTimeout(() => fn(...args), ms);
+      };
+    }
 
   function loadMetrics() {
     const params = new URLSearchParams();
@@ -46,6 +52,162 @@ const SchedulingAttack = (() => {
       .then(render)
       .catch(err => console.error("Failed to load metrics", err));
   }
+
+  function initSchedulingAttackV2UI() {
+    const input = document.getElementById("sa-v2-month");
+    const btnPrev = document.getElementById("sa-v2-prev");
+    const btnNext = document.getElementById("sa-v2-next");
+    const btnThis = document.getElementById("sa-v2-this");
+    const btnLoad = document.getElementById("sa-v2-load");
+
+    function setMonth(d) {
+      const y = d.getUTCFullYear();
+      const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+      input.value = `${y}-${m}`;
+    }
+
+    function getMonthDate() {
+      if (!input.value) return new Date();
+      const [y, m] = input.value.split("-").map(Number);
+      return new Date(Date.UTC(y, m - 1, 1));
+    }
+
+    btnPrev?.addEventListener("click", () => {
+      const d = getMonthDate();
+      d.setUTCMonth(d.getUTCMonth() - 1);
+      setMonth(d);
+    });
+
+    btnNext?.addEventListener("click", () => {
+      const d = getMonthDate();
+      d.setUTCMonth(d.getUTCMonth() + 1);
+      setMonth(d);
+    });
+
+    btnThis?.addEventListener("click", () => setMonth(new Date()));
+
+    btnLoad?.addEventListener("click", () => {
+      if (!input?.value) return;
+      loadSchedulingAttackV2ForMonth(input.value);
+    });
+
+    // default month
+    if (input && !input.value) setMonth(new Date());
+  }
+
+  async function loadSchedulingAttackV2ForMonth(monthStr) {
+    if (!monthStr) return;
+    const url = `/scheduling_attack/v2?month=${encodeURIComponent(monthStr)}`;
+
+    try {
+      const r = await fetch(url, { headers: { "Accept": "application/json" } });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      renderSchedulingAttackV2(data);
+    } catch (err) {
+      console.error("Failed to load SchedulingAttackV2", err);
+      const titleEl = document.getElementById("sa-v2-title");
+      const updatedEl = document.getElementById("sa-v2-updated");
+      const funnelCard = document.getElementById("sa-v2-funnel-card");
+      if (titleEl) titleEl.textContent = "Scheduling Attack (failed to load)";
+      if (updatedEl) updatedEl.textContent = new Date().toISOString();
+      if (funnelCard) funnelCard.hidden = true;
+    }
+  }
+
+  function renderSchedulingAttackV2(data) {
+    const monthStr = data?.month || "";
+    const rows = Array.isArray(data?.rows) ? data.rows : [];
+
+    const titleEl = document.getElementById("sa-v2-title");
+    const updatedEl = document.getElementById("sa-v2-updated");
+    const subtitleEl = document.getElementById("sa-v2-funnel-subtitle");
+    const funnelCard = document.getElementById("sa-v2-funnel-card");
+
+    if (titleEl) titleEl.textContent = monthStr ? `Scheduling Attack — ${monthStr}` : "Scheduling Attack";
+    if (updatedEl) updatedEl.textContent = data?.generated_at || "";
+
+    // --- buckets (mutually exclusive at the top split) ---
+    const total = rows.length;
+
+    const isCanceled = (r) => !!r?.canceled;
+    const isScheduledLike = (r) => !!r?.scheduled || !!r?.completed; // completed counts as scheduled
+    const isConfirmed = (r) => !!r?.confirmed;
+    const isReachedOut = (r) => !!r?.reached_out;
+
+    const canceledRows = rows.filter(isCanceled);
+
+    const scheduledRows = rows.filter((r) => !isCanceled(r) && isScheduledLike(r));
+    const unscheduledRows = rows.filter((r) => !isCanceled(r) && !isScheduledLike(r));
+
+    // --- scheduled breakdown ---
+    const confirmedRows = scheduledRows.filter(isConfirmed);
+    const unconfirmedRows = scheduledRows.filter((r) => !isConfirmed(r));
+
+    // --- unconfirmed breakdown ---
+    const reachedOutRows = unconfirmedRows.filter(isReachedOut);
+    const toBeReachedOutRows = unconfirmedRows.filter((r) => !isReachedOut(r));
+
+    // --- render counts ---
+    setText("sa-v2-total", total);
+    setText("sa-v2-scheduled", scheduledRows.length);
+    setText("sa-v2-unscheduled", unscheduledRows.length);
+    setText("sa-v2-canceled", canceledRows.length);
+
+    setText("sa-v2-confirmed", confirmedRows.length);
+    setText("sa-v2-unconfirmed", unconfirmedRows.length);
+
+    setText("sa-v2-reached-out", reachedOutRows.length);
+    setText("sa-v2-to-be-reached-out", toBeReachedOutRows.length);
+
+    // --- render bar widths (percent of their parent stage) ---
+    // Top split bars as % of TOTAL
+    setBarPct("sa-v2-bar-scheduled", pctOf(scheduledRows.length, total));
+    setBarPct("sa-v2-bar-unscheduled", pctOf(unscheduledRows.length, total));
+    setBarPct("sa-v2-bar-canceled", pctOf(canceledRows.length, total));
+
+    // Confirmed/Unconfirmed as % of Scheduled
+    setBarPct("sa-v2-bar-confirmed", pctOf(confirmedRows.length, scheduledRows.length));
+    setBarPct("sa-v2-bar-unconfirmed", pctOf(unconfirmedRows.length, scheduledRows.length));
+
+    // RO / To-Be-RO as % of Unconfirmed
+    setBarPct("sa-v2-bar-reached-out", pctOf(reachedOutRows.length, unconfirmedRows.length));
+    setBarPct("sa-v2-bar-to-be-reached-out", pctOf(toBeReachedOutRows.length, unconfirmedRows.length));
+
+    // optional subtitle
+    if (subtitleEl) {
+      subtitleEl.textContent = total
+        ? `Scheduled ${(pctOf(scheduledRows.length, total)).toFixed(0)}% • Canceled ${(pctOf(canceledRows.length, total)).toFixed(0)}%`
+        : "";
+    }
+
+    if (funnelCard) funnelCard.hidden = false;
+
+    function pctOf(n, d) {
+      if (!d) return 0;
+      return (n / d) * 100;
+    }
+
+    function setText(id, v) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = (typeof v === "number" ? v.toLocaleString() : String(v ?? ""));
+    }
+
+    function setBarPct(id, pct) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const p = Math.max(0, Math.min(100, Number(pct) || 0));
+      el.style.width = `${p.toFixed(1)}%`;
+    }
+
+    drawSchedulingAttackV2Arrows();
+    if (!saV2ResizeBound) {
+      saV2ResizeBound = true;
+      window.addEventListener("resize", debounce(() => drawSchedulingAttackV2Arrows(), 120));
+    }
+  }
+
+
 
   // --- Scheduling Efficiency (week-scoped) ---
 
@@ -82,9 +244,106 @@ const SchedulingAttack = (() => {
       });
   }
 
+  function drawSchedulingAttackV2Arrows() {
+    const root = document.getElementById("sa-v2-funnel");
+    const svg = document.getElementById("sa-v2-arrows");
+    if (!root || !svg) return;
+
+    const ids = {
+      total: "sa-v2-box-total",
+      scheduled: "sa-v2-box-scheduled",
+      unscheduled: "sa-v2-box-unscheduled",
+      canceled: "sa-v2-box-canceled",
+      confirmed: "sa-v2-box-confirmed",
+      unconfirmed: "sa-v2-box-unconfirmed",
+      reached: "sa-v2-box-reached-out",
+      toReach: "sa-v2-box-to-be-reached-out",
+    };
+
+    const el = (id) => document.getElementById(id);
+    const a = {
+      total: el(ids.total),
+      scheduled: el(ids.scheduled),
+      unscheduled: el(ids.unscheduled),
+      canceled: el(ids.canceled),
+      confirmed: el(ids.confirmed),
+      unconfirmed: el(ids.unconfirmed),
+      reached: el(ids.reached),
+      toReach: el(ids.toReach),
+    };
+
+    // If any missing, bail
+    if (Object.values(a).some(x => !x)) return;
+
+    // Size SVG to container
+    const rootRect = root.getBoundingClientRect();
+    svg.setAttribute("viewBox", `0 0 ${rootRect.width} ${rootRect.height}`);
+    svg.innerHTML = "";
+
+    // Define arrow marker
+    const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+    const marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
+    marker.setAttribute("id", "sa-v2-arrowhead");
+    marker.setAttribute("markerWidth", "10");
+    marker.setAttribute("markerHeight", "8");
+    marker.setAttribute("refX", "9");
+    marker.setAttribute("refY", "4");
+    marker.setAttribute("orient", "auto");
+
+    const head = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    head.setAttribute("d", "M0,0 L10,4 L0,8 Z");
+    head.setAttribute("class", "sa-v2-arrow-head");
+
+    marker.appendChild(head);
+    defs.appendChild(marker);
+    svg.appendChild(defs);
+
+    const pt = (fromEl, toEl) => {
+      const fr = fromEl.getBoundingClientRect();
+      const tr = toEl.getBoundingClientRect();
+
+      // start at bottom center of from
+      const x1 = (fr.left + fr.right) / 2 - rootRect.left;
+      const y1 = fr.bottom - rootRect.top;
+
+      // end at top center of to
+      const x2 = (tr.left + tr.right) / 2 - rootRect.left;
+      const y2 = tr.top - rootRect.top;
+
+      return { x1, y1, x2, y2 };
+    };
+
+    const curved = ({ x1, y1, x2, y2 }) => {
+      // simple smooth curve
+      const midY = (y1 + y2) / 2;
+      return `M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}`;
+    };
+
+    const addArrow = (fromEl, toEl) => {
+      const p = pt(fromEl, toEl);
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", curved(p));
+      path.setAttribute("class", "sa-v2-arrow-line");
+      path.setAttribute("marker-end", "url(#sa-v2-arrowhead)");
+      svg.appendChild(path);
+    };
+
+    // Total -> (Scheduled, Unscheduled, Canceled)
+    addArrow(a.total, a.scheduled);
+    addArrow(a.total, a.unscheduled);
+    addArrow(a.total, a.canceled);
+
+    // Scheduled -> (Confirmed, Unconfirmed)
+    addArrow(a.scheduled, a.confirmed);
+    addArrow(a.scheduled, a.unconfirmed);
+
+    // Unconfirmed -> (Reached Out, To Be Reached Out)
+    addArrow(a.unconfirmed, a.reached);
+    addArrow(a.unconfirmed, a.toReach);
+  }
+
+
   function renderEfficiencyForWeek(data) {
-
-
     const titleEl = document.getElementById("sa-eff-title");
     const updatedEl = document.getElementById("sa-eff-updated");
     const kpisWrap = document.getElementById("sa-eff-kpis");
@@ -310,12 +569,8 @@ const SchedulingAttack = (() => {
   // Optional: auto-load on tab show if a value exists
   document.addEventListener("shown.bs.tab", (ev) => {
     if (ev.target?.id === "status-tab") {
-      loadAttackSummary();
-
-      const monthInput = document.getElementById("sa-outstanding-month");
-      if (monthInput?.value) loadOutstandingForMonth(monthInput.value);
-
-      loadVolumePast6Weeks();
+      const v2Month = document.getElementById("sa-v2-month");
+      if (v2Month?.value) loadSchedulingAttackV2ForMonth(v2Month.value);
     }
 
     if (ev.target?.id === "efficiency-tab") {
@@ -334,6 +589,7 @@ const SchedulingAttack = (() => {
     }
   })();
 
+  
 
 
 
@@ -779,54 +1035,7 @@ const SchedulingAttack = (() => {
     });
   }
 
-  async function loadAttackSummary() {
-    // Proposed backend:
-    // GET /scheduling_attack/attack_summary
-    // -> { generated_at, forward_coverage_pct, confirmations: { pct, confirmed, total } }
-    const url = `/scheduling_attack/attack_summary`;
-
-    try {
-      const r = await fetch(url, { headers: { "Accept": "application/json" } });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const data = await r.json();
-      renderAttackSummary(data);
-    } catch (err) {
-      console.error("Failed to load attack summary", err);
-      const updatedEl = document.getElementById("sa-attack-updated");
-      const kpisWrap = document.getElementById("sa-attack-kpis");
-      const hint = document.getElementById("sa-attack-hint");
-      if (updatedEl) updatedEl.textContent = new Date().toISOString();
-      if (kpisWrap) kpisWrap.hidden = true;
-      if (hint) hint.textContent = "Failed to load summary metrics.";
-    }
-  }
-
-  function renderAttackSummary(data) {
-    const kpisWrap = document.getElementById("sa-attack-kpis");
-    const updatedEl = document.getElementById("sa-attack-updated");
-    const hint = document.getElementById("sa-attack-hint");
-
-    const fmtPct = (x) => `${(typeof x === "number" ? x : 0).toFixed(1)}%`;
-
-    const elCoverage = document.getElementById("sa-kpi-forward-coverage");
-    const elConfirmedPct = document.getElementById("sa-kpi-confirmed-pct");
-    const elConfirmedCounts = document.getElementById("sa-kpi-confirmed-counts");
-
-    const conf = data?.confirmations || {};
-    const total = typeof conf.total === "number" ? conf.total : 0;
-    const confirmed = typeof conf.confirmed === "number" ? conf.confirmed : 0;
-    const pct = (typeof conf.pct === "number")
-      ? conf.pct
-      : (total ? (confirmed / total) * 100 : 0);
-
-    if (elCoverage) elCoverage.textContent = fmtPct(data?.forward_coverage_pct);
-    if (elConfirmedPct) elConfirmedPct.textContent = fmtPct(pct);
-    if (elConfirmedCounts) elConfirmedCounts.textContent = `${confirmed.toLocaleString()} / ${total.toLocaleString()}`;
-
-    if (updatedEl) updatedEl.textContent = data?.generated_at || "";
-    if (kpisWrap) kpisWrap.hidden = false;
-    if (hint) hint.textContent = "";
-  }
+  
 
   async function loadOutstandingForMonth(monthStr) {
     if (!monthStr) return;
@@ -982,146 +1191,9 @@ const SchedulingAttack = (() => {
     }
   }
 
-  async function postReachedOut(monthStr, address, reachedOut) {
-    // Proposed backend:
-    // POST /scheduling_attack/reached_out
-    // body: { month: "YYYY-MM", address: "...", reached_out: true/false }
-    const url = `/scheduling_attack/reached_out`;
 
-    try {
-      const r = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Accept": "application/json" },
-        body: JSON.stringify({ month: monthStr, address, reached_out: !!reachedOut }),
-      });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      return await r.json();
-    } catch (err) {
-      console.error("Failed to set reached_out", err);
-    }
-  }
 
-  async function postCancelled(monthStr, address, cancelled) {
-    // Proposed backend:
-    // POST /scheduling_attack/cancelled
-    // body: { month: "YYYY-MM", address: "...", cancelled: true/false }
-    const url = `/scheduling_attack/cancelled`;
 
-    try {
-      const r = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Accept": "application/json" },
-        body: JSON.stringify({ month: monthStr, address, cancelled: !!cancelled }),
-      });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      return await r.json();
-    } catch (err) {
-      console.error("Failed to set cancelled", err);
-    }
-  }
-
-  async function loadVolumePast6Weeks() {
-    // Proposed backend:
-    // GET /scheduling_attack/weekly_volume?weeks=6
-    // -> {
-    //   generated_at,
-    //   days: [ { date: "YYYY-MM-DD", scheduled: 0, released: 0 } ]
-    // }
-    const url = `/scheduling_attack/weekly_volume?weeks=6`;
-
-    try {
-      const r = await fetch(url, { headers: { "Accept": "application/json" } });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const data = await r.json();
-      renderVolumePast6Weeks(data);
-    } catch (err) {
-      console.error("Failed to load scheduling volume", err);
-      const updatedEl = document.getElementById("sa-volume-updated");
-      const tbody = document.getElementById("sa-volume-tbody");
-      if (updatedEl) updatedEl.textContent = new Date().toISOString();
-      if (tbody) tbody.innerHTML = "";
-      if (chartVolume) { chartVolume.destroy(); chartVolume = null; }
-    }
-  }
-
-  function renderVolumePast6Weeks(data) {
-    const updatedEl = document.getElementById("sa-volume-updated");
-    if (updatedEl) updatedEl.textContent = data?.generated_at || "";
-
-    const days = data?.days || [];
-    const labels = days.map(d => d?.date || "");
-    const scheduled = days.map(d => (typeof d?.scheduled === "number" ? d.scheduled : 0));
-    const released = days.map(d => (typeof d?.released === "number" ? d.released : 0));
-
-    // Table
-    const tbody = document.getElementById("sa-volume-tbody");
-    if (tbody) {
-      tbody.innerHTML = "";
-      days.forEach(d => {
-        const tr = document.createElement("tr");
-
-        const tdDate = document.createElement("td");
-        tdDate.textContent = formatDate(d?.date);
-
-        const tdS = document.createElement("td");
-        tdS.textContent = (typeof d?.scheduled === "number" ? d.scheduled : 0).toLocaleString();
-
-        const tdR = document.createElement("td");
-        tdR.textContent = (typeof d?.released === "number" ? d.released : 0).toLocaleString();
-
-        tr.appendChild(tdDate);
-        tr.appendChild(tdS);
-        tr.appendChild(tdR);
-        tbody.appendChild(tr);
-      });
-    }
-
-    // Chart
-    const ctx = document.getElementById("saVolumeChart")?.getContext("2d");
-    if (ctx) {
-      if (chartVolume) chartVolume.destroy();
-      chartVolume = new Chart(ctx, {
-        type: "line",
-        data: {
-          labels,
-          datasets: [
-            { label: "Scheduled", data: scheduled, tension: 0.25, pointRadius: 0 },
-            { label: "Released", data: released, tension: 0.25, pointRadius: 0 }
-          ]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { display: true },
-            tooltip: { mode: "index", intersect: false }
-          },
-          scales: {
-            x: {
-              ticks: {
-                maxRotation: 0,
-                callback: function(value) {
-                  // Show fewer labels (about weekly)
-                  const i = Number(value);
-                  if (!Number.isFinite(i)) return "";
-                  return (i % 7 === 0) ? this.getLabelForValue(value) : "";
-                }
-              }
-            },
-            y: { beginAtZero: true }
-          }
-        }
-      });
-      document.getElementById("saVolumeChart").parentElement.style.minHeight = "320px";
-    }
-  }
-
-  // Helpers
-  function formatDate(iso) {
-    if (!iso) return "—";
-    const d = new Date(iso);
-    return isNaN(d) ? String(iso) : d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
-  }
 
   function formatDateTime(v) {
     if (v == null) return "—";

@@ -7,7 +7,7 @@ from dateutil.relativedelta import relativedelta
 from zoneinfo import ZoneInfo  # Python 3.9+
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy import or_, func, cast, Float, case
-from app.db_models import db, ServiceOccurrence, Location, ServiceRecurrence
+from app.db_models import db, ServiceOccurrence, Location, ServiceRecurrence, SchedulingAttackV2
 from tqdm import tqdm 
 from collections import Counter
 from collections import defaultdict
@@ -1698,503 +1698,81 @@ def ingest_service_recurrence(rec: dict, *, session=db.session):
 #endregion
 
 
-# ============================================================
-# === REPLACE YOUR "Scheduling Attack from 2026" REGION WITH ===
-# ============================================================
-
-from datetime import datetime, timezone, timedelta, date
-from calendar import monthrange
-
-from flask import request, jsonify
-from sqlalchemy import func, and_, or_
-
-from app.db_models import db, Location, ServiceOccurrence, SchedulingCancelled, SchedulingReachedOut
-
-
-# ---------------------------
-# Tunables / simple capacity
-# ---------------------------
-# You said forward schedule coverage is: % of working hours scheduled for next 6 weeks.
-# If you don't yet have "available hours" stored anywhere, we need a simple capacity source.
-# Adjust these to match reality, or later replace with a proper tech-availability table.
-SCHED_ATTACK_FA_TECH_COUNT = 8
-SCHED_ATTACK_SPR_TECH_COUNT = 2
-SCHED_ATTACK_HOURS_PER_TECH_PER_WEEK = 40.0
-
-
-def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
 def _utc_now_iso() -> str:
-    return _utc_now().isoformat()
+    return datetime.now(timezone.utc).isoformat()
 
 
-def _parse_month_yyyy_mm(month_str: str) -> date:
+def _parse_month_yyyy_mm(month_str: str) -> datetime:
     """
-    Parse 'YYYY-MM' into date(YYYY, MM, 1). Raises ValueError if invalid.
+    Parse 'YYYY-MM' into a timezone-aware UTC month anchor datetime
+    (first day of month at 00:00 UTC).
     """
-    y_s, m_s = month_str.split("-", 1)
-    y = int(y_s)
-    m = int(m_s)
-    if m < 1 or m > 12:
-        raise ValueError("Invalid month")
-    return date(y, m, 1)
+    try:
+        dt = datetime.strptime(month_str, "%Y-%m")
+    except ValueError:
+        raise ValueError("month must be in YYYY-MM format")
+
+    return dt.replace(tzinfo=timezone.utc, day=1, hour=0, minute=0, second=0, microsecond=0)
 
 
-def _month_end(month_floor: date) -> date:
-    last_day = monthrange(month_floor.year, month_floor.month)[1]
-    return date(month_floor.year, month_floor.month, last_day)
-
-
-def _as_date(dttm: datetime | None) -> date | None:
-    if not dttm:
-        return None
-    if dttm.tzinfo is None:
-        # assume UTC if naive (shouldn't happen if your DB column is tz-aware)
-        dttm = dttm.replace(tzinfo=timezone.utc)
-    return dttm.astimezone(timezone.utc).date()
-
-
-def _hours_for_occ(occ: ServiceOccurrence) -> float:
+@scheduling_attack_bp.get("/scheduling_attack/v2")
+def scheduling_attack_v2_for_month():
     """
-    Compute "scheduled effort hours" for an occurrence.
-    Uses your stored actuals + travel total.
-    """
-    fa = float(occ.fa_hours_actual or 0.0)
-    spr = float(occ.spr_hours_actual or 0.0)
-    travel = float(occ.travel_minutes_total or 0.0) / 60.0
-    return max(0.0, fa + spr + travel)
+    GET /scheduling_attack/v2?month=YYYY-MM
 
-
-def _is_canceled_status(status: str | None) -> bool:
-    if not status:
-        return False
-    s = status.strip().lower()
-    return s in {"canceled", "cancelled"}
-
-
-# ------------------------------------------------------------
-# GET /scheduling_attack/attack_summary
-# Pane 1: Forward coverage (6 weeks) + confirmations (2 weeks)
-# ------------------------------------------------------------
-@scheduling_attack_bp.get("/scheduling_attack/attack_summary")
-def attack_summary():
-    now = _utc_now()
-    end_6w = now + timedelta(weeks=6)
-    end_2w = now + timedelta(days=14)
-
-    # ---- Forward schedule coverage (6 weeks) ----
-    # Target: annual inspections / recurring work
-    q6 = (
-        db.session.query(ServiceOccurrence)
-        .filter(ServiceOccurrence.scheduled_for.isnot(None))
-        .filter(ServiceOccurrence.scheduled_for >= now)
-        .filter(ServiceOccurrence.scheduled_for < end_6w)
-        .filter(ServiceOccurrence.is_recurring.is_(True))
-        .filter(ServiceOccurrence.job_type == "inspection")
-    )
-
-    # Ignore canceled rows
-    occs_6w = [o for o in q6.all() if not _is_canceled_status(o.status)]
-    scheduled_hours_6w = sum(_hours_for_occ(o) for o in occs_6w)
-
-    tech_count = float(SCHED_ATTACK_FA_TECH_COUNT + SCHED_ATTACK_SPR_TECH_COUNT)
-    capacity_hours_6w = tech_count * float(SCHED_ATTACK_HOURS_PER_TECH_PER_WEEK) * 6.0
-    forward_coverage_pct = (scheduled_hours_6w / capacity_hours_6w * 100.0) if capacity_hours_6w else 0.0
-
-    # ---- Confirmations (next 2 weeks) ----
-    # "Confirmed" if ANY appointment released -> you persist to ServiceOccurrence.is_confirmed
-    q2 = (
-        db.session.query(ServiceOccurrence)
-        .filter(ServiceOccurrence.scheduled_for.isnot(None))
-        .filter(ServiceOccurrence.scheduled_for >= now)
-        .filter(ServiceOccurrence.scheduled_for < end_2w)
-        .filter(ServiceOccurrence.is_recurring.is_(True))
-        .filter(ServiceOccurrence.job_type == "inspection")
-    )
-
-    occs_2w = [o for o in q2.all() if not _is_canceled_status(o.status)]
-    total_2w = len(occs_2w)
-    confirmed_2w = sum(1 for o in occs_2w if bool(o.is_confirmed))
-    pct_2w = (confirmed_2w / total_2w * 100.0) if total_2w else 0.0
-
-    payload = {
-        "generated_at": _utc_now_iso(),
-        "forward_coverage": {
-            "window": {"start": now.isoformat(), "end": end_6w.isoformat()},
-            "scheduled_hours": round(scheduled_hours_6w, 2),
-            "capacity_hours": round(capacity_hours_6w, 2),
-            "pct": round(forward_coverage_pct, 2),
-            "assumptions": {
-                "fa_tech_count": SCHED_ATTACK_FA_TECH_COUNT,
-                "spr_tech_count": SCHED_ATTACK_SPR_TECH_COUNT,
-                "hours_per_tech_per_week": SCHED_ATTACK_HOURS_PER_TECH_PER_WEEK,
-            },
-        },
-        "confirmations": {
-            "window": {"start": now.isoformat(), "end": end_2w.isoformat()},
-            "pct": round(pct_2w, 2),
-            "confirmed": int(confirmed_2w),
-            "total": int(total_2w),
-        },
+    Response:
+    {
+      "generated_at": "...",
+      "month": "YYYY-MM",
+      "rows": [
+        {
+          "location_id": 123,
+          "address": "...",
+          "scheduled": true,
+          "scheduled_date": "2026-01-10T08:00:00+00:00" | null,
+          "confirmed": false,
+          "reached_out": false,
+          "completed": false,
+          "notes": "..."
+        }
+      ]
     }
-    return jsonify(payload), 200
-
-
-# ------------------------------------------------------------
-# GET /scheduling_attack/outstanding?month=YYYY-MM
-# Pane 2: Monthly outstanding + unconfirmed scheduled list
-# + unscheduled list (manual cancelled persisted)
-# ------------------------------------------------------------
-@scheduling_attack_bp.get("/scheduling_attack/outstanding")
-def outstanding():
-    month_str = request.args.get("month")
+    """
+    month_str = (request.args.get("month") or "").strip()
     if not month_str:
-        return jsonify({"error": "Missing required query param: month=YYYY-MM"}), 400
+        return jsonify({"error": "month query param required (YYYY-MM)"}), 400
 
     try:
-        month_floor = _parse_month_yyyy_mm(month_str)
-    except Exception:
-        return jsonify({"error": "Invalid month format. Expected YYYY-MM"}), 400
+        month_anchor = _parse_month_yyyy_mm(month_str)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
 
-    month_last = _month_end(month_floor)
-    month_start_dt = datetime(month_floor.year, month_floor.month, 1, tzinfo=timezone.utc)
-    month_end_dt = datetime(month_last.year, month_last.month, month_last.day, 23, 59, 59, tzinfo=timezone.utc)
-
-    # Pull all recurring inspection occurrences for that observed_month (your script sets observed_month)
-    # Note: if your observed_month is a DATE column, equality is perfect.
-    base_q = (
-        db.session.query(ServiceOccurrence, Location.street)
-        .join(Location, Location.location_id == ServiceOccurrence.location_id)
-        .filter(ServiceOccurrence.is_recurring.is_(True))
-        .filter(ServiceOccurrence.job_type == "inspection")
-        .filter(ServiceOccurrence.observed_month == month_floor)
-    )
-
-    rows = base_q.all()
-
-    # Manual cancelled for month
-    cancelled_rows = (
-        db.session.query(SchedulingCancelled.location_id)
-        .filter(SchedulingCancelled.observed_month == month_floor)
+    rows = (
+        db.session.query(SchedulingAttackV2)
+        .filter(SchedulingAttackV2.month == month_anchor)
+        .order_by(SchedulingAttackV2.address.asc())
         .all()
     )
-    cancelled_loc_ids = {int(r[0]) for r in cancelled_rows}
 
-    # Reached out markers for this month
-    # We'll build two lookup sets:
-    # 1) job_id reached out
-    # 2) fallback (location_id, street, scheduled_for date-time)
-    reached = db.session.query(SchedulingReachedOut).all()
-    reached_job_ids = {int(r.job_id) for r in reached if r.job_id is not None}
-    reached_fallback = {
-        (int(r.location_id) if r.location_id is not None else None, (r.address or "").strip().lower(), r.scheduled_for)
-        for r in reached
-        if r.job_id is None
-    }
-
-    total_needed = len(rows)
-
-    scheduled = 0
-    unscheduled = 0
-    cancelled = 0
-    confirmed = 0
-    unconfirmed = 0
-
-    unconfirmed_scheduled_list = []
-    unscheduled_list = []
-
-    for occ, street in rows:
-        loc_id = int(occ.location_id or 0)
-        address = (street or "").strip()
-        is_cancelled = (loc_id in cancelled_loc_ids)
-
-        # ignore hard-canceled jobs as "needed"? you can change this rule.
-        if _is_canceled_status(occ.status):
-            # treat as cancelled bucket, but still counts as needed
-            pass
-
-        if is_cancelled:
-            cancelled += 1
-
-        if occ.scheduled_for is None:
-            # unscheduled (unless user marked cancelled)
-            if not is_cancelled:
-                unscheduled += 1
-            unscheduled_list.append({
-                "location_id": loc_id,
-                "address": address,
-                "cancelled": bool(is_cancelled),
-            })
-            continue
-
-        # scheduled
-        scheduled += 1
-
-        # confirmed/unconfirmed
-        if bool(occ.is_confirmed):
-            confirmed += 1
-        else:
-            unconfirmed += 1
-
-            # reached out?
-            ro = False
-            if occ.job_id is not None and int(occ.job_id) in reached_job_ids:
-                ro = True
-            else:
-                key = (loc_id, address.lower(), occ.scheduled_for)
-                if key in reached_fallback:
-                    ro = True
-
-            unconfirmed_scheduled_list.append({
-                "job_id": int(occ.job_id) if occ.job_id is not None else None,
-                "location_id": loc_id,
-                "address": address,
-                "scheduled_for": occ.scheduled_for.isoformat(),
-                "is_confirmed": False,
-                "reached_out": bool(ro),
-            })
-
-    payload = {
-        "month": month_str,
-        "generated_at": _utc_now_iso(),
-        "totals": {
-            "total_needed": int(total_needed),
-            "scheduled": int(scheduled),
-            "unscheduled": int(unscheduled),
-            "cancelled": int(cancelled),
-            "confirmed": int(confirmed),
-            "unconfirmed": int(unconfirmed),
-        },
-        "unconfirmed_scheduled": unconfirmed_scheduled_list,
-        "unscheduled": unscheduled_list,
-    }
-    return jsonify(payload), 200
-
-
-# ------------------------------------------------------------
-# POST /scheduling_attack/reached_out
-# body supports either:
-#   A) { job_id, reached_out: true/false, reached_out_by?, note? }
-#   B) { location_id, address, scheduled_for, reached_out: true/false, reached_out_by?, note? }
-# ------------------------------------------------------------
-@scheduling_attack_bp.post("/scheduling_attack/reached_out")
-def reached_out():
-    data = request.get_json(silent=True) or {}
-    reached_out_flag = bool(data.get("reached_out", True))
-    reached_out_by = data.get("reached_out_by")
-    note = data.get("note")
-
-    job_id = data.get("job_id")
-    location_id = data.get("location_id")
-    address = (data.get("address") or "").strip()
-    scheduled_for = data.get("scheduled_for")
-
-    # Parse scheduled_for if provided (ISO)
-    sched_dt = None
-    if scheduled_for:
-        try:
-            sched_dt = datetime.fromisoformat(str(scheduled_for).replace("Z", "+00:00"))
-            if sched_dt.tzinfo is None:
-                sched_dt = sched_dt.replace(tzinfo=timezone.utc)
-            else:
-                sched_dt = sched_dt.astimezone(timezone.utc)
-        except Exception:
-            return jsonify({"error": "scheduled_for must be ISO8601 if provided"}), 400
-
-    # If job_id provided, use that as primary key
-    if job_id is not None:
-        try:
-            job_id = int(job_id)
-        except Exception:
-            return jsonify({"error": "job_id must be an integer"}), 400
-
-        existing = db.session.query(SchedulingReachedOut).filter(SchedulingReachedOut.job_id == job_id).one_or_none()
-
-        if not reached_out_flag:
-            # delete marker
-            if existing:
-                db.session.delete(existing)
-                db.session.commit()
-            return jsonify({"ok": True, "deleted": True, "job_id": job_id, "generated_at": _utc_now_iso()}), 200
-
-        # upsert marker
-        if not existing:
-            existing = SchedulingReachedOut(job_id=job_id)
-
-        existing.reached_out_by = reached_out_by
-        existing.note = note
-        existing.reached_out_at = _utc_now()
-        db.session.add(existing)
-        db.session.commit()
-
-        return jsonify({"ok": True, "job_id": job_id, "generated_at": _utc_now_iso()}), 200
-
-    # Fallback key: (location_id, address, scheduled_for)
-    if location_id is None or not address or sched_dt is None:
-        return jsonify({
-            "error": "Provide either job_id OR (location_id, address, scheduled_for)"
-        }), 400
-
-    try:
-        location_id = int(location_id)
-    except Exception:
-        return jsonify({"error": "location_id must be an integer"}), 400
-
-    existing = (
-        db.session.query(SchedulingReachedOut)
-        .filter(SchedulingReachedOut.job_id.is_(None))
-        .filter(SchedulingReachedOut.location_id == location_id)
-        .filter(SchedulingReachedOut.address == address)
-        .filter(SchedulingReachedOut.scheduled_for == sched_dt)
-        .one_or_none()
-    )
-
-    if not reached_out_flag:
-        if existing:
-            db.session.delete(existing)
-            db.session.commit()
-        return jsonify({"ok": True, "deleted": True, "generated_at": _utc_now_iso()}), 200
-
-    if not existing:
-        existing = SchedulingReachedOut(
-            job_id=None,
-            location_id=location_id,
-            address=address,
-            scheduled_for=sched_dt,
+    payload_rows = []
+    for r in rows:
+        payload_rows.append(
+            {
+                "location_id": int(r.location_id),
+                "address": r.address,
+                "scheduled": bool(r.scheduled),
+                "scheduled_date": r.scheduled_date.isoformat() if r.scheduled_date else None,
+                "confirmed": bool(r.confirmed),
+                "reached_out": bool(r.reached_out),
+                "completed": bool(r.completed),
+                "notes": r.notes or "",
+            }
         )
 
-    existing.reached_out_by = reached_out_by
-    existing.note = note
-    existing.reached_out_at = _utc_now()
-
-    db.session.add(existing)
-    db.session.commit()
-
-    return jsonify({"ok": True, "generated_at": _utc_now_iso()}), 200
-
-
-# ------------------------------------------------------------
-# POST /scheduling_attack/cancelled
-# body supports:
-#   A) { location_id, month: "YYYY-MM", cancelled: true/false, cancelled_by?, note? }
-#   B) { address, month: "YYYY-MM", cancelled: true/false, cancelled_by?, note? } (will lookup location_id)
-# ------------------------------------------------------------
-@scheduling_attack_bp.post("/scheduling_attack/cancelled")
-def cancelled():
-    data = request.get_json(silent=True) or {}
-    cancelled_flag = bool(data.get("cancelled", True))
-    cancelled_by = data.get("cancelled_by")
-    note = data.get("note")
-
-    month_str = data.get("month")
-    if not month_str:
-        return jsonify({"error": "month is required (YYYY-MM)"}), 400
-    try:
-        month_floor = _parse_month_yyyy_mm(month_str)
-    except Exception:
-        return jsonify({"error": "Invalid month format. Expected YYYY-MM"}), 400
-
-    location_id = data.get("location_id")
-    address = (data.get("address") or "").strip()
-
-    if location_id is None:
-        if not address:
-            return jsonify({"error": "Provide location_id OR address"}), 400
-        # Look up location_id by street
-        loc = db.session.query(Location).filter(func.lower(Location.street) == address.lower()).one_or_none()
-        if not loc:
-            return jsonify({"error": f"No location found matching address '{address}'"}), 404
-        location_id = int(loc.location_id)
-    else:
-        try:
-            location_id = int(location_id)
-        except Exception:
-            return jsonify({"error": "location_id must be an integer"}), 400
-
-    existing = (
-        db.session.query(SchedulingCancelled)
-        .filter(SchedulingCancelled.location_id == location_id)
-        .filter(SchedulingCancelled.observed_month == month_floor)
-        .one_or_none()
-    )
-
-    if not cancelled_flag:
-        if existing:
-            db.session.delete(existing)
-            db.session.commit()
-        return jsonify({"ok": True, "deleted": True, "location_id": location_id, "month": month_str, "generated_at": _utc_now_iso()}), 200
-
-    if not existing:
-        existing = SchedulingCancelled(location_id=location_id, observed_month=month_floor)
-
-    existing.cancelled_by = cancelled_by
-    existing.note = note
-    existing.cancelled_at = _utc_now()
-
-    db.session.add(existing)
-    db.session.commit()
-
-    return jsonify({"ok": True, "location_id": location_id, "month": month_str, "generated_at": _utc_now_iso()}), 200
-
-
-# ------------------------------------------------------------
-# GET /scheduling_attack/weekly_volume?weeks=6
-# Pane 3: Daily scheduled/released counts for past N weeks
-# Returns days: [{date, scheduled, released}]
-# ------------------------------------------------------------
-@scheduling_attack_bp.get("/scheduling_attack/weekly_volume")
-def weekly_volume():
-    try:
-        weeks = int(request.args.get("weeks", 6))
-    except ValueError:
-        weeks = 6
-    weeks = max(1, min(weeks, 52))
-
-    today = date.today()
-    num_days = weeks * 7
-    start_day = today - timedelta(days=num_days - 1)
-    start_dt = datetime(start_day.year, start_day.month, start_day.day, tzinfo=timezone.utc)
-    end_dt = datetime(today.year, today.month, today.day, 23, 59, 59, tzinfo=timezone.utc)
-
-    # Pull scheduled occurrences in window (recurring inspections)
-    occs = (
-        db.session.query(ServiceOccurrence)
-        .filter(ServiceOccurrence.scheduled_for.isnot(None))
-        .filter(ServiceOccurrence.scheduled_for >= start_dt)
-        .filter(ServiceOccurrence.scheduled_for <= end_dt)
-        .filter(ServiceOccurrence.is_recurring.is_(True))
-        .filter(ServiceOccurrence.job_type == "inspection")
-        .all()
-    )
-
-    # day -> counts
-    scheduled_by_day = defaultdict(int)
-    released_by_day = defaultdict(int)
-
-    for o in occs:
-        if _is_canceled_status(o.status):
-            continue
-        d = _as_date(o.scheduled_for)
-        if not d:
-            continue
-        scheduled_by_day[d] += 1
-        if bool(o.is_confirmed):
-            released_by_day[d] += 1
-
-    days = []
-    for i in range(num_days):
-        d = start_day + timedelta(days=i)
-        days.append({
-            "date": d.isoformat(),
-            "scheduled": int(scheduled_by_day.get(d, 0)),
-            "released": int(released_by_day.get(d, 0)),
-        })
-
-    payload = {
-        "generated_at": _utc_now_iso(),
-        "weeks": int(weeks),
-        "days": days,
-    }
-    return jsonify(payload), 200
+    return jsonify(
+        {
+            "generated_at": _utc_now_iso(),
+            "month": month_str,
+            "rows": payload_rows,
+        }
+    ), 200

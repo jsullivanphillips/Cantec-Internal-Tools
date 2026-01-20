@@ -966,12 +966,105 @@ button {
 }
 
 
+/* Funnel layout */
+.sa-v2-funnel-row {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.sa-v2-funnel-total {
+  grid-template-columns: 1fr;
+}
+
+.sa-v2-funnel-split3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.sa-v2-funnel-split2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.sa-v2-funnel-box {
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 12px;
+  padding: 12px;
+  background: rgba(255,255,255,0.7);
+}
+
+.sa-v2-funnel-box .k {
+  font-size: 12px;
+  opacity: 0.7;
+  margin-bottom: 2px;
+}
+
+.sa-v2-funnel-box .v {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.sa-v2-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.08);
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.sa-v2-bar-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: rgba(13,110,253,0.85); /* bootstrap primary-ish */
+}
+
+/* Responsive */
+@media (max-width: 992px) {
+  .sa-v2-funnel-split3 { grid-template-columns: 1fr; }
+  .sa-v2-funnel-split2 { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 768px) {
+  .sa-v2-funnel-row {
+    margin-bottom: 24px;
+  }
+}
 
 
 
+.sa-v2-funnel {
+  position: relative;
+}
+
+.sa-v2-arrows {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+  z-index: 1;
+}
+
+.sa-v2-funnel-row {
+  margin-bottom: 86px; /* try 24–48px */
+}
 
 
+.sa-v2-funnel-box {
+  position: relative;
+  z-index: 2; /* boxes above arrows */
+}
 
-  
+/* Arrow look */
+.sa-v2-arrow-line {
+  stroke: rgba(13,110,253,0.5);
+  stroke-width: 2;
+  fill: none;
+}
 
+.sa-v2-arrow-head {
+  fill: rgba(13,110,253,1);
+}
 

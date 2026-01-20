@@ -690,11 +690,9 @@ def main():
             for loc_id in pbar:
                 resp = call_service_trade_api(f"location/{loc_id}")
                 location_name = resp.get("data").get("address").get("street")
-                jobs_at_location = []
                 inspection_job_found = False
                 is_location_on_hold = False
 
-                resp = call_service_trade_api(f"location/{loc_id}")
                 tags = resp.get("data").get("tags")
                 for tag in tags:
                     if tag.get("name") == "On_Hold":
@@ -708,6 +706,8 @@ def main():
                         job_id = jobs.get("id")
                         created_at = jobs.get("created")
                         completed_on = jobs.get("completedOn")
+                        if completed_on is not None:
+                            confirmed = True
                         travel_time = _travel_time_for_location(loc_id)
                         num_unique_tech_appt = 0
                         status = jobs.get("status")
@@ -721,11 +721,11 @@ def main():
                             is_recurring = True
 
                         num_appts = 0
-                        appointments_iter = iter(stream_appointments_for_job(job_id))
+                        appointments_iter = iter(stream_appointments_for_job(job_id)) # Only streams jobs scheduled from 1 year ago to today.
                         first_appt = next(appointments_iter, None)
                         if first_appt is None:
                             log.info("Job %s has no appointments; writing stub occurrence.", job_id)
-
+                            # this almost never happens. Jobs usually have appointments
                             insert_vals = {
                                 "location_name": location_name,
                                 "job_id": job_id,
@@ -745,7 +745,7 @@ def main():
                                 "travel_minutes_per_appt": travel_time,
                                 "travel_minutes_total": 0,
                                 "status": status,
-                                "is_confirmed": False,
+                                "is_confirmed": confirmed,
                                 "meta": "no appointments",
                                 "location_on_hold": is_location_on_hold,
                             }
@@ -759,10 +759,11 @@ def main():
 
                         earliest_appt_ts = None
                         for appts in appts_source:
-                            # capture released appointments 
+                            # capture appointments 
                             is_spr_appt = False
                             services_on_appt = appts.get("serviceRequests", []) or []
                             techs_on_appt = appts.get("techs", []) or []
+                            
                             released = appts.get("released", False)
                             if not techs_on_appt:
                                 # No techs yet → keep FA/SPR sets empty; still record appointment so day aggregation works
@@ -874,7 +875,6 @@ def main():
                         cur_spr_streak = 0
                         prev_fa_day = None
                         prev_spr_day = None
-                        confirmed = False
 
                         # iterate in chronological order
                         for appt_id in sorted(appointments_data, key=lambda k: _safe_ts(appointments_data[k])):
@@ -992,6 +992,8 @@ def main():
                             job_id = jobs.get("id")
                             created_at = jobs.get("created")
                             completed_on = jobs.get("completedOn")
+                            if completed_on:
+                                confirmed = True
                             travel_time = _travel_time_for_location(loc_id)
                             num_unique_tech_appt = 0
                             status = jobs.get("status")
@@ -1030,7 +1032,7 @@ def main():
                                     "travel_minutes_per_appt": travel_time,
                                     "travel_minutes_total": 0,
                                     "status": status,
-                                    "is_confirmed": False,
+                                    "is_confirmed": confirmed,
                                     "meta": "no appointments",
                                     "location_on_hold": is_location_on_hold,
                                 }
@@ -1242,14 +1244,36 @@ def main():
                         log.exception("Error processing location %s: %s", loc_id, e)
                         pbar.set_postfix(last_loc=loc_id, jobs=job_processed, skipped=skipped, errors=errors)
 
-                # Step 3 - if still no annual job found look for scheduled jobs in the future
+                # Step 3 - look for scheduled jobs in the future
                 # and then finally service recurrences for a month
                 service_found = False
                 scheduled_job_found = False
                 month = None
                 meta = ""
-                if not inspection_job_found:
-                    # parse tags
+                
+                # parse tags
+                prev_insp = next(
+                    (
+                        iv for iv in insert_vals_list
+                        if iv.get("location_id") == loc_id
+                        and iv.get("job_type") == "inspection"
+                    ),
+                    None,  # default if not found
+                )
+
+                if prev_insp:
+                    meta = "timing from previous job"
+                    num_spr_days = prev_insp["number_of_spr_days"]
+                    num_days = prev_insp["number_of_fa_days"]
+                    num_fa_hours = prev_insp["fa_hours_actual"]
+                    num_spr_techs = prev_insp["number_of_spr_techs"]
+                    num_spr_hours = prev_insp["spr_hours_actual"]
+                    num_fa_techs = prev_insp["number_of_fa_techs"]
+                    if num_spr_hours > 0:
+                        num_spr_days = prev_insp["number_of_spr_days"]
+                    travel_time = prev_insp["travel_minutes_total"]
+                else:
+                    meta = "timing from tags. Month from scheduled job"
                     num_spr_days = 0
                     num_days, num_fa_hours = parse_fa_timing_tag(loc_id)
                     num_spr_techs, num_spr_hours = parse_spr_tag(loc_id)
@@ -1258,119 +1282,91 @@ def main():
                         num_spr_days = 1
                     travel_time = _travel_time_for_location(location_id=loc_id)
 
-                    # Scheduled job in future?
-                    params = {"locationId": str(loc_id), "page": 1, "limit": 500, 
-                            "scheduleDateFrom": datetime.now(timezone.utc).timestamp(), "scheduleDateTo": (datetime.now(timezone.utc) + timedelta(days=365)).timestamp(),
-                            "status": "scheduled",
-                            "type": "inspection"
-                    }
+                # Scheduled job in future?
+                params = {"locationId": str(loc_id), "page": 1, "limit": 500, 
+                        "scheduleDateFrom": datetime.now(timezone.utc).timestamp(), "scheduleDateTo": (datetime.now(timezone.utc) + timedelta(days=365)).timestamp(),
+                        "status": "scheduled",
+                        "type": "inspection"
+                }
 
-                    resp = call_service_trade_api("job", params=params)
-                    data = resp.get("data")
-                    jobs = data.get("jobs")
-                    job_id = None
-                    scheduled_for = None
-                    job_created_at = None
-                    confirmed = False
-                    if jobs is not None:
-                        scheduled_job_found = True
-                        meta = "timing from tags. Month from scheduled job"
-                        for job in jobs:
-                            job_id = job.get("id")
-                            scheduled_for = job.get("scheduledDate")
-                            job_created_at = job.get("created")
-                            month = scheduled_for
-
-                            appointments_iter = iter(stream_appointments_for_job(job_id))
-                            first_appt = next(appointments_iter, None)
-                            if first_appt is None:
-                                log.info("Job %s has no appointments; writing stub occurrence.", job_id)
-
-                                insert_vals = {
-                                    "location_name": location_name,
-                                    "job_id": job_id,
-                                    "location_id": loc_id,
-                                    "job_type": job_type,
-                                    "job_created_at": created_at,
-                                    "scheduled_for": scheduled_on,          # use job scheduledDate
-                                    "completed_at": completed_on,
-                                    "observed_month": scheduled_on,         # or completed_on if you prefer
-                                    "is_recurring": is_recurring,
-                                    "spr_hours_actual": 0,
-                                    "fa_hours_actual": 0,
-                                    "number_of_fa_days": 0,
-                                    "number_of_spr_days": 0,
-                                    "number_of_fa_techs": 0,
-                                    "number_of_spr_techs": 0,
-                                    "travel_minutes_per_appt": travel_time,
-                                    "travel_minutes_total": 0,
-                                    "status": status,
-                                    "is_confirmed": False,
-                                    "meta": "no appointments",
-                                    "location_on_hold": is_location_on_hold,
-                                }
-                                insert_vals_list.append(insert_vals)
-                                job_processed += 1
-                                skipped += 1
-                                continue
-                            else:
-                                appts_source = [first_appt]
-                                appts_source.extend(appointments_iter)
-                                
-                                for appt in appts_source:
-                                    confirmed = confirmed or appt.get("released", False)
-
-                            earliest_appt_ts = None
-                            
-                                
-
-                    if not scheduled_job_found:
-                        # Recurrences
-                        unique_rec = {}
-                        for rec in stream_recurrences_for_location(loc_id):
-                            if rec.get("endsOn") is None:
-                                unique_rec[rec["id"]] = rec
+                resp = call_service_trade_api("job", params=params)
+                data = resp.get("data")
+                jobs = data.get("jobs")
+                job_id = None
+                scheduled_for = None
+                job_created_at = None
+                confirmed = False
+                if jobs is not None:
+                    scheduled_job_found = True
                     
-                        for rec in unique_rec.values():
-                            if not is_relevant_annual_recurrence(rec):
-                                continue
+                    for job in jobs:
+                        job_id = job.get("id")
+                        scheduled_for = job.get("scheduledDate")
+                        job_created_at = job.get("created")
+                        month = scheduled_for
+
+                        appointments_iter = iter(stream_appointments_for_job(job_id))
+                        first_appt = next(appointments_iter, None)
+                        if first_appt is None:
+                            log.info("Job %s has no appointments; writing stub occurrence.", job_id)
+
+                            insert_vals = {
+                                "location_name": location_name,
+                                "job_id": job_id,
+                                "location_id": loc_id,
+                                "job_type": job_type,
+                                "job_created_at": created_at,
+                                "scheduled_for": scheduled_on,          # use job scheduledDate
+                                "completed_at": completed_on,
+                                "observed_month": scheduled_on,         # or completed_on if you prefer
+                                "is_recurring": is_recurring,
+                                "spr_hours_actual": 0,
+                                "fa_hours_actual": 0,
+                                "number_of_fa_days": 0,
+                                "number_of_spr_days": 0,
+                                "number_of_fa_techs": 0,
+                                "number_of_spr_techs": 0,
+                                "travel_minutes_per_appt": travel_time,
+                                "travel_minutes_total": 0,
+                                "status": status,
+                                "is_confirmed": confirmed,
+                                "meta": "no appointments",
+                                "location_on_hold": is_location_on_hold,
+                            }
+                            insert_vals_list.append(insert_vals)
+                            job_processed += 1
+                            skipped += 1
+                            continue
+                        else:
+                            appts_source = [first_appt]
+                            appts_source.extend(appointments_iter)
                             
-                            fs = rec.get("firstStart")
-                            
-                            if fs is not None:
-                                month = fs
-                            service_found = True
-                            meta = "timing from tags. Month from serviceRecurrence"
+                            for appt in appts_source:
+                                confirmed = confirmed or appt.get("released", False)
+
+                        earliest_appt_ts = None
                         
+                            
 
-                    if scheduled_job_found or service_found:
-                        insert_vals = {
-                            "location_name": location_name,
-                            "location_on_hold": is_location_on_hold,
-                            "job_id": job_id,
-                            "location_id": loc_id,
-                            "job_type": "inspection",
-                            "job_created_at": job_created_at,
-                            "scheduled_for": scheduled_for,
-                            "completed_at": None,
-                            "observed_month": month, # convert to first of month
-                            "is_recurring": True,
-                            "spr_hours_actual": num_spr_hours,
-                            "fa_hours_actual": num_fa_hours * num_fa_techs,
-                            "number_of_fa_days": num_days,
-                            "number_of_spr_days": num_spr_days,
-                            "number_of_fa_techs": num_fa_techs,
-                            "number_of_spr_techs": num_spr_techs,
-                            "travel_minutes_per_appt": travel_time,
-                            "travel_minutes_total": (travel_time * (num_fa_techs * num_days)) + (travel_time * num_spr_techs),
-                            "status": "new",
-                            "is_confirmed": confirmed,
-                            "meta": meta,
-                            "location_on_hold": is_location_on_hold
-                        }
-                        insert_vals_list.append(insert_vals)
-
-                # if nothing - give up!
+                if not scheduled_job_found:
+                    # Recurrences
+                    unique_rec = {}
+                    for rec in stream_recurrences_for_location(loc_id):
+                        if rec.get("endsOn") is None:
+                            unique_rec[rec["id"]] = rec
+                
+                    for rec in unique_rec.values():
+                        if not is_relevant_annual_recurrence(rec):
+                            continue
+                        
+                        fs = rec.get("firstStart")
+                        
+                        if fs is not None:
+                            month = fs
+                        service_found = True
+                        meta = "timing from tags. Month from serviceRecurrence"
+                    
+            
                 
                 if args.sleep:
                     time.sleep(args.sleep)

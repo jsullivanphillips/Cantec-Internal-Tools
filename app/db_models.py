@@ -178,10 +178,6 @@ class JobItemTechnician(db.Model):
     updated_at = db.Column(db.DateTime(timezone=True))
     created_on_st = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
-    __table_args__ = (
-        UniqueConstraint('job_item_id', name='uq_job_item_id'),
-    )
-
     def __repr__(self):
         return f"<JobItemTechnician {self.job_item_id} - {self.user_name} - {self.job_item_name}>"
 
@@ -622,6 +618,33 @@ class SchedulingCancelled(db.Model):
 
     def __repr__(self):
         return f"<SchedulingCancelled loc={self.location_id} month={self.observed_month}>"  
+
+
+class SchedulingAttackV2(db.Model):
+    __tablename__ = "scheduling_attack_v2"
+
+    id = db.Column(db.BigInteger, primary_key=True)
+
+    location_id = db.Column(db.BigInteger, nullable=False, index=True)
+
+    # Month anchor: first day of month at 00:00 UTC
+    month = db.Column(db.DateTime(timezone=True), nullable=False)
+
+    address = db.Column(db.String(255), nullable=False)
+
+    scheduled = db.Column(db.Boolean, default=False)
+    scheduled_date = db.Column(db.DateTime(timezone=True), nullable=True)
+    confirmed = db.Column(db.Boolean, default=False)
+    reached_out = db.Column(db.Boolean, default=False)
+    completed = db.Column(db.Boolean, default=False)
+    canceled = db.Column(db.Boolean, default=False)
+
+    notes = db.Column(db.String(1020), nullable=True)
+
+    __table_args__ = (
+        db.UniqueConstraint("location_id", name="uq_scheduling_attack_v2_location"),
+    )
+    
 
 
 class SchedulingReachedOut(db.Model):

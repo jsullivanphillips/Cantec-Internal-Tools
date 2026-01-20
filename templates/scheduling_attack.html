@@ -80,188 +80,110 @@
     </div>
 
 
-    <!-- === SCHEDULING ATTACK TAB (Scheduling Attack) === -->
     <div class="tab-pane fade show active" id="scheduling-status" role="tabpanel" aria-labelledby="status-tab" tabindex="0">
 
-      <!-- ========================= -->
-      <!-- PANE 1: Coverage + Confirmations -->
-      <!-- ========================= -->
       <div class="sa-card mb-3">
         <div class="card-header d-flex align-items-center">
-          <span>Forward Coverage &amp; Confirmations</span>
-          <span class="ms-auto small text-muted" id="sa-attack-updated"></span>
-        </div>
-        <div class="card-body">
-          <div class="sa-kpis" id="sa-attack-kpis" hidden>
-            <div class="sa-kpi">
-              <span class="value" id="sa-kpi-forward-coverage">0%</span>
-              <span class="label">Forward Schedule Coverage (next 6 weeks)</span>
-            </div>
-
-            <div class="sa-kpi">
-              <span class="value" id="sa-kpi-confirmed-pct">0%</span>
-              <span class="label">Job Confirmations (next 2 weeks)</span>
-            </div>
-
-            <div class="sa-kpi">
-              <span class="value" id="sa-kpi-confirmed-counts">0 / 0</span>
-              <span class="label">Confirmed / Total (next 2 weeks)</span>
-            </div>
-          </div>
-
-          <div class="text-muted small" id="sa-attack-hint">
-            This pane loads from your backend summary metrics.
-          </div>
-        </div>
-      </div>
-
-      <!-- ========================= -->
-      <!-- PANE 2: Monthly Outstanding (month selector inside pane) -->
-      <!-- ========================= -->
-      <div class="sa-card mb-3">
-        <div class="card-header d-flex align-items-center">
-          <span id="sa-outstanding-title">Outstanding Jobs</span>
-          <span class="ms-auto small text-muted" id="sa-outstanding-updated"></span>
+          <span id="sa-v2-title">Scheduling Attack</span>
+          <span class="ms-auto small text-muted" id="sa-v2-updated"></span>
         </div>
 
         <div class="card-body">
-          <!-- Month selector (inside this pane) -->
+          <!-- Month selector -->
           <div class="d-flex flex-wrap align-items-end gap-2 mb-3">
             <div>
-              <label for="sa-outstanding-month" class="form-label mb-1">Select Month</label>
-              <input type="month" id="sa-outstanding-month" class="form-control" aria-label="Choose month for outstanding jobs">
+              <label for="sa-v2-month" class="form-label mb-1">Select Month</label>
+              <input type="month" id="sa-v2-month" class="form-control" aria-label="Choose month for scheduling attack v2">
             </div>
 
             <div class="btn-group" role="group" aria-label="Month navigation">
-              <button class="btn btn-outline-secondary" id="sa-outstanding-prev" type="button">← Prev</button>
-              <button class="btn btn-outline-secondary" id="sa-outstanding-today" type="button">This Month</button>
-              <button class="btn btn-outline-secondary" id="sa-outstanding-next" type="button">Next →</button>
+              <button class="btn btn-outline-secondary" id="sa-v2-prev" type="button">← Prev</button>
+              <button class="btn btn-outline-secondary" id="sa-v2-this" type="button">This Month</button>
+              <button class="btn btn-outline-secondary" id="sa-v2-next" type="button">Next →</button>
             </div>
 
-            <button class="btn btn-primary ms-auto" id="sa-outstanding-load" type="button">
-              Load Outstanding
+            <button class="btn btn-primary ms-auto" id="sa-v2-load" type="button">
+              Load
             </button>
           </div>
 
-          <!-- KPIs -->
-          <div class="sa-kpis" id="sa-outstanding-kpis" hidden>
-            <div class="sa-kpi">
-              <span class="value" id="sa-out-total">0</span>
-              <span class="label">Total Jobs Needed (recurrence)</span>
+          <!-- Funnel -->
+          <div class="sa-card mt-3" id="sa-v2-funnel-card" hidden>
+            <div class="card-header d-flex align-items-center">
+              <span>Scheduling Funnel</span>
+              <span class="ms-auto small text-muted" id="sa-v2-funnel-subtitle"></span>
             </div>
 
-            <div class="sa-kpi">
-              <span class="value" id="sa-out-scheduled">0</span>
-              <span class="label">Scheduled</span>
-            </div>
+            <div class="card-body">
+              <div class="sa-v2-funnel" id="sa-v2-funnel">
+                <!-- arrows overlay -->
+                <svg class="sa-v2-arrows" id="sa-v2-arrows" aria-hidden="true"></svg>
 
-            <div class="sa-kpi">
-              <span class="value" id="sa-out-unscheduled">0</span>
-              <span class="label">Unscheduled</span>
-            </div>
+                <!-- Total -->
+                <div class="sa-v2-funnel-row sa-v2-funnel-total">
+                  <div class="sa-v2-funnel-box" id="sa-v2-box-total">
+                    <div class="k">Total Due</div>
+                    <div class="v" id="sa-v2-total">0</div>
+                  </div>
+                </div>
 
-            <div class="sa-kpi">
-              <span class="value" id="sa-out-cancelled">0</span>
-              <span class="label">Cancelled (manual)</span>
-            </div>
+                <!-- Split 1 -->
+                <div class="sa-v2-funnel-row sa-v2-funnel-split3">
+                  <div class="sa-v2-funnel-box" id="sa-v2-box-scheduled">
+                    <div class="k">Scheduled</div>
+                    <div class="v" id="sa-v2-scheduled">0</div>
+                    <div class="p"><div class="sa-v2-bar"><div id="sa-v2-bar-scheduled" class="sa-v2-bar-fill"></div></div></div>
+                  </div>
 
-            <div class="sa-kpi">
-              <span class="value" id="sa-out-confirmed">0</span>
-              <span class="label">Confirmed (of scheduled)</span>
-            </div>
+                  <div class="sa-v2-funnel-box" id="sa-v2-box-unscheduled">
+                    <div class="k">Unscheduled</div>
+                    <div class="v" id="sa-v2-unscheduled">0</div>
+                    <div class="p"><div class="sa-v2-bar"><div id="sa-v2-bar-unscheduled" class="sa-v2-bar-fill"></div></div></div>
+                  </div>
 
-            <div class="sa-kpi">
-              <span class="value" id="sa-out-unconfirmed">0</span>
-              <span class="label">Unconfirmed (of scheduled)</span>
+                  <div class="sa-v2-funnel-box" id="sa-v2-box-canceled">
+                    <div class="k">Canceled</div>
+                    <div class="v" id="sa-v2-canceled">0</div>
+                    <div class="p"><div class="sa-v2-bar"><div id="sa-v2-bar-canceled" class="sa-v2-bar-fill"></div></div></div>
+                  </div>
+                </div>
+
+                <!-- Split 2 (from Scheduled) -->
+                <div class="sa-v2-funnel-row sa-v2-funnel-split2">
+                  <div class="sa-v2-funnel-box" id="sa-v2-box-confirmed">
+                    <div class="k">Confirmed</div>
+                    <div class="v" id="sa-v2-confirmed">0</div>
+                    <div class="p"><div class="sa-v2-bar"><div id="sa-v2-bar-confirmed" class="sa-v2-bar-fill"></div></div></div>
+                  </div>
+
+                  <div class="sa-v2-funnel-box" id="sa-v2-box-unconfirmed">
+                    <div class="k">Unconfirmed</div>
+                    <div class="v" id="sa-v2-unconfirmed">0</div>
+                    <div class="p"><div class="sa-v2-bar"><div id="sa-v2-bar-unconfirmed" class="sa-v2-bar-fill"></div></div></div>
+                  </div>
+                </div>
+
+                <!-- Split 3 (from Unconfirmed) -->
+                <div class="sa-v2-funnel-row sa-v2-funnel-split2">
+                  <div class="sa-v2-funnel-box" id="sa-v2-box-reached-out">
+                    <div class="k">Reached Out</div>
+                    <div class="v" id="sa-v2-reached-out">0</div>
+                    <div class="p"><div class="sa-v2-bar"><div id="sa-v2-bar-reached-out" class="sa-v2-bar-fill"></div></div></div>
+                  </div>
+
+                  <div class="sa-v2-funnel-box" id="sa-v2-box-to-be-reached-out">
+                    <div class="k">To Be Reached Out</div>
+                    <div class="v" id="sa-v2-to-be-reached-out">0</div>
+                    <div class="p"><div class="sa-v2-bar"><div id="sa-v2-bar-to-be-reached-out" class="sa-v2-bar-fill"></div></div></div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-
-          <!-- Unconfirmed scheduled jobs (action: Reached Out) -->
-          <div class="mt-3">
-            <h3 class="h6 mb-2">Unconfirmed Scheduled Jobs</h3>
-            <div class="sa-table-wrapper">
-              <table class="sa-table" aria-describedby="sa-outstanding-title">
-                <thead>
-                  <tr>
-                    <th scope="col">Address</th>
-                    <th scope="col">Scheduled For</th>
-                    <th scope="col">Reached Out?</th>
-                    <th scope="col" style="width: 210px;">Action</th>
-                  </tr>
-                </thead>
-                <tbody id="sa-out-unconfirmed-tbody">
-                  <!-- Filled by JS -->
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <!-- Unscheduled jobs (action: Cancelled) -->
-          <div class="mt-4">
-            <h3 class="h6 mb-2">Unscheduled Jobs</h3>
-            <div class="text-muted small mb-2">
-              Since the backend can’t inherently know “cancelled”, you can mark unscheduled jobs as cancelled here and it will persist.
-            </div>
-            <div class="sa-table-wrapper">
-              <table class="sa-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Address</th>
-                    <th scope="col">Cancelled?</th>
-                    <th scope="col" style="width: 210px;">Action</th>
-                  </tr>
-                </thead>
-                <tbody id="sa-out-unscheduled-tbody">
-                  <!-- Filled by JS -->
-                </tbody>
-              </table>
-            </div>
-          </div>
         </div>
-
-        <div class="card-footer">
-          <small class="text-muted">
-            “Address” is used as the identifier for unconfirmed scheduled jobs.
-          </small>
-        </div>
-      </div>
-
-      <!-- ========================= -->
-      <!-- PANE 3: Weekly Scheduling Volume (past 6 weeks) -->
-      <!-- ========================= -->
-      <div class="sa-card">
-        <div class="card-header d-flex align-items-center">
-          <span>Weekly Scheduling Volume (past 6 weeks)</span>
-          <span class="ms-auto small text-muted" id="sa-volume-updated"></span>
-        </div>
-        <div class="card-body">
-          <div class="mt-2">
-            <canvas id="saVolumeChart" class="sa-chart" aria-label="Scheduling Volume for the Past 6 Weeks" role="img"></canvas>
-          </div>
-
-          <div class="sa-table-wrapper mt-3">
-            <table class="sa-table">
-              <thead>
-                <tr>
-                  <th scope="col">Date</th>
-                  <th scope="col">Scheduled</th>
-                  <th scope="col">Released</th>
-                </tr>
-              </thead>
-              <tbody id="sa-volume-tbody">
-                <!-- Filled by JS -->
-              </tbody>
-            </table>
-          </div>
-        </div>
-        <div class="card-footer">
-          <small class="text-muted">
-            Two lines: jobs scheduled per day, and jobs released per day.
-          </small>
-        </div>
-      </div>
-
+      </div>  
     </div>
+
 
 
     <!-- === SCHEDULING EFFICIENCY TAB (new) === -->
