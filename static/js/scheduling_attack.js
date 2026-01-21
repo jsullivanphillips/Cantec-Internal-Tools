@@ -30,6 +30,9 @@ const SchedulingAttack = (() => {
       // If status tab is default active, load immediately
       const v2Month = document.getElementById("sa-v2-month");
       if (v2Month?.value) loadSchedulingAttackV2ForMonth(v2Month.value);
+
+      loadSchedulingAttackV2Metrics();
+      loadScheduledThisWeekMetric();
     }
 
     function debounce(fn, ms) {
@@ -260,6 +263,44 @@ const SchedulingAttack = (() => {
     if (input && !input.value) setMonth(new Date());
   }
 
+  async function loadSchedulingAttackV2Metrics() {
+    const url = `/scheduling_attack/v2/kpis`;
+    document.getElementById("sa-v2-kpi-confirmed-pct").innerHTML = `
+      <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Loading...</span>
+      </div>
+    `;
+    try {
+      const r = await fetch(url, { headers: { "Accept": "application/json" } });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      renderSchedulingAttackV2Metrics(data);
+    } catch (err) {
+      console.error("Failed to load SchedulingAttackV2Kpis", err);
+      const percentConfirmedEl = document.getElementById("sa-v2-kpi-confirmed-pct");
+      if (percentConfirmedEl) percentConfirmedEl.textContent = "Failed to load metrics"
+    }
+  }
+
+  async function loadScheduledThisWeekMetric() {
+    const url = `/scheduling_attack/v2/scheduled_this_week`;
+    document.getElementById("sa-v2-kpi-scheduled-this-week").innerHTML = `
+      <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Loading...</span>
+      </div>
+    `;
+    try {
+      const r = await fetch(url, { headers: { "Accept": "application/json" } });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      renderJobsScheduledThisWeek(data);
+    } catch (err) {
+      console.error("Failed to load SchedulingAttackV2Kpis", err);
+      const scheduledThisWeekEl = document.getElementById("sa-v2-kpi-scheduled-this-week");
+      if (scheduledThisWeekEl) scheduledThisWeekEl.textContent = "Failed to load metrics"
+    }
+  }
+
   async function loadSchedulingAttackV2ForMonth(monthStr) {
     if (!monthStr) return;
     const url = `/scheduling_attack/v2?month=${encodeURIComponent(monthStr)}`;
@@ -278,6 +319,51 @@ const SchedulingAttack = (() => {
       if (updatedEl) updatedEl.textContent = new Date().toISOString();
       if (funnelCard) funnelCard.hidden = true;
     }
+  }
+
+
+  function renderJobsScheduledThisWeek(data) {
+    const scheduled_this_week = data.scheduled_this_week;
+
+    const scheduledThisWeekEl = document.getElementById("sa-v2-kpi-scheduled-this-week");
+    const scheduledThisWeekCard = document.getElementById("scheduled-this-week-card");
+    
+    if (scheduledThisWeekEl) scheduledThisWeekEl.textContent = `${scheduled_this_week}`;
+
+    // Scheduled this week KPI colouring
+    if (parseInt(data.scheduled_this_week) >= 30) {
+      scheduledThisWeekEl.style.color = "#27a532";
+      scheduledThisWeekCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(229, 248, 225))";
+      scheduledThisWeekCard.style.borderTop = "5px solid #27a532";
+    } else {
+      scheduledThisWeekEl.style.color = "#b92525";
+      scheduledThisWeekCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(248, 225, 227))";
+      scheduledThisWeekCard.style.borderTop = "5px solid #b92525";
+    }
+
+  }
+
+  function renderSchedulingAttackV2Metrics(data) {
+    const confirmed_pct = data.confirmed_pct;
+    
+    const percentConfirmedEl = document.getElementById("sa-v2-kpi-confirmed-pct");
+    const percentConfirmedCard = document.getElementById("next-2-weeks-confirmation-card");
+
+    if (percentConfirmedEl) percentConfirmedEl.textContent = `${confirmed_pct} %`;
+    
+    // Confirmation KPI colouring
+    if (parseInt(data.confirmed_pct) >= 90) {
+      percentConfirmedEl.style.color = "#27a532";
+      percentConfirmedCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(229, 248, 225))";
+      percentConfirmedCard.style.borderTop = "5px solid #27a532";
+    } else {
+      percentConfirmedEl.style.color = "#b92525";
+      percentConfirmedCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(248, 225, 227))";
+      percentConfirmedCard.style.borderTop = "5px solid #b92525";
+    }
+
+    
+
   }
 
   function renderSchedulingAttackV2(data) {
@@ -316,14 +402,24 @@ const SchedulingAttack = (() => {
     // --- render counts ---
     setText("sa-v2-total", total);
     setText("sa-v2-scheduled", scheduledRows.length);
+    setSuccess("sa-v2-box-scheduled", scheduledRows.length, total, 90, true)
+
     setText("sa-v2-unscheduled", unscheduledRows.length);
+    setSuccess("sa-v2-box-unscheduled", unscheduledRows.length, total, 10, false)
+
     setText("sa-v2-canceled", canceledRows.length);
 
     setText("sa-v2-confirmed", confirmedRows.length);
+    setSuccess("sa-v2-box-confirmed", confirmedRows.length, scheduledRows.length, 90, true)
+
     setText("sa-v2-unconfirmed", unconfirmedRows.length);
+    setSuccess("sa-v2-box-unconfirmed", unconfirmedRows.length, scheduledRows.length, 10, false)
 
     setText("sa-v2-reached-out", reachedOutRows.length);
+    setSuccess("sa-v2-box-reached-out", reachedOutRows.length, unconfirmedRows.length, 90, true)
+
     setText("sa-v2-to-be-reached-out", toBeReachedOutRows.length);
+    setSuccess("sa-v2-box-to-be-reached-out", toBeReachedOutRows.length, unconfirmedRows.length, 10, false)
 
     // --- render bar widths (percent of their parent stage) ---
     // Top split bars as % of TOTAL
@@ -358,6 +454,27 @@ const SchedulingAttack = (() => {
     function setText(id, v) {
       const el = document.getElementById(id);
       if (el) el.textContent = (typeof v === "number" ? v.toLocaleString() : String(v ?? ""));
+    }
+
+    function setSuccess(id, value, total, goal, greater_than) {
+      const el = document.getElementById(id);
+      const pct_of_total = (value / total) * 100;
+
+      if (greater_than){
+        if (parseInt(pct_of_total) >= goal) {
+          el.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(229, 248, 225))";
+        } else {
+          el.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(248, 225, 227))";
+        }
+      } 
+      else 
+      {
+        if (parseInt(pct_of_total) <= goal) {
+          el.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(229, 248, 225))";
+        } else {
+          el.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(248, 225, 227))";
+        }
+      }
     }
 
     function setBarPct(id, pct) {
@@ -738,6 +855,8 @@ const SchedulingAttack = (() => {
     if (ev.target?.id === "status-tab") {
       const v2Month = document.getElementById("sa-v2-month");
       if (v2Month?.value) loadSchedulingAttackV2ForMonth(v2Month.value);
+      loadSchedulingAttackV2Metrics()
+      loadScheduledThisWeekMetric()
     }
 
     if (ev.target?.id === "efficiency-tab") {

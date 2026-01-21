@@ -7,10 +7,11 @@ from dateutil.relativedelta import relativedelta
 from zoneinfo import ZoneInfo  # Python 3.9+
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy import or_, func, cast, Float, case
-from app.db_models import db, ServiceOccurrence, Location, ServiceRecurrence, SchedulingAttackV2
+from app.db_models import db, ServiceOccurrence, Location, ServiceRecurrence, SchedulingAttackV2, JobsSchedulingState, WeeklySchedulingStats
 from tqdm import tqdm 
 from collections import Counter
 from collections import defaultdict
+from app.services.scheduling_diff import BaselineState, compute_scheduling_diffs
 import calendar
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -1780,6 +1781,147 @@ def scheduling_attack_v2_for_month():
             "rows": payload_rows,
         }
     ), 200
+
+
+def fetch_all_jobs_paginated(base_params: dict) -> list[dict]:
+    jobs: list[dict] = []
+    authenticate()
+    page = 1
+    while True:
+        params = dict(base_params)
+        params["page"] = page  # ServiceTrade pagination
+
+        resp = call_service_trade_api("job", params=params)
+        data = resp.get("data", {}) or {}
+
+        page_jobs = data.get("jobs", []) or []
+        jobs.extend(page_jobs)
+
+        total_pages = int(data.get("totalPages") or 1)
+        current_page = int(data.get("page") or page)
+
+        if current_page >= total_pages:
+            break
+
+        page += 1
+
+    return jobs
+
+def _parse_scheduled_date(job: dict):
+    raw = job.get("scheduledDate") or job.get("scheduledOn") or job.get("scheduled_date")
+    if not raw:
+        return None
+
+    if isinstance(raw, (int, float)):
+        return datetime.fromtimestamp(raw, tz=timezone.utc)
+
+    if isinstance(raw, str):
+        s = raw.strip()
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        try:
+            dt = datetime.fromisoformat(s)
+        except ValueError:
+            return None
+        return dt.astimezone(timezone.utc) if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+    return None
+
+
+@scheduling_attack_bp.get("/scheduling_attack/v2/scheduled_this_week")
+def jobs_scheduled_this_week():
+    now = datetime.now(timezone.utc)
+
+    # Load baseline from DB
+    baseline_rows = db.session.query(JobsSchedulingState).all()
+    baseline_by_id = {
+        r.job_id: BaselineState(job_id=r.job_id, scheduled_date=r.scheduled_date)
+        for r in baseline_rows
+    }
+
+    # Fetch live from ServiceTrade (same 2-query merge you already built)
+    tomorrow = now + timedelta(days=1)
+
+    scheduled_jobs = fetch_all_jobs_paginated({
+        "limit": 1000,
+        "type": "inspection",
+        "status": "scheduled",
+        "scheduleDateFrom": int(tomorrow.timestamp()),
+    })
+
+    unscheduled_jobs = fetch_all_jobs_paginated({
+        "limit": 1000,
+        "type": "inspection",
+        "status": "new",
+    })
+
+    jobs_by_id = {}
+    for j in scheduled_jobs:
+        if j.get("id"):
+            jobs_by_id[j["id"]] = j
+    for j in unscheduled_jobs:
+        if j.get("id") and j["id"] not in jobs_by_id:
+            jobs_by_id[j["id"]] = j
+
+    all_jobs = list(jobs_by_id.values())
+
+    # Normalize for diff function
+    live_jobs_normalized = [
+        {"id": j["id"], "scheduled_date": _parse_scheduled_date(j)}
+        for j in all_jobs
+        if j.get("id")
+    ]
+
+    scheduled_count, rescheduled_count = compute_scheduling_diffs(
+        baseline_by_id=baseline_by_id,
+        live_jobs=live_jobs_normalized,
+    )
+
+    return jsonify({
+        "scheduled_this_week": scheduled_count,
+        "rescheduled_this_week": rescheduled_count,
+        "baseline_size": len(baseline_by_id),
+        "live_size": len(live_jobs_normalized),
+        "generated_at": now.isoformat(),
+    }), 200
+
+
+
+@scheduling_attack_bp.get("/scheduling_attack/v2/kpis")
+def scheduling_attack_v2_kpis():
+    now = datetime.now(timezone.utc)
+    two_weeks_out = now + timedelta(weeks=2)
+
+    # ------------------------------------------------------------
+    # KPI 1: % confirmed (next 2 weeks)
+    # ------------------------------------------------------------
+    rows = (
+        db.session.query(SchedulingAttackV2)
+        .filter(SchedulingAttackV2.scheduled.is_(True))
+        .filter(SchedulingAttackV2.canceled.is_(False))
+        .filter(SchedulingAttackV2.scheduled_date.isnot(None))
+        .filter(SchedulingAttackV2.scheduled_date >= now)
+        .filter(SchedulingAttackV2.scheduled_date < two_weeks_out)
+        .all()
+    )
+
+    total_scheduled = len(rows)
+    confirmed_count = sum(1 for r in rows if r.confirmed)
+
+    percent_confirmed = (
+        round((confirmed_count / total_scheduled) * 100, 1)
+        if total_scheduled > 0
+        else 0.0
+    )
+
+    # ------------------------------------------------------------
+    # Payload
+    # ------------------------------------------------------------
+    payload = {
+        "confirmed_pct": percent_confirmed,
+    }
+
+    return jsonify(payload), 200
 
 
 @scheduling_attack_bp.post("/scheduling_attack/v2/reached_out")

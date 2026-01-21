@@ -693,6 +693,43 @@ class SchedulingReachedOut(db.Model):
 
 
 
+class JobsSchedulingState(db.Model):
+    __tablename__ = "jobs_scheduling_state"
+
+    job_id = db.Column(db.BigInteger, nullable=False, primary_key=True)
+
+    scheduled_date = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    last_seen_at = db.Column(db.DateTime(timezone=True), nullable=False)
+
+    job_type = db.Column(db.String(255), nullable=False)
+
+
+
+class WeeklySchedulingStats(db.Model):
+    __tablename__ = "weekly_scheduling_stats"
+
+    id = db.Column(db.BigInteger, primary_key=True)
+
+    period_start = db.Column(db.DateTime(timezone=True), nullable=False)
+    period_end = db.Column(db.DateTime(timezone=True), nullable=False)
+    
+    job_type = db.Column(db.String(255), nullable=False)
+
+    scheduled_count = db.Column(db.Integer)
+    rescheduled_count = db.Column(db.Integer)
+
+    generated_at = db.Column(db.DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "period_start",
+            "period_end",
+            "job_type",
+            name="uq_weekly_scheduling_stats_period_type",
+        ),
+    )
+
 
 if __name__ == '__main__':
     from app import create_app

@@ -82,6 +82,38 @@
 
     <div class="tab-pane fade show active" id="scheduling-status" role="tabpanel" aria-labelledby="status-tab" tabindex="0">
       <div class="card-body">
+        <!-- KPIs -->
+        <div class="row g-3 mb-3">
+          <!-- KPI 1 -->
+          <div class="col-12 col-md-4">
+            <div class="border rounded-3 p-3 h-100" id="next-2-weeks-confirmation-card">
+              <div class="small text-muted">Next 2 Weeks Confirmed</div>
+              <div class="fs-3 fw-semibold" id="sa-v2-kpi-confirmed-pct">—%</div>
+              <div class="small text-muted mt-1">Target: > 90%</div>
+            </div>
+          </div>
+
+          <!-- KPI 2 -->
+          <div class="col-12 col-md-4">
+            <div class="border rounded-3 p-3 h-100" id="scheduled-this-week-card">
+              <div class="small text-muted">Scheduling Volume this Week</div>
+              <div class="fs-3 fw-semibold" id="sa-v2-kpi-scheduled-this-week">—</div>
+              <div class="small text-muted mt-1">Target: > 30</div>
+              <div class="text-xs text-muted mt-1">Inspections only</div>
+            </div>
+          </div>
+
+          <!-- KPI 3 -->
+          <div class="col-12 col-md-4">
+            <div class="border rounded-3 p-3 h-100">
+              <div class="small text-muted">Unconfirmed Scheduled</div>
+              <div class="fs-3 fw-semibold" id="sa-v2-kpi-unconfirmed">—</div>
+              <div class="small text-muted mt-1">Needs confirmation</div>
+            </div>
+          </div>
+        </div>
+        <!-- End of KPIs -->
+
         <!-- Month selector -->
         <div class="d-flex flex-wrap align-items-end gap-2 mb-3">
           <div>
@@ -172,6 +204,7 @@
               </div>
             </div>
           </div>
+          <div class="small text-muted mt-1">Each levels target is to have 90% of the jobs from the previous level in the confirmed/scheduled/reached-out buckets</div>
         </div>
         <!-- End of funnel -->
 

@@ -28,6 +28,11 @@ body {
   color: #212529;
 }
 
+.text-xs {
+  font-size: 0.75rem;
+}
+
+
 .badge-gold {
   background-color: #f6c343;
   color: #212529;

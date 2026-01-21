@@ -31,7 +31,7 @@ REQUIRED_KEYS = {
     "notes",
 }
 
-BOOL_KEYS = {"scheduled", "confirmed", "reached_out", "completed", "canceled"}
+BOOL_KEYS = {"scheduled", "confirmed", "completed", "canceled"}
 
 
 #region Service Trade Helpers
@@ -90,7 +90,6 @@ def get_location_ids_to_process_for_month(month_str: str, max_locations: int | N
         yield int(loc_id)
 
 
-
 def normalized_service_month(first_start_ts: int, now: datetime | None = None) -> datetime:
     """
     Returns a month anchor (1st day 00:00) that is always >= start of previous month,
@@ -110,6 +109,7 @@ def normalized_service_month(first_start_ts: int, now: datetime | None = None) -
         month_anchor += relativedelta(years=1)
 
     return month_anchor
+
 
 def is_relevant_annual_recurrence(rec: dict) -> bool:
     if rec.get("frequency") != "yearly" or int(rec.get("interval", 0)) != 1:
@@ -153,6 +153,10 @@ def upsert_into_database(location_values: dict) -> SchedulingAttackV2:
     notes = location_values["notes"]
     if notes is not None and not isinstance(notes, str):
         raise TypeError("location_values['notes'] must be str or None")
+    
+    reached_out = location_values["reached_out"]
+    if reached_out is not None and not isinstance(reached_out, bool):
+        raise TypeError("location_values['reached_out'] must be bool or None")
 
     # ---- upsert by location_id ----
     row = (
@@ -181,14 +185,23 @@ def upsert_into_database(location_values: dict) -> SchedulingAttackV2:
         row.scheduled = location_values["scheduled"]
         row.scheduled_date = location_values["scheduled_date"]
         row.confirmed = location_values["confirmed"]
-        row.reached_out = location_values["reached_out"]
         row.completed = location_values["completed"]
         row.canceled = location_values["canceled"]
-        row.notes = notes
+
+        # Preserve manually-set fields
+        if location_values["reached_out"] is not None:
+            row.reached_out = location_values["reached_out"]
+
+        if notes and notes.strip():
+            row.notes = notes.strip()
 
     db.session.commit()
     return row
 
+
+def test_forward_schedule_coverage():
+    # Find the first non weekend and non holiday with less than 60% of technicians booked on an inspection
+    pass
 
 def main():
     # Program updates scheduling_attack_v2 table. There are X update scenarios for a location
@@ -210,6 +223,7 @@ def main():
         if not username or not password:
             raise SystemExit("Missing PROCESSING_USERNAME/PROCESSING_PASSWORD environment vars.")
         authenticate(username, password)
+
 
         # Fetch location_ids to process
         if args.location_id:
@@ -237,16 +251,16 @@ def main():
             for location_id in pbar:
                 # Step 0: Prepare values and validate location
                 location_values = {
-                    "location_id": None,   # Step 0
-                    "address": "",         # Step 0
-                    "month": datetime,     # Step 1
-                    "scheduled": False,    # Step 2
-                    "scheduled_date": None,# Step 2
-                    "confirmed": False,    # Step 3
-                    "reached_out": False,  # Manual Insertion
-                    "completed": False,    # Step 3
+                    "location_id": None,   
+                    "address": "",         
+                    "month": datetime,     
+                    "scheduled": False,    
+                    "scheduled_date": None,
+                    "confirmed": False,    
+                    "reached_out": None,  # Manual Insertion
+                    "completed": False,    
                     "canceled": False,
-                    "notes": ""            # Manual Insertion
+                    "notes": None            # Manual Insertion
                 }
 
                 # Fetch location resource from ServiceTrade
@@ -273,6 +287,7 @@ def main():
                         [t.get("name") for t in tags if t.get("name") in SKIP_TAGS],
                     )
                     continue
+
                 # Save address
                 location_values["address"] = location_data.get("address").get("street")
                 location_values["location_id"] = location_id
@@ -350,7 +365,7 @@ def main():
                         }
                     canceled_inspection_jobs_response = call_service_trade_api("job", params=params)
                     canceled_inspection_jobs = canceled_inspection_jobs_response.get("data", {}).get("jobs", [])
-                    if canceled_inspection_jobs is None:
+                    if len(canceled_inspection_jobs) == 0:
                         # No canceled job was found. Maybe there is an inspection job scheduled for this location
                         # but it is simply not in our range window. Check if there is a scheduled job for this location
                         # ahead of today.
@@ -481,7 +496,7 @@ def main():
                     upsert_into_database(location_values)
 
 
-            
+        
         print("skipped: ", skipped)
         print("errors: ", errors)
         
