@@ -1448,6 +1448,274 @@ def scheduled_jobs_metrics():
         "generated_at": datetime.now(timezone.utc).isoformat(),
     })
 
+def compute_week_unavailable_hours_from_jobs(
+    scheduled_jobs: list[dict],
+    *,
+    week_start_local: datetime,
+    week_end_local: datetime,
+) -> float:
+    """
+    For the requested week window, sum 'unavailable' hours coming from
+    completed jobs whose type is administrative/unknown.
+
+    Uses the same logic as forward coverage:
+      - appointment window duration (hours) * number of techs on appt
+      - ServiceTrade appointment windowStart/windowEnd are unix seconds (UTC)
+      - clip appointment overlap to the requested week window
+    """
+    if week_start_local.tzinfo is None or week_end_local.tzinfo is None:
+        raise ValueError("week_start_local/week_end_local must be tz-aware")
+    if week_end_local <= week_start_local:
+        return 0.0
+
+    # Do all overlap math in UTC for consistency
+    week_start_utc = week_start_local.astimezone(timezone.utc)
+    week_end_utc = week_end_local.astimezone(timezone.utc)
+
+    unavailable = 0.0
+
+    for job in scheduled_jobs or []:
+        job_type = (job.get("type") or "").strip()
+        if job_type not in ("administrative", "unknown"):
+            continue
+
+        for appt in (job.get("appointments") or []):
+            start_ts = appt.get("windowStart")
+            end_ts = appt.get("windowEnd")
+            if not start_ts or not end_ts:
+                continue
+
+            techs = appt.get("techs") or []
+            num_techs = len(techs)
+            if num_techs <= 0:
+                continue
+
+            start_utc = datetime.fromtimestamp(start_ts, tz=timezone.utc)
+            end_utc = datetime.fromtimestamp(end_ts, tz=timezone.utc)
+            if end_utc <= start_utc:
+                continue
+
+            # Clip appt window to this week window
+            effective_start = max(start_utc, week_start_utc)
+            effective_end = min(end_utc, week_end_utc)
+            if effective_end <= effective_start:
+                continue
+
+            hours = (effective_end - effective_start).total_seconds() / 3600.0
+            unavailable += hours * num_techs
+
+    return unavailable
+
+def _iter_local_days(start_local: datetime, end_local: datetime):
+    """
+    Yields (day_start_local, day_end_local) for each local day overlapping [start_local, end_local).
+    """
+    day = start_local.replace(hour=0, minute=0, second=0, microsecond=0)
+    while day < end_local:
+        next_day = day + timedelta(days=1)
+        yield day, next_day
+        day = next_day
+
+def _compute_week_absence_hours_for_window(
+    absences_data: list[dict],
+    *,
+    window_start_local: datetime,
+    window_end_local: datetime,
+    days_per_week_capacity: int = 5,   # Mon-Fri only
+    max_hours_per_day: float = 8.0,
+) -> float:
+    """
+    Compute total absence hours within [window_start_local, window_end_local),
+    counting only weekdays, capping to max_hours_per_day per person per day.
+    """
+    if window_start_local.tzinfo is None or window_end_local.tzinfo is None:
+        raise ValueError("window_start_local/window_end_local must be tz-aware")
+    if window_end_local <= window_start_local:
+        return 0.0
+
+    total = 0.0
+
+    for a in absences_data or []:
+        start_ts = a.get("windowStart")
+        end_ts = a.get("windowEnd")
+        user = a.get("user") or {}
+        user_id = user.get("id")
+
+        if not start_ts or not end_ts or not user_id:
+            continue
+
+        start_utc = datetime.fromtimestamp(start_ts, tz=timezone.utc)
+        end_utc = datetime.fromtimestamp(end_ts, tz=timezone.utc)
+        if end_utc <= start_utc:
+            continue
+
+        start_local = start_utc.astimezone(LOCAL_TZ)
+        end_local = end_utc.astimezone(LOCAL_TZ)
+
+        # Clip absence window to the requested week window
+        clipped_start = max(start_local, window_start_local)
+        clipped_end = min(end_local, window_end_local)
+        if clipped_end <= clipped_start:
+            continue
+
+        # Sum per-day overlaps (weekday only) with 8h/day cap
+        for day_start, day_end in _iter_local_days(clipped_start, clipped_end):
+            if day_start.weekday() >= days_per_week_capacity:
+                continue
+
+            overlap_start = max(clipped_start, day_start)
+            overlap_end = min(clipped_end, day_end)
+            if overlap_end <= overlap_start:
+                continue
+
+            hours = (overlap_end - overlap_start).total_seconds() / 3600.0
+            total += min(max_hours_per_day, max(0.0, hours))
+
+    return total
+
+def _date_key(dt_local: datetime) -> str:
+    return dt_local.date().isoformat()
+
+def compute_unavailable_hours_by_date_from_jobs(
+    completed_jobs: list[dict],
+    *,
+    week_start_local: datetime,
+    week_end_local: datetime,
+) -> dict[str, float]:
+    """
+    For completed jobs in the week window, compute per-day 'unavailable' hours
+    from job types administrative/unknown.
+
+    Matches forward-coverage hour math:
+      hours = appt_duration_hours * num_techs
+
+    Returns: { "YYYY-MM-DD": hours }
+    Only returns Mon–Fri days (capacity model).
+    """
+    if week_start_local.tzinfo is None or week_end_local.tzinfo is None:
+        raise ValueError("week_start_local/week_end_local must be tz-aware")
+    if week_end_local <= week_start_local:
+        return {}
+
+    week_start_utc = week_start_local.astimezone(timezone.utc)
+    week_end_utc = week_end_local.astimezone(timezone.utc)
+
+    by_date = defaultdict(float)
+
+    for job in completed_jobs or []:
+        job_type = (job.get("type") or "").strip()
+        if job_type not in ("administrative", "unknown"):
+            continue
+
+        for appt in (job.get("appointments") or []):
+            start_ts = appt.get("windowStart")
+            end_ts = appt.get("windowEnd")
+            if not start_ts or not end_ts:
+                continue
+
+            techs = appt.get("techs") or []
+            num_techs = len(techs)
+            if num_techs <= 0:
+                continue
+
+            start_utc = datetime.fromtimestamp(start_ts, tz=timezone.utc)
+            end_utc = datetime.fromtimestamp(end_ts, tz=timezone.utc)
+            if end_utc <= start_utc:
+                continue
+
+            # Clip appointment to week window
+            clipped_start_utc = max(start_utc, week_start_utc)
+            clipped_end_utc = min(end_utc, week_end_utc)
+            if clipped_end_utc <= clipped_start_utc:
+                continue
+
+            # Walk each local day overlapped by this clipped interval
+            clipped_start_local = clipped_start_utc.astimezone(LOCAL_TZ)
+            clipped_end_local = clipped_end_utc.astimezone(LOCAL_TZ)
+
+            day = clipped_start_local.replace(hour=0, minute=0, second=0, microsecond=0)
+            while day < clipped_end_local:
+                next_day = day + timedelta(days=1)
+
+                # weekday only (Mon-Fri)
+                if day.weekday() < 5:
+                    overlap_start = max(clipped_start_local, day)
+                    overlap_end = min(clipped_end_local, next_day)
+
+                    if overlap_end > overlap_start:
+                        hours = (overlap_end - overlap_start).total_seconds() / 3600.0
+                        by_date[_date_key(day)] += hours * num_techs
+
+                day = next_day
+
+    return dict(by_date)
+
+def compute_absent_hours_by_date_for_window(
+    absences_data: list[dict],
+    *,
+    window_start_local: datetime,
+    window_end_local: datetime,
+    max_hours_per_day: float = 8.0,
+) -> dict[str, float]:
+    """
+    Per-day absence hours in [window_start_local, window_end_local),
+    Mon–Fri only, capped at 8h per person per day.
+
+    Returns: { "YYYY-MM-DD": hours }
+    """
+    if window_start_local.tzinfo is None or window_end_local.tzinfo is None:
+        raise ValueError("window_start_local/window_end_local must be tz-aware")
+    if window_end_local <= window_start_local:
+        return {}
+
+    # Cap is per person per day, so track (user_id, date) before summing
+    per_user_day = defaultdict(float)
+
+    for a in absences_data or []:
+        start_ts = a.get("windowStart")
+        end_ts = a.get("windowEnd")
+        user = a.get("user") or {}
+        user_id = user.get("id")
+
+        if not start_ts or not end_ts or not user_id:
+            continue
+
+        start_utc = datetime.fromtimestamp(start_ts, tz=timezone.utc)
+        end_utc = datetime.fromtimestamp(end_ts, tz=timezone.utc)
+        if end_utc <= start_utc:
+            continue
+
+        start_local = start_utc.astimezone(LOCAL_TZ)
+        end_local = end_utc.astimezone(LOCAL_TZ)
+
+        # Clip to the requested week window
+        clipped_start = max(start_local, window_start_local)
+        clipped_end = min(end_local, window_end_local)
+        if clipped_end <= clipped_start:
+            continue
+
+        # Walk days
+        day = clipped_start.replace(hour=0, minute=0, second=0, microsecond=0)
+        while day < clipped_end:
+            next_day = day + timedelta(days=1)
+
+            if day.weekday() < 5:
+                overlap_start = max(clipped_start, day)
+                overlap_end = min(clipped_end, next_day)
+                if overlap_end > overlap_start:
+                    hours = (overlap_end - overlap_start).total_seconds() / 3600.0
+                    key = (int(user_id), _date_key(day))
+                    per_user_day[key] += hours
+
+            day = next_day
+
+    # Apply 8h/day/person cap, then sum per date
+    by_date = defaultdict(float)
+    for (_, date_key), hours in per_user_day.items():
+        by_date[date_key] += min(max_hours_per_day, max(0.0, hours))
+
+    return dict(by_date)
+
 
 @scheduling_attack_bp.route("/scheduling_attack/efficiency", methods=["GET"])
 def scheduling_efficiency():
@@ -1457,75 +1725,46 @@ def scheduling_efficiency():
     if not week_start:
         return {"error": "Missing week_start (YYYY-MM-DD)"}, 400
 
-    tz = ZoneInfo("America/Vancouver")
-
     try:
-        # Local midnight Monday
-        start_local = datetime.strptime(week_start, "%Y-%m-%d").replace(tzinfo=tz)
+        start_local = datetime.strptime(week_start, "%Y-%m-%d").replace(tzinfo=LOCAL_TZ)
     except ValueError:
         return {"error": "Invalid week_start format. Expected YYYY-MM-DD."}, 400
 
     end_local = start_local + timedelta(days=7)
 
-    week_start_dt = start_local
-    week_end_dt = end_local
+    schedule_date_from = int(start_local.astimezone(timezone.utc).timestamp())
+    schedule_date_to = int(end_local.astimezone(timezone.utc).timestamp())
 
-    # ServiceTrade /clock uses unix seconds
-    schedule_date_from = int(week_start_dt.timestamp())
-    schedule_date_to = int(week_end_dt.timestamp())
-
-    # Active tech roster (you already wrote this)
     active_techs = get_active_techs()
+    tech_count = len(active_techs)
 
-    # 1) Available hours per day (ALL techs)
-    avail = calculate_weekly_available_hours(
-        active_techs=active_techs,
-        week_start_local_dt=start_local,
-        holiday_policy="bc_richer",
-        dec_shutdown=True,
-        vacation_days=10,
-        sick_days=5,
-        lunch_hours_per_day=0.5,
-        meeting_hours_per_month=0.5,
-        inventory_months=(4, 7, 10, 1),
-        loadups_by_mondays=True,
+    # --------------------------------
+    # 1) Clocked hours (onsite) by day
+    # --------------------------------
+    resp = call_service_trade_api(
+        "clock",
+        params={"startTime": schedule_date_from, "endTime": schedule_date_to, "activity": "onsite"},
     )
-
-    # 2) Clocked hours per day from ServiceTrade (/clock)
-    endpoint = "clock"
-    params = {
-        "startTime": schedule_date_from,
-        "endTime": schedule_date_to,
-        "activity": "onsite",
-    }
-    resp = call_service_trade_api(endpoint, params=params)
     clock_events = (resp or {}).get("data", {}).get("events", [])
     if not isinstance(clock_events, list):
         clock_events = []
 
-    # Debug (optional)
-    # print("clock events found:", len(clock_events))
-    # print("clock event sample:", clock_events[:2])
-
     total_events = len(clock_events)
-
     paired_intervals = _pair_clock_events(clock_events)
     total_intervals = len(paired_intervals)
 
     clocked_by_date = defaultdict(float)
-    skipped_events = 0  # skipped intervals after clipping
+    skipped_events = 0
 
     for interval in paired_intervals:
         start_ts = interval["start_ts"]
         end_ts = interval["end_ts"]
 
-        start_time = datetime.fromtimestamp(start_ts, tz=tz)
-        end_time = datetime.fromtimestamp(end_ts, tz=tz)
+        start_time = datetime.fromtimestamp(start_ts, tz=timezone.utc).astimezone(LOCAL_TZ)
+        end_time = datetime.fromtimestamp(end_ts, tz=timezone.utc).astimezone(LOCAL_TZ)
 
-        # Clip to week window (safe even if API ever includes boundary events)
-        effective_start = max(start_time, week_start_dt)
-        effective_end = min(end_time, week_end_dt)
-
+        effective_start = max(start_time, start_local)
+        effective_end = min(end_time, end_local)
         if effective_end <= effective_start:
             skipped_events += 1
             continue
@@ -1534,62 +1773,121 @@ def scheduling_efficiency():
         day_key = effective_start.date().isoformat()
         clocked_by_date[day_key] += hrs
 
-    # 3) Build days payload + totals
+    # ---------------------------------------------
+    # 2) Unavailable hours by day (admin/unknown jobs)
+    # ---------------------------------------------
+    completed_jobs = fetch_all_jobs_paginated(
+        {
+            "limit": 1000,
+            "type": (
+                "inspection,service_call,planned_maintenance,preventative_maintenance,"
+                "inspection_repair,repair,installation,replacement,upgrade,reinspection,"
+                "administrative,unknown"
+            ),
+            "status": "completed",
+            "scheduleDateFrom": schedule_date_from,
+            "scheduleDateTo": schedule_date_to,
+        }
+    )
+
+    unavailable_by_date = compute_unavailable_hours_by_date_from_jobs(
+        completed_jobs,
+        week_start_local=start_local,
+        week_end_local=end_local,
+    )
+
+    # ---------------------------------------------
+    # 3) Absence hours by day (Mon–Fri, 8h/day/person)
+    # ---------------------------------------------
+    absences_response = call_service_trade_api("user/absence")
+    absences_data = (absences_response or {}).get("data", {}).get("userAbsences", [])
+    if not isinstance(absences_data, list):
+        absences_data = []
+
+    absent_by_date = compute_absent_hours_by_date_for_window(
+        absences_data,
+        window_start_local=start_local,
+        window_end_local=end_local,
+        max_hours_per_day=8.0,
+    )
+
+    # ---------------------------------------------
+    # 4) Build days payload (Mon–Fri) + weekly totals
+    # ---------------------------------------------
+    per_day_base = tech_count * 8  # capacity model
     days_payload = []
+
     total_clocked = 0.0
     total_available = 0.0
+    total_unavailable = 0.0
+    total_absent = 0.0
 
-    for d in avail["days"]:
-        day = d["date"]  # "YYYY-MM-DD"
-        available_hours = float(d["available_hours"])
-        clocked_hours = float(clocked_by_date.get(day, 0.0))
+    for i in range(7):
+        day_dt = start_local + timedelta(days=i)
+        if day_dt.weekday() >= 5:
+            continue  # Mon–Fri only
+
+        day_key = day_dt.date().isoformat()
+
+        clocked_hours = float(clocked_by_date.get(day_key, 0.0))
+        day_unavailable = float(unavailable_by_date.get(day_key, 0.0))
+        day_absent = float(absent_by_date.get(day_key, 0.0))
+
+        available_hours = max(0.0, per_day_base - day_unavailable - day_absent)
+        eff = (clocked_hours / available_hours * 100.0) if available_hours else 0.0
 
         total_clocked += clocked_hours
         total_available += available_hours
+        total_unavailable += day_unavailable
+        total_absent += day_absent
 
-        eff = (clocked_hours / available_hours * 100.0) if available_hours else 0.0
-        
-        if available_hours == float(0.0):
-            print("skipping")
-            continue
-        print(day, clocked_hours, available_hours, eff)
-        days_payload.append({
-            "date": day,
-            "clocked_hours": round(clocked_hours, 2),
-            "available_hours": round(available_hours, 2),
-            "efficiency_pct": round(eff, 1),
-        })
+        days_payload.append(
+            {
+                "date": day_key,
+                "clocked_hours": round(clocked_hours, 2),
+                "available_hours": round(available_hours, 2),
+                "efficiency_pct": round(eff, 1),
+                # optional debug fields (remove later if you want)
+                "unavailable_hours": round(day_unavailable, 2),
+                "absent_hours": round(day_absent, 2),
+            }
+        )
 
     efficiency_pct = (total_clocked / total_available * 100.0) if total_available else 0.0
 
-    # 4) Nice label (Mon–Sun) (Windows-safe)
-    week_end_inclusive = week_end_dt - timedelta(days=1)
-    if week_start_dt.month == week_end_inclusive.month:
-        week_label = (
-            f"{week_start_dt.strftime('%b')} {week_start_dt.day}–"
-            f"{week_end_inclusive.day}, {week_end_inclusive.year}"
-        )
+    # Nice label (Mon–Sun)
+    week_end_inclusive = end_local - timedelta(days=1)
+    if start_local.month == week_end_inclusive.month:
+        week_label = f"{start_local.strftime('%b')} {start_local.day}–{week_end_inclusive.day}, {week_end_inclusive.year}"
     else:
         week_label = (
-            f"{week_start_dt.strftime('%b')} {week_start_dt.day}–"
+            f"{start_local.strftime('%b')} {start_local.day}–"
             f"{week_end_inclusive.strftime('%b')} {week_end_inclusive.day}, {week_end_inclusive.year}"
         )
 
+    base_week_capacity = per_day_base * 5
+
     return {
-        "week_start": week_start_dt.date().isoformat(),
+        "week_start": start_local.date().isoformat(),
         "week_label": week_label,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "totals": {
             "clocked_hours": round(total_clocked, 2),
             "available_hours": round(total_available, 2),
             "efficiency_pct": round(efficiency_pct, 1),
-            "total_events": total_events,          # raw /clock events
-            "skipped_events": skipped_events,      # skipped paired intervals after clipping
-            "active_tech_count": len(active_techs),
-            "total_intervals": total_intervals,    # helpful debug (optional)
+            "total_events": total_events,
+            "skipped_events": skipped_events,
+            "active_tech_count": tech_count,
+            "total_intervals": total_intervals,
+            # debug / validation:
+            "base_week_capacity": round(base_week_capacity, 2),
+            "unavailable_hours": round(total_unavailable, 2),
+            "absent_hours": round(total_absent, 2),
         },
         "days": days_payload,
     }
+
+
     
 
     
