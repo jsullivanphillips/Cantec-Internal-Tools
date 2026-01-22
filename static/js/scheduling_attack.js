@@ -6,6 +6,8 @@ const SchedulingAttack = (() => {
   // --- Scheduling Attack charts ---
   let saV2ResizeBound = false;
   let saWeeklyVolumeChart = null;
+  let saForwardUtilChart = null;
+
 
 
     function init() {
@@ -34,6 +36,7 @@ const SchedulingAttack = (() => {
 
       loadSchedulingAttackV2Metrics();
       loadScheduledThisWeekMetric();
+      loadForwardScheduleCoverage();
       loadWeeklySchedulingVolume();
     }
 
@@ -375,6 +378,55 @@ const SchedulingAttack = (() => {
     }
   }
 
+  // sa-v2-kpi-forward-schedule-coverage
+  async function loadForwardScheduleCoverage() {
+    const url = `/scheduling_attack/v2/forward_schedule_coverage`;
+
+    // KPI loading spinner (keep your existing behavior)
+    const kpiEl = document.getElementById("sa-v2-kpi-forward-schedule-coverage");
+    if (kpiEl) {
+      kpiEl.innerHTML = `
+        <div class="spinner-border text-primary" role="status">
+          <span class="visually-hidden">Loading...</span>
+        </div>
+      `;
+    }
+
+    // Minimal loading state for chart card (don’t destroy DOM)
+    const chartCard = document.getElementById("schedule-utilization-chart");
+    const emptyEl = document.getElementById("sa-util-empty");
+    if (chartCard) chartCard.classList.add("opacity-75");
+    if (emptyEl) emptyEl.style.display = "none";
+
+    try {
+      const r = await fetch(url, { headers: { "Accept": "application/json" } });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+
+      renderForwardScheduleCoverage(data);
+      renderForwardScheduleUtilizationChart(data); // <-- NEW
+    } catch (err) {
+      console.error("Failed to load forward schedule coverage", err);
+
+      if (kpiEl) kpiEl.textContent = "Failed to load metric";
+
+      const updatedEl = document.getElementById("sa-util-updated");
+      if (updatedEl) updatedEl.textContent = "Failed to load";
+
+      if (emptyEl) {
+        emptyEl.textContent = "Failed to load utilization";
+        emptyEl.style.display = "block";
+      }
+
+      if (saForwardUtilChart) {
+        saForwardUtilChart.destroy();
+        saForwardUtilChart = null;
+      }
+    } finally {
+      if (chartCard) chartCard.classList.remove("opacity-75");
+    }
+  }
+
 
   async function loadScheduledThisWeekMetric() {
     const url = `/scheduling_attack/v2/scheduled_this_week`;
@@ -415,6 +467,7 @@ const SchedulingAttack = (() => {
     }
   }
 
+  
 
   function renderWeeklySchedulingVolume(data) {
     const weeks = Array.isArray(data?.weeks) ? data.weeks : [];
@@ -537,6 +590,141 @@ const SchedulingAttack = (() => {
   }
 
 
+  function renderForwardScheduleCoverage(data) {
+    const numberOfWeeksCovered = Number(data?.coverage_weeks_60pct || 0);
+    console.log("coverage_weeks_60pct: ", data.coverage_weeks_60pct);
+
+    const el = document.getElementById("sa-v2-kpi-forward-schedule-coverage");
+    const card = document.getElementById("forward-schedule-coverage-card");
+
+    if (el) el.textContent = `${numberOfWeeksCovered} Weeks`;
+
+    // color rules (you can tweak threshold)
+    if (card && el) {
+      if (numberOfWeeksCovered >= 6) {
+        el.style.color = "#27a532";
+        card.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(229, 248, 225))";
+        card.style.borderTop = "5px solid #27a532";
+      } else {
+        el.style.color = "#b92525";
+        card.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(248, 225, 227))";
+        card.style.borderTop = "5px solid #b92525";
+      }
+    }
+  }
+
+
+  function renderForwardScheduleUtilizationChart(data) {
+    const weeks = Array.isArray(data?.weeks) ? data.weeks.slice(0, 12) : [];
+
+    const canvas = document.getElementById("sa-util-canvas");
+    const emptyEl = document.getElementById("sa-util-empty");
+    const updatedEl = document.getElementById("sa-util-updated");
+
+    if (!canvas) return;
+
+    // Label: "Jan 19"
+    const fmtLabel = (isoStart) => {
+      const d = new Date(isoStart);
+      return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    };
+
+    const labels = weeks.map(w => fmtLabel(w.week_start_local));
+    const utilization = weeks.map(w => (typeof w.utilization_pct === "number" ? w.utilization_pct : 0));
+
+    const hasAnyData = utilization.some(v => v > 0);
+
+    // updated text
+    if (updatedEl) {
+      try {
+        const d = new Date(data.generated_at);
+        updatedEl.textContent = `Updated ${d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`;
+      } catch {
+        updatedEl.textContent = "";
+      }
+    }
+
+    if (emptyEl) {
+      emptyEl.style.display = hasAnyData ? "none" : "block";
+    }
+
+    const ctx = canvas.getContext("2d");
+
+    if (saForwardUtilChart) {
+      saForwardUtilChart.destroy();
+      saForwardUtilChart = null;
+    }
+
+    const threshold = typeof data?.threshold_pct === "number" ? data.threshold_pct : 60;
+    const thresholdLine = new Array(labels.length).fill(threshold);
+
+    saForwardUtilChart = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels,
+        datasets: [
+          {
+            label: "Utilization",
+            data: utilization,
+            tension: 0.35,
+            pointRadius: 0,
+            borderWidth: 2,
+          },
+          {
+            label: `${threshold}% target`,
+            data: thresholdLine,
+            tension: 0,
+            pointRadius: 0,
+            borderWidth: 1.5,
+            borderDash: [6, 6],
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        layout: {
+          padding: { bottom: 12 } // helps keep any elements inside the canvas area
+        },
+        plugins: {
+          legend: { display: false }, // minimalist
+          tooltip: {
+            displayColors: false,
+            callbacks: {
+              label: (item) => {
+                const val = typeof item.raw === "number" ? item.raw : 0;
+                if (item.datasetIndex === 1) return `Target: ${threshold}%`;
+                return `Utilization: ${val.toFixed(1)}%`;
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: { maxRotation: 0, autoSkip: true, font: { size: 11 } },
+            border: { display: false }
+          },
+          y: {
+            beginAtZero: true,
+            min: 0,
+            max: 100,
+            ticks: {
+              callback: (v) => `${v}%`,
+              maxTicksLimit: 4,
+              font: { size: 11 }
+            },
+            grid: { drawBorder: false },
+            border: { display: false }
+          }
+        }
+      }
+    });
+  }
+
+
+
   function renderJobsScheduledThisWeek(data) {
     const scheduled_this_week = data.scheduled_this_week;
 
@@ -576,8 +764,6 @@ const SchedulingAttack = (() => {
       percentConfirmedCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(248, 225, 227))";
       percentConfirmedCard.style.borderTop = "5px solid #b92525";
     }
-
-    
 
   }
 
@@ -1073,6 +1259,7 @@ const SchedulingAttack = (() => {
       loadSchedulingAttackV2Metrics();
       loadScheduledThisWeekMetric();
       loadWeeklySchedulingVolume();
+      loadForwardScheduleCoverage();
     }
 
     if (ev.target?.id === "efficiency-tab") {
@@ -1758,6 +1945,27 @@ const SchedulingAttack = (() => {
   }
 
 
+  function formatDateTimeNoHours(v) {
+    if (v == null) return "—";
+
+    let d;
+    if (typeof v === "number") {
+      d = new Date(v * 1000); // unix seconds
+    } else if (typeof v === "string") {
+      d = new Date(v); // ISO string
+    } else {
+      return "—";
+    }
+
+    if (isNaN(d)) return "—";
+
+    return d.toLocaleDateString("en-CA", {
+      timeZone: "America/Vancouver",
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  }
 
 
 

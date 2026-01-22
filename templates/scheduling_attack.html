@@ -98,17 +98,16 @@
             <div class="border rounded-3 p-3 h-100" id="scheduled-this-week-card">
               <div class="small text-muted">Scheduling Volume this Week</div>
               <div class="fs-3 fw-semibold" id="sa-v2-kpi-scheduled-this-week">—</div>
-              <div class="small text-muted mt-1">Target: > 30</div>
-              <div class="text-xs text-muted mt-1">Inspections only</div>
+              <div class="small text-muted mt-1">Target: > 30 - Inspections only</div>
             </div>
           </div>
 
           <!-- KPI 3 -->
           <div class="col-12 col-md-4">
-            <div class="border rounded-3 p-3 h-100">
-              <div class="small text-muted">Unconfirmed Scheduled</div>
-              <div class="fs-3 fw-semibold" id="sa-v2-kpi-unconfirmed">—</div>
-              <div class="small text-muted mt-1">Needs confirmation</div>
+            <div class="border rounded-3 p-3 h-100" id="forward-schedule-coverage-card">
+              <div class="small text-muted">Forward Schedule Coverage</div>
+              <div class="fs-3 fw-semibold" id="sa-v2-kpi-forward-schedule-coverage">—</div>
+              <div class="small text-muted mt-1">Target: 6+ Weeks at > 60% booked</div>
             </div>
           </div>
         </div>
@@ -137,6 +136,31 @@
           </div>
         </div>
         <!-- End of Weekly Scheduling Volume -->
+
+        <!-- Forward Schedule Utilization -->
+        <div class="row g-3 mb-3">
+          <div class="col-12">
+            <div class="border rounded-3 p-3 scheduling-volume-short" id="schedule-utilization-chart">
+              <div class="d-flex align-items-center justify-content-between mb-2">
+                <div class="small text-muted">Forward Schedule Utilization</div>
+                <div class="small text-muted" id="sa-util-updated" style="font-size: 12px;"></div>
+              </div>
+
+              <div class="position-relative" style="height: 100%;">
+                <canvas id="sa-util-canvas" aria-label="Forward Schedule Utilization chart" role="img"></canvas>
+                <div
+                  id="sa-util-empty"
+                  class="position-absolute top-50 start-50 translate-middle text-muted text-center"
+                  style="display:none; font-size: 12px;"
+                >
+                  No utilization data yet
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- End of Forward Schedule Utilization -->
+
 
         
 

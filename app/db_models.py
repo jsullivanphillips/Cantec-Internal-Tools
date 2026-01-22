@@ -730,6 +730,30 @@ class WeeklySchedulingStats(db.Model):
         ),
     )
 
+class ForwardScheduleWeek(db.Model):
+    __tablename__ = "forward_schedule_week"
+
+    id = db.Column(db.BigInteger, primary_key=True)
+
+    # Monday 00:00 local time (America/Vancouver), tz-aware
+    week_start_local = db.Column(db.DateTime(timezone=True), nullable=False, unique=True, index=True)
+    week_end_local = db.Column(db.DateTime(timezone=True), nullable=False)
+
+    booked_hours = db.Column(db.Float, nullable=False, default=0.0)
+    unavailable_hours = db.Column(db.Float, nullable=False, default=0.0)   # optional but useful
+    available_hours = db.Column(db.Float, nullable=False, default=0.0)
+
+    released_appointments = db.Column(db.Integer, nullable=False, default=0)
+    utilization_pct = db.Column(db.Float, nullable=False, default=0.0)
+
+    generated_at = db.Column(db.DateTime(timezone=True), nullable=False, index=True)
+
+    __table_args__ = (
+        db.CheckConstraint("booked_hours >= 0", name="ck_fsw_booked_nonneg"),
+        db.CheckConstraint("available_hours >= 0", name="ck_fsw_available_nonneg"),
+        db.CheckConstraint("utilization_pct >= 0", name="ck_fsw_util_nonneg"),
+    )
+
 
 if __name__ == '__main__':
     from app import create_app

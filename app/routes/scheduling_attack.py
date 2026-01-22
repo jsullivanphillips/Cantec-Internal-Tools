@@ -7,7 +7,7 @@ from dateutil.relativedelta import relativedelta
 from zoneinfo import ZoneInfo  # Python 3.9+
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy import or_, func, cast, Float, case
-from app.db_models import db, ServiceOccurrence, Location, ServiceRecurrence, SchedulingAttackV2, JobsSchedulingState, WeeklySchedulingStats
+from app.db_models import db, ServiceOccurrence, Location, ServiceRecurrence, SchedulingAttackV2, JobsSchedulingState, WeeklySchedulingStats, ForwardScheduleWeek
 from tqdm import tqdm 
 from collections import Counter
 from collections import defaultdict
@@ -25,6 +25,7 @@ api_session.headers.update({"Accept": "application/json"})
 SERVICE_TRADE_API_BASE = "https://api.servicetrade.com/api"
 
 BUSINESS_TZ = ZoneInfo("America/Vancouver")  # or a per-location tz if you have one
+LOCAL_TZ = ZoneInfo("America/Vancouver")
 
 APPOINTMENT_SERVICE_LINE_IDS = [168, 3, 1, 2, 556] 
 
@@ -1828,6 +1829,94 @@ def _parse_scheduled_date(job: dict):
     return None
 
 
+def _week_start_local_from_utc(dt_utc: datetime) -> datetime:
+    dt_local = dt_utc.astimezone(LOCAL_TZ)
+    return (dt_local - timedelta(days=dt_local.weekday())).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+
+
+@scheduling_attack_bp.get("/scheduling_attack/v2/forward_schedule_coverage")
+def forward_schedule_coverage():
+    """
+    Read-only: uses forward_schedule_week table.
+    How many weeks ahead are >= threshold (default 60%),
+    starting from the current local week (or next week if requested),
+    counting consecutive weeks. Missing weeks break streak.
+    """
+    now = datetime.now(timezone.utc)
+
+    threshold = float(request.args.get("threshold", 0.60))
+    lookahead_weeks = int(request.args.get("weeks", 12))
+    start_next_week = request.args.get("start_next_week", "0") in ("1", "true", "True", "yes", "on")
+
+    cur_week_start_local = _week_start_local_from_utc(now)
+    start_week = (cur_week_start_local + timedelta(days=7)) if start_next_week else cur_week_start_local
+    end_week = start_week + timedelta(days=7 * lookahead_weeks)
+
+    rows = (
+        ForwardScheduleWeek.query.filter(ForwardScheduleWeek.week_start_local >= start_week)
+        .filter(ForwardScheduleWeek.week_start_local < end_week)
+        .order_by(ForwardScheduleWeek.week_start_local.asc())
+        .all()
+    )
+
+    # Build expected continuous week keys so missing weeks break streak
+    by_ws = {r.week_start_local: r for r in rows}
+
+    weeks = []
+    for i in range(lookahead_weeks):
+        ws = start_week + timedelta(days=7 * i)
+        we = ws + timedelta(days=7)
+        r = by_ws.get(ws)
+
+        booked = float(getattr(r, "booked_hours", 0.0) or 0.0)
+        avail = float(getattr(r, "available_hours", 0.0) or 0.0)
+        util_pct = float(getattr(r, "utilization_pct", 0.0) or 0.0)
+        released = int(getattr(r, "released_appointments", 0) or 0)
+
+        meets = (util_pct / 100.0) >= threshold if util_pct > 1.0 else util_pct >= (threshold * 100.0)  # tolerant
+        # Prefer the numeric truth if possible:
+        if avail > 0:
+            meets = (booked / avail) >= threshold
+            util_pct = round((booked / avail) * 100.0, 1)
+        else:
+            meets = False
+            util_pct = 0.0
+
+        weeks.append(
+            {
+                "week_start_local": ws.isoformat(),
+                "week_end_local": we.isoformat(),
+                "booked_hours": round(booked, 2),
+                "available_hours": round(avail, 2),
+                "utilization_pct": util_pct,
+                "released_appointments": released,
+                "meets_60pct": meets,  # keep legacy field name for frontend
+            }
+        )
+
+    # Count consecutive weeks meeting threshold
+    streak = 0
+    last_covered_week_end = None
+    i = 0
+    for w in weeks:
+        i += 1
+        if w["meets_60pct"]:
+            streak += 1
+            last_covered_week_end = w["week_end_local"]
+
+    return jsonify(
+        {
+            "generated_at": now.isoformat(),
+            "threshold_pct": threshold * 100.0,
+            "coverage_weeks_60pct": streak,
+            "coverage_through_week_end_local": last_covered_week_end,
+            "weeks": weeks,
+        }
+    ), 200
+
+
 @scheduling_attack_bp.get("/scheduling_attack/v2/weekly_scheduling_volume")
 def weekly_scheduling_volume():
     now = datetime.now(timezone.utc)
@@ -1884,10 +1973,6 @@ def weekly_scheduling_volume():
 def jobs_scheduled_this_week():
     now = datetime.now(timezone.utc)
 
-    week = request.args.get("week", "current")
-
-    now = datetime.now(timezone.utc)
-
     # Load baseline from DB
     baseline_rows = db.session.query(JobsSchedulingState).all()
     baseline_by_id = {
@@ -1896,13 +1981,12 @@ def jobs_scheduled_this_week():
     }
 
     # Fetch live from ServiceTrade (same 2-query merge you already built)
-    tomorrow = now + timedelta(days=1)
 
     scheduled_jobs = fetch_all_jobs_paginated({
         "limit": 1000,
         "type": "inspection",
         "status": "scheduled",
-        "scheduleDateFrom": int(tomorrow.timestamp()),
+        "scheduleDateFrom": int(now.timestamp()),
     })
 
     unscheduled_jobs = fetch_all_jobs_paginated({
