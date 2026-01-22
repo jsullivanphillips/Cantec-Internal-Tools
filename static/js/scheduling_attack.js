@@ -615,7 +615,7 @@ const SchedulingAttack = (() => {
 
 
   function renderForwardScheduleUtilizationChart(data) {
-    const weeks = Array.isArray(data?.weeks) ? data.weeks.slice(0, 12) : [];
+    const weeks = Array.isArray(data?.weeks) ? data.weeks.slice(1, 12) : [];
 
     const canvas = document.getElementById("sa-util-canvas");
     const emptyEl = document.getElementById("sa-util-empty");
