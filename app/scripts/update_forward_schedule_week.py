@@ -1,6 +1,6 @@
 # backend/scripts/update_forward_schedule_week.py
 from __future__ import annotations
-
+import json
 import argparse
 from collections import defaultdict
 from dataclasses import dataclass
@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from app.db_models import db, ForwardScheduleWeek
-from app.routes.scheduling_attack import fetch_all_jobs_paginated, get_active_techs
+from app.routes.scheduling_attack import fetch_all_jobs_paginated, get_active_techs, call_service_trade_api
 
 # Keep consistent with the app
 LOCAL_TZ = ZoneInfo("America/Vancouver")
@@ -31,6 +31,87 @@ def _week_start_local_from_utc(dt_utc: datetime) -> datetime:
         raise ValueError("dt_utc must be tz-aware")
     return _local_week_start(dt_utc.astimezone(LOCAL_TZ))
 
+
+def _local_week_start(dt_local: datetime) -> datetime:
+    """
+    dt_local must be tz-aware in LOCAL_TZ.
+    Returns Monday 00:00 local for that ISO week.
+    """
+    if dt_local.tzinfo is None:
+        raise ValueError("dt_local must be tz-aware")
+    return (dt_local - timedelta(days=dt_local.weekday())).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+
+
+def _iter_local_days(start_local: datetime, end_local: datetime):
+    """
+    Yields (day_start_local, day_end_local) for each local day overlapping [start_local, end_local).
+    """
+    day = start_local.replace(hour=0, minute=0, second=0, microsecond=0)
+    while day < end_local:
+        next_day = day + timedelta(days=1)
+        yield day, next_day
+        day = next_day
+
+
+def compute_weekly_absence_hours(
+    absences_data: list[dict],
+    *,
+    now_utc: datetime,
+    days_per_week_capacity: int = 5,  # Mon-Fri capacity model
+    max_hours_per_day: float = 8.0,
+) -> dict[datetime, float]:
+    """
+    Returns { week_start_local (tz-aware) -> absent_hours }
+    - Only counts weekdays (Mon-Fri) because capacity is 5 days/week.
+    - Caps at max_hours_per_day per person per day.
+    - Uses overlap of the absence window with each local day.
+    """
+    if now_utc.tzinfo is None:
+        raise ValueError("now_utc must be tz-aware")
+
+    absent_by_week = defaultdict(float)
+
+    for a in absences_data or []:
+        start_ts = a.get("windowStart")
+        end_ts = a.get("windowEnd")
+        user = a.get("user") or {}
+        user_id = user.get("id")
+
+        if not start_ts or not end_ts or not user_id:
+            continue
+
+        # ignore absences fully in the past
+        if end_ts <= now_utc.timestamp():
+            continue
+
+        start_utc = datetime.fromtimestamp(start_ts, tz=timezone.utc)
+        end_utc = datetime.fromtimestamp(end_ts, tz=timezone.utc)
+        if end_utc <= start_utc:
+            continue
+
+        start_local = start_utc.astimezone(LOCAL_TZ)
+        end_local = end_utc.astimezone(LOCAL_TZ)
+
+        # Walk each local day the absence touches
+        for day_start, day_end in _iter_local_days(start_local, end_local):
+            # Weekday only (0=Mon ... 6=Sun)
+            if day_start.weekday() >= days_per_week_capacity:
+                continue
+
+            overlap_start = max(start_local, day_start)
+            overlap_end = min(end_local, day_end)
+            if overlap_end <= overlap_start:
+                continue
+
+            hours = (overlap_end - overlap_start).total_seconds() / 3600.0
+            hours_capped = min(max_hours_per_day, max(0.0, hours))
+
+            week_start_local = _local_week_start(day_start)
+            absent_by_week[week_start_local] += hours_capped
+
+    return dict(absent_by_week)
 
 @dataclass(frozen=True)
 class WeeklyAgg:
@@ -110,8 +191,17 @@ def compute_weekly_booked_vs_available(
 
     # ---- compute available hours and finalize sparse list ----
     tech_count = len(active_techs)
-    # 7.5h/day * 5 weekdays per tech
-    base_week_capacity = (tech_count * 7.5) * 5
+
+    # Get absences
+    absences_response = call_service_trade_api("user/absence")
+    absences_data = absences_response.get("data", {}).get("userAbsences", [])
+
+    # Build weekly absence hours (Mon-Fri only, max 8h/person/day)
+    now_utc = datetime.now(timezone.utc)
+    weekly_absent_hours = compute_weekly_absence_hours(absences_data, now_utc=now_utc)
+
+    # 8h/day * 5 weekdays per tech
+    base_week_capacity = (tech_count * 8) * 5
 
     weeks_out = []
     for week_start_local in sorted(weekly.keys()):
@@ -119,7 +209,10 @@ def compute_weekly_booked_vs_available(
         booked = float(weekly[week_start_local]["booked_hours"])
         released_count = int(weekly[week_start_local]["released_appointments"])
 
-        available = max(0.0, base_week_capacity - unavailable)
+        absent = float(weekly_absent_hours.get(week_start_local, 0.0))
+
+        # Capacity reduced by admin/unknown (unavailable) and by absences
+        available = max(0.0, base_week_capacity - unavailable - absent)
         util_pct = (booked / available * 100.0) if available > 0 else 0.0
 
         weeks_out.append(
@@ -128,6 +221,7 @@ def compute_weekly_booked_vs_available(
                 "week_end_local": week_start_local + timedelta(days=7),
                 "booked_hours": round(booked, 2),
                 "unavailable_hours": round(unavailable, 2),
+                "absent_hours": round(absent, 2),              # <-- add for debugging/visibility
                 "available_hours": round(available, 2),
                 "utilization_pct": round(util_pct, 1),
                 "released_appointments": released_count,
@@ -229,7 +323,7 @@ def run_update(*, lookahead_weeks: int, start_next_week: bool) -> dict:
             "type": (
                 "inspection,service_call,planned_maintenance,preventative_maintenance,"
                 "inspection_repair,repair,installation,replacement,upgrade,reinspection,"
-                "administrative,unknown"
+                "administrative,unknown,testing"
             ),
             "status": "scheduled,completed",
             "scheduleDateFrom": int(now.timestamp()),
