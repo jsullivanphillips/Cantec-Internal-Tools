@@ -359,9 +359,11 @@ def main():
                 if not inspection_jobs:
                     # CASE 1: Service exists, but no job is scheduled.
                     # Did an inspection get cancelled?
+                    year_prior_to_service_date = location_values["month"] - timedelta(days=365)
                     params = {"locationId": str(location_id), "limit": 500,
                           "type": "inspection,",
-                          "status": "canceled"
+                          "status": "canceled",
+                          "scheduleDateFrom": datetime.timestamp(year_prior_to_service_date),
                         }
                     canceled_inspection_jobs_response = call_service_trade_api("job", params=params)
                     canceled_inspection_jobs = canceled_inspection_jobs_response.get("data", {}).get("jobs", [])

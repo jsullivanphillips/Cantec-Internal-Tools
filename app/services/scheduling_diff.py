@@ -45,6 +45,7 @@ def compute_scheduling_diffs(
         if baseline is None:
             if new_sd is not None:
                 scheduled_count += 1
+                
             continue
 
         if old_sd is None and new_sd is not None:

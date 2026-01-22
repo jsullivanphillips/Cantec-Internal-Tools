@@ -1832,6 +1832,10 @@ def _parse_scheduled_date(job: dict):
 def jobs_scheduled_this_week():
     now = datetime.now(timezone.utc)
 
+    week = request.args.get("week", "current")
+
+    now = datetime.now(timezone.utc)
+
     # Load baseline from DB
     baseline_rows = db.session.query(JobsSchedulingState).all()
     baseline_by_id = {

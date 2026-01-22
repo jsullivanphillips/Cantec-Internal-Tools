@@ -89,11 +89,12 @@ const SchedulingAttack = (() => {
 
     const tbodyUnscheduled = document.getElementById("sa-v2-action-unscheduled-tbody");
     const tbodyOutreach = document.getElementById("sa-v2-action-outreach-tbody");
+    const tbodyCanceled = document.getElementById("sa-v2-action-canceled-tbody");
 
     const elUnscheduledCount = document.getElementById("sa-v2-action-unscheduled-count");
     const elOutreachCount = document.getElementById("sa-v2-action-outreach-count");
 
-    if (!card || !tbodyUnscheduled || !tbodyOutreach) return;
+    if (!card || !tbodyUnscheduled || !tbodyOutreach || !tbodyCanceled) return;
 
     // Mirror your funnel logic
     const isCanceled = (r) => !!r?.canceled;
@@ -103,6 +104,7 @@ const SchedulingAttack = (() => {
 
     // Unscheduled = not canceled and not scheduled-like
     const unscheduled = rows.filter((r) => !isCanceled(r) && !isScheduledLike(r));
+    const canceled = rows.filter((r) => isCanceled(r))
 
     // Needs outreach = scheduled-like, unconfirmed, and NOT reached out (also not canceled)
     const needsOutreach = rows.filter((r) => {
@@ -213,6 +215,59 @@ const SchedulingAttack = (() => {
         tr.appendChild(tdSched);
         tr.appendChild(tdAction);
         tbodyOutreach.appendChild(tr);
+      });
+    }
+
+    tbodyCanceled.innerHTML = "";
+    if (!canceled.length) {
+      tbodyCanceled.innerHTML = `<tr><td colspan="2" class="text-muted">No canceled jobs 🎉</td></tr>`;
+    } else {
+      canceled.forEach((r) => {
+        const tr = document.createElement("tr");
+
+        const tdAddr = document.createElement("td");
+
+        if (r?.location_id) {
+          const a = document.createElement("a");
+          a.href = `https://app.servicetrade.com/locations/${encodeURIComponent(r.location_id)}`;
+          a.target = "_blank";
+          a.rel = "noopener noreferrer";
+          a.textContent = r.address || "—";
+          tdAddr.appendChild(a);
+        } else {
+          tdAddr.textContent = r?.address || "—";
+        }
+
+
+        const tdNotes = document.createElement("td");
+        tdNotes.className = "text-end";
+
+        const curNotes = (r?.notes || "").trim();
+
+        tdNotes.innerHTML = `
+          <div class="d-flex gap-2 justify-content-end align-items-start">
+            <textarea
+              class="form-control form-control-sm sa-v2-notes"
+              rows="2"
+              placeholder="Add notes…"
+              data-notes-input="1"
+              data-id="${escapeAttr(r?.id)}"
+            >${escapeAttr(curNotes)}</textarea>
+
+            <button
+              class="btn btn-sm btn-outline-secondary"
+              data-action="v2_save_notes"
+              data-id="${escapeAttr(r?.id)}"
+              data-month="${escapeAttr(monthStr)}"
+              ${r?.id == null ? "disabled" : ""}>
+              Save
+            </button>
+          </div>
+        `;
+
+        tr.appendChild(tdAddr);
+        tr.appendChild(tdNotes);
+        tbodyCanceled.appendChild(tr);
       });
     }
 
