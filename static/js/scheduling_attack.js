@@ -98,6 +98,7 @@ const SchedulingAttack = (() => {
 
     const elUnscheduledCount = document.getElementById("sa-v2-action-unscheduled-count");
     const elOutreachCount = document.getElementById("sa-v2-action-outreach-count");
+    const elCanceledCount = document.getElementById("sa-v2-action-canceled-count");
 
     if (!card || !tbodyUnscheduled || !tbodyOutreach || !tbodyCanceled) return;
 
@@ -123,7 +124,8 @@ const SchedulingAttack = (() => {
     // Counts + subtitle
     if (elUnscheduledCount) elUnscheduledCount.textContent = String(unscheduled.length);
     if (elOutreachCount) elOutreachCount.textContent = String(needsOutreach.length);
-    if (subtitleEl) subtitleEl.textContent = `${unscheduled.length} unscheduled • ${needsOutreach.length} need outreach`;
+    if (subtitleEl) subtitleEl.textContent = `${unscheduled.length} unscheduled • ${canceled.length} canceled • ${needsOutreach.length} need outreach`;
+    if (elCanceledCount) elCanceledCount.textContent = String(canceled.length);
 
     // Render tables
     tbodyUnscheduled.innerHTML = "";
@@ -151,9 +153,18 @@ const SchedulingAttack = (() => {
         tdNotes.className = "text-end";
 
         const curNotes = (r?.notes || "").trim();
+        const tdAction = document.createElement("td");
+        tdAction.className = "text-end";
+        tdAction.innerHTML = `<button
+              class="btn btn-sm btn-outline-secondary"
+              data-action="v2_save_notes"
+              data-id="${escapeAttr(r?.id)}"
+              data-month="${escapeAttr(monthStr)}"
+              ${r?.id == null ? "disabled" : ""}>
+              Save
+            </button>`
 
         tdNotes.innerHTML = `
-          <div class="d-flex gap-2 justify-content-end align-items-start">
             <textarea
               class="form-control form-control-sm sa-v2-notes"
               rows="2"
@@ -161,20 +172,11 @@ const SchedulingAttack = (() => {
               data-notes-input="1"
               data-id="${escapeAttr(r?.id)}"
             >${escapeAttr(curNotes)}</textarea>
-
-            <button
-              class="btn btn-sm btn-outline-secondary"
-              data-action="v2_save_notes"
-              data-id="${escapeAttr(r?.id)}"
-              data-month="${escapeAttr(monthStr)}"
-              ${r?.id == null ? "disabled" : ""}>
-              Save
-            </button>
-          </div>
         `;
 
         tr.appendChild(tdAddr);
         tr.appendChild(tdNotes);
+        tr.appendChild(tdAction);
         tbodyUnscheduled.appendChild(tr);
       });
     }
@@ -248,9 +250,18 @@ const SchedulingAttack = (() => {
         tdNotes.className = "text-end";
 
         const curNotes = (r?.notes || "").trim();
-
+        const tdAction = document.createElement("td");
+        tdAction.className = "text-end";
+        tdAction.innerHTML = `<button
+            class="btn btn-sm btn-outline-secondary"
+            data-action="v2_save_notes"
+            data-id="${escapeAttr(r?.id)}"
+            data-month="${escapeAttr(monthStr)}"
+            ${r?.id == null ? "disabled" : ""}>
+            Save
+          </button>`
+          
         tdNotes.innerHTML = `
-          <div class="d-flex gap-2 justify-content-end align-items-start">
             <textarea
               class="form-control form-control-sm sa-v2-notes"
               rows="2"
@@ -259,19 +270,11 @@ const SchedulingAttack = (() => {
               data-id="${escapeAttr(r?.id)}"
             >${escapeAttr(curNotes)}</textarea>
 
-            <button
-              class="btn btn-sm btn-outline-secondary"
-              data-action="v2_save_notes"
-              data-id="${escapeAttr(r?.id)}"
-              data-month="${escapeAttr(monthStr)}"
-              ${r?.id == null ? "disabled" : ""}>
-              Save
-            </button>
-          </div>
         `;
 
         tr.appendChild(tdAddr);
         tr.appendChild(tdNotes);
+        tr.appendChild(tdAction);
         tbodyCanceled.appendChild(tr);
       });
     }
@@ -338,7 +341,9 @@ const SchedulingAttack = (() => {
     } catch (err) {
       console.error("Failed to load SchedulingAttackV2Kpis", err);
       const percentConfirmedEl = document.getElementById("sa-v2-kpi-confirmed-pct");
-      if (percentConfirmedEl) percentConfirmedEl.textContent = "Failed to load metrics"
+      if (percentConfirmedEl) percentConfirmedEl.textContent = "Failed to load metrics";
+      const kpiCard = document.getElementById("sa-v2-scheduling-kpis-card");
+      if (kpiCard) kpiCard.hidden = true;
     }
   }
 
@@ -542,7 +547,7 @@ const SchedulingAttack = (() => {
         maintainAspectRatio: false, // critical for short card height
         layout: {
           padding: {
-            bottom: 16   // ← increase to 20–24 if needed
+            bottom: 24   // ← increase to 20–24 if needed
           }
         },
         animation: false,
@@ -685,7 +690,7 @@ const SchedulingAttack = (() => {
         maintainAspectRatio: false,
         animation: false,
         layout: {
-          padding: { bottom: 12 } // helps keep any elements inside the canvas area
+          padding: { bottom: 24 } // helps keep any elements inside the canvas area
         },
         plugins: {
           legend: { display: false }, // minimalist
@@ -738,10 +743,6 @@ const SchedulingAttack = (() => {
       scheduledThisWeekEl.style.color = "#27a532";
       scheduledThisWeekCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(229, 248, 225))";
       scheduledThisWeekCard.style.borderTop = "5px solid #27a532";
-    } else {
-      scheduledThisWeekEl.style.color = "#b92525";
-      scheduledThisWeekCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(248, 225, 227))";
-      scheduledThisWeekCard.style.borderTop = "5px solid #b92525";
     }
 
   }
@@ -775,6 +776,7 @@ const SchedulingAttack = (() => {
     const updatedEl = document.getElementById("sa-v2-updated");
     const subtitleEl = document.getElementById("sa-v2-funnel-subtitle");
     const funnelCard = document.getElementById("sa-v2-funnel-card");
+    const scheudlingKpiCard = document.getElementById("sa-v2-scheduling-kpis-card");
 
     if (titleEl) titleEl.textContent = monthStr ? `Scheduling Attack — ${monthStr}` : "Scheduling Attack";
     if (updatedEl) updatedEl.textContent = data?.generated_at || "";
@@ -844,6 +846,7 @@ const SchedulingAttack = (() => {
     }
 
     if (funnelCard) funnelCard.hidden = false;
+    if (scheudlingKpiCard) scheudlingKpiCard.hidden = false;
 
     renderV2JobsRequiringAction(rows, monthStr);
 

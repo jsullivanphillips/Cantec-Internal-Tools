@@ -33,7 +33,7 @@ body {
 }
 
 .scheduling-volume-short {
-  height: 240px;
+  height: 260px;
 }
 
 #scheduling-volume-chart canvas {
@@ -391,6 +391,8 @@ button {
   border-color: #0C62A6;
   outline: none;
 }
+
+
 
 
 /* ========================================
@@ -981,24 +983,33 @@ button {
   box-shadow: 0 4px 8px rgba(0,0,0,0.15);
 }
 
-
 /* Funnel layout */
 .sa-v2-funnel-row {
   display: grid;
   gap: 12px;
-  margin-bottom: 12px;
+  
 }
+
+
 
 .sa-v2-funnel-total {
   grid-template-columns: 1fr;
+  margin-bottom: 64px;
 }
 
-.sa-v2-funnel-split3 {
+.sa-v2-funnel-split1 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 64px;
 }
 
 .sa-v2-funnel-split2 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 64px;
+}
+
+.sa-v2-funnel-split3 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 12px;
 }
 
 .sa-v2-funnel-box {
@@ -1047,8 +1058,6 @@ button {
   }
 }
 
-
-
 .sa-v2-funnel {
   position: relative;
 }
@@ -1062,11 +1071,6 @@ button {
   overflow: visible;
   z-index: 1;
 }
-
-.sa-v2-funnel-row {
-  margin-bottom: 86px; /* try 24–48px */
-}
-
 
 .sa-v2-funnel-box {
   position: relative;

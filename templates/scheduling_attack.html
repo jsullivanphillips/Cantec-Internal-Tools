@@ -82,85 +82,90 @@
 
     <div class="tab-pane fade show active" id="scheduling-status" role="tabpanel" aria-labelledby="status-tab" tabindex="0">
       <div class="card-body">
-        <!-- KPIs -->
-        <div class="row g-3 mb-3">
-          <!-- KPI 1 -->
-          <div class="col-12 col-md-4">
-            <div class="border rounded-3 p-3 h-100" id="next-2-weeks-confirmation-card">
-              <div class="small text-muted">Next 2 Weeks Confirmed</div>
-              <div class="fs-3 fw-semibold" id="sa-v2-kpi-confirmed-pct">—%</div>
-              <div class="small text-muted mt-1">Target: > 90%</div>
-            </div>
+        <div class="sa-card mt-3" id="sa-v2-scheduling-kpis-card" hidden>
+          <div class="card-header d-flex align-items-center">
+            <span>Scheduling KPIs</span>
           </div>
-
-          <!-- KPI 2 -->
-          <div class="col-12 col-md-4">
-            <div class="border rounded-3 p-3 h-100" id="scheduled-this-week-card">
-              <div class="small text-muted">Scheduling Volume this Week</div>
-              <div class="fs-3 fw-semibold" id="sa-v2-kpi-scheduled-this-week">—</div>
-              <div class="small text-muted mt-1">Target: > 30 - Inspections only</div>
-            </div>
-          </div>
-
-          <!-- KPI 3 -->
-          <div class="col-12 col-md-4">
-            <div class="border rounded-3 p-3 h-100" id="forward-schedule-coverage-card">
-              <div class="small text-muted">Forward Schedule Coverage</div>
-              <div class="fs-3 fw-semibold" id="sa-v2-kpi-forward-schedule-coverage">—</div>
-              <div class="small text-muted mt-1">Target: 6+ Weeks at > 60% booked</div>
-            </div>
-          </div>
-        </div>
-        <!-- End of KPIs -->
-
-        <!-- Weekly Scheduling Volume -->
-        <div class="row g-3 mb-3">
-          <div class="col-12">
-            <div class="border rounded-3 p-3 scheduling-volume-short" id="scheduling-volume-chart">
-              <div class="d-flex align-items-center justify-content-between mb-2">
-                <div class="small text-muted">Weekly Scheduling Volume</div>
-                <div class="small text-muted" id="sa-vol-updated" style="font-size: 12px;"></div>
+          <!-- KPIs -->
+          <div class="row g-3 mb-3 pt-3">
+            <!-- KPI 1 -->
+            <div class="col-12 col-md-4">
+              <div class="border rounded-3 p-3 h-100" id="next-2-weeks-confirmation-card">
+                <div class="small text-muted">Next 2 Weeks Confirmed</div>
+                <div class="fs-3 fw-semibold" id="sa-v2-kpi-confirmed-pct">—%</div>
+                <div class="small text-muted mt-1">Target: > 90%</div>
               </div>
+            </div>
 
-              <div class="position-relative" style="height: 100%;">
-                <canvas id="sa-vol-canvas" aria-label="Weekly Scheduling Volume chart" role="img"></canvas>
-                <div
-                  id="sa-vol-empty"
-                  class="position-absolute top-50 start-50 translate-middle text-muted text-center"
-                  style="display:none; font-size: 12px;"
-                >
-                  No scheduling volume yet
+            <!-- KPI 2 -->
+            <div class="col-12 col-md-4">
+              <div class="border rounded-3 p-3 h-100" id="scheduled-this-week-card">
+                <div class="small text-muted">Scheduling Volume this Week</div>
+                <div class="fs-3 fw-semibold" id="sa-v2-kpi-scheduled-this-week">—</div>
+                <div class="small text-muted mt-1">Target: > 30 - Inspections only</div>
+              </div>
+            </div>
+
+            <!-- KPI 3 -->
+            <div class="col-12 col-md-4">
+              <div class="border rounded-3 p-3 h-100" id="forward-schedule-coverage-card">
+                <div class="small text-muted">Forward Schedule Coverage</div>
+                <div class="fs-3 fw-semibold" id="sa-v2-kpi-forward-schedule-coverage">—</div>
+                <div class="small text-muted mt-1">Target: 6+ Weeks at > 60% booked</div>
+              </div>
+            </div>
+          </div>
+          <!-- End of KPIs -->
+
+          <!-- Weekly Scheduling Volume -->
+          <div class="row g-3 mb-3">
+            <div class="col-12">
+              <div class="border rounded-3 p-3 scheduling-volume-short" id="scheduling-volume-chart">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                  <div class="small text-muted">Weekly Scheduling Volume</div>
+                  <div class="small text-muted" id="sa-vol-updated" style="font-size: 12px;"></div>
+                </div>
+
+                <div class="position-relative" style="height: 100%;">
+                  <canvas id="sa-vol-canvas" aria-label="Weekly Scheduling Volume chart" role="img"></canvas>
+                  <div
+                    id="sa-vol-empty"
+                    class="position-absolute top-50 start-50 translate-middle text-muted text-center"
+                    style="display:none; font-size: 12px;"
+                  >
+                    No scheduling volume yet
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-        <!-- End of Weekly Scheduling Volume -->
+          <!-- End of Weekly Scheduling Volume -->
 
-        <!-- Forward Schedule Utilization -->
-        <div class="row g-3 mb-3">
-          <div class="col-12">
-            <div class="border rounded-3 p-3 scheduling-volume-short" id="schedule-utilization-chart">
-              <div class="d-flex align-items-center justify-content-between mb-2">
-                <div class="small text-muted">Forward Schedule Utilization</div>
-                <div class="small text-muted" id="sa-util-updated" style="font-size: 12px;"></div>
-              </div>
+          <!-- Forward Schedule Utilization -->
+          <div class="row g-3 mb-3">
+            <div class="col-12">
+              <div class="border rounded-3 p-3 scheduling-volume-short" id="schedule-utilization-chart">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                  <div class="small text-muted">Forward Schedule Utilization</div>
+                  <div class="small text-muted" id="sa-util-updated" style="font-size: 12px;"></div>
+                </div>
 
-              <div class="position-relative" style="height: 100%;">
-                <canvas id="sa-util-canvas" aria-label="Forward Schedule Utilization chart" role="img"></canvas>
-                <div
-                  id="sa-util-empty"
-                  class="position-absolute top-50 start-50 translate-middle text-muted text-center"
-                  style="display:none; font-size: 12px;"
-                >
-                  No utilization data yet
+                <div class="position-relative" style="height: 100%;">
+                  <canvas id="sa-util-canvas" aria-label="Forward Schedule Utilization chart" role="img"></canvas>
+                  <div
+                    id="sa-util-empty"
+                    class="position-absolute top-50 start-50 translate-middle text-muted text-center"
+                    style="display:none; font-size: 12px;"
+                  >
+                    No utilization data yet
+                  </div>
                 </div>
               </div>
             </div>
           </div>
+          <!-- End of Forward Schedule Utilization -->
         </div>
-        <!-- End of Forward Schedule Utilization -->
-
+        <!-- End of Scheduling KPIs -->
 
         
 
@@ -172,7 +177,7 @@
           </div>
 
           <!-- Month selector -->
-          <div class="d-flex flex-wrap align-items-end gap-2 mb-3">
+          <div class="d-flex flex-wrap align-items-end gap-2 mb-3 pt-2">
             <div>
               <label for="sa-v2-month" class="form-label mb-1">Select Month</label>
               <input type="month" id="sa-v2-month" class="form-control" aria-label="Choose month for scheduling attack v2">
@@ -203,7 +208,7 @@
               </div>
 
               <!-- Split 1 -->
-              <div class="sa-v2-funnel-row sa-v2-funnel-split3">
+              <div class="sa-v2-funnel-row sa-v2-funnel-split1">
                 <div class="sa-v2-funnel-box" id="sa-v2-box-scheduled">
                   <div class="k">Scheduled</div>
                   <div class="v" id="sa-v2-scheduled">0</div>
@@ -239,7 +244,7 @@
               </div>
 
               <!-- Split 3 (from Unconfirmed) -->
-              <div class="sa-v2-funnel-row sa-v2-funnel-split2">
+              <div class="sa-v2-funnel-row sa-v2-funnel-split3">
                 <div class="sa-v2-funnel-box" id="sa-v2-box-reached-out">
                   <div class="k">Reached Out</div>
                   <div class="v" id="sa-v2-reached-out">0</div>
@@ -267,39 +272,15 @@
 
           <div class="card-body">
             <div class="row g-3">
-              <!-- Unscheduled -->
-              <div class="col-12 col-lg-6">
-                <div class="border rounded-3 p-3 h-100">
-                  <div class="d-flex align-items-center mb-2">
-                    <strong>Unscheduled</strong>
-                    <span class="ms-auto badge text-bg-secondary" id="sa-v2-action-unscheduled-count">0</span>
-                  </div>
-
-                  <div class="table-responsive">
-                    <table class="table table-sm align-middle mb-0">
-                      <thead>
-                        <tr>
-                          <th>Address</th>
-                          <th class="text-end">Notes</th>
-                        </tr>
-                      </thead>
-                      <tbody id="sa-v2-action-unscheduled-tbody">
-                        <!-- rows injected -->
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-
               <!-- To be reached out -->
-              <div class="col-12 col-lg-6">
+              <div class="col-12 col-lg-12 pb-1">
                 <div class="border rounded-3 p-3 h-100">
-                  <div class="d-flex align-items-center mb-2">
+                  <div class="d-flex align-items-center mb-2 pt-1">
                     <strong>Unconfirmed — Needs Outreach</strong>
                     <span class="ms-auto badge text-bg-primary" id="sa-v2-action-outreach-count">0</span>
                   </div>
 
-                  <div class="table-responsive">
+                  <div class="table-responsive pb-2">
                     <table class="table table-sm align-middle mb-0">
                       <thead>
                         <tr>
@@ -315,38 +296,63 @@
                   </div>
                 </div>
               </div>
-            </div>
+              <!-- Canceled -->
+              <div class="col-12 col-lg-12 pb-1">
+                <div class="border rounded-3 p-3 h-100">
+                  <div class="d-flex align-items-center mb-2">
+                    <strong>Canceled</strong>
+                    <span class="ms-auto badge text-bg-secondary" id="sa-v2-action-canceled-count">0</span>
+                  </div>
 
-            <div class="small text-muted mt-2">
-              Unscheduled = not scheduled (and not canceled). Needs outreach = scheduled, unconfirmed, and not yet reached out.
+                  <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                      <thead>
+                        <tr>
+                          <th>Address</th>
+                          <th>Notes</th>
+                          <th class="text-end">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody id="sa-v2-action-canceled-tbody">
+                        <!-- rows injected -->
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+              <!-- Unscheduled -->
+              <div class="col-12 col-lg-12 pb-1">
+                <div class="border rounded-3 p-3 h-100">
+                  <div class="d-flex align-items-center mb-2">
+                    <strong>Unscheduled</strong>
+                    <span class="ms-auto badge text-bg-secondary" id="sa-v2-action-unscheduled-count">0</span>
+                  </div>
+
+                  <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                      <thead>
+                        <tr>
+                          <th>Address</th>
+                          <th>Notes</th>
+                          <th class="text-end">Notes</th>
+                        </tr>
+                      </thead>
+                      <tbody id="sa-v2-action-unscheduled-tbody">
+                        <!-- rows injected -->
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
+          
+        
+        
+          
         </div>
-        <!-- End jobs requiring action -->
-        <!-- Canceled -->
-          <div class="col-12 col-lg-12">
-            <div class="border rounded-3 p-3 h-100">
-              <div class="d-flex align-items-center mb-2">
-                <strong>Canceled</strong>
-                <span class="ms-auto badge text-bg-secondary" id="sa-v2-action-canceled-count">0</span>
-              </div>
-
-              <div class="table-responsive">
-                <table class="table table-sm align-middle mb-0">
-                  <thead>
-                    <tr>
-                      <th>Address</th>
-                    </tr>
-                  </thead>
-                  <tbody id="sa-v2-action-canceled-tbody">
-                    <!-- rows injected -->
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
       </div>
+      <!-- End jobs requiring action -->
        
     </div>
 

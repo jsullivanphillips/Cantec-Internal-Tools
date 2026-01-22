@@ -2161,7 +2161,7 @@ def forward_schedule_coverage():
 
     # Build expected continuous week keys so missing weeks break streak
     by_ws = {r.week_start_local: r for r in rows}
-
+    generated_at = now
     weeks = []
     for i in range(lookahead_weeks):
         ws = start_week + timedelta(days=7 * i)
@@ -2172,6 +2172,7 @@ def forward_schedule_coverage():
         avail = float(getattr(r, "available_hours", 0.0) or 0.0)
         util_pct = float(getattr(r, "utilization_pct", 0.0) or 0.0)
         released = int(getattr(r, "released_appointments", 0) or 0)
+        
 
         meets = (util_pct / 100.0) >= threshold if util_pct > 1.0 else util_pct >= (threshold * 100.0)  # tolerant
         # Prefer the numeric truth if possible:
