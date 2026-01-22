@@ -205,10 +205,12 @@ def test_forward_schedule_coverage():
 
 def main():
     # Program updates scheduling_attack_v2 table. There are X update scenarios for a location
-    # CASE 1: Service exists, job is not yet scheduled.
+    # CASE 1: Service exists, job is not yet scheduled, job has previously been scheduled.
     # CASE 2: Service exists, job is completed.
     # CASE 3: Service exists, job is scheduled, job is confirmed
     # CASE 4: Service exists, job is scheduled, job is not confirmed
+    # CASE 5: Service exists, job was created within last year, job was cancelled.
+    # CASE 6: Service exists, job is not yet scheduled, job has never been scheduled. This could be a quoted job that is not yet accepted.
     parser = argparse.ArgumentParser(description="Update service events for all locations or a specific location from ServiceTrade.")
     parser.add_argument("--location-id", type=int, help="Single ServiceTrade locationId to backfill")
     parser.add_argument("--month", type=str, help="Only process locations whose SchedulingAttackV2.month == YYYY-MM")
@@ -309,6 +311,7 @@ def main():
                             relevant_annual_services.append(service)
 
                 # Handle locations with no relevant annual services
+                # EARLY EXIT AND WARNING - NO COMMIT TO DB
                 if not relevant_annual_services:
                     # Scenarios to handle:
                     # A) Site was created so we can generate a quote for them. 
@@ -348,22 +351,23 @@ def main():
                         }
                 
                 inspection_jobs_response = call_service_trade_api("job", params=params)
-                inspection_jobs = inspection_jobs_response.get("data", {}).get("jobs", [])
+                scheduled_inspection_jobs = inspection_jobs_response.get("data", {}).get("jobs", [])
 
                 # There should be 1 or 0 jobs returned by this query.
                 # If there is a different result, throw a warning.
-                if len(inspection_jobs) > 1:
+                if len(scheduled_inspection_jobs) > 1:
                     errors += 1
                     log.warning(f"More than 2 inspection/projects jobs found for location [{location_id}] near due month")
                 
-                if not inspection_jobs:
+                if len(scheduled_inspection_jobs) == 0:
                     # CASE 1: Service exists, but no job is scheduled.
                     # Did an inspection get cancelled?
                     year_prior_to_service_date = location_values["month"] - timedelta(days=365)
                     params = {"locationId": str(location_id), "limit": 500,
                           "type": "inspection,",
                           "status": "canceled",
-                          "scheduleDateFrom": datetime.timestamp(year_prior_to_service_date),
+                          "createdAfter": datetime.timestamp(year_prior_to_service_date),
+                          "createdBefore": datetime.now(tz=timezone.utc).timestamp(),
                         }
                     canceled_inspection_jobs_response = call_service_trade_api("job", params=params)
                     canceled_inspection_jobs = canceled_inspection_jobs_response.get("data", {}).get("jobs", [])
@@ -379,7 +383,7 @@ def main():
                         inspection_jobs_in_future_response = call_service_trade_api("job", params=params)
                         inspection_jobs_in_future = inspection_jobs_in_future_response.get("data", {}).get("jobs", [])
 
-                        # Is there a job scheduled for this service outside of service due date range?
+                        # Is there a job scheduled for this location outside of service due date range?
                         if len(inspection_jobs_in_future) > 0:
                             # A job is scheduled! Just not near the service due date.
                             inspection_job = inspection_jobs_in_future[0]
@@ -418,17 +422,54 @@ def main():
                                     # Fallback incase the job has no scheduled date but appointments do
                                     location_values["scheduled_date"] = location_values["scheduled_date"] or datetime.fromtimestamp(appointment.get("windowStart"), tz=timezone.utc)
                             
-                            # CASE 3 & 4: Service exists, job is scheduled, job is confirmed or not confirmed
+                            # Service exists, job is scheduled, job is confirmed or not confirmed
                             location_values["confirmed"] = confirmed
                             # If the job is confirmed, we have reached out. 
                             location_values["reached_out"] = confirmed
                             upsert_into_database(location_values)
                         else:
-                            jobs_processed += 1
-                            # No inspection jobs within search window - job is not scheduled - job is not canceled
-                            # Update location as service in with recurrence month and no job scheduled
-                            upsert_into_database(location_values)
-                            continue
+                            # Service exists, no canceled jobs, no scheduled job in service due window, no scheduled job in future
+                            # Was there ever any Job scheduled at this location? if not, this may be a quoted location.
+                            params = {"locationId": str(location_id), "limit": 500,
+                                "status": "scheduled,completed"
+                            }
+                            any_job_at_location_response = call_service_trade_api("job", params=params)
+                            any_job_at_location = any_job_at_location_response.get("data", {}).get("jobs", [])
+                            if len(any_job_at_location):
+                                jobs_processed += 1
+                                # No inspection jobs within search window - job is not scheduled - job is not canceled
+                                # Update location as service in with recurrence month and no job scheduled
+                                upsert_into_database(location_values)
+                                continue
+                            else:
+                                # No job has ever happened here. This location is likely quoted. 
+                                # Check if the quote has been accepted.
+                                params = {"locationId": str(location_id), "limit": 500,
+                                    "status": "accepted,draft,new,submitted,rejected"
+                                }
+                                quotes_on_location_resp = call_service_trade_api("quote", params=params)
+                                quotes_on_location = quotes_on_location_resp.get("data", {}).get("quotes", [])
+
+                                if len(quotes_on_location) > 0:
+                                    quote_status = None
+                                    for quote in quotes_on_location:
+                                        items = quote.get("items", [])
+                                        is_annual = False
+                                        for i in items:
+                                            if "annual inspection" in i.get("description").lower():
+                                                is_annual = True
+                                        if is_annual:
+                                            quote_status = quote.get("status")
+                                    if quote_status is not None:
+                                        location_values["notes"] = f"Quoted with status: {quote_status}"
+                                        upsert_into_database(location_values)
+                                        continue
+                                
+                                # Service exists, no canceled jobs, no scheduled job in service due window, no scheduled job in future
+                                # No job ever scheduled here, no relevant quote on location. Lets not include this location in our data.
+                                log.warning(f"Location id [{location_id}]. SERVICE EXISTS - no canceled jobs, no scheduled job in service due window, \
+                                            no scheduled job in future, no job ever scheduled/completed here, no relevant quote on location.")
+                                continue
                     else:
                         # A canceled job was found
                         for canceled_job in canceled_inspection_jobs:
@@ -441,12 +482,22 @@ def main():
                             if not appointments:
                                 errors += 1
                                 log.warning(f"No appointments on canceled job [{canceled_job.get("id")}]")
+
+                            # Get comments (usually contains reason why canceled.)
+                            params = {"entityId": canceled_job.get("id"), "entityType": 3, "sort": "created", "sortOrder": "ASC"}
+                            comments_response = call_service_trade_api("comment", params=params)
+                            comments = comments_response.get("data", {}).get("comments")
+                            if len(comments) > 0:
+                                for c in comments:
+                                    if "canceled" in c.get("content").lower():
+                                        location_values["notes"] = c.get("content")
                             
                             for appointment in appointments:
                                 if appointment.get("windowStart"):
                                     jobs_processed += 1
                                     location_values["scheduled_date"] = datetime.fromtimestamp(appointment.get("windowStart"), tz=timezone.utc)
                                     location_values["canceled"] = True
+
                                     upsert_into_database(location_values)
                                     continue
                                 else:
@@ -457,7 +508,7 @@ def main():
                                     continue
                 else:
                     # A scheduled or completed inspection job exist
-                    inspection_job = inspection_jobs[0]
+                    inspection_job = scheduled_inspection_jobs[0]
                     # If a job exists and was returned by our API request, it is at least scheduled.
                     location_values["scheduled"] = True
                     if not inspection_job.get("scheduledDate"):

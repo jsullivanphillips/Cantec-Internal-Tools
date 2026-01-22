@@ -1828,6 +1828,58 @@ def _parse_scheduled_date(job: dict):
     return None
 
 
+@scheduling_attack_bp.get("/scheduling_attack/v2/weekly_scheduling_volume")
+def weekly_scheduling_volume():
+    now = datetime.now(timezone.utc)
+
+    JOB_TYPE = "inspection"
+    WEEKS_BACK = 6
+
+    # Normalize to Monday 00:00 UTC of current week
+    current_week_start = (
+        now
+        .replace(hour=0, minute=0, second=0, microsecond=0)
+        - timedelta(days=now.weekday())
+    )
+
+    # Build week periods (oldest → newest)
+    periods = []
+    for i in reversed(range(WEEKS_BACK)):
+        start = current_week_start - timedelta(weeks=i)
+        end = start + timedelta(days=7)
+        periods.append((start, end))
+
+    # Fetch stats for those exact period_starts
+    rows = (
+        db.session.query(WeeklySchedulingStats)
+        .filter(
+            WeeklySchedulingStats.job_type == JOB_TYPE,
+            WeeklySchedulingStats.period_start.in_([p[0] for p in periods]),
+        )
+        .all()
+    )
+
+    stats_by_start = {row.period_start: row for row in rows}
+    generated_at = None
+    weekly = []
+    for start, end in periods:
+        row = stats_by_start.get(start)
+        if row:
+            generated_at = row.generated_at if not generated_at else None
+        weekly.append({
+            "period_start": start.isoformat(),
+            "period_end": end.isoformat(),
+            "scheduled": row.scheduled_count if row else 0,
+            "rescheduled": row.rescheduled_count if row else 0,
+        })
+
+    return jsonify({
+        "job_type": JOB_TYPE,
+        "weeks": weekly,
+        "generated_at": generated_at.isoformat() if generated_at else None,
+    }), 200
+
+
 @scheduling_attack_bp.get("/scheduling_attack/v2/scheduled_this_week")
 def jobs_scheduled_this_week():
     now = datetime.now(timezone.utc)

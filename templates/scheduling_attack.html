@@ -114,29 +114,55 @@
         </div>
         <!-- End of KPIs -->
 
-        <!-- Month selector -->
-        <div class="d-flex flex-wrap align-items-end gap-2 mb-3">
-          <div>
-            <label for="sa-v2-month" class="form-label mb-1">Select Month</label>
-            <input type="month" id="sa-v2-month" class="form-control" aria-label="Choose month for scheduling attack v2">
-          </div>
+        <!-- Weekly Scheduling Volume -->
+        <div class="row g-3 mb-3">
+          <div class="col-12">
+            <div class="border rounded-3 p-3 scheduling-volume-short" id="scheduling-volume-chart">
+              <div class="d-flex align-items-center justify-content-between mb-2">
+                <div class="small text-muted">Weekly Scheduling Volume</div>
+                <div class="small text-muted" id="sa-vol-updated" style="font-size: 12px;"></div>
+              </div>
 
-          <div class="btn-group" role="group" aria-label="Month navigation">
-            <button class="btn btn-outline-secondary" id="sa-v2-prev" type="button">← Prev</button>
-            <button class="btn btn-outline-secondary" id="sa-v2-this" type="button">This Month</button>
-            <button class="btn btn-outline-secondary" id="sa-v2-next" type="button">Next →</button>
+              <div class="position-relative" style="height: 100%;">
+                <canvas id="sa-vol-canvas" aria-label="Weekly Scheduling Volume chart" role="img"></canvas>
+                <div
+                  id="sa-vol-empty"
+                  class="position-absolute top-50 start-50 translate-middle text-muted text-center"
+                  style="display:none; font-size: 12px;"
+                >
+                  No scheduling volume yet
+                </div>
+              </div>
+            </div>
           </div>
-
-          <button class="btn btn-primary ms-auto" id="sa-v2-load" type="button">
-            Load
-          </button>
         </div>
+        <!-- End of Weekly Scheduling Volume -->
+
+        
 
         <!-- Funnel -->
         <div class="sa-card mt-3" id="sa-v2-funnel-card" hidden>
           <div class="card-header d-flex align-items-center">
             <span>Scheduling Funnel</span>
             <span class="ms-auto small text-muted" id="sa-v2-funnel-subtitle"></span>
+          </div>
+
+          <!-- Month selector -->
+          <div class="d-flex flex-wrap align-items-end gap-2 mb-3">
+            <div>
+              <label for="sa-v2-month" class="form-label mb-1">Select Month</label>
+              <input type="month" id="sa-v2-month" class="form-control" aria-label="Choose month for scheduling attack v2">
+            </div>
+
+            <div class="btn-group" role="group" aria-label="Month navigation">
+              <button class="btn btn-outline-secondary" id="sa-v2-prev" type="button">← Prev</button>
+              <button class="btn btn-outline-secondary" id="sa-v2-this" type="button">This Month</button>
+              <button class="btn btn-outline-secondary" id="sa-v2-next" type="button">Next →</button>
+            </div>
+
+            <button class="btn btn-primary ms-auto" id="sa-v2-load" type="button">
+              Load
+            </button>
           </div>
 
           <div class="card-body">

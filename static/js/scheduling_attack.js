@@ -4,8 +4,9 @@ const SchedulingAttack = (() => {
   let chartJobs;
   let includeTravel = true;  // default matches current behavior (incl. travel)
   // --- Scheduling Attack charts ---
-  let chartVolume;
   let saV2ResizeBound = false;
+  let saWeeklyVolumeChart = null;
+
 
     function init() {
       // Toggle handling (Forecast tab)
@@ -33,6 +34,7 @@ const SchedulingAttack = (() => {
 
       loadSchedulingAttackV2Metrics();
       loadScheduledThisWeekMetric();
+      loadWeeklySchedulingVolume();
     }
 
     function debounce(fn, ms) {
@@ -337,6 +339,43 @@ const SchedulingAttack = (() => {
     }
   }
 
+  async function loadWeeklySchedulingVolume() {
+    const url = `/scheduling_attack/v2/weekly_scheduling_volume`;
+
+    const card = document.getElementById("scheduling-volume-chart");
+    const emptyEl = document.getElementById("sa-vol-empty");
+    const updatedEl = document.getElementById("sa-vol-updated");
+    const canvas = document.getElementById("sa-vol-canvas");
+
+    if (!card || !canvas) return;
+
+    // Minimal loading state (don’t destroy DOM)
+    card.classList.add("opacity-75");
+    if (updatedEl) updatedEl.textContent = "";
+    if (emptyEl) emptyEl.style.display = "none";
+
+    try {
+      const r = await fetch(url, { headers: { "Accept": "application/json" } });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      renderWeeklySchedulingVolume(data);
+    } catch (err) {
+      console.error("Failed to load weekly scheduling volume", err);
+      if (updatedEl) updatedEl.textContent = "Failed to load";
+      if (emptyEl) {
+        emptyEl.textContent = "Failed to load metrics";
+        emptyEl.style.display = "block";
+      }
+      if (saWeeklyVolumeChart) {
+        saWeeklyVolumeChart.destroy();
+        saWeeklyVolumeChart = null;
+      }
+    } finally {
+      card.classList.remove("opacity-75");
+    }
+  }
+
+
   async function loadScheduledThisWeekMetric() {
     const url = `/scheduling_attack/v2/scheduled_this_week`;
     document.getElementById("sa-v2-kpi-scheduled-this-week").innerHTML = `
@@ -374,6 +413,127 @@ const SchedulingAttack = (() => {
       if (updatedEl) updatedEl.textContent = new Date().toISOString();
       if (funnelCard) funnelCard.hidden = true;
     }
+  }
+
+
+  function renderWeeklySchedulingVolume(data) {
+    const weeks = Array.isArray(data?.weeks) ? data.weeks : [];
+
+    const emptyEl = document.getElementById("sa-vol-empty");
+    const updatedEl = document.getElementById("sa-vol-updated");
+    const canvas = document.getElementById("sa-vol-canvas");
+    if (!canvas) return;
+
+    // Format: "Jan 19"
+    const fmtLabel = (isoStart) => {
+      const d = new Date(isoStart);
+      return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    };
+
+    const labels = weeks.map(w => fmtLabel(w.period_start));
+    const scheduled = weeks.map(w => (typeof w.scheduled === "number" ? w.scheduled : 0));
+    const rescheduled = weeks.map(w => (typeof w.rescheduled === "number" ? w.rescheduled : 0));
+
+    const hasAnyData = scheduled.some(v => v > 0) || rescheduled.some(v => v > 0);
+
+    if (updatedEl) {
+      // “Updated 1:23 PM” style
+      try {
+        const d = new Date(data.generated_at);
+        updatedEl.textContent = `Updated ${d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`;
+      } catch {
+        updatedEl.textContent = "";
+      }
+    }
+
+    // If first weeks are all 0, show a clean empty-state message
+    if (!hasAnyData) {
+      if (emptyEl) emptyEl.style.display = "block";
+    } else {
+      if (emptyEl) emptyEl.style.display = "none";
+    }
+
+    const ctx = canvas.getContext("2d");
+
+    if (saWeeklyVolumeChart) {
+      saWeeklyVolumeChart.destroy();
+      saWeeklyVolumeChart = null;
+    }
+
+    saWeeklyVolumeChart = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels,
+        datasets: [
+          {
+            label: "Scheduled",
+            data: scheduled,
+            borderWidth: 0,
+            borderRadius: 6,
+            barPercentage: 0.7,
+            categoryPercentage: 0.7,
+          },
+          {
+            // Optional, but looks great and stays minimalist
+            type: "line",
+            label: "Rescheduled",
+            data: rescheduled,
+            tension: 0.35,
+            pointRadius: 0,
+            borderWidth: 2,
+          }
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false, // critical for short card height
+        layout: {
+          padding: {
+            bottom: 16   // ← increase to 20–24 if needed
+          }
+        },
+        animation: false,
+        plugins: {
+          legend: { display: false }, // minimalist
+          tooltip: {
+            displayColors: false,
+            callbacks: {
+              title: (items) => items?.[0]?.label || "",
+              label: (item) => {
+                const name = item.dataset?.label || "Value";
+                const val = typeof item.raw === "number" ? item.raw : 0;
+                return `${name}: ${val}`;
+              }
+            }
+          },
+        },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: {
+              maxRotation: 0,
+              autoSkip: true,
+              font: { size: 11 },
+            },
+            border: { display: false },
+          },
+          y: {
+            beginAtZero: true,
+            suggestedMax: Math.max(5, ...scheduled, ...rescheduled),
+            ticks: {
+              precision: 0,
+              font: { size: 11 },
+              // Keep it minimal: only show a few ticks
+              maxTicksLimit: 4,
+            },
+            grid: {
+              drawBorder: false,
+            },
+            border: { display: false },
+          },
+        },
+      },
+    });
   }
 
 
@@ -493,7 +653,7 @@ const SchedulingAttack = (() => {
     // optional subtitle
     if (subtitleEl) {
       subtitleEl.textContent = total
-        ? `Scheduled ${(pctOf(scheduledRows.length, total)).toFixed(0)}% • Canceled ${(pctOf(canceledRows.length, total)).toFixed(0)}%`
+        ? `Scheduled ${(pctOf(scheduledRows.length, total)).toFixed(0)}% • Unscheduled ${(pctOf(unscheduledRows.length, total)).toFixed(0)}% • Canceled ${(pctOf(canceledRows.length, total)).toFixed(0)}%`
         : "";
     }
 
@@ -910,8 +1070,9 @@ const SchedulingAttack = (() => {
     if (ev.target?.id === "status-tab") {
       const v2Month = document.getElementById("sa-v2-month");
       if (v2Month?.value) loadSchedulingAttackV2ForMonth(v2Month.value);
-      loadSchedulingAttackV2Metrics()
-      loadScheduledThisWeekMetric()
+      loadSchedulingAttackV2Metrics();
+      loadScheduledThisWeekMetric();
+      loadWeeklySchedulingVolume();
     }
 
     if (ev.target?.id === "efficiency-tab") {

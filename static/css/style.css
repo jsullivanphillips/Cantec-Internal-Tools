@@ -32,6 +32,17 @@ body {
   font-size: 0.75rem;
 }
 
+.scheduling-volume-short {
+  height: 240px;
+}
+
+#scheduling-volume-chart canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+
+
 
 .badge-gold {
   background-color: #f6c343;
