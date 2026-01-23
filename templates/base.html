@@ -2,59 +2,166 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block title %}Cantec BI{% endblock %}</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
-    {% block extra_head %}{% endblock %}
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% block title %}Cantec BI{% endblock %}</title>
+
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+
+  <style>
+    /* Small, safe defaults that won't fight your existing style.css */
+    .navbar-brand img { height: 52px; }
+    .navbar { 
+      z-index: 1030;
+    }
+    .navbar .dropdown-menu {
+      min-width: 260px;
+    }
+    .navbar .dropdown-item i {
+      width: 1.25rem;
+    }
+    .nav-divider {
+      height: 1px;
+      margin: .35rem .75rem;
+      background: rgba(0,0,0,.08);
+    }
+
+    /* Active link styles (works with server-side "active_page" variable) */
+    .navbar .nav-link.active,
+    .navbar .dropdown-item.active {
+      font-weight: 600;
+    }
+
+    /* Optional: tighten nav on desktop a bit */
+    @media (min-width: 992px) {
+      .navbar .nav-link { padding-left: .75rem; padding-right: .75rem; }
+    }
+  </style>
+
+  {% block extra_head %}{% endblock %}
 </head>
+
 <body>
   <!-- ✅ GLOBAL NAVBAR -->
-  <nav class="navbar navbar-expand-lg navbar-dark bg-custom">
+  <nav class="navbar navbar-expand-lg navbar-dark bg-custom border-bottom">
     <div class="container">
-        <a class="navbar-brand" href="{{ url_for('home.home') }}">
-            <img src="{{ url_for('static', filename='img/CANTEC Fire Alarms LOGO.png') }}" 
-            ="Cantec BI Logo" height="60">
-        </a>
-        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" 
-            data-bs-target="#navbarNav" aria-controls="navbarNav" 
-            aria-expanded="false" aria-label="Toggle navigation">
-            <span class="navbar-toggler-icon"></span>
-        </button>
+      <a class="navbar-brand d-flex align-items-center gap-2" href="{{ url_for('home.home') }}">
+        <img src="{{ url_for('static', filename='img/CANTEC Fire Alarms LOGO.png') }}" alt="Cantec BI Logo">
+      </a>
+
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
+              data-bs-target="#navbarNav" aria-controls="navbarNav"
+              aria-expanded="false" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+
       <div class="collapse navbar-collapse" id="navbarNav">
-        <ul class="navbar-nav ms-auto d-flex align-items-center">
-          <li class="nav-item">
-            <a class="nav-link" href="{{ url_for('scheduling.find_schedule') }}">Scheduling Assistant</a>
+        <ul class="navbar-nav ms-auto align-items-lg-center gap-lg-1">
+
+          <!-- Operations -->
+          <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle {% if active_group == 'operations' %}active{% endif %}"
+               href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+              <i class="bi bi-tools me-1"></i> Operations
+            </a>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li>
+                <a class="dropdown-item {% if active_page == 'scheduling_assistant' %}active{% endif %}"
+                   href="{{ url_for('scheduling.find_schedule') }}">
+                  <i class="bi bi-calendar2-check"></i> Scheduling Assistant
+                </a>
+              </li>
+              <li>
+                <a class="dropdown-item {% if active_page == 'keys' %}active{% endif %}"
+                   href="{{ url_for('keys.keys_home') }}">
+                  <i class="bi bi-key"></i> Key Page
+                </a>
+              </li>
+              <li class="nav-divider"></li>
+              <li>
+                <a class="dropdown-item {% if active_page == 'deficiency_tracker' %}active{% endif %}"
+                   href="{{ url_for('deficiency_tracker.deficiency_tracker') }}">
+                  <i class="bi bi-exclamation-triangle"></i> Deficiency Tracker
+                </a>
+              </li>
+            </ul>
           </li>
-          <!-- <li class="nav-item">
-            <a class="nav-link" href="{{ url_for('ipad_scanner.ipad_scanner') }}">iPad Scanner</a>
-          </li> -->
-          <li class="nav-item">
-            <a class="nav-link" href="{{ url_for('keys.keys_home') }}">Key Page</a>
+
+          <!-- Scheduling -->
+          <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle {% if active_group == 'scheduling' %}active{% endif %}"
+               href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+              <i class="bi bi-calendar3 me-1"></i> Scheduling
+            </a>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li>
+                <a class="dropdown-item {% if active_page == 'scheduling_attack' %}active{% endif %}"
+                   href="{{ url_for('scheduling_attack.scheduling_attack') }}">
+                  <i class="bi bi-graph-up-arrow"></i> Scheduling Attack
+                </a>
+              </li>
+              <li>
+                <a class="dropdown-item {% if active_page == 'monthly_specialists' %}active{% endif %}"
+                   href="{{ url_for('monthly_specialist.monthly_specialists') }}">
+                  <i class="bi bi-people"></i> Monthly Specialists
+                </a>
+              </li>
+            </ul>
           </li>
-          <li class="nav-item">
-            <a class="nav-link" href="{{ url_for('monthly_specialist.monthly_specialists') }}">Monthly Specialists</a>
+
+          <!-- Processing -->
+          <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle {% if active_group == 'processing' %}active{% endif %}"
+               href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+              <i class="bi bi-clipboard-check me-1"></i> Processing
+            </a>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li>
+                <a class="dropdown-item {% if active_page == 'processing_attack' %}active{% endif %}"
+                   href="{{ url_for('processing_attack.processing_attack') }}">
+                  <i class="bi bi-speedometer2"></i> Processing Attack
+                </a>
+              </li>
+              <li>
+                <a class="dropdown-item {% if active_page == 'pink_folder' %}active{% endif %}"
+                   href="{{ url_for('pink_folder.pink_folder') }}">
+                  <i class="bi bi-folder2-open"></i> Pink Folder
+                </a>
+              </li>
+              <li>
+                <a class="dropdown-item {% if active_page == 'limbo_jobs' %}active{% endif %}"
+                   href="{{ url_for('limbo_job_tracker.limbo_job_tracker') }}">
+                  <i class="bi bi-hourglass-split"></i> Limbo Job Tracker
+                </a>
+              </li>
+            </ul>
           </li>
-          <li class="nav-item">
-            <a class="nav-link" href="{{ url_for('processing_attack.processing_attack') }}">Processing Attack</a>
+
+          <!-- Insights -->
+          <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle {% if active_group == 'insights' %}active{% endif %}"
+               href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+              <i class="bi bi-bar-chart-line me-1"></i> Insights
+            </a>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li>
+                <a class="dropdown-item {% if active_page == 'performance_summary' %}active{% endif %}"
+                   href="{{ url_for('performance_summary.performance_summary') }}">
+                  <i class="bi bi-pie-chart"></i> Performance Summary
+                </a>
+              </li>
+            </ul>
           </li>
-          <li class="nav-item">
-            <a class="nav-link" href="{{ url_for('scheduling_attack.scheduling_attack') }}">Scheduling Attack</a>
+
+          <!-- Optional: a single always-visible Home link on far right -->
+          <li class="nav-item d-none d-lg-inline">
+            <a class="nav-link {% if active_page == 'home' %}active{% endif %}" href="{{ url_for('home.home') }}">
+              <i class="bi bi-house-door me-1"></i> Home
+            </a>
           </li>
-          <li class="nav-item">
-            <a class="nav-link" href="{{ url_for('deficiency_tracker.deficiency_tracker') }}">Deficiency Tracker</a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="{{ url_for('limbo_job_tracker.limbo_job_tracker') }}">Limbo Job Tracker</a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="{{ url_for('performance_summary.performance_summary') }}">Performance Summary</a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="{{ url_for('pink_folder.pink_folder') }}">Pink Folder</a>
-          </li>
+
         </ul>
       </div>
     </div>
@@ -63,6 +170,7 @@
   <!-- Page-specific content -->
   {% block content %}{% endblock %}
   {% block extra_scripts %}{% endblock %}
+
   <!-- Scripts -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>

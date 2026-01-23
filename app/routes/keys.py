@@ -2,7 +2,7 @@
 from flask import Blueprint, render_template, request, jsonify, abort, redirect, url_for
 from sqlalchemy import or_, func
 from sqlalchemy.sql import over
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import selectinload, aliased
 from .scheduling_attack import get_active_techs
 import re
@@ -35,6 +35,45 @@ def is_route_bag_keycode(keycode: str) -> bool:
     if not keycode:
         return False
     return bool(_ROUTE_BAG_RE.match(str(keycode).strip()))
+
+
+def get_keys_older_than(number_of_days: int):
+    if not isinstance(number_of_days, int) or number_of_days < 0:
+        raise ValueError("number_of_days must be a non-negative int")
+
+    KS = KeyStatus
+    cutoff = datetime.now(timezone.utc) - timedelta(days=number_of_days)
+
+    # subquery: latest inserted_at per key_id
+    latest = (
+        db.session.query(
+            KS.key_id.label("key_id"),
+            func.max(KS.inserted_at).label("max_inserted_at"),
+        )
+        .group_by(KS.key_id)
+        .subquery()
+    )
+
+    ks_latest = aliased(KS)
+
+    # join keys -> latest -> key_status row matching latest timestamp
+    rows = (
+        db.session.query(Key, ks_latest)
+        .join(latest, latest.c.key_id == Key.id)
+        .join(
+            ks_latest,
+            (ks_latest.key_id == latest.c.key_id)
+            & (ks_latest.inserted_at == latest.c.max_inserted_at),
+        )
+        .filter(func.lower(ks_latest.status) == "signed out")
+        .filter((ks_latest.is_on_monthly.is_(False)) | (ks_latest.is_on_monthly.is_(None)))
+        .filter(ks_latest.inserted_at <= cutoff)
+        .order_by(ks_latest.inserted_at.asc())  # oldest first (usually what you want)
+        .limit(100)
+        .all()
+    )
+
+    return rows
 
 
 def _commit_or_500():
@@ -367,7 +406,7 @@ def api_keys_signed_out():
         )
         .filter(func.lower(ks_latest.status) == "signed out")
         .filter((ks_latest.is_on_monthly.is_(False)) | (ks_latest.is_on_monthly.is_(None)))
-        .order_by(ks_latest.inserted_at.desc())
+        .order_by(ks_latest.inserted_at.asc())
         .limit(100)
         .all()
     )

@@ -9,6 +9,7 @@ from app.db_models import DeficiencyRecord
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from sqlalchemy import and_
 import pytz
+from flask import redirect, url_for
 
 deficiency_tracker_bp = Blueprint('deficiency_tracker', __name__, template_folder='templates')
 api_session = requests.Session()
@@ -25,6 +26,18 @@ def deficiency_tracker():
     """
     Render the main processing_attack page (HTML).
     """
+    api_session = requests.Session()
+    auth_url = "https://api.servicetrade.com/api/auth"
+    payload = {
+        "username": session.get('username'),
+        "password": session.get('password')
+    }
+
+    try:
+        auth_response = api_session.post(auth_url, json=payload)
+        auth_response.raise_for_status()
+    except Exception as e:
+        return redirect(url_for("auth.login"))  # or whatever your login route is
     return render_template("deficiency_tracker.html")
 
 # Helper Authentication

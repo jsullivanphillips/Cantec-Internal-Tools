@@ -4,82 +4,260 @@
 {% block title %}Home - Scheduling App{% endblock %}
 
 {% block extra_head %}
-  <script type="module">
-    import { Editor } from 'https://esm.sh/@tiptap/core@2.1.11';
-    import StarterKit from 'https://esm.sh/@tiptap/starter-kit@2.1.11';
-
-    window.Tiptap = { Editor, StarterKit };
-  </script>
-  <style>
-    .word-style {
-      font-family: "Calibri", "Calibri", serif;
-      font-size: 12pt;
-      line-height: 1.6;
-      color: #333;
-      padding: 1in;
-      background-color: white;
-      border: 1px solid #ccc;
-      border-radius: 6px;
-      box-shadow: 0 0 5px rgba(0,0,0,0.05);
-      max-width: 800px;
-      margin: 0 auto 32px auto;
-      white-space: pre-wrap;
-    }
-    .ProseMirror {
-      outline: none;
-      min-height: 300px;
-      white-space: normal;
-    }
-  </style>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/home.css') }}">
 {% endblock %}
 
-
 {% block content %}
-  <!-- Main container for the homepage content -->
-  <div class="main-container">
-    <h1 class="page-title">Welcome to the Scheduling App</h1>
+<div class="container py-4 home-wrap">
 
-    <p style="text-align: center; margin-bottom: 20px;">
-      This is the home page. Use the buttons below to navigate to the desired page.
-    </p>
-
-    <div style="text-align: center;">
-      <a href="{{ url_for('scheduling.find_schedule') }}" class="primary-btn" style="margin-right: 15px;">
-        Scheduling Assistant
-      </a>
-      <a href="{{ url_for('processing_attack.processing_attack') }}" class="primary-btn" style="margin-right: 15px;">
-        Processing Attack
-      </a>
-      <a href="{{ url_for('scheduling_attack.scheduling_attack') }}" class="primary-btn" style="margin-right: 15px;">
-        Scheduling Attack
-      </a>
-      <a href="{{ url_for('deficiency_tracker.deficiency_tracker') }}" class="primary-btn" style="margin-right: 15px;">
-        Deficiency Tracker
-      </a>
-      <a href="{{ url_for('limbo_job_tracker.limbo_job_tracker') }}" class="primary-btn" style="margin-right: 15px;">
-        Limbo Job Tracker
-      </a>
-      <a href="{{ url_for('performance_summary.performance_summary') }}" class="primary-btn" style="margin-right: 15px;">
-        Performance Summary
-      </a>
-      <a href="{{ url_for('pink_folder.pink_folder') }}" class="primary-btn" style="margin-right: 15px;">
-        Pink Folder
-      </a>
+  <!-- Header -->
+  <div class="home-header mb-3">
+    <div>
+      <h1 class="home-title mb-1">Home</h1>
+      <div class="home-subtitle text-muted">
+        Quick briefing & fast actions
+      </div>
     </div>
 
-    <!-- Meeting Minutes Section -->
-    <!-- Create New Button -->
-    <div style="text-align: center; margin: 30px 0;">
-      <button id="create-minute-btn" class="btn btn-success">+ New Meeting Minute</button>
+    <div class="home-updated text-muted small">
+      <i class="bi bi-clock me-1"></i>
+      <span id="home-last-updated">—</span>
+    </div>
+  </div>
+
+  <!-- ROW 1: KPIs -->
+  <div class="row g-3 mb-3">
+    <!-- Jobs to be processed KPI -->
+    <div class="col-12 col-sm-6 col-lg-3">
+      <a class="home-kpi card kpi-card h-100" href="{{ url_for('processing_attack.processing_attack') }}">
+        <div class="card-body kpi-body" data-kpi="to-be-processed">
+          <!-- Skeleton (shown while loading) -->
+          <div class="kpi-skeleton" id="kpi-to-be-processed-skel" aria-hidden="true">
+            <div class="skel-line skel-w-70 mb-2"></div>
+            <div class="skel-line skel-w-35 skel-h-lg mb-2"></div>
+            <div class="skel-line skel-w-55"></div>
+          </div>
+
+          <!-- Real content (hidden until loaded) -->
+          <div class="kpi-real d-none" id="kpi-to-be-processed-real">
+            <div class="kpi-top">
+              <span class="kpi-label">Jobs to be processed</span>
+              <span class="kpi-pill" id="kpi-pill-to-be-processed">—</span>
+            </div>
+            <div class="kpi-value">
+              <span id="kpi-to-be-processed">—</span><span class="kpi-suffix"></span>
+            </div>
+            <div class="kpi-foot text-muted">Click to open Processing Attack</div>
+          </div>
+        </div>
+      </a>
+    </div>
+    <!-- End of jobs to be processed KPI -->
+
+    <!-- Jobs to be invoiced KPI -->
+    <div class="col-12 col-sm-6 col-lg-3">
+      <a class="home-kpi card kpi-card h-100" href="{{ url_for('processing_attack.processing_attack') }}">
+        <div class="card-body kpi-body" data-kpi="invoiced">
+          <!-- Skeleton (shown while loading) -->
+          <div class="kpi-skeleton" id="kpi-invoiced-skel" aria-hidden="true">
+            <div class="skel-line skel-w-70 mb-2"></div>
+            <div class="skel-line skel-w-35 skel-h-lg mb-2"></div>
+            <div class="skel-line skel-w-55"></div>
+          </div>
+
+          <!-- Real content (hidden until loaded) -->
+          <div class="kpi-real d-none" id="kpi-invoiced-real">
+            <div class="kpi-top">
+              <span class="kpi-label">Jobs to be invoiced</span>
+              <span class="kpi-pill" id="kpi-pill-invoiced">—</span>
+            </div>
+            <div class="kpi-value">
+              <span id="kpi-invoiced">—</span><span class="kpi-suffix"></span>
+            </div>
+            <div class="kpi-foot text-muted">Click to open Processing Attack</div>
+          </div>
+        </div>
+      </a>
+    </div>
+    <!-- End of jobs to be invoiced KPI -->
+
+    <!-- Forward schedule coverage KPI -->
+    <div class="col-12 col-sm-6 col-lg-3">
+      <a class="home-kpi card kpi-card h-100" href="{{ url_for('scheduling_attack.scheduling_attack') }}">
+        <div class="card-body kpi-body" data-kpi="forward-coverage">
+          <!-- Skeleton (shown while loading) -->
+          <div class="kpi-skeleton" id="kpi-forward-skel" aria-hidden="true">
+            <div class="skel-line skel-w-70 mb-2"></div>
+            <div class="skel-line skel-w-35 skel-h-lg mb-2"></div>
+            <div class="skel-line skel-w-55"></div>
+          </div>
+
+          <!-- Real content (hidden until loaded) -->
+          <div class="kpi-real d-none" id="kpi-forward-real">
+            <div class="kpi-top">
+              <span class="kpi-label">Confirmed in next two weeks</span>
+              <span class="kpi-pill" id="kpi-pill-forward">—</span>
+            </div>
+            <div class="kpi-value">
+              <span id="kpi-forward-coverage">—</span><span class="kpi-suffix">%</span>
+            </div>
+            <div class="kpi-foot text-muted">Click to open Scheduling Attack</div>
+          </div>
+        </div>
+      </a>
+    </div>
+    <!-- End of forward schedule coverage KPI -->
+
+
+    <!-- Jobs completed today KPI -->
+    <div class="col-12 col-sm-6 col-lg-3">
+      <a class="home-kpi card kpi-card h-100" href="{{ url_for('processing_attack.processing_attack') }}">
+        <div class="card-body kpi-body" data-kpi="completed">
+          <!-- Skeleton (shown while loading) -->
+          <div class="kpi-skeleton" id="kpi-completed-skel" aria-hidden="true">
+            <div class="skel-line skel-w-70 mb-2"></div>
+            <div class="skel-line skel-w-35 skel-h-lg mb-2"></div>
+            <div class="skel-line skel-w-55"></div>
+          </div>
+
+          <!-- Real content (hidden until loaded) -->
+          <div class="kpi-real d-none" id="kpi-completed-real">
+            <div class="kpi-top">
+              <span class="kpi-label">Jobs processed today</span>
+              <span class="kpi-pill" id="kpi-pill-completed">—</span>
+            </div>
+            <div class="kpi-value">
+              <span id="kpi-completed">—</span><span class="kpi-suffix"></span>
+            </div>
+            <div class="kpi-foot text-muted">Today's completions</div>
+          </div>
+        </div>
+      </a>
+    </div>
+    <!-- End of jobs completed today -->
+
+  <!-- ROW 2: Needs Attention -->
+  <div class="card mb-3 home-section-card">
+    <div class="card-header d-flex align-items-center justify-content-between">
+      <div class="d-flex align-items-center gap-2">
+        <i class="bi bi-exclamation-circle"></i>
+        <strong>Needs attention</strong>
+      </div>
+      <button class="btn btn-sm btn-outline-secondary" id="home-refresh" type="button">
+        <i class="bi bi-arrow-clockwise me-1"></i> Refresh
+      </button>
     </div>
 
-    <!-- Container for all meeting minutes -->
-    <div id="minutes-list" style="max-width: 800px; margin: auto;"></div>
+    <div class="card-body">
+      <div class="row g-3">
+        <!-- Left: alerts list -->
+        <div class="col-12 col-lg-7">
+          <div class="home-attn-list" id="home-attn-list">
 
-    <!-- Optional: loading spinner -->
-    <div id="loading" style="text-align: center; padding: 20px; display: none;">
-      <span>Loading more...</span>
+            <!-- Skeleton (shown while loading) -->
+            <div id="home-attn-skel" aria-hidden="true">
+              <div class="home-attn-item">
+                <div class="skel-line skel-w-70 mb-2"></div>
+                <div class="skel-line skel-w-55"></div>
+              </div>
+              <div class="home-attn-item">
+                <div class="skel-line skel-w-65 mb-2"></div>
+                <div class="skel-line skel-w-50"></div>
+              </div>
+              <div class="home-attn-item">
+                <div class="skel-line skel-w-60 mb-2"></div>
+                <div class="skel-line skel-w-45"></div>
+              </div>
+            </div>
+
+            <!-- Empty state (shown if no items) -->
+            <div class="home-empty text-muted" id="home-attn-empty" style="display:none;">
+              No items right now.
+            </div>
+
+          </div>
+        </div>
+
+
+        <!-- Right: quick links to action queues -->
+        <div class="col-12 col-lg-5">
+          <div class="home-attn-actions">
+            <a class="btn btn-outline-primary w-100 mb-2" href="{{ url_for('processing_attack.processing_attack') }}">
+              <i class="bi bi-clipboard-check me-2"></i> Open Processing queues
+            </a>
+            <a class="btn btn-outline-primary w-100 mb-2" href="{{ url_for('scheduling_attack.scheduling_attack') }}">
+              <i class="bi bi-calendar3 me-2"></i> Open Scheduling queues
+            </a>
+            <a class="btn btn-outline-primary w-100" href="{{ url_for('keys.keys_home') }}">
+              <i class="bi bi-key me-2"></i> View signed-out keys
+            </a>
+          </div>
+        </div>
+      </div>
     </div>
+  </div>
+
+  <!-- ROW 3: Quick Actions -->
+  <div class="card home-section-card">
+    <div class="card-header d-flex align-items-center gap-2">
+      <i class="bi bi-lightning-charge"></i>
+      <strong>Quick actions</strong>
+    </div>
+
+    <div class="card-body">
+      <div class="row g-2">
+        <div class="col-12 col-md-6 col-lg-3">
+          <a class="btn btn-primary w-100" href="{{ url_for('scheduling.find_schedule') }}">
+            <i class="bi bi-calendar2-check me-2"></i> Scheduling Assistant
+          </a>
+        </div>
+
+        <div class="col-12 col-md-6 col-lg-3">
+          <a class="btn btn-primary w-100" href="{{ url_for('processing_attack.processing_attack') }}">
+            <i class="bi bi-speedometer2 me-2"></i> Processing Attack
+          </a>
+        </div>
+
+        <div class="col-12 col-md-6 col-lg-3">
+          <a class="btn btn-primary w-100" href="{{ url_for('scheduling_attack.scheduling_attack') }}">
+            <i class="bi bi-graph-up-arrow me-2"></i> Scheduling Attack
+          </a>
+        </div>
+
+        <div class="col-12 col-md-6 col-lg-3">
+          <a class="btn btn-primary w-100" href="{{ url_for('deficiency_tracker.deficiency_tracker') }}">
+            <i class="bi bi-exclamation-triangle me-2"></i> Deficiency Tracker
+          </a>
+        </div>
+
+        <div class="col-12 col-md-6 col-lg-3">
+          <a class="btn btn-outline-secondary w-100" href="{{ url_for('pink_folder.pink_folder') }}">
+            <i class="bi bi-folder2-open me-2"></i> Pink Folder
+          </a>
+        </div>
+
+        <div class="col-12 col-md-6 col-lg-3">
+          <a class="btn btn-outline-secondary w-100" href="{{ url_for('limbo_job_tracker.limbo_job_tracker') }}">
+            <i class="bi bi-hourglass-split me-2"></i> Limbo Jobs
+          </a>
+        </div>
+
+        <div class="col-12 col-md-6 col-lg-3">
+          <a class="btn btn-outline-secondary w-100" href="{{ url_for('monthly_specialist.monthly_specialists') }}">
+            <i class="bi bi-people me-2"></i> Monthly Specialists
+          </a>
+        </div>
+
+        <div class="col-12 col-md-6 col-lg-3">
+          <a class="btn btn-outline-secondary w-100" href="{{ url_for('performance_summary.performance_summary') }}">
+            <i class="bi bi-pie-chart me-2"></i> Performance Summary
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
 {% endblock %}
 
 {% block extra_scripts %}

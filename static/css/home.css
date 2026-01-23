@@ -1,0 +1,197 @@
+/* static/css/home.css */
+
+.home-wrap {
+  max-width: 1200px;
+}
+
+.home-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.home-title {
+  font-size: 1.6rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.home-subtitle {
+  font-size: 0.95rem;
+}
+
+.kpi-card {
+  text-decoration: none;
+  color: inherit;
+  border-radius: 14px;
+  transition: transform 0.08s ease, box-shadow 0.08s ease;
+}
+
+.kpi-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.08);
+}
+
+.kpi-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.kpi-label {
+  font-size: 0.9rem;
+  color: rgba(0, 0, 0, 0.65);
+}
+
+.kpi-pill {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid rgba(0,0,0,0.12);
+  color: rgba(0,0,0,0.7);
+  background: rgba(0,0,0,0.03);
+  white-space: nowrap;
+}
+
+.kpi-pill.good {
+  border-color: rgba(25,135,84,0.35);
+  background: rgba(25,135,84,0.08);
+  color: rgba(25,135,84,1);
+}
+
+.kpi-pill.warn {
+  border-color: rgba(255,193,7,0.5);
+  background: rgba(255,193,7,0.12);
+  color: rgba(146, 109, 0, 1);
+}
+
+.kpi-pill.bad {
+  border-color: rgba(220,53,69,0.4);
+  background: rgba(220,53,69,0.1);
+  color: rgba(220,53,69,1);
+}
+
+.kpi-value {
+  font-size: 2rem;
+  font-weight: 750;
+  line-height: 1.1;
+}
+
+.kpi-suffix {
+  font-size: 1.1rem;
+  font-weight: 650;
+  margin-left: 3px;
+  color: rgba(0,0,0,0.6);
+}
+
+.kpi-foot {
+  margin-top: 8px;
+  font-size: 0.85rem;
+}
+
+.home-section-card {
+  border-radius: 14px;
+}
+
+.home-attn-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.home-attn-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(0,0,0,0.08);
+  background: rgba(0,0,0,0.02);
+}
+
+.home-attn-left {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.home-attn-texts {
+  min-width: 0;
+}
+
+.home-attn-title {
+  font-weight: 650;
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.home-attn-sub {
+  margin: 2px 0 0 0;
+  font-size: 0.85rem;
+  color: rgba(0,0,0,0.65);
+}
+
+.home-attn-badge {
+  margin-top: 2px;
+  font-size: 0.75rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid rgba(0,0,0,0.12);
+  background: white;
+  white-space: nowrap;
+}
+
+.home-attn-item a {
+  text-decoration: none;
+}
+
+.home-empty {
+  padding: 10px 0;
+}
+
+.home-note {
+  line-height: 1.4;
+}
+
+/* ---- Skeleton shimmer (Google-ish) ---- */
+.kpi-body {
+  position: relative;
+  min-height: 132px; /* keeps card height stable while loading */
+}
+
+.kpi-skeleton .skel-line {
+  border-radius: 10px;
+  height: 12px;
+  background: linear-gradient(
+    135deg,
+    rgba(0,0,0,0.06) 0%,
+    rgba(0,0,0,0.10) 40%,
+    rgba(0,0,0,0.06) 80%
+  );
+  background-size: 220% 220%;
+  animation: shimmer 1.15s linear infinite;
+}
+
+.skel-h-lg { height: 34px; border-radius: 12px; }
+.skel-w-35 { width: 35%; }
+.skel-w-55 { width: 55%; }
+.skel-w-70 { width: 70%; }
+
+@keyframes shimmer {
+  0%   { background-position: 0% 0%; }
+  100% { background-position: 100% 100%; }
+}
+
+/* ------- needs attention row ----- */
+#home-attn-skel .home-attn-item {
+  display: block;
+}
+#home-attn-skel .skel-line {
+  display: block;
+}
+

@@ -556,60 +556,6 @@ const ProcessingAttack = (() => {
       .catch(error => console.error("Error loading complete jobs:", error));
   }
 
-  function loadOverallWeeklyTrend() {
-    fetch("/processing_attack/overall_weekly_trend")
-      .then(res => res.json())
-      .then(data => {
-        if (!overallWeeklyTrendChart) {
-          initOverallWeeklyTrendChart();
-        }
-
-        const maxJobs = Math.max(...data.jobs);
-        const maxHours = Math.max(...data.hours);
-
-        overallRecordIndexes.jobs = data.jobs.indexOf(maxJobs);
-        overallRecordIndexes.hours = data.hours.indexOf(maxHours);
-
-        overallWeeklyTrendChart.data.labels = data.weeks;
-        overallWeeklyTrendChart.data.datasets[0].data = data.jobs;
-        overallWeeklyTrendChart.data.datasets[1].data = data.hours;
-
-        // Add Y-axis headroom
-        overallWeeklyTrendChart.options.scales.y.suggestedMax =
-          Math.ceil(maxJobs * 1.2);
-        overallWeeklyTrendChart.options.scales.yHours.suggestedMax =
-          Math.ceil(maxHours * 1.2);
-
-        overallWeeklyTrendChart.update();
-      })
-      .catch(err => {
-        console.error("Error loading overall weekly trend", err);
-      });
-  }
-
-  function setupOverallTrendToggle() {
-    document
-      .querySelectorAll('#overall-stats .btn-group button')
-      .forEach(btn => {
-        btn.addEventListener("click", () => {
-          document
-            .querySelectorAll('#overall-stats .btn-group button')
-            .forEach(b => b.classList.remove("active"));
-
-          btn.classList.add("active");
-
-          const view = btn.dataset.view;
-
-          overallWeeklyTrendChart.data.datasets[0].hidden =
-            view === "hours";
-          overallWeeklyTrendChart.data.datasets[1].hidden =
-            view === "jobs";
-
-          overallWeeklyTrendChart.update();
-        });
-      });
-  }
-
 
 
   // Load processed data (jobs processed and tech hours processed).
@@ -806,6 +752,8 @@ const ProcessingAttack = (() => {
       })
       .catch(error => console.error("Error loading processed data by processor:", error));
   }
+
+
 
   /* =======================================================
      UI UPDATE & EVENT LISTENERS
@@ -1127,29 +1075,6 @@ const ProcessingAttack = (() => {
     })
   }
   
-  function loadOverallStats() {
-    document.getElementById("recordMostJobs").textContent = "Loading...";
-    document.getElementById("recordMostHours").textContent = "Loading...";
-
-    fetch("/processing_attack/overall_stats")
-      .then(res => res.json())
-      .then(data => {
-        document.getElementById("recordMostJobs").textContent =
-          `${data.most_jobs_processed}`;
-
-        document.getElementById("recordMostJobsWeek").textContent =
-          `Week of ${data.most_jobs_week}`;
-
-        document.getElementById("recordMostHours").textContent =
-          `${data.most_hours_processed} hrs`;
-
-        document.getElementById("recordMostHoursWeek").textContent =
-          `Week of ${data.most_hours_week}`;
-      })
-      .catch(err => {
-        console.error("Error loading overall stats", err);
-      });
-  }
 
   
 
@@ -1161,14 +1086,6 @@ const ProcessingAttack = (() => {
       loadProcessedData(selectedMonday);
       loadProcessedDataByProcessor(selectedMonday);
       updateWeekDisplay(selectedMonday);
-    });
-
-    document
-    .getElementById("overall-stats-tab")
-    .addEventListener("shown.bs.tab", () => {
-      loadOverallStats();
-      loadOverallWeeklyTrend();
-      setupOverallTrendToggle();
     });
 
   }

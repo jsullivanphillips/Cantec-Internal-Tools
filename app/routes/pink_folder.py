@@ -4,7 +4,7 @@ import json
 from datetime import datetime
 import pprint
 
-
+from flask import redirect, url_for
 
 pink_folder_bp = Blueprint('pink_folder', __name__, template_folder='templates')
 api_session = requests.Session()
@@ -17,6 +17,18 @@ API_KEY = "YOUR_API_KEY"
 #Main Route
 @pink_folder_bp.route('/pink_folder', methods=['GET'])
 def pink_folder():
+    api_session = requests.Session()
+    auth_url = "https://api.servicetrade.com/api/auth"
+    payload = {
+        "username": session.get('username'),
+        "password": session.get('password')
+    }
+
+    try:
+        auth_response = api_session.post(auth_url, json=payload)
+        auth_response.raise_for_status()
+    except Exception as e:
+        return redirect(url_for("auth.login"))  # or whatever your login route is
     return render_template("pink_folder.html")
 
 @pink_folder_bp.route('/pink_folder/data', methods=['GET'])

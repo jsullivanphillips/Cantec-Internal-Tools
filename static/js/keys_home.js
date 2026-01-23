@@ -35,6 +35,22 @@
       .replaceAll("'", "&#039;");
   }
 
+  function daysSinceISO(iso) {
+    if (!iso) return 0;
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return 0;
+    const ms = Date.now() - d.getTime();
+    return Math.floor(ms / (1000 * 60 * 60 * 24));
+  }
+
+  function signedOutAgeClass(insertedAtIso) {
+    const days = daysSinceISO(insertedAtIso);
+    if (days >= 5) return "keys-home__signedOutItem--danger";
+    if (days >= 3) return "keys-home__signedOutItem--warn";
+    return "";
+  }
+
+
   // -----------------------------
   // Scanner helpers
   // -----------------------------
@@ -247,9 +263,7 @@
       .map((k) => {
         const isBag = !!k.is_key_bag;
         const who = k.key_location ? escapeHtml(k.key_location) : "Unknown";
-        const when = k.inserted_at
-          ? escapeHtml(formatShortDateTime(k.inserted_at))
-          : "";
+        const when = k.inserted_at ? escapeHtml(formatShortDateTime(k.inserted_at)) : "";
 
         const meta = [
           k.area ? escapeHtml(k.area) : null,
@@ -257,11 +271,15 @@
           when ? `Last update ${when}` : null,
         ].filter(Boolean).join(" • ");
 
-        // ✅ NEW: addresses line
         const addresses = Array.isArray(k.addresses) ? k.addresses.join(" • ") : "";
 
+        // ✅ NEW: age-based border class
+        const ageClass = signedOutAgeClass(k.inserted_at);
+        const daysOut = daysSinceISO(k.inserted_at);
+        const ageLabel = daysOut >= 1 ? `${daysOut}d out` : "Out today";
+
         return `
-          <a class="keys-home__signedOutItem" href="/keys/${k.id}">
+          <a class="keys-home__signedOutItem ${ageClass}" href="/keys/${k.id}">
             <div class="keys-home__signedOutRow">
               <div class="keys-home__signedOutLeft">
                 <div class="keys-home__signedOutKey">
@@ -271,8 +289,10 @@
                 ${meta ? `<div class="keys-home__signedOutMeta">${meta}</div>` : ""}
                 ${addresses ? `<div class="keys-home__signedOutAddr">${escapeHtml(addresses)}</div>` : ""}
               </div>
+
               <div class="keys-home__signedOutBadge">
                 ${isBag ? `BAG OUT — ${who}` : `OUT — ${who}`}
+                <span class="keys-home__ageTag">${escapeHtml(ageLabel)}</span>
               </div>
             </div>
           </a>
@@ -280,6 +300,7 @@
       })
       .join("");
   }
+
 
 
   function canUseCamera() {

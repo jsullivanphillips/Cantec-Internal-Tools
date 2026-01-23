@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import func, distinct, case, and_
 from sqlalchemy.orm import joinedload
 from sqlalchemy.dialects.postgresql import insert
+from flask import redirect, url_for
 
 HOURLY_RATE = {
     'fa':        125.0,
@@ -65,6 +66,18 @@ SERVICE_TRADE_API_BASE = "https://api.servicetrade.com/api"
 @performance_summary_bp.route('/performance_summary', methods=['GET'])
 def performance_summary():
     # Serve the HTML page
+    api_session = requests.Session()
+    auth_url = "https://api.servicetrade.com/api/auth"
+    payload = {
+        "username": session.get('username'),
+        "password": session.get('password')
+    }
+
+    try:
+        auth_response = api_session.post(auth_url, json=payload)
+        auth_response.raise_for_status()
+    except Exception as e:
+        return redirect(url_for("auth.login"))  # or whatever your login route is
     return render_template("performance_summary.html")
 
 def _parse_date_param(value: str | None, end_of_day: bool) -> datetime | None:

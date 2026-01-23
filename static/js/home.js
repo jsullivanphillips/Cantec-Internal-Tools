@@ -1,212 +1,443 @@
-document.addEventListener("DOMContentLoaded", function () {
-  const listContainer = document.getElementById("minutes-list");
-  const createBtn = document.getElementById("create-minute-btn");
-  const loading = document.getElementById("loading");
+// static/js/home.js
 
-  let offset = 0;
-  const limit = 4;
-  let isLoading = false;
-  let reachedEnd = false;
+(function () {
+  const refreshBtn = document.getElementById("home-refresh");
 
-  // Format date to "Month Day, Year"
-  function formatDate(dateStr) {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString(undefined, {
-      year: "numeric",
-      month: "long",
-      day: "numeric"
-    });
+  // ---------------
+  // LOADING FUNCTIONS 
+  // ---------------
+  async function loadJobsToBeProcessed() {
+    const url = `/home/kpi/jobs_to_process`;
+
+    const skel = document.getElementById("kpi-to-be-processed-skel");
+    const real = document.getElementById("kpi-to-be-processed-real");
+
+    // Start state (show skeleton, hide real)
+    if (skel) skel.style.display = "";
+    if (real) real.classList.add("d-none");
+    
+    try {
+      const r = await fetch(url, { headers: { "Accept": "application/json" } });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+
+      renderJobsToBeProcessed(data);
+
+      // Swap skeleton -> real
+      if (skel) skel.style.display = "none";
+      if (real) real.classList.remove("d-none");
+    } catch (err) {
+      console.error("Failed to load jobs to be processed", err);
+
+      // Fallback: show real with error-ish values (don’t hide the card)
+      if (skel) skel.style.display = "none";
+      if (real) real.classList.remove("d-none");
+
+      const val = document.getElementById("kpi-to-be-processed");
+      if (val) val.textContent = "—";
+
+      const pill = document.getElementById("kpi-pill-to-be-processed");
+      if (pill) {
+        pill.classList.remove("good", "warn", "bad");
+        pill.textContent = "Error";
+        pill.classList.add("bad");
+      }
+    }
   }
 
-  // Create a DOM element for a meeting minute entry
-  function renderMinute(minute, prepend = false) {
-    const wrapper = document.createElement("div");
-    wrapper.classList.add("meeting-card");
-    wrapper.dataset.id = minute.id;
+  async function loadForwardScheduleCoverage() {
+    const url = "/home/kpi/forward_schedule_coverage";
 
-    const contentId = `editor-${minute.id}`;
+    const skel = document.getElementById("kpi-forward-skel");
+    const real = document.getElementById("kpi-forward-real");
 
-    wrapper.innerHTML = `
-        <div class="meeting-header">
-        <div class="meeting-title">${formatDate(minute.week_of)} Meeting Minutes</div>
-        <div class="btn-group-sm">
-            <button class="btn btn-outline-primary edit-btn">Edit</button>
-            <button class="btn btn-outline-danger delete-btn">Delete</button>
-        </div>
-        </div>
+    // Start state (show skeleton, hide real)
+    if (skel) skel.style.display = "";
+    if (real) real.classList.add("d-none");
 
-        <div class="meta-info">Last edited by ${minute.modified_by} on ${new Date(minute.updated_at).toLocaleString()}</div>
+    try {
+      const r = await fetch(url, { headers: { "Accept": "application/json" } });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
 
-        <div class="date-editor">
-        <label><strong>Meeting Date:</strong></label>
-        <input type="date" class="form-control form-control-sm week-of-input" value="${minute.week_of}" />
-        </div>
+      renderForwardScheduleCoverage(data);
 
-        <div id="${contentId}" class="minute-content-display word-style">${minute.content || "<p><em>No content yet.</em></p>"}</div>
+      // Swap skeleton -> real
+      if (skel) skel.style.display = "none";
+      if (real) real.classList.remove("d-none");
+    } catch (err) {
+      console.error("Failed to load forward schedule coverage", err);
 
-        <div class="edit-toolbar">
-        <button class="btn btn-sm btn-success save-btn">Save</button>
-        <button class="btn btn-sm btn-secondary cancel-btn">Cancel</button>
-        </div>
-    `;
+      // Fallback: show real with error-ish values (don’t hide the card)
+      if (skel) skel.style.display = "none";
+      if (real) real.classList.remove("d-none");
 
-    const titleEl = wrapper.querySelector(".meeting-title");
-    const dateInput = wrapper.querySelector(".week-of-input");
-    const editBtn = wrapper.querySelector(".edit-btn");
-    const saveBtn = wrapper.querySelector(".save-btn");
-    const cancelBtn = wrapper.querySelector(".cancel-btn");
-    const deleteBtn = wrapper.querySelector(".delete-btn");
-    const displayEl = wrapper.querySelector(`#${contentId}`);
+      const val = document.getElementById("kpi-forward-coverage");
+      if (val) val.textContent = "—";
 
-    let editor = null;
-    let originalContent = minute.content || "";
-    let originalDate = minute.week_of;
+      const pill = document.getElementById("kpi-pill-forward");
+      if (pill) {
+        pill.classList.remove("good", "warn", "bad");
+        pill.textContent = "Error";
+        pill.classList.add("bad");
+      }
+    }
+  }
 
-    editBtn.addEventListener("click", async () => {
-        if (!window.Tiptap || !window.Tiptap.Editor) {
-            alert("Tiptap editor not loaded.");
-            return;
-        }
-        if (editor) return; // Already editing
+  async function loadJobsCompleted() {
+    const url = `/home/kpi/jobs_completed_today`;
 
-        wrapper.classList.add("editing");
+    const skel = document.getElementById("kpi-completed-skel");
+    const real = document.getElementById("kpi-completed-real");
 
-        // Initialize Tiptap editor
-        editor = new window.Tiptap.Editor({
-        element: displayEl,
-        extensions: [window.Tiptap.StarterKit],
-        content: originalContent || "<p><em>No content yet.</em></p>",
-        editorProps: {
-            attributes: {
-            class: "word-style",
-            },
-        }
-        });
+    // Start state (show skeleton, hide real)
+    if (skel) skel.style.display = "";
+    if (real) real.classList.add("d-none");
+    
+    try {
+      const r = await fetch(url, { headers: { "Accept": "application/json" } });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
 
-        displayEl.focus();
-    });
+      renderJobsCompleted(data);
 
-    cancelBtn.addEventListener("click", () => {
-        if (editor) {
-        editor.destroy();
-        editor = null;
-        }
-        displayEl.innerHTML = originalContent || "<p><em>No content yet.</em></p>";
-        dateInput.value = originalDate;
-        wrapper.classList.remove("editing");
-    });
+      // Swap skeleton -> real
+      if (skel) skel.style.display = "none";
+      if (real) real.classList.remove("d-none");
+    } catch (err) {
+      console.error("Failed to load jobs completed", err);
 
-    saveBtn.addEventListener("click", () => {
-        const newContent = editor ? editor.getHTML() : displayEl.innerHTML;
-        const newDate = dateInput.value;
+      // Fallback: show real with error-ish values (don’t hide the card)
+      if (skel) skel.style.display = "none";
+      if (real) real.classList.remove("d-none");
 
-        fetch(`/api/meeting_minutes/${minute.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: newContent, week_of: newDate }),
-        })
-        .then(() => {
-            originalContent = newContent;
-            originalDate = newDate;
-            titleEl.textContent = `${formatDate(newDate)} Meeting Minutes`;
-            wrapper.classList.remove("editing");
+      const val = document.getElementById("kpi-completed");
+      if (val) val.textContent = "—";
 
-            if (editor) {
-            editor.destroy();
-            editor = null;
-            }
+      const pill = document.getElementById("kpi-pill-completed");
+      if (pill) {
+        pill.classList.remove("good", "warn", "bad");
+        pill.textContent = "Error";
+        pill.classList.add("bad");
+      }
+    }
+  }
 
-            displayEl.innerHTML = newContent;
-        })
-        .catch((err) => {
-            alert("Save failed.");
-            console.error(err);
-        });
-    });
+  async function loadJobsToBeInvoiced() {
+    const url = `/home/kpi/jobs_to_invoice`;
 
-    deleteBtn.addEventListener("click", () => {
-        if (!confirm("Are you sure you want to delete this meeting?")) return;
+    const skel = document.getElementById("kpi-invoiced-skel");
+    const real = document.getElementById("kpi-invoiced-real");
 
-        fetch(`/api/meeting_minutes/${minute.id}`, {
-        method: "DELETE",
-        })
-        .then(() => {
-            wrapper.remove();
-        })
-        .catch((err) => {
-            alert("Delete failed.");
-            console.error(err);
-        });
-    });
+    // Start state (show skeleton, hide real)
+    if (skel) skel.style.display = "";
+    if (real) real.classList.add("d-none");
+    
+    try {
+      const r = await fetch(url, { headers: { "Accept": "application/json" } });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
 
-    if (prepend) {
-        listContainer.insertBefore(wrapper, listContainer.firstChild);
+      renderJobsToBeInvoiced(data);
+
+      // Swap skeleton -> real
+      if (skel) skel.style.display = "none";
+      if (real) real.classList.remove("d-none");
+    } catch (err) {
+      console.error("Failed to load jobs invoiced", err);
+
+      // Fallback: show real with error-ish values (don’t hide the card)
+      if (skel) skel.style.display = "none";
+      if (real) real.classList.remove("d-none");
+
+      const val = document.getElementById("kpi-invoiced");
+      if (val) val.textContent = "—";
+
+      const pill = document.getElementById("kpi-pill-invoiced");
+      if (pill) {
+        pill.classList.remove("good", "warn", "bad");
+        pill.textContent = "Error";
+        pill.classList.add("bad");
+      }
+    }
+  }
+
+
+  // ---------------
+  // RENDERING FUNCTIONS 
+  // ---------------
+  function renderJobsToBeProcessed(data){
+    // Expecting: {jobs_to_process: 12}
+    const jobs_to_process =
+    typeof data.jobs_to_process === "number"
+      ? data.jobs_to_process
+      : (typeof data.jobs_to_process === "number" ? data.jobs_to_process : null);
+
+    const el = document.getElementById("kpi-to-be-processed");
+    console.log(jobs_to_process);
+    if (el) el.textContent = (jobs_to_process == null ? "—" : jobs_to_process);
+
+    // Pill label + status thresholds (tweak these anytime)
+    const pill = document.getElementById("kpi-pill-to-be-processed");
+    if (!pill) return;
+
+    pill.classList.remove("good", "warn", "bad");
+
+    if (jobs_to_process == null) {
+      pill.textContent = "—";
+      return;
+    }
+
+    if (jobs_to_process <= 40) {
+      pill.textContent = "Good";
+      pill.classList.add("good");
+    } else if (jobs_to_process <= 50) {
+      pill.textContent = "Watch";
+      pill.classList.add("warn");
     } else {
-        listContainer.appendChild(wrapper);
+      pill.textContent = "Low";
+      pill.classList.add("bad");
     }
-    }
-
-
-
-
-
-
-  // Fetch meeting minutes in pages
-  function loadMinutes() {
-    if (isLoading || reachedEnd) return;
-    isLoading = true;
-    loading.style.display = "block";
-
-    fetch(`/api/meeting_minutes/list?offset=${offset}&limit=${limit}`)
-      .then(res => res.json())
-      .then(data => {
-        if (data.length < limit) reachedEnd = true;
-        data.forEach(renderMinute);
-        offset += limit;
-      })
-      .catch(err => {
-        console.error("Error loading meeting minutes:", err);
-      })
-      .finally(() => {
-        isLoading = false;
-        loading.style.display = "none";
-      });
   }
 
-  // Create a new blank meeting minute
-  createBtn.addEventListener("click", () => {
-    const todayStr = new Date().toISOString().split("T")[0];
-    fetch("/api/meeting_minutes", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ week_of: todayStr, content: "" })
-    })
-      .then(res => res.json())
-      .then(data => {
-        renderMinute({
-          id: data.id,
-          content: "",
-          week_of: data.week_of,
-          updated_at: data.updated_at,
-          modified_by: data.modified_by
-        }, true);
-        window.scrollTo({ top: 0, behavior: "smooth" });
-      })
-      .catch(err => {
-        console.error("Error creating new meeting:", err);
-        alert("Could not create new meeting.");
-      });
-  });
 
-  // Infinite scroll trigger
-  window.addEventListener("scroll", () => {
-    if (
-      window.innerHeight + window.scrollY >= document.body.offsetHeight - 300
-    ) {
-      loadMinutes();
+  function renderJobsToBeInvoiced(data){
+    // Expecting: {jobs_to_be_invoiced: 12}
+    const to_be_invoiced =
+    typeof data.jobs_to_be_invoiced === "number"
+      ? data.jobs_to_be_invoiced
+      : (typeof data.jobs_to_be_invoiced === "number" ? data.jobs_to_be_invoiced : null);
+
+    const el = document.getElementById("kpi-invoiced");
+    if (el) el.textContent = (to_be_invoiced == null ? "—" : to_be_invoiced);
+
+    // Pill label + status thresholds (tweak these anytime)
+    const pill = document.getElementById("kpi-pill-invoiced");
+    if (!pill) return;
+
+    pill.classList.remove("good", "warn", "bad");
+
+    if (to_be_invoiced == null) {
+      pill.textContent = "—";
+      return;
     }
+
+    // Example thresholds: <50 bad, 50–59 warn, >=60 good
+    if (to_be_invoiced <= 30) {
+      pill.textContent = "Good";
+      pill.classList.add("good");
+    } else if (to_be_invoiced <= 50) {
+      pill.textContent = "Watch";
+      pill.classList.add("warn");
+    } else {
+      pill.textContent = "Low";
+      pill.classList.add("bad");
+    }
+    
+  }
+
+
+  function renderJobsCompleted(data){
+    // Expecting: {jobs_completed_today: 12}
+    const completed =
+    typeof data.jobs_completed_today === "number"
+      ? data.jobs_completed_today
+      : (typeof data.jobs_completed_today === "number" ? data.jobs_completed_today : null);
+
+    const el = document.getElementById("kpi-completed");
+    if (el) el.textContent = (completed == null ? "—" : completed);
+
+    // Pill label + status thresholds (tweak these anytime)
+    const pill = document.getElementById("kpi-pill-completed");
+    if (!pill) return;
+
+    pill.classList.remove("good", "warn", "bad");
+
+    if (completed == null) {
+      pill.textContent = "—";
+      return;
+    }
+
+    // Example thresholds: <50 bad, 50–59 warn, >=60 good
+    if (completed >= 10) {
+      pill.textContent = "Good";
+      pill.classList.add("good");
+    } else if (completed >= 5) {
+      pill.textContent = "Watch";
+      pill.classList.add("warn");
+    } else {
+      pill.textContent = "Low";
+      pill.classList.add("bad");
+    }
+    
+  }
+
+
+  function renderForwardScheduleCoverage(data) {
+    // Expecting: { forward_schedule_coverage: 63.2 } OR { forward_schedule_coverage_pct: 63.2 }
+    const pct =
+      typeof data.forward_schedule_coverage_pct === "number"
+        ? data.forward_schedule_coverage_pct
+        : (typeof data.forward_schedule_coverage === "number" ? data.forward_schedule_coverage : null);
+
+    const el = document.getElementById("kpi-forward-coverage");
+    if (el) el.textContent = (pct == null ? "—" : pct.toFixed(0));
+
+    // Pill label + status thresholds (tweak these anytime)
+    const pill = document.getElementById("kpi-pill-forward");
+    if (!pill) return;
+
+    pill.classList.remove("good", "warn", "bad");
+
+    if (pct == null) {
+      pill.textContent = "—";
+      return;
+    }
+
+    // Example thresholds: <50 bad, 50–59 warn, >=60 good
+    if (pct >= 90) {
+      pill.textContent = "Good";
+      pill.classList.add("good");
+    } else if (pct >= 80) {
+      pill.textContent = "Watch";
+      pill.classList.add("warn");
+    } else {
+      pill.textContent = "Low";
+      pill.classList.add("bad");
+    }
+  }
+
+  // ---------------
+  //  NEEDS ATTENTION SECTION
+  // ---------------
+  async function loadNeedsAttention() {
+    const url = "/home/needs_attention";
+    const skel = document.getElementById("home-attn-skel");
+    const empty = document.getElementById("home-attn-empty");
+    const list = document.getElementById("home-attn-list");
+
+    if (!list) return;
+
+    // start loading state
+    if (skel) skel.style.display = "";
+    if (empty) empty.style.display = "none";
+    list.querySelectorAll(".home-attn-item.real").forEach(n => n.remove());
+
+    try {
+      const r = await fetch(url, { headers: { "Accept": "application/json" } });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+
+      const items = data.items || [];
+
+      // stop loading state
+      if (skel) skel.style.display = "none";
+
+      if (items.length === 0) {
+        if (empty) empty.style.display = "";
+        return;
+      }
+
+      if (empty) empty.style.display = "none";
+
+      for (const item of items) {
+        const node = renderAttentionItem(item);
+        node.classList.add("real"); // mark for easy cleanup next refresh
+        list.appendChild(node);
+      }
+    } catch (err) {
+      console.error("Failed to load needs attention", err);
+
+      // stop loading state, show empty
+      if (skel) skel.style.display = "none";
+      if (empty) empty.style.display = "";
+    }
+  }
+
+  function renderAttentionItem(item) {
+    const severity = item?.severity || "warn"; // bad|warn|good
+    const title = item?.title || "Needs attention";
+    const subtitle = item?.subtitle || "";
+    const href = item?.href || "#";
+    const badge = item?.badge;
+
+    const wrap = document.createElement("div");
+    wrap.className = "home-attn-item";
+
+    // Left side (icon + text)
+    const left = document.createElement("div");
+    left.className = "home-attn-left";
+
+    const icon = document.createElement("div");
+    icon.innerHTML = severityIcon(severity);
+
+    const texts = document.createElement("div");
+    texts.className = "home-attn-texts";
+
+    const h = document.createElement("p");
+    h.className = "home-attn-title";
+    h.textContent = title;
+
+    texts.appendChild(h);
+
+    if (subtitle) {
+      const sub = document.createElement("p");
+      sub.className = "home-attn-sub";
+      sub.textContent = subtitle;
+      texts.appendChild(sub);
+    }
+
+    left.appendChild(icon);
+    left.appendChild(texts);
+
+    // Right side (badge + arrow link)
+    const right = document.createElement("div");
+    right.className = "d-flex align-items-center gap-2";
+
+    if (badge !== undefined && badge !== null && String(badge).trim() !== "") {
+      const b = document.createElement("span");
+      b.className = "home-attn-badge";
+      b.textContent = String(badge);
+      right.appendChild(b);
+    }
+
+    const link = document.createElement("a");
+    link.href = href;
+    link.className = "btn btn-sm btn-outline-secondary";
+    link.setAttribute("aria-label", `Open: ${title}`);
+    link.innerHTML = '<i class="bi bi-arrow-right"></i>';
+
+    right.appendChild(link);
+
+    wrap.appendChild(left);
+    wrap.appendChild(right);
+
+    return wrap;
+  }
+
+  function severityIcon(sev) {
+    if (sev === "good") return '<i class="bi bi-check-circle text-success"></i>';
+    if (sev === "bad") return '<i class="bi bi-x-circle text-danger"></i>';
+    return '<i class="bi bi-exclamation-triangle text-warning"></i>';
+  }
+
+
+
+
+
+  document.addEventListener("DOMContentLoaded", () => {
+    loadJobsToBeProcessed();
+    loadJobsToBeInvoiced();
+    loadForwardScheduleCoverage();
+    loadJobsCompleted();
+    loadNeedsAttention();
   });
 
-  // Initial load
-  loadMinutes();
-});
+  refreshBtn?.addEventListener("click", () => {
+    loadJobsToBeProcessed();
+    loadJobsToBeInvoiced();
+    loadForwardScheduleCoverage();
+    loadJobsCompleted();
+    loadNeedsAttention();
+  });
+})();

@@ -3,58 +3,87 @@
 {% block title %}Limbo Job Tracker{% endblock %}
 
 {% block extra_head %}
-  <style>
-      .shimmer-card {
-      background: linear-gradient(90deg, #e0e0e0 25%, #f8f8f8 50%, #e0e0e0 75%);
-      background-size: 400% 100%;
-      animation: shimmer 1.5s infinite;
-      border-radius: 0.25rem;
-      height: 200px;
-    }
-    p {
-      font-size: medium;
-    }
-
-
-    @keyframes shimmer {
-      0% {
-        background-position: -400px 0;
-      }
-      100% {
-        background-position: 400px 0;
-      }
-    }
-  </style>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/limbo_job_tracker.css') }}">
 {% endblock %}
 
 {% block content %}
-<div class="container my-4">
-  <h1 class="mb-4">Limbo Job Tracker</h1>
-  <p>Tracks jobs that have 
-    1. Scheduled appointments that have passed and not been completed. 
-    2. Jobs with unscheduled appointments.</p>
-  <p>Disregards administrative, training, and pink folder jobs.</p>
-  <div class="d-flex justify-content-between align-items-center mb-3">
-  <div id="jobCountDisplay" class="text-muted small"></div>
-  <div>
-    <label for="sortSelect" class="form-label me-2 mb-0">Sort by:</label>
-    <select id="sortSelect" class="form-select form-select-sm d-inline-block w-auto">
-      <option value="newest">Newest</option>
-      <option value="oldest">Oldest</option>
-    </select>
+<div class="container my-4 limbo">
+  <div class="d-flex flex-wrap align-items-end justify-content-between gap-3 mb-3">
+    <div>
+      <h1 class="mb-1">Limbo Job Tracker</h1>
+      <div class="text-muted small">
+        Jobs that don’t fit neatly elsewhere and need office attention.
+      </div>
+    </div>
+
+    <div class="d-flex align-items-center gap-2">
+      <button class="btn btn-sm btn-outline-secondary" id="limbo-refresh" type="button">
+        <i class="bi bi-arrow-clockwise me-1"></i> Refresh
+      </button>
+    </div>
   </div>
-</div>
-  <div id="jobCardsContainer" class="row g-3"></div>
-  <nav>
-    <ul class="pagination justify-content-center mt-4" id="paginationControls"></ul>
-  </nav>
-</div>
 
+  <!-- Controls -->
+  <div class="card mb-3 limbo-card">
+    <div class="card-body">
+      <div class="row g-2 align-items-end">
+        <div class="col-12 col-lg-5">
+          <label class="form-label mb-1" for="limbo-search">Search</label>
+          <input id="limbo-search" class="form-control" placeholder="Address or type…">
+        </div>
 
+        <div class="col-6 col-lg-3">
+          <label class="form-label mb-1" for="limbo-sort">Sort</label>
+          <select id="limbo-sort" class="form-select">
+            <option value="oldest">Oldest appointment first</option>
+            <option value="newest">Newest appointment first</option>
+          </select>
+        </div>
+
+        <div class="col-6 col-lg-2">
+          <label class="form-label mb-1" for="limbo-page-size">Page size</label>
+          <select id="limbo-page-size" class="form-select">
+            <option value="25">25</option>
+            <option value="25">50</option>
+          </select>
+        </div>
+
+        <div class="col-12 col-lg-2 d-flex gap-2">
+          <div class="form-check ms-lg-auto">
+            <input class="form-check-input" type="checkbox" id="limbo-unscheduled-first" checked>
+            <label class="form-check-label" for="limbo-unscheduled-first">Unscheduled first</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="d-flex flex-wrap align-items-center justify-content-between mt-3 gap-2">
+        <div class="text-muted small" id="limbo-summary">—</div>
+        <nav aria-label="Limbo pagination">
+          <ul class="pagination pagination-sm mb-0" id="limbo-pagination"></ul>
+        </nav>
+      </div>
+    </div>
+  </div>
+
+  <!-- List -->
+  <div class="card limbo-card">
+    <div class="card-body p-0">
+      <div id="limbo-list" class="limbo-list">
+        <!-- skeleton or rows injected by JS -->
+      </div>
+
+      <div id="limbo-empty" class="limbo-empty text-muted" style="display:none;">
+        No limbo jobs right now.
+      </div>
+
+      <div id="limbo-error" class="limbo-error" style="display:none;">
+        Failed to load limbo jobs. Try Refresh.
+      </div>
+    </div>
+  </div>
 </div>
 {% endblock %}
 
 {% block extra_scripts %}
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> <!-- Chart.js -->
-    <script src="{{ url_for('static', filename='js/limbo_job_tracker.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/limbo_job_tracker.js') }}"></script>
 {% endblock %}

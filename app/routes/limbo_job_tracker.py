@@ -5,6 +5,7 @@ import requests
 
 limbo_job_tracker_bp = Blueprint('limbo_job_tracker', __name__, template_folder='templates')
 api_session = requests.Session()
+from flask import redirect, url_for
 
 SERVICE_TRADE_API_BASE = "https://api.servicetrade.com/api"
 SERVICE_TRADE_JOB_BASE = "https://app.servicetrade.com/jobs"
@@ -25,6 +26,18 @@ def limbo_job_tracker():
     """
     Render the main processing_attack page (HTML).
     """
+    api_session = requests.Session()
+    auth_url = "https://api.servicetrade.com/api/auth"
+    payload = {
+        "username": session.get('username'),
+        "password": session.get('password')
+    }
+
+    try:
+        auth_response = api_session.post(auth_url, json=payload)
+        auth_response.raise_for_status()
+    except Exception as e:
+        return redirect(url_for("auth.login"))  # or whatever your login route is
     return render_template("limbo_job_tracker.html")
 
 
@@ -153,29 +166,45 @@ def get_limbo_jobs():
 
     for job in jobs:
         job_type = job.get("type")
-        if job_type == "administrative" or job_type == "training":
-            continue
-        
-        
 
+        # Skip admin / training jobs
+        if job_type in {"administrative", "training"}:
+            continue
+
+        # Skip pink folder jobs
         job_tags = job.get("tags", [])
         if any(tag.get("name") == "PINK_FOLDER" for tag in job_tags):
             continue
 
         job_id = job.get("id")
-        most_recent_appt = "Not Scheduled"
-        if job_id in most_recent_appt_for_job_id:
-            if most_recent_appt_for_job_id[job_id] > today:
-                continue
-            most_recent_appt = str(most_recent_appt_for_job_id[job_id])
+        if not job_id:
+            continue
 
+        # Determine most recent appointment
+        most_recent_appt = "Not Scheduled"
+        appt_date = most_recent_appt_for_job_id.get(job_id)
+
+        if appt_date:
+            # Skip future-scheduled jobs
+            if appt_date > today:
+                continue
+            most_recent_appt = appt_date.isoformat() if hasattr(appt_date, "isoformat") else str(appt_date)
+
+        # Safe address extraction
+        location = job.get("location") or {}
+        address_obj = location.get("address") or {}
+        street = address_obj.get("street") or "Unknown address"
+
+        # ✅ Dict keyed by job_id
         limbo_jobs[job_id] = {
+            "job_id": job_id,
             "job_link": f"{SERVICE_TRADE_JOB_BASE}/{job_id}",
-            "address": f"{job.get('location').get('address').get('street')}",
+            "address": street,
             "most_recent_appt": most_recent_appt,
             "type": job_type,
         }
 
     return limbo_jobs
+
 
     

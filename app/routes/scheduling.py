@@ -5,7 +5,7 @@ import requests
 import time as time_module
 from app.db_models import db, Technician
 from app.services.scheduling_service import find_candidate_dates, find_candidate_blocks
-
+from flask import redirect, url_for
 scheduling_bp = Blueprint('scheduling', __name__)
 
 # --- Technician Endpoints ---
@@ -41,6 +41,19 @@ def update_technician_type(tech_id):
 
 @scheduling_bp.route('/find_schedule', methods=['GET', 'POST'])
 def find_schedule():
+    api_session = requests.Session()
+    auth_url = "https://api.servicetrade.com/api/auth"
+    payload = {
+        "username": session.get('username'),
+        "password": session.get('password')
+    }
+
+    try:
+        auth_response = api_session.post(auth_url, json=payload)
+        auth_response.raise_for_status()
+    except Exception as e:
+        return redirect(url_for("auth.login"))  # or whatever your login route is
+    
     if request.method == 'POST':
         # Build dynamic tech rows from the form arrays
         tech_counts = request.form.getlist("tech_count[]")

@@ -1,12 +1,13 @@
 from flask import Blueprint, render_template, jsonify, session, request, current_app
 import requests
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from dateutil import parser  # Use dateutil for flexible datetime parsing
 from collections import Counter
 from app.db_models import db, JobSummary, ProcessorMetrics
 import sys
+from flask import redirect, url_for
 
 processing_attack_bp = Blueprint('processing_attack', __name__, template_folder='templates')
 api_session = requests.Session()
@@ -16,9 +17,20 @@ API_KEY = "YOUR_API_KEY"
 
 @processing_attack_bp.route('/processing_attack', methods=['GET'])
 def processing_attack():
-    """
-    Render the main processing_attack page (HTML).
-    """
+    api_session = requests.Session()
+    auth_url = "https://api.servicetrade.com/api/auth"
+    payload = {
+        "username": session.get('username'),
+        "password": session.get('password')
+    }
+
+    try:
+        auth_response = api_session.post(auth_url, json=payload)
+        auth_response.raise_for_status()
+    except Exception as e:
+        current_app.logger.error("Authentication error: %s", e)
+        return redirect(url_for("auth.login"))  # or whatever your login route is
+
     return render_template("processing_attack.html")
 
 
@@ -117,6 +129,7 @@ def organize_jobs_by_job_type(jobs_to_be_marked_complete):
     return dict(counts)
 
 def get_jobs_to_be_invoiced():
+    authenticate()
     resp = call_service_trade_api("job", params={
         'status': 'completed', 
         'isInvoiced': False,
@@ -373,7 +386,9 @@ def get_jobs_processed_today():
     jobs_data = data.get("jobs", []) or []
 
     return len(jobs_data)
-    
+
+
+
 
 def get_jobs_to_be_marked_complete():
     authenticate()

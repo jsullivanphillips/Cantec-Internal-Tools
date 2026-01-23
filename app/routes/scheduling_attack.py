@@ -14,7 +14,7 @@ from collections import defaultdict
 from app.services.scheduling_diff import BaselineState, compute_scheduling_diffs
 import calendar
 from sqlalchemy.exc import SQLAlchemyError
-
+from flask import redirect, url_for
 log = logging.getLogger("month-conflicts")
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
@@ -1165,6 +1165,19 @@ def calculate_weekly_available_hours(
 ## ------
 @scheduling_attack_bp.route('/scheduling_attack', methods=['GET'])
 def scheduling_attack():
+    api_session = requests.Session()
+    auth_url = "https://api.servicetrade.com/api/auth"
+    payload = {
+        "username": session.get('username'),
+        "password": session.get('password')
+    }
+
+    try:
+        auth_response = api_session.post(auth_url, json=payload)
+        auth_response.raise_for_status()
+    except Exception as e:
+        current_app.logger.error("Authentication error: %s", e)
+        return redirect(url_for("auth.login"))  # or whatever your login route is
     return render_template("scheduling_attack.html")
 
 
@@ -2134,6 +2147,72 @@ def _week_start_local_from_utc(dt_utc: datetime) -> datetime:
     )
 
 
+def get_forward_schedule_coverage_pct():
+    now = datetime.now(timezone.utc)
+
+    threshold = float(request.args.get("threshold", 0.60))
+    lookahead_weeks = int(request.args.get("weeks", 12))
+    start_next_week = request.args.get("start_next_week", "0") in ("1", "true", "True", "yes", "on")
+
+    cur_week_start_local = _week_start_local_from_utc(now)
+    start_week = (cur_week_start_local + timedelta(days=7)) if start_next_week else cur_week_start_local
+    end_week = start_week + timedelta(days=7 * lookahead_weeks)
+
+    rows = (
+        ForwardScheduleWeek.query.filter(ForwardScheduleWeek.week_start_local >= start_week)
+        .filter(ForwardScheduleWeek.week_start_local < end_week)
+        .order_by(ForwardScheduleWeek.week_start_local.asc())
+        .all()
+    )
+
+    # Build expected continuous week keys so missing weeks break streak
+    by_ws = {r.week_start_local: r for r in rows}
+    weeks = []
+    for i in range(lookahead_weeks):
+        ws = start_week + timedelta(days=7 * i)
+        we = ws + timedelta(days=7)
+        r = by_ws.get(ws)
+
+        booked = float(getattr(r, "booked_hours", 0.0) or 0.0)
+        avail = float(getattr(r, "available_hours", 0.0) or 0.0)
+        util_pct = float(getattr(r, "utilization_pct", 0.0) or 0.0)
+        released = int(getattr(r, "released_appointments", 0) or 0)
+        
+
+        meets = (util_pct / 100.0) >= threshold if util_pct > 1.0 else util_pct >= (threshold * 100.0)  # tolerant
+        # Prefer the numeric truth if possible:
+        if avail > 0:
+            meets = (booked / avail) >= threshold
+            util_pct = round((booked / avail) * 100.0, 1)
+        else:
+            meets = False
+            util_pct = 0.0
+
+        weeks.append(
+            {
+                "week_start_local": ws.isoformat(),
+                "week_end_local": we.isoformat(),
+                "booked_hours": round(booked, 2),
+                "available_hours": round(avail, 2),
+                "utilization_pct": util_pct,
+                "released_appointments": released,
+                "meets_60pct": meets,  # keep legacy field name for frontend
+            }
+        )
+
+    # Count consecutive weeks meeting threshold
+    streak = 0
+    i = 0
+    for w in weeks:
+        i += 1
+        if w["meets_60pct"]:
+            streak += 1
+
+
+    return streak
+
+
+
 @scheduling_attack_bp.get("/scheduling_attack/v2/forward_schedule_coverage")
 def forward_schedule_coverage():
     """
@@ -2326,8 +2405,7 @@ def jobs_scheduled_this_week():
 
 
 
-@scheduling_attack_bp.get("/scheduling_attack/v2/kpis")
-def scheduling_attack_v2_kpis():
+def get_percent_confirmed_next_two_weeks():
     now = datetime.now(timezone.utc)
     two_weeks_out = now + timedelta(weeks=2)
 
@@ -2353,11 +2431,15 @@ def scheduling_attack_v2_kpis():
         else 0.0
     )
 
+    return percent_confirmed
+
+@scheduling_attack_bp.get("/scheduling_attack/v2/kpis")
+def scheduling_attack_v2_kpis():
     # ------------------------------------------------------------
     # Payload
     # ------------------------------------------------------------
     payload = {
-        "confirmed_pct": percent_confirmed,
+        "confirmed_pct": get_percent_confirmed_next_two_weeks(),
     }
 
     return jsonify(payload), 200
