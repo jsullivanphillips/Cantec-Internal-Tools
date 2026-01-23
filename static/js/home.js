@@ -6,6 +6,22 @@
   // ---------------
   // LOADING FUNCTIONS 
   // ---------------
+  async function loadTodaysDate() {
+    const el = document.getElementById("home-subtitle-date");
+    if (!el) return;
+
+    const today = new Date();
+
+    el.textContent = today.toLocaleDateString("en-US", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+  }
+
+
+
   async function loadJobsToBeProcessed() {
     const url = `/home/kpi/jobs_to_process`;
 
@@ -426,6 +442,7 @@
 
 
   document.addEventListener("DOMContentLoaded", () => {
+    loadTodaysDate();
     loadJobsToBeProcessed();
     loadJobsToBeInvoiced();
     loadForwardScheduleCoverage();
