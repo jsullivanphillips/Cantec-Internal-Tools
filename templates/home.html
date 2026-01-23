@@ -18,11 +18,6 @@
         Quick briefing & fast actions
       </div>
     </div>
-
-    <div class="home-updated text-muted small">
-      <i class="bi bi-clock me-1"></i>
-      <span id="home-last-updated">—</span>
-    </div>
   </div>
 
   <!-- ROW 1: KPIs -->
@@ -129,7 +124,6 @@
             <div class="kpi-value">
               <span id="kpi-completed">—</span><span class="kpi-suffix"></span>
             </div>
-            <div class="kpi-foot text-muted">Today's completions</div>
           </div>
         </div>
       </a>
@@ -183,10 +177,10 @@
         <div class="col-12 col-lg-5">
           <div class="home-attn-actions">
             <a class="btn btn-outline-primary w-100 mb-2" href="{{ url_for('processing_attack.processing_attack') }}">
-              <i class="bi bi-clipboard-check me-2"></i> Open Processing queues
+              <i class="bi bi-clipboard-check me-2"></i> Open Processing Attack
             </a>
             <a class="btn btn-outline-primary w-100 mb-2" href="{{ url_for('scheduling_attack.scheduling_attack') }}">
-              <i class="bi bi-calendar3 me-2"></i> Open Scheduling queues
+              <i class="bi bi-calendar3 me-2"></i> Open Scheduling Attack
             </a>
             <a class="btn btn-outline-primary w-100" href="{{ url_for('keys.keys_home') }}">
               <i class="bi bi-key me-2"></i> View signed-out keys
