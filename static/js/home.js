@@ -211,7 +211,7 @@
       pill.textContent = "Watch";
       pill.classList.add("warn");
     } else {
-      pill.textContent = "Low";
+      pill.textContent = "Too High";
       pill.classList.add("bad");
     }
   }
@@ -275,11 +275,11 @@
     }
 
     // Example thresholds: <50 bad, 50–59 warn, >=60 good
-    if (completed >= 10) {
+    if (completed >= 15) {
       pill.textContent = "Good";
       pill.classList.add("good");
-    } else if (completed >= 5) {
-      pill.textContent = "Watch";
+    } else if (completed >= 10) {
+      pill.textContent = "Ok";
       pill.classList.add("warn");
     } else {
       pill.textContent = "Low";
@@ -314,7 +314,7 @@
     if (pct >= 90) {
       pill.textContent = "Good";
       pill.classList.add("good");
-    } else if (pct >= 80) {
+    } else if (pct >= 85) {
       pill.textContent = "Watch";
       pill.classList.add("warn");
     } else {
