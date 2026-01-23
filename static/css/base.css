@@ -1,0 +1,58 @@
+/* ========================================
+   2. Navbar Styles
+   ======================================== */
+
+
+/* Custom Navbar Background */
+.bg-custom {
+  background-color: #ffffff !important;
+}
+
+.navbar {
+  padding-top: 0;
+  padding-bottom: 0;
+  height: 70px;
+}
+
+
+.navbar-brand,
+.navbar-nav, .nav-link {
+  display: flex;
+  align-items: center;
+  margin: 0;
+}
+
+/* Adjust the logo image: set a consistent height and vertical alignment */
+.navbar-brand img {
+  height: 80px;               /* Adjust as needed */
+  vertical-align: middle;
+  margin-right: 10px;
+}
+
+.navbar .dropdown-menu {
+    min-width: 260px;
+}
+.navbar .dropdown-item i {
+    width: 1.25rem;
+}
+.nav-divider {
+    height: 1px;
+    margin: .35rem .75rem;
+    background: rgba(0,0,0,.08);
+}
+
+/* Active link styles (works with server-side "active_page" variable) */
+.navbar .nav-link.active,
+.navbar .dropdown-item.active {
+    font-weight: 600;
+}
+
+/* Optional: tighten nav on desktop a bit */
+@media (min-width: 992px) {
+    .navbar .nav-link { padding-left: .75rem; padding-right: .75rem; }
+}
+
+.navbar .container {
+  margin-bottom: 0;
+}
+

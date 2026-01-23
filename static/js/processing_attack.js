@@ -64,6 +64,14 @@ const ProcessingAttack = (() => {
     return rgbToHex(interpolatedRgb);
   }
 
+  function titleCaseFromSnake(str) {
+    return (str || "")
+      .split("_")
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
+  }
+
+
   // Format strings: replace underscores with spaces and capitalize words.
   function properFormat(s) {
     return s
@@ -347,15 +355,183 @@ const ProcessingAttack = (() => {
      DATA LOADING FUNCTIONS
   ========================================================== */
 
-  // Load complete jobs data.
-  function loadCompleteJobs(selectedMonday) {
-    // Show loading indicators.
+  async function LoadJobsToday() {
+    document.getElementById("jobsProcessed").innerHTML = `
+      <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Loading...</span>
+      </div>
+    `;
+    document.getElementById("incomingJobs").innerHTML = "";
+    const url = `/processing_attack/jobs_today`;
+
+    try {
+      const r = await fetch(url, { headers: { "Accept": "application/json" } });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      document.getElementById("incomingJobs").textContent = `New: ${data.incoming_jobs_today}`;
+      document.getElementById("jobsProcessed").textContent = `Processed: ${data.jobs_processed_today}`;
+
+      // Jobs to be processed
+      const jobsToBeProcessedCard = document.getElementById("jobsProcessedMinusIncomingJobsCard");
+      const incomingJobsText = document.getElementById("incomingJobs");
+      const jobsProcessedText = document.getElementById("jobsProcessed");
+
+      const processed = Number(data.jobs_processed_today || 0);
+      const incoming = Number(data.incoming_jobs_today || 0);
+
+      // optional: keep a subtle base behind the split (looks nicer)
+      jobsToBeProcessedCard.style.backgroundColor = "rgb(250, 246, 246)";
+      jobsToBeProcessedCard.style.backgroundBlendMode = "multiply";
+
+
+      // text colors
+      jobsProcessedText.style.color = processed > 0 ? "#27a532" : "#b92525";
+      incomingJobsText.style.color = "#b92525";
+
+      // optional: borderTop based on net change like you had
+      const change_in_jobs = processed - incoming;
+      jobsToBeProcessedCard.style.borderTop = change_in_jobs >= 0
+        ? "5px solid #27a532"
+        : "5px solid #b92525";
+
+    } catch (err) {
+      console.error("Error loading jobs to be invoiced:", error)
+    }
+  }
+
+
+  async function loadPinkFolderData() {
+    document.getElementById("timeInPinkFolder").innerHTML = "";
+    document.getElementById("numberOfPinkFolderJobs").innerHTML = `
+      <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Loading...</span>
+      </div>
+    `;
+    const url = `/processing_attack/pink_folder_data`;
+
+    try {
+      const r = await fetch(url, { headers: { "Accept": "application/json" } });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      document.getElementById("numberOfPinkFolderJobs").textContent = data.number_of_pink_folder_jobs + " jobs";
+      document.getElementById("timeInPinkFolder").textContent = `${data.time_in_pink_folder} tech hours`;
+
+      isPinkFolderDataLoaded = true;
+      const pinkFolderCard = document.getElementById("numberOfPinkFolderJobsCard");
+      pinkFolderCard.classList.remove("disabled");
+      pinkFolderCard.classList.add("clickable");
+
+      // Pink Folder jobs.
+      const pinkElem = document.getElementById("numberOfPinkFolderJobs");
+      const pinkElemCard = document.getElementById("numberOfPinkFolderJobsCard");
+      const timeInPinkFolderElem = document.getElementById("timeInPinkFolder");
+      if (parseInt(data.number_of_pink_folder_jobs) < 11) {
+        pinkElem.style.color = "#27a532";
+        timeInPinkFolderElem.style.color = "#27a532";
+        pinkElemCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(229, 248, 225))";
+        pinkElemCard.style.borderTop = "5px solid #27a532";
+      } else {
+        pinkElem.style.color = "#b92525";
+        timeInPinkFolderElem.style.color = "#b92525";
+        pinkElemCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(248, 225, 227))";
+        pinkElemCard.style.borderTop = "5px solid #b92525";
+      }
+      pinkElemCard.style.padding = "10px";
+      pinkElemCard.style.borderRadius = "8px";
+      pinkElemCard.style.boxShadow = "2px 4px 10px rgba(0, 0, 0, 0.1)";
+      pinkElemCard.style.textAlign = "center";
+
+      // Load pink folder data from backend
+      if (data.pink_folder_detailed_info) {
+        pinkfolderDetailedData.length = 0;
+      
+        for (const [techName, jobs] of Object.entries(data.pink_folder_detailed_info)) {
+          pinkfolderDetailedData.push({
+            technicianName: techName,
+            pinkFolderJobCount: jobs.length,
+            jobs: jobs.map(job => ({
+              address: job.job_address,
+              url: job.job_url
+            }))
+          });
+        }
+      }
+
+    } catch (err) {
+      console.error("Error loading pink folder: ", error)
+    }
+  }
+
+  async function loadJobsToBeInvoiced() {
+    document.getElementById("jobsToBeInvoiced").innerHTML = `
+      <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Loading...</span>
+      </div>
+    `;
+    const url = `/processing_attack/jobs_to_be_invoiced`;
+
+    try {
+      const r = await fetch(url, { headers: { "Accept": "application/json" } });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      document.getElementById("jobsToBeInvoiced").textContent = `Jobs to be invoiced: ${data.jobs_to_be_invoiced}`;
+      // Jobs to be Invoiced
+      const jobsToBeInvoicedText = document.getElementById("jobsToBeInvoiced");
+      const jobsToBeInvoicedCard = document.getElementById("jobsToBeInvoicedCard");
+      if (parseInt(data.jobs_to_be_invoiced) <= 30) {
+        jobsToBeInvoicedText.style.color = "#27a532";
+        jobsToBeInvoicedCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(229, 248, 225))";
+        jobsToBeInvoicedCard.style.borderTop = "5px solid rgb(39, 165, 50)";
+      } else {
+        jobsToBeInvoicedText.style.color = "rgb(185, 37, 37)";
+        jobsToBeInvoicedCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(248, 225, 227))";
+        jobsToBeInvoicedCard.style.borderTop = "5px solid #b92525";
+      }
+
+    } catch (err) {
+      console.error("Error loading jobs to be invoiced:", error)
+    }
+  }
+
+  async function loadJobsToBeMarkedComplete() {
     document.getElementById("jobsToBeMarkedComplete").innerHTML = `
       <div class="spinner-border text-primary" role="status">
         <span class="visually-hidden">Loading...</span>
       </div>
     `;
+    const url = `/processing_attack/num_jobs_to_be_marked_complete`;
 
+    try {
+      const r = await fetch(url, { headers: { "Accept": "application/json" } });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      document.getElementById("jobsToBeMarkedComplete").textContent = data.jobs_to_be_marked_complete;
+
+        // Jobs to be marked complete.
+        const jobsElem = document.getElementById("jobsToBeMarkedCompleteCard");
+        const jobsElemText = document.getElementById("jobsToBeMarkedComplete");
+        if (parseInt(data.jobs_to_be_marked_complete) < 50) {
+          jobsElemText.style.color = "#27a532";
+          jobsElem.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(229, 248, 225))";
+          jobsElem.style.borderTop = "5px solid #27a532";
+        } else {
+          jobsElemText.style.color = "#b92525";
+          jobsElem.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(248, 225, 227))";
+          jobsElem.style.borderTop = "5px solid #b92525";
+        }
+        jobsElem.style.padding = "10px";
+        jobsElem.style.borderRadius = "8px";
+        jobsElem.style.boxShadow = "2px 4px 10px rgba(0, 0, 0, 0.1)";
+        jobsElem.style.textAlign = "center";
+        jobsElemText.style.fontWeight = "bold";
+
+    } catch (err) {
+      console.error("Error loading completed jobs:", error)
+    }
+  }
+
+  // Load complete jobs data.
+  function loadCompleteJobs(selectedMonday) {
     document.getElementById("numberOfJobsWithReportConversionTag").innerHTML = `
       <div class="spinner-border text-primary" role="status">
         <span class="visually-hidden">Loading...</span>
@@ -370,30 +546,7 @@ const ProcessingAttack = (() => {
     document.getElementById("earliestJobToBeConvertedDate").textContent = "";
 
     document.getElementById("oldestJobToBeMarkedCompleteAddress").textContent = "";
-    document.getElementById("oldestJobToBeMarkedCompleteType").textContent = "";
     document.getElementById("oldestJobToBeMarkedCompleteDate").innerHTML = `
-      <div class="spinner-border text-primary" role="status">
-        <span class="visually-hidden">Loading...</span>
-      </div>
-    `;
-
-    document.getElementById("jobsToBeInvoiced").innerHTML = `
-      <div class="spinner-border text-primary" role="status">
-        <span class="visually-hidden">Loading...</span>
-      </div>
-    `;
-
-    document.getElementById("jobsProcessedMinusIncomingJobs").innerHTML = `
-      <div class="spinner-border text-primary" role="status">
-        <span class="visually-hidden">Loading...</span>
-      </div>
-    `;
-    document.getElementById("incomingJobs").innerHTML = "";
-    document.getElementById("jobsProcessed").innerHTML = "";
-    
-    document.getElementById("timeInPinkFolder").innerHTML = "";
-    document.getElementById("moneyInPinkFolder").innerHTML = "";
-    document.getElementById("numberOfPinkFolderJobs").innerHTML = `
       <div class="spinner-border text-primary" role="status">
         <span class="visually-hidden">Loading...</span>
       </div>
@@ -406,7 +559,7 @@ const ProcessingAttack = (() => {
     })
       .then(response => response.json())
       .then(data => {
-        document.getElementById("jobsToBeMarkedComplete").textContent = data.jobs_to_be_marked_complete;
+        
 
 
         // Jobs requiring report conversion
@@ -454,18 +607,36 @@ const ProcessingAttack = (() => {
           const firstJob = oldestJobs[0];
           const oldestDate = new Date(firstJob.oldest_job_date);
 
-          document.getElementById("oldestJobToBeMarkedCompleteDate").textContent =
-            oldestDate.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+          const jobDate = new Date(oldestDate);
+          const now = new Date();
+
+          // difference in weeks (rounded down)
+          const msPerWeek = 1000 * 60 * 60 * 24 * 7;
+          const weeksOld = Math.floor((now - jobDate) / msPerWeek);
+
+          const ageLabel =
+            weeksOld === 0 ? "Less than 1 week old" :
+            weeksOld === 1 ? "1 week old" :
+            `${weeksOld} weeks old`;
+
+          document.getElementById("oldestJobToBeMarkedCompleteDate").textContent = ageLabel;
           document.getElementById("oldestJobToBeMarkedCompleteAddress").textContent = firstJob.oldest_job_address;
-          document.getElementById("oldestJobToBeMarkedCompleteType").textContent = firstJob.oldest_job_type;
 
           const oldestJobsList = document.getElementById("oldestJobsListModal");
           oldestJobsList.innerHTML = "";
 
           for (const job of oldestJobs) {
-            const jobDate = new Date(job.oldest_job_date).toLocaleDateString("en-US", {
-              year: "numeric", month: "short", day: "numeric"
-            });
+            const jobDate = new Date(job.oldest_job_date);
+            const now = new Date();
+
+            // difference in weeks (rounded down)
+            const msPerWeek = 1000 * 60 * 60 * 24 * 7;
+            const weeksOld = Math.floor((now - jobDate) / msPerWeek);
+
+            const ageLabel =
+              weeksOld === 0 ? "Less than 1 week old" :
+              weeksOld === 1 ? "1 week old" :
+              `${weeksOld} weeks old`;
 
             const jobItem = document.createElement("div");
             jobItem.className = "list-group-item mb-2";
@@ -474,11 +645,11 @@ const ProcessingAttack = (() => {
               <div class="d-flex justify-content-between align-items-center">
                 <div>
                   <h6 class="mb-1">${job.oldest_job_address}</h6>
-                  <small>${jobDate} — ${job.oldest_job_type}</small>
+                  <small>${ageLabel} — ${titleCaseFromSnake(job.oldest_job_type)}</small>
                 </div>
-                <a href="https://app.servicetrade.com/jobs/${job.job_id}" 
-                  class="btn btn-sm" 
-                  style="background-color: #0C62A6; color: white;" 
+                <a href="https://app.servicetrade.com/jobs/${job.job_id}"
+                  class="btn btn-sm"
+                  style="background-color: #0C62A6; color: white;"
                   target="_blank">View Job</a>
               </div>
             `;
@@ -489,23 +660,10 @@ const ProcessingAttack = (() => {
 
 
 
-        const jobsDelta = data.incoming_jobs_today - data.jobs_processed_today;
+        
+        
 
-        document.getElementById("jobsProcessedMinusIncomingJobs").textContent = `Δ Jobs: ${jobsDelta}`;
-        document.getElementById("incomingJobs").textContent = `Incoming jobs: ${data.incoming_jobs_today}`;
-        document.getElementById("jobsProcessed").textContent = `Jobs processed: ${data.jobs_processed_today}`;
-        document.getElementById("jobsToBeInvoiced").textContent = `Jobs to be invoiced: ${data.jobs_to_be_invoiced}`;
-
-        document.getElementById("numberOfPinkFolderJobs").textContent = data.number_of_pink_folder_jobs + " jobs";
-        document.getElementById("timeInPinkFolder").textContent = `${data.time_in_pink_folder} tech hours  |`;
-        const revenue = data.time_in_pink_folder * 110;
-        document.getElementById("moneyInPinkFolder").textContent = 
-        `${new Intl.NumberFormat("en-US", { 
-            style: "currency", 
-            currency: "CAD", 
-            minimumFractionDigits: 0, 
-            maximumFractionDigits: 0 
-        }).format(revenue)}`;
+        
         // Update jobsChart with job type counts.
         if (data.job_type_count) {
           const labels = Object.keys(data.job_type_count);
@@ -519,21 +677,7 @@ const ProcessingAttack = (() => {
           jobsChart.update();
         }
 
-        // Load pink folder data from backend
-        if (data.pink_folder_detailed_info) {
-          pinkfolderDetailedData.length = 0;
         
-          for (const [techName, jobs] of Object.entries(data.pink_folder_detailed_info)) {
-            pinkfolderDetailedData.push({
-              technicianName: techName,
-              pinkFolderJobCount: jobs.length,
-              jobs: jobs.map(job => ({
-                address: job.job_address,
-                url: job.job_url
-              }))
-            });
-          }
-        }
 
 
         // Update KPIs.
@@ -544,10 +688,7 @@ const ProcessingAttack = (() => {
         oldestJobsCard.classList.remove("disabled");
         oldestJobsCard.classList.add("clickable");
 
-        isPinkFolderDataLoaded = true;
-        const pinkFolderCard = document.getElementById("numberOfPinkFolderJobsCard");
-        pinkFolderCard.classList.remove("disabled");
-        pinkFolderCard.classList.add("clickable");
+        
 
         const scheduledJobsRequiringConversionCard = document.getElementById("numberOfLocationsWithReportConversionTagCard");
         scheduledJobsRequiringConversionCard.classList.remove("disabled");
@@ -761,51 +902,10 @@ const ProcessingAttack = (() => {
 
   // Update KPI card styles based on thresholds.
   function updateKPIs(data) {
-    // Jobs to be marked complete.
-    const jobsElem = document.getElementById("jobsToBeMarkedCompleteCard");
-    const jobsElemText = document.getElementById("jobsToBeMarkedComplete");
-    if (parseInt(data.jobs_to_be_marked_complete) < 50) {
-      jobsElemText.style.color = "#27a532";
-      jobsElem.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(229, 248, 225))";
-      jobsElem.style.borderTop = "5px solid #27a532";
-    } else {
-      jobsElemText.style.color = "#b92525";
-      jobsElem.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(248, 225, 227))";
-      jobsElem.style.borderTop = "5px solid #b92525";
-    }
-    jobsElem.style.padding = "10px";
-    jobsElem.style.borderRadius = "8px";
-    jobsElem.style.boxShadow = "2px 4px 10px rgba(0, 0, 0, 0.1)";
-    jobsElem.style.textAlign = "center";
-    jobsElemText.style.fontWeight = "bold";
-
-    // Pink Folder jobs.
-    const pinkElem = document.getElementById("numberOfPinkFolderJobs");
-    const pinkElemCard = document.getElementById("numberOfPinkFolderJobsCard");
-    const timeInPinkFolderElem = document.getElementById("timeInPinkFolder");
-    const moneyInPinkFolderElem = document.getElementById("moneyInPinkFolder");
-    if (parseInt(data.number_of_pink_folder_jobs) < 11) {
-      pinkElem.style.color = "#27a532";
-      timeInPinkFolderElem.style.color = "#27a532";
-      moneyInPinkFolderElem.style.color = "#27a532";
-      pinkElemCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(229, 248, 225))";
-      pinkElemCard.style.borderTop = "5px solid #27a532";
-    } else {
-      pinkElem.style.color = "#b92525";
-      timeInPinkFolderElem.style.color = "#b92525";
-      moneyInPinkFolderElem.style.color = "#b92525";
-      pinkElemCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(248, 225, 227))";
-      pinkElemCard.style.borderTop = "5px solid #b92525";
-    }
-    pinkElemCard.style.padding = "10px";
-    pinkElemCard.style.borderRadius = "8px";
-    pinkElemCard.style.boxShadow = "2px 4px 10px rgba(0, 0, 0, 0.1)";
-    pinkElemCard.style.textAlign = "center";
-
+  
     // Oldest Job to be marked complete.
     const oldestElem = document.getElementById("oldestJobToBeMarkedCompleteDate");
     const oldestElem1 = document.getElementById("oldestJobToBeMarkedCompleteAddress");
-    const oldestElem2 = document.getElementById("oldestJobToBeMarkedCompleteType");
     const oldestElemCard = document.getElementById("oldestJobsCard");
     const oldestJobs = data.oldest_jobs_to_be_marked_complete;
     const firstJobId = Object.keys(oldestJobs)[0]
@@ -816,13 +916,11 @@ const ProcessingAttack = (() => {
     if (diffDays <= 42) {
       oldestElem.style.color = "#27a532";
       oldestElem1.style.color = "#27a532";
-      oldestElem2.style.color = "#27a532";
       oldestElemCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(229, 248, 225))";
       oldestElemCard.style.borderTop = "5px solid #27a532";
     } else {
       oldestElem.style.color = "#b92525";
       oldestElem1.style.color = "#b92525";
-      oldestElem2.style.color = "#b92525";
       oldestElemCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(248, 225, 227))";
       oldestElemCard.style.borderTop = "5px solid #b92525";
     }
@@ -832,46 +930,7 @@ const ProcessingAttack = (() => {
     oldestElemCard.style.boxShadow = "2px 4px 10px rgba(0, 0, 0, 0.1)";
     oldestElemCard.style.textAlign = "center";
 
-    // Jobs to be Invoiced
-    const jobsToBeInvoicedText = document.getElementById("jobsToBeInvoiced");
-    const jobsToBeInvoicedCard = document.getElementById("jobsToBeInvoicedCard");
-    if (parseInt(data.jobs_to_be_invoiced) < 50) {
-      jobsToBeInvoicedText.style.color = "#27a532";
-      jobsToBeInvoicedCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(229, 248, 225))";
-      jobsToBeInvoicedCard.style.borderTop = "5px solid #27a532";
-    } else {
-      jobsToBeInvoicedText.style.color = "#b92525";
-      jobsToBeInvoicedCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(248, 225, 227))";
-      jobsToBeInvoicedCard.style.borderTop = "5px solid #b92525";
-    }
 
-    // Change in jobs to be processed (today)
-    const jobsToBeProcessedText = document.getElementById("jobsProcessedMinusIncomingJobs");
-    const jobsToBeProcessedCard = document.getElementById("jobsProcessedMinusIncomingJobsCard");
-    const incomingJobsText = document.getElementById("incomingJobs")
-    const jobsProcessedText = document.getElementById("jobsProcessed")
-    const change_in_jobs = data.jobs_processed_today - data.incoming_jobs_today 
-    if (change_in_jobs >= 0) {
-      jobsToBeProcessedText.style.color = "#27a532";
-      jobsToBeProcessedCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(229, 248, 225))";
-      jobsToBeProcessedCard.style.borderTop = "5px solid #27a532";
-    } else {
-      jobsToBeProcessedText.style.color = "#b92525";
-      jobsToBeProcessedCard.style.backgroundImage = "linear-gradient(to top,rgb(250, 246, 246),rgb(248, 225, 227))";
-      jobsToBeProcessedCard.style.borderTop = "5px solid #b92525";
-    }
-    jobsToBeProcessedCard.style.padding = "10px";
-    jobsToBeProcessedCard.style.borderRadius = "8px";
-    jobsToBeProcessedCard.style.boxShadow = "2px 4px 10px rgba(0, 0, 0, 0.1)";
-    jobsToBeProcessedCard.style.textAlign = "center";
-    
-    if (data.jobs_processed_today > 0){
-      jobsProcessedText.style.color = "#27a532";
-    }
-    else{
-      jobsProcessedText.style.color = "#b92525";
-    }
-    incomingJobsText.style.color = "#b92525";
 
     // Number of Scheduled Jobs to be Converted
     const numberOfScheduledJobsToBeConvertedText = document.getElementById("numberOfJobsWithReportConversionTag");
@@ -1074,6 +1133,8 @@ const ProcessingAttack = (() => {
       scheduledJobsRequiringConversionModal.show();
     })
   }
+
+  
   
 
   
@@ -1098,6 +1159,10 @@ const ProcessingAttack = (() => {
     setupPinkFolderCardToggle();
     setupOldestJobsCardToggle();
     setupScheduledJobsRequiringConversionCardToggle();
+    loadJobsToBeMarkedComplete();
+    loadJobsToBeInvoiced();
+    loadPinkFolderData();
+    LoadJobsToday();
     const weekSelect = document.getElementById("week-select");
     if (weekSelect.value) {
       const selectedMonday = weekSelect.value;

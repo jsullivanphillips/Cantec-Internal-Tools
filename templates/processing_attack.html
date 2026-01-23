@@ -8,10 +8,10 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://unpkg.com/vis-timeline@latest/standalone/umd/vis-timeline-graph2d.min.js"></script>
   <link href="https://unpkg.com/vis-timeline@latest/styles/vis-timeline-graph2d.min.css" rel="stylesheet" type="text/css" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/processing_attack.css') }}">
 {% endblock %}
 
 {% block content %}
-  <br>
   <div class="container processing-attack-container">  
     <!-- Tabs -->
     <ul class="nav nav-tabs" id="processingAttackTabs" role="tablist">
@@ -41,70 +41,72 @@
 
           <!-- Jobs Processed - Incoming Jobs -->
           <div class="card full short" id="jobsProcessedMinusIncomingJobsCard">
-            <div class="card-header">Change in Jobs to be Processed (Today)</div>
-            <small style="display:block; text-align:center;">Incoming jobs from 12:00am Yesterday -> 12:00am Today<br>Jobs processed from 12:00am Today -> Current Time</small>
+            <div class="card-header">Jobs Processed Today</div>
             <div class="card-body">
-              <strong id="jobsProcessedMinusIncomingJobs" style="font-weight: bold; font-size: 1.0em;"></strong>
+              <strong id="jobsProcessed" style="font-weight: bold; font-size: 1.0em;"></strong>
               <div style="display: flex; gap: 20px;">
                   <strong id="incomingJobs"></strong>
-                  <strong id="jobsProcessed"></strong>
               </div>
             </div>
+            <div class="target-hint">Target: Processed > New </div>
           </div>
           <!-- Jobs to be marked complete -->
           <div class="card half" id="jobsToBeMarkedCompleteCard">
-            <div class="card-header">Jobs To Be Marked Complete | Goal: Less than 50</div>
+            <div class="card-header">Jobs To Be Marked Complete</div>
             <div class="card-body">
               <strong id="jobsToBeMarkedComplete" style="font-weight: bold; font-size: 1.0em;">..</strong>
             </div>
+            <div class="target-hint">Target: < 50 jobs</div>
           </div>
           <!-- Oldest Job -->
           <div class="card half clickable" id="oldestJobsCard" style="cursor: pointer;">
-            <div class="card-header">Oldest Job | Goal: No Older than 6 Weeks</div>
+            <div class="card-header">Oldest Job</div>
             <div class="card-body position-relative">
-              <strong id="oldestJobToBeMarkedCompleteDate" style="font-weight: bold; font-size: 1.0em;"></strong>
               <strong id="oldestJobToBeMarkedCompleteAddress"></strong>
-              <strong id="oldestJobToBeMarkedCompleteType" style="font-style: italic;"></strong>
-              <div id="pinkFolderHint" class="pink-hint">Click for more info</div>
+              <strong id="oldestJobToBeMarkedCompleteDate" style="font-weight: bold; font-size: 1.0em;"></strong>
             </div>
+            <div id="pinkFolderHint" class="pink-hint">Click for more info</div>
+            <div class="target-hint">Target: None older than 6 weeks</div>
           </div>
 
           <!-- Pink Folder Jobs -->
           <div class="card half" id="numberOfPinkFolderJobsCard">
-            <div class="card-header">Whats in the Pink Folder? | Goal: Less than 10 Jobs</div>
+            <div class="card-header">Whats in the Pink Folder?</div>
             <div class="card-body position-relative">
               <strong id="numberOfPinkFolderJobs" style="font-weight: bold; font-size: 1.0em;">..</strong>
               <div style="display: flex; gap: 20px;">
                   <strong id="timeInPinkFolder"></strong>
-                  <strong id="moneyInPinkFolder"></strong>
               </div>
-              <div id="pinkFolderHint" class="pink-hint">Click for more info</div>
             </div>
+            <div id="pinkFolderHint" class="pink-hint">Click for more info</div>
+            <div class="target-hint">Target: Less than 10</div>
           </div>
           <!-- Jobs to be Invoiced -->
           <div class="card half" id="jobsToBeInvoicedCard">
             <div class="card-header">Complete Jobs to be Invoiced</div>
-            <small style="display:block; text-align:center;">Jobs scheduled from 1 year ago to today</small>
             <div class="card-body">
               <strong id="jobsToBeInvoiced" style="font-weight: bold; font-size: 1.0em;"></strong>
             </div>
+            <div class="target-hint">Target: Less than 30</div>
           </div>
 
           <!-- Locations to be Converted -->
           <div class="card half" id="numberOfLocationsWithReportConversionTagCard">
-            <div class="card-header">Scheduled Jobs Requiring Report Conversion | Goal: Less than 10</div>
+            <div class="card-header">Scheduled Jobs Requiring Report Conversion</div>
             <div class="card-body position-relative">
               <strong id="numberOfJobsWithReportConversionTag" style="font-weight: bold; font-size: 1.0em;">..</strong>
-              <div id="reportConversionHint" class="pink-hint">Click for more info</div>
             </div>
+            <div id="reportConversionHint" class="pink-hint">Click for more info</div>
+            <div class="target-hint">Target: Less than 10</div>
           </div>
           <!-- Jobs to be Converted -->
           <div class="card half" id="earliestJobToBeConvertedCard">
-            <div class="card-header">Earliest Scheduled Job Requiring Report Conversion | Goal: No Sooner than 2 Weeks</div>
+            <div class="card-header">Earliest Scheduled Job Requiring Report Conversion</div>
             <div class="card-body">
               <strong id="earliestJobToBeConvertedAddress" style="font-weight: bold; font-size: 1.0em;"></strong>
               <strong id="earliestJobToBeConvertedDate" style="font-weight: bold; font-size: 1.0em;"></strong>
             </div>
+            <div class="target-hint">Target: None in next 2 weeks</div>
           </div>
 
           <!-- Full-width bar graph card -->

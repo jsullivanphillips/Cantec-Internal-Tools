@@ -85,26 +85,15 @@ def processing_attack_complete_jobs():
 
     jobs_by_job_type = organize_jobs_by_job_type(jobs_to_be_marked_complete)
 
-    number_of_pink_folder_jobs, pink_folder_detailed_info, time_in_pink_folder = get_pink_folder_data()
+    
 
-    jobs_processed_today = get_jobs_processed_today()
-
-    incoming_jobs_today = get_incoming_jobs_today()
-
-    jobs_to_be_invoiced = get_jobs_to_be_invoiced()
 
     num_locations_to_be_converted, jobs_to_be_converted = find_report_conversion_jobs()
 
     response_data = {
-        "jobs_to_be_marked_complete": len(jobs_to_be_marked_complete),
         "job_type_count": jobs_by_job_type,
-        "number_of_pink_folder_jobs" : number_of_pink_folder_jobs,
-        "pink_folder_detailed_info" : pink_folder_detailed_info,
         "oldest_jobs_to_be_marked_complete" : oldest_jobs_to_be_marked_complete,
-        "jobs_processed_today": jobs_processed_today,
-        "incoming_jobs_today": incoming_jobs_today,
-        "time_in_pink_folder": time_in_pink_folder,
-        "jobs_to_be_invoiced": jobs_to_be_invoiced,
+        
         "num_locations_to_be_converted": num_locations_to_be_converted,
         "jobs_to_be_converted": jobs_to_be_converted
     }
@@ -125,6 +114,25 @@ def organize_jobs_by_job_type(jobs_to_be_marked_complete):
     # Count occurrences of each job type
     counts = Counter(job_types)
     return dict(counts)
+
+@processing_attack_bp.route('/processing_attack/jobs_today', methods=['GET'])
+def jobs_today():
+    jobs_processed_today = get_jobs_processed_today()
+
+    incoming_jobs_today = get_incoming_jobs_today()
+
+    return jsonify({
+        "jobs_processed_today": jobs_processed_today,
+        "incoming_jobs_today": incoming_jobs_today,
+        }), 200
+
+
+@processing_attack_bp.route('/processing_attack/jobs_to_be_invoiced', methods=['GET'])
+def jobs_to_be_invoiced():
+    num_jobs = get_jobs_to_be_invoiced()
+
+    return jsonify({"jobs_to_be_invoiced": num_jobs}), 200
+
 
 def get_jobs_to_be_invoiced():
     authenticate()
@@ -162,7 +170,7 @@ def find_report_conversion_jobs():
     response = api_session.get(f"{SERVICE_TRADE_API_BASE}/job", params=params)
     response.raise_for_status()
     jobs = response.json().get("data", {}).get("jobs", [])
-    print(f"found {len(jobs)} jobs")
+    
 
     # Sort jobs by job.get("scheduledDate")
     jobs.sort(key=lambda job: job.get("scheduledDate"))
@@ -170,7 +178,18 @@ def find_report_conversion_jobs():
     return len(locations), jobs
 
 
+@processing_attack_bp.route('/processing_attack/pink_folder_data', methods=['GET'])
+def get_pink_folder_route():
+    number_of_pink_folder_jobs, pink_folder_detailed_info, time_in_hours = get_pink_folder_data()
+
+    return jsonify({
+    "number_of_pink_folder_jobs" : number_of_pink_folder_jobs,
+    "pink_folder_detailed_info" : pink_folder_detailed_info,
+    "time_in_pink_folder": time_in_hours}), 200
+
+
 def get_pink_folder_data():
+    authenticate()
     job_endpoint = f"{SERVICE_TRADE_API_BASE}/job"
     job_params = {
         "tag": "PINK_FOLDER",
@@ -386,6 +405,14 @@ def get_jobs_processed_today():
     return len(jobs_data)
 
 
+@processing_attack_bp.route('/processing_attack/num_jobs_to_be_marked_complete', methods=['GET'])
+def num_jobs_to_be_marked_complete():
+    num_jobs = get_num_jobs_to_be_marked_complete()
+
+    return jsonify({"jobs_to_be_marked_complete": num_jobs}), 200
+
+
+
 def get_num_jobs_to_be_marked_complete():
     authenticate()
     
@@ -415,7 +442,6 @@ def get_num_jobs_to_be_marked_complete():
 def get_jobs_to_be_marked_complete():
     authenticate()
     
-
     job_date = {}
     jobs_to_be_marked_complete = {}
 
@@ -447,7 +473,6 @@ def get_jobs_to_be_marked_complete():
             for appt in appts:
                 appt_start = appt.get("windowStart")
                 if not appt_start:
-                    print("OH no no window start for appt")
                     continue 
 
                 # If this is the first time we're seeing this job_id, or the new date is later

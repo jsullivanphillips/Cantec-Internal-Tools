@@ -1,34 +1,239 @@
-.sa-v2-calendar {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(34px, 1fr));
-  gap: 6px;
+/* ========================================
+   Annual Service Recurrences Dashboard
+   (matches existing site styles)
+   ======================================== */
+
+   .sa-wrap {
+  /* visually the same as .main-container */
+  max-width: 900px;
+  margin: 60px auto 40px auto;
+  padding: 20px;
+  background-color: #fff;
+  border-radius: 5px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
 }
 
-.sa-v2-day {
-  border: 1px solid rgba(0,0,0,0.12);
-  border-radius: 10px;
-  padding: 6px;
-  min-height: 44px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-}
 
-.sa-v2-day .d {
-  font-size: 12px;
-  line-height: 1;
-  opacity: 0.8;
-}
-
-.sa-v2-day .c {
-  font-size: 14px;
+/* Title aligns with your .page-title scale but a bit smaller */
+.sa-wrap h1 {
+  font-size: 24px;
+  color: #0C62A6;
+  text-align: center;
+  margin-bottom: 16px;
   font-weight: 700;
 }
 
-/* states */
-.sa-v2-empty { opacity: 0.55; }
-.sa-v2-partial { opacity: 0.9; }
-.sa-v2-full { outline: 2px solid rgba(0,0,0,0.22); }
+/* KPI row matches your card style, grid responsive like the rest of the app */
+.sa-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
 
-/* weekend tone-down */
-.sa-v2-weekend { opacity: 0.35; }
+.sa-kpi {
+  background-color: #fdfdfd;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  padding: 12px 14px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.06);
+}
+
+.sa-kpi .value {
+  display: block;
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #0C62A6;
+  line-height: 1.1;
+}
+
+.sa-kpi .label {
+  display: block;
+  font-size: .85rem;
+  color: #555;
+  margin-top: 4px;
+}
+
+/* Cards mirror .processing-attack .card look */
+.sa-card {
+  background-color: #fdfdfd;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  padding: 15px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+  margin-bottom: 16px;
+}
+
+.sa-card .card-header {
+  background-color: transparent;
+  padding: 6px 0 10px 0;
+  border-bottom: 1px solid #ddd;
+  font-size: 18px;
+  font-weight: 600;
+  font-family: 'Poppins', sans-serif;
+  text-align: center;
+  color: #0C62A6;
+}
+
+.sa-card .card-body {
+  padding-top: 10px;
+}
+
+/* Chart area: give it height so Chart.js renders nicely */
+.sa-chart {
+  min-height: 360px;
+  display: block;
+}
+
+/* Table: reuse your .table styles; add subtle tweaks */
+.sa-table-wrapper {
+  overflow-x: auto;
+}
+
+.sa-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.sa-table th,
+.sa-table td {
+  padding: 12px;
+  border-bottom: 1px solid #dee2e6;
+  text-align: left;
+}
+
+.sa-table th {
+  background-color: #f8f9fa;
+  font-weight: 600;
+}
+
+.sa-table tr:nth-of-type(odd) td {
+  background-color: rgba(0,0,0,0.03);
+}
+
+/* Accessibility helpers (screen-reader only) */
+.sa-sr-only {
+  position: absolute;
+  left: -9999px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+/* Hover affordance consistent with your cards */
+.sa-card:hover {
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+/* Funnel layout */
+.sa-v2-funnel-row {
+  display: grid;
+  gap: 12px;
+  
+}
+
+
+
+.sa-v2-funnel-total {
+  grid-template-columns: 1fr;
+  margin-bottom: 64px;
+}
+
+.sa-v2-funnel-split1 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 64px;
+}
+
+.sa-v2-funnel-split2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 64px;
+}
+
+.sa-v2-funnel-split3 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 12px;
+}
+
+.sa-v2-funnel-box {
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 12px;
+  padding: 12px;
+  background: rgba(255,255,255,0.7);
+}
+
+.sa-v2-funnel-box .k {
+  font-size: 12px;
+  opacity: 0.7;
+  margin-bottom: 2px;
+}
+
+.sa-v2-funnel-box .v {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.sa-v2-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.08);
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.sa-v2-bar-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: rgba(13,110,253,0.85); /* bootstrap primary-ish */
+}
+
+/* Responsive */
+@media (max-width: 992px) {
+  .sa-v2-funnel-split3 { grid-template-columns: 1fr; }
+  .sa-v2-funnel-split2 { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 768px) {
+  .sa-v2-funnel-row {
+    margin-bottom: 24px;
+  }
+}
+
+.sa-v2-funnel {
+  position: relative;
+}
+
+.sa-v2-arrows {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+  z-index: 1;
+}
+
+.sa-v2-funnel-box {
+  position: relative;
+  z-index: 2; /* boxes above arrows */
+}
+
+/* Arrow look */
+.sa-v2-arrow-line {
+  stroke: rgba(13,110,253,0.5);
+  stroke-width: 2;
+  fill: none;
+}
+
+.sa-v2-arrow-head {
+  fill: rgba(13,110,253,1);
+}
+
+.sa-v2-notes {
+  min-width: 220px;
+  max-width: 220px;
+  resize: vertical;
+  line-height: 1.3;
+}

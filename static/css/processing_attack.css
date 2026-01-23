@@ -1,0 +1,294 @@
+/* =============================
+   Pink Folder Modal Enhancements
+   ============================= */
+
+.processing-attack-container {
+  /* visually the same as .main-container */
+  max-width: 900px;
+  margin: 20px auto 40px auto;
+  padding: 20px;
+  background-color: #fff;
+  border-radius: 5px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+#pinkFolderModal .modal-body {
+    padding-top: 0;
+}
+
+.pink-folder-expanded {
+  margin-top: 1rem;
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 0.5rem;
+  border-top: 1px solid #ccc;
+}
+
+#pinkFolderTechniciansListModal .tech-toggle {
+    text-align: left;
+    color: #0C62A6;
+    font-weight: 600;
+    font-size: 1rem;
+}
+
+#pinkFolderTechniciansListModal .tech-toggle:hover {
+    text-decoration: underline;
+    background-color: #f0f8ff;
+}
+
+#pinkFolderTechniciansListModal .border {
+    border: 1px solid #dee2e6 !important;
+}
+
+#pinkFolderTechniciansListModal .list-unstyled {
+    padding-left: 1.25rem;
+    margin-top: 0.5rem;
+}
+
+#pinkFolderTechniciansListModal .list-unstyled li {
+    margin-bottom: 0.25rem;
+}
+
+#pinkFolderTechniciansListModal a {
+    color: #0C62A6;
+    font-weight: 500;
+}
+
+#pinkFolderTechniciansListModal a:hover {
+    text-decoration: underline;
+    color: #084b7c;
+}
+
+.chevron-icon {
+    transition: transform 0.3s ease;
+}
+
+.show + .accordion-body .chevron-icon,
+.collapse-custom.show ~ .chevron-icon {
+    transform: rotate(90deg);
+}
+
+#pinkFolderTechniciansListModal .btn-link {
+    text-decoration: none;
+    padding: 0.4rem 0.75rem;
+}
+
+#pinkFolderTechniciansListModal .btn-link:focus {
+    box-shadow: none;
+}
+
+/* Clean expand/collapse with no jitter */
+#pinkFolderTechniciansListModal .collapse-custom {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.4s ease, opacity 0.4s ease;
+    opacity: 0;
+}
+
+#pinkFolderTechniciansListModal .collapse-custom.show {
+    max-height: 600px; /* enough room for most content */
+    opacity: 1;
+}
+
+#pinkFolderTechniciansListModal .collapse,
+#pinkFolderTechniciansListModal .collapse.show {
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
+/* While loading (disabled state) */
+#numberOfPinkFolderJobsCard.disabled {
+  pointer-events: none;
+  opacity: 0.5;
+  filter: grayscale(50%);
+  cursor: not-allowed;
+}
+
+#numberOfLocationsWithReportConversionTagCard.disabled {
+  pointer-events: none;
+  opacity: 0.5;
+  filter: grayscale(50%);
+  cursor: not-allowed;
+}
+
+/* When active, indicate it's clickable */
+#numberOfPinkFolderJobsCard.clickable {
+  cursor: pointer;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+#numberOfLocationsWithReportConversionTagCard.clickable {
+  cursor: pointer;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+#numberOfPinkFolderJobsCard.clickable:hover {
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px);
+  background-color: #eef6fc;
+}
+
+.card-hint-text {
+  color: #0C62A6;
+  font-weight: 500;
+  opacity: 0.85;
+  transition: opacity 0.2s ease;
+}
+
+.pink-hint {
+  position: absolute;
+  bottom: 6px;
+  right: 10px;
+  font-size: 0.65em;
+  color: #9b9b9bc9;
+  opacity: 0.65;
+  font-style: italic;
+  pointer-events: none;
+}
+
+.target-hint {
+    position: absolute;
+    bottom: 6px;
+    left: 16px;
+    font-size: 0.85em;
+    color: #9b9b9bc9;
+    opacity: 0.65;
+    pointer-events: none;
+}
+
+#numberOfPinkFolderJobsCard:hover.pink-hint {
+  opacity: 0.9;
+  text-decoration: underline;
+}
+
+#oldestJobsCard:hover.pink-hint {
+  opacity: 0.9;
+  text-decoration: underline;
+}
+
+#oldestJobsCard.disabled {
+  pointer-events: none;
+  opacity: 0.5;
+  filter: grayscale(50%);
+  cursor: not-allowed;
+}
+
+#oldestJobsCard.clickable:hover {
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px);
+  background-color: #eef6fc;
+}
+
+#oldestJobsCard.clickable {
+  cursor: pointer;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+
+/* ========================================
+   6. Cards & Block Styles
+   ======================================== */
+
+/* Analytics and Block Containers */
+.analytics-card {
+  padding: 1rem;
+}
+
+.block-container {
+  background-color: #fdfdfd;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  padding: 15px;
+  margin: 15px 0;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+/* Cards Container (for grid layouts, etc.) */
+.cards-container.processing-attack {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(300px, 1fr));
+  gap: 20px; /* space between cards */
+  padding-top: 15px;
+}
+
+@media (max-width: 768px) {
+  .processing-attack .cards-container {
+    grid-template-columns: 1fr; /* single column on smaller screens */
+  }
+}
+
+/* Card Styles */
+.processing-attack .card {
+  background-color: #fdfdfd;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  padding: 15px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.processing-attack .card.half {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 200px;
+  box-sizing: border-box;
+  box-shadow: 2px 4px 10px rgba(0, 0, 0, 0.1);
+}
+
+.processing-attack .card.full {
+  grid-column: 1 / span 2;
+  min-height: 240px;
+  box-shadow: 2px 4px 10px rgba(0, 0, 0, 0.2);
+  margin-bottom: 20px;
+  transition: opacity 0.4s ease;
+}
+
+.processing-attack .card.full.short {
+  grid-column: 1 / span 2;
+  min-height: 80px;
+  box-shadow: 2px 4px 10px rgba(0, 0, 0, 0.1);
+  margin-bottom: 10px;
+}
+
+.processing-attack .card-header {
+  background-color: rgba(255, 255, 255, 0);
+  padding: 8px;
+  border-bottom: 1px solid #ddd;
+  font-size: 20px;
+  font-weight: 600;
+  font-family: 'Poppins', sans-serif;
+  text-align: center;
+  margin-bottom: 10px;
+}
+
+.processing-attack .card-body {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  font-size: 26px;
+  color: #0C62A6;
+}
+
+.processing-attack .card:hover {
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+/* Small Cards */
+.small-card {
+  font-size: 0.9rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.small-card .card-header {
+  background-color: rgba(255, 255, 255, 0);
+  padding: 0.5rem 1rem;
+  font-weight: 600;
+}
+
+.small-card .card-body {
+  padding: 0.5rem 1rem;
+}
+

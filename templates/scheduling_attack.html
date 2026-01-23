@@ -1,6 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Scheduling Attack{% endblock %}
 
+{% block extra_head %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/scheduling_attack.css') }}">
+{% endblock %}
+
 {% block content %}
 <div class="sa-wrap" role="region" aria-labelledby="sa-title">
   <h1 id="sa-title">Scheduling Attack</h1>
