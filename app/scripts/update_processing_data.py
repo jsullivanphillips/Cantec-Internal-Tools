@@ -28,12 +28,11 @@ def get_processing_status_data():
             print(f"ProcessingStatus for week {week_start} exists but is outdated. Overwriting...")
 
 
-    jobs_to_be_marked_complete, oldest_job_ids, oldest_inspection_job_id, _ = get_jobs_to_be_marked_complete()
+    jobs_to_be_marked_complete, oldest_job_ids, _ = get_jobs_to_be_marked_complete()
     if jobs_to_be_marked_complete and oldest_job_ids:
         oldest_job_date, oldest_job_address, oldest_job_type = get_oldest_job_data(oldest_job_ids[0])
-        oldest_inspection_date, oldest_inspection_address, _ = get_oldest_job_data(oldest_inspection_job_id)
     else:
-        oldest_job_date = oldest_job_address = oldest_job_type = oldest_inspection_date = oldest_inspection_address = None
+        oldest_job_date = oldest_job_address = oldest_job_type = None
 
     jobs_by_job_type = organize_jobs_by_job_type(jobs_to_be_marked_complete)
     number_of_pink_folder_jobs, _, _ = get_pink_folder_data()
@@ -45,8 +44,6 @@ def get_processing_status_data():
         "oldest_job_type": oldest_job_type,
         "job_type_count": jobs_by_job_type,
         "number_of_pink_folder_jobs": number_of_pink_folder_jobs,
-        "oldest_inspection_date": oldest_inspection_date,
-        "oldest_inspection_address": oldest_inspection_address
     }
 
     print("Validation: Successfully grabbed the following processing status data:")

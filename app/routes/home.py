@@ -1,6 +1,6 @@
 # app/routes/homes.py
 from flask import Blueprint, render_template, redirect, url_for, jsonify, session
-from app.routes.processing_attack import get_jobs_processed_today, get_jobs_to_be_invoiced, get_jobs_to_be_marked_complete, get_pink_folder_data
+from app.routes.processing_attack import get_jobs_processed_today, get_jobs_to_be_invoiced, get_num_jobs_to_be_marked_complete, get_pink_folder_data
 from app.routes.scheduling_attack import get_forward_schedule_coverage_pct, get_percent_confirmed_next_two_weeks
 from app.routes.limbo_job_tracker import get_limbo_jobs
 from app.routes.keys import get_keys_older_than
@@ -38,9 +38,9 @@ def home():
 # Routes
 @home_bp.route("/home/kpi/jobs_to_process")
 def home_jobs_to_process():
-    jobs_to_process, _, _, _ = get_jobs_to_be_marked_complete()
+    num_jobs_to_process = get_num_jobs_to_be_marked_complete()
     response_data =  {
-        "jobs_to_process": len(jobs_to_process)
+        "jobs_to_process": num_jobs_to_process
     }
     return jsonify(response_data), 200
 
@@ -98,8 +98,7 @@ def home_needs_attention():
 
     # --- Processing: Jobs to process ---
     try:
-        jobs_to_process, _, _, _ = get_jobs_to_be_marked_complete()
-        count = safe_count(jobs_to_process)
+        count = get_num_jobs_to_be_marked_complete()
 
         if count >= 50:
             add_item(
