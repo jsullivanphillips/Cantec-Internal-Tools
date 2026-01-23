@@ -62,9 +62,9 @@ def processing_attack_complete_jobs():
     """
     authenticate()
     oldest_jobs_to_be_marked_complete = []
-    jobs_to_be_marked_complete, oldest_job_ids, oldest_inspection_job_id, job_date = get_jobs_to_be_marked_complete()
+    jobs_to_be_marked_complete, oldest_job_ids, job_date = get_jobs_to_be_marked_complete()
     if jobs_to_be_marked_complete:
-        oldest_inspection_date, oldest_inspection_address, _ = get_oldest_job_data(oldest_inspection_job_id)
+        
         for job_id in oldest_job_ids:
             timestamp = job_date.get(job_id)
 
@@ -99,8 +99,6 @@ def processing_attack_complete_jobs():
         "jobs_to_be_marked_complete": len(jobs_to_be_marked_complete),
         "job_type_count": jobs_by_job_type,
         "number_of_pink_folder_jobs" : number_of_pink_folder_jobs,
-        "oldest_inspection_date": oldest_inspection_date if oldest_inspection_date else None,
-        "oldest_inspection_address" : oldest_inspection_address,
         "pink_folder_detailed_info" : pink_folder_detailed_info,
         "oldest_jobs_to_be_marked_complete" : oldest_jobs_to_be_marked_complete,
         "jobs_processed_today": jobs_processed_today,
@@ -392,180 +390,210 @@ def get_jobs_processed_today():
 
 def get_jobs_to_be_marked_complete():
     authenticate()
-    one_year_ago = datetime.now() - timedelta(days=180)
-    yesterday = datetime.now() - timedelta(days=1)    
-    scheduleDateFrom = int(one_year_ago.timestamp())
-    scheduleDateTo = int(yesterday.timestamp())
+    # one_year_ago = datetime.now() - timedelta(days=180)
+    # yesterday = datetime.now() - timedelta(days=1)    
+    # scheduleDateFrom = int(one_year_ago.timestamp())
+    # scheduleDateTo = int(yesterday.timestamp())
 
-    #1.  Get appointments that are complete
-    appointment_endpoint = f"{SERVICE_TRADE_API_BASE}/appointment"
-    appointment_params = {
-        "windowBeginsAfter": scheduleDateFrom,
-        "windowEndsBefore": scheduleDateTo,
-        "jobStatus": "scheduled",
-        "appointmentWith": "allAppointmentsComplete",
-        "sortOrder": "windowStart"
-    }
+    # #1.  Get appointments that are complete
+    # appointment_endpoint = f"{SERVICE_TRADE_API_BASE}/appointment"
+    # appointment_params = {
+    #     "windowBeginsAfter": scheduleDateFrom,
+    #     "windowEndsBefore": scheduleDateTo,
+    #     "jobStatus": "scheduled",
+    #     "appointmentWith": "allAppointmentsComplete",
+    #     "sortOrder": "windowStart"
+    # }
 
-    try:
-        response = api_session.get(appointment_endpoint, params=appointment_params)
-        response.raise_for_status()
-    except requests.RequestException as e:
-        return {}
+    # try:
+    #     response = api_session.get(appointment_endpoint, params=appointment_params)
+    #     response.raise_for_status()
+    # except requests.RequestException as e:
+    #     return {}
 
-    complete_appointments_data = response.json().get("data", {})
-    complete_appointments = complete_appointments_data.get("appointments", [])
+    # complete_appointments_data = response.json().get("data", {})
+    # complete_appointments = complete_appointments_data.get("appointments", [])
     
-    jobs_to_be_marked_complete = {}
-    job_date = {}
+    # jobs_to_be_marked_complete = {}
+    # job_date = {}
 
-    for appt in complete_appointments:
-        job = appt.get("job")
-        job_id = job.get("id")
+    # for appt in complete_appointments:
+    #     job = appt.get("job")
+    #     job_id = job.get("id")
 
-        # if there is no service Line (i.e. Emergency Service Calls), skip it
-        if not appt.get('serviceRequests') or not appt.get('serviceRequests')[0].get('serviceLine'):
-            continue
+    #     # if there is no service Line (i.e. Emergency Service Calls), skip it
+    #     if not appt.get('serviceRequests') or not appt.get('serviceRequests')[0].get('serviceLine'):
+    #         continue
         
-        appt_service_line_name = appt.get('serviceRequests')[0].get('serviceLine').get('name')
+    #     appt_service_line_name = appt.get('serviceRequests')[0].get('serviceLine').get('name')
 
-        # dont track pink folder appointments
-        if appt_service_line_name == "Office Clerical":
-            continue
+    #     # dont track pink folder appointments
+    #     if appt_service_line_name == "Office Clerical":
+    #         continue
 
-        if not job or not job_id:
-            continue  # skip if either the job or job_id is invalid
+    #     if not job or not job_id:
+    #         continue  # skip if either the job or job_id is invalid
 
-        # Save the job info if we haven't already
-        if job_id not in jobs_to_be_marked_complete:
-            jobs_to_be_marked_complete[job_id] = job
+    #     # Save the job info if we haven't already
+    #     if job_id not in jobs_to_be_marked_complete:
+    #         jobs_to_be_marked_complete[job_id] = job
 
-        appt_start = appt.get("windowStart")
+    #     appt_start = appt.get("windowStart")
 
-        # If this is the first time we're seeing this job_id, or the new date is later
-        if job_id not in job_date or (appt_start and appt_start > job_date[job_id]):
-            job_date[job_id] = appt_start
+    #     # If this is the first time we're seeing this job_id, or the new date is later
+    #     if job_id not in job_date or (appt_start and appt_start > job_date[job_id]):
+    #         job_date[job_id] = appt_start
 
 
     
-    three_months_forward = datetime.now() + timedelta(days=90)    
-    scheduleDateTo = int(three_months_forward.timestamp())
+    # three_months_forward = datetime.now() + timedelta(days=90)    
+    # scheduleDateTo = int(three_months_forward.timestamp())
 
-    #2.  Get unscheduled appointments to remove jobs with incomplete appointments.
-    appointment_params = {
-        # "windowBeginsAfter": scheduleDateFrom,
-        # "windowEndsBefore": scheduleDateTo,
-        #"appointmentWith" : "incompleteServices, allAppointmentsComplete, unscheduledAppointments",
-        "status" : "unscheduled",
-        "jobStatus": "scheduled",
-        "sortOrder": "windowStart"
+    # #2.  Get unscheduled appointments to remove jobs with incomplete appointments.
+    # appointment_params = {
+    #     # "windowBeginsAfter": scheduleDateFrom,
+    #     # "windowEndsBefore": scheduleDateTo,
+    #     #"appointmentWith" : "incompleteServices, allAppointmentsComplete, unscheduledAppointments",
+    #     "status" : "unscheduled",
+    #     "jobStatus": "scheduled",
+    #     "sortOrder": "windowStart"
+    # }
+
+    # try:
+    #     response = api_session.get(appointment_endpoint, params=appointment_params)
+    #     response.raise_for_status()
+    # except requests.RequestException as e:
+    #     return jobs_to_be_marked_complete
+
+    
+    # unsched_appointments_data = response.json().get("data", {})
+    # unsched_appointments = unsched_appointments_data.get("appointments", [])
+    # jobs_to_remove = {appt.get("job").get("id") for appt in unsched_appointments}
+    
+
+    # # Remove jobs with incomplete services
+    # for job_id in jobs_to_remove:
+    #     if job_id in jobs_to_be_marked_complete:
+    #         jobs_to_be_marked_complete.pop(job_id, None)
+
+
+    # # Remove administrative jobs
+    # jobs_to_remove = []
+    # for job_id in jobs_to_be_marked_complete:
+    #     if jobs_to_be_marked_complete[job_id].get("type") == "administrative":
+    #         jobs_to_remove.append(job_id)
+    
+    # for job_id in jobs_to_remove:
+    #     del jobs_to_be_marked_complete[job_id]
+
+
+    # #3. Get appointments in the future
+    # today = datetime.now()  
+    # scheduleDateFrom = int(today.timestamp())
+    # scheduleDateTo = int(three_months_forward.timestamp())
+
+    # # Get appointments that are scheduled in the future
+    # appointment_endpoint = f"{SERVICE_TRADE_API_BASE}/appointment"
+    # appointment_params = {
+    #     "windowBeginsAfter": scheduleDateFrom,
+    #     "windowEndsBefore": scheduleDateTo,
+    #     "sortOrder": "windowStart"
+    # }
+
+    # try:
+    #     response = api_session.get(appointment_endpoint, params=appointment_params)
+    #     response.raise_for_status()
+    # except requests.RequestException as e:
+    #     return {}
+
+    # future_appointments_data = response.json().get("data", {})
+    # future_appointments = future_appointments_data.get("appointments", [])
+    # jobs_to_remove = {appt.get("job").get("id") for appt in future_appointments}
+
+    # # remove jobs that have appointments scheduled in the future
+    # for job_id in jobs_to_remove:
+    #     if job_id in jobs_to_be_marked_complete:
+    #         jobs_to_be_marked_complete.pop(job_id, None)
+    
+    # jobs_to_remove = []
+    # for job_id in jobs_to_be_marked_complete:
+    #     # check if job has scheduled/unscheduled (a.k.a. incomplete) appointments
+    #     if job_id not in jobs_to_remove:
+    #         appointment_endpoint = f"{SERVICE_TRADE_API_BASE}/appointment"
+    #         appointment_params = {
+    #             "jobId": job_id
+    #         }
+
+    #         try:
+    #             response = api_session.get(appointment_endpoint, params=appointment_params)
+    #             response.raise_for_status()
+    #         except requests.RequestException as e:
+    #             return {}
+        
+    #         response_data = response.json().get("data", {})
+    #         appointments_for_this_job =response_data.get("appointments")
+            
+    #         for apoint in appointments_for_this_job:
+    #             if apoint.get("status") == "scheduled" or apoint.get("status") == "unscheduled":
+    #                 jobs_to_remove.append(job_id)
+    
+    # for job_id in jobs_to_remove:
+    #     if job_id in jobs_to_be_marked_complete:
+    #         jobs_to_be_marked_complete.pop(job_id, None)
+    
+
+    job_date = {}
+    jobs_to_be_marked_complete = {}
+
+    ep = "job"
+    params = {
+        "status": "scheduled",
+        "with": "allAppointmentsCompleteButNotInvoiced",
+        "sortOrder": "DESC"
     }
 
-    try:
-        response = api_session.get(appointment_endpoint, params=appointment_params)
-        response.raise_for_status()
-    except requests.RequestException as e:
-        return jobs_to_be_marked_complete
-
     
-    unsched_appointments_data = response.json().get("data", {})
-    unsched_appointments = unsched_appointments_data.get("appointments", [])
-    jobs_to_remove = {appt.get("job").get("id") for appt in unsched_appointments}
+    resp = call_service_trade_api(ep, params=params)
+    jobs = resp.get("data", {}).get("jobs", [])
     
+    for j in jobs:
+        job_type = j.get("type").lower()
+        job_id = j.get("id")
+        if job_type != "administrative" and job_type != "unknown" and job_type != "training":
+            if job_id not in jobs_to_be_marked_complete:
+                jobs_to_be_marked_complete[job_id] = j
 
-    # Remove jobs with incomplete services
-    for job_id in jobs_to_remove:
-        if job_id in jobs_to_be_marked_complete:
-            jobs_to_be_marked_complete.pop(job_id, None)
-
-
-    # Remove administrative jobs
-    jobs_to_remove = []
-    for job_id in jobs_to_be_marked_complete:
-        if jobs_to_be_marked_complete[job_id].get("type") == "administrative":
-            jobs_to_remove.append(job_id)
-    
-    for job_id in jobs_to_remove:
-        del jobs_to_be_marked_complete[job_id]
-
-
-    #3. Get appointments in the future
-    today = datetime.now()  
-    scheduleDateFrom = int(today.timestamp())
-    scheduleDateTo = int(three_months_forward.timestamp())
-
-    # Get appointments that are scheduled in the future
-    appointment_endpoint = f"{SERVICE_TRADE_API_BASE}/appointment"
-    appointment_params = {
-        "windowBeginsAfter": scheduleDateFrom,
-        "windowEndsBefore": scheduleDateTo,
-        "sortOrder": "windowStart"
-    }
-
-    try:
-        response = api_session.get(appointment_endpoint, params=appointment_params)
-        response.raise_for_status()
-    except requests.RequestException as e:
-        return {}
-
-    future_appointments_data = response.json().get("data", {})
-    future_appointments = future_appointments_data.get("appointments", [])
-    jobs_to_remove = {appt.get("job").get("id") for appt in future_appointments}
-
-    # remove jobs that have appointments scheduled in the future
-    for job_id in jobs_to_remove:
-        if job_id in jobs_to_be_marked_complete:
-            jobs_to_be_marked_complete.pop(job_id, None)
-    
-    jobs_to_remove = []
-    for job_id in jobs_to_be_marked_complete:
-        # check if job has scheduled/unscheduled (a.k.a. incomplete) appointments
-        if job_id not in jobs_to_remove:
-            appointment_endpoint = f"{SERVICE_TRADE_API_BASE}/appointment"
-            appointment_params = {
+            ep = "appointment"
+            params = {
                 "jobId": job_id
             }
-
-            try:
-                response = api_session.get(appointment_endpoint, params=appointment_params)
-                response.raise_for_status()
-            except requests.RequestException as e:
-                return {}
+            resp = call_service_trade_api(ep, params=params)
+            appts = resp.get("data", {}).get("appointments", [])
         
-            response_data = response.json().get("data", {})
-            appointments_for_this_job =response_data.get("appointments")
-            
-            for apoint in appointments_for_this_job:
-                if apoint.get("status") == "scheduled" or apoint.get("status") == "unscheduled":
-                    jobs_to_remove.append(job_id)
-    
-    for job_id in jobs_to_remove:
-        if job_id in jobs_to_be_marked_complete:
-            jobs_to_be_marked_complete.pop(job_id, None)
+            for appt in appts:
+                appt_start = appt.get("windowStart")
+                if not appt_start:
+                    print("OH no no window start for appt")
+                    continue 
+
+                # If this is the first time we're seeing this job_id, or the new date is later
+                if job_id not in job_date or (appt_start and appt_start > job_date[job_id]):
+                    job_date[job_id] = appt_start
+
     
     # Filter and validate timestamps
     valid_jobs_with_dates = [
         (job_id, ts) for job_id, ts in job_date.items()
         if job_id in jobs_to_be_marked_complete and isinstance(ts, (int, float))
     ]
-
+    
     # Sort by timestamp ascending
     sorted_jobs = sorted(valid_jobs_with_dates, key=lambda item: item[1])
 
     # Extract the 5 oldest valid job_ids
     oldest_job_ids = [job_id for job_id, _ in sorted_jobs[:5]]
-
-    # Select the oldest inspection job
-    oldest_inspection_job_id = 0
-    for job_id in [job_id for job_id, _ in sorted_jobs]:
-        job_data = jobs_to_be_marked_complete[job_id]
-        if job_data.get("type") == "inspection":
-            oldest_inspection_job_id = job_id
-            break
-
-
-
-    return jobs_to_be_marked_complete, oldest_job_ids, oldest_inspection_job_id, job_date
+    
+    return jobs_to_be_marked_complete, oldest_job_ids, job_date
 
 @processing_attack_bp.route('/processing_attack/overall_stats', methods=['GET'])
 def processing_attack_overall_stats():
