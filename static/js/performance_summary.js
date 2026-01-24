@@ -11,22 +11,22 @@ const PerformanceSummary = (() => {
       jobsRevenue,
       deficiencies,
       technicians,
-      quotes,
       customersLocations
     ] = await Promise.all([
       fetch(`/api/performance/jobs_revenue${params}`).then(r => r.json()),
       fetch(`/api/performance/deficiencies${params}`).then(r => r.json()),
       fetch(`/api/performance/technicians${params}`).then(r => r.json()),
-      //fetch(`/api/performance/quotes${params}`).then(r => r.json()),
       fetch(`/api/performance/customers_locations${params}`).then(r => r.json())
+      //fetch(`/api/performance/quotes${params}`).then(r => r.json()),
+      
     ]);
 
     return {
       ...jobsRevenue,
       ...deficiencies,
       ...technicians,
+      ...customersLocations,
       //...quotes,
-      ...customersLocations
     };
   }
 
@@ -1101,10 +1101,9 @@ const PerformanceSummary = (() => {
 
  function renderCustomerAndLocationMetrics(data) {
   const topNFilter = document.getElementById("locationTopNFilter");
-
   if (topNFilter && !topNFilter.dataset.bound) {
     topNFilter.addEventListener("change", () => {
-      if (latestData) render(latestData, topNFilter.value);
+      if (data) render(data, topNFilter.value);
     });
     topNFilter.dataset.bound = "true";
   }
@@ -1203,111 +1202,7 @@ const PerformanceSummary = (() => {
 
 
 
-  function renderQuoteCostBreakdownLog(response) {
-    // normalize
-    const buckets = Array.isArray(response)
-      ? response
-      : response.quote_cost_breakdown_log || [];
-    if (!Array.isArray(buckets)) return console.error("Invalid data", response);
-
-    const tabs  = document.getElementById('quoteCostTypeTabs');
-    const panes = document.getElementById('quoteCostTypeTabsContent');
-    tabs.innerHTML  = '';
-    panes.innerHTML = '';
-
-    buckets.forEach((bucket, idx) => {
-      // use the user as the key
-      const key    = bucket.user.replace(/\s+/g,'-').toLowerCase();
-      const active = idx === 0;
-
-      // --- create the pill tab ---
-      const btn = document.createElement('button');
-      btn.className = `nav-link${active ? ' active' : ''}`;
-      btn.id           = `tab-${key}-btn`;
-      btn.setAttribute('data-bs-toggle','pill');
-      btn.setAttribute('data-bs-target',`#pane-${key}`);
-      btn.type         = 'button';
-      btn.role         = 'tab';
-      btn.ariaControls = `pane-${key}`;
-      btn.ariaSelected = active;
-      // label with user and count
-      btn.innerText    = `${bucket.user} (${bucket.job_count})`;
-
-      const li = document.createElement('li');
-      li.className = 'nav-item';
-      li.role      = 'presentation';
-      li.appendChild(btn);
-      tabs.appendChild(li);
-
-      // --- create the pane ---
-      const pane = document.createElement('div');
-      pane.className = `tab-pane fade${active ? ' show active' : ''}`;
-      pane.id             = `pane-${key}`;
-      pane.role           = 'tabpanel';
-      pane.ariaLabelledby = `tab-${key}-btn`;
-
-      // 1) chart canvas
-      const canvas = document.createElement('canvas');
-      canvas.id = `chart-${key}`;
-      pane.appendChild(canvas);
-
-      // 2) empty <pre> for log output
-      const logPre = document.createElement('pre');
-      logPre.id = `log-${key}`;
-      logPre.style.whiteSpace = 'pre-wrap';
-      logPre.style.display     = 'none';
-      pane.appendChild(logPre);
-
-      panes.appendChild(pane);
-
-      // --- render the chart with onclick handler ---
-      new Chart(canvas.getContext('2d'), {
-        type: 'bar',
-        data: {
-          labels: bucket.jobs.map(j => j.location_address || '(no address)'),
-          datasets: [{
-            label: 'Total Margin ($)',
-            data: bucket.jobs.map(j => j.total_margin),
-            backgroundColor: bucket.jobs.map(j =>
-              j.total_margin >= 0 ? '#59a14f' : '#e15759'
-            )
-          }]
-        },
-        options: {
-          responsive: true,
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              callbacks: {
-                label: ctx => `Margin: $${ctx.raw.toFixed(2)}`
-              }
-            }
-          },
-          scales: {
-            x: {
-              title: { display: true, text: 'Location Address' }
-            },
-            y: {
-              title: { display: true, text: 'Margin ($)' },
-              beginAtZero: true
-            }
-          },
-          onClick: (evt, elements) => {
-            if (!elements.length) return;
-            const i   = elements[0].index;
-            const job = bucket.jobs[i];
-            const url = `https://app.servicetrade.com/jobs/${job.job_id}`;
-
-            // build HTML: a clickable link + the preformatted lines
-            const lines = job.summary_lines || [];
-            logPre.innerHTML = `<a href="${url}" target="_blank">View Job ${job.job_id}</a>\n`
-                              + lines.join('\n');
-            logPre.style.display = 'block';
-          }
-        }
-      });
-    });
-  }
+  
 
 
 
@@ -1360,7 +1255,7 @@ const PerformanceSummary = (() => {
         renderDeficiencyInsights(data);
         renderTechnicianMetrics(data);
         renderCustomerAndLocationMetrics(data);
-        renderQuoteCostBreakdownLog(data);
+        
 
         // Combo chart logic unchanged
         const avgRevenueEntries = Object.entries(data.avg_revenue_by_job_type)

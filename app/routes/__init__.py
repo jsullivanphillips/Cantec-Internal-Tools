@@ -15,6 +15,7 @@ from .webhook import webhook_bp
 from .ipad_scanner import ipad_scanner_bp
 from .monthly_specialists import monthly_specialist_bp
 from .keys import keys_bp
+from .fleet_overview import fleet_bp
 
 
 def register_blueprints(app):
@@ -34,5 +35,6 @@ def register_blueprints(app):
     app.register_blueprint(ipad_scanner_bp)
     app.register_blueprint(monthly_specialist_bp)
     app.register_blueprint(keys_bp)
+    app.register_blueprint(fleet_bp)
     init_cache(app)
 

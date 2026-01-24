@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+
+{% block title %}Vehicle Inspection{% endblock %}
+
+{% block extra_head %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/vehicle_inspection.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="container py-4 vehicle-inspection">
+
+  <!-- Header -->
+  <div class="d-flex flex-column flex-md-row align-items-md-center gap-2 mb-3">
+    <div class="me-auto">
+      <h1 class="h4 mb-1 d-flex align-items-center gap-2">
+        <i class="bi bi-clipboard-check"></i>
+        Vehicle Inspection
+      </h1>
+      <div class="text-muted small">
+        Quick submit — KM required, fluids optional.
+      </div>
+    </div>
+
+    <div class="d-flex gap-2">
+      <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('fleet.fleet_overview') }}">
+        <i class="bi bi-arrow-left me-1"></i> Fleet Overview
+      </a>
+      <button class="btn btn-sm btn-outline-secondary" type="button" id="vi-reset">
+        <i class="bi bi-arrow-counterclockwise me-1"></i> Reset
+      </button>
+    </div>
+  </div>
+
+  <!-- Alerts -->
+  <div id="vi-alert-wrap" class="mb-3"></div>
+
+  <div class="row g-3">
+    <!-- Form -->
+    <div class="col-12">
+      <div class="border rounded-3 p-3 bg-white">
+        <form id="vi-form" novalidate>
+
+          <!-- Vehicle selector -->
+          <div class="mb-3">
+            <label for="vi-vehicle" class="form-label">
+              Vehicle <span class="text-danger">*</span>
+            </label>
+
+            <select class="form-select" id="vi-vehicle" required>
+              <option value="">Loading vehicles…</option>
+            </select>
+
+            <div class="form-text">
+              Select your assigned vehicle (make/model + plate).
+            </div>
+          </div>
+
+          <!-- Inspector name -->
+            <div class="mb-3">
+            <label for="vi-inspector-name" class="form-label">
+                Inspector Name <span class="text-danger">*</span>
+            </label>
+            <input
+                type="text"
+                class="form-control"
+                id="vi-inspector-name"
+                placeholder="e.g. Jamie"
+                autocomplete="name"
+                required
+            >
+            <div class="form-text">
+                Enter your name so we can track who completed the inspection.
+            </div>
+            </div>
+
+
+          <!-- Assigned tech + last submission -->
+          <div class="row g-2 mb-3">
+            <div class="col-12 col-md-6">
+              <label class="form-label">Assigned Technician</label>
+              <div class="vi-readonly" id="vi-assigned-tech">—</div>
+            </div>
+            <div class="col-12 col-md-6">
+              <label class="form-label">Last Submission</label>
+              <div class="vi-readonly" id="vi-last-submission">—</div>
+            </div>
+          </div>
+
+          <hr class="my-3">
+
+          <!-- KM section -->
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <i class="bi bi-speedometer2"></i>
+            <strong>KM Update</strong>
+            <span class="badge text-bg-primary ms-auto">Required</span>
+          </div>
+
+          <div class="row g-2 mb-3">
+            <div class="col-12 col-md-6">
+              <label for="vi-current-km" class="form-label">
+                Current KM <span class="text-danger">*</span>
+              </label>
+              <input
+                type="number"
+                class="form-control"
+                id="vi-current-km"
+                inputmode="numeric"
+                min="0"
+                step="1"
+                placeholder="e.g. 124500"
+                required
+              >
+            </div>
+
+            <div class="col-12 col-md-6">
+              <label for="vi-service-due-km" class="form-label">
+                KM Due For Service
+                <span class="text-muted">(recommended)</span>
+              </label>
+              <input
+                type="number"
+                class="form-control"
+                id="vi-service-due-km"
+                inputmode="numeric"
+                min="0"
+                step="1"
+                placeholder="e.g. 130000"
+              >
+              <div class="form-text">
+                If you’re not sure, leave blank.
+              </div>
+            </div>
+          </div>
+
+          <hr class="my-3">
+
+          <!-- Fluids -->
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <i class="bi bi-droplet-half"></i>
+            <strong>Fluids</strong>
+            <span class="text-muted small ms-auto">Optional</span>
+          </div>
+
+          <div class="row g-2 mb-3">
+            <div class="col-12 col-md-6">
+              <label for="vi-oil" class="form-label">Oil Level</label>
+              <select class="form-select" id="vi-oil">
+                <option value="">Not checked</option>
+                <option value="empty">Empty</option>
+                <option value="1/3">1/3</option>
+                <option value="2/3">2/3</option>
+                <option value="full">Full</option>
+              </select>
+            </div>
+
+            <div class="col-12 col-md-6">
+              <label for="vi-coolant" class="form-label">Coolant Level</label>
+              <select class="form-select" id="vi-coolant">
+                <option value="">Not checked</option>
+                <option value="empty">Empty</option>
+                <option value="1/3">1/3</option>
+                <option value="2/3">2/3</option>
+                <option value="full">Full</option>
+              </select>
+            </div>
+          </div>
+
+          <hr class="my-3">
+
+          <!-- Notes -->
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <i class="bi bi-card-text"></i>
+            <strong>Deficiency Notes</strong>
+            <span class="text-muted small ms-auto">Optional</span>
+          </div>
+
+          <div class="mb-3">
+            <textarea
+              class="form-control"
+              id="vi-notes"
+              rows="4"
+              placeholder="Note issues only (e.g., low coolant, tire pressure, warning light, damage). Leave blank if no issues."
+            ></textarea>
+          </div>
+
+          <!-- Submit -->
+          <div class="d-flex flex-column flex-md-row gap-2 align-items-md-center">
+            <button class="btn btn-primary" type="submit" id="vi-submit">
+              <span class="vi-submit-text">
+                <i class="bi bi-send-check me-1"></i> Submit
+              </span>
+              <span class="vi-submit-loading d-none">
+                <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                Submitting…
+              </span>
+            </button>
+
+            <div class="text-muted small ms-md-auto" id="vi-helper">
+              KM is required. Fluids and notes can be submitted later.
+            </div>
+          </div>
+
+        </form>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+  <script src="{{ url_for('static', filename='js/vehicle_inspection.js') }}"></script>
+{% endblock %}

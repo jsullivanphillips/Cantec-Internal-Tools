@@ -755,6 +755,90 @@ class ForwardScheduleWeek(db.Model):
     )
 
 
+class Vehicle(db.Model):
+    __tablename__ = "vehicle"
+
+    id = db.Column(db.BigInteger, primary_key=True)
+
+    # Identity
+    license_plate = db.Column(db.String(32), nullable=False, unique=True, index=True)
+    year = db.Column(db.Integer, nullable=True)
+    color = db.Column(db.String(32), nullable=True)
+    make_model = db.Column(db.String(64), nullable=False)
+
+    # Assignment
+    current_driver_name = db.Column(db.String(64), nullable=True)
+
+    # Vehicle specs (reference only)
+    fuel_tank_size_l = db.Column(db.Float, nullable=True)
+    fuel_economy_l_per_100km = db.Column(db.Float, nullable=True)
+
+    is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+
+    # Cached "latest known" values (derived from submissions)
+    latest_current_km = db.Column(db.Integer, nullable=True)
+    latest_service_due_km = db.Column(db.Integer, nullable=True)
+
+    latest_oil_level = db.Column(db.String(16), nullable=True)      # empty / 1/3 / 2/3 / full
+    latest_coolant_level = db.Column(db.String(16), nullable=True)
+
+    latest_deficiency_notes = db.Column(db.Text, nullable=True)
+
+    # Inspection / submission tracking
+    last_submission_at = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
+    last_submission_by = db.Column(db.String(64), nullable=True)
+
+    # Relationships
+    submissions = db.relationship(
+        "VehicleSubmission",
+        back_populates="vehicle",
+        cascade="all, delete-orphan",
+        lazy="dynamic",
+    )
+
+    def __repr__(self):
+        return f"<Vehicle {self.license_plate} ({self.make_model})>"
+
+
+class VehicleSubmission(db.Model):
+    __tablename__ = "vehicle_submission"
+
+    id = db.Column(db.BigInteger, primary_key=True)
+
+    vehicle_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("vehicle.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    
+
+    submitted_at = db.Column(db.DateTime(timezone=True), nullable=False, index=True)
+    submitted_by = db.Column(db.String(64), nullable=False)
+
+    # Submitted values (NULL = not provided)
+    current_km = db.Column(db.Integer, nullable=True)
+    service_due_km = db.Column(db.Integer, nullable=True)
+
+    oil_level = db.Column(db.String(16), nullable=True)      # empty / 1/3 / 2/3 / full
+    coolant_level = db.Column(db.String(16), nullable=True)
+
+    deficiency_notes = db.Column(db.Text, nullable=True)
+
+    # Relationship
+    vehicle = db.relationship("Vehicle", back_populates="submissions")
+
+    __table_args__ = (
+        db.CheckConstraint("current_km >= 0", name="ck_vs_current_km_nonneg"),
+        db.CheckConstraint("service_due_km >= 0", name="ck_vs_service_due_km_nonneg"),
+    )
+
+    def __repr__(self):
+        return f"<VehicleSubmission vehicle_id={self.vehicle_id} at {self.submitted_at}>"
+
+
+
 if __name__ == '__main__':
     from app import create_app
     app = create_app()

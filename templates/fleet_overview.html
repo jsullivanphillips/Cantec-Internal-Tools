@@ -1,0 +1,211 @@
+{# templates/vehicle_maintenance_home.html #}
+{% extends "base.html" %}
+
+{% block title %}Fleet Overview{% endblock %}
+
+{% block extra_head %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/fleet_overview.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="container py-4 fleet-overview">
+
+  <!-- Header -->
+  <div class="d-flex flex-column flex-md-row align-items-md-center gap-2 mb-3">
+    <div class="me-auto">
+      <h1 class="h4 mb-1 d-flex align-items-center gap-2">
+        <i class="bi bi-car-front"></i>
+        Fleet Overview
+      </h1>
+      <div class="text-muted small" id="fleet-updated">Updated —</div>
+    </div>
+
+    <div class="d-flex align-items-center gap-2">
+      <button class="btn btn-sm btn-outline-secondary" id="fleet-refresh">
+        <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+      </button>
+
+      <div class="dropdown">
+        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+          <i class="bi bi-sliders me-1"></i> Thresholds
+        </button>
+        <div class="dropdown-menu dropdown-menu-end p-3" style="min-width: 280px;">
+          <div class="mb-2">
+            <label class="form-label small mb-1">Due Soon (km remaining)</label>
+            <input type="number" class="form-control form-control-sm" id="threshold-due-soon" value="1000" min="0" step="50">
+          </div>
+          <div class="mb-2">
+            <label class="form-label small mb-1">Inspection overdue after (days)</label>
+            <input type="number" class="form-control form-control-sm" id="threshold-inspection-days" value="7" min="1" step="1">
+          </div>
+          <div class="d-grid">
+            <button class="btn btn-sm btn-primary" id="threshold-apply">
+              Apply
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Critical: Missing inspections banner -->
+  <div id="missing-inspections-banner" class="alert alert-warning d-none" role="alert">
+    <div class="d-flex flex-column flex-md-row gap-2 align-items-md-center">
+      <div class="me-auto">
+        <div class="fw-semibold d-flex align-items-center gap-2">
+          <i class="bi bi-exclamation-triangle-fill"></i>
+          Inspections Missing
+          <span class="badge text-bg-warning ms-1" id="missing-inspections-count">0</span>
+        </div>
+        <div class="small text-muted">
+          Some vans have not had an inspection submitted within the required window.
+        </div>
+      </div>
+      <button class="btn btn-sm btn-outline-dark" id="missing-inspections-jump">
+        View Missing
+        <i class="bi bi-arrow-down-short ms-1"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- KPIs -->
+  <div class="row g-3 mb-3" id="fleet-kpis">
+    <!-- shimmer placeholders initially -->
+    <div class="col-6 col-lg-3">
+      <div class="kpi-card shimmer">
+        <div class="shimmer-line w-50"></div>
+        <div class="shimmer-line w-35 mt-2"></div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="kpi-card shimmer">
+        <div class="shimmer-line w-50"></div>
+        <div class="shimmer-line w-35 mt-2"></div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="kpi-card shimmer">
+        <div class="shimmer-line w-50"></div>
+        <div class="shimmer-line w-35 mt-2"></div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="kpi-card shimmer">
+        <div class="shimmer-line w-50"></div>
+        <div class="shimmer-line w-35 mt-2"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Status Buckets -->
+  <div class="row g-3 mb-3" id="fleet-buckets">
+    <div class="col-12 col-lg-4">
+      <div class="bucket-card bucket-card--danger">
+        <div class="bucket-head">
+          <div class="bucket-title">
+            <i class="bi bi-exclamation-octagon-fill me-2"></i>
+            Due Now / Overdue
+          </div>
+          <span class="badge text-bg-danger" id="bucket-due-now-count">0</span>
+        </div>
+        <div class="bucket-body" id="bucket-due-now">
+          <!-- cards injected -->
+          <div class="bucket-shimmer shimmer">
+            <div class="shimmer-line w-75"></div>
+            <div class="shimmer-line w-55 mt-2"></div>
+            <div class="shimmer-line w-65 mt-2"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-lg-4">
+      <div class="bucket-card bucket-card--warning">
+        <div class="bucket-head">
+          <div class="bucket-title">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            Due Soon
+          </div>
+          <span class="badge text-bg-warning" id="bucket-due-soon-count">0</span>
+        </div>
+        <div class="bucket-body" id="bucket-due-soon">
+          <div class="bucket-shimmer shimmer">
+            <div class="shimmer-line w-75"></div>
+            <div class="shimmer-line w-55 mt-2"></div>
+            <div class="shimmer-line w-65 mt-2"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-lg-4">
+      <div class="bucket-card bucket-card--ok">
+        <div class="bucket-head">
+          <div class="bucket-title">
+            <i class="bi bi-check-circle-fill me-2"></i>
+            OK
+          </div>
+          <span class="badge text-bg-success" id="bucket-ok-count">0</span>
+        </div>
+        <div class="bucket-body" id="bucket-ok">
+          <div class="bucket-shimmer shimmer">
+            <div class="shimmer-line w-75"></div>
+            <div class="shimmer-line w-55 mt-2"></div>
+            <div class="shimmer-line w-65 mt-2"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Missing inspections list (detail) -->
+  <div class="row g-3" id="fleet-missing-section">
+    <div class="col-12">
+      <div class="border rounded-3 p-3 h-100 missing-card" id="missing-inspections-panel">
+        <div class="d-flex align-items-center mb-2">
+          <strong class="d-flex align-items-center gap-2">
+            <i class="bi bi-clipboard-x"></i>
+            Missing Inspections
+          </strong>
+          <span class="ms-auto badge text-bg-warning" id="missing-inspections-panel-count">0</span>
+        </div>
+
+        <div class="small text-muted mb-2">
+          Vehicles listed here have not had an inspection submitted within the configured window.
+        </div>
+
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Vehicle</th>
+                <th>Assigned Tech</th>
+                <th>Last Inspection</th>
+                <th class="text-end">Days Overdue</th>
+              </tr>
+            </thead>
+            <tbody id="missing-inspections-tbody">
+              <tr>
+                <td colspan="4">
+                  <div class="shimmer" style="height: 14px; border-radius: 6px;"></div>
+                </td>
+              </tr>
+              <tr>
+                <td colspan="4">
+                  <div class="shimmer" style="height: 14px; border-radius: 6px;"></div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+  <script src="{{ url_for('static', filename='js/fleet_overview.js') }}"></script>
+{% endblock %}
