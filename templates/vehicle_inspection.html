@@ -204,7 +204,30 @@
       </div>
     </div>
   </div>
+</div>
 
+<!-- Success Modal -->
+<div class="modal fade" id="viSuccessModal" tabindex="-1" aria-labelledby="viSuccessModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title d-flex align-items-center gap-2" id="viSuccessModalLabel">
+          <i class="bi bi-check-circle-fill text-success"></i>
+          Submitted
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <div class="modal-body">
+        <div class="mb-1"><strong>Inspection saved.</strong></div>
+        <div class="text-muted small" id="vi-success-detail">—</div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Done</button>
+      </div>
+    </div>
+  </div>
 </div>
 {% endblock %}
 

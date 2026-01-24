@@ -100,6 +100,28 @@
     if (el) el.textContent = text || "—";
   }
 
+  function showSuccessModal(detailText) {
+    const detail = $("vi-success-detail");
+    if (detail) detail.textContent = detailText || "Saved.";
+
+    const el = document.getElementById("viSuccessModal");
+    if (!el || !window.bootstrap?.Modal) return;
+
+    const modal = window.bootstrap.Modal.getOrCreateInstance(el, {
+        backdrop: true,
+        keyboard: true,
+        focus: true,
+    });
+
+    modal.show();
+
+    // Optional: auto-close after 1.5s
+    window.setTimeout(() => {
+        try { modal.hide(); } catch (_) {}
+    }, 1500);
+    }
+
+
 
 
   function applyVehicleSelection(vehicleId) {
@@ -244,12 +266,17 @@
 
       try {
         setSubmitting(true);
-        await postSubmission(data);
-        setAlert("success", "Saved. Thanks!");
-        resetForm(true);
+        const resp = await postSubmission(data);
 
-        // Refresh the selected vehicle’s "recent submission" display
-        // simplest: reload active vehicles list (small fleet, cheap)
+        // Strong confirmation
+        const v = state.vehiclesById.get(Number(data.vehicle_id));
+        const vehicleLabel = v?.search_label || v?.label || "Vehicle";
+        showSuccessModal(`${vehicleLabel} — saved at ${new Date().toLocaleTimeString()}`);
+
+        // Keep alert as secondary fallback (optional)
+        setAlert("success", "Saved. Thanks!");
+
+        resetForm(true);
         await loadVehicles({ preserveSelection: true });
 
       } catch (ex) {
