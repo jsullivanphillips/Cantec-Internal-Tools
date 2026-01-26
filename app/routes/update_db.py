@@ -19,7 +19,6 @@ def update_db():
         today = datetime.now(timezone.utc).date()
         selected_monday = (today - timedelta(days=today.weekday() + 7)).strftime("%Y-%m-%d")
     
-    print(selected_monday)
     # Retrieve processed data using your existing function.
     total_jobs_processed, total_tech_hours_processed, jobs_by_type, hours_by_type = get_jobs_processed(selected_monday)
     

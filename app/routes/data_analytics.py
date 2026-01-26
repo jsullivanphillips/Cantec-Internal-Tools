@@ -22,7 +22,6 @@ def index():
 @data_analytics_bp.route('/metric1')
 @cache.cached(timeout=300, query_string=True)  # Cache for 5 minutes (300 seconds)
 def metric1():
-    print("METRICS")
     # Initialize API session and authenticate
     api_session = requests.Session()
     auth_url = "https://api.servicetrade.com/api/auth"

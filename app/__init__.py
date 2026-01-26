@@ -9,7 +9,6 @@ from app.db_models import db
 from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '.env'))
-print("DATABASE_URL:", os.environ.get("DATABASE_URL"))
 migrate = Migrate()
 
 def create_app():

@@ -53,7 +53,6 @@ def authenticate():
     try:
         auth_response = api_session.post(auth_url, json=payload)
         auth_response.raise_for_status()
-        print("✅ Authenticated successfully with ServiceTrade!")
     except Exception as e:
         print("❌ Authentication with ServiceTrade failed!")
         raise e  # Rethrow the real error
@@ -253,7 +252,6 @@ def fetch_deficiencies(start_date: datetime, end_date: datetime):
             result = future.result()
             if result:
                 deficiencies.append(result)
-            print(f"Processed {i}/{len(deficiencies_json)}", end="\r", flush=True)
+            
 
-    print()
     return jsonify({"data": [serialize_deficiency(d) for d in deficiencies]})

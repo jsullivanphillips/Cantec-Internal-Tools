@@ -349,12 +349,7 @@ def get_job_items_created_count_by_tech(window_start, window_end, include_debug=
         pretty_summary = json.dumps(summary, indent=2, sort_keys=True, default=str)
         pretty_rows    = json.dumps(debug_entries, indent=2, sort_keys=True, default=str)
 
-        print(
-            f"\n{bar}\n[DEBUG][JobItemTechnician] SUMMARY\n{sub}\n"
-            f"{pretty_summary}\n"
-            f"{sub}\n[DEBUG][JobItemTechnician] ROWS (showing {len(debug_entries)})\n{sub}\n"
-            f"{pretty_rows}\n{bar}\n"
-        )
+        
 
         # Also include the debug block in the API response
         payload["debug"] = {
@@ -1428,7 +1423,6 @@ def authenticate():
     try:
         auth_response = api_session.post(auth_url, json=payload)
         auth_response.raise_for_status()
-        print("✅ Authenticated successfully with ServiceTrade!")
     except Exception as e:
         print("❌ Authentication with ServiceTrade failed!")
         raise e

@@ -805,24 +805,19 @@ const SchedulingAttack = (() => {
     // --- render counts ---
     setText("sa-v2-total", total);
     setText("sa-v2-scheduled", scheduledRows.length);
-    setSuccess("sa-v2-box-scheduled", scheduledRows.length, total, 90, true)
-
+    
     setText("sa-v2-unscheduled", unscheduledRows.length);
-    setSuccess("sa-v2-box-unscheduled", unscheduledRows.length, total, 10, false)
-
+    
     setText("sa-v2-canceled", canceledRows.length);
 
     setText("sa-v2-confirmed", confirmedRows.length);
-    setSuccess("sa-v2-box-confirmed", confirmedRows.length, scheduledRows.length, 90, true)
-
+    
     setText("sa-v2-unconfirmed", unconfirmedRows.length);
-    setSuccess("sa-v2-box-unconfirmed", unconfirmedRows.length, scheduledRows.length, 10, false)
-
+    
     setText("sa-v2-reached-out", reachedOutRows.length);
-    setSuccess("sa-v2-box-reached-out", reachedOutRows.length, unconfirmedRows.length, 90, true)
-
+    
     setText("sa-v2-to-be-reached-out", toBeReachedOutRows.length);
-    setSuccess("sa-v2-box-to-be-reached-out", toBeReachedOutRows.length, unconfirmedRows.length, 10, false)
+   
 
     // --- render bar widths (percent of their parent stage) ---
     // Top split bars as % of TOTAL

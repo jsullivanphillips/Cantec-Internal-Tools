@@ -144,7 +144,6 @@ def life_of_a_job():
 
     for id in pinkFolderIds:
         if id in appointmentDates.keys():
-            print("removing pink folder date from tech appts")
             del appointmentDates[id]
 
 

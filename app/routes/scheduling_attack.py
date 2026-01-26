@@ -147,7 +147,6 @@ def get_all_locations_with_params(params=None):
     endpoint = "location"
     page = 1
     while True:
-        print("\nFetching page", page, "for", endpoint)
         paged_params = params.copy() if params else {}
         paged_params['page'] = page
     
@@ -527,13 +526,10 @@ def check_month_conflict_for_location(location_id: int) -> dict:
     start_dt, end_dt = window_for(sr)                 # local/business TZ
     start_ts, end_ts = window_for(sr)   # unix (for ST)
 
-    print(f"\n[loc {location_id}] Recurrence month={sr.month} "
-          f"first_start_local={sr.first_start.astimezone(BUSINESS_TZ).isoformat()}")
-    print(f"[loc {location_id}] Window local: {start_dt.isoformat()} → {end_dt.isoformat()}")
-    print(f"[loc {location_id}] Window unix : {start_ts} → {end_ts}")
+    
 
     jobs = list_jobs_for_location(location_id, start_dt, end_dt, debug=True)
-    print(f"[loc {location_id}] Jobs returned (post-filter): {len(jobs)}")
+    
 
     # List each job with appointment-derived time
     for j in jobs:
@@ -541,24 +537,17 @@ def check_month_conflict_for_location(location_id: int) -> dict:
         loc_meta = (j.get("location") or {})
         when = job_completed_dt_via_appointments(jid, debug=True)
         when_local = when.astimezone(BUSINESS_TZ).isoformat() if when else "-"
-        print(f"  • job={jid} status={status:>9} annual={'Y' if is_annual_job(j) else 'N'} "
-              f"appt_time_local={when_local} job_loc={loc_meta.get('id')}:{loc_meta.get('name')}")
 
     # Choose annual job (via appointments)
     picked, picked_month, cancel_note = recent_annual_job_for(sr, debug=True)
     if not picked:
         note = "LAST JOB CANCELED" if cancel_note else "NO ANNUAL FOUND"
-        print(f"[loc {location_id}] RESULT: {note}")
         return {"location_id": location_id, "status": note}
 
     when = job_completed_dt_via_appointments(picked.get("id"), debug=True)
     biz_month = to_business_month(when)
     conflict = (biz_month != int(sr.month or 0))
 
-    print(f"[loc {location_id}] Picked annual job id={picked.get('id')} "
-          f"local={when.astimezone(BUSINESS_TZ).isoformat() if when else '-'} "
-          f"job_month={biz_month} vs recurrence_month={int(sr.month or 0)}")
-    print(f"[loc {location_id}] RESULT: {'MONTH MISMATCH' if conflict else 'OK'}")
     return {
         "location_id": location_id,
         "recurrence_month": int(sr.month or 0),
@@ -1316,7 +1305,6 @@ def scheduling_status():
 
     distinct_locations = sorted({r["location_id"] for r in rows_json})
 
-    print("count: ", counts)
 
     return jsonify({
         "month": sel,
@@ -2510,7 +2498,6 @@ def scheduling_attack_v2_set_notes():
     except (TypeError, ValueError):
         return jsonify({"error": "id must be an integer"}), 400
 
-    print("user supplied notes: [", notes, "]")
 
     # Allow clearing notes to empty string
     if notes is None:

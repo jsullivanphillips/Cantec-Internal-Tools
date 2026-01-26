@@ -499,7 +499,6 @@ def api_bag_signed_out():
             "signed_out_to": ks.key_location,
             "inserted_at": ks.inserted_at.isoformat() if ks.inserted_at else None,
         })
-    print(data)
     return jsonify({"ok": True, "data": data})
 
 @keys_bp.get("/api/keys/airtag-conflict")
