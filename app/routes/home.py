@@ -96,28 +96,6 @@ def home_needs_attention():
         except TypeError:
             return 0
 
-    # --- Processing: Jobs to process ---
-    try:
-        count = get_num_jobs_to_be_marked_complete()
-
-        if count >= 50:
-            add_item(
-                "bad",
-                "Processing backlog is high",
-                f"{count} jobs waiting to be marked complete",
-                url_for("processing_attack.processing_attack"),
-                badge=count,
-            )
-        elif count >= 40:
-            add_item(
-                "warn",
-                "Processing backlog needs attention",
-                f"{count} jobs waiting to be marked complete",
-                url_for("processing_attack.processing_attack"),
-                badge=count,
-            )
-    except Exception:
-        current_app.logger.exception("home_needs_attention: jobs_to_process failed")
 
     # --- Processing: Jobs to invoice ---
     try:
@@ -165,27 +143,6 @@ def home_needs_attention():
     except Exception:
         current_app.logger.exception("home_needs_attention: forward_schedule_coverage failed")
 
-    # --- Scheduling: Percent confirmed ---
-    try:
-        confirmed_pct = float(get_percent_confirmed_next_two_weeks())
-        if confirmed_pct < 80:
-            add_item(
-                "bad",
-                "Schedule confirmation is low",
-                f"{confirmed_pct:.0f}% confirmed over next 2 weeks",
-                url_for("scheduling_attack.scheduling_attack"),
-                badge=f"{confirmed_pct:.0f}%",
-            )
-        elif confirmed_pct < 90:
-            add_item(
-                "warn",
-                "Schedule confirmation is trending low",
-                f"{confirmed_pct:.0f}% confirmed over next 2 weeks",
-                url_for("scheduling_attack.scheduling_attack"),
-                badge=f"{confirmed_pct:.0f}%",
-            )
-    except Exception:
-        current_app.logger.exception("home_needs_attention: percent_confirmed failed")
 
     # --- Service: Number of Limbo Jobs ---
     try:
