@@ -390,9 +390,15 @@ const ProcessingAttack = (() => {
 
       // optional: borderTop based on net change like you had
       const change_in_jobs = processed - incoming;
-      jobsToBeProcessedCard.style.borderTop = change_in_jobs >= 0
-        ? "5px solid #27a532"
-        : "5px solid #b92525";
+      if (change_in_jobs >= 0){
+        jobsToBeProcessedCard.style.borderTop = "5px solid #27a532";
+        jobsToBeProcessedCard.style.backgroundColor = "rgb(248, 255, 249)";
+        jobsToBeProcessedCard.style.backgroundBlendMode = "multiply";
+      } else {
+        jobsToBeProcessedCard.style.borderTop = "5px solid #b92525";
+        jobsToBeProcessedCard.style.backgroundColor = "rgb(250, 243, 243)";
+        jobsToBeProcessedCard.style.backgroundBlendMode = "multiply";
+      }
 
     } catch (err) {
       console.error("Error loading jobs to be invoiced:", error)
