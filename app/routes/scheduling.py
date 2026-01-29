@@ -38,7 +38,6 @@ def update_technician_type(tech_id):
 
 
 # --- Scheduling Route ---
-
 @scheduling_bp.route('/find_schedule', methods=['GET', 'POST'])
 def find_schedule():
     api_session = requests.Session()
@@ -93,6 +92,7 @@ def find_schedule():
             })
 
         include_rrsc = request.form.get("rrsc") == "on"
+        include_projects_blocking = request.form.get("projects_blocking") == "on"
 
         # Selected weekdays
         weekday_values = request.form.getlist("weekdays")
@@ -160,7 +160,7 @@ def find_schedule():
         # Run scheduling logic
         daily_candidates = find_candidate_dates(
             appointments_data, absences_data, allowable_techs,
-            include_rrsc, selected_weekdays, custom_start_time, tech_rows
+            include_rrsc, include_projects_blocking, selected_weekdays, custom_start_time, tech_rows
         )
 
         candidate_blocks = find_candidate_blocks(daily_candidates, tech_rows, allowable_techs)

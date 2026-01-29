@@ -90,7 +90,7 @@ def _week_window_utc(anchor: datetime) -> tuple[datetime, datetime]:
     return period_start, period_end
 
 
-def run_weekly_scheduling_snapshot(job_type: str = "inspection"):
+def run_weekly_scheduling_snapshot(job_type: str = "inspection,reinspection"):
     now = datetime.now(timezone.utc)
     week_start, week_end = _week_window_utc(now)
 
@@ -223,7 +223,7 @@ def main():
         authenticate(username, password)
 
         now = datetime.now(timezone.utc)
-        job_type = "inspection"
+        job_type = "inspection,reinspection"
 
         if now.weekday() != 6:  # Sunday
             log.info("Not the preferred weekly run day (Sunday), but running guard-based check.")

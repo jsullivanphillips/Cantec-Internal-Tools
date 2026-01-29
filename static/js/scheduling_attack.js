@@ -152,7 +152,12 @@ const SchedulingAttack = (() => {
         const tdNotes = document.createElement("td");
         tdNotes.className = "text-end";
 
-        const curNotes = (r?.notes || "").trim();
+        let curNotes = (r?.notes || "").trim();
+
+        if (r?.matched_on === "planned_maintenance") {
+          curNotes = `Planned Maintenance.\n${curNotes}`;
+        }
+
         const tdAction = document.createElement("td");
         tdAction.className = "text-end";
         tdAction.innerHTML = `<button
@@ -1913,6 +1918,9 @@ const SchedulingAttack = (() => {
 
         const tdCancelled = document.createElement("td");
         tdCancelled.textContent = row?.cancelled ? "Yes" : "No";
+
+        
+
 
         const tdAction = document.createElement("td");
         tdAction.innerHTML = `

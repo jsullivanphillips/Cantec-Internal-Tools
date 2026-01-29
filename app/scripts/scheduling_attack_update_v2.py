@@ -79,7 +79,7 @@ def get_location_ids_to_process_for_month(month_str: str, max_locations: int | N
 
     q = (
         db.session.query(SchedulingAttackV2.location_id)
-        .filter(SchedulingAttackV2.month == month_anchor)
+        .filter(SchedulingAttackV2.inspection_month == month_anchor)
         .order_by(SchedulingAttackV2.location_id.asc())
     )
 
@@ -116,8 +116,47 @@ def is_relevant_annual_recurrence(rec: dict) -> bool:
         return False
   
     sl_id = (rec.get("serviceLine") or {}).get("id", "")
+    # 83 is standpipe
+    # 168 is Fire Protection
+    # 6 is backflow
     if sl_id not in {1, 2, 3, 168, 556}:
         return False
+    return True
+
+
+def delete_location_entry_if_exists(location_values: dict) -> bool:
+    """
+    Delete the SchedulingAttackV2 row for the given location_id (if it exists).
+
+    Returns:
+        True  -> a row existed and was deleted
+        False -> no row existed
+    """
+    # ---- validate input (mirrors upsert style) ----
+    if not isinstance(location_values, dict):
+        raise TypeError("location_values must be a dict")
+
+    # For delete we only truly need location_id, but we keep validation consistent
+    # with your upsert expectations (so callers can pass the same payload).
+    if "location_id" not in location_values:
+        raise ValueError("location_values missing keys: ['location_id']")
+
+    location_id = location_values["location_id"]
+    if not isinstance(location_id, int):
+        raise TypeError("location_values['location_id'] must be an int")
+
+    # ---- delete by location_id ----
+    row = (
+        db.session.query(SchedulingAttackV2)
+        .filter(SchedulingAttackV2.location_id == location_id)
+        .one_or_none()
+    )
+
+    if row is None:
+        return False
+
+    db.session.delete(row)
+    db.session.commit()
     return True
     
 
@@ -169,7 +208,8 @@ def upsert_into_database(location_values: dict) -> SchedulingAttackV2:
         row = SchedulingAttackV2(
             location_id=location_id,
             address=address,
-            month=month,
+            inspection_month=month,
+            planned_maintenance_month=location_values["planned_maintenance_month"],
             scheduled=location_values["scheduled"],
             scheduled_date = location_values["scheduled_date"],
             confirmed=location_values["confirmed"],
@@ -181,7 +221,8 @@ def upsert_into_database(location_values: dict) -> SchedulingAttackV2:
         db.session.add(row)
     else:
         row.address = address
-        row.month = month
+        row.inspection_month = month
+        row.planned_maintenance_month = location_values["planned_maintenance_month"]
         row.scheduled = location_values["scheduled"]
         row.scheduled_date = location_values["scheduled_date"]
         row.confirmed = location_values["confirmed"]
@@ -256,6 +297,7 @@ def main():
                     "location_id": None,   
                     "address": "",         
                     "month": datetime,     
+                    "planned_maintenance_month": None,
                     "scheduled": False,    
                     "scheduled_date": None,
                     "confirmed": False,    
@@ -302,17 +344,49 @@ def main():
                 # ServiceTrade has a weird system for tracking recurring services. See notes below.
                 relevant_annual_services = []
                 for service in location_services:
-                    # When there is a recurring service, the ServiceTrade's API creates a new service each time
+                    # When there is a recurring service, ServiceTrade's API creates a new service each time
                     # the service is completed. The completed service instance has it's "endsOn" value set to the date that the service was completed.
-                    # A new identical service is then created with its "endsOn" set to None. 
+                    # A new identical service is then created with its "endsOn" set to None and the old service as its parent. 
                     if service.get("endsOn") is None:
                         # Only track relevant annual service lines (annual inspections)
                         if is_relevant_annual_recurrence(service):
                             relevant_annual_services.append(service)
 
+                # ServiceRequests include planned maintenance it seems
+                params = {"locationId": str(location_id), "limit": 500}
+                location_services_response = call_service_trade_api("servicerequest", params=params)
+                location_services = location_services_response.get("data", {}).get("servicerequests")
+
+                # serviceLine.id = 5 is "Sprinkler"
+                for service in location_services:
+                    service_line = service.get("serviceLine") or {}
+                    service_line_id = service_line.get("id")
+                    closed_on = service.get("closedOn")
+
+                    # Only care about open sprinkler services
+                    if service_line_id != 5 or closed_on is not None:
+                        continue
+
+                    window_end_ts = service.get("windowEnd")
+                    first_start_ts = service.get("firstStart")
+
+                    if not window_end_ts or not first_start_ts:
+                        continue
+
+                    window_end_dt = datetime.fromtimestamp(window_end_ts, tz=timezone.utc)
+                    current_year = datetime.now(timezone.utc).year
+
+                    # Check if window end is in the current year
+                    if window_end_dt.year == current_year:
+                        location_values["planned_maintenance_month"] = normalized_service_month(
+                            datetime.fromtimestamp(first_start_ts, tz=timezone.utc)
+                        )
+                        print("planned maintnenance month: ", location_values["planned_maintenance_month"])
+
+                                            
                 # Handle locations with no relevant annual services
                 # EARLY EXIT AND WARNING - NO COMMIT TO DB
-                if not relevant_annual_services:
+                if not relevant_annual_services and not location_values["planned_maintenance_month"]:
                     # Scenarios to handle:
                     # A) Site was created so we can generate a quote for them. 
                     # Check if there are any COMPLETED INSPECTION jobs on this location. If not, ignore.
@@ -336,9 +410,7 @@ def main():
                     location_values["month"] = normalized_service_month(service["firstStart"])
                 
                 # Step 2: Find if a job has been scheduled.
-                # Is there some value in only searching in the month and surrounding months that the service was set to?
-                # I think so.
-                # Possibly revisit this if the values we are displaying are not in line with Michelle's experience.
+                # search in the months and surrounding month that the service is due
                 month_prior_to_service_date = location_values["month"] - timedelta(days=31)
                 month_post_to_service_date = location_values["month"] + timedelta(days=60)
                 
@@ -350,16 +422,16 @@ def main():
                           "status": "scheduled,completed"
                         }
                 
-                inspection_jobs_response = call_service_trade_api("job", params=params)
-                scheduled_inspection_jobs = inspection_jobs_response.get("data", {}).get("jobs", [])
+                jobs_response = call_service_trade_api("job", params=params)
+                scheduled_jobs = jobs_response.get("data", {}).get("jobs", [])
 
                 # There should be 1 or 0 jobs returned by this query.
                 # If there is a different result, throw a warning.
-                if len(scheduled_inspection_jobs) > 1:
+                if len(scheduled_jobs) > 1:
                     errors += 1
                     log.warning(f"More than 2 inspection/projects jobs found for location [{location_id}] near due month")
                 
-                if len(scheduled_inspection_jobs) == 0:
+                if len(scheduled_jobs) == 0:
                     # CASE 1: Service exists, but no job is scheduled.
                     # Did an inspection get cancelled?
                     year_prior_to_service_date = location_values["month"] - timedelta(days=365)
@@ -406,6 +478,12 @@ def main():
                                 upsert_into_database(location_values)
                                 continue
 
+                            job_tags = inspection_job.get("tags")
+                            for tag in job_tags:
+                                content = tag.get("name")
+                                if content == "UnConfirmed":
+                                    location_values["reached_out"] = True
+
                             # Job is scheduled. Time to find out to what degree.
                             params = {"jobId": str(inspection_job.get("id")), "limit": 500}
                             appointments_response = call_service_trade_api("appointment", params=params)
@@ -422,10 +500,11 @@ def main():
                                     # Fallback incase the job has no scheduled date but appointments do
                                     location_values["scheduled_date"] = location_values["scheduled_date"] or datetime.fromtimestamp(appointment.get("windowStart"), tz=timezone.utc)
                             
+
                             # Service exists, job is scheduled, job is confirmed or not confirmed
                             location_values["confirmed"] = confirmed
                             # If the job is confirmed, we have reached out. 
-                            location_values["reached_out"] = confirmed
+                            location_values["reached_out"] = location_values["reached_out"] or confirmed
                             upsert_into_database(location_values)
                         else:
                             # Service exists, no canceled jobs, no scheduled job in service due window, no scheduled job in future
@@ -507,14 +586,31 @@ def main():
                                     upsert_into_database(location_values)
                                     continue
                 else:
-                    # A scheduled or completed inspection job exist
-                    inspection_job = scheduled_inspection_jobs[0]
+                    # A scheduled or completed inspection/projects job exist
+                    inspection_job = None
+                    projects_job = None
+
+                    # Is this a projects job? Michelle is not responsible if so.
+                    for job in scheduled_jobs:
+                        job_type = job.get("type", "")
+                        if job_type.lower() == "inspection":
+                            inspection_job = job
+                        elif job_type.lower() in ["replacement","installation","upgrade"]:
+                            projects_job = job
+                    
+                    if projects_job:
+                        # Delete from database as needing to be scheduled.
+                        delete_location_entry_if_exists(location_values)
+                        continue
+                    
+                    
                     # If a job exists and was returned by our API request, it is at least scheduled.
                     location_values["scheduled"] = True
                     if not inspection_job.get("scheduledDate"):
                         log.warning(f"Job [{inspection_job.get("id")} has no scheduledDate]")
                     else:
                         location_values["scheduled_date"] = datetime.fromtimestamp(inspection_job.get("scheduledDate"), tz=timezone.utc)
+                        location_values["month"] = normalized_service_month(inspection_job.get("scheduledDate"))
                     
                     if inspection_job.get("status") == "completed":
                         # CASE 2: Service exists, job is completed.

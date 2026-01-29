@@ -628,7 +628,8 @@ class SchedulingAttackV2(db.Model):
     location_id = db.Column(db.BigInteger, nullable=False, index=True)
 
     # Month anchor: first day of month at 00:00 UTC
-    month = db.Column(db.DateTime(timezone=True), nullable=False)
+    inspection_month = db.Column(db.DateTime(timezone=True), nullable=False)
+    planned_maintenance_month = db.Column(db.DateTime(timezone=True), nullable=True)
 
     address = db.Column(db.String(255), nullable=False)
 

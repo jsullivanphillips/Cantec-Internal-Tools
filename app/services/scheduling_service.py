@@ -45,7 +45,7 @@ def max_free_interval(busy_intervals, working_start, working_end):
             max_free = duration
     return max_free
 
-def find_candidate_dates(appointments_data, absences_data, allowable_techs, include_rrsc, 
+def find_candidate_dates(appointments_data, absences_data, allowable_techs, include_rrsc, include_projects_blocking, 
                          selected_weekdays, custom_start_time, tech_rows):
     """
     Returns daily candidate results as a list of tuples: (date, available_info),
@@ -69,6 +69,8 @@ def find_candidate_dates(appointments_data, absences_data, allowable_techs, incl
                 for appt in appointments_data:
                     job_info = appt.get("job", {})
                     if include_rrsc and job_info.get("name", "").strip() == "RRSC AGENT":
+                        continue
+                    if include_projects_blocking and appt.get("location", "").get("name", "").strip().lower() == "project blocking":
                         continue
                     if "windowStart" in appt and "windowEnd" in appt:
                         appt_window_start = datetime.fromtimestamp(appt["windowStart"])

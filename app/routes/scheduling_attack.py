@@ -2022,23 +2022,9 @@ def scheduling_attack_v2_for_month():
     """
     GET /scheduling_attack/v2?month=YYYY-MM
 
-    Response:
-    {
-      "generated_at": "...",
-      "month": "YYYY-MM",
-      "rows": [
-        {
-          "location_id": 123,
-          "address": "...",
-          "scheduled": true,
-          "scheduled_date": "2026-01-10T08:00:00+00:00" | null,
-          "confirmed": false,
-          "reached_out": false,
-          "completed": false,
-          "notes": "..."
-        }
-      ]
-    }
+    Returns rows where either:
+      - inspection_month == month_anchor
+      - planned_maintenance_month == month_anchor
     """
     month_str = (request.args.get("month") or "").strip()
     if not month_str:
@@ -2051,18 +2037,34 @@ def scheduling_attack_v2_for_month():
 
     rows = (
         db.session.query(SchedulingAttackV2)
-        .filter(SchedulingAttackV2.month == month_anchor)
+        .filter(
+            or_(
+                SchedulingAttackV2.inspection_month == month_anchor,
+                SchedulingAttackV2.planned_maintenance_month == month_anchor,
+            )
+        )
         .order_by(SchedulingAttackV2.address.asc())
         .all()
     )
 
     payload_rows = []
     for r in rows:
+        inspection_match = r.inspection_month == month_anchor
+        planned_match = r.planned_maintenance_month == month_anchor
+
+        if inspection_match and planned_match:
+            matched_on = "both"
+        elif inspection_match:
+            matched_on = "inspection"
+        else:
+            matched_on = "planned_maintenance"
+
         payload_rows.append(
             {
                 "id": int(r.id),
                 "location_id": int(r.location_id),
                 "address": r.address,
+                "matched_on": matched_on,
                 "scheduled": bool(r.scheduled),
                 "scheduled_date": r.scheduled_date.isoformat() if r.scheduled_date else None,
                 "confirmed": bool(r.confirmed),
@@ -2072,7 +2074,6 @@ def scheduling_attack_v2_for_month():
                 "notes": r.notes or "",
             }
         )
-
 
     return jsonify(
         {
@@ -2350,7 +2351,7 @@ def jobs_scheduled_this_week():
 
     scheduled_jobs = fetch_all_jobs_paginated({
         "limit": 1000,
-        "type": "inspection",
+        "type": "inspection,reinspection",
         "status": "scheduled",
         "scheduleDateFrom": int(now.timestamp()),
     })
