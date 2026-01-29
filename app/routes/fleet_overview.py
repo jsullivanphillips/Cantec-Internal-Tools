@@ -1,23 +1,81 @@
 # app/routes/vehicle_maintenance.py
 from __future__ import annotations
-from flask import Blueprint, render_template, jsonify, request, current_app, abort
+from flask import Blueprint, render_template, redirect, url_for, jsonify, request, current_app, abort, session
 from datetime import datetime, timezone, date, timedelta
 from typing import Optional
 from flask import Blueprint, jsonify
 from app.db_models import db, Vehicle, VehicleSubmission
+import requests
 
-VALID_SERVICE_STATUSES = {"OK", "DUE", "BOOKED"}
+VALID_SERVICE_STATUSES = {"OK", "DUE", "BOOKED", "IN_SHOP"}
 
 fleet_bp = Blueprint("fleet", __name__, template_folder="templates")
 
 
 @fleet_bp.get("/fleet_overview")
 def fleet_overview():
+    """
+    Home page (HTML + JS).
+    For now: just render home.html.
+    (Auth check left in place to match previous behavior.)
+    """
+    api_session = requests.Session()
+    auth_url = "https://api.servicetrade.com/api/auth"
+    payload = {
+        "username": session.get("username"),
+        "password": session.get("password"),
+    }
+
+    try:
+        auth_response = api_session.post(auth_url, json=payload)
+        auth_response.raise_for_status()
+    except Exception:
+        return redirect(url_for("auth.login"))
+    
     return render_template("fleet_overview.html")
 
 @fleet_bp.get("/fleet/inspection")
 def vehicle_inspection():
     return render_template("vehicle_inspection.html")
+
+# -----------------------------------------------------------------------------
+# GET /fleet/vehicles/<int:vehicle_id>
+# Vehicle Details page (HTML)
+# -----------------------------------------------------------------------------
+@fleet_bp.get("/fleet/vehicles/<int:vehicle_id>")
+def vehicle_details(vehicle_id: int):
+    """
+    Home page (HTML + JS).
+    For now: just render home.html.
+    (Auth check left in place to match previous behavior.)
+    """
+    api_session = requests.Session()
+    auth_url = "https://api.servicetrade.com/api/auth"
+    payload = {
+        "username": session.get("username"),
+        "password": session.get("password"),
+    }
+
+    try:
+        auth_response = api_session.post(auth_url, json=payload)
+        auth_response.raise_for_status()
+    except Exception:
+        return redirect(url_for("auth.login"))
+    
+    vehicle = db.session.get(Vehicle, vehicle_id)
+    if not vehicle:
+        abort(404)
+    if not vehicle.is_active:
+        # If you prefer, you can show a "vehicle inactive" page instead
+        abort(404)
+
+    # For now we just render a shell. We'll populate via JS using the API route below.
+    return render_template(
+        "vehicle_details.html",
+        vehicle_id=vehicle.id,
+        page_title=f"{vehicle.make_model} ({vehicle.license_plate})",
+    )
+
 
 # -----------------------------------------------------------------------------
 # Helpers
@@ -121,25 +179,7 @@ def get_active_vehicles():
     }
     return jsonify(payload), 200
 
-# -----------------------------------------------------------------------------
-# GET /fleet/vehicles/<int:vehicle_id>
-# Vehicle Details page (HTML)
-# -----------------------------------------------------------------------------
-@fleet_bp.get("/fleet/vehicles/<int:vehicle_id>")
-def vehicle_details(vehicle_id: int):
-    vehicle = db.session.get(Vehicle, vehicle_id)
-    if not vehicle:
-        abort(404)
-    if not vehicle.is_active:
-        # If you prefer, you can show a "vehicle inactive" page instead
-        abort(404)
 
-    # For now we just render a shell. We'll populate via JS using the API route below.
-    return render_template(
-        "vehicle_details.html",
-        vehicle_id=vehicle.id,
-        page_title=f"{vehicle.make_model} ({vehicle.license_plate})",
-    )
 
 # -----------------------------------------------------------------------------
 # GET /api/vehicles/<int:vehicle_id>

@@ -62,10 +62,14 @@
 
   function serviceBadge(status) {
     const s = (status || "OK").toUpperCase();
+
     if (s === "DUE") return `<span class="badge text-bg-danger">SERVICE DUE</span>`;
     if (s === "BOOKED") return `<span class="badge text-bg-primary">BOOKED</span>`;
+    if (s === "IN_SHOP") return `<span class="badge text-bg-warning text-dark">IN SHOP</span>`;
+
     return `<span class="badge text-bg-success">OK</span>`;
   }
+
 
   async function fetchDetails() {
     const res = await fetch(API_URL, { headers: { "Accept": "application/json" } });

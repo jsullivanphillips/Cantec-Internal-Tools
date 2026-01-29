@@ -1,30 +1,86 @@
+{# templates/login.html #}
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ServiceTrade Login</title>
-  <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/style.css') }}">
+
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/login.css') }}">
+
+  <!-- Optional: clean professional font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 </head>
+
 <body>
-  <div class="login-container">
-    <div class="login-card">
-      <h1 class="login-title">Welcome to MyApp</h1>
-      <p class="login-subtitle">
-        Please sign in to access the app.
-      </p>
-      <form method="post" action="{{ url_for('auth.login') }}">
+  <main class="login-page">
+    <section class="login-card" role="region" aria-label="Login">
+
+      <header class="login-header">
+        <div class="brand-row">
+          <!-- Update filenames to match your static/img files -->
+          <img
+            class="brand-logo brand-logo--cantec"
+            src="{{ url_for('static', filename='img/cantec_logo.png') }}"
+            alt="Cantec"
+          />
+
+          <span class="brand-sep" aria-hidden="true"></span>
+
+          <img
+            class="brand-logo brand-logo--st"
+            src="{{ url_for('static', filename='img/servicetrade_logo.png') }}"
+            alt="ServiceTrade"
+          />
+        </div>
+
+        <h1 class="login-title">Cantec Internal App</h1>
+        <p class="login-subtitle">Sign in with your ServiceTrade credentials.</p>
+      </header>
+
+      <form method="post" action="{{ url_for('auth.login') }}" class="login-form">
         <div class="form-group">
           <label for="username" class="form-label">Username</label>
-          <input type="text" id="username" name="username" class="form-input" required>
+          <input
+            type="text"
+            id="username"
+            name="username"
+            class="form-input"
+            autocomplete="username"
+            required
+          >
         </div>
+
         <div class="form-group">
           <label for="password" class="form-label">Password</label>
-          <input type="password" id="password" name="password" class="form-input" required>
+          <input
+            type="password"
+            id="password"
+            name="password"
+            class="form-input"
+            autocomplete="current-password"
+            required
+          >
         </div>
-        <button type="submit" class="primary-btn">Login</button>
+
+        <button type="submit" class="primary-btn">
+          Login
+        </button>
+
+        <footer class="login-footnote">
+          This app authenticates against ServiceTrade. Your password is not stored.
+        </footer>
       </form>
-    </div>
-  </div>
+    </section>
+  </main>
+
+  <script>
+    window.addEventListener("DOMContentLoaded", () => {
+      const u = document.getElementById("username");
+      if (u) u.focus();
+    });
+  </script>
 </body>
 </html>
