@@ -100,28 +100,51 @@
     if (el) el.textContent = text || "—";
   }
 
-  function showSuccessModal(detailText) {
+  function showSuccessModal(detailText, streakWeeks) {
     const detail = $("vi-success-detail");
     if (detail) detail.textContent = detailText || "Saved.";
+
+    // NEW: optional streak message line (add this element in HTML OR we’ll reuse detail if missing)
+    const streakEl = $("vi-success-streak");
+
+    const w = Number(streakWeeks);
+    if (streakEl) {
+      if (Number.isFinite(w) && w >= 2) {
+        streakEl.classList.remove("d-none");
+        streakEl.textContent = streakMessage(w);
+      } else {
+        streakEl.classList.add("d-none");
+        streakEl.textContent = "";
+      }
+    } else {
+      // If you haven't added a 2nd line in HTML yet, just append to detail
+      if (detail && Number.isFinite(w) && w >= 2) {
+        detail.textContent = `${detailText || "Saved."}  •  ${streakMessage(w)}`;
+      }
+    }
 
     const el = document.getElementById("viSuccessModal");
     if (!el || !window.bootstrap?.Modal) return;
 
     const modal = window.bootstrap.Modal.getOrCreateInstance(el, {
-        backdrop: true,
-        keyboard: true,
-        focus: true,
+      backdrop: true,
+      keyboard: true,
+      focus: true,
     });
 
     modal.show();
 
-    // Optional: auto-close after 1.5s
     window.setTimeout(() => {
-        try { modal.hide(); } catch (_) {}
-    }, 1500);
-    }
+      try { modal.hide(); } catch (_) {}
+    }, 3600);
+  }
 
-
+  function streakMessage(weeks) {
+    if (weeks === 2) return "🔥 2 weeks in a row — nice!";
+    if (weeks === 3) return "🔥 3-week streak — great consistency!";
+    if (weeks >= 4 && weeks <= 7) return `🏆 ${weeks}-week streak — awesome work!`;
+    return `🏆 ${weeks}-week streak — unreal consistency!`;
+  }
 
 
   function applyVehicleSelection(vehicleId) {
@@ -271,7 +294,12 @@
         // Strong confirmation
         const v = state.vehiclesById.get(Number(data.vehicle_id));
         const vehicleLabel = v?.search_label || v?.label || "Vehicle";
-        showSuccessModal(`${vehicleLabel} — saved at ${new Date().toLocaleTimeString()}`);
+
+        const streakWeeks = resp?.inspection_on_time_streak_weeks;
+        showSuccessModal(
+          `${vehicleLabel} — saved at ${new Date().toLocaleTimeString()}`,
+          streakWeeks
+        );
 
         // Keep alert as secondary fallback (optional)
         setAlert("success", "Saved. Thanks!");

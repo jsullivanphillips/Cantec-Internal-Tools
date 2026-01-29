@@ -2,7 +2,7 @@
 from __future__ import annotations
 from flask import Blueprint, render_template, redirect, url_for, jsonify, request, current_app, abort, session
 from datetime import datetime, timezone, date, timedelta
-from typing import Optional
+from typing import Optional, Set, Tuple
 from flask import Blueprint, jsonify
 from app.db_models import db, Vehicle, VehicleSubmission
 import requests
@@ -349,6 +349,56 @@ def update_vehicle_service(vehicle_id: int):
         }
     }), 200
 
+
+def _iso_week(dt) -> Tuple[int, int]:
+    # Returns (iso_year, iso_week)
+    return dt.isocalendar().year, dt.isocalendar().week
+
+
+def _prev_iso_week(year: int, week: int) -> Tuple[int, int]:
+    """
+    Given an ISO (year, week), return the previous ISO week.
+    Handles year rollover correctly.
+    """
+    if week > 1:
+        return year, week - 1
+    # Week 1 → last ISO week of previous year
+    prev_year = year - 1
+    last_week = date(prev_year, 12, 28).isocalendar().week
+    return prev_year, last_week
+
+
+def _compute_on_time_streak_weeks(vehicle_id: int, now_dt) -> int:
+    subs = (
+        db.session.query(VehicleSubmission.submitted_at)
+        .filter(VehicleSubmission.vehicle_id == vehicle_id)
+        .order_by(VehicleSubmission.submitted_at.desc())
+        .limit(104)
+        .all()
+    )
+
+    times = [row[0] for row in subs if row and row[0] is not None]
+
+    # Always include the current submission week
+    weeks: Set[Tuple[int, int]] = {_iso_week(now_dt)}
+
+    # Add historical submission weeks
+    for t in times:
+        weeks.add(_iso_week(t))
+
+    # Start from current ISO week and walk backward
+    cur_year, cur_week = _iso_week(now_dt)
+    streak = 1  # this week counts
+
+    while True:
+        cur_year, cur_week = _prev_iso_week(cur_year, cur_week)
+        if (cur_year, cur_week) in weeks:
+            streak += 1
+        else:
+            break
+
+    return streak
+
 # -----------------------------------------------------------------------------
 # POST /api/vehicle_submissions
 # Saves one submission event and updates cached "latest_*" fields on Vehicle
@@ -450,6 +500,11 @@ def create_vehicle_submission():
             vehicle.service_notes = new_def_notes
 
     try:
+        # Make sure the new submission is visible to our streak query before commit
+        db.session.flush()
+
+        inspection_on_time_streak_weeks = _compute_on_time_streak_weeks(vehicle.id, now)
+
         db.session.commit()
     except Exception as e:
         db.session.rollback()
@@ -461,6 +516,7 @@ def create_vehicle_submission():
         "submission_id": submission.id,
         "vehicle_id": vehicle.id,
         "saved_at": now.isoformat(),
+        "inspection_on_time_streak_weeks": inspection_on_time_streak_weeks,
     }), 201
 
 

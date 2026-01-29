@@ -575,7 +575,7 @@
     const tech = btn.getAttribute("data-vehicle-tech") || "Unassigned";
     const overdue = btn.getAttribute("data-overdue") || "Overdue";
 
-    const msg = `Hey ${tech}. Please submit your weekly vehicle inspection when you get a chance. Thanks!`;
+    const msg = `Hey ${tech}. Please submit your weekly vehicle inspection when you get a chance. Thanks! https://schedule-assist-1ff25977d0cf.herokuapp.com/fleet/inspection`;
 
     navigator.clipboard?.writeText(msg).then(() => {
       btn.innerHTML = `<i class="bi bi-check2 me-1"></i>Copied`;
