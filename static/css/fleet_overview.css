@@ -70,6 +70,7 @@
   border-radius: 12px;
   padding: 10px 12px;
   margin-bottom: 10px;
+  background: #fff;
 }
 
 .vehicle-top {
@@ -193,4 +194,67 @@
 @keyframes shimmerMove {
   0% { transform: translateX(0); }
   100% { transform: translateX(320px); }
+}
+
+
+/* ============================================================================
+   Additions for triage board (Option 1)
+   ============================================================================ */
+
+/* Make the two lanes feel like a board */
+.fleet-overview .bucket-card {
+  box-shadow: 0 1px 0 rgba(0,0,0,0.02);
+}
+
+/* Optional: sticky header inside scrollable lane */
+.fleet-overview .bucket-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  backdrop-filter: blur(6px);
+}
+
+/* Improve list spacing + readability */
+.fleet-overview .bucket-body {
+  padding-top: 10px;
+}
+
+/* Tighter card content for triage */
+.fleet-overview .vehicle-item .vehicle-meta {
+  margin-top: 4px;
+  gap: 12px;
+}
+
+/* Action row styling (buttons) */
+.fleet-overview .vehicle-item .btn {
+  border-radius: 10px;
+}
+
+/* Small action buttons should wrap nicely */
+.fleet-overview .vehicle-item .d-flex.flex-wrap {
+  row-gap: 8px;
+}
+
+/* Visually distinguish DUE vs BOOKED in Needs Service lane */
+.fleet-overview .bucket-card--danger .vehicle-item {
+  border-left: 4px solid rgba(220, 53, 69, 0.35);
+}
+
+.fleet-overview .bucket-card--danger .vehicle-item[data-service-status="BOOKED"] {
+  border-left-color: rgba(13, 110, 253, 0.35);
+}
+
+/* Overdue lane: highlight never-inspected */
+.fleet-overview .bucket-card--warning .vehicle-item[data-never-inspected="1"] {
+  border-left: 4px solid rgba(255, 193, 7, 0.60);
+}
+
+/* Improve “No office notes yet” visual */
+.fleet-overview .vehicle-item .text-muted.small {
+  color: rgba(0,0,0,0.55) !important;
+}
+
+/* Modal textarea a bit nicer */
+#serviceModal textarea {
+  border-radius: 12px;
 }

@@ -1,0 +1,83 @@
+/* static/css/vehicle_details.css */
+
+.vehicle-details .card-like {
+  background: #fff;
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 12px;
+  padding: 14px 14px;
+}
+
+.vehicle-details .vd-header {
+  padding: 16px 16px;
+}
+
+.vehicle-details .vd-kv {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.vehicle-details .vd-kv-row {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+}
+
+.vehicle-details .vd-k {
+  min-width: 140px;
+  font-size: 0.85rem;
+  color: rgba(0,0,0,0.55);
+}
+
+.vehicle-details .vd-v {
+  font-weight: 600;
+  color: rgba(0,0,0,0.85);
+}
+
+.vehicle-details .vd-notes {
+  border: 1px dashed rgba(0,0,0,0.15);
+  background: rgba(0,0,0,0.02);
+  border-radius: 12px;
+  padding: 10px 12px;
+  color: rgba(0,0,0,0.80);
+  white-space: pre-wrap;
+}
+
+.vehicle-details .vd-notes-cell {
+  max-width: 340px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vehicle-details textarea {
+  border-radius: 12px;
+}
+
+/* Reuse shimmer from fleet_overview.css if present; define here too for safety */
+.shimmer {
+  position: relative;
+  overflow: hidden;
+  background: rgba(0,0,0,0.06);
+}
+
+.shimmer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -150px;
+  height: 100%;
+  width: 150px;
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0) 0%,
+    rgba(255,255,255,0.55) 50%,
+    rgba(255,255,255,0) 100%
+  );
+  animation: shimmerMove 1.2s infinite;
+}
+
+@keyframes shimmerMove {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(320px); }
+}

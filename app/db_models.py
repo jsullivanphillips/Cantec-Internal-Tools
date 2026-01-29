@@ -788,6 +788,22 @@ class Vehicle(db.Model):
     last_submission_at = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
     last_submission_by = db.Column(db.String(64), nullable=True)
 
+    # Service workflow (office-owned)
+    last_service_date = db.Column(db.Date, nullable=True)
+
+    service_status = db.Column(
+        db.String(16),
+        nullable=False,
+        default="OK",
+        index=True,
+    )  # OK / DUE / BOOKED
+
+    service_notes = db.Column(db.Text, nullable=True)  # office notes, editable/deletable
+
+    
+    service_flagged_at = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
+    service_booked_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
     # Relationships
     submissions = db.relationship(
         "VehicleSubmission",
