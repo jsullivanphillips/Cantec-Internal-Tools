@@ -6,6 +6,7 @@
   const signedOutLoading = document.getElementById("signedOutLoading");
   const signedOutError = document.getElementById("signedOutError");
   const signedOutList = document.getElementById("signedOutList");
+  const signedOutSortBtn = document.getElementById("signedOutSortBtn");
 
   // -----------------------------
   // Scanner elements
@@ -20,6 +21,9 @@
 
   let debounceTimer = null;
   let lastQuery = "";
+
+  let signedOutItems = [];
+  let signedOutSort = "desc"; // "desc" = newest first, "asc" = oldest first
 
   // Scanner state
   let codeReader = null;
@@ -49,6 +53,45 @@
     if (days >= 3) return "keys-home__signedOutItem--warn";
     return "";
   }
+
+  function isoToMs(iso) {
+    if (!iso) return 0;
+    const d = new Date(iso);
+    const t = d.getTime();
+    return Number.isNaN(t) ? 0 : t;
+  }
+
+  function sortSignedOutItems(items, dir) {
+    const mult = dir === "asc" ? 1 : -1;
+
+    return [...items].sort((a, b) => {
+      const ta = isoToMs(a.inserted_at);
+      const tb = isoToMs(b.inserted_at);
+      // primary: inserted_at
+      if (ta !== tb) return (ta - tb) * mult;
+      // secondary tie-break: keycode (stable-ish)
+      const ka = (a.keycode || "").toLowerCase();
+      const kb = (b.keycode || "").toLowerCase();
+      return ka.localeCompare(kb);
+    });
+  }
+
+  function updateSignedOutSortBtn() {
+    if (!signedOutSortBtn) return;
+
+    const isNewest = signedOutSort === "desc";
+    signedOutSortBtn.setAttribute("aria-pressed", String(!isNewest));
+    signedOutSortBtn.innerHTML = isNewest
+      ? `<i class="bi bi-sort-down"></i> Sort: Newest`
+      : `<i class="bi bi-sort-up"></i> Sort: Oldest`;
+  }
+
+  function applySignedOutSortAndRender() {
+    const sorted = sortSignedOutItems(signedOutItems, signedOutSort);
+    renderSignedOut(sorted);
+    updateSignedOutSortBtn();
+  }
+
 
 
   // -----------------------------
@@ -312,29 +355,38 @@
   }
 
 
-  async function loadSignedOut() {
-    if (!signedOutList) return;
+    async function loadSignedOut() {
+      if (!signedOutList) return;
 
-    signedOutError.style.display = "none";
-    signedOutError.textContent = "";
-    signedOutLoading.style.display = "block";
+      signedOutError.style.display = "none";
+      signedOutError.textContent = "";
+      signedOutLoading.style.display = "block";
 
-    try {
-      const resp = await fetch("/api/keys/signed-out");
-      if (!resp.ok) throw new Error("Failed to load signed-out keys");
+      try {
+        const resp = await fetch("/api/keys/signed-out");
+        if (!resp.ok) throw new Error("Failed to load signed-out keys");
 
-      const json = await resp.json();
-      renderSignedOut(json.data || []);
-    } catch (err) {
-      signedOutError.textContent = "Could not load signed-out keys. Refresh to try again.";
-      signedOutError.style.display = "block";
-      signedOutList.innerHTML = "";
-    } finally {
-      signedOutLoading.style.display = "none";
+        const json = await resp.json();
+        signedOutItems = json.data || [];
+        applySignedOutSortAndRender();
+      } catch (err) {
+        signedOutError.textContent = "Could not load signed-out keys. Refresh to try again.";
+        signedOutError.style.display = "block";
+        signedOutList.innerHTML = "";
+      } finally {
+        signedOutLoading.style.display = "none";
+      }
     }
-  }
+
 
   // Init
   initScannerUI();
   loadSignedOut();
+  if (signedOutSortBtn) {
+    signedOutSortBtn.addEventListener("click", () => {
+      signedOutSort = signedOutSort === "desc" ? "asc" : "desc";
+      applySignedOutSortAndRender();
+    });
+    updateSignedOutSortBtn();
+  }
 })();

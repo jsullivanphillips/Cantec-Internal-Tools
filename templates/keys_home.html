@@ -70,8 +70,22 @@
     <!-- Signed out -->
     <div class="keys-home__card">
       <div class="keys-home__cardHeader keys-home__cardHeader--status">
-        <h3>Currently Signed Out</h3>
-        <div class="keys-home__muted">Keys that are out right now, with who has them.</div>
+        
+        <div class="d-flex align-items-center">
+          <h3 class="mb-0">Currently Signed Out</h3>
+
+          <button
+            id="signedOutSortBtn"
+            type="button"
+            class="btn btn-sm btn-outline-secondary ms-auto"
+            aria-pressed="false"
+            title="Toggle sort order by last update"
+          >
+            <i class="bi bi-sort-down"></i>
+            Sort: Newest
+          </button>
+        </div>
+
       </div>
 
       <div class="keys-home__cardBody">
