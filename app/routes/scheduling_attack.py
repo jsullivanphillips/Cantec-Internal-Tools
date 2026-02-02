@@ -2288,7 +2288,7 @@ def forward_schedule_coverage():
 def weekly_scheduling_volume():
     now = datetime.now(timezone.utc)
 
-    JOB_TYPE = "inspection"
+    JOB_TYPE = "inspection,reinspection,planned_maintenance"
     WEEKS_BACK = 6
 
     # Normalize to Monday 00:00 UTC of current week
@@ -2321,7 +2321,7 @@ def weekly_scheduling_volume():
     for start, end in periods:
         row = stats_by_start.get(start)
         if row:
-            generated_at = row.generated_at if not generated_at else None
+            generated_at = row.generated_at if generated_at is None else generated_at
         weekly.append({
             "period_start": start.isoformat(),
             "period_end": end.isoformat(),
