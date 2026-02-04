@@ -1,29 +1,30 @@
 // static/js/fleet_overview.js
 (() => {
-  // ---------------------------------------------------------------------------
-  // Config + state
-  // ---------------------------------------------------------------------------
-  const state = {
-    thresholds: {
-      inspectionOverdueDays: 7,
-    },
-    generatedAt: null,
-    payload: null,
-
-    // modal
-    modalVehicleId: null,
-    modal: null,
-  };
-
   const API_URL = "/api/fleet_overview/triage";
 
-  // ---------------------------------------------------------------------------
-  // Helpers
-  // ---------------------------------------------------------------------------
-  function $(id) {
-    return document.getElementById(id);
-  }
+  const VALID_VEHICLE_STATUSES = new Set(["OK", "DUE", "DEFICIENT", "BOOKED", "IN_SHOP"]);
 
+  // Sort Option A: status priority (higher first)
+  const STATUS_PRIORITY = {
+    IN_SHOP: 50,
+    DEFICIENT: 40,
+    BOOKED: 30,
+    DUE: 20,
+    OK: 10,
+  };
+
+  const state = {
+    thresholds: { inspectionOverdueDays: 7 },
+    payload: null,
+    vehicles: [],
+    expanded: new Set(), // vehicle_id
+  };
+
+  const $ = (id) => document.getElementById(id);
+
+  // ----------------------------
+  // Helpers
+  // ----------------------------
   function escapeHtml(str) {
     return String(str ?? "")
       .replaceAll("&", "&amp;")
@@ -34,8 +35,8 @@
   }
 
   function fmtInt(n) {
-    const x = typeof n === "number" && Number.isFinite(n) ? n : 0;
-    return x.toLocaleString();
+    const x = typeof n === "number" && Number.isFinite(n) ? n : null;
+    return x == null ? "—" : x.toLocaleString();
   }
 
   function fmtDate(iso) {
@@ -59,360 +60,375 @@
     el.textContent = `Updated ${dt.toLocaleString()}`;
   }
 
-  function todayISODate() {
-    const d = new Date();
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    return `${yyyy}-${mm}-${dd}`;
+  function vehicleHref(vehicleId) {
+    return `/fleet/vehicles/${encodeURIComponent(String(vehicleId))}`;
+  }
+
+  function safeStatus(s) {
+    const up = String(s || "OK").toUpperCase();
+    return VALID_VEHICLE_STATUSES.has(up) ? up : "OK";
   }
 
   function statusBadge(status) {
-    const s = (status || "").toUpperCase();
+    const s = safeStatus(status);
+    if (s === "DEFICIENT") return `<span class="badge text-bg-danger">DEFICIENT</span>`;
+    if (s === "DUE") return `<span class="badge text-bg-warning">DUE</span>`;
     if (s === "BOOKED") return `<span class="badge text-bg-primary">BOOKED</span>`;
-    if (s === "DUE") return `<span class="badge text-bg-danger">DUE</span>`;
+    if (s === "IN_SHOP") return `<span class="badge text-bg-secondary">IN SHOP</span>`;
     return `<span class="badge text-bg-success">OK</span>`;
   }
 
-  function kmLine(item) {
-    const cur = item.current_km;
-    const due = item.service_due_km;
-    const rem = item.km_remaining;
-
-    const curTxt = (typeof cur === "number") ? fmtInt(cur) : "—";
-    const dueTxt = (typeof due === "number") ? fmtInt(due) : "—";
-    const remTxt = (typeof rem === "number") ? fmtInt(rem) : "—";
-
-    return `KM: <strong>${curTxt}</strong> · Due: <strong>${dueTxt}</strong> · Remaining: <strong>${remTxt}</strong>`;
+  function label(v) {
+    return v.search_label || `${v.make_model || "Vehicle"} (${v.license_plate || "—"})`;
   }
 
-  // ---------------------------------------------------------------------------
-  // All Vehicles (search + list)
-  // ---------------------------------------------------------------------------
-  function triageStatusForVehicleId(vehicleId) {
-    const id = String(vehicleId);
-
-    const inNeedsService = (state.payload?.needs_service || []).some(v => String(v.vehicle_id) === id);
-    if (inNeedsService) {
-      const v = (state.payload?.needs_service || []).find(x => String(x.vehicle_id) === id);
-      const s = (v?.service_status || "DUE").toUpperCase();
-      return s === "BOOKED" ? "BOOKED" : "DUE";
-    }
-
-    const inOverdue = (state.payload?.overdue_inspections || []).some(v => String(v.vehicle_id) === id);
-    if (inOverdue) return "INSPECTION_OVERDUE";
-
-    return "OK";
-  }
-
-  function statusBadgeForAllList(status) {
-    const s = (status || "").toUpperCase();
-    if (s === "DUE") return `<span class="badge text-bg-danger">SERVICE DUE</span>`;
-    if (s === "BOOKED") return `<span class="badge text-bg-primary">BOOKED</span>`;
-    if (s === "INSPECTION_OVERDUE") return `<span class="badge text-bg-warning">INSPECTION</span>`;
-    return `<span class="badge text-bg-success">OK</span>`;
-  }
-
-  function allListSearchKey(v) {
+  function searchKey(v) {
     return [
       v.current_driver_name || "",
       v.make_model || "",
       v.license_plate || "",
+      v.search_label || "",
     ].join(" ").toLowerCase();
   }
 
-  function vehicleLabel(v) {
-    return `${v.make_model || "Vehicle"} (${v.license_plate || "—"})`;
+  function kmOverdue(v) {
+    // Preferred: km_remaining <= 0
+    if (typeof v.km_remaining === "number" && Number.isFinite(v.km_remaining)) {
+      return v.km_remaining <= 0;
+    }
+    // Fallback: current >= due
+    const cur = (typeof v.latest_current_km === "number" ? v.latest_current_km : null);
+    const due = (typeof v.latest_service_due_km === "number" ? v.latest_service_due_km : null);
+    if (cur == null || due == null) return false;
+    return cur >= due;
   }
 
-  function renderAllVehiclesList(payload) {
-    const wrap = $("fleet-all-list");
-    const countEl = $("all-vehicles-count");
+  function inspectionOverdue(v) {
+    if (typeof v.inspection_is_overdue === "boolean") return v.inspection_is_overdue;
+
+    // fallback compute using last_submission_at + threshold
+    if (!v.last_submission_at) return true;
+    const d = new Date(v.last_submission_at);
+    if (Number.isNaN(d.getTime())) return true;
+
+    const now = new Date();
+    const diffDays = Math.floor((now.getTime() - d.getTime()) / 86400000);
+    return diffDays > Number(state.thresholds.inspectionOverdueDays || 7);
+  }
+
+  function openDeficiencies(v) {
+    const n = Number(v.open_deficiency_count || 0);
+    const deficient = (v.status == "DEFICIENT")
+    return n > 0 || deficient;
+  }
+
+  function deriveIssueTags(v) {
+    const tags = [];
+    if (openDeficiencies(v)) tags.push("OPEN_DEFS");
+    if (inspectionOverdue(v)) tags.push("INSP_OVERDUE");
+    if (kmOverdue(v)) tags.push("KM_OVERDUE");
+    return tags;
+  }
+
+  function issueChips(v) {
+    const tags = deriveIssueTags(v);
+    const parts = [];
+
+    if (tags.includes("OPEN_DEFS")) {
+      parts.push(`<span class="badge text-bg-danger-subtle border border-danger-subtle text-danger-emphasis">
+        <i class="bi bi-exclamation-octagon me-1"></i>${escapeHtml(fmtInt(Number(v.open_deficiency_count || 0)))} open def(s)
+      </span>`);
+    }
+
+    if (tags.includes("INSP_OVERDUE")) {
+      const od = v.inspection_overdue_days;
+      const label = (typeof od === "number" && Number.isFinite(od))
+        ? `${fmtInt(od)}d overdue`
+        : (!v.last_submission_at ? "never inspected" : "overdue");
+      parts.push(`<span class="badge text-bg-warning-subtle border border-warning-subtle text-warning-emphasis">
+        <i class="bi bi-clipboard-x me-1"></i>${escapeHtml(label)}
+      </span>`);
+    }
+
+    if (tags.includes("KM_OVERDUE")) {
+      const rem = v.km_remaining;
+      const label = (typeof rem === "number" && Number.isFinite(rem))
+        ? `${fmtInt(rem)} km remaining`
+        : "KM overdue";
+      parts.push(`<span class="badge text-bg-primary-subtle border border-primary-subtle text-primary-emphasis">
+        <i class="bi bi-speedometer2 me-1"></i>${escapeHtml(label)}
+      </span>`);
+    }
+
+    if (!parts.length) {
+      parts.push(`<span class="badge text-bg-light border text-muted">
+        <i class="bi bi-check2-circle me-1"></i>No issues flagged
+      </span>`);
+    }
+
+    return parts.join(" ");
+  }
+
+  function kmSnapshotLine(v) {
+    const cur = v.latest_current_km ?? v.current_km ?? null;
+    const due = v.latest_service_due_km ?? v.service_due_km ?? null;
+    const rem = v.km_remaining ?? null;
+    return `Current: <strong>${escapeHtml(fmtInt(cur))}</strong> · Due: <strong>${escapeHtml(fmtInt(due))}</strong> · Remaining: <strong>${escapeHtml(fmtInt(rem))}</strong>`;
+  }
+
+  function inspectionLine(v) {
+    const last = fmtDateTime(v.last_submission_at);
+    const by = escapeHtml(v.last_submission_by || "—");
+    const overdue = inspectionOverdue(v);
+    const badge = overdue
+      ? `<span class="badge text-bg-warning ms-2">Overdue</span>`
+      : `<span class="badge text-bg-success ms-2">OK</span>`;
+    return `Last: <strong>${escapeHtml(last)}</strong> · By: <strong>${by}</strong> ${badge}`;
+  }
+
+  function notesLine(v) {
+    const notes = (v.notes || "").toString().trim();
+    return notes ? escapeHtml(notes) : `<span class="text-muted">—</span>`;
+  }
+
+  // ----------------------------
+  // Filters + Sorting
+  // ----------------------------
+  function getActiveFilters() {
+    const f = {
+      OPEN_DEFS: !!$("flt-open-defs")?.checked,
+      INSP_OVERDUE: !!$("flt-inspection-overdue")?.checked,
+      KM_OVERDUE: !!$("flt-km-overdue")?.checked,
+    };
+    return f;
+  }
+
+  // Multi-select filters use OR semantics:
+  // If none selected => show all
+  // If some selected => show vehicles matching ANY selected issue tag
+  function matchesFilters(v, filters) {
+    const anySelected = Object.values(filters).some(Boolean);
+    if (!anySelected) return true;
+
+    const tags = new Set(deriveIssueTags(v));
+    if (filters.OPEN_DEFS && tags.has("OPEN_DEFS")) return true;
+    if (filters.INSP_OVERDUE && tags.has("INSP_OVERDUE")) return true;
+    if (filters.KM_OVERDUE && tags.has("KM_OVERDUE")) return true;
+    return false;
+  }
+
+  function sortVehicles(vehicles) {
+    // Option A: status priority desc, then label asc
+    vehicles.sort((a, b) => {
+      const pa = STATUS_PRIORITY[safeStatus(a.status)] || 0;
+      const pb = STATUS_PRIORITY[safeStatus(b.status)] || 0;
+      if (pa !== pb) return pb - pa;
+      return label(a).toLowerCase().localeCompare(label(b).toLowerCase());
+    });
+    return vehicles;
+  }
+
+  // ----------------------------
+  // Rendering
+  // ----------------------------
+  function collapseAllExpanded() {
+    state.expanded.clear();
+  }
+
+  function renderList() {
+    const wrap = $("fleet-list");
+    const countEl = $("fleet-count");
+    const hintEl = $("fleet-hint");
     if (!wrap || !countEl) return;
 
-    const all = Array.isArray(payload?.all_vehicles) ? payload.all_vehicles : [];
-    const query = ($("fleet-all-search")?.value || "").trim().toLowerCase();
+    const q = ($("fleet-search")?.value || "").trim().toLowerCase();
+    const filters = getActiveFilters();
 
-    // filter
-    const filtered = query
-      ? all.filter(v => allListSearchKey(v).includes(query))
-      : all;
+    let items = Array.isArray(state.vehicles) ? [...state.vehicles] : [];
+    if (q) items = items.filter(v => searchKey(v).includes(q));
+    items = items.filter(v => matchesFilters(v, filters));
+    sortVehicles(items);
 
-    countEl.textContent = String(filtered.length);
+    countEl.textContent = String(items.length);
 
-    if (!all.length) {
-      wrap.innerHTML = `<div class="text-muted small">No vehicles found.</div>`;
+    const anySelected = Object.values(filters).some(Boolean);
+    if (hintEl) {
+      const parts = [];
+      if (q) parts.push(`Search: “${escapeHtml(q)}”`);
+      if (anySelected) {
+        const on = [];
+        if (filters.OPEN_DEFS) on.push("Open Deficiencies");
+        if (filters.INSP_OVERDUE) on.push("Inspection Overdue");
+        if (filters.KM_OVERDUE) on.push("KM Overdue");
+        parts.push(`Filters: ${on.join(", ")}`);
+      } else {
+        parts.push("Filters: none");
+      }
+      hintEl.innerHTML = parts.join(" · ");
+    }
+
+    if (!state.vehicles.length) {
+      wrap.innerHTML = `<div class="list-group-item py-4 text-muted small">No vehicles found.</div>`;
       return;
     }
 
-    if (!filtered.length) {
-      wrap.innerHTML = `<div class="text-muted small">No matches.</div>`;
+    if (!items.length) {
+      wrap.innerHTML = `<div class="list-group-item py-4 text-muted small">No matches.</div>`;
       return;
     }
 
-    // Sort so actionable show first, then alphabetical
-    const priority = (v) => {
-      const status = triageStatusForVehicleId(v.vehicle_id);
-      if (status === "DUE") return 0;
-      if (status === "BOOKED") return 1;
-      if (status === "INSPECTION_OVERDUE") return 2;
-      return 3;
-    };
+    wrap.innerHTML = items.map(v => renderRow(v)).join("");
+  }
 
-    filtered.sort((a, b) => {
-      const pa = priority(a);
-      const pb = priority(b);
-      if (pa !== pb) return pa - pb;
+  function renderRow(v) {
+    const id = String(v.vehicle_id);
+    const isOpen = state.expanded.has(id);
 
-      const la = vehicleLabel(a).toLowerCase();
-      const lb = vehicleLabel(b).toLowerCase();
-      return la.localeCompare(lb);
-    });
+    const vehName = escapeHtml(label(v));
+    const tech = escapeHtml(v.current_driver_name || "Unassigned");
+    const last = escapeHtml(fmtDate(v.last_submission_at));
 
-    wrap.innerHTML = filtered.map(v => {
-      const label = escapeHtml(vehicleLabel(v));
-      const tech = escapeHtml(v.current_driver_name || "Unassigned");
-      const status = triageStatusForVehicleId(v.vehicle_id);
+    const chips = issueChips(v);
+    const href = vehicleHref(v.vehicle_id);
 
-      // placeholder URL for vehicle detail page — adjust route later
-      const href = `/fleet/vehicles/${encodeURIComponent(String(v.vehicle_id))}`;
+    // We’ll store a per-row "show all deficiencies" state in a data attribute on expand body.
+    // Default: false.
+    const openDefs = Array.isArray(v.open_deficiencies) ? v.open_deficiencies : [];
+    const openCount = Number(v.open_deficiency_count || 0);
 
+    const defRowsTop3 = openDefs.slice(0, 3).map(d => {
+      const sev = escapeHtml((d.severity || "—").toString());
+      const desc = escapeHtml((d.description || "—").toString());
+      const up = escapeHtml(fmtDateTime(d.updated_at));
       return `
-        <a class="vehicle-item text-decoration-none d-block"
-           href="${href}"
-           data-vehicle-link="1"
-           style="color: inherit;">
-          <div class="vehicle-top">
-            <div class="w-100">
-              <div class="d-flex align-items-center gap-2">
-                <div class="vehicle-name">${label}</div>
-                <div class="ms-auto">${statusBadgeForAllList(status)}</div>
-              </div>
+        <div class="d-flex flex-column flex-md-row gap-1 align-items-md-center">
+          <div class="me-auto">
+            <span class="badge text-bg-danger me-2">${sev}</span>
+            <span>${desc}</span>
+          </div>
+          <div class="text-muted small">${up}</div>
+        </div>
+      `;
+    }).join("");
 
-              <div class="vehicle-meta mt-1">
-                <span><i class="bi bi-person-badge me-1"></i>${tech}</span>
+    const defRowsAll = openDefs.map(d => {
+      const sev = escapeHtml((d.severity || "—").toString());
+      const desc = escapeHtml((d.description || "—").toString());
+      const st = escapeHtml((d.status || "OPEN").toString());
+      const up = escapeHtml(fmtDateTime(d.updated_at));
+      return `
+        <div class="d-flex flex-column flex-md-row gap-1 align-items-md-center">
+          <div class="me-auto">
+            <span class="badge text-bg-danger me-2">${sev}</span>
+            <span>${desc}</span>
+            <span class="badge text-bg-light border ms-2 text-muted">${st}</span>
+          </div>
+          <div class="text-muted small">${up}</div>
+        </div>
+      `;
+    }).join("");
+
+    const showDefsToggle = openCount > 3
+      ? `<button class="btn btn-sm btn-outline-secondary mt-2"
+                 type="button"
+                 data-action="toggle-defs"
+                 data-vehicle-id="${escapeHtml(id)}"
+                 data-showing="top">
+            Show all ${escapeHtml(fmtInt(openCount))} deficiencies
+         </button>`
+      : "";
+
+    // Row header (click to expand)
+    return `
+      <div class="list-group-item">
+        <button
+          type="button"
+          class="btn w-100 text-start p-0 border-0 bg-transparent"
+          data-action="toggle-row"
+          data-vehicle-id="${escapeHtml(id)}"
+          aria-expanded="${isOpen ? "true" : "false"}"
+        >
+          <div class="d-flex gap-3 align-items-start py-2">
+            <div class="flex-grow-1">
+              <div class="d-flex flex-wrap align-items-center gap-2">
+                <div class="fw-semibold">${tech}</div>
+                <div class="text-muted">•</div>
+                <div class="fw-semibold">${vehName}</div>
+                <div class="ms-auto d-flex align-items-center gap-2">
+                  <span class="text-muted small d-none d-md-inline">
+                    <i class="bi bi-clock-history me-1"></i>${last}
+                  </span>
+                  ${statusBadge(v.status)}
+                  <i class="bi ${isOpen ? "bi-chevron-up" : "bi-chevron-down"} text-muted"></i>
+                </div>
+              </div>
+              <div class="mt-2 d-flex flex-wrap gap-2">
+                ${chips}
               </div>
             </div>
           </div>
-        </a>
-      `;
-    }).join("");
-  }
+        </button>
+
+        <div class="${isOpen ? "" : "d-none"} pt-2 pb-3 border-top" data-expand-body="${escapeHtml(id)}">
+          <div class="row g-3">
+            <div class="col-12 col-lg-7 d-flex flex-column">
+              <div class="small text-muted mb-1">Open deficiencies</div>
+
+              <div class="d-flex flex-column gap-2" data-defs-list="${escapeHtml(id)}">
+                ${openCount ? defRowsTop3 : `<div class="text-muted">None</div>`}
+              </div>
+
+              <div data-defs-toggle-wrap="${escapeHtml(id)}">
+                ${openCount ? showDefsToggle : ""}
+              </div>
+
+              <!-- Bottom-left navigation -->
+              <div class="mt-auto pt-3">
+                <a class="btn btn-sm btn-outline-secondary"
+                  href="${href}"
+                  target="_blank"
+                  rel="noopener noreferrer">
+                  <i class="bi bi-box-arrow-up-right me-1"></i> Open vehicle details
+                </a>
+              </div>
+            </div>
 
 
-  // ---------------------------------------------------------------------------
-  // Rendering (KPIs + lanes)
-  // ---------------------------------------------------------------------------
-  function renderKpis(payload) {
-    const wrap = $("triage-kpis");
-    if (!wrap) return;
+            <div class="col-12 col-lg-5">
+              <div class="small text-muted mb-1">KM</div>
+              <div>${kmSnapshotLine(v)}</div>
 
-    const needsService = Array.isArray(payload?.needs_service) ? payload.needs_service.length : 0;
-    const overdue = Array.isArray(payload?.overdue_inspections) ? payload.overdue_inspections.length : 0;
+              <div class="small text-muted mb-1 mt-3">Inspection</div>
+              <div>${inspectionLine(v)}</div>
 
-    // KPI 1: Needs service
-    // KPI 2: Overdue inspections
-    // KPI 3: Booked subset
-    // KPI 4: Never submitted subset
-    const booked = (payload?.needs_service || []).filter(v => (v.service_status || "").toUpperCase() === "BOOKED").length;
-    const neverSubmitted = (payload?.overdue_inspections || []).filter(v => !v.last_submission_at).length;
+              <div class="small text-muted mb-1 mt-3">Office notes</div>
+              <div>${notesLine(v)}</div>
 
-    wrap.innerHTML = `
-      <div class="col-6 col-lg-3">
-        <div class="kpi-card">
-          <div class="kpi-label"><i class="bi bi-tools"></i> Needs Service</div>
-          <div class="kpi-value">${fmtInt(needsService)}</div>
-        </div>
-      </div>
+              <div class="d-flex flex-wrap gap-2 mt-3">
+                <button class="btn btn-sm btn-outline-primary"
+                        type="button"
+                        data-action="copy-inspection-nudge"
+                        data-vehicle-tech="${escapeHtml(v.current_driver_name || "there")}">
+                  <i class="bi bi-clipboard me-1"></i> Copy inspection nudge
+                </button>
 
-      <div class="col-6 col-lg-3">
-        <div class="kpi-card">
-          <div class="kpi-label"><i class="bi bi-clipboard-x"></i> Overdue Inspections</div>
-          <div class="kpi-value">${fmtInt(overdue)}</div>
-        </div>
-      </div>
-
-      <div class="col-6 col-lg-3">
-        <div class="kpi-card">
-          <div class="kpi-label"><i class="bi bi-calendar-check"></i> Booked Service</div>
-          <div class="kpi-value">${fmtInt(booked)}</div>
-        </div>
-      </div>
-
-      <div class="col-6 col-lg-3">
-        <div class="kpi-card">
-          <div class="kpi-label"><i class="bi bi-question-circle"></i> Never Inspected</div>
-          <div class="kpi-value">${fmtInt(neverSubmitted)}</div>
+                <button class="btn btn-sm btn-primary"
+                        type="button"
+                        data-action="open-status-modal"
+                        data-vehicle-id="${escapeHtml(id)}">
+                  <i class="bi bi-pencil-square me-1"></i> Change status
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     `;
   }
 
-  function renderNeedsService(payload) {
-    const wrap = $("needs-service-list");
-    const countEl = $("needs-service-count");
-    if (!wrap || !countEl) return;
-
-    const items = Array.isArray(payload?.needs_service) ? payload.needs_service : [];
-    countEl.textContent = String(items.length);
-
-    if (!items.length) {
-      wrap.innerHTML = `<div class="text-muted small">No vehicles currently marked as DUE/BOOKED. 🎉</div>`;
-      return;
-    }
-
-    wrap.innerHTML = items.map(v => {
-      const label = escapeHtml(v.label || `${v.make_model || ""} (${v.license_plate || ""})`.trim() || "Vehicle");
-      const tech = escapeHtml(v.assigned_tech || "Unassigned");
-
-      const officeNotes = (v.service_notes || "").toString().trim();
-      const latestNotes = (v.latest_deficiency_notes || "").toString().trim();
-
-      const flaggedAt = v.service_flagged_at ? fmtDateTime(v.service_flagged_at) : "—";
-      const bookedAt = v.service_booked_at ? fmtDateTime(v.service_booked_at) : "—";
-      const lastSvc = v.last_service_date ? escapeHtml(v.last_service_date) : "—";
-
-      const noteBlock = officeNotes
-        ? `<div class="vehicle-reason"><i class="bi bi-card-text me-1"></i>${escapeHtml(officeNotes)}</div>`
-        : `<div class="text-muted small">No office notes yet.</div>`;
-
-      const latestBlock = latestNotes && latestNotes !== officeNotes
-        ? `<div class="text-muted small mt-1"><i class="bi bi-clipboard-data me-1"></i>Latest inspection note: ${escapeHtml(latestNotes)}</div>`
-        : "";
-
-      return `
-        <div class="vehicle-item" data-service-status="${escapeHtml((v.service_status || "").toUpperCase())}">
-          <div class="vehicle-top">
-            <div class="w-100">
-              <div class="d-flex align-items-center gap-2">
-                <div class="vehicle-name">${label}</div>
-                <div class="ms-auto">${statusBadge(v.service_status)}</div>
-              </div>
-
-              <div class="vehicle-meta mt-1">
-                <span><i class="bi bi-person-badge me-1"></i>${tech}</span>
-                <span><i class="bi bi-speedometer me-1"></i>${kmLine(v)}</span>
-              </div>
-
-              <div class="vehicle-meta mt-1">
-                <span><i class="bi bi-flag me-1"></i>Flagged: <strong>${escapeHtml(flaggedAt)}</strong></span>
-                <span><i class="bi bi-calendar-check me-1"></i>Booked: <strong>${escapeHtml(bookedAt)}</strong></span>
-                <span><i class="bi bi-wrench me-1"></i>Last service: <strong>${lastSvc}</strong></span>
-              </div>
-
-              <div class="mt-2">
-                ${noteBlock}
-                ${latestBlock}
-              </div>
-
-              <div class="d-flex flex-wrap gap-2 mt-2">
-                <button class="btn btn-sm btn-outline-primary"
-                        data-action="edit-service"
-                        data-vehicle-id="${escapeHtml(v.vehicle_id)}">
-                  <i class="bi bi-pencil-square me-1"></i>Edit
-                </button>
-
-                <button class="btn btn-sm btn-outline-success"
-                        data-action="mark-booked"
-                        data-vehicle-id="${escapeHtml(v.vehicle_id)}">
-                  <i class="bi bi-calendar-check me-1"></i>Mark Booked
-                </button>
-
-                <button class="btn btn-sm btn-outline-secondary"
-                        data-action="mark-ok"
-                        data-vehicle-id="${escapeHtml(v.vehicle_id)}">
-                  <i class="bi bi-check2-circle me-1"></i>Mark OK
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      `;
-    }).join("");
-  }
-
-  function renderOverdueInspections(payload) {
-    const wrap = $("overdue-inspections-list");
-    const countEl = $("overdue-inspections-count");
-    if (!wrap || !countEl) return;
-
-    const items = Array.isArray(payload?.overdue_inspections) ? payload.overdue_inspections : [];
-    countEl.textContent = String(items.length);
-
-    if (!items.length) {
-      wrap.innerHTML = `<div class="text-muted small">No overdue inspections. 🎉</div>`;
-      return;
-    }
-
-    wrap.innerHTML = items.map(v => {
-      const label = escapeHtml(v.label || `${v.make_model || ""} (${v.license_plate || ""})`.trim() || "Vehicle");
-      const tech = escapeHtml(v.assigned_tech || "Unassigned");
-
-      const last = fmtDate(v.last_submission_at);
-      const by = escapeHtml(v.last_submission_by || "—");
-
-      const overdue = v.inspection_overdue_days;
-      const overdueText = (typeof overdue === "number")
-        ? `${fmtInt(overdue)} day(s) overdue`
-        : "No inspections yet";
-
-      const inspectUrl = `/fleet/inspection?vehicle_id=${encodeURIComponent(String(v.vehicle_id))}`;
-
-      return `
-        <div class="vehicle-item" data-never-inspected="${v.last_submission_at ? "0" : "1"}">
-          <div class="vehicle-top">
-            <div class="w-100">
-              <div class="d-flex align-items-center gap-2">
-                <div class="vehicle-name">${label}</div>
-                <div class="ms-auto">
-                  <span class="badge text-bg-warning">${escapeHtml(overdueText)}</span>
-                </div>
-              </div>
-
-              <div class="vehicle-meta mt-1">
-                <span><i class="bi bi-person-badge me-1"></i>${tech}</span>
-                <span><i class="bi bi-clock-history me-1"></i>Last: <strong>${escapeHtml(last)}</strong></span>
-                <span><i class="bi bi-person-check me-1"></i>By: <strong>${by}</strong></span>
-              </div>
-
-              <div class="d-flex flex-wrap gap-2 mt-2">
-                <a class="btn btn-sm btn-primary"
-                   href="${inspectUrl}">
-                  <i class="bi bi-clipboard-check me-1"></i>Start Inspection
-                </a>
-
-                <button class="btn btn-sm btn-outline-secondary"
-                        data-action="copy-inspection-nudge"
-                        data-vehicle-label="${escapeHtml(label)}"
-                        data-vehicle-tech="${escapeHtml(tech)}"
-                        data-overdue="${escapeHtml(overdueText)}">
-                  <i class="bi bi-clipboard me-1"></i>Copy Nudge
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      `;
-    }).join("");
-  }
-
-  function renderAll(payload) {
-    state.payload = payload;
-    state.generatedAt = payload?.generated_at || new Date().toISOString();
-
-    setUpdated(state.generatedAt);
-
-    renderKpis(payload);
-    renderNeedsService(payload);
-    renderOverdueInspections(payload);
-
-    renderAllVehiclesList(payload);
-  }
-
-
-  // ---------------------------------------------------------------------------
-  // Data loading
-  // ---------------------------------------------------------------------------
+  // ----------------------------
+  // Data load
+  // ----------------------------
   async function fetchTriage() {
     const params = new URLSearchParams();
     params.set("inspection_overdue_days", String(state.thresholds.inspectionOverdueDays));
@@ -423,228 +439,295 @@
     return await res.json();
   }
 
+  function normalizeVehicles(payload) {
+    const vehicles = Array.isArray(payload?.vehicles) ? payload.vehicles : [];
+    // Ensure required computed flags exist if backend didn’t provide them
+    return vehicles.map(v => ({
+      ...v,
+      status: safeStatus(v.status),
+    }));
+  }
+
   async function load() {
-    // show shimmer quickly by resetting key containers (optional)
-    // (If you want, we can add dedicated shimmer HTML; your CSS already supports shimmer class)
+    const wrap = $("fleet-list");
     try {
       const payload = await fetchTriage();
-      renderAll(payload);
-    } catch (e) {
-      console.error("Failed to load triage:", e);
+      state.payload = payload;
+      state.vehicles = normalizeVehicles(payload);
+      setUpdated(payload?.generated_at || new Date().toISOString());
 
-      // Basic fallback message
-      $("needs-service-list").innerHTML = `<div class="text-danger small">Failed to load triage data.</div>`;
-      $("overdue-inspections-list").innerHTML = `<div class="text-danger small">Failed to load triage data.</div>`;
-      $("triage-kpis").innerHTML = `
-        <div class="col-12">
-          <div class="alert alert-danger mb-0">
-            Failed to load fleet triage. Check server logs.
+      collapseAllExpanded();
+      renderList();
+    } catch (e) {
+      console.error("Failed to load fleet overview:", e);
+      if (wrap) {
+        wrap.innerHTML = `
+          <div class="list-group-item py-4">
+            <div class="alert alert-danger mb-0">
+              Failed to load fleet overview. Check server logs.
+            </div>
           </div>
-        </div>
-      `;
+        `;
+      }
+      $("fleet-count") && ($("fleet-count").textContent = "0");
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Office actions (PATCH service route)
-  // ---------------------------------------------------------------------------
-  async function patchService(vehicleId, patch) {
-    const res = await fetch(`/api/vehicles/${encodeURIComponent(String(vehicleId))}/service`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json", "Accept": "application/json" },
-      body: JSON.stringify(patch),
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`PATCH failed: HTTP ${res.status} - ${text}`);
-    }
-    return await res.json();
-  }
-
-  // ---------------------------------------------------------------------------
-  // Modal helpers
-  // ---------------------------------------------------------------------------
-  function ensureModal() {
-    const modalEl = $("serviceModal");
-    if (!modalEl) return null;
-    if (!window.bootstrap?.Modal) return null;
-
-    if (!state.modal) state.modal = new window.bootstrap.Modal(modalEl);
-    return state.modal;
-  }
-
-  function findNeedsServiceItem(vehicleId) {
-    const list = state.payload?.needs_service || [];
-    return list.find(x => String(x.vehicle_id) === String(vehicleId)) || null;
-  }
-
-  function openServiceModal(vehicleId) {
-    const item = findNeedsServiceItem(vehicleId);
-    if (!item) return;
-
-    state.modalVehicleId = vehicleId;
-
-    $("serviceModalVehicleLabel").textContent = item.label || "Vehicle";
-    $("serviceModalStatus").value = (item.service_status || "DUE").toUpperCase();
-    $("serviceModalNotes").value = (item.service_notes || "").toString();
-
-    // last_service_date comes as YYYY-MM-DD
-    $("serviceModalLastServiceDate").value = item.last_service_date || "";
-
-    const meta = [
-      `Flagged: ${fmtDateTime(item.service_flagged_at)}`,
-      `Booked: ${fmtDateTime(item.service_booked_at)}`,
-      `Last inspection: ${fmtDateTime(item.last_submission_at)}`
-    ].join(" · ");
-    $("serviceModalMeta").textContent = meta;
-
-    ensureModal()?.show();
-  }
-
-  async function saveServiceModal() {
-    const vehicleId = state.modalVehicleId;
-    if (!vehicleId) return;
-
-    const status = $("serviceModalStatus").value;
-    const notes = $("serviceModalNotes").value;
-    const lastServiceDate = $("serviceModalLastServiceDate").value;
-
-    const patch = {
-      service_status: status,
-      service_notes: notes, // empty string clears server-side per your endpoint
-      last_service_date: lastServiceDate ? lastServiceDate : null,
-    };
-
-    $("serviceModalSave").disabled = true;
-    try {
-      await patchService(vehicleId, patch);
-      ensureModal()?.hide();
-      await load();
-    } catch (e) {
-      console.error(e);
-      alert("Failed to save service changes.");
-    } finally {
-      $("serviceModalSave").disabled = false;
-    }
-  }
-
-  async function quickMarkBooked(vehicleId) {
-    try {
-      await patchService(vehicleId, { service_status: "BOOKED" });
-      await load();
-    } catch (e) {
-      console.error(e);
-      alert("Failed to mark booked.");
-    }
-  }
-
-  async function quickMarkOk(vehicleId) {
-    try {
-      await patchService(vehicleId, { service_status: "OK" });
-      await load();
-    } catch (e) {
-      console.error(e);
-      alert("Failed to mark OK.");
-    }
-  }
-
-  async function markDoneTodayFromModal() {
-    const vehicleId = state.modalVehicleId;
-    if (!vehicleId) return;
-
-    const patch = {
-      service_status: "OK",
-      last_service_date: todayISODate(),
-    };
-
-    $("serviceModalMarkDone").disabled = true;
-    try {
-      await patchService(vehicleId, patch);
-      ensureModal()?.hide();
-      await load();
-    } catch (e) {
-      console.error(e);
-      alert("Failed to mark OK.");
-    } finally {
-      $("serviceModalMarkDone").disabled = false;
-    }
-  }
-
+  // ----------------------------
+  // Actions
+  // ----------------------------
   function copyInspectionNudge(btn) {
-    const label = btn.getAttribute("data-vehicle-label") || "Vehicle";
-    const tech = btn.getAttribute("data-vehicle-tech") || "Unassigned";
-    const overdue = btn.getAttribute("data-overdue") || "Overdue";
-
-    const msg = `Hey ${tech}. Please submit your weekly vehicle inspection when you get a chance. Thanks! https://schedule-assist-1ff25977d0cf.herokuapp.com/fleet/inspection`;
+    const tech = btn.getAttribute("data-vehicle-tech") || "there";
+    const msg =
+      `Hey ${tech}. Please submit your weekly vehicle inspection when you get a chance. Thanks! ` +
+      `${window.location.origin}/fleet/inspection`;
 
     navigator.clipboard?.writeText(msg).then(() => {
+      const old = btn.innerHTML;
       btn.innerHTML = `<i class="bi bi-check2 me-1"></i>Copied`;
-      setTimeout(() => {
-        btn.innerHTML = `<i class="bi bi-clipboard me-1"></i>Copy Nudge`;
-      }, 900);
+      setTimeout(() => (btn.innerHTML = old), 900);
     }).catch(() => {
-      // fallback
       prompt("Copy this message:", msg);
     });
   }
 
-  // ---------------------------------------------------------------------------
+  function toggleRow(vehicleId) {
+    const id = String(vehicleId);
+    if (state.expanded.has(id)) state.expanded.delete(id);
+    else state.expanded.add(id);
+    renderList(); // simple and robust; list is still small enough
+  }
+
+  function toggleDefs(vehicleId) {
+    const id = String(vehicleId);
+    const v = state.vehicles.find(x => String(x.vehicle_id) === id);
+    if (!v) return;
+
+    const body = document.querySelector(`[data-expand-body="${CSS.escape(id)}"]`);
+    const list = document.querySelector(`[data-defs-list="${CSS.escape(id)}"]`);
+    const toggleWrap = document.querySelector(`[data-defs-toggle-wrap="${CSS.escape(id)}"]`);
+    if (!body || !list || !toggleWrap) return;
+
+    const btn = toggleWrap.querySelector(`button[data-action="toggle-defs"]`);
+    if (!btn) return;
+
+    const openDefs = Array.isArray(v.open_deficiencies) ? v.open_deficiencies : [];
+    const openCount = Number(v.open_deficiency_count || 0);
+
+    const showing = btn.getAttribute("data-showing") || "top";
+    const next = showing === "top" ? "all" : "top";
+    btn.setAttribute("data-showing", next);
+    btn.textContent = next === "all"
+      ? "Show top 3"
+      : `Show all ${openCount} deficiencies`;
+
+    const rowsTop3 = openDefs.slice(0, 3).map(d => {
+      const sev = escapeHtml((d.severity || "—").toString());
+      const desc = escapeHtml((d.description || "—").toString());
+      const up = escapeHtml(fmtDateTime(d.updated_at));
+      return `
+        <div class="d-flex flex-column flex-md-row gap-1 align-items-md-center">
+          <div class="me-auto">
+            <span class="badge text-bg-danger me-2">${sev}</span>
+            <span>${desc}</span>
+          </div>
+          <div class="text-muted small">${up}</div>
+        </div>
+      `;
+    }).join("");
+
+    const rowsAll = openDefs.map(d => {
+      const sev = escapeHtml((d.severity || "—").toString());
+      const desc = escapeHtml((d.description || "—").toString());
+      const st = escapeHtml((d.status || "OPEN").toString());
+      const up = escapeHtml(fmtDateTime(d.updated_at));
+      return `
+        <div class="d-flex flex-column flex-md-row gap-1 align-items-md-center">
+          <div class="me-auto">
+            <span class="badge text-bg-danger me-2">${sev}</span>
+            <span>${desc}</span>
+            <span class="badge text-bg-light border ms-2 text-muted">${st}</span>
+          </div>
+          <div class="text-muted small">${up}</div>
+        </div>
+      `;
+    }).join("");
+
+    list.innerHTML = openCount ? (next === "all" ? rowsAll : rowsTop3) : `<div class="text-muted">None</div>`;
+  }
+
+  // ----------------------------
+  // Change Status Modal (API call)
+  // ----------------------------
+  let modalVehicleId = null;
+
+  function openStatusModal(vehicleId) {
+    const v = state.vehicles.find(x => String(x.vehicle_id) === String(vehicleId));
+    if (!v) return;
+
+    modalVehicleId = String(v.vehicle_id);
+
+    $("serviceModalVehicleLabel").textContent = label(v);
+    $("serviceModalUpdatedBy").value = ""; // user must enter
+
+    // Backend now uses DEFICIENT (no DEFICIENCIES mapping needed)
+    $("serviceModalStatus").value = safeStatus(v.status);
+
+    $("serviceModalNotes").value = (v.notes || "").toString();
+    $("serviceModalMeta").textContent = `Vehicle ID: ${v.vehicle_id}`;
+    $("serviceModalError").classList.add("d-none");
+    $("serviceModalError").textContent = "";
+
+    const el = document.getElementById("serviceModal");
+    if (!el || !window.bootstrap?.Modal) return;
+
+    const modal = window.bootstrap.Modal.getOrCreateInstance(el, {
+      backdrop: true,
+      keyboard: true,
+      focus: true,
+    });
+
+    modal.show();
+  }
+
+  async function saveStatusModal() {
+    const err = $("serviceModalError");
+
+    if (!modalVehicleId) return;
+
+    const updatedBy = ($("serviceModalUpdatedBy")?.value || "").trim();
+    if (!updatedBy) {
+      if (err) {
+        err.textContent = "Updated by is required.";
+        err.classList.remove("d-none");
+      }
+      return;
+    }
+
+    const status = safeStatus($("serviceModalStatus").value);
+    const notesRaw = ($("serviceModalNotes").value || "").trim();
+    
+
+    const url = `/api/vehicles/${encodeURIComponent(String(modalVehicleId))}/status`;
+
+    const body = {
+      updated_by: updatedBy,
+      status,
+      notes: notesRaw ? notesRaw : null,
+    };
+
+    try {
+      const res = await fetch(url, {
+        method: "PATCH",
+        headers: {
+          "Accept": "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`HTTP ${res.status} — ${text}`);
+      }
+
+      // Close modal
+      const el = document.getElementById("serviceModal");
+      const modal = el && window.bootstrap?.Modal ? window.bootstrap.Modal.getInstance(el) : null;
+      try { modal?.hide(); } catch (_) {}
+
+      await load();
+    } catch (e) {
+      console.error("Failed to save vehicle status:", e);
+      if (err) {
+        err.textContent = "Failed to save. Check server logs for details.";
+        err.classList.remove("d-none");
+      }
+    }
+  }
+
+
+  // ----------------------------
   // Wiring
-  // ---------------------------------------------------------------------------
+  // ----------------------------
   function applyThresholdsFromUI() {
     const overdueDays = parseInt($("threshold-inspection-days")?.value ?? "7", 10);
     state.thresholds.inspectionOverdueDays = Number.isFinite(overdueDays) ? overdueDays : 7;
+    collapseAllExpanded();
     load();
   }
 
+  function clearFiltersAndSearch() {
+    $("flt-open-defs").checked = false;
+    $("flt-inspection-overdue").checked = false;
+    $("flt-km-overdue").checked = false;
+    $("fleet-search").value = "";
+    collapseAllExpanded();
+    renderList();
+  }
+
+  function onControlsChanged() {
+    collapseAllExpanded();
+    renderList();
+  }
+
   function wireGlobalClickHandlers() {
-    document.addEventListener("click", async (e) => {
+    document.addEventListener("click", (e) => {
       const btn = e.target.closest("[data-action]");
       if (!btn) return;
 
       const action = btn.getAttribute("data-action");
-      if (action === "edit-service") {
-        const vehicleId = btn.getAttribute("data-vehicle-id");
-        openServiceModal(vehicleId);
+      const vid = btn.getAttribute("data-vehicle-id");
+
+      if (action === "toggle-row" && vid) {
+        toggleRow(vid);
+        return;
       }
 
-      if (action === "mark-booked") {
-        const vehicleId = btn.getAttribute("data-vehicle-id");
-        btn.disabled = true;
-        await quickMarkBooked(vehicleId);
-        btn.disabled = false;
-      }
-
-      if (action === "mark-ok") {
-        const vehicleId = btn.getAttribute("data-vehicle-id");
-        btn.disabled = true;
-        await quickMarkOk(vehicleId);
-        btn.disabled = false;
+      if (action === "toggle-defs" && vid) {
+        toggleDefs(vid);
+        return;
       }
 
       if (action === "copy-inspection-nudge") {
         copyInspectionNudge(btn);
+        return;
+      }
+
+      if (action === "open-status-modal" && vid) {
+        openStatusModal(vid);
+        return;
       }
     });
   }
 
   function init() {
-    $("fleet-refresh")?.addEventListener("click", load);
-    $("threshold-apply")?.addEventListener("click", applyThresholdsFromUI);
-
-    $("threshold-inspection-days").value = String(state.thresholds.inspectionOverdueDays);
-
-    $("fleet-all-search")?.addEventListener("input", () => {
-      // Re-render list only (no fetch) using cached payload
-      renderAllVehiclesList(state.payload || {});
+    $("fleet-refresh")?.addEventListener("click", () => {
+      collapseAllExpanded();
+      load();
     });
 
-    // Modal buttons
-    $("serviceModalSave")?.addEventListener("click", saveServiceModal);
-    $("serviceModalMarkDone")?.addEventListener("click", markDoneTodayFromModal);
+    $("threshold-apply")?.addEventListener("click", applyThresholdsFromUI);
+
+    const threshEl = $("threshold-inspection-days");
+    if (threshEl) threshEl.value = String(state.thresholds.inspectionOverdueDays);
+
+    $("fleet-search")?.addEventListener("input", onControlsChanged);
+    $("fleet-search-clear")?.addEventListener("click", () => {
+      $("fleet-search").value = "";
+      onControlsChanged();
+      $("fleet-search")?.focus();
+    });
+
+    $("flt-open-defs")?.addEventListener("change", onControlsChanged);
+    $("flt-inspection-overdue")?.addEventListener("change", onControlsChanged);
+    $("flt-km-overdue")?.addEventListener("change", onControlsChanged);
+
+    $("fleet-filters-clear")?.addEventListener("click", clearFiltersAndSearch);
+
+    $("serviceModalSave")?.addEventListener("click", saveStatusModal);
 
     wireGlobalClickHandlers();
-
     load();
   }
 

@@ -8,217 +8,607 @@
 {% endblock %}
 
 {% block content %}
-<div class="container py-4 vehicle-details" data-vehicle-id="{{ vehicle_id }}">
+<div
+  class="container py-4 vehicle-details"
+  id="vehicleDetailsRoot"
+  data-vehicle-id="{{ vehicle_id }}"
+>
 
   <!-- Top bar -->
   <div class="d-flex align-items-center gap-2 mb-3">
     <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('fleet.fleet_overview') }}">
       <i class="bi bi-arrow-left me-1"></i> Back to Fleet Overview
     </a>
-
-    <div class="ms-auto d-flex align-items-center gap-2">
-      <a class="btn btn-sm btn-primary" href="{{ url_for('fleet.vehicle_inspection') }}?vehicle_id={{ vehicle_id }}">
-        <i class="bi bi-clipboard-check me-1"></i> New Inspection
-      </a>
-
-      <button class="btn btn-sm btn-outline-secondary" id="vd-refresh">
-        <i class="bi bi-arrow-clockwise me-1"></i> Refresh
-      </button>
-    </div>
   </div>
 
   <!-- Header -->
   <div class="vd-header card-like mb-3">
-    <div class="d-flex flex-column flex-md-row gap-2 align-items-md-center">
+    <div class="d-flex flex-column flex-lg-row gap-3 align-items-lg-center">
       <div class="me-auto">
         <h1 class="h4 mb-1 d-flex align-items-center gap-2">
           <i class="bi bi-truck"></i>
           <span id="vd-title">{{ page_title }}</span>
+          <span id="vd-status-pill" class="vd-pill ms-1 d-none"></span>
+          <button id="vd-edit-status-btn" type="button" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-pencil-square me-1"></i> Edit Status
+          </button>
         </h1>
+
         <div class="text-muted small" id="vd-subtitle">Loading…</div>
       </div>
 
-      <div class="d-flex flex-wrap gap-2 justify-content-md-end align-items-center">
-        <span id="vd-service-badge"></span>
-        <span id="vd-inspection-badge"></span>
+      <div class="vd-metrics">
+        <div class="vd-metric">
+          <div class="vd-metric__label">Odometer</div>
+          <div class="vd-metric__value" id="vd-odo">—</div>
+        </div>
+        <div class="vd-metric">
+          <div class="vd-metric__label">KM Due</div>
+          <div class="vd-metric__value" id="vd-km-due">—</div>
+        </div>
+        <div class="vd-metric">
+          <div class="vd-metric__label">Oil</div>
+          <div class="vd-metric__value" id="vd-oil">—</div>
+        </div>
+        <div class="vd-metric">
+          <div class="vd-metric__label">Coolant</div>
+          <div class="vd-metric__value" id="vd-coolant">—</div>
+        </div>
+        <div class="vd-metric">
+          <div class="vd-metric__label">Transmission</div>
+          <div class="vd-metric__value" id="vd-trans">—</div>
+        </div>
       </div>
     </div>
   </div>
 
-  <!-- Grid -->
-  <div class="row g-3">
-    <!-- Left column -->
-    <div class="col-12 col-lg-5">
-      <!-- Office controls -->
-      <div class="card-like mb-3">
-        <div class="d-flex align-items-center mb-2">
-          <strong class="d-flex align-items-center gap-2">
-            <i class="bi bi-wrench-adjustable-circle"></i>
-            Office Service Controls
-          </strong>
-          <div class="ms-auto small text-muted" id="vd-office-meta">—</div>
-        </div>
+  <!-- Collapsible Sections -->
+  <div class="vd-sections">
 
-        <div class="mb-2">
-          <label class="form-label small mb-1">Service status</label>
-          <select class="form-select form-select-sm" id="vd-service-status">
-            <option value="DUE">DUE</option>
-            <option value="BOOKED">BOOKED</option>
-            <option value="IN_SHOP">IN SHOP</option>
-            <option value="OK">OK</option>
-          </select>
+    <!-- 1) Service -->
+    <div class="card-like mb-3">
+      <button
+        class="vd-accordion-btn"
+        type="button"
+        data-bs-toggle="collapse"
+        data-bs-target="#vdServiceCollapse"
+        aria-expanded="false"
+        aria-controls="vdServiceCollapse"
+      >
+        <div class="d-flex align-items-center">
+          <div class="me-auto">
+            <strong>Service</strong>
+            <span class="text-muted small ms-2" id="vd-service-count">—</span>
+          </div>
+          <i class="bi bi-chevron-down vd-chevron"></i>
         </div>
+      </button>
 
-        <div class="mb-2">
-          <label class="form-label small mb-1">Office notes</label>
-          <textarea class="form-control" id="vd-service-notes" rows="4" placeholder="Notes for the office. Empty clears."></textarea>
-          <div class="small text-muted mt-1">
-            Inspection notes won’t overwrite office notes unless new notes are provided by the tech.
+      <div class="collapse" id="vdServiceCollapse">
+        <div class="vd-section-body">
+          <div class="d-flex align-items-center mb-2">
+            <button id="vd-new-service-btn" type="button" class="btn btn-sm btn-primary">
+              Add New Service +
+            </button>
+            <div class="ms-auto text-muted small">Latest first</div>
+          </div>
+
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead>
+                <tr>
+                  <th>Type</th>
+                  <th>Date</th>
+                  <th class="text-end">Status</th>
+                </tr>
+              </thead>
+              <tbody id="vd-service-tbody">
+                <!-- rows injected -->
+              </tbody>
+            </table>
+          </div>
+          <div class="vd-empty text-muted small d-none" id="vd-service-empty">
+            No service events found.
           </div>
         </div>
+      </div>
+    </div>
 
-        <div class="row g-2 mb-2">
-          <div class="col-12 col-md-6">
-            <label class="form-label small mb-1">Last service date</label>
-            <input type="date" class="form-control form-control-sm" id="vd-last-service-date">
+    <!-- 2) Deficiencies -->
+    <div class="card-like mb-3">
+      <button
+        class="vd-accordion-btn"
+        type="button"
+        data-bs-toggle="collapse"
+        data-bs-target="#vdDefCollapse"
+        aria-expanded="false"
+        aria-controls="vdDefCollapse"
+      >
+        <div class="d-flex align-items-center">
+          <div class="me-auto">
+            <strong>Deficiencies</strong>
+            <span class="text-muted small ms-2" id="vd-def-count">—</span>
           </div>
-          <div class="col-12 col-md-6">
-            <label class="form-label small mb-1">Quick actions</label>
-            <div class="d-grid gap-2">
-              <button class="btn btn-sm btn-outline-primary" id="vd-mark-booked">
-                <i class="bi bi-calendar-check me-1"></i> Mark Service as Booked
-              </button>
-              <button class="btn btn-sm btn-outline-success" id="vd-mark-ok-today">
-                <i class="bi bi-check2-circle me-1"></i> Mark last service as today
-              </button>
+          <i class="bi bi-chevron-down vd-chevron"></i>
+        </div>
+      </button>
+
+      <div class="collapse" id="vdDefCollapse">
+        <div class="vd-section-body">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <button id="vd-toggle-all-defs" type="button" class="btn btn-sm btn-outline-secondary">
+              Show fixed/invalid
+            </button>
+
+            <button id="vd-new-def-btn" type="button" class="btn btn-sm btn-primary">
+              New Deficiency +
+            </button>
+
+            <div class="ms-auto text-muted small" id="vd-def-sort-hint">
+              Sorted by last update (new → old)
             </div>
           </div>
-        </div>
 
-        <div class="d-flex gap-2">
-          <button class="btn btn-sm btn-primary" id="vd-save">
-            <i class="bi bi-save me-1"></i> Save Changes
-          </button>
-          <button class="btn btn-sm btn-outline-secondary" id="vd-reset">
-            Reset
-          </button>
 
-          <div class="ms-auto small" id="vd-save-status"></div>
-        </div>
-      </div>
-
-      <!-- Latest snapshot -->
-      <div class="card-like">
-        <div class="d-flex align-items-center mb-2">
-          <strong class="d-flex align-items-center gap-2">
-            <i class="bi bi-speedometer2"></i>
-            Latest Snapshot
-          </strong>
-          <span class="ms-auto small text-muted" id="vd-updated">—</span>
-        </div>
-
-        <div class="vd-kv">
-          <div class="vd-kv-row">
-            <div class="vd-k">Assigned tech</div>
-            <div class="vd-v" id="vd-tech">—</div>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead>
+                <tr>
+                  <th>Description</th>
+                  <th>Severity</th>
+                  <th>Status</th>
+                  <th class="text-end">Updated</th>
+                </tr>
+              </thead>
+              <tbody id="vd-def-tbody">
+                <!-- rows injected -->
+              </tbody>
+            </table>
           </div>
 
-          <div class="vd-kv-row">
-            <div class="vd-k">KM</div>
-            <div class="vd-v" id="vd-km">—</div>
+          <div class="vd-empty text-muted small d-none" id="vd-def-empty">
+            No deficiencies to show.
           </div>
-
-          <div class="vd-kv-row">
-            <div class="vd-k">Service due</div>
-            <div class="vd-v" id="vd-service-due">—</div>
-          </div>
-
-          <div class="vd-kv-row">
-            <div class="vd-k">KM remaining</div>
-            <div class="vd-v" id="vd-km-remaining">—</div>
-          </div>
-
-          <div class="vd-kv-row">
-            <div class="vd-k">Oil</div>
-            <div class="vd-v" id="vd-oil">—</div>
-          </div>
-
-          <div class="vd-kv-row">
-            <div class="vd-k">Coolant</div>
-            <div class="vd-v" id="vd-coolant">—</div>
-          </div>
-
-          <div class="vd-kv-row">
-            <div class="vd-k">Last inspection</div>
-            <div class="vd-v" id="vd-last-inspection">—</div>
-          </div>
-
-          <div class="vd-kv-row">
-            <div class="vd-k">Last inspected by</div>
-            <div class="vd-v" id="vd-last-inspection-by">—</div>
-          </div>
-        </div>
-
-        <div class="mt-3">
-          <div class="small text-muted mb-1">
-            <i class="bi bi-clipboard-data me-1"></i> Latest inspection notes
-          </div>
-          <div class="vd-notes" id="vd-latest-notes">—</div>
         </div>
       </div>
     </div>
 
-    <!-- Right column -->
-    <div class="col-12 col-lg-7">
-      <div class="card-like">
-        <div class="d-flex flex-column flex-md-row gap-2 align-items-md-center mb-2">
-          <strong class="d-flex align-items-center gap-2">
-            <i class="bi bi-clock-history"></i>
-            Recent Submissions
-          </strong>
-
-          <div class="ms-md-auto d-flex gap-2 align-items-center">
-            <input type="text" class="form-control form-control-sm" id="vd-sub-search" placeholder="Search submissions…">
-            <span class="badge text-bg-secondary" id="vd-sub-count">0</span>
+    <!-- 3) Inspections -->
+    <div class="card-like mb-3">
+      <button
+        class="vd-accordion-btn"
+        type="button"
+        data-bs-toggle="collapse"
+        data-bs-target="#vdInspCollapse"
+        aria-expanded="false"
+        aria-controls="vdInspCollapse"
+      >
+        <div class="d-flex align-items-center">
+          <div class="me-auto">
+            <strong>Inspections</strong>
+            <span class="text-muted small ms-2" id="vd-insp-count">—</span>
           </div>
+          <i class="bi bi-chevron-down vd-chevron"></i>
         </div>
+      </button>
 
-        <div class="table-responsive">
-          <table class="table table-sm align-middle mb-0">
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>By</th>
-                <th class="text-end">KM</th>
-                <th class="text-end">Due</th>
-                <th>Oil</th>
-                <th>Coolant</th>
-                <th>Notes</th>
-              </tr>
-            </thead>
-            <tbody id="vd-sub-tbody">
-              <tr>
-                <td colspan="7">
-                  <div class="shimmer" style="height: 14px; border-radius: 6px;"></div>
-                </td>
-              </tr>
-              <tr>
-                <td colspan="7">
-                  <div class="shimmer" style="height: 14px; border-radius: 6px;"></div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+      <div class="collapse" id="vdInspCollapse">
+        <div class="vd-section-body">
+          <div class="d-flex align-items-center mb-2">
+            <a id="vd-new-inspection-btn" class="btn btn-sm btn-primary" href="#">
+              New Inspection +
+            </a>
+            <div class="ms-auto text-muted small">
+              Latest first
+            </div>
+          </div>
 
-        <div class="small text-muted mt-2">
-          Showing up to 25 latest submissions.
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Submitted By</th>
+                  <th class="text-end">KM</th>
+                </tr>
+              </thead>
+              <tbody id="vd-insp-tbody">
+                <!-- rows injected -->
+              </tbody>
+            </table>
+          </div>
+
+          <div class="vd-empty text-muted small d-none" id="vd-insp-empty">
+            No inspections found.
+          </div>
         </div>
       </div>
     </div>
+
   </div>
 
 </div>
+
+
+<!-- Deficiency Modal -->
+<div class="modal fade" id="vdDefModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Deficiency</h5>
+
+        <div class="ms-auto d-flex align-items-center gap-2">
+          <button id="vd-def-edit-btn" type="button" class="btn btn-sm btn-outline-primary">
+            <i class="bi bi-pencil me-1"></i> Edit
+          </button>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+      </div>
+
+      <div class="modal-body">
+        <div id="vd-def-view">
+          <!-- injected -->
+        </div>
+
+        <form id="vd-def-edit" class="d-none">
+          <div class="mb-3">
+            <label class="form-label">Description</label>
+            <textarea class="form-control" id="vd-def-edit-description" rows="4" required></textarea>
+          </div>
+
+          <div class="row g-2">
+            <div class="col-12 col-md-4">
+              <label class="form-label">Severity</label>
+              <select class="form-select" id="vd-def-edit-severity" required>
+                <option value="INOPERABLE">INOPERABLE</option>
+                <option value="DEFICIENT">DEFICIENT</option>
+                <option value="ADVISORY">ADVISORY</option>
+              </select>
+            </div>
+
+            <div class="col-12 col-md-4">
+              <label class="form-label">Status</label>
+              <select class="form-select" id="vd-def-edit-status">
+                <option value="OPEN">OPEN</option>
+                <option value="BOOKED">BOOKED</option>
+                <option value="FIXED">FIXED</option>
+                <option value="INVALID">INVALID</option>
+              </select>
+            </div>
+
+            <div class="col-12 col-md-4">
+              <label class="form-label">Updated By</label>
+              <input class="form-control" id="vd-def-edit-updated-by" placeholder="e.g. Office / Tech name" required />
+            </div>
+          </div>
+
+          <div class="d-flex gap-2 mt-3">
+            <button id="vd-def-save-btn" type="submit" class="btn btn-primary">
+              Submit
+            </button>
+            <button id="vd-def-cancel-btn" type="button" class="btn btn-outline-secondary">
+              Cancel
+            </button>
+            <div class="ms-auto text-muted small" id="vd-def-save-status"></div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Create Deficiency Modal -->
+<div class="modal fade" id="vdCreateDefModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">New Deficiency</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <form id="vd-create-def-form">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Description <span class="text-danger">*</span></label>
+            <textarea
+              class="form-control"
+              id="vd-create-def-description"
+              rows="4"
+              required
+              placeholder="Describe the issue clearly..."
+            ></textarea>
+          </div>
+
+          <div class="row g-2">
+            <div class="col-12 col-md-6">
+              <label class="form-label">Severity</label>
+              <select class="form-select" id="vd-create-def-severity">
+                <option value="ADVISORY">ADVISORY</option>
+                <option value="DEFICIENT">DEFICIENT</option>
+                <option value="INOPERABLE">INOPERABLE</option>
+              </select>
+            </div>
+
+            <div class="col-12 col-md-6">
+              <label class="form-label">Updated By <span class="text-danger">*</span></label>
+              <input
+                class="form-control"
+                id="vd-create-def-updated-by"
+                required
+                placeholder="e.g. Tech name / Office"
+              />
+            </div>
+          </div>
+
+        </div>
+
+        <div class="modal-footer">
+          <div class="me-auto text-muted small" id="vd-create-def-status"></div>
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Create</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Service Modal -->
+<div class="modal fade" id="vdServiceModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">Service Details</h5>
+
+        <div class="ms-auto d-flex align-items-center gap-2">
+          <button id="vd-service-edit-btn" type="button" class="btn btn-sm btn-outline-primary">
+            <i class="bi bi-pencil me-1"></i> Edit
+          </button>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        
+      </div>
+
+      <div class="modal-body">
+        <!-- View mode -->
+        <div id="vd-service-view">
+          <!-- injected -->
+        </div>
+
+        <!-- Edit mode -->
+        <form id="vd-service-edit" class="d-none">
+          <div class="row g-2">
+            <div class="col-12 col-md-6">
+              <label class="form-label">Service Type <span class="text-danger">*</span></label>
+              <input id="vd-service-edit-type" class="form-control" maxlength="64" required />
+            </div>
+
+            <div class="col-12 col-md-6">
+              <label class="form-label">Service Date <span class="text-danger">*</span></label>
+              <input id="vd-service-edit-date" class="form-control" type="date" required />
+            </div>
+          </div>
+
+          <div class="mt-3">
+            <label class="form-label">Service Notes</label>
+            <textarea id="vd-service-edit-notes" class="form-control" rows="4"></textarea>
+          </div>
+
+          <div class="row g-2 mt-2">
+            <div class="col-12 col-md-4">
+              <label class="form-label">Created By</label>
+              <input id="vd-service-edit-created-by" class="form-control" maxlength="64" readonly />
+              <div class="form-text">Created by cannot be changed.</div>
+            </div>
+
+            <div class="col-12 col-md-4">
+              <label class="form-label">Updated By <span class="text-danger">*</span></label>
+              <input id="vd-service-edit-updated-by" class="form-control" maxlength="64" required />
+            </div>
+
+            <div class="col-12 col-md-4">
+              <label class="form-label">Status <span class="text-danger">*</span></label>
+              <select id="vd-service-edit-status" class="form-select" required>
+                <option value="BOOKED">BOOKED</option>
+                <option value="CANCELED">CANCELED</option>
+                <option value="COMPLETE">COMPLETE</option>
+              </select>
+            </div>
+          </div>
+          <!-- Linked Deficiencies -->
+          <div class="mt-3">
+            <label class="form-label">Linked Deficiencies</label>
+            <select id="vd-service-edit-deficiencies" class="form-select" multiple size="8"></select>
+            <div class="form-text">
+              Click to toggle one or more deficiencies.
+            </div>
+          </div>
+
+
+
+          <div class="d-flex gap-2 mt-3">
+            <button id="vd-service-save-btn" type="submit" class="btn btn-primary">
+              Submit
+            </button>
+            <button id="vd-service-cancel-btn" type="button" class="btn btn-outline-secondary">
+              Cancel
+            </button>
+            <div class="ms-auto text-muted small" id="vd-service-save-status"></div>
+          </div>
+        </form>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- Create Service Event Modal -->
+<div class="modal fade" id="vdCreateServiceModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">Add New Service</h5>
+
+        <div class="ms-auto d-flex align-items-center gap-2">
+          <button id="vd-service-quick-oil-btn" type="button" class="btn btn-sm btn-outline-primary">
+            <i class="bi bi-droplet me-1"></i> I did an oil change
+          </button>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+      </div>
+
+      <form id="vd-create-service-form">
+        <div class="modal-body">
+
+          <div class="row g-2">
+            <div class="col-12 col-md-6">
+              <label class="form-label">Service Type <span class="text-danger">*</span></label>
+              <input
+                id="vd-create-service-type"
+                class="form-control"
+                type="text"
+                maxlength="64"
+                required
+                placeholder="e.g. Oil change, Tires, Brakes..."
+              />
+              <div class="form-text">Free-form (max 64 characters).</div>
+            </div>
+
+            <div class="col-12 col-md-6">
+              <label class="form-label">Booked For (date) <span class="text-danger">*</span></label>
+              <input
+                id="vd-create-service-date"
+                class="form-control"
+                type="date"
+                required
+              />
+            </div>
+          </div>
+
+          <div class="mt-3">
+            <label class="form-label">Service Notes</label>
+            <textarea
+              id="vd-create-service-notes"
+              class="form-control"
+              rows="4"
+              placeholder="Optional notes..."
+            ></textarea>
+          </div>
+
+          <div class="row g-2 mt-2">
+            <div class="col-12 col-md-6">
+              <label class="form-label">Created By <span class="text-danger">*</span></label>
+              <input
+                id="vd-create-service-created-by"
+                class="form-control"
+                type="text"
+                maxlength="64"
+                required
+                placeholder="e.g. Office / Tech name"
+              />
+            </div>
+
+            <div class="col-12 col-md-6">
+              <label class="form-label">Status <span class="text-danger">*</span></label>
+              <select id="vd-create-service-status-select" class="form-select" required>
+                <option value="BOOKED">BOOKED</option>
+                <option value="CANCELED">CANCELED</option>
+                <option value="COMPLETE">COMPLETE</option>
+              </select>
+            </div>
+          </div>
+          <!-- Link Deficiencies -->
+          <div class="mt-3">
+            <label class="form-label">Link Deficiencies</label>
+            <select id="vd-create-service-deficiencies" class="form-select" multiple size="8"></select>
+            <div class="form-text">
+              Optional. Hold Ctrl (Windows) / Cmd (Mac) to select multiple.
+            </div>
+          </div>
+
+
+
+        </div>
+
+        <div class="modal-footer">
+          <div class="me-auto text-muted small" id="vd-create-service-status"></div>
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Create</button>
+        </div>
+      </form>
+
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="vdVehicleStatusModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <i class="bi bi-flag me-2"></i>Vehicle Status
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <div class="modal-body">
+        <div class="small text-muted mb-2" id="vd-status-modal-vehicle-label">—</div>
+
+        <div class="mb-3">
+          <label class="form-label">Status</label>
+          <select id="vd-status-modal-status" class="form-select">
+            <option value="OK">OK</option>
+            <option value="DUE">DUE</option>
+            <option value="DEFICIENT">DEFICIENT</option>
+            <option value="BOOKED">BOOKED</option>
+            <option value="IN_SHOP">IN SHOP</option>
+          </select>
+          <div class="form-text">
+            This is an office override of the vehicle’s workflow status.
+          </div>
+        </div>
+
+        <div class="mb-2">
+          <label class="form-label">Updated By <span class="text-danger">*</span></label>
+          <input id="vd-status-modal-updated-by" class="form-control" maxlength="64" />
+        </div>
+
+        <div class="text-muted small" id="vd-status-modal-meta">—</div>
+        <div class="text-danger small mt-2 d-none" id="vd-status-modal-error"></div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="vd-status-modal-save">
+          <span class="spinner-border spinner-border-sm me-1 d-none" id="vd-status-modal-spinner" aria-hidden="true"></span>
+          Save
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+
+
+
+<!-- Inspection Modal -->
+<div class="modal fade" id="vdInspModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Inspection Details</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="vd-insp-modal-body">
+        <!-- injected -->
+      </div>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block extra_scripts %}

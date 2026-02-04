@@ -2,6 +2,7 @@
 (() => {
   const API_VEHICLES = "/api/vehicles/active";
   const API_SUBMIT = "/api/vehicle_submissions";
+  const API_VEHICLE = "/api/vehicles/";
 
   const $ = (id) => document.getElementById(id);
 
@@ -57,8 +58,20 @@
     if (l) l.classList.toggle("d-none", !isSubmitting);
 
     // disable key inputs while submitting (optional)
-    ["vi-vehicle", "vi-inspector-name", "vi-current-km", "vi-service-due-km", "vi-oil", "vi-coolant", "vi-notes", "vi-reset"]
-      .forEach(id => {
+    [
+      "vi-vehicle",
+      "vi-inspector-name",
+      "vi-current-km",
+      "vi-service-due-km",
+      "vi-oil",
+      "vi-coolant",
+      "vi-transmission",
+      "vi-warning-lights",
+      "vi-safe-to-operate",
+      "vi-notes",
+      "vi-reset",
+      "vi-vehicle-details"
+    ].forEach(id => {
         const el = $(id);
         if (el) el.disabled = !!isSubmitting;
       });
@@ -146,15 +159,113 @@
     return `🏆 ${weeks}-week streak — unreal consistency!`;
   }
 
+  async function loadVehicleDeficiencies(vehicldeId) {
+    const res = await fetch(`${API_VEHICLE}${vehicldeId}`, {
+      headers: { "Accept": "application/json" },
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to load vehicles: HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    console.log(data);
+
+    const deficiencies = Array.isArray(data?.deficiencies)
+    ? data.deficiencies
+    : Array.isArray(data?.open_deficiencies)
+      ? data.open_deficiencies
+      : [];
+    
+    const openish = deficiencies.filter(d => {
+      const st = String(d?.status || "").toUpperCase();
+      return st === "OPEN" || st === "BOOKED";
+    });
+
+
+    const emptyEl = document.getElementById("vi-deficiencies-empty");
+    const tableWrap = document.getElementById("vi-deficiencies-table-wrap");
+    const tbody = document.getElementById("vi-deficiencies-tbody");
+    if (!emptyEl || !tableWrap || !tbody) return;
+
+    // Reset
+    tbody.innerHTML = "";
+
+    // Helpers
+    function appendCreateRow() {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.colSpan = 4;
+      td.className = "text-end";
+
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn btn-sm btn-outline-primary";
+      btn.textContent = "Create deficiency";
+
+      btn.addEventListener("click", () => {
+        openCreateDeficiencyModal(vehicldeId);
+      });
+
+      td.appendChild(btn);
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+      console.log("appended create row");
+    }
+
+    if (openish.length === 0) {
+      emptyEl.style.display = "";
+      tableWrap.style.display = "";
+      appendCreateRow(); // still show the button as the last row
+      return;
+    }
+
+    emptyEl.style.display = "none";
+    tableWrap.style.display = "";
+
+    for (const d of openish) {
+      const tr = document.createElement("tr");
+
+      const desc = document.createElement("td");
+      desc.textContent = (d?.description || "").trim() || "—";
+
+      const sev = document.createElement("td");
+      sev.textContent = (d?.severity || "").trim() || "—";
+
+      const status = document.createElement("td");
+      status.textContent = (d?.status || "").trim() || "—";
+
+      const updated = document.createElement("td");
+      updated.className = "text-end";
+      const raw = d?.updated_on || d?.updated_at || d?.updatedAt || null;
+      updated.textContent = raw ? new Date(raw).toLocaleString() : "—";
+
+      tr.appendChild(desc);
+      tr.appendChild(sev);
+      tr.appendChild(status);
+      tr.appendChild(updated);
+      tbody.appendChild(tr);
+    }
+
+    // MUST be last row
+    appendCreateRow();
+  }
+
+
 
   function applyVehicleSelection(vehicleId) {
     state.selectedVehicleId = vehicleId || null;
 
     if (!vehicleId) {
+      $("vi-vehicle-details").hidden = true;
+      const dueEl = $("vi-service-due-km");
+      dueEl.value = null;
       setAssignedTech("—");
       setLastSubmission("—");
       return;
     }
+
+    $("vi-vehicle-details").hidden = false;  
+    $("vi-vehicle-details").href = `/fleet/vehicles/${(String(vehicleId))}`;
 
     const v = state.vehiclesById.get(Number(vehicleId)) || state.vehiclesById.get(vehicleId);
     if (!v) {
@@ -162,9 +273,29 @@
       setLastSubmission("—");
       return;
     }
+    // Prefill KM due for service if available
+    const dueEl = $("vi-service-due-km");
+    if (dueEl) {
+      const due =
+        v.service_due_km ??
+        v.km_due_for_service ??
+        v.next_service_km ??
+        v.next_service_due_km ??
+        v.due_km ??
+        null;
+
+      if (due != null && Number.isFinite(Number(due))) {
+        dueEl.value = String(Number(due));
+      }
+      else {
+        dueEl.value = null;
+      }
+    }
+
 
     setAssignedTech(v.assigned_tech || v.current_driver_name || "—");
     setLastSubmission(fmtDateTime(v.last_submission_at || v.last_inspection_at));
+    loadVehicleDeficiencies(vehicleId)
 
     // Optional: don’t auto-fill KM fields (prevents accidental stale submissions)
     // If you DO want to help them, uncomment these:
@@ -220,6 +351,18 @@
     const currentKm = currentKmRaw !== "" ? Number(currentKmRaw) : null;
     const dueKm = dueKmRaw !== "" ? Number(dueKmRaw) : null;
 
+    const transmission = $("vi-transmission")?.value ?? "";
+    const warningLightsRaw = $("vi-warning-lights")?.value ?? "";
+    const safeRaw = $("vi-safe-to-operate")?.value ?? "";
+
+    // convert yes/no -> boolean (null if not checked)
+    const warningLights =
+      warningLightsRaw === "yes" ? true : warningLightsRaw === "no" ? false : null;
+
+    const safeToOperate =
+      safeRaw === "yes" ? true : safeRaw === "no" ? false : null;
+
+
     return {
       vehicle_id: vehicleId ? Number(vehicleId) : null,
       submitted_by: inspectorName || null,
@@ -227,7 +370,10 @@
       service_due_km: dueKm,
       oil_level: oil || null,
       coolant_level: coolant || null,
-      deficiency_notes: notes || null,
+      transmission_level: transmission || null,
+      warning_lights: warningLights || null,
+      safe_to_operate: safeToOperate || null,
+      notes: notes || null,           
     };
   }
 
@@ -260,6 +406,10 @@
     $("vi-oil").value = "";
     $("vi-coolant").value = "";
     $("vi-notes").value = "";
+    $("vi-transmission").value = "";
+    $("vi-warning-lights").value = "";
+    $("vi-safe-to-operate").value = "";
+
   }
 
   // ---------------------------------------------------------------------------
@@ -268,6 +418,8 @@
   async function init() {
     // wire reset
     $("vi-reset")?.addEventListener("click", () => resetForm(true));
+
+    $("vi-vehicle-details").hidden = true
 
     // vehicle dropdown change
     $("vi-vehicle")?.addEventListener("change", (e) => {
@@ -369,6 +521,134 @@
       applyVehicleSelection(null);
     }
   }
+
+
+  // Deficiency modal (new system)
+  let __viCreateDefModalBound = false;
+
+  function openCreateDeficiencyModal(vehicleId) {
+    const modalEl = $("viCreateDefModal");
+    if (!modalEl || !window.bootstrap?.Modal) return;
+
+    modalEl.dataset.vehicleId = String(vehicleId);
+
+    // Prefill created_by from inspector name
+    const inspector = ($("vi-inspector-name")?.value || "").trim();
+    $("vi-create-def-created-by").value = inspector;
+
+    clearCreateDeficiencyModal();
+
+    if (!__viCreateDefModalBound) {
+      __viCreateDefModalBound = true;
+
+      $("vi-create-def-form")?.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        await submitCreateDeficiency();
+      });
+
+      modalEl.addEventListener("hidden.bs.modal", () => clearCreateDeficiencyModal());
+    }
+
+    const modal = window.bootstrap.Modal.getOrCreateInstance(modalEl, {
+      backdrop: "static",
+      keyboard: true,
+      focus: true,
+    });
+    modal.show();
+
+    window.setTimeout(() => $("vi-create-def-description")?.focus(), 150);
+  }
+
+  function clearCreateDeficiencyModal() {
+    const err = $("vi-create-def-error");
+    if (err) {
+      err.classList.add("d-none");
+      err.textContent = "";
+    }
+
+    $("vi-create-def-description").value = "";
+    $("vi-create-def-severity").value = "";
+    setCreateDeficiencySubmitting(false);
+  }
+
+  function setCreateDeficiencySubmitting(isSubmitting) {
+    $("vi-create-def-submit").disabled = !!isSubmitting;
+    $("vi-create-def-spinner").classList.toggle("d-none", !isSubmitting);
+
+    $("vi-create-def-description").disabled = !!isSubmitting;
+    $("vi-create-def-severity").disabled = !!isSubmitting;
+    $("vi-create-def-created-by").disabled = !!isSubmitting;
+  }
+
+  function showCreateDeficiencyError(msg) {
+    const err = $("vi-create-def-error");
+    if (!err) return;
+    err.textContent = msg || "Something went wrong.";
+    err.classList.remove("d-none");
+  }
+
+  async function submitCreateDeficiency() {
+    const modalEl = $("viCreateDefModal");
+    if (!modalEl) return;
+
+    const vehicleId = Number(modalEl.dataset.vehicleId || 0);
+    if (!vehicleId) return;
+
+    const description = ($("vi-create-def-description")?.value || "").trim();
+    const severity = ($("vi-create-def-severity")?.value || "").trim();
+    const createdBy = ($("vi-create-def-created-by")?.value || "").trim()
+      || ($("vi-inspector-name")?.value || "").trim();
+
+    if (!description) {
+      showCreateDeficiencyError("Description is required.");
+      $("vi-create-def-description")?.focus();
+      return;
+    }
+    if (!severity) {
+      showCreateDeficiencyError("Severity is required.");
+      $("vi-create-def-severity")?.focus();
+      return;
+    }
+    if (!createdBy) {
+      showCreateDeficiencyError("Created By is required.");
+      $("vi-create-def-created-by")?.focus();
+      return;
+    }
+
+    setCreateDeficiencySubmitting(true);
+
+    try {
+      const res = await fetch(`/api/vehicles/${vehicleId}/deficiencies`, {
+        method: "POST",
+        headers: { "Accept": "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify({
+          description,
+          severity,
+          created_by: createdBy,   // NEW
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showCreateDeficiencyError(err?.error || `Failed to create deficiency (HTTP ${res.status})`);
+        setCreateDeficiencySubmitting(false);
+        return;
+      }
+
+      // Close modal
+      const modal = window.bootstrap.Modal.getInstance(modalEl);
+      try { modal?.hide(); } catch (_) {}
+
+      // Refresh table
+      await loadVehicleDeficiencies(vehicleId);
+    } catch (e) {
+      console.error(e);
+      showCreateDeficiencyError("Failed to create deficiency. Please try again.");
+      setCreateDeficiencySubmitting(false);
+    }
+  }
+
+
 
   document.addEventListener("DOMContentLoaded", () => {
     init().catch((e) => setAlert("danger", e?.message || "Failed to initialize page."));

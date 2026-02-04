@@ -782,32 +782,42 @@ class Vehicle(db.Model):
 
     latest_oil_level = db.Column(db.String(16), nullable=True)      # empty / 1/3 / 2/3 / full
     latest_coolant_level = db.Column(db.String(16), nullable=True)
-
-    latest_deficiency_notes = db.Column(db.Text, nullable=True)
+    latest_transmission_level = db.Column(db.String(16), nullable=True)
 
     # Inspection / submission tracking
     last_submission_at = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
     last_submission_by = db.Column(db.String(64), nullable=True)
 
-    # Service workflow (office-owned)
+    # Service workflow
     last_service_date = db.Column(db.Date, nullable=True)
+    service_booked_at = db.Column(db.Date, nullable=True)
 
-    service_status = db.Column(
+    status = db.Column(
         db.String(16),
         nullable=False,
         default="OK",
         index=True,
-    )  # OK / DUE / BOOKED
+    )  # {"OK", "DUE", "BOOKED", "IN_SHOP", "DEFICIENCY"}
 
-    service_notes = db.Column(db.Text, nullable=True)  # office notes, editable/deletable
-
-    
-    service_flagged_at = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
-    service_booked_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    notes = db.Column(db.Text, nullable=True)  # office notes, editable/deletable
 
     # Relationships
     submissions = db.relationship(
         "VehicleSubmission",
+        back_populates="vehicle",
+        cascade="all, delete-orphan",
+        lazy="dynamic",
+    )
+
+    service_events = db.relationship(
+        "VehicleServiceEvent",
+        back_populates="vehicle",
+        cascade="all, delete-orphan",
+        lazy="dynamic",
+    )
+
+    deficiencies = db.relationship(
+        "VehicleDeficiency",
         back_populates="vehicle",
         cascade="all, delete-orphan",
         lazy="dynamic",
@@ -829,8 +839,6 @@ class VehicleSubmission(db.Model):
         index=True,
     )
 
-    
-
     submitted_at = db.Column(db.DateTime(timezone=True), nullable=False, index=True)
     submitted_by = db.Column(db.String(64), nullable=False)
 
@@ -840,8 +848,12 @@ class VehicleSubmission(db.Model):
 
     oil_level = db.Column(db.String(16), nullable=True)      # empty / 1/3 / 2/3 / full
     coolant_level = db.Column(db.String(16), nullable=True)
+    transmission_level = db.Column(db.String(16), nullable=True)
 
-    deficiency_notes = db.Column(db.Text, nullable=True)
+    warning_lights = db.Column(db.Boolean, nullable=True)
+    safe_to_operate = db.Column(db.Boolean, nullable=True)
+
+    notes = db.Column(db.Text, nullable=True)
 
     # Relationship
     vehicle = db.relationship("Vehicle", back_populates="submissions")
@@ -854,6 +866,108 @@ class VehicleSubmission(db.Model):
     def __repr__(self):
         return f"<VehicleSubmission vehicle_id={self.vehicle_id} at {self.submitted_at}>"
 
+
+class VehicleServiceEvent(db.Model):
+    __tablename__ = "vehicle_service_event"
+
+    id = db.Column(db.BigInteger, primary_key=True)
+
+    vehicle_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("vehicle.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    service_type = db.Column(
+        db.String(64),
+        nullable=False,
+        default="OK",
+        index=True,
+    ) 
+
+    service_date = db.Column(db.DateTime(timezone=True), nullable=False)
+
+    service_notes = db.Column(db.Text, nullable=True)
+
+    created_by = db.Column(db.String(64), nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, server_default=db.func.now())
+
+    updated_by = db.Column(db.String(64), nullable=True)
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, server_default=db.func.now(), onupdate=db.func.now())
+
+    service_status = db.Column(db.String(64), nullable=False, default="BOOKED", index=True) # BOOKED / CANCELED / COMPLETE
+
+    # Relationship
+    vehicle = db.relationship("Vehicle", back_populates="service_events")
+
+    __table_args__ = (
+        db.CheckConstraint("service_status IN ('BOOKED','CANCELED','COMPLETE')", name="ck_vehicle_service_status"),
+    )
+
+
+    linked_deficiencies = db.relationship(
+        "VehicleDeficiency",
+        back_populates="linked_service",
+        passive_deletes=True,  # pairs well with ON DELETE SET NULL
+    )
+
+    def __repr__(self):
+        return f"<VehicleServiceEvent vehicle_id={self.vehicle_id} service_type={self.service_type} at {self.service_date}>"
+
+
+class VehicleDeficiency(db.Model):
+    __tablename__ = "vehicle_deficiency"
+
+    id = db.Column(db.BigInteger, primary_key=True)
+
+    vehicle_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("vehicle.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    linked_service_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("vehicle_service_event.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+
+    # e.g. "INOPERABLE", "DEFICIENT", "ADVISORY"
+    severity = db.Column(db.String(64), nullable=True, default="DEFICIENT", index=True)
+
+    # e.g. "OPEN", "BOOKED", "FIXED", "INVALID"
+    status = db.Column(db.String(64), nullable=False, default="OPEN", index=True)
+
+    description = db.Column(db.Text, nullable=False)
+
+    created_by = db.Column(db.String(64), nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, server_default=db.func.now())
+
+    updated_by = db.Column(db.String(64), nullable=True)
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, server_default=db.func.now(), onupdate=db.func.now())
+
+    # --- Relationships ---
+    vehicle = db.relationship("Vehicle", back_populates="deficiencies")
+
+    linked_service = db.relationship(
+        "VehicleServiceEvent",
+        back_populates="linked_deficiencies",
+    )
+
+    __table_args__ = (
+        db.CheckConstraint("status IN ('OPEN','BOOKED','FIXED','INVALID')", name="ck_vehicle_deficiency_status"),
+    )
+
+
+    def __repr__(self):
+        return (
+            f"<VehicleDeficiency [{self.status}] vehicle_id={self.vehicle_id} "
+            f"severity={self.severity} updated_at={self.updated_at}>"
+        )
 
 
 if __name__ == '__main__':

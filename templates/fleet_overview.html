@@ -11,11 +11,11 @@
 <div class="container py-4 fleet-overview">
 
   <!-- Header -->
-  <div class="d-flex flex-column flex-md-row align-items-md-center gap-2 mb-3">
+  <div class="d-flex flex-column flex-lg-row align-items-lg-center gap-2 mb-3">
     <div class="me-auto">
       <h1 class="h4 mb-1 d-flex align-items-center gap-2">
         <i class="bi bi-truck"></i>
-        Fleet Triage
+        Fleet Overview
       </h1>
       <div class="text-muted small" id="fleet-updated">Updated —</div>
     </div>
@@ -26,7 +26,7 @@
       </a>
 
       <button class="btn btn-sm btn-outline-secondary" id="fleet-refresh">
-        <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+        <i class="bi bi-arrow-clockwise me-1"></i> Refresh
       </button>
 
       <div class="dropdown">
@@ -39,134 +39,97 @@
             <input type="number" class="form-control form-control-sm" id="threshold-inspection-days" value="7" min="1" step="1">
           </div>
           <div class="d-grid">
-            <button class="btn btn-sm btn-primary" id="threshold-apply">
-              Apply
+            <button class="btn btn-sm btn-primary" id="threshold-apply">Apply</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="card border-0 shadow-sm mb-3">
+    <div class="card-body py-3">
+      <div class="row g-2 align-items-center">
+        <div class="col-12 col-lg-6">
+          <div class="input-group input-group-sm">
+            <span class="input-group-text"><i class="bi bi-search"></i></span>
+            <input
+              type="text"
+              class="form-control"
+              id="fleet-search"
+              placeholder="Search by tech, vehicle, or license plate…"
+              autocomplete="off"
+            >
+            <button class="btn btn-outline-secondary" type="button" id="fleet-search-clear" title="Clear search">
+              <i class="bi bi-x-lg"></i>
             </button>
           </div>
         </div>
-      </div>
-    </div>
-  </div>
 
-  <!-- KPIs (triage counts) -->
-  <div class="row g-3 mb-3" id="triage-kpis">
-    <div class="col-6 col-lg-3">
-      <div class="kpi-card shimmer">
-        <div class="shimmer-line w-50"></div>
-        <div class="shimmer-line w-35 mt-2"></div>
-      </div>
-    </div>
-    <div class="col-6 col-lg-3">
-      <div class="kpi-card shimmer">
-        <div class="shimmer-line w-50"></div>
-        <div class="shimmer-line w-35 mt-2"></div>
-      </div>
-    </div>
-    <div class="col-6 col-lg-3">
-      <div class="kpi-card shimmer">
-        <div class="shimmer-line w-50"></div>
-        <div class="shimmer-line w-35 mt-2"></div>
-      </div>
-    </div>
-    <div class="col-6 col-lg-3">
-      <div class="kpi-card shimmer">
-        <div class="shimmer-line w-50"></div>
-        <div class="shimmer-line w-35 mt-2"></div>
-      </div>
-    </div>
-  </div>
+        <div class="col-12 col-lg-6">
+          <div class="d-flex flex-wrap gap-2 justify-content-lg-end align-items-center">
+            <!-- Filter chips -->
+            <div class="btn-group btn-group-sm" role="group" aria-label="Issue filters">
+              <input type="checkbox" class="btn-check" id="flt-open-defs" autocomplete="off">
+              <label class="btn btn-outline-danger" for="flt-open-defs">
+                <i class="bi bi-exclamation-octagon me-1"></i> Open Deficiencies
+              </label>
 
-  <!-- Two-lane triage board -->
-  <div class="row g-3 mb-3">
-    <!-- Lane A: Needs service -->
-    <div class="col-12 col-lg-6">
-      <div class="bucket-card bucket-card--danger">
-        <div class="bucket-head">
-          <div class="bucket-title">
-            <i class="bi bi-tools me-2"></i>
-            Needs Service Booking
-          </div>
-          <span class="badge text-bg-danger" id="needs-service-count">0</span>
-        </div>
+              <input type="checkbox" class="btn-check" id="flt-inspection-overdue" autocomplete="off">
+              <label class="btn btn-outline-warning" for="flt-inspection-overdue">
+                <i class="bi bi-clipboard-x me-1"></i> Inspection Overdue
+              </label>
 
-        <div class="bucket-body" id="needs-service-list">
-          <div class="bucket-shimmer shimmer">
-            <div class="shimmer-line w-75"></div>
-            <div class="shimmer-line w-55 mt-2"></div>
-            <div class="shimmer-line w-65 mt-2"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Lane B: Overdue inspections -->
-    <div class="col-12 col-lg-6">
-      <div class="bucket-card bucket-card--warning">
-        <div class="bucket-head">
-          <div class="bucket-title">
-            <i class="bi bi-clipboard-x me-2"></i>
-            Overdue Inspections
-          </div>
-          <span class="badge text-bg-warning" id="overdue-inspections-count">0</span>
-        </div>
-
-        <div class="bucket-body" id="overdue-inspections-list">
-          <div class="bucket-shimmer shimmer">
-            <div class="shimmer-line w-75"></div>
-            <div class="shimmer-line w-55 mt-2"></div>
-            <div class="shimmer-line w-65 mt-2"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- All vehicles (search + list) -->
-  <div class="row g-3">
-    <div class="col-12">
-      <div class="bucket-card">
-        <div class="bucket-head">
-          <div class="bucket-title">
-            <i class="bi bi-list-ul me-2"></i>
-            All Vehicles
-          </div>
-          <span class="badge text-bg-secondary ms-auto" id="all-vehicles-count">0</span>
-        </div>
-
-        <div class="bucket-body">
-          <div class="d-flex flex-column flex-md-row gap-2 align-items-md-center mb-2">
-            <div class="me-auto w-100">
-              <input
-                type="text"
-                class="form-control form-control-sm"
-                id="fleet-all-search"
-                placeholder="Search by tech, make/model, or license plate…"
-                autocomplete="off"
-              >
+              <input type="checkbox" class="btn-check" id="flt-km-overdue" autocomplete="off">
+              <label class="btn btn-outline-primary" for="flt-km-overdue">
+                <i class="bi bi-speedometer2 me-1"></i> KM Overdue
+              </label>
             </div>
-            <div class="text-muted small" id="all-vehicles-hint">
-              Click a vehicle to view details.
+
+            <button class="btn btn-sm btn-outline-secondary" id="fleet-filters-clear" title="Clear filters">
+              <i class="bi bi-eraser me-1"></i> Clear
+            </button>
+
+            <div class="vr d-none d-lg-block"></div>
+
+            <div class="d-flex align-items-center gap-2">
+              <span class="text-muted small">Showing</span>
+              <span class="badge text-bg-secondary" id="fleet-count">0</span>
             </div>
           </div>
-
-          <div id="fleet-all-list">
-            <div class="vehicle-item shimmer" style="height: 54px;"></div>
-            <div class="vehicle-item shimmer" style="height: 54px;"></div>
-            <div class="vehicle-item shimmer" style="height: 54px;"></div>
-          </div>
         </div>
+      </div>
+
+      <!-- little helper row -->
+      <div class="d-flex flex-wrap gap-2 mt-2 align-items-center">
+        <div class="text-muted small">
+          Click a row to expand details. Use filters to isolate issues.
+        </div>
+        <div class="ms-auto text-muted small" id="fleet-hint"></div>
       </div>
     </div>
   </div>
 
-  <!-- Lightweight edit modal (Bootstrap) -->
+  <!-- List -->
+  <div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+      <div id="fleet-list" class="list-group list-group-flush">
+        <!-- shimmer placeholders -->
+        <div class="list-group-item py-3 shimmer" style="height: 66px;"></div>
+        <div class="list-group-item py-3 shimmer" style="height: 66px;"></div>
+        <div class="list-group-item py-3 shimmer" style="height: 66px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Change Status Modal -->
   <div class="modal fade" id="serviceModal" tabindex="-1" aria-labelledby="serviceModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content">
 
         <div class="modal-header">
           <h5 class="modal-title" id="serviceModalLabel">
-            <i class="bi bi-wrench-adjustable-circle me-2"></i>Service Notes
+            <i class="bi bi-wrench-adjustable-circle me-2"></i>Change Vehicle Status
           </h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
@@ -174,32 +137,29 @@
         <div class="modal-body">
           <div class="small text-muted mb-2" id="serviceModalVehicleLabel">—</div>
 
-          <label class="form-label small mb-1">Service status</label>
+          <label class="form-label small mb-1">Updated by</label>
+          <input
+            type="text"
+            class="form-control form-control-sm mb-2"
+            id="serviceModalUpdatedBy"
+            placeholder="Your name"
+            autocomplete="name"
+          >
+
+          <label class="form-label small mb-1">Status</label>
           <select class="form-select form-select-sm mb-2" id="serviceModalStatus">
-            <option value="DUE">DUE</option>
-            <option value="BOOKED">BOOKED</option>
             <option value="OK">OK</option>
+            <option value="DUE">DUE</option>
+            <option value="DEFICIENT">DEFICIENT</option>
+            <option value="BOOKED">BOOKED</option>
+            <option value="IN_SHOP">IN_SHOP</option>
           </select>
 
           <label class="form-label small mb-1">Office notes</label>
-          <textarea class="form-control" id="serviceModalNotes" rows="4" placeholder="Add/edit office notes. Empty will clear."></textarea>
-
-          <div class="row g-2 mt-2">
-            <div class="col-12 col-md-6">
-              <label class="form-label small mb-1">Last service date (optional)</label>
-              <input type="date" class="form-control form-control-sm" id="serviceModalLastServiceDate">
-            </div>
-            <div class="col-12 col-md-6">
-              <label class="form-label small mb-1">Quick action</label>
-              <div class="d-grid gap-2">
-                <button class="btn btn-sm btn-outline-success" id="serviceModalMarkDone">
-                  <i class="bi bi-check2-circle me-1"></i> Mark OK + set date to today
-                </button>
-              </div>
-            </div>
-          </div>
+          <textarea class="form-control" id="serviceModalNotes" rows="4" placeholder="Optional. Empty will clear."></textarea>
 
           <div class="small text-muted mt-2" id="serviceModalMeta">—</div>
+          <div class="alert alert-danger d-none mt-2 mb-0" id="serviceModalError"></div>
         </div>
 
         <div class="modal-footer">
