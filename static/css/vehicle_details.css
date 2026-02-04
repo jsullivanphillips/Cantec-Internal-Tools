@@ -275,6 +275,31 @@
   gap: 6px;
 }
 
+.vd-header-notes__value.vd-notes--editing {
+  white-space: normal !important; /* KEY FIX */
+}
+
+/* Ensure notes wrapper is normal block flow (prevents space-between weirdness) */
+.vd-header-notes {
+  display: block !important;
+}
+
+/* Notes container should be normal block flow (not flex/grid) */
+.vd-header-notes__value {
+  display: block !important;
+}
+
+/* When editing, force a simple vertical stack with tight spacing */
+.vd-header-notes__value.vd-notes--editing {
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: flex-start !important;
+  align-items: stretch !important;
+  gap: 0.25rem !important; /* controls spacing between textarea + row + errors */
+  white-space: normal !important; /* don’t preserve template whitespace */
+}
+
+
 .vd-details-compact__item {
   display: flex;
   flex-wrap: wrap;
@@ -298,34 +323,28 @@
   color: rgba(0,0,0,0.30);
 }
 
-
-@media (max-width: 576px) {
-  .keyd-hero__meta {
-    font-size: 0.88rem;
-  }
-
-  .keyd-status-hero {
-    padding: 12px;
-  }
-
-  .keyd-card-body {
-    padding: 12px;
-  }
-
-  .keyd-btn-xl {
-    width: 100%;
-  }
-
-  .keyd-modalActions {
-    justify-content: stretch;
-  }
-
-  #airTagModalCancelBtn,
-  #airTagModalContinueBtn,
-  #bagModalCancelBtn,
-  #bagModalContinueBtn,
-  #returnModalCancelBtn,
-  #returnModalConfirmBtn {
-    width: 100%;
-  }
+.vd-header-notes__value {
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 0.5rem 0.75rem;
+  background: rgba(0,0,0,0.03);
+  border-radius: 0.5rem;
 }
+
+.vd-header-notes {
+  margin-top: 0.25rem !important;
+}
+
+
+/* When the notes block is in edit mode, remove the display padding/background */
+.vd-header-notes__value.vd-notes--editing {
+  padding: 0 !important;
+  background: transparent !important;
+}
+
+/* Tighten notes editor spacing */
+.vd-notes--editing textarea.form-control {
+  padding: 0.25rem 0.5rem;
+  line-height: 1.25;
+}
+

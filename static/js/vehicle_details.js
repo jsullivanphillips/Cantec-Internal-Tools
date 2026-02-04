@@ -219,14 +219,21 @@
 
   function pillForVehicleStatus(status) {
     const s = String(status || "").toUpperCase();
-    // OK / DUE / DEFICIENCIES / BOOKED / IN_SHOP
     if (s === "OK") return { cls: "vd-pill vd-pill--ok", label: "OK" };
     if (s === "DUE") return { cls: "vd-pill vd-pill--due", label: "DUE" };
-    if (s === "DEFICIENCIES") return { cls: "vd-pill vd-pill--def", label: "DEFICIENCIES" };
+    if (s === "DEFICIENT") return { cls: "vd-pill vd-pill--def", label: "DEFICIENT" };
     if (s === "BOOKED") return { cls: "vd-pill vd-pill--booked", label: "BOOKED" };
     if (s === "IN_SHOP") return { cls: "vd-pill vd-pill--shop", label: "IN SHOP" };
     return { cls: "vd-pill", label: s || "—" };
   }
+
+
+  function safeVehicleStatus(s) {
+    const up = String(s || "OK").toUpperCase();
+    const allowed = new Set(["OK", "DUE", "DEFICIENT", "BOOKED", "IN_SHOP"]);
+    return allowed.has(up) ? up : "OK";
+  }
+
 
   function getActorName() {
     // prefer cached name
@@ -365,6 +372,13 @@
     const subtitleLeft = bits || "—";
     const subtitleRight = latest?.submitted_at ? `Last inspection: ${fmtDateTime(latest.submitted_at)}` : "";
     $("vd-subtitle").textContent = subtitleRight ? `${subtitleLeft} — ${subtitleRight}` : subtitleLeft;
+
+    const notes = (v.notes || "").toString().trim();
+    const notesEl = $("vd-notes");
+    if (notesEl && !notesEl.querySelector("textarea")) {
+      notesEl.textContent = notes || "—";
+      notesEl.classList.toggle("text-muted", !notes);
+    }
 
     // metrics
     $("vd-odo").textContent = latest?.current_km ?? "—";
@@ -731,6 +745,181 @@
     $("vd-edit-status-btn")?.addEventListener("click", openVehicleStatusModal);
     $("vd-status-modal-save")?.addEventListener("click", saveVehicleStatusFromModal);
   }
+
+  function wireHeaderNotesInlineEdit() {
+    const notesEl = $("vd-notes");
+    if (!notesEl) return;
+    if (notesEl.dataset.wired === "1") return;
+    notesEl.dataset.wired = "1";
+
+    let editing = false;
+
+    function renderDisplay() {
+      const v = state.vehicle || {};
+      const raw = (v.notes || "").toString();
+      const txt = raw.trim();
+      notesEl.classList.remove("vd-notes--editing");
+
+
+      notesEl.classList.toggle("text-muted", !txt);
+      notesEl.textContent = txt || "—";
+      notesEl.title = "Click to edit notes";
+      notesEl.style.cursor = "pointer";
+    }
+
+    function startEdit() {
+      if (editing) return;
+      editing = true;
+
+      const v = state.vehicle || {};
+      const curNotes = (v.notes || "").toString();
+      const curStatus = safeVehicleStatus(v.status || v.current_status || v.vehicle_status || "OK");
+      const actor = getActorName() || "";
+
+      // Build inline editor UI inside the notes container
+      notesEl.style.cursor = "default";
+      notesEl.title = "";
+     
+      notesEl.classList.add("vd-notes--editing");
+      notesEl.classList.remove("text-muted");
+
+      notesEl.innerHTML = `
+        <textarea
+          id="vd-notes-edit"
+          class="form-control form-control-sm"
+          rows="2"
+          placeholder="Add notes… (blank clears)"
+        >${escapeHtml(curNotes)}</textarea>
+
+        <div class="d-flex flex-wrap gap-2 align-items-center mt-1">
+          <div class="d-flex align-items-center gap-2">
+            <span class="text-muted small">Updated by</span>
+            <input
+              id="vd-notes-updated-by"
+              class="form-control form-control-sm"
+              style="max-width: 200px"
+              value="${escapeHtml(actor)}"
+              placeholder="Your name"
+            />
+          </div>
+
+          <div class="ms-auto d-flex gap-2">
+            <button id="vd-notes-cancel" type="button" class="btn btn-sm btn-outline-secondary">Cancel</button>
+            <button id="vd-notes-save" type="button" class="btn btn-sm btn-primary">Save</button>
+          </div>
+        </div>
+
+        <div class="text-muted small mt-1 d-none" id="vd-notes-saving">Saving…</div>
+        <div class="text-danger small mt-1 d-none" id="vd-notes-error"></div>
+      `.trim();
+
+
+      const ta = document.getElementById("vd-notes-edit");
+      const by = document.getElementById("vd-notes-updated-by");
+      const btnSave = document.getElementById("vd-notes-save");
+      const btnCancel = document.getElementById("vd-notes-cancel");
+      const savingEl = document.getElementById("vd-notes-saving");
+      const errEl = document.getElementById("vd-notes-error");
+
+      // Focus textarea and put cursor at end
+      if (ta) {
+        ta.focus();
+        ta.selectionStart = ta.selectionEnd = ta.value.length;
+      }
+
+      async function doSave() {
+        const newNotesRaw = (ta?.value || "").toString();
+        const newNotesTrim = newNotesRaw.trim();
+        const updatedBy = (by?.value || "").trim();
+
+        if (!updatedBy) {
+          if (errEl) {
+            errEl.textContent = "Updated by is required.";
+            errEl.classList.remove("d-none");
+          }
+          return;
+        }
+
+        // cache actor name
+        setActorName(updatedBy);
+
+        // UI state
+        if (errEl) errEl.classList.add("d-none");
+        if (savingEl) savingEl.classList.remove("d-none");
+        if (btnSave) btnSave.disabled = true;
+        if (btnCancel) btnCancel.disabled = true;
+
+        try {
+          // IMPORTANT: endpoint requires status every time
+          await apiPatchVehicleStatus(vehicleId, {
+            updated_by: updatedBy,
+            status: curStatus,
+            notes: newNotesTrim ? newNotesRaw : null, // blank clears
+          });
+
+          // Update local state + rerender header
+          state.vehicle = { ...(state.vehicle || {}), notes: newNotesTrim ? newNotesRaw : null };
+
+          editing = false;
+          renderDisplay();
+        } catch (e) {
+          if (errEl) {
+            errEl.textContent = e?.message || "Failed to save notes.";
+            errEl.classList.remove("d-none");
+          }
+        } finally {
+          if (savingEl) savingEl.classList.add("d-none");
+          if (btnSave) btnSave.disabled = false;
+          if (btnCancel) btnCancel.disabled = false;
+        }
+      }
+
+      function doCancel() {
+        editing = false;
+        renderDisplay();
+      }
+
+      btnSave?.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        doSave();
+      });
+
+      btnCancel?.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        doCancel();
+      });
+
+
+      // Optional: Ctrl/Cmd+Enter to save, Esc to cancel
+      ta?.addEventListener("keydown", (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+          e.preventDefault();
+          doSave();
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          doCancel();
+        }
+      });
+    }
+
+    // Clicking notes starts edit
+    notesEl.addEventListener("click", (e) => {
+      // If user clicked inside the editor controls, do nothing
+      if (e.target.closest("button, textarea, input, label, select")) return;
+
+      if (!editing) startEdit();
+    });
+
+
+    // initial render
+    renderDisplay();
+
+    // expose for rerender after loadAndRender
+    notesEl._renderDisplay = renderDisplay;
+  }
+
 
 
 
@@ -1328,6 +1517,8 @@
     wireCreateServiceModal();
     wireServiceEditModal();
     wireVehicleStatusEditor();
+    wireHeaderNotesInlineEdit();
+
 
     try {
       await loadAndRender();
