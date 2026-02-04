@@ -1,143 +1,179 @@
-/* static/css/fleet_overview.css */
+/* static/css/fleet_overview.css
+   Rewritten from scratch — targeted to IDs + minimal class hooks present in the HTML.
+   Assumes Bootstrap 5 is already loaded.
+*/
 
-.fleet-overview .kpi-card {
-  background: #fff;
-  border: 1px solid rgba(0,0,0,0.08);
-  border-radius: 12px;
-  padding: 14px 14px;
-  min-height: 72px;
+/* ============================================================================
+   Page base
+   ============================================================================ */
+
+.fleet-overview {
+  --card-bg: #fff;
+  --border: rgba(0, 0, 0, 0.08);
+  --muted: rgba(0, 0, 0, 0.55);
+  --muted-2: rgba(0, 0, 0, 0.65);
+  --radius: 12px;
 }
 
-.kpi-label {
-  font-size: 0.8rem;
-  color: rgba(0,0,0,0.55);
+.fleet-overview .card {
+  border-radius: var(--radius);
+}
+
+.fleet-overview .card.shadow-sm {
+  box-shadow: 0 2px 10px rgba(0,0,0,0.05) !important;
+}
+
+/* Updated stamp */
+#fleet-updated {
+  color: var(--muted) !important;
+}
+
+/* ============================================================================
+   KPI cards (uses .kpi-card in markup; values by ID)
+   ============================================================================ */
+
+.fleet-overview .kpi-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 14px;
+  min-height: 78px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+}
+
+.fleet-overview .kpi-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(0,0,0,0.06);
+  border-color: rgba(0,0,0,0.12);
+}
+
+.fleet-overview .kpi-label {
+  font-size: 0.82rem;
+  color: var(--muted);
   display: flex;
   align-items: center;
   gap: 8px;
+  line-height: 1.2;
 }
 
-.kpi-value {
-  font-size: 1.25rem;
-  font-weight: 700;
-  margin-top: 6px;
+.fleet-overview .kpi-label i {
+  font-size: 0.95rem;
+  opacity: 0.85;
 }
 
-.bucket-card {
-  background: #fff;
-  border: 1px solid rgba(0,0,0,0.08);
-  border-radius: 12px;
-  overflow: hidden;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  min-height: 360px;
-}
-
-.bucket-head {
-  padding: 12px 14px;
-  border-bottom: 1px solid rgba(0,0,0,0.08);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.bucket-title {
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-}
-
-.bucket-body {
-  padding: 12px 14px;
-  overflow-y: auto;
-  max-height: 520px;
-}
-
-.bucket-card--danger .bucket-head {
-  background: rgba(220, 53, 69, 0.06);
-}
-
-.bucket-card--warning .bucket-head {
-  background: rgba(255, 193, 7, 0.10);
-}
-
-.bucket-card--ok .bucket-head {
-  background: rgba(25, 135, 84, 0.08);
-}
-
-.vehicle-item {
-  border: 1px solid rgba(0,0,0,0.08);
-  border-radius: 12px;
-  padding: 10px 12px;
-  margin-bottom: 10px;
-  background: #fff;
-}
-
-.vehicle-top {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-}
-
-.vehicle-name {
-  font-weight: 700;
+.fleet-overview .kpi-value {
+  font-size: 1.65rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
   line-height: 1.1;
-}
-
-.vehicle-meta {
   margin-top: 6px;
-  font-size: 0.85rem;
-  color: rgba(0,0,0,0.65);
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
 }
 
-.vehicle-reason {
-  margin-top: 8px;
-  font-size: 0.85rem;
-  color: rgba(0,0,0,0.65);
+/* Subtle “status cue” by KPI id (no color overrides; keep minimal + safe) */
+#kpi-oil-overdue,
+#kpi-deficient,
+#kpi-inspection-overdue {
+  font-variant-numeric: tabular-nums;
 }
 
-.vehicle-badges {
-  margin-left: auto;
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+/* Mobile compact KPIs */
+@media (max-width: 576px) {
+  .fleet-overview .kpi-card {
+    padding: 12px 12px;
+    min-height: 70px;
+  }
+  .fleet-overview .kpi-value {
+    font-size: 1.45rem;
+  }
 }
 
-.badge-soft {
-  border: 1px solid rgba(0,0,0,0.08);
-  background: rgba(0,0,0,0.03);
-  color: rgba(0,0,0,0.75);
+/* ============================================================================
+   Controls bar (Search + filter chips)
+   ============================================================================ */
+
+#fleet-search {
+  border-right: 0; /* blends with clear button */
+}
+
+#fleet-search-clear {
+  border-left: 0;
+}
+
+#fleet-search:focus,
+#fleet-search-clear:focus,
+#fleet-refresh:focus,
+#fleet-filters-clear:focus,
+#threshold-apply:focus {
+  box-shadow: 0 0 0 0.2rem rgba(13,110,253,0.15) !important;
+}
+
+/* Filter chips: make checked state feel more “selected” */
+#flt-open-defs:checked + label,
+#flt-inspection-overdue:checked + label,
+#flt-km-overdue:checked + label {
+  box-shadow: 0 0 0 0.2rem rgba(0,0,0,0.06);
+  transform: translateY(-1px);
+}
+
+#flt-open-defs + label,
+#flt-inspection-overdue + label,
+#flt-km-overdue + label {
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+/* Count badge a bit tighter */
+#fleet-count {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Hint line */
+#fleet-hint {
+  color: var(--muted) !important;
+}
+
+/* ============================================================================
+   List + rows
+   ============================================================================ */
+
+#fleet-list .list-group-item {
+  border-color: rgba(0,0,0,0.07);
+}
+
+/* The row header button in each list-group-item */
+#fleet-list [data-action="toggle-row"] {
+  border-radius: 10px;
+}
+
+#fleet-list [data-action="toggle-row"]:hover {
+  background: rgba(0,0,0,0.015);
+}
+
+/* Expand panel divider */
+#fleet-list [data-expand-body] {
+  border-color: rgba(0,0,0,0.07) !important;
+}
+
+/* Badges in the list look nicer with consistent rounding */
+#fleet-list .badge {
   border-radius: 999px;
-  padding: 4px 8px;
-  font-size: 0.75rem;
-  font-weight: 600;
 }
 
-.badge-soft--danger {
-  background: rgba(220, 53, 69, 0.08);
-  color: #b02a37;
-  border-color: rgba(220, 53, 69, 0.20);
+/* Deficiency toggle button */
+#fleet-list button[data-action="toggle-defs"] {
+  border-radius: 10px;
 }
 
-.badge-soft--warning {
-  background: rgba(255, 193, 7, 0.14);
-  color: #8a6d00;
-  border-color: rgba(255, 193, 7, 0.25);
+/* “Open vehicle details” button */
+#fleet-list a.btn {
+  border-radius: 10px;
 }
 
-.badge-soft--ok {
-  background: rgba(25, 135, 84, 0.12);
-  color: #0f5132;
-  border-color: rgba(25, 135, 84, 0.20);
-}
-
-.missing-card {
-  background: #fff;
-}
+/* ============================================================================
+   Shimmer placeholders
+   ============================================================================ */
 
 .shimmer {
   position: relative;
@@ -149,9 +185,9 @@
   content: "";
   position: absolute;
   top: 0;
-  left: -150px;
+  left: -160px;
   height: 100%;
-  width: 150px;
+  width: 160px;
   background: linear-gradient(
     90deg,
     rgba(255,255,255,0) 0%,
@@ -160,101 +196,29 @@
   );
   animation: shimmerMove 1.2s infinite;
 }
-
-.shimmer-line {
-  height: 12px;
-  border-radius: 8px;
-  background: rgba(0,0,0,0.06);
-  position: relative;
-  overflow: hidden;
-}
-
-.shimmer-line::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: -150px;
-  height: 100%;
-  width: 150px;
-  background: linear-gradient(
-    90deg,
-    rgba(255,255,255,0) 0%,
-    rgba(255,255,255,0.55) 50%,
-    rgba(255,255,255,0) 100%
-  );
-  animation: shimmerMove 1.2s infinite;
-}
-
-.w-35 { width: 35% !important; }
-.w-50 { width: 50% !important; }
-.w-55 { width: 55% !important; }
-.w-65 { width: 65% !important; }
-.w-75 { width: 75% !important; }
 
 @keyframes shimmerMove {
   0% { transform: translateX(0); }
-  100% { transform: translateX(320px); }
+  100% { transform: translateX(360px); }
 }
-
 
 /* ============================================================================
-   Additions for triage board (Option 1)
+   Modal (Change Status)
    ============================================================================ */
 
-/* Make the two lanes feel like a board */
-.fleet-overview .bucket-card {
-  box-shadow: 0 1px 0 rgba(0,0,0,0.02);
+#serviceModal .modal-content {
+  border-radius: 14px;
 }
 
-/* Optional: sticky header inside scrollable lane */
-.fleet-overview .bucket-head {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  backdrop-filter: blur(6px);
-}
-
-/* Improve list spacing + readability */
-.fleet-overview .bucket-body {
-  padding-top: 10px;
-}
-
-/* Tighter card content for triage */
-.fleet-overview .vehicle-item .vehicle-meta {
-  margin-top: 4px;
-  gap: 12px;
-}
-
-/* Action row styling (buttons) */
-.fleet-overview .vehicle-item .btn {
-  border-radius: 10px;
-}
-
-/* Small action buttons should wrap nicely */
-.fleet-overview .vehicle-item .d-flex.flex-wrap {
-  row-gap: 8px;
-}
-
-/* Visually distinguish DUE vs BOOKED in Needs Service lane */
-.fleet-overview .bucket-card--danger .vehicle-item {
-  border-left: 4px solid rgba(220, 53, 69, 0.35);
-}
-
-.fleet-overview .bucket-card--danger .vehicle-item[data-service-status="BOOKED"] {
-  border-left-color: rgba(13, 110, 253, 0.35);
-}
-
-/* Overdue lane: highlight never-inspected */
-.fleet-overview .bucket-card--warning .vehicle-item[data-never-inspected="1"] {
-  border-left: 4px solid rgba(255, 193, 7, 0.60);
-}
-
-/* Improve “No office notes yet” visual */
-.fleet-overview .vehicle-item .text-muted.small {
-  color: rgba(0,0,0,0.55) !important;
-}
-
-/* Modal textarea a bit nicer */
 #serviceModal textarea {
   border-radius: 12px;
+}
+
+#serviceModalError {
+  border-radius: 12px;
+}
+
+/* Make “Updated by” stand out slightly (subtle) */
+#serviceModalUpdatedBy {
+  font-weight: 600;
 }

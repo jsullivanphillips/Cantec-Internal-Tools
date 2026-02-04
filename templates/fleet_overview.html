@@ -46,6 +46,41 @@
     </div>
   </div>
 
+  <!-- KPIs -->
+  <div class="row g-2 mb-3">
+    <div class="col-12 col-md-4">
+      <div class="kpi-card">
+        <div class="kpi-label">
+          <i class="bi bi-droplet-half"></i>
+          Overdue for oil change
+        </div>
+        <div class="kpi-value" id="kpi-oil-overdue">—</div>
+      </div>
+    </div>
+
+    <div class="col-12 col-md-4">
+      <div class="kpi-card">
+        <div class="kpi-label">
+          <i class="bi bi-exclamation-octagon"></i>
+          Deficiencies
+        </div>
+        <div class="kpi-value" id="kpi-deficient">—</div>
+      </div>
+    </div>
+
+    <div class="col-12 col-md-4">
+      <div class="kpi-card">
+        <div class="kpi-label">
+          <i class="bi bi-clipboard-x"></i>
+          Inspection overdue
+        </div>
+        <div class="kpi-value" id="kpi-inspection-overdue">—</div>
+      </div>
+    </div>
+  </div>
+
+
+
   <!-- Controls -->
   <div class="card border-0 shadow-sm mb-3">
     <div class="card-body py-3">
@@ -72,7 +107,7 @@
             <div class="btn-group btn-group-sm" role="group" aria-label="Issue filters">
               <input type="checkbox" class="btn-check" id="flt-open-defs" autocomplete="off">
               <label class="btn btn-outline-danger" for="flt-open-defs">
-                <i class="bi bi-exclamation-octagon me-1"></i> Open Deficiencies
+                <i class="bi bi-exclamation-octagon me-1"></i> Deficiencies
               </label>
 
               <input type="checkbox" class="btn-check" id="flt-inspection-overdue" autocomplete="off">

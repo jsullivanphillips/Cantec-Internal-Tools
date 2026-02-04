@@ -122,6 +122,29 @@
     return n > 0 || deficient;
   }
 
+    function oilOverdue(v) {
+    // “Overdue for oil change” == KM overdue (same rule you use for KM chip)
+    // If later you add an oil_due_km field, swap this to use that.
+    return kmOverdue(v);
+  }
+
+  function renderKpis() {
+    const vehicles = Array.isArray(state.vehicles) ? state.vehicles : [];
+
+    const oil = vehicles.filter(oilOverdue).length;
+    const defs = vehicles.filter(openDeficiencies).length;
+    const insp = vehicles.filter(inspectionOverdue).length;
+
+    const oilEl = $("kpi-oil-overdue");
+    const defEl = $("kpi-deficient");
+    const inspEl = $("kpi-inspection-overdue");
+
+    if (oilEl) oilEl.textContent = String(oil);
+    if (defEl) defEl.textContent = String(defs);
+    if (inspEl) inspEl.textContent = String(insp);
+  }
+
+
   function deriveIssueTags(v) {
     const tags = [];
     if (openDeficiencies(v)) tags.push("OPEN_DEFS");
@@ -458,6 +481,8 @@
 
       collapseAllExpanded();
       renderList();
+      renderKpis();
+
     } catch (e) {
       console.error("Failed to load fleet overview:", e);
       if (wrap) {

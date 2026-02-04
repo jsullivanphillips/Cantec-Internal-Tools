@@ -297,3 +297,35 @@
 .vd-details-compact__sep {
   color: rgba(0,0,0,0.30);
 }
+
+
+@media (max-width: 576px) {
+  .keyd-hero__meta {
+    font-size: 0.88rem;
+  }
+
+  .keyd-status-hero {
+    padding: 12px;
+  }
+
+  .keyd-card-body {
+    padding: 12px;
+  }
+
+  .keyd-btn-xl {
+    width: 100%;
+  }
+
+  .keyd-modalActions {
+    justify-content: stretch;
+  }
+
+  #airTagModalCancelBtn,
+  #airTagModalContinueBtn,
+  #bagModalCancelBtn,
+  #bagModalContinueBtn,
+  #returnModalCancelBtn,
+  #returnModalConfirmBtn {
+    width: 100%;
+  }
+}
