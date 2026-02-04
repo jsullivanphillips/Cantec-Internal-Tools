@@ -7,12 +7,15 @@
   // Bucket order (top to bottom)
   const BUCKET_ORDER = ["IN_SHOP", "BOOKED", "DEFICIENT", "DUE", "OK"];
 
+  // Add this in the state object (around line 15)
   const state = {
     thresholds: { inspectionOverdueDays: 7 },
     payload: null,
     vehicles: [],
     expanded: new Set(), // vehicle_id
+    searchQuery: "", 
   };
+  
 
   const $ = (id) => document.getElementById(id);
 
@@ -141,6 +144,98 @@
     if (defEl) defEl.textContent = String(defs);
     if (inspEl) inspEl.textContent = String(insp);
   }
+
+  function filterVehiclesBySearch(query) {
+    if (!query || query.length < 2) return [];
+    
+    const q = query.toLowerCase().trim();
+    const vehicles = Array.isArray(state.vehicles) ? state.vehicles : [];
+    
+    return vehicles.filter(v => {
+      const tech = (v.current_driver_name || "").toLowerCase();
+      const plate = (v.license_plate || "").toLowerCase();
+      return tech.includes(q) || plate.includes(q);
+    });
+  }
+
+  function renderSearchDropdown(results) {
+    const dropdown = $("fleet-search-dropdown");
+    if (!dropdown) return;
+    
+    if (!results || results.length === 0) {
+      dropdown.classList.remove("show");
+      return;
+    }
+    
+    // Limit to 3 results
+    const limited = results.slice(0, 3);
+    
+    const html = limited.map(v => {
+      const vehName = escapeHtml(label(v));
+      const tech = escapeHtml(v.current_driver_name || "Unassigned");
+      const plate = escapeHtml(v.license_plate || "—");
+      const id = String(v.vehicle_id);
+      
+      return `
+        <button 
+          type="button"
+          class="dropdown-item d-flex flex-column py-2"
+          data-action="search-select"
+          data-vehicle-id="${escapeHtml(id)}"
+        >
+          <div class="d-flex align-items-center gap-2">
+            <strong>${tech}</strong>
+            <span class="text-muted">•</span>
+            <span>${vehName}</span>
+            ${statusBadge(v.status)}
+          </div>
+          <small class="text-muted">Plate: ${plate}</small>
+        </button>
+      `;
+    }).join("");
+    
+    dropdown.innerHTML = html;
+    dropdown.classList.add("show");
+  }
+
+  function handleSearchInput(e) {
+    const query = e.target.value;
+    state.searchQuery = query;
+    
+    if (!query || query.length < 2) {
+      const dropdown = $("fleet-search-dropdown");
+      if (dropdown) dropdown.classList.remove("show");
+      return;
+    }
+    
+    const results = filterVehiclesBySearch(query);
+    renderSearchDropdown(results);
+  }
+
+  function handleSearchSelect(vehicleId) {
+    const id = String(vehicleId);
+    
+    // Clear search
+    const input = $("fleet-search-input");
+    if (input) input.value = "";
+    state.searchQuery = "";
+    
+    const dropdown = $("fleet-search-dropdown");
+    if (dropdown) dropdown.classList.remove("show");
+    
+    // Expand the vehicle row
+    state.expanded.add(id);
+    renderBuckets();
+    
+    // Scroll to the vehicle
+    setTimeout(() => {
+      const body = document.querySelector(`[data-expand-body="${CSS.escape(id)}"]`);
+      if (body) {
+        body.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 100);
+  }
+
 
   function deriveIssueTags(v) {
     const tags = [];
@@ -670,6 +765,24 @@
         openStatusModal(vid);
         return;
       }
+      
+      // ADD THIS
+      if (action === "search-select" && vid) {
+        handleSearchSelect(vid);
+        return;
+      }
+    });
+    
+    // ADD THIS - Close dropdown when clicking outside
+    document.addEventListener("click", (e) => {
+      const searchInput = $("fleet-search-input");
+      const dropdown = $("fleet-search-dropdown");
+      
+      if (dropdown && searchInput && 
+          !searchInput.contains(e.target) && 
+          !dropdown.contains(e.target)) {
+        dropdown.classList.remove("show");
+      }
     });
   }
 
@@ -685,6 +798,12 @@
     if (threshEl) threshEl.value = String(state.thresholds.inspectionOverdueDays);
 
     $("serviceModalSave")?.addEventListener("click", saveStatusModal);
+    
+    // ADD THIS
+    const searchInput = $("fleet-search-input");
+    if (searchInput) {
+      searchInput.addEventListener("input", handleSearchInput);
+    }
 
     wireGlobalClickHandlers();
     load();

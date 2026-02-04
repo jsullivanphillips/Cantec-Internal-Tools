@@ -46,6 +46,26 @@
     </div>
   </div>
 
+  <!-- Search Bar -->
+  <div class="mb-3">
+    <div class="position-relative">
+      <input 
+        type="text" 
+        class="form-control" 
+        id="fleet-search-input"
+        placeholder="Search by tech name or license plate..."
+        autocomplete="off"
+      >
+      <div 
+        class="dropdown-menu w-100 shadow-sm" 
+        id="fleet-search-dropdown"
+        style="max-height: 200px; overflow-y: auto;"
+      >
+        <!-- Results populated by JS -->
+      </div>
+    </div>
+  </div>
+
   <!-- KPIs -->
   <div class="row g-2 mb-3">
     <div class="col-12 col-md-4">
