@@ -67,7 +67,7 @@
                 type="text"
                 class="form-control"
                 id="vi-inspector-name"
-                placeholder="e.g. Jamie"
+                placeholder="e.g. John Doe, or John D."
                 autocomplete="name"
                 required
             >
@@ -89,7 +89,7 @@
             </div>
           </div>
 
-          <hr class="my-3">
+          <hr class="mt-4 mb-3">
 
           <!-- KM section -->
           <div class="d-flex align-items-center gap-2 mb-2">
@@ -118,7 +118,6 @@
             <div class="col-12 col-md-6">
               <label for="vi-service-due-km" class="form-label">
                 KM Due For Service
-                <span class="text-muted">(recommended)</span>
               </label>
               <input
                 type="number"
@@ -129,13 +128,10 @@
                 step="1"
                 placeholder="e.g. 130000"
               >
-              <div class="form-text">
-                If you’re not sure, leave blank.
-              </div>
             </div>
           </div>
 
-          <hr class="my-3">
+          <hr class="mt-4 mb-3">
 
           <!-- Fluids -->
           <div class="d-flex align-items-center gap-2 mb-2">
@@ -181,13 +177,12 @@
           </div>
 
 
-          <hr class="my-3">
+          <hr class="mt-5 mb-3">
 
           <!-- Safety -->
           <div class="d-flex align-items-center gap-2 mb-2">
             <i class="bi bi-shield-check"></i>
             <strong>Safety</strong>
-            <span class="text-muted small ms-auto">Optional</span>
           </div>
 
           <div class="row g-2 mb-3">
@@ -195,7 +190,7 @@
               <label for="vi-warning-lights" class="form-label">Warning lights on?</label>
               <select class="form-select" id="vi-warning-lights">
                 <option value="">Not checked</option>
-                <option value="yes">Yes</option>
+                <option value="yes">Yes - details in notes</option>
                 <option value="no">No</option>
               </select>
             </div>
@@ -205,13 +200,13 @@
               <select class="form-select" id="vi-safe-to-operate">
                 <option value="">Not checked</option>
                 <option value="yes">Yes</option>
-                <option value="no">No</option>
+                <option value="no">No - details in notes</option>
               </select>
             </div>
           </div>
 
 
-          <hr class="my-3">
+          <hr class="mt-5 mb-4">
 
           <!-- Deficiencies -->
           <div class="d-flex align-items-center gap-2 mb-2">
@@ -219,7 +214,7 @@
             - to edit deficiencies go to vehicle details
           </div>
 
-          <div class="mb-3" id="vi-deficiencies-wrap">
+          <div class="mb-5" id="vi-deficiencies-wrap">
             <div class="text-muted small" id="vi-deficiencies-empty" style="display:none;">
               No open deficiencies.
             </div>
@@ -239,7 +234,7 @@
             </div>
           </div>
 
-          <hr class="my-3">
+          
 
 
           <!-- Notes -->
@@ -254,7 +249,7 @@
               class="form-control"
               id="vi-notes"
               rows="4"
-              placeholder="Note issues only (e.g., low coolant, tire pressure, warning light, damage). Leave blank if no issues."
+              placeholder=""
             ></textarea>
           </div>
 
@@ -269,10 +264,6 @@
                 Submitting…
               </span>
             </button>
-
-            <div class="text-muted small ms-md-auto" id="vi-helper">
-              KM is required. Fluids and notes can be submitted later.
-            </div>
           </div>
 
         </form>
@@ -340,8 +331,6 @@
             <div class="col-12 col-md-6">
               <label for="vi-create-def-severity" class="form-label">Severity <span class="text-danger">*</span></label>
               <select id="vi-create-def-severity" class="form-select" required>
-                <!-- NEW severity set -->
-                <option value="">Select…</option>
                 <option value="INOPERABLE">INOPERABLE</option>
                 <option value="DEFICIENT">DEFICIENT</option>
                 <option value="SUGGESTED">SUGGESTED</option>
@@ -358,12 +347,7 @@
                 required
                 placeholder="e.g. Jamie"
               />
-              <div class="form-text">Defaults to Inspector Name.</div>
             </div>
-          </div>
-
-          <div class="mt-2 text-muted small">
-            Status is set automatically by the system.
           </div>
         </div>
 
