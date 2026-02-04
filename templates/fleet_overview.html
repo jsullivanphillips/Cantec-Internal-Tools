@@ -79,80 +79,32 @@
     </div>
   </div>
 
-
-
-  <!-- Controls -->
-  <div class="card border-0 shadow-sm mb-3">
-    <div class="card-body py-3">
-      <div class="row g-2 align-items-center">
-        <div class="col-12 col-lg-6">
-          <div class="input-group input-group-sm">
-            <span class="input-group-text"><i class="bi bi-search"></i></span>
-            <input
-              type="text"
-              class="form-control"
-              id="fleet-search"
-              placeholder="Search by tech, vehicle, or license plate…"
-              autocomplete="off"
-            >
-            <button class="btn btn-outline-secondary" type="button" id="fleet-search-clear" title="Clear search">
-              <i class="bi bi-x-lg"></i>
-            </button>
-          </div>
-        </div>
-
-        <div class="col-12 col-lg-6">
-          <div class="d-flex flex-wrap gap-2 justify-content-lg-end align-items-center">
-            <!-- Filter chips -->
-            <div class="btn-group btn-group-sm" role="group" aria-label="Issue filters">
-              <input type="checkbox" class="btn-check" id="flt-open-defs" autocomplete="off">
-              <label class="btn btn-outline-danger" for="flt-open-defs">
-                <i class="bi bi-exclamation-octagon me-1"></i> Deficiencies
-              </label>
-
-              <input type="checkbox" class="btn-check" id="flt-inspection-overdue" autocomplete="off">
-              <label class="btn btn-outline-warning" for="flt-inspection-overdue">
-                <i class="bi bi-clipboard-x me-1"></i> Inspection Overdue
-              </label>
-
-              <input type="checkbox" class="btn-check" id="flt-km-overdue" autocomplete="off">
-              <label class="btn btn-outline-primary" for="flt-km-overdue">
-                <i class="bi bi-speedometer2 me-1"></i> KM Overdue
-              </label>
-            </div>
-
-            <button class="btn btn-sm btn-outline-secondary" id="fleet-filters-clear" title="Clear filters">
-              <i class="bi bi-eraser me-1"></i> Clear
-            </button>
-
-            <div class="vr d-none d-lg-block"></div>
-
-            <div class="d-flex align-items-center gap-2">
-              <span class="text-muted small">Showing</span>
-              <span class="badge text-bg-secondary" id="fleet-count">0</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- little helper row -->
-      <div class="d-flex flex-wrap gap-2 mt-2 align-items-center">
-        <div class="text-muted small">
-          Click a row to expand details. Use filters to isolate issues.
-        </div>
-        <div class="ms-auto text-muted small" id="fleet-hint"></div>
+  <!-- Buckets -->
+  <div id="fleet-buckets" class="row g-3">
+    <!-- shimmer placeholders -->
+    <div class="col-12 col-lg-6">
+      <div class="card border-0 shadow-sm">
+        <div class="card-body shimmer" style="height: 66px;"></div>
       </div>
     </div>
-  </div>
-
-  <!-- List -->
-  <div class="card border-0 shadow-sm">
-    <div class="card-body p-0">
-      <div id="fleet-list" class="list-group list-group-flush">
-        <!-- shimmer placeholders -->
-        <div class="list-group-item py-3 shimmer" style="height: 66px;"></div>
-        <div class="list-group-item py-3 shimmer" style="height: 66px;"></div>
-        <div class="list-group-item py-3 shimmer" style="height: 66px;"></div>
+    <div class="col-12 col-lg-6">
+      <div class="card border-0 shadow-sm">
+        <div class="card-body shimmer" style="height: 66px;"></div>
+      </div>
+    </div>
+    <div class="col-12 col-lg-6">
+      <div class="card border-0 shadow-sm">
+        <div class="card-body shimmer" style="height: 66px;"></div>
+      </div>
+    </div>
+    <div class="col-12 col-lg-6">
+      <div class="card border-0 shadow-sm">
+        <div class="card-body shimmer" style="height: 66px;"></div>
+      </div>
+    </div>
+    <div class="col-12">
+      <div class="card border-0 shadow-sm">
+        <div class="card-body shimmer" style="height: 66px;"></div>
       </div>
     </div>
   </div>
