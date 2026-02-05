@@ -92,7 +92,6 @@
     const sel = $("vi-vehicle");
     if (!sel) return;
 
-        
     sel.innerHTML = `
       <option value="">Select a vehicle…</option>
       ${vehicles.map(v => `
@@ -101,7 +100,11 @@
         </option>
       `).join("")}
     `;
+
+    // Also wire the search UI list from the same data
+    wireVehicleSearchUI(vehicles);
   }
+
 
   function setAssignedTech(text) {
     const el = $("vi-assigned-tech");
@@ -181,11 +184,9 @@
       return st === "OPEN" || st === "BOOKED";
     });
 
-
-    const emptyEl = document.getElementById("vi-deficiencies-empty");
     const tableWrap = document.getElementById("vi-deficiencies-table-wrap");
     const tbody = document.getElementById("vi-deficiencies-tbody");
-    if (!emptyEl || !tableWrap || !tbody) return;
+    if (!tableWrap || !tbody) return;
 
     // Reset
     tbody.innerHTML = "";
@@ -193,33 +194,44 @@
     // Helpers
     function appendCreateRow() {
       const tr = document.createElement("tr");
-      const td = document.createElement("td");
-      td.colSpan = 4;
-      td.className = "text-end";
+
+      // Description column (left)
+      const tdDesc = document.createElement("td");
+      tdDesc.className = "text-start";
 
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "btn btn-sm btn-outline-primary";
-      btn.textContent = "Create deficiency";
-
-      btn.addEventListener("click", () => {
+      btn.textContent = "+ Create deficiency";
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation(); // important so it doesn't trigger row-click handlers
         openCreateDeficiencyModal(vehicldeId);
       });
 
-      td.appendChild(btn);
-      tr.appendChild(td);
+      tdDesc.appendChild(btn);
+
+      // Other columns (blank)
+      const tdSev = document.createElement("td");
+      const tdStatus = document.createElement("td");
+      const tdUpdated = document.createElement("td");
+      tdUpdated.className = "text-end";
+
+      tr.appendChild(tdDesc);
+      tr.appendChild(tdSev);
+      tr.appendChild(tdStatus);
+      tr.appendChild(tdUpdated);
+
       tbody.appendChild(tr);
-      console.log("appended create row");
     }
 
+
     if (openish.length === 0) {
-      emptyEl.style.display = "";
       tableWrap.style.display = "";
       appendCreateRow(); // still show the button as the last row
       return;
     }
 
-    emptyEl.style.display = "none";
     tableWrap.style.display = "";
 
     for (const d of openish) {
@@ -243,6 +255,11 @@
       tr.appendChild(sev);
       tr.appendChild(status);
       tr.appendChild(updated);
+
+      // click row -> edit modal
+      tr.style.cursor = "pointer";
+      tr.addEventListener("click", () => openEditDeficiencyModal(d));
+
       tbody.appendChild(tr);
     }
 
@@ -257,12 +274,20 @@
 
     if (!vehicleId) {
       $("vi-vehicle-details").hidden = true;
+
       const dueEl = $("vi-service-due-km");
-      dueEl.value = null;
+      if (dueEl) dueEl.value = null;
+
       setAssignedTech("—");
       setLastSubmission("—");
+      console.log("hiding deficienceis")
+      // 🔒 Hide deficiencies section until a vehicle is selected
+      const defWrap = $("vi-deficiencies-wrap");
+      if (defWrap) defWrap.style.display = "none";
+
       return;
     }
+
 
     $("vi-vehicle-details").hidden = false;  
     $("vi-vehicle-details").href = `/fleet/vehicles/${(String(vehicleId))}`;
@@ -273,6 +298,22 @@
       setLastSubmission("—");
       return;
     }
+
+    // Autofill inspector name from assigned tech (only if blank)
+    const inspEl = $("vi-inspector-name");
+    if (inspEl) {
+      const cur = (inspEl.value || "").trim();
+      if (!cur) {
+        const suggested =
+          (v.assigned_tech || "").trim() ||
+          (v.current_driver_name || "").trim() ||
+          "";
+        if (suggested) inspEl.value = suggested;
+      }
+    }
+
+
+
     // Prefill KM due for service if available
     const dueEl = $("vi-service-due-km");
     if (dueEl) {
@@ -295,12 +336,13 @@
 
     setAssignedTech(v.assigned_tech || v.current_driver_name || "—");
     setLastSubmission(fmtDateTime(v.last_submission_at || v.last_inspection_at));
+    
+    
+    // Show deficiencies once a vehicle is selected
+    const defWrap = $("vi-deficiencies-wrap");
+    if (defWrap) defWrap.style.display = "";
     loadVehicleDeficiencies(vehicleId)
 
-    // Optional: don’t auto-fill KM fields (prevents accidental stale submissions)
-    // If you DO want to help them, uncomment these:
-    // if (v.current_km != null) $("vi-current-km").value = v.current_km;
-    // if (v.next_service_km != null) $("vi-service-due-km").value = v.next_service_km;
   }
 
   // ---------------------------------------------------------------------------
@@ -409,6 +451,11 @@
     $("vi-transmission").value = "";
     $("vi-warning-lights").value = "";
     $("vi-safe-to-operate").value = "";
+    $("vi-full-wrap")?.classList.add("d-none");
+    $("vi-full-toggle")?.setAttribute("aria-expanded", "false");
+    $("vi-full-toggle-icon")?.classList.add("bi-chevron-right");
+    $("vi-full-toggle-icon")?.classList.remove("bi-chevron-down");
+
 
   }
 
@@ -418,6 +465,7 @@
   async function init() {
     // wire reset
     $("vi-reset")?.addEventListener("click", () => resetForm(true));
+    wireFullInspectionToggle();
 
     $("vi-vehicle-details").hidden = true
 
@@ -481,14 +529,180 @@
     }
   }
 
+  function wireVehicleSearchUI(vehicles) {
+    const input = $("vi-vehicle-search");
+    const results = $("vi-vehicle-results");
+    const sel = $("vi-vehicle");
+    if (!input || !results || !sel) return;
+
+    // Map for quick lookup: id -> vehicle
+    const byId = new Map();
+    for (const v of vehicles) byId.set(String(v.vehicle_id), v);
+
+    function scoreMatch(label, q) {
+      // simple "contains" match; can be improved later
+      const s = String(label || "").toLowerCase();
+      const query = String(q || "").toLowerCase().trim();
+      if (!query) return 1;
+      if (s.startsWith(query)) return 3;
+      if (s.includes(query)) return 2;
+      return 0;
+    }
+
+    function renderList(query) {
+      const q = (query || "").trim().toLowerCase();
+
+      // If empty query, show a short "top list" (or hide—your call)
+      const items = vehicles
+        .map(v => ({
+          v,
+          score: scoreMatch(v.search_label, q),
+        }))
+        .filter(x => q ? x.score > 0 : true)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 25); // cap for usability
+
+      if (items.length === 0) {
+        results.innerHTML = `<div class="list-group-item text-muted small">No matches.</div>`;
+        results.classList.remove("d-none");
+        return;
+      }
+
+      results.innerHTML = items.map(({ v }) => {
+        const id = escapeHtml(v.vehicle_id);
+        const label = escapeHtml(v.search_label || `${v.make_model || ""} ${v.license_plate || ""}`.trim() || `Vehicle ${id}`);
+        return `
+          <button type="button"
+            class="list-group-item list-group-item-action"
+            data-vehicle-id="${id}"
+          >
+            ${label}
+          </button>
+        `;
+      }).join("");
+
+      results.classList.remove("d-none");
+    }
+
+    function chooseVehicle(vehicleId) {
+      const idStr = String(vehicleId || "");
+      if (!idStr) return;
+
+      // Set hidden select + trigger existing flow
+      sel.value = idStr;
+      sel.dispatchEvent(new Event("change", { bubbles: true }));
+
+      const v = byId.get(idStr);
+      if (v) input.value = v.search_label || "";
+
+      results.classList.add("d-none");
+    }
+
+    // Clicking a result picks it
+    results.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-vehicle-id]");
+      if (!btn) return;
+      chooseVehicle(btn.dataset.vehicleId);
+    });
+
+    // Typing filters
+    input.addEventListener("input", () => {
+      renderList(input.value);
+    });
+
+    // Focus shows list (helpful on mobile)
+    input.addEventListener("focus", () => {
+      renderList(input.value);
+    });
+
+    // Escape closes
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        results.classList.add("d-none");
+        input.blur();
+      }
+    });
+
+    // Click outside closes
+    document.addEventListener("click", (e) => {
+      const inside = e.target.closest("#vi-vehicle-results") || e.target.closest("#vi-vehicle-search");
+      if (!inside) results.classList.add("d-none");
+    });
+
+    // When the hidden select changes (e.g., URL preselect), reflect it into the input
+    sel.addEventListener("change", () => {
+      const v = byId.get(String(sel.value || ""));
+      if (v) input.value = v.search_label || "";
+      else if (!sel.value) input.value = "";
+    });
+
+    // Initial render: keep closed until they focus/ type, but ready
+    results.classList.add("d-none");
+  }
+
+
+  function wireFullInspectionToggle() {
+    const btn = $("vi-full-toggle");
+    const wrap = $("vi-full-wrap");
+    const icon = $("vi-full-toggle-icon");
+    if (!btn || !wrap || !icon) return;
+
+    function setOpen(isOpen) {
+      btn.setAttribute("aria-expanded", isOpen ? "true" : "false");
+      wrap.classList.toggle("d-none", !isOpen);
+
+      // chevron right when closed, down when open
+      icon.classList.toggle("bi-chevron-right", !isOpen);
+      icon.classList.toggle("bi-chevron-down", isOpen);
+    }
+
+    // default collapsed
+    setOpen(false);
+
+    btn.addEventListener("click", () => {
+      const isOpen = btn.getAttribute("aria-expanded") === "true";
+      setOpen(!isOpen);
+    });
+
+    // If the tech starts interacting with Full Inspection fields, auto-open.
+    const autoOpenIds = [
+      "vi-oil",
+      "vi-coolant",
+      "vi-transmission",
+      "vi-warning-lights",
+      "vi-safe-to-operate",
+      "vi-notes",
+    ];
+
+    autoOpenIds.forEach((id) => {
+      const el = $(id);
+      if (!el) return;
+      el.addEventListener("focus", () => setOpen(true), { passive: true });
+      el.addEventListener("change", () => setOpen(true), { passive: true });
+    });
+}
+
+
   async function loadVehicles({ preserveSelection }) {
     const sel = $("vi-vehicle");
+    const searchInput = $("vi-vehicle-search");
+    const results = $("vi-vehicle-results");
+
     const prev = preserveSelection ? (sel?.value || "") : "";
 
     // show loading state in dropdown
     if (sel) {
       sel.innerHTML = `<option value="">Loading vehicles…</option>`;
       sel.disabled = true;
+      if (searchInput) {
+        searchInput.value = "";
+        searchInput.disabled = true;
+      }
+      if (results) {
+        results.innerHTML = "";
+        results.classList.add("d-none");
+      }
+
     }
 
     try {
@@ -509,18 +723,183 @@
       if (sel) {
         sel.disabled = false;
         if (prev) sel.value = prev;
+        if (searchInput) searchInput.disabled = false;
+
       }
 
       applyVehicleSelection(sel?.value || prev || null);
     } catch (e) {
       if (sel) {
         sel.disabled = false;
+        if (searchInput) searchInput.disabled = false;
         sel.innerHTML = `<option value="">(Failed to load vehicles)</option>`;
       }
+      
       setAlert("danger", e?.message || "Failed to load vehicles.");
       applyVehicleSelection(null);
     }
   }
+
+
+  // ---------------------------------------------------------------------------
+  // Edit deficiency (inspection page)
+  // ---------------------------------------------------------------------------
+  let __viEditDefModalBound = false;
+
+  function defId(d) {
+    return d?.id ?? d?.deficiency_id ?? null;
+  }
+
+  function normalizeDefRow(d) {
+    // allow multiple backend shapes
+    return {
+      id: defId(d),
+      description: (d?.description || "").toString(),
+      severity: (d?.severity || "").toString().toUpperCase(),
+      status: (d?.status || "").toString().toUpperCase(),
+      updated_by: (d?.updated_by || d?.updatedBy || "").toString(),
+    };
+  }
+
+  function clearEditDeficiencyModal() {
+    const err = $("vi-edit-def-error");
+    if (err) {
+      err.classList.add("d-none");
+      err.textContent = "";
+    }
+    setEditDeficiencySubmitting(false);
+  }
+
+  function setEditDeficiencySubmitting(isSubmitting) {
+    $("vi-edit-def-submit").disabled = !!isSubmitting;
+    $("vi-edit-def-spinner").classList.toggle("d-none", !isSubmitting);
+
+    $("vi-edit-def-description").disabled = !!isSubmitting;
+    $("vi-edit-def-severity").disabled = !!isSubmitting;
+    $("vi-edit-def-status").disabled = !!isSubmitting;
+    $("vi-edit-def-updated-by").disabled = !!isSubmitting;
+  }
+
+  function showEditDeficiencyError(msg) {
+    const err = $("vi-edit-def-error");
+    if (!err) return;
+    err.textContent = msg || "Something went wrong.";
+    err.classList.remove("d-none");
+  }
+
+  async function apiPatchDeficiency(deficiencyId, patch) {
+    const res = await fetch(`/api/vehicle_deficiencies/${encodeURIComponent(String(deficiencyId))}`, {
+      method: "PATCH",
+      headers: { "Accept": "application/json", "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify(patch),
+    });
+
+    let payload = null;
+    try { payload = await res.json(); } catch (_) {}
+
+    if (!res.ok) {
+      const msg = payload?.error || payload?.message || `Failed to update deficiency (HTTP ${res.status})`;
+      throw new Error(msg);
+    }
+    return payload || { status: "ok" };
+  }
+
+  function openEditDeficiencyModal(defRaw) {
+    const modalEl = $("viEditDefModal");
+    if (!modalEl || !window.bootstrap?.Modal) return;
+
+    const def = normalizeDefRow(defRaw);
+    if (!def.id) return;
+
+    modalEl.dataset.deficiencyId = String(def.id);
+
+    // seed fields
+    $("vi-edit-def-description").value = def.description || "";
+    $("vi-edit-def-severity").value = def.severity || "DEFICIENT";
+    $("vi-edit-def-status").value = def.status || "OPEN";
+
+    // default Updated By: inspector name
+    const inspector = ($("vi-inspector-name")?.value || "").trim();
+    $("vi-edit-def-updated-by").value = inspector || def.updated_by || "";
+
+    clearEditDeficiencyModal();
+
+    if (!__viEditDefModalBound) {
+      __viEditDefModalBound = true;
+
+      $("vi-edit-def-form")?.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        await submitEditDeficiency();
+      });
+
+      modalEl.addEventListener("hidden.bs.modal", () => clearEditDeficiencyModal());
+    }
+
+    const modal = window.bootstrap.Modal.getOrCreateInstance(modalEl, {
+      backdrop: "static",
+      keyboard: true,
+      focus: true,
+    });
+    modal.show();
+
+    window.setTimeout(() => $("vi-edit-def-description")?.focus(), 150);
+  }
+
+  async function submitEditDeficiency() {
+    const modalEl = $("viEditDefModal");
+    if (!modalEl) return;
+
+    const deficiencyId = Number(modalEl.dataset.deficiencyId || 0);
+    if (!deficiencyId) return;
+
+    const vehicleId = state.selectedVehicleId;
+    if (!vehicleId) return;
+
+    const description = ($("vi-edit-def-description")?.value || "").trim();
+    const severity = ($("vi-edit-def-severity")?.value || "").trim().toUpperCase();
+    const status = ($("vi-edit-def-status")?.value || "").trim().toUpperCase();
+    const updatedBy = ($("vi-edit-def-updated-by")?.value || "").trim()
+      || ($("vi-inspector-name")?.value || "").trim();
+
+    if (!description) {
+      showEditDeficiencyError("Description is required.");
+      $("vi-edit-def-description")?.focus();
+      return;
+    }
+    if (!severity) {
+      showEditDeficiencyError("Severity is required.");
+      $("vi-edit-def-severity")?.focus();
+      return;
+    }
+    if (!updatedBy) {
+      showEditDeficiencyError("Updated By is required.");
+      $("vi-edit-def-updated-by")?.focus();
+      return;
+    }
+
+    setEditDeficiencySubmitting(true);
+
+    try {
+      await apiPatchDeficiency(deficiencyId, {
+        description,
+        severity,
+        status,
+        updated_by: updatedBy,
+      });
+
+      // close modal
+      const modal = window.bootstrap.Modal.getInstance(modalEl);
+      try { modal?.hide(); } catch (_) {}
+
+      // refresh deficiency table
+      await loadVehicleDeficiencies(vehicleId);
+    } catch (e) {
+      showEditDeficiencyError(e?.message || "Failed to update deficiency.");
+      setEditDeficiencySubmitting(false);
+    }
+  }
+
 
 
   // Deficiency modal (new system)
@@ -653,4 +1032,5 @@
   document.addEventListener("DOMContentLoaded", () => {
     init().catch((e) => setAlert("danger", e?.message || "Failed to initialize page."));
   });
+
 })();

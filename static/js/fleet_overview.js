@@ -470,9 +470,7 @@
 
               <div class="mt-auto pt-3">
                 <a class="btn btn-sm btn-outline-secondary"
-                  href="${href}"
-                  target="_blank"
-                  rel="noopener noreferrer">
+                  href="${href}">
                   <i class="bi bi-box-arrow-up-right me-1"></i> Open vehicle details
                 </a>
               </div>

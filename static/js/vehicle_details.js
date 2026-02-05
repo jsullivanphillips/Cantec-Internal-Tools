@@ -978,7 +978,7 @@
         <div class="vd-kv__k">Safe To Drive?</div>
         <div class="vd-kv__v">${escapeHtml(yn(safeToOperate))}</div>
 
-        <div class="vd-kv__k">Notes (snapshot)</div>
+        <div class="vd-kv__k">Inspection Notes</div>
         <div class="vd-kv__v">
           <div class="vd-pre">${escapeHtml((notes || "—"))}</div>
         </div>
