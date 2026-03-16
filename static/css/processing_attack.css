@@ -156,6 +156,36 @@
     pointer-events: none;
 }
 
+.jobs-history-indicators {
+  display: flex;
+  flex-direction: row; /* rightmost square is most recent */
+  gap: 4px;
+  justify-content: center;
+  align-items: center;
+  margin-top: 6px;
+  margin-bottom: 2px;
+}
+
+.jobs-history-square {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background-color: #cccccc;
+  flex-shrink: 0;
+}
+
+.jobs-history-square.square-green {
+  background-color: #27a532;
+}
+
+.jobs-history-square.square-red {
+  background-color: #b92525;
+}
+
+.jobs-history-square.square-missing {
+  background-color: #d9d9d9;
+}
+
 #numberOfPinkFolderJobsCard:hover.pink-hint {
   opacity: 0.9;
   text-decoration: underline;

@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from dateutil import parser  # Use dateutil for flexible datetime parsing
 from collections import Counter
-from app.db_models import db, JobSummary, ProcessorMetrics
+from app.db_models import db, JobSummary, ProcessorMetrics, ProcessingStatus
 import sys
 from flask import redirect, url_for
 
@@ -411,6 +411,86 @@ def num_jobs_to_be_marked_complete():
 
     return jsonify({"jobs_to_be_marked_complete": num_jobs}), 200
 
+
+@processing_attack_bp.route(
+    "/processing_attack/history_jobs_to_be_marked_complete",
+    methods=["GET"],
+)
+def processing_attack_history_jobs_to_be_marked_complete():
+    """
+    Returns up to the last 12 weekly ProcessingStatus snapshots.
+
+    Each entry contains:
+      - week_start: ISO date string for the Monday of the week.
+      - jobs_to_be_marked_complete: integer count for that week.
+      - hit_goal: True if jobs_to_be_marked_complete < 50, else False.
+    """
+    # Most recent weeks first, then reverse for chronological display.
+    records = (
+        ProcessingStatus.query
+        .order_by(ProcessingStatus.week_start.desc())
+        .limit(12)
+        .all()
+    )
+
+    history = []
+    for record in reversed(records):
+        jobs_count = record.jobs_to_be_marked_complete
+        hit_goal = None
+        if jobs_count is not None:
+            hit_goal = jobs_count < 50
+
+        history.append(
+            {
+                "week_start": record.week_start.isoformat()
+                if record.week_start
+                else None,
+                "jobs_to_be_marked_complete": jobs_count,
+                "hit_goal": hit_goal,
+            }
+        )
+
+    return jsonify(history), 200
+
+
+@processing_attack_bp.route(
+    "/processing_attack/history_pink_folder_jobs",
+    methods=["GET"],
+)
+def processing_attack_history_pink_folder_jobs():
+    """
+    Returns up to the last 12 weekly ProcessingStatus snapshots for pink folder jobs.
+
+    Each entry contains:
+      - week_start: ISO date string for the Monday of the week.
+      - number_of_pink_folder_jobs: integer count for that week.
+      - hit_goal: True if number_of_pink_folder_jobs < 10, else False.
+    """
+    records = (
+        ProcessingStatus.query
+        .order_by(ProcessingStatus.week_start.desc())
+        .limit(12)
+        .all()
+    )
+
+    history = []
+    for record in reversed(records):
+        pink_count = record.number_of_pink_folder_jobs
+        hit_goal = None
+        if pink_count is not None:
+            hit_goal = pink_count < 10
+
+        history.append(
+            {
+                "week_start": record.week_start.isoformat()
+                if record.week_start
+                else None,
+                "number_of_pink_folder_jobs": pink_count,
+                "hit_goal": hit_goal,
+            }
+        )
+
+    return jsonify(history), 200
 
 
 def get_num_jobs_to_be_marked_complete():

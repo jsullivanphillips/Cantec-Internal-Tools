@@ -1,4 +1,9 @@
+"""
+Update JobSummary, ProcessorMetrics, and ProcessingStatus from ServiceTrade.
 
+On Heroku Scheduler this script runs at 09:00 UTC (1:00 AM PST / 2:00 AM PDT).
+The ProcessingStatus snapshot reflects "jobs to be marked complete" at that time.
+"""
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
 from datetime import datetime, timedelta, timezone, time

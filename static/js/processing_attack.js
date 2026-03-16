@@ -536,6 +536,134 @@ const ProcessingAttack = (() => {
     }
   }
 
+  async function loadJobsToBeMarkedCompleteHistory() {
+    const container = document.getElementById("jobsToBeMarkedCompleteHistory");
+    if (!container) {
+      return;
+    }
+
+    container.innerHTML = "";
+
+    try {
+      const response = await fetch(
+        "/processing_attack/history_jobs_to_be_marked_complete",
+        {
+          headers: { Accept: "application/json" },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const weeks = await response.json();
+      if (!Array.isArray(weeks) || weeks.length === 0) {
+        return;
+      }
+
+      weeks.forEach((entry) => {
+        const square = document.createElement("div");
+        square.classList.add("jobs-history-square");
+
+        if (entry.hit_goal === true) {
+          square.classList.add("square-green");
+        } else if (entry.hit_goal === false) {
+          square.classList.add("square-red");
+        } else {
+          square.classList.add("square-missing");
+        }
+
+        const weekStart = entry.week_start ? new Date(entry.week_start) : null;
+        const formattedWeek =
+          weekStart && !Number.isNaN(weekStart.getTime())
+            ? weekStart.toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              })
+            : "Unknown week";
+
+        const jobsCount =
+          typeof entry.jobs_to_be_marked_complete === "number"
+            ? entry.jobs_to_be_marked_complete
+            : "N/A";
+
+        square.title = `Week of ${formattedWeek}: ${jobsCount} jobs to be marked complete`;
+
+        container.appendChild(square);
+      });
+    } catch (error) {
+      console.error(
+        "Error loading jobs-to-be-marked-complete history:",
+        error
+      );
+    }
+  }
+
+  async function loadPinkFolderJobsHistory() {
+    const container = document.getElementById("pinkFolderJobsHistory");
+    if (!container) {
+      return;
+    }
+
+    container.innerHTML = "";
+
+    try {
+      const response = await fetch(
+        "/processing_attack/history_pink_folder_jobs",
+        {
+          headers: { Accept: "application/json" },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const weeks = await response.json();
+      if (!Array.isArray(weeks) || weeks.length === 0) {
+        return;
+      }
+
+      weeks.forEach((entry) => {
+        const square = document.createElement("div");
+        square.classList.add("jobs-history-square");
+
+        if (entry.hit_goal === true) {
+          square.classList.add("square-green");
+        } else if (entry.hit_goal === false) {
+          square.classList.add("square-red");
+        } else {
+          square.classList.add("square-missing");
+        }
+
+        const weekStart = entry.week_start ? new Date(entry.week_start) : null;
+        const formattedWeek =
+          weekStart && !Number.isNaN(weekStart.getTime())
+            ? weekStart.toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              })
+            : "Unknown week";
+
+        const pinkCount =
+          typeof entry.number_of_pink_folder_jobs === "number"
+            ? entry.number_of_pink_folder_jobs
+            : "N/A";
+
+        square.title = `Week of ${formattedWeek}: ${pinkCount} pink-folder jobs`;
+
+        container.appendChild(square);
+      });
+    } catch (error) {
+      console.error(
+        "Error loading pink-folder jobs history:",
+        error
+      );
+    }
+  }
+
   // Load complete jobs data.
   function loadCompleteJobs(selectedMonday) {
     document.getElementById("numberOfJobsWithReportConversionTag").innerHTML = `
@@ -1166,8 +1294,10 @@ const ProcessingAttack = (() => {
     setupOldestJobsCardToggle();
     setupScheduledJobsRequiringConversionCardToggle();
     loadJobsToBeMarkedComplete();
+    loadJobsToBeMarkedCompleteHistory();
     loadJobsToBeInvoiced();
     loadPinkFolderData();
+    loadPinkFolderJobsHistory();
     LoadJobsToday();
     const weekSelect = document.getElementById("week-select");
     if (weekSelect.value) {
