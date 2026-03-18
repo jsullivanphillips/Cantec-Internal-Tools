@@ -7,19 +7,39 @@ The ProcessingStatus snapshot reflects "jobs to be marked complete" at that time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
 from datetime import datetime, timedelta, timezone, time
+from zoneinfo import ZoneInfo
 from pytz import UTC
 from app import create_app
 from app.db_models import db, JobSummary, ProcessorMetrics, ProcessingStatus
-from app.routes.processing_attack import get_jobs_processed, get_jobs_processed_by_processor, get_jobs_to_be_marked_complete, get_oldest_job_data, organize_jobs_by_job_type, get_pink_folder_data
+from app.routes.processing_attack import (
+    get_jobs_processed,
+    get_jobs_processed_by_processor,
+    get_jobs_to_be_marked_complete,
+    get_jobs_to_be_invoiced,
+    get_oldest_job_data,
+    organize_jobs_by_job_type,
+    find_report_conversion_jobs,
+    get_pink_folder_data,
+)
 from dotenv import load_dotenv
 
 load_dotenv()
 app = create_app()
 
 def get_processing_status_data():
-    today = datetime.now(timezone.utc).date()
-    week_start = today - timedelta(days=today.weekday())
-    week_end_datetime = datetime.combine(week_start + timedelta(days=6), time(23, 59, 59), tzinfo=timezone.utc)
+    # Use local week boundaries (Vancouver) so the stored `week_start` and
+    # the "do not overwrite after week end" cutoff align with when the job runs.
+    PT = ZoneInfo("America/Vancouver")
+    now_local = datetime.now(PT)
+    week_start = now_local.date() - timedelta(days=now_local.weekday())
+
+    # Compute Sunday 23:59:59 local, then convert to UTC for comparisons.
+    week_end_local = datetime.combine(
+        week_start + timedelta(days=6),
+        time(23, 59, 59),
+        tzinfo=PT,
+    )
+    week_end_datetime = week_end_local.astimezone(timezone.utc)
 
     record = ProcessingStatus.query.filter_by(week_start=week_start).first()
     if record and record.updated_at:
@@ -39,11 +59,38 @@ def get_processing_status_data():
     else:
         oldest_job_date = oldest_job_address = oldest_job_type = None
 
+    jobs_to_be_invoiced = get_jobs_to_be_invoiced()
+
+    # Report conversion jobs are "inspection" jobs tied to locations with the Report_Conversion tag.
+    num_locations_to_be_converted, jobs_to_be_converted = find_report_conversion_jobs()
+    earliest_conversion_job = jobs_to_be_converted[0] if jobs_to_be_converted else None
+
+    if earliest_conversion_job and earliest_conversion_job.get("scheduledDate"):
+        earliest_conversion_date = datetime.fromtimestamp(
+            earliest_conversion_job.get("scheduledDate"),
+            tz=timezone.utc,
+        ).date()
+        earliest_conversion_address = (
+            earliest_conversion_job.get("location", {})
+            .get("address", {})
+            .get("street")
+        )
+        earliest_conversion_job_id = earliest_conversion_job.get("id")
+    else:
+        earliest_conversion_date = None
+        earliest_conversion_address = None
+        earliest_conversion_job_id = None
+
     jobs_by_job_type = organize_jobs_by_job_type(jobs_to_be_marked_complete)
     number_of_pink_folder_jobs, _, _ = get_pink_folder_data()
 
     status_data = {
         "jobs_to_be_marked_complete": len(jobs_to_be_marked_complete),
+        "jobs_to_be_invoiced": jobs_to_be_invoiced,
+        "jobs_to_be_converted": num_locations_to_be_converted,
+        "earliest_job_to_be_converted_date": earliest_conversion_date,
+        "earliest_job_to_be_converted_address": earliest_conversion_address,
+        "earliest_job_to_be_converted_job_id": earliest_conversion_job_id,
         "oldest_job_date": oldest_job_date,
         "oldest_job_address": oldest_job_address,
         "oldest_job_type": oldest_job_type,
@@ -173,7 +220,8 @@ def update_all_metrics():
             # Only refresh the "jobs to be marked complete" snapshot weekly.
             # This ensures the green/red history squares don't drift throughout the week
             # when the scheduler runs daily.
-            if datetime.now(timezone.utc).weekday() == 0:  # Monday
+            now_local = datetime.now(ZoneInfo("America/Vancouver"))
+            if now_local.weekday() == 0:  # Monday
                 get_processing_status_data()
             else:
                 print("Skipping ProcessingStatus update (only runs on Mondays).")

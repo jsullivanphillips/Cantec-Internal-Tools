@@ -48,6 +48,15 @@ class ProcessingStatus(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     week_start = db.Column(db.Date, unique=True, nullable=False)
     jobs_to_be_marked_complete = db.Column(db.Integer, default=0)
+
+    # Snapshot values captured by update_processing_data.py
+    # (Monday 1:00pm local week, based on America/Vancouver).
+    jobs_to_be_invoiced = db.Column(db.Integer, default=0)
+    jobs_to_be_converted = db.Column(db.Integer, default=0)  # report_conversion locations/jobs count
+    earliest_job_to_be_converted_date = db.Column(db.Date, nullable=True)
+    earliest_job_to_be_converted_address = db.Column(db.String(255), nullable=True)
+    earliest_job_to_be_converted_job_id = db.Column(db.BIGINT, nullable=True)
+
     oldest_job_date = db.Column(db.Date, nullable=True)
     oldest_job_address = db.Column(db.String(255), nullable=True)
     oldest_job_type = db.Column(db.String(255), nullable=True)
