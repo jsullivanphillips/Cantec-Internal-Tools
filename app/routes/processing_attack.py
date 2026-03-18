@@ -424,6 +424,14 @@ def processing_attack_history_jobs_to_be_marked_complete():
       - week_start: ISO date string for the Monday of the week.
       - jobs_to_be_marked_complete: integer count for that week.
       - hit_goal: True if jobs_to_be_marked_complete < 50, else False.
+      - jobs_to_be_invoiced: integer count for that week.
+      - hit_goal_jobs_to_be_invoiced: True if jobs_to_be_invoiced <= 30, else False.
+      - jobs_to_be_converted: integer count for that week (scheduled jobs requiring report conversion).
+      - hit_goal_jobs_to_be_converted: True if jobs_to_be_converted <= 10, else False.
+      - oldest_job_date/oldest_job_address/oldest_job_type
+      - hit_goal_oldest_job: True if oldest job is <= 42 days old at snapshot time, else False.
+      - earliest_job_to_be_converted_date/earliest_job_to_be_converted_address
+      - hit_goal_earliest_job_to_be_converted: True if earliest conversion job is in the next 2 weeks, else False.
     """
     # Most recent weeks first, then reverse for chronological display.
     records = (
@@ -434,11 +442,55 @@ def processing_attack_history_jobs_to_be_marked_complete():
     )
 
     history = []
+
+    def _as_date(d):
+        # DB columns are Date, but guard against datetimes/nulls.
+        if d is None:
+            return None
+        if isinstance(d, datetime):
+            return d.date()
+        return d
+
     for record in reversed(records):
         jobs_count = record.jobs_to_be_marked_complete
         hit_goal = None
         if jobs_count is not None:
             hit_goal = jobs_count < 50
+
+        jobs_to_be_invoiced = record.jobs_to_be_invoiced
+        hit_goal_jobs_to_be_invoiced = None
+        if jobs_to_be_invoiced is not None:
+            hit_goal_jobs_to_be_invoiced = jobs_to_be_invoiced <= 30
+
+        jobs_to_be_converted = record.jobs_to_be_converted
+        hit_goal_jobs_to_be_converted = None
+        if jobs_to_be_converted is not None:
+            hit_goal_jobs_to_be_converted = jobs_to_be_converted <= 10
+
+        # Snapshot week_start is when the script ran (Monday ~1pm local time).
+        week_start_date = _as_date(record.week_start)
+
+        oldest_job_date = _as_date(record.oldest_job_date)
+        oldest_job_address = record.oldest_job_address
+        oldest_job_type = record.oldest_job_type
+        hit_goal_oldest_job = None
+        if oldest_job_date is not None and week_start_date is not None:
+            diff_days = (week_start_date - oldest_job_date).days
+            hit_goal_oldest_job = diff_days <= 42
+
+        earliest_job_to_be_converted_date = _as_date(
+            record.earliest_job_to_be_converted_date
+        )
+        earliest_job_to_be_converted_address = record.earliest_job_to_be_converted_address
+        earliest_job_to_be_converted_job_id = record.earliest_job_to_be_converted_job_id
+
+        hit_goal_earliest_job_to_be_converted = None
+        if earliest_job_to_be_converted_date is not None and week_start_date is not None:
+            # "Next 2 weeks" relative to the snapshot week_start.
+            threshold_date = week_start_date + timedelta(days=14)
+            hit_goal_earliest_job_to_be_converted = (
+                earliest_job_to_be_converted_date >= threshold_date
+            )
 
         history.append(
             {
@@ -447,6 +499,26 @@ def processing_attack_history_jobs_to_be_marked_complete():
                 else None,
                 "jobs_to_be_marked_complete": jobs_count,
                 "hit_goal": hit_goal,
+
+                "jobs_to_be_invoiced": jobs_to_be_invoiced,
+                "hit_goal_jobs_to_be_invoiced": hit_goal_jobs_to_be_invoiced,
+
+                "jobs_to_be_converted": jobs_to_be_converted,
+                "hit_goal_jobs_to_be_converted": hit_goal_jobs_to_be_converted,
+
+                "oldest_job_date": oldest_job_date.isoformat()
+                if oldest_job_date
+                else None,
+                "oldest_job_address": oldest_job_address,
+                "oldest_job_type": oldest_job_type,
+                "hit_goal_oldest_job": hit_goal_oldest_job,
+
+                "earliest_job_to_be_converted_date": earliest_job_to_be_converted_date.isoformat()
+                if earliest_job_to_be_converted_date
+                else None,
+                "earliest_job_to_be_converted_address": earliest_job_to_be_converted_address,
+                "earliest_job_to_be_converted_job_id": earliest_job_to_be_converted_job_id,
+                "hit_goal_earliest_job_to_be_converted": hit_goal_earliest_job_to_be_converted,
             }
         )
 

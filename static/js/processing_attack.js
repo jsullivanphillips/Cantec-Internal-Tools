@@ -561,37 +561,83 @@ const ProcessingAttack = (() => {
         return;
       }
 
-      weeks.forEach((entry) => {
-        const square = document.createElement("div");
-        square.classList.add("jobs-history-square");
+      // Render N-week indicator squares into multiple KPI containers.
+      const renderSquares = (containerId, hitGoalKey, titleFn) => {
+        const el = document.getElementById(containerId);
+        if (!el) return;
 
-        if (entry.hit_goal === true) {
-          square.classList.add("square-green");
-        } else if (entry.hit_goal === false) {
-          square.classList.add("square-red");
-        } else {
-          square.classList.add("square-missing");
-        }
+        el.innerHTML = "";
+        weeks.forEach((entry) => {
+          const square = document.createElement("div");
+          square.classList.add("jobs-history-square");
 
+          const hit = entry[hitGoalKey];
+          if (hit === true) {
+            square.classList.add("square-green");
+          } else if (hit === false) {
+            square.classList.add("square-red");
+          } else {
+            square.classList.add("square-missing");
+          }
+
+          square.title = titleFn(entry);
+          el.appendChild(square);
+        });
+      };
+
+      const formatWeekLabel = (entry) => {
         const weekStart = entry.week_start ? new Date(entry.week_start) : null;
-        const formattedWeek =
-          weekStart && !Number.isNaN(weekStart.getTime())
-            ? weekStart.toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-              })
-            : "Unknown week";
+        if (!weekStart || Number.isNaN(weekStart.getTime())) return "Unknown week";
+        return weekStart.toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        });
+      };
 
-        const jobsCount =
-          typeof entry.jobs_to_be_marked_complete === "number"
-            ? entry.jobs_to_be_marked_complete
-            : "N/A";
+      // Jobs To Be Marked Complete (existing)
+      renderSquares(
+        "jobsToBeMarkedCompleteHistory",
+        "hit_goal",
+        (entry) =>
+          `Week of ${formatWeekLabel(entry)}: ${entry.jobs_to_be_marked_complete ?? "N/A"} jobs to be marked complete`
+      );
 
-        square.title = `Week of ${formattedWeek}: ${jobsCount} jobs to be marked complete`;
+      // Oldest job (age <= 42 days)
+      renderSquares(
+        "oldestJobsHistory",
+        "hit_goal_oldest_job",
+        (entry) =>
+          `Week of ${formatWeekLabel(entry)}: Oldest job at ${entry.oldest_job_address ?? "N/A"}`
+      );
 
-        container.appendChild(square);
-      });
+      // Jobs to be invoiced (<= 30)
+      renderSquares(
+        "jobsToBeInvoicedHistory",
+        "hit_goal_jobs_to_be_invoiced",
+        (entry) =>
+          `Week of ${formatWeekLabel(entry)}: ${entry.jobs_to_be_invoiced ?? "N/A"} jobs to be invoiced`
+      );
+
+      // Jobs requiring report conversion (<= 10)
+      renderSquares(
+        "jobsToBeConvertedHistory",
+        "hit_goal_jobs_to_be_converted",
+        (entry) =>
+          `Week of ${formatWeekLabel(entry)}: ${entry.jobs_to_be_converted ?? "N/A"} jobs requiring report conversion`
+      );
+
+      // Earliest conversion job (scheduled date >= week_start + 2 weeks)
+      renderSquares(
+        "earliestJobToBeConvertedHistory",
+        "hit_goal_earliest_job_to_be_converted",
+        (entry) =>
+          `Week of ${formatWeekLabel(entry)}: earliest conversion ${
+            entry.earliest_job_to_be_converted_address ?? "N/A"
+          }`
+      );
+
+      // (original single KPI loop replaced by renderSquares() calls above)
     } catch (error) {
       console.error(
         "Error loading jobs-to-be-marked-complete history:",

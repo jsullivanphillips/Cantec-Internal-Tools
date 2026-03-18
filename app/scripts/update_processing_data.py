@@ -87,7 +87,8 @@ def get_processing_status_data():
     status_data = {
         "jobs_to_be_marked_complete": len(jobs_to_be_marked_complete),
         "jobs_to_be_invoiced": jobs_to_be_invoiced,
-        "jobs_to_be_converted": num_locations_to_be_converted,
+        # UI displays the count of jobs requiring conversion (not the number of tagged locations).
+        "jobs_to_be_converted": len(jobs_to_be_converted),
         "earliest_job_to_be_converted_date": earliest_conversion_date,
         "earliest_job_to_be_converted_address": earliest_conversion_address,
         "earliest_job_to_be_converted_job_id": earliest_conversion_job_id,
