@@ -170,8 +170,13 @@ def update_all_metrics():
             session['username'] = os.environ.get("PROCESSING_USERNAME")
             session['password'] = os.environ.get("PROCESSING_PASSWORD")
 
-            # Get status summary for the current week
-            get_processing_status_data()
+            # Only refresh the "jobs to be marked complete" snapshot weekly.
+            # This ensures the green/red history squares don't drift throughout the week
+            # when the scheduler runs daily.
+            if datetime.now(timezone.utc).weekday() == 0:  # Monday
+                get_processing_status_data()
+            else:
+                print("Skipping ProcessingStatus update (only runs on Mondays).")
 
             today = datetime.now(timezone.utc).date()
             start_date = today - timedelta(days=365)
