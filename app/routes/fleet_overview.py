@@ -35,8 +35,7 @@ fleet_bp = Blueprint("fleet", __name__, template_folder="templates")
 # -----------------------------------------------------------------------------
 # Page routes
 # -----------------------------------------------------------------------------
-@fleet_bp.get("/fleet_overview")
-def fleet_overview():
+def _fleet_auth_or_login_redirect():
     api_session = requests.Session()
     auth_url = "https://api.servicetrade.com/api/auth"
     payload = {
@@ -49,8 +48,23 @@ def fleet_overview():
         auth_response.raise_for_status()
     except Exception:
         return redirect(url_for("auth.login"))
-    
-    return render_template("fleet_overview.html")
+    return None
+
+
+@fleet_bp.get("/fleet_overview")
+def fleet_overview():
+    auth_redirect = _fleet_auth_or_login_redirect()
+    if auth_redirect is not None:
+        return auth_redirect
+    return render_template("fleet_overview.html", show_legacy=False)
+
+
+@fleet_bp.get("/fleet_overview/legacy")
+def fleet_overview_legacy():
+    auth_redirect = _fleet_auth_or_login_redirect()
+    if auth_redirect is not None:
+        return auth_redirect
+    return render_template("fleet_overview.html", show_legacy=True)
 
 @fleet_bp.get("/fleet/inspection")
 def vehicle_inspection():

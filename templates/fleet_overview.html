@@ -4,10 +4,40 @@
 {% block title %}Fleet Triage{% endblock %}
 
 {% block extra_head %}
+{% if show_legacy %}
   <link rel="stylesheet" href="{{ url_for('static', filename='css/fleet_overview.css') }}">
+{% endif %}
 {% endblock %}
 
 {% block content %}
+{% if not show_legacy %}
+<div class="container py-5">
+  <div class="row justify-content-center">
+    <div class="col-12 col-md-9 col-lg-7">
+      <div class="card border-0 shadow-sm">
+        <div class="card-body p-4 p-md-5 text-center">
+          <i class="bi bi-truck fs-2 d-block mb-3"></i>
+          <h1 class="h4 mb-2">Fleet Maintenance has moved</h1>
+          <p class="text-muted mb-4">
+            Please use the new Fleet Maintenance app at
+            <strong>app.fleetmaintenance.ca</strong>.
+          </p>
+
+          <a class="btn btn-primary btn-lg" href="https://app.fleetmaintenance.ca">
+            Go to the new Fleet Maintenance site
+          </a>
+
+          <div class="mt-4">
+            <a class="small text-muted" href="{{ url_for('fleet.fleet_overview_legacy') }}">
+              Continue to legacy page
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% else %}
 <div class="container py-4 fleet-overview">
 
   <!-- Header -->
@@ -181,8 +211,11 @@
   </div>
 
 </div>
+{% endif %}
 {% endblock %}
 
 {% block extra_scripts %}
+{% if show_legacy %}
   <script src="{{ url_for('static', filename='js/fleet_overview.js') }}"></script>
+{% endif %}
 {% endblock %}
