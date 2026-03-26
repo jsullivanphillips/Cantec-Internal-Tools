@@ -141,11 +141,24 @@ def api_keys_search():
         return jsonify({"data": []})
 
     like = f"%{q}%"
+    # Also match while ignoring spaces so accidental spacing doesn't break search.
+    normalized_q = "".join(q.split())
+    normalized_like = f"%{normalized_q}%"
+
+    keycode_no_spaces = func.replace(func.coalesce(Key.keycode, ""), " ", "")
+    address_no_spaces = func.replace(func.coalesce(KeyAddress.address, ""), " ", "")
 
     query = (
         db.session.query(Key)
         .outerjoin(KeyAddress, KeyAddress.key_id == Key.id)
-        .filter(or_(Key.keycode.ilike(like), KeyAddress.address.ilike(like)))
+        .filter(
+            or_(
+                Key.keycode.ilike(like),
+                KeyAddress.address.ilike(like),
+                keycode_no_spaces.ilike(normalized_like),
+                address_no_spaces.ilike(normalized_like),
+            )
+        )
         .distinct()
         .limit(20)
     )
