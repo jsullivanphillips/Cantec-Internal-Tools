@@ -2,6 +2,21 @@ import logging
 import os
 from logging.handlers import RotatingFileHandler
 
+
+class SafeRotatingFileHandler(RotatingFileHandler):
+    """
+    RotatingFileHandler that skips rollover if the log file is locked (common on
+    Windows when another process holds app.log open, e.g. an editor).
+    """
+
+    def doRollover(self):
+        try:
+            super().doRollover()
+        except PermissionError:
+            # Windows: log file open in another process (e.g. IDE) blocks rename on rotate.
+            return
+
+
 def setup_logging(app):
     try:
         # Define the log file path
@@ -9,7 +24,7 @@ def setup_logging(app):
         log_file_path = os.path.abspath(log_file_path)
 
         # File handler
-        file_handler = RotatingFileHandler(log_file_path, maxBytes=10000, backupCount=3)
+        file_handler = SafeRotatingFileHandler(log_file_path, maxBytes=10000, backupCount=3)
         file_handler.setLevel(logging.INFO)
         file_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
         file_handler.setFormatter(file_formatter)

@@ -1,15 +1,13 @@
-from flask import Blueprint, jsonify, render_template, session
+from flask import Blueprint, jsonify, session
 from app.db_models import db, MonthlyRouteSnapshot
 from sqlalchemy import desc
 from .scheduling_attack import get_active_techs
 from flask import redirect, url_for
 import requests
 
-monthly_specialist_bp = Blueprint(
-    "monthly_specialist",
-    __name__,
-    template_folder="templates"
-)
+from app.spa import send_spa_index
+
+monthly_specialist_bp = Blueprint("monthly_specialist", __name__)
 
 
 @monthly_specialist_bp.route('/monthly_specialist', methods=['GET'])
@@ -27,7 +25,7 @@ def monthly_specialists():
         auth_response.raise_for_status()
     except Exception as e:
         return redirect(url_for("auth.login"))  # or whatever your login route is
-    return render_template("monthly_specialists.html")
+    return send_spa_index()
 
 @monthly_specialist_bp.route("/api/monthly_specialists")
 def get_monthly_specialists():
@@ -67,7 +65,6 @@ def get_monthly_specialists():
 
         filtered_top = []
         for item in top:
-            print(item)
             nm = _extract_name(item)
             if nm and nm.casefold() in active_name_set:
                 filtered_top.append(item)

@@ -1,4 +1,6 @@
 from flask import Blueprint, request, jsonify, session
+
+from app.spa import send_spa_index
 from app.scripts.update_deficiency_by_id import update_deficiency_by_id, update_deficiency_by_job_id
 from app.routes.performance_summary import update_job_item_by_id
 import os
@@ -125,8 +127,11 @@ def handle_job_item_added_webhook():
 
 
 
+@webhook_bp.route("/webhooks/status/data", methods=["GET"])
+def webhook_status_data():
+    return jsonify(webhook_status)
+
+
 @webhook_bp.route('/webhooks/status', methods=['GET'])
 def webhook_status_page():
-    from flask import render_template
-
-    return render_template('webhook_status.html', status=webhook_status)
+    return send_spa_index()

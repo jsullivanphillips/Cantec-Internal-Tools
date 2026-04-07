@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, jsonify, session, request
+from flask import Blueprint, jsonify, session, request
 from dataclasses import asdict
 import requests
 import json
@@ -11,7 +11,9 @@ from sqlalchemy import and_
 import pytz
 from flask import redirect, url_for
 
-deficiency_tracker_bp = Blueprint('deficiency_tracker', __name__, template_folder='templates')
+from app.spa import send_spa_index
+
+deficiency_tracker_bp = Blueprint('deficiency_tracker', __name__)
 api_session = requests.Session()
 
 SERVICE_TRADE_API_BASE = "https://api.servicetrade.com/api"
@@ -38,7 +40,7 @@ def deficiency_tracker():
         auth_response.raise_for_status()
     except Exception as e:
         return redirect(url_for("auth.login"))  # or whatever your login route is
-    return render_template("deficiency_tracker.html")
+    return send_spa_index()
 
 # Helper Authentication
 def authenticate():

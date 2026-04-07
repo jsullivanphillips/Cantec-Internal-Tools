@@ -1,11 +1,13 @@
 # app/routes/homes.py
-from flask import Blueprint, render_template, redirect, url_for, jsonify, session
+from flask import Blueprint, redirect, url_for, jsonify, session
 from app.routes.processing_attack import get_jobs_processed_today, get_jobs_to_be_invoiced, get_num_jobs_to_be_marked_complete, get_pink_folder_data
 from app.routes.scheduling_attack import get_forward_schedule_coverage_pct, get_percent_confirmed_next_two_weeks
 from app.routes.limbo_job_tracker import get_limbo_jobs
 from app.routes.keys import get_keys_older_than
 
 import requests
+
+from app.spa import send_spa_index
 
 home_bp = Blueprint("home", __name__)
 api_session = requests.Session()
@@ -33,7 +35,7 @@ def home():
     except Exception:
         return redirect(url_for("auth.login"))
 
-    return render_template("home.html")
+    return send_spa_index()
 
 # Routes
 @home_bp.route("/home/kpi/jobs_to_process")
@@ -123,8 +125,12 @@ def home_needs_attention():
 
     # --- Scheduling: Forward coverage ---
     try:
-        forward_num_weeks = float(get_forward_schedule_coverage_pct())
-        if forward_num_weeks < 5:
+        forward_raw = get_forward_schedule_coverage_pct()
+        if forward_raw is None:
+            pass  # forward_schedule_week not migrated yet; skip alert
+        else:
+            forward_num_weeks = float(forward_raw)
+        if forward_raw is not None and forward_num_weeks < 5:
             add_item(
                 "bad",
                 "Forward schedule coverage is low",
@@ -132,7 +138,7 @@ def home_needs_attention():
                 url_for("scheduling_attack.scheduling_attack"),
                 badge=f"{forward_num_weeks}",
             )
-        elif forward_num_weeks < 7:
+        elif forward_raw is not None and forward_num_weeks < 7:
             add_item(
                 "warn",
                 "Forward schedule coverage is trending low",

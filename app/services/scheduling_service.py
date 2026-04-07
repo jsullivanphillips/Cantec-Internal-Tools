@@ -130,6 +130,30 @@ def group_consecutive_days(daily_candidates):
         blocks.append(current_block)
     return blocks
 
+
+def _row_allows_tech(row, tech):
+    """
+    True when a row allows this tech by explicit id OR by selected type.
+    Backward compatible with legacy row["tech_types"] shape.
+    """
+    tech_id = tech.get("id")
+    tech_type = (tech.get("type") or "").strip()
+
+    row_techs = row.get("technicians", []) or []
+    if any(t.get("id") == tech_id for t in row_techs):
+        return True
+
+    selected_types = row.get("technician_types", []) or []
+    if tech_type and tech_type in selected_types:
+        return True
+
+    # Legacy shape fallback: {"Mid-Level Tech": ["Alex Turko", ...], ...}
+    legacy = row.get("tech_types", {}) or {}
+    if tech_type in legacy:
+        return True
+
+    return False
+
 def process_single_day_candidate(date, available_info, tech_rows, allowable_techs, tech_rank):
     """
     Processes a single candidate day for tech rows that require only one day.
@@ -146,9 +170,7 @@ def process_single_day_candidate(date, available_info, tech_rows, allowable_tech
             continue
         qualified = []
         for tech in allowable_techs:
-            # Updated check for nested tech selections:
-            row_techs = row.get("technicians", [])
-            if not any(t["id"] == tech.get("id") for t in row_techs):
+            if not _row_allows_tech(row, tech):
                 continue
             tech_name = tech.get("name")
             if tech_name in available_info and available_info[tech_name]["free_hours"] >= required_day_hours[0]:
@@ -197,9 +219,7 @@ def process_multi_day_block(block, tech_rows, allowable_techs, tech_rank):
                 window = [block[window_start]]  # Single-day window
                 qualified = []
                 for tech in allowable_techs:
-                    # Updated check for nested tech selections:
-                    row_techs = row.get("technicians", [])
-                    if not any(t["id"] == tech.get("id") for t in row_techs):
+                    if not _row_allows_tech(row, tech):
                         continue
                     date, avail_info = window[0]
                     tech_name = tech.get("name")
@@ -221,9 +241,7 @@ def process_multi_day_block(block, tech_rows, allowable_techs, tech_rank):
                 window = block[window_start: window_start + L]  # List of L tuples (date, available_info)
                 qualified = []
                 for tech in allowable_techs:
-                    # Updated check for nested tech selections:
-                    row_techs = row.get("tech_types", {})
-                    if tech.get("type") not in row_techs or tech.get("name") not in row_techs[tech.get("type")]:
+                    if not _row_allows_tech(row, tech):
                         continue
                     qualifies = True
                     window_hours = []

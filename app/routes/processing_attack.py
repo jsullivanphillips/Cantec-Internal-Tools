@@ -1,18 +1,38 @@
-from flask import Blueprint, render_template, jsonify, session, request, current_app
+from flask import Blueprint, jsonify, session, request, current_app
 import requests
 import json
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from dateutil import parser  # Use dateutil for flexible datetime parsing
 from collections import Counter
+from sqlalchemy import inspect
 from app.db_models import db, JobSummary, ProcessorMetrics, ProcessingStatus
 import sys
 from flask import redirect, url_for
 
-processing_attack_bp = Blueprint('processing_attack', __name__, template_folder='templates')
+from app.spa import send_spa_index
+from app.routes.pink_folder import get_pink_folder_data as get_pink_folder_page_detail
+
+processing_attack_bp = Blueprint('processing_attack', __name__)
 api_session = requests.Session()
 
 SERVICE_TRADE_API_BASE = "https://api.servicetrade.com/api"
+
+
+def _job_summary_table_exists() -> bool:
+    try:
+        return inspect(db.engine).has_table(JobSummary.__table__.name)
+    except Exception:
+        return False
+
+
+def _processor_metrics_table_exists() -> bool:
+    try:
+        return inspect(db.engine).has_table(ProcessorMetrics.__table__.name)
+    except Exception:
+        return False
+
+
 API_KEY = "YOUR_API_KEY"
 
 @processing_attack_bp.route('/processing_attack', methods=['GET'])
@@ -31,7 +51,7 @@ def processing_attack():
         current_app.logger.error("Authentication error: %s", e)
         return redirect(url_for("auth.login"))  # or whatever your login route is
 
-    return render_template("processing_attack.html")
+    return send_spa_index()
 
 
 def authenticate():
@@ -180,12 +200,56 @@ def find_report_conversion_jobs():
 
 @processing_attack_bp.route('/processing_attack/pink_folder_data', methods=['GET'])
 def get_pink_folder_route():
-    number_of_pink_folder_jobs, pink_folder_detailed_info, time_in_hours = get_pink_folder_data()
+    """
+    Align with /pink_folder/data: same job set and fields (e.g. is_paperwork_uploaded),
+    grouped by technician for the Processing Attack KPI modal.
+    """
+    detailed_by_job = get_pink_folder_page_detail()
+    if not isinstance(detailed_by_job, dict):
+        return jsonify({
+            "number_of_pink_folder_jobs": 0,
+            "pink_folder_detailed_info": {},
+            "time_in_pink_folder": 0,
+        }), 200
+
+    pink_folder_detailed_info = {}
+    time_in_pink_folder_seconds = 0.0
+
+    for row in detailed_by_job.values():
+        if not isinstance(row, dict):
+            continue
+        tech_hours = row.get("tech_hours")
+        if isinstance(tech_hours, (int, float)):
+            time_in_pink_folder_seconds += float(tech_hours) * 3600
+
+        job_date_val = row.get("job_date")
+        job_date_out = None
+        if job_date_val is not None and job_date_val != "":
+            if hasattr(job_date_val, "isoformat"):
+                job_date_out = job_date_val.isoformat()
+            else:
+                job_date_out = str(job_date_val)
+
+        payload = {
+            "job_address": str(row.get("address") or ""),
+            "job_url": str(row.get("hyperlink") or ""),
+            "is_paperwork_uploaded": bool(row.get("is_paperwork_uploaded")),
+            "job_date": job_date_out,
+        }
+        for tech_name in row.get("assigned_techs") or []:
+            if not tech_name:
+                continue
+            name = str(tech_name)
+            pink_folder_detailed_info.setdefault(name, []).append(payload)
+
+    count = len(detailed_by_job)
+    time_in_hours = round(time_in_pink_folder_seconds / 3600, 1)
 
     return jsonify({
-    "number_of_pink_folder_jobs" : number_of_pink_folder_jobs,
-    "pink_folder_detailed_info" : pink_folder_detailed_info,
-    "time_in_pink_folder": time_in_hours}), 200
+        "number_of_pink_folder_jobs": count,
+        "pink_folder_detailed_info": pink_folder_detailed_info,
+        "time_in_pink_folder": time_in_hours,
+    }), 200
 
 
 def get_pink_folder_data():
@@ -308,27 +372,17 @@ def get_oldest_job_data(oldest_job_id):
 def get_incoming_jobs_today():
     authenticate()
 
-    # Pacific (BC) time
-    PT = ZoneInfo("America/Vancouver")
+    # Current calendar day in Pacific time (midnight PT through end of day), aligned with
+    # get_jobs_processed_today (America/Los_Angeles).
+    PT = ZoneInfo("America/Los_Angeles")
     now_pt = datetime.now(PT)
+    today_start = now_pt.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_end = today_start + timedelta(days=1)  # exclusive: midnight at start of next calendar day
 
-    # Compute last business day (Mon→Fri). 
-    # Mon -> Fri (-3), Sun -> Fri (-2), Sat -> Fri (-1), Tue–Fri -> previous day (-1)
-    wd = now_pt.weekday()  # Mon=0 ... Sun=6
-    if wd == 0:          # Monday
-        delta_days = 3
-    elif wd == 6:        # Sunday
-        delta_days = 2
-    else:                # Tue–Sat
-        delta_days = 1
+    scheduleDateFrom = int(today_start.timestamp())
+    scheduleDateTo = int(today_end.timestamp())
 
-    last_bd_start = (now_pt - timedelta(days=delta_days)).replace(hour=0, minute=0, second=0, microsecond=0)
-    last_bd_end   = last_bd_start + timedelta(days=1)  # exclusive upper bound at 12:00 AM next day
-
-    scheduleDateFrom = int(last_bd_start.timestamp())
-    scheduleDateTo   = int(last_bd_end.timestamp())
-
-    # 1) Get jobs that are scheduled or completed on the last business day
+    # 1) Get jobs that are scheduled or completed on the current calendar day (PT)
     jobs_endpoint = f"{SERVICE_TRADE_API_BASE}/job"
     jobs_params = {
         "scheduleDateFrom": scheduleDateFrom,
@@ -423,15 +477,16 @@ def processing_attack_history_jobs_to_be_marked_complete():
     Each entry contains:
       - week_start: ISO date string for the Monday of the week.
       - jobs_to_be_marked_complete: integer count for that week.
-      - hit_goal: True if jobs_to_be_marked_complete < 50, else False.
+      - hit_goal: True if count is at most 50 (matches live KPI).
       - jobs_to_be_invoiced: integer count for that week.
-      - hit_goal_jobs_to_be_invoiced: True if jobs_to_be_invoiced <= 30, else False.
+      - hit_goal_jobs_to_be_invoiced: True if count is strictly under 30 (matches live KPI).
       - jobs_to_be_converted: integer count for that week (scheduled jobs requiring report conversion).
-      - hit_goal_jobs_to_be_converted: True if jobs_to_be_converted <= 10, else False.
+      - hit_goal_jobs_to_be_converted: True if count is strictly under 10 (matches live KPI).
+      - number_of_pink_folder_jobs / hit_goal_pink_folder (under 10 jobs).
       - oldest_job_date/oldest_job_address/oldest_job_type
       - hit_goal_oldest_job: True if oldest job is <= 42 days old at snapshot time, else False.
       - earliest_job_to_be_converted_date/earliest_job_to_be_converted_address
-      - hit_goal_earliest_job_to_be_converted: True if earliest conversion job is in the next 2 weeks, else False.
+      - hit_goal_earliest_job_to_be_converted: True if earliest visit is more than 14 days after week_start.
     """
     # Most recent weeks first, then reverse for chronological display.
     records = (
@@ -455,17 +510,22 @@ def processing_attack_history_jobs_to_be_marked_complete():
         jobs_count = record.jobs_to_be_marked_complete
         hit_goal = None
         if jobs_count is not None:
-            hit_goal = jobs_count < 50
+            hit_goal = jobs_count <= 50
 
         jobs_to_be_invoiced = record.jobs_to_be_invoiced
         hit_goal_jobs_to_be_invoiced = None
         if jobs_to_be_invoiced is not None:
-            hit_goal_jobs_to_be_invoiced = jobs_to_be_invoiced <= 30
+            hit_goal_jobs_to_be_invoiced = jobs_to_be_invoiced < 30
 
         jobs_to_be_converted = record.jobs_to_be_converted
         hit_goal_jobs_to_be_converted = None
         if jobs_to_be_converted is not None:
-            hit_goal_jobs_to_be_converted = jobs_to_be_converted <= 10
+            hit_goal_jobs_to_be_converted = jobs_to_be_converted < 10
+
+        pink_count = record.number_of_pink_folder_jobs
+        hit_goal_pink_folder = None
+        if pink_count is not None:
+            hit_goal_pink_folder = pink_count < 10
 
         # Snapshot week_start is when the script ran (Monday ~1pm local time).
         week_start_date = _as_date(record.week_start)
@@ -519,6 +579,9 @@ def processing_attack_history_jobs_to_be_marked_complete():
                 "earliest_job_to_be_converted_address": earliest_job_to_be_converted_address,
                 "earliest_job_to_be_converted_job_id": earliest_job_to_be_converted_job_id,
                 "hit_goal_earliest_job_to_be_converted": hit_goal_earliest_job_to_be_converted,
+
+                "number_of_pink_folder_jobs": pink_count,
+                "hit_goal_pink_folder": hit_goal_pink_folder,
             }
         )
 
@@ -651,6 +714,9 @@ def processing_attack_overall_stats():
     """
     Returns all-time weekly records from JobSummary.
     """
+    if not _job_summary_table_exists():
+        return jsonify({"error": "job_summary table is not available. Run: flask db upgrade"}), 404
+
     most_jobs = (
         JobSummary.query
         .order_by(JobSummary.total_jobs_processed.desc())
@@ -681,6 +747,9 @@ def processing_attack_overall_weekly_trend():
     """
     Returns weekly jobs & hours for all recorded weeks.
     """
+    if not _job_summary_table_exists():
+        return jsonify({"weeks": [], "jobs": [], "hours": [], "job_summary_table_missing": True})
+
     summaries = (
         JobSummary.query
         .order_by(JobSummary.week_start.asc())
@@ -726,6 +795,19 @@ def processing_attack_processed_data():
     # Convert the selected Monday string to a date object.
     selected_monday_date = datetime.strptime(selected_monday_str, "%Y-%m-%d").date()
     previous_monday_date = selected_monday_date - timedelta(days=7)
+
+    if not _job_summary_table_exists():
+        return jsonify(
+            {
+                "error": "Weekly summary data is not available (job_summary missing). Run: flask db upgrade",
+                "total_jobs_processed": 0,
+                "total_tech_hours_processed": 0.0,
+                "jobs_by_type": {},
+                "total_jobs_processed_previous_week": 0,
+                "total_tech_hours_processed_previous_week": 0.0,
+                "hours_by_type": {},
+            }
+        )
 
     # Query for precomputed data for the current week.
     current_summary = JobSummary.query.filter_by(week_start=selected_monday_date).first()
@@ -865,6 +947,8 @@ def get_processor_metrics_for_week(selected_monday):
     Reads stored processor metrics from the database for the given week.
     """
     week_start_date = datetime.strptime(selected_monday, "%Y-%m-%d").date()
+    if not _processor_metrics_table_exists():
+        return {}, {}
     records = ProcessorMetrics.query.filter_by(week_start=week_start_date).all()
     jobs_by_processor = {}
     hours_by_processor = {}
@@ -872,6 +956,38 @@ def get_processor_metrics_for_week(selected_monday):
         jobs_by_processor[record.processor_name] = record.jobs_processed
         hours_by_processor[record.processor_name] = record.hours_processed
     return jobs_by_processor, hours_by_processor
+
+
+def _latest_job_completion_attribution(histories):
+    """
+    When a job is reopened, ServiceTrade may have several job.status.changed
+    -> Completed history rows. Metrics credit only the latest completion
+    (by eventTime), breaking ties by later index in the histories list.
+    Returns (event_datetime, user_name) or None.
+    """
+    candidates = []
+    for idx, event in enumerate(histories or []):
+        if event.get("type") != "job.status.changed":
+            continue
+        props = event.get("properties") or {}
+        if props.get("status") != "Completed":
+            continue
+        et = props.get("eventTime") or {}
+        date_str = et.get("date") if isinstance(et, dict) else None
+        if not date_str:
+            continue
+        try:
+            event_dt = parser.isoparse(date_str)
+        except (ValueError, TypeError):
+            continue
+        user_name = (event.get("user") or {}).get("name")
+        if not user_name:
+            continue
+        candidates.append((event_dt, idx, user_name))
+    if not candidates:
+        return None
+    event_dt, _, user_name = max(candidates, key=lambda t: (t[0], t[1]))
+    return event_dt, user_name
 
 
 def get_jobs_processed_by_processor(selected_monday):
@@ -931,32 +1047,30 @@ def get_jobs_processed_by_processor(selected_monday):
         histories = history_response.get("histories", [])
         sys.stdout.write(f"\rparsing history for job {i}/{num_of_jobs}")
         sys.stdout.flush()
-        for event in histories:
-            # Assuming each history has a "properties" key which is a dict.
-            type = event["type"]
-            match type:
-                case "job.status.changed":
-                    if "status" in event["properties"] and event["properties"]["status"] == "Completed":
-                        user_name = event.get("user").get("name")
-                        jobs_completed_by_processor[user_name] = jobs_completed_by_processor.get(user_name, 0) + 1
-                        clock_endpoint = f"{SERVICE_TRADE_API_BASE}/job/{job_id}/clockevent"
-                        clock_params = {
-                            "activity": "onsite, offsite, enroute"
-                        }
-                        try:
-                            response = api_session.get(clock_endpoint, params=clock_params)
-                            response.raise_for_status()
-                        except requests.RequestException as e:
-                            print(f"no history found for job {i}.")
-                            continue
+        attribution = _latest_job_completion_attribution(histories)
+        if not attribution:
+            continue
+        _, user_name = attribution
 
-                        clock_events_data = response.json().get("data", {})
-                        clock_pairs = clock_events_data.get("pairedEvents", [])
-                        for pair in clock_pairs:
-                            clock_in = datetime.fromtimestamp(pair.get("start").get("eventTime"))
-                            clock_out = datetime.fromtimestamp(pair.get("end").get("eventTime"))
-                            delta = clock_out - clock_in
-                            hours_difference = delta.total_seconds() / 3600
-                            hours_by_processor[user_name] = hours_by_processor.get(user_name, 0) + hours_difference
+        jobs_completed_by_processor[user_name] = jobs_completed_by_processor.get(user_name, 0) + 1
+        clock_endpoint = f"{SERVICE_TRADE_API_BASE}/job/{job_id}/clockevent"
+        clock_params = {
+            "activity": "onsite, offsite, enroute"
+        }
+        try:
+            response = api_session.get(clock_endpoint, params=clock_params)
+            response.raise_for_status()
+        except requests.RequestException as e:
+            print(f"no history found for job {i}.")
+            continue
+
+        clock_events_data = response.json().get("data", {})
+        clock_pairs = clock_events_data.get("pairedEvents", [])
+        for pair in clock_pairs:
+            clock_in = datetime.fromtimestamp(pair.get("start").get("eventTime"))
+            clock_out = datetime.fromtimestamp(pair.get("end").get("eventTime"))
+            delta = clock_out - clock_in
+            hours_difference = delta.total_seconds() / 3600
+            hours_by_processor[user_name] = hours_by_processor.get(user_name, 0) + hours_difference
     return jobs_completed_by_processor, hours_by_processor
-        
+

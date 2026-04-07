@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, jsonify, session, request, current_app, has_request_context
+from flask import Blueprint, jsonify, session, request, current_app, has_request_context
 import requests, os, csv, logging
 import json
 import re
@@ -6,7 +6,7 @@ from datetime import datetime, timezone, timedelta, date
 from dateutil.relativedelta import relativedelta
 from zoneinfo import ZoneInfo  # Python 3.9+
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy import or_, func, cast, Float, case
+from sqlalchemy import or_, func, cast, Float, case, inspect
 from app.db_models import db, ServiceOccurrence, Location, ServiceRecurrence, SchedulingAttackV2, JobsSchedulingState, WeeklySchedulingStats, ForwardScheduleWeek
 from tqdm import tqdm 
 from collections import Counter
@@ -15,10 +15,12 @@ from app.services.scheduling_diff import BaselineState, compute_scheduling_diffs
 import calendar
 from sqlalchemy.exc import SQLAlchemyError
 from flask import redirect, url_for
+
+from app.spa import send_spa_index
 log = logging.getLogger("month-conflicts")
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
-scheduling_attack_bp = Blueprint('scheduling_attack', __name__, template_folder='templates')
+scheduling_attack_bp = Blueprint('scheduling_attack', __name__)
 api_session = requests.Session()
 api_session.headers.update({"Accept": "application/json"})
 
@@ -1167,7 +1169,7 @@ def scheduling_attack():
     except Exception as e:
         current_app.logger.error("Authentication error: %s", e)
         return redirect(url_for("auth.login"))  # or whatever your login route is
-    return render_template("scheduling_attack.html")
+    return send_spa_index()
 
 
 # ---------- Helpers (drop these near your other helpers) ----------
@@ -2035,6 +2037,16 @@ def scheduling_attack_v2_for_month():
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
 
+    if not _scheduling_attack_v2_table_exists():
+        return jsonify(
+            {
+                "generated_at": _utc_now_iso(),
+                "month": month_str,
+                "rows": [],
+                "scheduling_attack_v2_table_missing": True,
+            }
+        ), 200
+
     rows = (
         db.session.query(SchedulingAttackV2)
         .filter(
@@ -2136,7 +2148,27 @@ def _week_start_local_from_utc(dt_utc: datetime) -> datetime:
     )
 
 
-def get_forward_schedule_coverage_pct():
+def _forward_schedule_week_table_exists() -> bool:
+    """False until migration 92413446aa72 (forward_schedule_week) has been applied."""
+    try:
+        return inspect(db.engine).has_table("forward_schedule_week")
+    except Exception:
+        return False
+
+
+def _scheduling_attack_v2_table_exists() -> bool:
+    """False until migrations creating scheduling_attack_v2 (e.g. f877bdb725f4) have been applied."""
+    try:
+        return inspect(db.engine).has_table("scheduling_attack_v2")
+    except Exception:
+        return False
+
+
+def get_forward_schedule_coverage_pct() -> float | None:
+    """
+    Consecutive lookahead weeks meeting utilization threshold, or None if the
+    forward_schedule_week table is not present (DB not migrated yet).
+    """
     now = datetime.now(timezone.utc)
 
     threshold = float(request.args.get("threshold", 0.60))
@@ -2146,6 +2178,9 @@ def get_forward_schedule_coverage_pct():
     cur_week_start_local = _week_start_local_from_utc(now)
     start_week = (cur_week_start_local + timedelta(days=7)) if start_next_week else cur_week_start_local
     end_week = start_week + timedelta(days=7 * lookahead_weeks)
+
+    if not _forward_schedule_week_table_exists():
+        return None
 
     rows = (
         ForwardScheduleWeek.query.filter(ForwardScheduleWeek.week_start_local >= start_week)
@@ -2197,9 +2232,7 @@ def get_forward_schedule_coverage_pct():
         if w["meets_60pct"]:
             streak += 1
 
-
-    return streak
-
+    return float(streak)
 
 
 @scheduling_attack_bp.get("/scheduling_attack/v2/forward_schedule_coverage")
@@ -2220,16 +2253,19 @@ def forward_schedule_coverage():
     start_week = (cur_week_start_local + timedelta(days=7)) if start_next_week else cur_week_start_local
     end_week = start_week + timedelta(days=7 * lookahead_weeks)
 
-    rows = (
-        ForwardScheduleWeek.query.filter(ForwardScheduleWeek.week_start_local >= start_week)
-        .filter(ForwardScheduleWeek.week_start_local < end_week)
-        .order_by(ForwardScheduleWeek.week_start_local.asc())
-        .all()
-    )
+    fsw_table_ok = _forward_schedule_week_table_exists()
+    if fsw_table_ok:
+        rows = (
+            ForwardScheduleWeek.query.filter(ForwardScheduleWeek.week_start_local >= start_week)
+            .filter(ForwardScheduleWeek.week_start_local < end_week)
+            .order_by(ForwardScheduleWeek.week_start_local.asc())
+            .all()
+        )
+    else:
+        rows = []
 
     # Build expected continuous week keys so missing weeks break streak
     by_ws = {r.week_start_local: r for r in rows}
-    generated_at = now
     weeks = []
     for i in range(lookahead_weeks):
         ws = start_week + timedelta(days=7 * i)
@@ -2273,15 +2309,17 @@ def forward_schedule_coverage():
             streak += 1
             last_covered_week_end = w["week_end_local"]
 
-    return jsonify(
-        {
-            "generated_at": now.isoformat(),
-            "threshold_pct": threshold * 100.0,
-            "coverage_weeks_60pct": streak,
-            "coverage_through_week_end_local": last_covered_week_end,
-            "weeks": weeks,
-        }
-    ), 200
+    payload = {
+        "generated_at": now.isoformat(),
+        "threshold_pct": threshold * 100.0,
+        "coverage_weeks_60pct": streak,
+        "coverage_through_week_end_local": last_covered_week_end,
+        "weeks": weeks,
+    }
+    if not rows and not fsw_table_ok:
+        payload["forward_schedule_table_missing"] = True
+
+    return jsonify(payload), 200
 
 
 @scheduling_attack_bp.get("/scheduling_attack/v2/weekly_scheduling_volume")
@@ -2397,6 +2435,9 @@ def jobs_scheduled_this_week():
 def get_percent_confirmed_next_two_weeks():
     now = datetime.now(timezone.utc)
     two_weeks_out = now + timedelta(weeks=2)
+
+    if not _scheduling_attack_v2_table_exists():
+        return 0.0
 
     # ------------------------------------------------------------
     # KPI 1: % confirmed (next 2 weeks)

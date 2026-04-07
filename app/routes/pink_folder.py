@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, session, jsonify
+from flask import Blueprint, session, jsonify
 import requests
 import json
 from datetime import datetime
@@ -6,7 +6,9 @@ import pprint
 
 from flask import redirect, url_for
 
-pink_folder_bp = Blueprint('pink_folder', __name__, template_folder='templates')
+from app.spa import send_spa_index
+
+pink_folder_bp = Blueprint('pink_folder', __name__)
 api_session = requests.Session()
 
 SERVICE_TRADE_API_BASE = "https://api.servicetrade.com/api"
@@ -29,7 +31,7 @@ def pink_folder():
         auth_response.raise_for_status()
     except Exception as e:
         return redirect(url_for("auth.login"))  # or whatever your login route is
-    return render_template("pink_folder.html")
+    return send_spa_index()
 
 @pink_folder_bp.route('/pink_folder/data', methods=['GET'])
 def pink_folder_data():

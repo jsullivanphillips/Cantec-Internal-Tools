@@ -1,6 +1,6 @@
 # app/routes/keys.py
-from flask import Blueprint, render_template, request, jsonify, abort, redirect, url_for
-from sqlalchemy import or_, func
+from flask import Blueprint, request, jsonify, abort, redirect, url_for
+from sqlalchemy import or_, func, inspect, cast, String
 from sqlalchemy.sql import over
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import selectinload, aliased
@@ -8,8 +8,9 @@ from .scheduling_attack import get_active_techs
 import re
 
 from app.db_models import db, Key, KeyAddress, KeyStatus
+from app.spa import send_spa_index
 
-keys_bp = Blueprint("keys", __name__, template_folder="templates")
+keys_bp = Blueprint("keys", __name__)
 
 
 # -----------------------------
@@ -31,6 +32,16 @@ def _get_key_or_404(key_id: int) -> Key:
 
 _ROUTE_BAG_RE = re.compile(r"^R\d+$", re.IGNORECASE)
 
+
+def _keys_schema_ready() -> bool:
+    """False until keys + key_status migrations have been applied."""
+    try:
+        insp = inspect(db.engine)
+        return insp.has_table("keys") and insp.has_table("key_status")
+    except Exception:
+        return False
+
+
 def is_route_bag_keycode(keycode: str) -> bool:
     if not keycode:
         return False
@@ -40,6 +51,9 @@ def is_route_bag_keycode(keycode: str) -> bool:
 def get_keys_older_than(number_of_days: int):
     if not isinstance(number_of_days, int) or number_of_days < 0:
         raise ValueError("number_of_days must be a non-negative int")
+
+    if not _keys_schema_ready():
+        return []
 
     KS = KeyStatus
     cutoff = datetime.now(timezone.utc) - timedelta(days=number_of_days)
@@ -89,12 +103,71 @@ def _payload():
     return request.get_json(silent=True) or request.form or {}
 
 
+def _serialize_key_for_spa(key: Key) -> dict:
+    cs = key.current_status
+    status_text = (cs.status if cs else "Unknown") or ""
+    st = status_text.lower()
+    current_loc = (cs.key_location if cs else "") or ""
+    home_loc = (key.home_location or "") or ""
+    is_out = st in ["signed out", "out"]
+    is_in = (not is_out) and (
+        st in ["returned", "in", "available"]
+        or (bool(home_loc) and bool(current_loc) and home_loc.lower() == current_loc.lower())
+    )
+    return {
+        "id": key.id,
+        "keycode": key.keycode,
+        "barcode": key.barcode,
+        "route": key.route,
+        "home_location": key.home_location,
+        "annual_month": key.annual_month,
+        "area": key.area,
+        "site_status": key.site_status,
+        "is_key_bag": is_route_bag_keycode(key.keycode or ""),
+        "addresses": [{"id": a.id, "address": a.address} for a in key.addresses],
+        "current_status": None
+        if not cs
+        else {
+            "status": cs.status,
+            "key_location": cs.key_location,
+            "air_tag": cs.air_tag,
+            "returned_by": cs.returned_by,
+            "inserted_at": cs.inserted_at.isoformat() if cs.inserted_at else None,
+        },
+        "ui": {
+            "status_text": status_text,
+            "is_out": is_out,
+            "is_in": is_in,
+            "current_loc": current_loc,
+            "home_loc": home_loc,
+        },
+    }
+
+
 # -----------------------------
 # Page routes (unchanged except eager-load if desired)
 # -----------------------------
 @keys_bp.get("/keys")
 def keys_home():
-    return render_template("keys_home.html")
+    return send_spa_index()
+
+
+@keys_bp.get("/api/keys/<int:key_id>/detail")
+def api_key_detail_route(key_id: int):
+    key = _get_key_or_404(key_id)
+    return jsonify(_serialize_key_for_spa(key))
+
+
+@keys_bp.get("/api/keys/resolve-barcode/<int:barcode>")
+def api_resolve_barcode(barcode: int):
+    key = (
+        db.session.query(Key)
+        .filter(Key.barcode == barcode)
+        .first()
+    )
+    if key is None:
+        abort(404, description="Key not found")
+    return jsonify({"id": key.id})
 
 
 @keys_bp.get("/keys/active_techs")
@@ -117,8 +190,8 @@ def get_active_techs_route():
 
 @keys_bp.get("/keys/<int:key_id>")
 def key_detail(key_id: int):
-    key = _get_key_or_404(key_id)
-    return render_template("key_detail.html", key=key, is_key_bag=is_route_bag_keycode(key.keycode))
+    _get_key_or_404(key_id)
+    return send_spa_index()
 
 
 @keys_bp.get("/keys/by-barcode/<int:barcode>")
@@ -131,7 +204,7 @@ def key_detail_by_barcode(barcode: int):
     )
     if key is None:
         abort(404, description="Key not found")
-    return render_template("key_detail.html", key=key, is_key_bag=is_route_bag_keycode(key.keycode))
+    return send_spa_index()
 
 
 @keys_bp.get("/api/keys/search")
@@ -148,6 +221,7 @@ def api_keys_search():
     keycode_no_spaces = func.replace(func.coalesce(Key.keycode, ""), " ", "")
     address_no_spaces = func.replace(func.coalesce(KeyAddress.address, ""), " ", "")
 
+    barcode_txt = cast(Key.barcode, String)
     query = (
         db.session.query(Key)
         .outerjoin(KeyAddress, KeyAddress.key_id == Key.id)
@@ -157,10 +231,16 @@ def api_keys_search():
                 KeyAddress.address.ilike(like),
                 keycode_no_spaces.ilike(normalized_like),
                 address_no_spaces.ilike(normalized_like),
+                barcode_txt.ilike(like),
+                Key.route.ilike(like),
+                Key.area.ilike(like),
+                Key.home_location.ilike(like),
+                Key.annual_month.ilike(like),
+                Key.site_status.ilike(like),
             )
         )
         .distinct()
-        .limit(20)
+        .limit(8)
     )
 
     results = []
@@ -183,6 +263,7 @@ def api_keys_search():
 
 
 @keys_bp.post("/keys/<int:key_id>/sign-out")
+@keys_bp.post("/api/keys/<int:key_id>/sign-out")
 def sign_out_key(key_id: int):
     key = _get_key_or_404(key_id)
     data = _payload()
@@ -276,12 +357,13 @@ def sign_out_key(key_id: int):
 
 
 @keys_bp.post("/keys/<int:key_id>/return")
+@keys_bp.post("/api/keys/<int:key_id>/return")
 def return_key(key_id: int):
     key = _get_key_or_404(key_id)
     cs = key.current_status
     current_status = (cs.status or "").lower() if cs else ""
 
-    returned_by = (request.form.get("returned_by") or "").strip()
+    returned_by = (_payload().get("returned_by") or request.form.get("returned_by") or "").strip()
 
     if current_status in ["returned", "in", "available"]:
         if request.accept_mimetypes.accept_html and not request.is_json:
@@ -628,7 +710,7 @@ def api_key_history(key_id: int):
 
 @keys_bp.get("/keys/metrics")
 def key_metrics_page():
-    return render_template("key_metrics.html")
+    return send_spa_index()
 
 @keys_bp.get("/api/keys/metrics")
 def api_key_metrics():

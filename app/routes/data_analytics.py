@@ -1,9 +1,11 @@
-from flask import Blueprint, render_template, jsonify, session, request, current_app
+from flask import Blueprint, jsonify, session, request, current_app
 import requests
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from dateutil.relativedelta import relativedelta
 from flask_caching import Cache
+
+from app.spa import send_spa_index
 
 # Initialize Flask-Caching
 cache = Cache(config={'CACHE_TYPE': 'SimpleCache'})
@@ -17,7 +19,7 @@ data_analytics_bp = Blueprint('data_analytics', __name__, url_prefix='/data-anal
 
 @data_analytics_bp.route('/')
 def index():
-    return render_template('data_analytics.html')
+    return send_spa_index()
 
 @data_analytics_bp.route('/metric1')
 @cache.cached(timeout=300, query_string=True)  # Cache for 5 minutes (300 seconds)

@@ -1,11 +1,13 @@
-from flask import Blueprint, render_template, session, jsonify
+from flask import Blueprint, session, jsonify
 from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
 
-limbo_job_tracker_bp = Blueprint('limbo_job_tracker', __name__, template_folder='templates')
+limbo_job_tracker_bp = Blueprint('limbo_job_tracker', __name__)
 api_session = requests.Session()
 from flask import redirect, url_for
+
+from app.spa import send_spa_index
 
 SERVICE_TRADE_API_BASE = "https://api.servicetrade.com/api"
 SERVICE_TRADE_JOB_BASE = "https://app.servicetrade.com/jobs"
@@ -38,7 +40,7 @@ def limbo_job_tracker():
         auth_response.raise_for_status()
     except Exception as e:
         return redirect(url_for("auth.login"))  # or whatever your login route is
-    return render_template("limbo_job_tracker.html")
+    return send_spa_index()
 
 
 # Route for getting list of limbo jobs

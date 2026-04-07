@@ -1,10 +1,9 @@
-from flask import Blueprint, render_template, session, jsonify, request
+from flask import Blueprint, session, jsonify, request
 from app.db_models import db, Job, ClockEvent, Deficiency, Location, Quote, QuoteItem, InvoiceItem, JobItemTechnician, QuoteDeficiencyLink
 from collections import defaultdict
 from sqlalchemy.exc import IntegrityError
 from tqdm import tqdm
 import requests
-import numpy as np
 import json
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -12,6 +11,8 @@ from sqlalchemy import func, distinct, case, and_
 from sqlalchemy.orm import joinedload
 from sqlalchemy.dialects.postgresql import insert
 from flask import redirect, url_for
+
+from app.spa import send_spa_index
 
 HOURLY_RATE = {
     'fa':        125.0,
@@ -41,12 +42,6 @@ SPR_LABOUR_DESCRIPTIONS = {
 
 OUTLIER_MARGIN_RATIO = 0.4
 
-HOURLY_RATE = {
-    'fa':        125.0,
-    'sprinkler': 145.0,
-    'backflow':   75.0
-}
-
 EXCLUDED_ITEM_NAMES = [
     "Truck Charge",
     "Return for Repairs",
@@ -58,7 +53,7 @@ EXCLUDED_ITEM_NAMES = [
 
 PACIFIC_TZ = ZoneInfo("America/Vancouver")
 
-performance_summary_bp = Blueprint('performance_summary', __name__, template_folder='templates')
+performance_summary_bp = Blueprint('performance_summary', __name__)
 api_session = requests.Session()
 
 SERVICE_TRADE_API_BASE = "https://api.servicetrade.com/api"
@@ -78,7 +73,7 @@ def performance_summary():
         auth_response.raise_for_status()
     except Exception as e:
         return redirect(url_for("auth.login"))  # or whatever your login route is
-    return render_template("performance_summary.html")
+    return send_spa_index()
 
 def _parse_date_param(value: str | None, end_of_day: bool) -> datetime | None:
     """
@@ -133,46 +128,6 @@ def get_date_window():
     return window_start, window_end
 
 
-@performance_summary_bp.route('/api/performance/jobs_revenue')
-def performance_jobs_revenue():
-    window_start, window_end = get_date_window()
-
-    completed_filter = and_(
-        Job.completed_on.isnot(None),
-        Job.completed_on >= window_start,
-        Job.completed_on <= window_end
-    )
-
-    # Base aggregates
-    job_type_counts = get_job_type_counts(completed_filter)
-    revenue_by_job_type = get_revenue_by_job_type(completed_filter)
-    hours_by_job_type = get_hours_by_job_type(completed_filter)
-
-    # Existing analytics (avg revenue per job, bubble data, etc.)
-    avg_revenue_by_job_type, jobs_by_job_type, bubble_data = get_job_type_analytics(
-        job_type_counts, revenue_by_job_type, completed_filter
-    )
-
-    # NEW: average revenue per hour by job type
-    avg_revenue_per_hour_by_job_type = get_avg_revenue_per_hour_by_job_type(
-        hours_by_job_type,
-        revenue_by_job_type,
-    )
-
-    return jsonify({
-        "job_type_counts": job_type_counts,
-        "revenue_by_job_type": revenue_by_job_type,
-        "hours_by_job_type": hours_by_job_type,
-        "avg_revenue_by_job_type": avg_revenue_by_job_type,
-        "avg_revenue_per_hour_by_job_type": avg_revenue_per_hour_by_job_type,
-        "jobs_by_job_type": jobs_by_job_type,
-        "bubble_data_by_type": bubble_data,
-        "weekly_revenue_over_time": get_weekly_revenue_over_time(window_start, window_end),
-        "weekly_jobs_over_time": get_weekly_jobs_over_time(window_start, window_end),
-    })
-
-
-
 @performance_summary_bp.route('/api/performance/deficiencies')
 def performance_deficiencies():
     window_start, window_end = get_date_window()
@@ -206,23 +161,13 @@ def performance_quotes():
         "quote_cost_breakdown_log": get_detailed_quote_job_stats(db.session, window_start, window_end)
     })
 
-@performance_summary_bp.route('/api/performance/customers_locations')
-def performance_customers_locations():
-    window_start, window_end = get_date_window()
-
-    return jsonify({
-        "location_service_type_counts": get_top_locations_by_service_type(window_start, window_end),
-        "top_customer_revenue": get_top_customers_by_revenue(window_start, window_end)
-    })
-
-
 @performance_summary_bp.route("/api/last_updated", methods=["GET"])
 def get_last_updated():
     latest_job = db.session.query(func.max(Job.created_at)).scalar()
     latest_def = db.session.query(func.max(Deficiency.created_at)).scalar()
 
-    # Pick the most recent of all
-    latest_timestamp = max(filter(None, [latest_job, latest_def]))
+    # Pick the most recent of all (either table may be empty → max needs a default)
+    latest_timestamp = max(filter(None, [latest_job, latest_def]), default=None)
 
     return jsonify({
         "last_updated": latest_timestamp.isoformat() if latest_timestamp else None
@@ -826,143 +771,6 @@ def get_attachments_by_technician(window_start, window_end):
         for uploader, cnt in rows
     ]
 
-def get_top_customers_by_revenue(window_start, window_end):
-    results = (
-        db.session.query(Job.customer_name, db.func.sum(Job.revenue))
-        .filter(
-            Job.completed_on.isnot(None),
-            Job.revenue.isnot(None),
-            Job.completed_on >= window_start,
-            Job.completed_on <= window_end
-        )
-        .group_by(Job.customer_name)
-        .all()
-    )
-
-    customer_map = {}
-
-    for name, total in results:
-        normalized_name = name or "Unknown"
-        name_lower = normalized_name.lower()
-
-        if "devon" in name_lower:
-            key = "Devon Properties"
-        elif "brown brothers" in name_lower:
-            key = "Brown Brothers Property Management"
-        else:
-            key = normalized_name
-
-        customer_map[key] = customer_map.get(key, 0) + (total or 0)
-
-    sorted_customers = sorted(customer_map.items(), key=lambda x: x[1], reverse=True)
-
-        
-    return [
-        {"customer": name, "revenue": round(revenue, 2)}
-        for name, revenue in sorted_customers
-    ]
-
-
-
-
-def get_top_locations_by_service_type(window_start, window_end):
-    # Aggregate service call counts for completed jobs within the date range
-    location_stats = (
-        db.session.query(
-            Job.address,
-            db.func.sum(db.case((Job.job_type == 'emergency_service_call', 1), else_=0)).label("emergency_count"),
-            db.func.sum(db.case((Job.job_type == 'service_call', 1), else_=0)).label("service_count")
-        )
-        .filter(
-            Job.job_type.in_(["emergency_service_call", "service_call"]),
-            Job.completed_on.isnot(None),
-            Job.completed_on >= window_start,
-            Job.completed_on <= window_end
-        )
-        .group_by(Job.address)
-        .all()
-    )
-
-    # Sort by combined emergency + service count
-    sorted_locations = sorted(
-        location_stats,
-        key=lambda row: (row.emergency_count or 0) + (row.service_count or 0),
-        reverse=True
-    )
-
-    return [
-        {
-            "address": row.address or "Unknown",
-            "emergency": int(row.emergency_count or 0),
-            "service": int(row.service_count or 0),
-            "total": int((row.emergency_count or 0) + (row.service_count or 0))
-        }
-        for row in sorted_locations
-    ]
-
-
-def get_weekly_revenue_over_time(window_start, window_end):
-    # Get all jobs with revenue and completed date within the date range
-    jobs = (
-        db.session.query(Job.completed_on, Job.revenue)
-        .filter(
-            Job.completed_on.isnot(None),
-            Job.completed_on >= window_start,
-            Job.completed_on <= window_end,
-            Job.revenue.isnot(None)
-        )
-        .all()
-    )
-
-    revenue_by_week = defaultdict(float)
-
-    for completed_on, revenue in jobs:
-        if not completed_on:
-            continue
-        # Convert to Monday of the ISO week
-        monday = completed_on - timedelta(days=completed_on.weekday())
-        week_start = monday.date()
-        revenue_by_week[week_start] += revenue or 0
-
-    # Sort by week start date
-    sorted_weekly = sorted(revenue_by_week.items())
-
-    return [{"week_start": week.isoformat(), "revenue": round(rev, 2)} for week, rev in sorted_weekly]
-
-
-
-def get_weekly_jobs_over_time(window_start, window_end):
-    """
-    Returns a list of dictionaries with job completion counts per ISO week,
-    filtered by job completed date within the given window.
-    """
-    # 1. Fetch all completed_on dates within the window
-    jobs = (
-        db.session.query(Job.completed_on)
-        .filter(
-            Job.completed_on.isnot(None),
-            Job.completed_on >= window_start,
-            Job.completed_on <= window_end
-        )
-        .all()
-    )
-
-    # 2. Bucket by ISO-week Monday
-    counts_by_week = defaultdict(int)
-    for (completed_on,) in jobs:
-        monday = completed_on - timedelta(days=completed_on.weekday())
-        week_start = monday.date()
-        counts_by_week[week_start] += 1
-
-    # 3. Sort and format
-    sorted_weeks = sorted(counts_by_week.items())
-    return [
-        {"week_start": week.isoformat(), "jobs_completed": count}
-        for week, count in sorted_weeks
-    ]
-
-    
-
 
 def get_technician_metrics(window_start, window_end):
     EXCLUDE = {"administrative", "delivery", "pickup", "consultation"}
@@ -1062,107 +870,6 @@ def get_technician_metrics(window_start, window_end):
         }
     }
 
-    
-
-
-
-def get_job_type_counts(completed_filter):
-    return dict(
-        db.session.query(Job.job_type, db.func.count(Job.job_id))
-        .filter(completed_filter)
-        .group_by(Job.job_type)
-        .all()
-    )
-
-def get_revenue_by_job_type(completed_filter):
-    return dict(
-        db.session.query(Job.job_type, db.func.sum(Job.revenue))
-        .filter(completed_filter)
-        .group_by(Job.job_type)
-        .all()
-    )
-
-def get_hours_by_job_type(completed_filter):
-    return dict(
-        db.session.query(Job.job_type, db.func.sum(Job.total_on_site_hours))
-        .filter(completed_filter)
-        .group_by(Job.job_type)
-        .all()
-    )
-
-def get_total_hours_by_tech(completed_filter):
-    return dict(
-        db.session.query(ClockEvent.tech_name, db.func.sum(ClockEvent.hours))
-        .join(Job, ClockEvent.job_id == Job.job_id)
-        .filter(completed_filter)
-        .group_by(ClockEvent.tech_name)
-        .all()
-    )
-
-
-def get_avg_revenue_per_hour_by_job_type(hours_by_job_type, revenue_by_job_type):
-    """
-    Compute average revenue per on-site hour for each job type.
-
-    hours_by_job_type:   { job_type: total_hours }
-    revenue_by_job_type: { job_type: total_revenue }
-    """
-    avg_rev_per_hour = {}
-
-    all_job_types = set(hours_by_job_type.keys()) | set(revenue_by_job_type.keys())
-
-    for jt in all_job_types:
-        hours = hours_by_job_type.get(jt, 0) or 0
-        revenue = revenue_by_job_type.get(jt, 0) or 0
-
-        key = jt or "Unknown"
-
-        if hours > 0:
-            avg_rev_per_hour[key] = round(revenue / hours, 2)
-        else:
-            avg_rev_per_hour[key] = 0
-
-    return avg_rev_per_hour
-
-
-def get_job_type_analytics(job_type_counts, revenue_by_job_type, completed_filter):
-    avg_revenue_by_job_type = {}
-    jobs_by_job_type = {}
-    bubble_data_by_type = {}
-
-    all_job_types = set(job_type_counts.keys()).union(revenue_by_job_type.keys())
-
-    for jt in all_job_types:
-        jobs = Job.query.filter(Job.job_type == jt, completed_filter).all()
-        revenues = [j.revenue for j in jobs if j.revenue is not None]
-        filtered_revenues = iqr_filter(revenues)
-
-        used_jobs = [
-            {"job_id": job.job_id, "revenue": round(job.revenue, 2)}
-            for job in jobs
-            if job.revenue is not None and job.revenue in filtered_revenues
-        ]
-        jobs_by_job_type[jt or "Unknown"] = used_jobs
-
-        avg = round(sum(filtered_revenues) / len(filtered_revenues), 2) if filtered_revenues else 0
-        avg_revenue_by_job_type[jt or "Unknown"] = avg
-
-        bubble_data_by_type[jt or "Unknown"] = {
-            "count": job_type_counts.get(jt, 0),
-            "avg_revenue": avg,
-            "total_revenue": revenue_by_job_type.get(jt, 0)
-        }
-
-    return avg_revenue_by_job_type, jobs_by_job_type, bubble_data_by_type
-
-def get_avg_revenue_per_hour(revenue_by_job_type, hours_by_job_type):
-    all_job_types = set(revenue_by_job_type.keys()).union(hours_by_job_type.keys())
-    result = {}
-    for jt in all_job_types:
-        hours = hours_by_job_type.get(jt, 0)
-        revenue = revenue_by_job_type.get(jt, 0)
-        result[jt or "Unknown"] = round(revenue / hours, 2) if hours else 0.0
-    return result
 
 def get_deficiency_insights(start_date, end_date):
     base_filter = and_(
@@ -1397,20 +1104,6 @@ def get_time_to_quote_metrics(window_start, window_end):
         "avg_days_deficiency_to_quote": avg_def_to_quote,
         "avg_days_quote_to_job": avg_quote_to_job,
     }
-
-
-
-
-def iqr_filter(values):
-    if not values:
-        return []
-    q1 = np.percentile(values, 25)
-    q3 = np.percentile(values, 75)
-    iqr = q3 - q1
-    lower_bound = q1 - 1.5 * iqr
-    upper_bound = q3 + 1.5 * iqr
-    filtered = [v for v in values if lower_bound <= v <= upper_bound]
-    return filtered
 
 
 def authenticate():

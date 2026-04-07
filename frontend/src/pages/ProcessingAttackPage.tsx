@@ -1,0 +1,1525 @@
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { apiFetch, apiJson } from '../lib/apiClient'
+import { Button, Card, Col, Collapse, Form, Modal, Nav, Row, Tab, Table } from 'react-bootstrap'
+import { Chart } from 'react-chartjs-2'
+import type { ChartData, ChartOptions } from 'chart.js'
+
+function properFormat(s: string) {
+  return s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+/** e.g. `service_call` → `Service call` (first word sentence-case, later words lowercase). */
+function formatJobTypeSentence(raw: string): string {
+  const s = raw.trim()
+  if (!s) return '—'
+  return s
+    .replace(/_/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w, i) =>
+      i === 0 ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : w.toLowerCase(),
+    )
+    .join(' ')
+}
+
+/** Last completed onsite job date for pink-folder modal; Pacific, e.g. Apr-07-2026. */
+function formatPinkFolderJobDateMmmDdYyyy(iso: string | null | undefined): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Vancouver',
+    month: 'short',
+    day: '2-digit',
+    year: 'numeric',
+  }).formatToParts(d)
+  const month = (parts.find((p) => p.type === 'month')?.value ?? '').replace(/\.$/, '')
+  const day = parts.find((p) => p.type === 'day')?.value ?? ''
+  const year = parts.find((p) => p.type === 'year')?.value ?? ''
+  if (!month || !day || !year) return ''
+  return `${month}-${day}-${year}`
+}
+
+/** Thresholds for KPI good (green) vs needs attention (red). Tune as operations evolve. */
+const KPI_TARGETS = {
+  jobsToCompleteMax: 50,
+  jobsToInvoiceMax: 30,
+  reportConversionJobsMax: 10,
+  pinkFolderJobsMax: 10,
+  /** Oldest incomplete job: OK when age in whole weeks is at most this */
+  oldestJobWeeksMax: 6,
+  /** Earliest report-conversion visit must be *after* this many calendar days from today (not within the window) */
+  earliestConversionWindowDays: 14,
+} as const
+
+/** Row from GET /processing_attack/history_jobs_to_be_marked_complete (oldest week first). */
+type ProcessingStatusHistoryRow = {
+  week_start?: string | null
+  oldest_job_date?: string | null
+  earliest_job_to_be_converted_date?: string | null
+  jobs_to_be_marked_complete?: number | null
+  jobs_to_be_invoiced?: number | null
+  jobs_to_be_converted?: number | null
+  number_of_pink_folder_jobs?: number | null
+  hit_goal?: boolean | null
+  hit_goal_jobs_to_be_invoiced?: boolean | null
+  hit_goal_jobs_to_be_converted?: boolean | null
+  hit_goal_oldest_job?: boolean | null
+  hit_goal_earliest_job_to_be_converted?: boolean | null
+  hit_goal_pink_folder?: boolean | null
+}
+
+const HISTORY_PLACEHOLDER_WEEKS = 12
+
+function KpiHitWeekStrip({
+  hits = null,
+  emptyMessage = 'No weekly snapshots yet.',
+  unsupportedMessage,
+  greySlots = HISTORY_PLACEHOLDER_WEEKS,
+}: {
+  hits?: (boolean | null)[] | null
+  emptyMessage?: string
+  unsupportedMessage?: string
+  greySlots?: number
+}) {
+  if (unsupportedMessage) {
+    return (
+      <div className="processing-kpi-strip" role="img" aria-label={unsupportedMessage}>
+        <div className="processing-kpi-strip__track processing-kpi-strip__track--end">
+          {Array.from({ length: greySlots }, (_, i) => (
+            <span key={`g-${i}`} className="processing-kpi-strip__cell processing-kpi-strip__cell--empty" />
+          ))}
+        </div>
+      </div>
+    )
+  }
+  if (!hits || hits.length === 0) {
+    return (
+      <div className="processing-kpi-strip" role="img" aria-label={emptyMessage}>
+        <div className="processing-kpi-strip__track processing-kpi-strip__track--end">
+          {Array.from({ length: greySlots }, (_, i) => (
+            <span key={`e-${i}`} className="processing-kpi-strip__cell processing-kpi-strip__cell--empty" />
+          ))}
+        </div>
+      </div>
+    )
+  }
+  const on = hits.filter((h) => h === true).length
+  const off = hits.filter((h) => h === false).length
+  const unknown = hits.filter((h) => h === null).length
+  const aria = `Target met ${on} of ${hits.length} snapshot weeks, missed ${off}, no data ${unknown}. Oldest left, newest right.`
+  return (
+    <div className="processing-kpi-strip" role="img" aria-label={aria}>
+      <div className="processing-kpi-strip__track processing-kpi-strip__track--end">
+        {hits.map((h, i) => (
+          <span
+            key={`w-${i}`}
+            className={
+              h === true
+                ? 'processing-kpi-strip__cell processing-kpi-strip__cell--hit'
+                : h === false
+                  ? 'processing-kpi-strip__cell processing-kpi-strip__cell--miss'
+                  : 'processing-kpi-strip__cell processing-kpi-strip__cell--empty'
+            }
+            title={
+              h === true ? 'Met target that week' : h === false ? 'Missed target that week' : 'No data that week'
+            }
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function KpiTrendViz({
+  weekLabels,
+  sparkValues,
+  referenceY,
+  hits,
+  unsupported,
+}: {
+  weekLabels: string[]
+  sparkValues?: (number | null)[] | null
+  referenceY?: number
+  hits?: (boolean | null)[] | null
+  unsupported?: boolean
+}) {
+  const chartData = useMemo((): ChartData<'line'> | null => {
+    if (!sparkValues?.length) return null
+    const hasNumeric = sparkValues.some((v) => v != null && Number.isFinite(Number(v)))
+    if (!hasNumeric) return null
+    const labels =
+      weekLabels.length === sparkValues.length
+        ? weekLabels
+        : sparkValues.map((_, i) => `Week ${i + 1}`)
+    const data = sparkValues.map((v) =>
+      v != null && Number.isFinite(Number(v)) ? Number(v) : null,
+    ) as (number | null)[]
+    const datasets: ChartData<'line'>['datasets'] = [
+      {
+        label: 'Value',
+        data,
+        borderColor: '#164b7c',
+        backgroundColor: 'rgba(22, 75, 124, 0.08)',
+        fill: true,
+        tension: 0.35,
+        spanGaps: false,
+      },
+    ]
+    if (referenceY != null && data.length > 0) {
+      datasets.push({
+        label: 'Target',
+        data: data.map(() => referenceY),
+        borderColor: 'rgba(245, 130, 32, 0.8)',
+        borderDash: [4, 4],
+        fill: false,
+        pointRadius: 0,
+        tension: 0,
+      })
+    }
+    return { labels, datasets }
+  }, [weekLabels, sparkValues, referenceY])
+
+  const chartOptions = useMemo(
+    (): ChartOptions<'line'> => ({
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      layout: { padding: { top: 4, bottom: 2, left: 0, right: 2 } },
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        datalabels: { display: false },
+        tooltip: {
+          callbacks: {
+            title: (items) => {
+              const i = items[0]?.dataIndex ?? 0
+              return weekLabels[i] || undefined
+            },
+            label: (item) => {
+              const ds = item.dataset.label || ''
+              if (item.parsed.y == null) return `${ds}: —`
+              return `${ds}: ${item.parsed.y}`
+            },
+          },
+        },
+      },
+      scales: {
+        x: { display: false },
+        y: { display: false },
+      },
+      elements: {
+        line: { borderWidth: 2 },
+        point: { radius: 0, hoverRadius: 3 },
+      },
+    }),
+    [weekLabels],
+  )
+
+  if (unsupported) {
+    return (
+      <KpiHitWeekStrip
+        unsupportedMessage="Intraday only — not stored in Monday weekly snapshots."
+        greySlots={HISTORY_PLACEHOLDER_WEEKS}
+      />
+    )
+  }
+
+  if (chartData) {
+    return (
+      <div className="processing-kpi-sparkline-wrap">
+        <Chart type="line" data={chartData} options={chartOptions} />
+      </div>
+    )
+  }
+
+  return <KpiHitWeekStrip hits={hits ?? null} />
+}
+
+function ProcessingKpiCardGrid({
+  title,
+  value,
+  viz,
+  target,
+}: {
+  title: ReactNode
+  value: ReactNode
+  viz: ReactNode
+  target: ReactNode
+}) {
+  return (
+    <div className="processing-kpi-grid">
+      <div className="processing-kpi-grid__title">{title}</div>
+      <div className="processing-kpi-grid__value">{value}</div>
+      <div className="processing-kpi-grid__viz">{viz}</div>
+      <div className="processing-kpi-grid__target">{target}</div>
+    </div>
+  )
+}
+
+function ProcessingKpiTileSkeleton({ hero = false }: { hero?: boolean }) {
+  return (
+    <Card className={`app-kpi-nested processing-tile h-100 ${hero ? 'processing-tile--hero' : ''}`}>
+      <Card.Body className="processing-kpi-card-body p-3">
+        <div className="processing-kpi-grid">
+          <span className="home-skeleton-bar d-block" style={{ width: hero ? 'min(52%, 14rem)' : '70%' }} />
+          <span
+            className="home-skeleton-bar d-block"
+            style={{
+              width: hero ? 'min(28%, 8rem)' : '45%',
+              height: hero ? '2.75rem' : '1.5rem',
+              marginTop: '0.35rem',
+              borderRadius: '0.5rem',
+            }}
+          />
+          <div className="processing-kpi-sparkline-wrap pt-1">
+            <span
+              className="home-skeleton-bar d-block w-100"
+              style={{ height: '3.25rem', borderRadius: '0.35rem' }}
+            />
+          </div>
+          <span className="home-skeleton-bar d-block mt-1" style={{ width: '82%' }} />
+        </div>
+      </Card.Body>
+    </Card>
+  )
+}
+
+/** Status tab layout while initial `/processing_attack/*` bundle is loading. */
+function ProcessingStatusTabSkeleton() {
+  return (
+    <div className="home-skeleton d-flex flex-column" aria-busy="true" aria-label="Loading processing status">
+      <Card className="app-surface-card processing-status-card">
+        <Card.Body className="p-3">
+          <Row className="g-3">
+            <Col lg={12}>
+              <ProcessingKpiTileSkeleton hero />
+            </Col>
+            {[0, 1, 2, 3, 4, 5].map((i) => (
+              <Col md={4} key={i}>
+                <ProcessingKpiTileSkeleton />
+              </Col>
+            ))}
+          </Row>
+        </Card.Body>
+      </Card>
+      <Card className="app-surface-card mb-3 mt-4">
+        <Card.Header className="border-0 pb-0 pt-3 px-3">
+          <span className="home-skeleton-bar d-block" style={{ width: '18rem', height: '1rem' }} />
+        </Card.Header>
+        <Card.Body className="pt-3 pb-3">
+          <div className="processing-job-type-bar-wrap" style={{ height: 280 }}>
+            {Array.from({ length: 7 }, (_, r) => (
+              <div key={r} className="d-flex align-items-center gap-3 mb-3">
+                <span className="home-skeleton-bar flex-shrink-0" style={{ width: '7.5rem', height: 11 }} />
+                <span className="home-skeleton-bar flex-grow-1" style={{ height: 16, borderRadius: 6 }} />
+              </div>
+            ))}
+          </div>
+        </Card.Body>
+      </Card>
+    </div>
+  )
+}
+
+type ConversionJob = {
+  id?: number
+  scheduledDate?: number
+  type?: string
+  location?: { address?: { street?: string } }
+}
+
+function startOfToday(): Date {
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
+function endOfDayAfterDays(from: Date, days: number): Date {
+  const d = new Date(from)
+  d.setDate(d.getDate() + days)
+  d.setHours(23, 59, 59, 999)
+  return d
+}
+
+function weeksSinceDate(iso: string | undefined): number | null {
+  if (!iso) return null
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return null
+  const ms = Date.now() - d.getTime()
+  return Math.max(0, Math.floor(ms / (7 * 24 * 60 * 60 * 1000)))
+}
+
+function scheduledJobDate(job: ConversionJob | undefined): Date | null {
+  const ts = job?.scheduledDate
+  if (ts == null) return null
+  const sec = ts > 1e12 ? ts / 1000 : ts
+  const d = new Date(sec * 1000)
+  return Number.isNaN(d.getTime()) ? null : d
+}
+
+/** Whole weeks from start-of-today to start of `target` (negative if target is before today). */
+function wholeWeeksFromTodayToCalendarDay(target: Date): number | null {
+  if (Number.isNaN(target.getTime())) return null
+  const todayStart = startOfToday()
+  const targetDay = new Date(target)
+  targetDay.setHours(0, 0, 0, 0)
+  const ms = targetDay.getTime() - todayStart.getTime()
+  return Math.floor(ms / (7 * 24 * 60 * 60 * 1000))
+}
+
+function generateMondayOptions(): { value: string; label: string }[] {
+  const now = new Date()
+  const day = now.getDay()
+  let mondayThisWeek = new Date(now)
+  mondayThisWeek.setDate(now.getDate() - ((day + 6) % 7))
+  const fridayThisWeek = new Date(mondayThisWeek)
+  fridayThisWeek.setDate(mondayThisWeek.getDate() + 4)
+  const friday5pm = new Date(fridayThisWeek)
+  friday5pm.setHours(17, 0, 0, 0)
+  let lastCompletedMonday: Date
+  if (now > friday5pm) {
+    lastCompletedMonday = mondayThisWeek
+  } else {
+    lastCompletedMonday = new Date(mondayThisWeek)
+    lastCompletedMonday.setDate(mondayThisWeek.getDate() - 7)
+  }
+  const oneYearAgo = new Date(now)
+  oneYearAgo.setFullYear(now.getFullYear() - 1)
+  const options: { value: string; label: string }[] = []
+  let currentMonday = new Date(lastCompletedMonday)
+  while (currentMonday >= oneYearAgo) {
+    const currentFriday = new Date(currentMonday)
+    currentFriday.setDate(currentMonday.getDate() + 4)
+    const fmt: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' }
+    const mondayStr = currentMonday.toLocaleDateString('en-US', fmt)
+    const fridayStr = currentFriday.toLocaleDateString('en-US', fmt)
+    const year = currentMonday.getFullYear()
+    const value = `${currentMonday.getFullYear()}-${String(currentMonday.getMonth() + 1).padStart(2, '0')}-${String(currentMonday.getDate()).padStart(2, '0')}`
+    options.push({ value, label: `${mondayStr} - ${fridayStr}, ${year}` })
+    currentMonday.setDate(currentMonday.getDate() - 7)
+  }
+  return options
+}
+
+export default function ProcessingAttackPage() {
+  const weekOptions = useMemo(() => generateMondayOptions(), [])
+  const [selectedMonday, setSelectedMonday] = useState(weekOptions[0]?.value || '')
+
+  const [jobsToday, setJobsToday] = useState<{ jobs_processed_today?: number; incoming_jobs_today?: number } | null>(
+    null,
+  )
+  const [pink, setPink] = useState<{
+    number_of_pink_folder_jobs?: number
+    time_in_pink_folder?: number
+    pink_folder_detailed_info?: Record<
+      string,
+      {
+        job_address?: string
+        job_url?: string
+        is_paperwork_uploaded?: boolean
+        job_date?: string | null
+      }[]
+    >
+  } | null>(null)
+  const [toInvoice, setToInvoice] = useState<number | null>(null)
+  const [numComplete, setNumComplete] = useState<number | null>(null)
+  const [complete, setComplete] = useState<{
+    job_type_count?: Record<string, number>
+    oldest_jobs_to_be_marked_complete?: {
+      job_id: number
+      oldest_job_date: string
+      oldest_job_address: string
+      oldest_job_type: string
+    }[]
+    num_locations_to_be_converted?: number
+    jobs_to_be_converted?: ConversionJob[]
+  } | null>(null)
+  const [processed, setProcessed] = useState<{
+    total_jobs_processed?: number
+    total_tech_hours_processed?: number
+    total_jobs_processed_previous_week?: number
+    total_tech_hours_processed_previous_week?: number
+    jobs_by_type?: Record<string, number>
+    hours_by_type?: Record<string, number>
+    error?: string
+  } | null>(null)
+  const [byProcessor, setByProcessor] = useState<{
+    jobs_processed_by_processor?: Record<string, number>
+    jobs_processed_by_processor_previous_week?: Record<string, number>
+    hours_processed_by_processor?: Record<string, number>
+    hours_processed_by_processor_previous_week?: Record<string, number>
+  } | null>(null)
+  const [trend, setTrend] = useState<{ weeks: string[]; jobs: number[]; hours: number[] } | null>(null)
+  const [statusHistory, setStatusHistory] = useState<ProcessingStatusHistoryRow[]>([])
+  const [oldestJobsModalOpen, setOldestJobsModalOpen] = useState(false)
+  const [pinkFolderModalOpen, setPinkFolderModalOpen] = useState(false)
+  const [reportConversionModalOpen, setReportConversionModalOpen] = useState(false)
+  const [pinkTechExpanded, setPinkTechExpanded] = useState<Record<string, boolean>>({})
+  const [loading, setLoading] = useState(true)
+
+  const refreshStatus = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [jt, pf, inv, nc, co, hist] = await Promise.all([
+        apiFetch('/processing_attack/jobs_today').then((r) => r.json()),
+        apiFetch('/processing_attack/pink_folder_data').then((r) => r.json()),
+        apiFetch('/processing_attack/jobs_to_be_invoiced').then((r) => r.json()),
+        apiFetch('/processing_attack/num_jobs_to_be_marked_complete').then((r) => r.json()),
+        apiJson<typeof complete>('/processing_attack/complete_jobs', { method: 'POST', body: '{}' }),
+        apiFetch('/processing_attack/history_jobs_to_be_marked_complete').then((r) => r.json()),
+      ])
+      setJobsToday(jt)
+      setPink(pf)
+      setToInvoice(inv.jobs_to_be_invoiced)
+      setNumComplete(nc.jobs_to_be_marked_complete ?? nc.count ?? null)
+      setComplete(co)
+      setStatusHistory(Array.isArray(hist) ? hist : [])
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    refreshStatus()
+  }, [refreshStatus])
+
+  const loadWeekly = useCallback(async () => {
+    if (!selectedMonday) return
+    try {
+      const [pr, bp, tr] = await Promise.all([
+        apiJson<typeof processed>('/processing_attack/processed_data', {
+          method: 'POST',
+          body: JSON.stringify({ selectedMonday }),
+        }),
+        apiJson<typeof byProcessor>('/processing_attack/processed_data_by_processor', {
+          method: 'POST',
+          body: JSON.stringify({ selectedMonday }),
+        }),
+        apiFetch('/processing_attack/overall_weekly_trend').then((r) => r.json()),
+      ])
+      setProcessed(pr)
+      setByProcessor(bp)
+      setTrend(tr)
+    } catch (e) {
+      console.error(e)
+      setProcessed(null)
+      setByProcessor(null)
+    }
+  }, [selectedMonday])
+
+  useEffect(() => {
+    loadWeekly()
+  }, [loadWeekly])
+
+  const trendData = useMemo(() => {
+    if (!trend?.weeks?.length) return null
+    return {
+      labels: trend.weeks,
+      datasets: [
+        {
+          label: 'Jobs processed',
+          data: trend.jobs,
+          tension: 0.3,
+          borderWidth: 2,
+          borderColor: 'rgb(13, 110, 253)',
+        },
+        {
+          label: 'Tech hours',
+          data: trend.hours,
+          tension: 0.3,
+          borderWidth: 2,
+          borderColor: 'rgb(253, 126, 20)',
+          yAxisID: 'y1',
+        },
+      ],
+    }
+  }, [trend])
+
+  const jobsByTypeData = useMemo(() => {
+    if (!processed?.jobs_by_type) return null
+    const labels = Object.keys(processed.jobs_by_type).map(properFormat)
+    return {
+      labels,
+      datasets: [
+        {
+          label: 'Jobs',
+          data: Object.values(processed.jobs_by_type),
+          backgroundColor: 'rgba(12, 98, 166, 0.7)',
+          borderRadius: 8,
+        },
+      ],
+    }
+  }, [processed])
+
+  const hoursByTypeData = useMemo(() => {
+    if (!processed?.hours_by_type) return null
+    const labels = Object.keys(processed.hours_by_type).map(properFormat)
+    return {
+      labels,
+      datasets: [
+        {
+          label: 'Hours',
+          data: Object.values(processed.hours_by_type),
+          backgroundColor: 'rgba(25, 135, 84, 0.55)',
+          borderRadius: 8,
+        },
+      ],
+    }
+  }, [processed])
+
+  const procJobsChart = useMemo(() => {
+    if (!byProcessor?.jobs_processed_by_processor) return null
+    const cur = byProcessor.jobs_processed_by_processor
+    const prev = byProcessor.jobs_processed_by_processor_previous_week || {}
+    const labels = Object.keys(cur).map(properFormat)
+    const keys = Object.keys(cur)
+    return {
+      labels,
+      datasets: [
+        {
+          label: 'Selected week',
+          data: keys.map((k) => cur[k]),
+          backgroundColor: 'rgba(12, 98, 166, 0.7)',
+          borderRadius: 8,
+        },
+        {
+          label: 'Previous week',
+          data: keys.map((k) => prev[k] || 0),
+          backgroundColor: 'rgba(200, 200, 200, 0.8)',
+          borderRadius: 8,
+        },
+      ],
+    }
+  }, [byProcessor])
+
+  const procHoursChart = useMemo(() => {
+    if (!byProcessor?.hours_processed_by_processor) return null
+    const cur = byProcessor.hours_processed_by_processor
+    const prev = byProcessor.hours_processed_by_processor_previous_week || {}
+    const labels = Object.keys(cur).map(properFormat)
+    const keys = Object.keys(cur)
+    return {
+      labels,
+      datasets: [
+        {
+          label: 'Selected week',
+          data: keys.map((k) => cur[k]),
+          backgroundColor: 'rgba(12, 98, 166, 0.7)',
+          borderRadius: 8,
+        },
+        {
+          label: 'Previous week',
+          data: keys.map((k) => prev[k] || 0),
+          backgroundColor: 'rgba(200, 200, 200, 0.8)',
+          borderRadius: 8,
+        },
+      ],
+    }
+  }, [byProcessor])
+
+  const jobsToCompleteByTypeBar = useMemo(() => {
+    const raw = complete?.job_type_count
+    if (!raw || Object.keys(raw).length === 0) return null
+    const entries = Object.entries(raw)
+      .map(([key, val]) => ({ key, count: Number(val) || 0 }))
+      .filter((e) => e.count > 0)
+      .sort((a, b) => b.count - a.count)
+    if (entries.length === 0) return null
+    const labels = entries.map((e) => properFormat(e.key))
+    const data = entries.map((e) => e.count)
+    const total = entries.reduce((s, e) => s + e.count, 0)
+    const chartData: ChartData<'bar'> = {
+      labels,
+      datasets: [
+        {
+          label: 'Jobs to be marked complete',
+          data,
+          backgroundColor: 'rgba(22, 75, 124, 0.78)',
+          borderRadius: 6,
+          maxBarThickness: 28,
+        },
+      ],
+    }
+    const options: ChartOptions<'bar'> = {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      // Canvas sharpness: default DPR is window.devicePixelRatio; fractional DPR (e.g. Windows 125%)
+      // + CSS size rounding often softens bars/text. Use at least 2×, cap to avoid huge bitmaps.
+      devicePixelRatio:
+        typeof globalThis.window !== 'undefined'
+          ? Math.min(Math.max(globalThis.window.devicePixelRatio || 1, 2), 3)
+          : 2,
+      plugins: {
+        datalabels: { display: false },
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label(ctx) {
+              const v = Number(ctx.raw) || 0
+              const pct = total > 0 ? Math.round((v / total) * 100) : 0
+              return ` ${v} job${v !== 1 ? 's' : ''} (${pct}% of total)`
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          beginAtZero: true,
+          ticks: { precision: 0 },
+          title: { display: true, text: 'Jobs' },
+          grid: { color: 'rgba(15, 23, 42, 0.06)' },
+        },
+        y: {
+          reverse: true,
+          grid: { display: false },
+          ticks: { autoSkip: false },
+        },
+      },
+    }
+    const minHeightPx = Math.round(Math.max(220, entries.length * 36 + 80))
+    return { chartData, options, total, minHeightPx, typeCount: entries.length }
+  }, [complete?.job_type_count])
+
+  const barOpts = {
+    responsive: true,
+    plugins: { datalabels: { display: false } },
+    scales: { y: { beginAtZero: true } },
+  }
+
+  const lineOpts = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { datalabels: { display: false } },
+    interaction: { mode: 'index' as const, intersect: false },
+    scales: {
+      y: { beginAtZero: true, title: { display: true, text: 'Jobs' } },
+      y1: {
+        position: 'right' as const,
+        beginAtZero: true,
+        grid: { drawOnChartArea: false },
+        title: { display: true, text: 'Hours' },
+      },
+    },
+  }
+
+  const statusHistoryDerived = useMemo(() => {
+    const rows = statusHistory
+    const parseIso = (s: string | null | undefined): Date | null => {
+      if (!s) return null
+      const d = new Date(s)
+      return Number.isNaN(d.getTime()) ? null : d
+    }
+    const daysBetween = (later: Date, earlier: Date) =>
+      Math.round((later.getTime() - earlier.getTime()) / 86400000)
+
+    if (!rows.length) {
+      return {
+        weekLabels: [] as string[],
+        hits: null as null | {
+          complete: (boolean | null)[]
+          oldest: (boolean | null)[]
+          pink: (boolean | null)[]
+          invoiced: (boolean | null)[]
+          reportConv: (boolean | null)[]
+          earliest: (boolean | null)[]
+        },
+        series: null as null | {
+          complete: (number | null)[]
+          invoiced: (number | null)[]
+          reportConv: (number | null)[]
+          pink: (number | null)[]
+          oldestDays: (number | null)[]
+          earliestLeadDays: (number | null)[]
+        },
+      }
+    }
+
+    const weekLabels = rows.map((r) => {
+      const d = parseIso(r.week_start ?? null)
+      return d ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : ''
+    })
+
+    const hits = {
+      complete: rows.map((r) => r.hit_goal ?? null),
+      oldest: rows.map((r) => r.hit_goal_oldest_job ?? null),
+      pink: rows.map((r) => r.hit_goal_pink_folder ?? null),
+      invoiced: rows.map((r) => r.hit_goal_jobs_to_be_invoiced ?? null),
+      reportConv: rows.map((r) => r.hit_goal_jobs_to_be_converted ?? null),
+      earliest: rows.map((r) => r.hit_goal_earliest_job_to_be_converted ?? null),
+    }
+
+    const series = {
+      complete: rows.map((r) =>
+        r.jobs_to_be_marked_complete != null ? Number(r.jobs_to_be_marked_complete) : null,
+      ),
+      invoiced: rows.map((r) => (r.jobs_to_be_invoiced != null ? Number(r.jobs_to_be_invoiced) : null)),
+      reportConv: rows.map((r) => (r.jobs_to_be_converted != null ? Number(r.jobs_to_be_converted) : null)),
+      pink: rows.map((r) =>
+        r.number_of_pink_folder_jobs != null ? Number(r.number_of_pink_folder_jobs) : null,
+      ),
+      oldestDays: rows.map((r) => {
+        const ws = parseIso(r.week_start ?? null)
+        const od = parseIso(r.oldest_job_date ?? null)
+        if (!ws || !od) return null
+        return Math.max(0, daysBetween(ws, od))
+      }),
+      earliestLeadDays: rows.map((r) => {
+        const ws = parseIso(r.week_start ?? null)
+        const ed = parseIso(r.earliest_job_to_be_converted_date ?? null)
+        if (!ws || !ed) return null
+        return daysBetween(ed, ws)
+      }),
+    }
+
+    return { weekLabels, hits, series }
+  }, [statusHistory])
+
+  const pinkFolderByTech = useMemo(() => {
+    const info = pink?.pink_folder_detailed_info
+    if (!info || typeof info !== 'object') return []
+    return Object.entries(info)
+      .map(([name, jobs]) => ({
+        name,
+        jobs: (Array.isArray(jobs) ? jobs : []).map((j) => ({
+          job_address: typeof j?.job_address === 'string' ? j.job_address : '',
+          job_url: typeof j?.job_url === 'string' ? j.job_url : '',
+          is_paperwork_uploaded: Boolean(j?.is_paperwork_uploaded),
+          job_date: j?.job_date != null && j.job_date !== '' ? String(j.job_date) : null,
+        })),
+      }))
+      .filter((t) => t.jobs.length > 0)
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [pink?.pink_folder_detailed_info])
+
+  const statusBootloading = loading && !jobsToday
+
+  const conversionJobs = complete?.jobs_to_be_converted ?? []
+  const reportConversionCount = conversionJobs.length
+  const earliestConversionJob = conversionJobs[0]
+  const earliestConversionDate = scheduledJobDate(earliestConversionJob)
+  const earliestConversionAddress =
+    earliestConversionJob?.location?.address?.street?.trim() || '—'
+  const earliestConversionWeeksAway = earliestConversionDate
+    ? wholeWeeksFromTodayToCalendarDay(earliestConversionDate)
+    : null
+
+  const oldestRow = complete?.oldest_jobs_to_be_marked_complete?.[0]
+  const oldestWeeks = weeksSinceDate(oldestRow?.oldest_job_date)
+
+  const completeOk =
+    numComplete != null ? numComplete <= KPI_TARGETS.jobsToCompleteMax : true
+  const invoicedOk = toInvoice != null ? toInvoice < KPI_TARGETS.jobsToInvoiceMax : true
+  const reportConvOk = reportConversionCount < KPI_TARGETS.reportConversionJobsMax
+
+  const processedToday = jobsToday?.jobs_processed_today ?? 0
+  const incoming = jobsToday?.incoming_jobs_today ?? 0
+  /** Target: more processed than new */
+  const jobsTodayOk = processedToday > incoming
+  /** Processed minus new: positive when you are ahead (processed more than new). */
+  const jobsTodayNet =
+    jobsToday?.jobs_processed_today != null && jobsToday?.incoming_jobs_today != null
+      ? jobsToday.jobs_processed_today - jobsToday.incoming_jobs_today
+      : null
+
+  const pinkJobs = pink?.number_of_pink_folder_jobs ?? 0
+  const pinkOk = pinkJobs < KPI_TARGETS.pinkFolderJobsMax
+
+  const oldestOk =
+    oldestWeeks == null ? true : oldestWeeks <= KPI_TARGETS.oldestJobWeeksMax
+
+  let earliestConversionOk = true
+  if (reportConversionCount > 0 && earliestConversionDate) {
+    const todayStart = startOfToday()
+    const windowEnd = endOfDayAfterDays(
+      todayStart,
+      KPI_TARGETS.earliestConversionWindowDays - 1,
+    )
+    earliestConversionOk = earliestConversionDate > windowEnd
+  }
+
+  return (
+    <div className="processing-page d-flex flex-column gap-3">
+      <Card className="app-surface-card">
+        <Card.Body className="p-3 p-md-4">
+          <h1 className="processing-page-title mb-1">Processing Attack</h1>
+          <p className="processing-page-subtitle mb-0">Track daily processing health and weekly output trends.</p>
+        </Card.Body>
+      </Card>
+      <Tab.Container defaultActiveKey="status">
+        <Nav variant="tabs" className="mb-0 processing-tabs">
+          <Nav.Item>
+            <Nav.Link eventKey="status">Processing status</Nav.Link>
+          </Nav.Item>
+          <Nav.Item>
+            <Nav.Link eventKey="weekly">Weekly summary</Nav.Link>
+          </Nav.Item>
+        </Nav>
+        <Tab.Content>
+          <Tab.Pane eventKey="status">
+            {statusBootloading ? (
+              <ProcessingStatusTabSkeleton />
+            ) : (
+              <>
+            <Card className="app-surface-card processing-status-card">
+              <Card.Body className="p-3">
+                <Row className="g-3">
+                  <Col lg={12}>
+                    <Card
+                      className={`app-kpi-nested processing-tile processing-tile--hero d-flex flex-column ${completeOk ? 'processing-tile--status-good' : 'processing-tile--status-warn'}`}
+                    >
+                      <Card.Body className="processing-kpi-card-body p-3 flex-grow-1">
+                        <ProcessingKpiCardGrid
+                          title={<span className="processing-kpi-label">Jobs To Be Marked Complete</span>}
+                          value={
+                            <div
+                              className={`processing-hero-value ${completeOk ? 'processing-hero-value--good' : 'processing-hero-value--warn'}`}
+                            >
+                              {numComplete ?? '—'}
+                            </div>
+                          }
+                          viz={
+                            <KpiTrendViz
+                              weekLabels={statusHistoryDerived.weekLabels}
+                              sparkValues={statusHistoryDerived.series?.complete}
+                              referenceY={KPI_TARGETS.jobsToCompleteMax}
+                              hits={statusHistoryDerived.hits?.complete}
+                            />
+                          }
+                          target={
+                            <div className="processing-kpi-target">
+                              Target: {KPI_TARGETS.jobsToCompleteMax} or fewer jobs
+                            </div>
+                          }
+                        />
+                      </Card.Body>
+                    </Card>
+                  </Col>
+                  <Col md={4}>
+                    <Card
+                      className={`app-kpi-nested processing-tile h-100 d-flex flex-column ${jobsTodayOk ? 'processing-tile--status-good' : 'processing-tile--status-warn'}`}
+                    >
+                      <Card.Body className="processing-kpi-card-body p-3 flex-grow-1">
+                        <ProcessingKpiCardGrid
+                          title={<span className="processing-kpi-label">Job processing progress today</span>}
+                          value={
+                            <div
+                              className={`processing-jobs-today-change ${jobsTodayNet == null ? 'processing-jobs-today-change--neutral' : jobsTodayOk ? 'processing-stat--good' : 'processing-stat--warn'}`}
+                            >
+                              {jobsTodayNet == null
+                                ? '—'
+                                : `${jobsTodayNet > 0 ? '+' : ''}${jobsTodayNet}`}
+                            </div>
+                          }
+                          viz={<KpiTrendViz weekLabels={statusHistoryDerived.weekLabels} unsupported />}
+                          target={
+                            <div className="processing-kpi-target">
+                              Target: more processed than new (positive net)
+                            </div>
+                          }
+                        />
+                      </Card.Body>
+                    </Card>
+                  </Col>
+                  <Col md={4}>
+                    <Card
+                      className={`app-kpi-nested processing-tile processing-kpi-card--clickable h-100 d-flex flex-column ${oldestOk ? 'processing-tile--status-good' : 'processing-tile--status-warn'}`}
+                      role="button"
+                      tabIndex={0}
+                      aria-haspopup="dialog"
+                      aria-label="Open oldest jobs to be marked complete"
+                      onClick={() => setOldestJobsModalOpen(true)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          setOldestJobsModalOpen(true)
+                        }
+                      }}
+                    >
+                      <Card.Body className="processing-kpi-card-body p-3 flex-grow-1">
+                        <ProcessingKpiCardGrid
+                          title={<span className="processing-kpi-label">Oldest Job</span>}
+                          value={
+                            <div
+                              className={`processing-value processing-kpi-metric-single-line ${
+                                !oldestRow
+                                  ? 'processing-jobs-today-change--neutral'
+                                  : oldestOk
+                                    ? 'processing-value--good'
+                                    : ''
+                              }`}
+                            >
+                              {!oldestRow
+                                ? '—'
+                                : [
+                                    oldestRow.oldest_job_address?.trim() || null,
+                                    oldestWeeks != null ? `${oldestWeeks} week(s) old` : null,
+                                  ]
+                                    .filter(Boolean)
+                                    .join(' · ') || '—'}
+                            </div>
+                          }
+                          viz={
+                            <KpiTrendViz
+                              weekLabels={statusHistoryDerived.weekLabels}
+                              sparkValues={statusHistoryDerived.series?.oldestDays}
+                              referenceY={KPI_TARGETS.oldestJobWeeksMax * 7}
+                              hits={statusHistoryDerived.hits?.oldest}
+                            />
+                          }
+                          target={
+                            <div className="processing-kpi-target">
+                              Target: no older than {KPI_TARGETS.oldestJobWeeksMax} weeks
+                            </div>
+                          }
+                        />
+                      </Card.Body>
+                    </Card>
+                  </Col>
+                  <Col md={4}>
+                    <Card
+                      className={`app-kpi-nested processing-tile processing-kpi-card--clickable h-100 d-flex flex-column ${pinkOk ? 'processing-tile--status-good' : 'processing-tile--status-warn'}`}
+                      role="button"
+                      tabIndex={0}
+                      aria-haspopup="dialog"
+                      aria-label="Open pink folder jobs by technician"
+                      onClick={() => setPinkFolderModalOpen(true)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          setPinkFolderModalOpen(true)
+                        }
+                      }}
+                    >
+                      <Card.Body className="processing-kpi-card-body p-3 flex-grow-1">
+                        <ProcessingKpiCardGrid
+                          title={<span className="processing-kpi-label">PINK FOLDER JOBS</span>}
+                          value={
+                            <div className={`processing-value ${pinkOk ? 'processing-value--good' : ''}`}>
+                              {pink?.number_of_pink_folder_jobs ?? '—'} jobs
+                            </div>
+                          }
+                          viz={
+                            <KpiTrendViz
+                              weekLabels={statusHistoryDerived.weekLabels}
+                              sparkValues={statusHistoryDerived.series?.pink}
+                              referenceY={KPI_TARGETS.pinkFolderJobsMax}
+                              hits={statusHistoryDerived.hits?.pink}
+                            />
+                          }
+                          target={
+                            <div className="processing-kpi-target">
+                              Target: fewer than {KPI_TARGETS.pinkFolderJobsMax} jobs
+                            </div>
+                          }
+                        />
+                      </Card.Body>
+                    </Card>
+                  </Col>
+                  <Col md={4}>
+                    <Card
+                      className={`app-kpi-nested processing-tile h-100 d-flex flex-column ${invoicedOk ? 'processing-tile--status-good' : 'processing-tile--status-warn'}`}
+                    >
+                      <Card.Body className="processing-kpi-card-body p-3 flex-grow-1">
+                        <ProcessingKpiCardGrid
+                          title={<span className="processing-kpi-label">Complete Jobs To Be Invoiced</span>}
+                          value={
+                            <div className={`processing-value ${invoicedOk ? 'processing-value--good' : ''}`}>
+                              {toInvoice ?? '—'}
+                            </div>
+                          }
+                          viz={
+                            <KpiTrendViz
+                              weekLabels={statusHistoryDerived.weekLabels}
+                              sparkValues={statusHistoryDerived.series?.invoiced}
+                              referenceY={KPI_TARGETS.jobsToInvoiceMax}
+                              hits={statusHistoryDerived.hits?.invoiced}
+                            />
+                          }
+                          target={
+                            <div className="processing-kpi-target">
+                              Target: fewer than {KPI_TARGETS.jobsToInvoiceMax} jobs
+                            </div>
+                          }
+                        />
+                      </Card.Body>
+                    </Card>
+                  </Col>
+                  <Col md={4}>
+                    <Card
+                      className={`app-kpi-nested processing-tile processing-kpi-card--clickable h-100 d-flex flex-column ${reportConvOk ? 'processing-tile--status-good' : 'processing-tile--status-warn'}`}
+                      role="button"
+                      tabIndex={0}
+                      aria-haspopup="dialog"
+                      aria-label="Open list of scheduled jobs requiring report conversion"
+                      onClick={() => setReportConversionModalOpen(true)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          setReportConversionModalOpen(true)
+                        }
+                      }}
+                    >
+                      <Card.Body className="processing-kpi-card-body p-3 flex-grow-1">
+                        <ProcessingKpiCardGrid
+                          title={
+                            <span className="processing-kpi-label">Scheduled Jobs Requiring Report Conversion</span>
+                          }
+                          value={
+                            <div className={`processing-value ${reportConvOk ? 'processing-value--good' : ''}`}>
+                              {reportConversionCount}
+                            </div>
+                          }
+                          viz={
+                            <KpiTrendViz
+                              weekLabels={statusHistoryDerived.weekLabels}
+                              sparkValues={statusHistoryDerived.series?.reportConv}
+                              referenceY={KPI_TARGETS.reportConversionJobsMax}
+                              hits={statusHistoryDerived.hits?.reportConv}
+                            />
+                          }
+                          target={
+                            <div className="processing-kpi-target">
+                              Target: fewer than {KPI_TARGETS.reportConversionJobsMax} jobs
+                            </div>
+                          }
+                        />
+                      </Card.Body>
+                    </Card>
+                  </Col>
+                  <Col md={4}>
+                    <Card
+                      className={`app-kpi-nested processing-tile h-100 d-flex flex-column ${earliestConversionOk ? 'processing-tile--status-good' : 'processing-tile--status-warn'}`}
+                    >
+                      <Card.Body className="processing-kpi-card-body p-3 flex-grow-1">
+                        <ProcessingKpiCardGrid
+                          title={
+                            <span className="processing-kpi-label">
+                              Earliest Scheduled Job Requiring Report Conversion
+                            </span>
+                          }
+                          value={
+                            <div
+                              className={`processing-value processing-kpi-metric-single-line ${
+                                !reportConversionCount
+                                  ? 'processing-jobs-today-change--neutral'
+                                  : earliestConversionOk
+                                    ? 'processing-value--good'
+                                    : ''
+                              }`}
+                            >
+                              {!reportConversionCount
+                                ? '—'
+                                : [
+                                    earliestConversionAddress !== '—'
+                                      ? earliestConversionAddress
+                                      : null,
+                                    earliestConversionWeeksAway != null
+                                      ? `${Math.max(0, earliestConversionWeeksAway)} week(s) away`
+                                      : null,
+                                  ]
+                                    .filter(Boolean)
+                                    .join(' · ') || '—'}
+                            </div>
+                          }
+                          viz={
+                            <KpiTrendViz
+                              weekLabels={statusHistoryDerived.weekLabels}
+                              sparkValues={statusHistoryDerived.series?.earliestLeadDays}
+                              referenceY={KPI_TARGETS.earliestConversionWindowDays}
+                              hits={statusHistoryDerived.hits?.earliest}
+                            />
+                          }
+                          target={
+                            <div className="processing-kpi-target">
+                              Target: earliest visit more than 2 weeks from today
+                            </div>
+                          }
+                        />
+                      </Card.Body>
+                    </Card>
+                  </Col>
+                </Row>
+              </Card.Body>
+            </Card>
+
+            {jobsToCompleteByTypeBar && (
+              <Card className="app-surface-card mb-3 mt-4">
+                <Card.Header className="fw-semibold">Jobs To Be Marked Complete By Job Type</Card.Header>
+                <Card.Body className="pt-3 pb-3">
+                  <div
+                    className="processing-job-type-bar-wrap"
+                    style={{ height: jobsToCompleteByTypeBar.minHeightPx }}
+                    role="img"
+                    aria-label={`${jobsToCompleteByTypeBar.total} jobs to be marked complete across ${jobsToCompleteByTypeBar.typeCount} job types; bar chart sorted by count`}
+                  >
+                    <Chart type="bar" data={jobsToCompleteByTypeBar.chartData} options={jobsToCompleteByTypeBar.options} />
+                  </div>
+                </Card.Body>
+              </Card>
+            )}
+
+            <Modal
+              show={oldestJobsModalOpen}
+              onHide={() => setOldestJobsModalOpen(false)}
+              centered
+              size="lg"
+              contentClassName="app-surface-card"
+            >
+              <Modal.Header closeButton>
+                <Modal.Title>Oldest job to be marked complete</Modal.Title>
+              </Modal.Header>
+              <Modal.Body>
+                <Table size="sm" striped responsive className="mb-0 processing-modal-data-table">
+                  <thead>
+                    <tr>
+                      <th>Address</th>
+                      <th>Type</th>
+                      <th>Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(complete?.oldest_jobs_to_be_marked_complete || []).length === 0 ? (
+                      <tr>
+                        <td colSpan={3} className="text-muted">
+                          No rows yet.
+                        </td>
+                      </tr>
+                    ) : (
+                      (complete?.oldest_jobs_to_be_marked_complete || []).map((j) => {
+                        const jobHref =
+                          j.job_id != null
+                            ? `https://app.servicetrade.com/job/${j.job_id}`
+                            : null
+                        const dateShown = formatPinkFolderJobDateMmmDdYyyy(j.oldest_job_date)
+                        return (
+                          <tr
+                            key={j.job_id}
+                            className={`processing-oldest-jobs-row${jobHref ? ' processing-modal-data-table__row--interactive' : ' processing-oldest-jobs-row--disabled'}`}
+                            role={jobHref ? 'button' : undefined}
+                            tabIndex={jobHref ? 0 : undefined}
+                            aria-label={
+                              jobHref
+                                ? `Open job in ServiceTrade: ${j.oldest_job_address || j.job_id}`
+                                : undefined
+                            }
+                            onClick={() => {
+                              if (jobHref) window.open(jobHref, '_blank', 'noopener,noreferrer')
+                            }}
+                            onKeyDown={(e) => {
+                              if (!jobHref) return
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault()
+                                window.open(jobHref, '_blank', 'noopener,noreferrer')
+                              }
+                            }}
+                          >
+                            <td>{j.oldest_job_address}</td>
+                            <td>{formatJobTypeSentence(j.oldest_job_type || '')}</td>
+                            <td>{dateShown || '—'}</td>
+                          </tr>
+                        )
+                      })
+                    )}
+                  </tbody>
+                </Table>
+              </Modal.Body>
+            </Modal>
+
+            <Modal
+              show={reportConversionModalOpen}
+              onHide={() => setReportConversionModalOpen(false)}
+              centered
+              size="lg"
+              contentClassName="app-surface-card"
+            >
+              <Modal.Header closeButton>
+                <Modal.Title>Scheduled jobs requiring report conversion</Modal.Title>
+              </Modal.Header>
+              <Modal.Body>
+                <Table size="sm" striped responsive className="mb-0 processing-modal-data-table">
+                  <thead>
+                    <tr>
+                      <th>Address</th>
+                      <th>Type</th>
+                      <th>Scheduled</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {conversionJobs.length === 0 ? (
+                      <tr>
+                        <td colSpan={3} className="text-muted">
+                          No scheduled inspection jobs in report-conversion locations.
+                        </td>
+                      </tr>
+                    ) : (
+                      conversionJobs.map((j, idx) => {
+                        const id = j.id
+                        const when = scheduledJobDate(j)
+                        const href = id != null ? `https://app.servicetrade.com/job/${id}` : undefined
+                        const address = j.location?.address?.street?.trim() || ''
+                        const linkLabel = address || (href ? 'Open job in ServiceTrade' : '')
+                        return (
+                          <tr
+                            key={id ?? `rc-${idx}`}
+                            className="processing-modal-data-table__row--interactive"
+                          >
+                            <td>
+                              {href && linkLabel ? (
+                                <a
+                                  href={href}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="processing-pink-folder-tech__job-link"
+                                >
+                                  {linkLabel}
+                                </a>
+                              ) : (
+                                address || '—'
+                              )}
+                            </td>
+                            <td>{j.type ? properFormat(String(j.type)) : '—'}</td>
+                            <td>{when ? when.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '—'}</td>
+                          </tr>
+                        )
+                      })
+                    )}
+                  </tbody>
+                </Table>
+              </Modal.Body>
+            </Modal>
+
+            <Modal
+              className="pink-folder-modal"
+              show={pinkFolderModalOpen}
+              onHide={() => {
+                setPinkFolderModalOpen(false)
+                setPinkTechExpanded({})
+              }}
+              centered
+              size="lg"
+              contentClassName="app-surface-card pink-folder-modal__content"
+            >
+              <Modal.Header closeButton className="pink-folder-modal__header">
+                <Modal.Title className="pink-folder-modal__title">Pink folder jobs by technician</Modal.Title>
+              </Modal.Header>
+              <Modal.Body className="pink-folder-modal__body">
+                <div className="d-flex flex-wrap justify-content-end gap-2 mb-3">
+                  <Button
+                    type="button"
+                    variant="light"
+                    size="sm"
+                    className="pink-folder-modal__btn pink-folder-modal__btn--expand"
+                    onClick={() => {
+                      const next: Record<string, boolean> = {}
+                      pinkFolderByTech.forEach((t) => {
+                        next[t.name] = true
+                      })
+                      setPinkTechExpanded(next)
+                    }}
+                  >
+                    Expand all
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="light"
+                    size="sm"
+                    className="pink-folder-modal__btn pink-folder-modal__btn--collapse"
+                    onClick={() => setPinkTechExpanded({})}
+                  >
+                    Collapse all
+                  </Button>
+                </div>
+                {pinkFolderByTech.length === 0 ? (
+                  <p className="pink-folder-modal__empty mb-0">No pink folder assignments.</p>
+                ) : (
+                  pinkFolderByTech.map((t) => {
+                    const expanded = Boolean(pinkTechExpanded[t.name])
+                    return (
+                      <div key={t.name} className="processing-pink-folder-tech mb-2">
+                        <button
+                          type="button"
+                          className="processing-pink-folder-tech__header d-flex w-100 align-items-center justify-content-between border-0 py-2 px-3 text-start"
+                          onClick={() =>
+                            setPinkTechExpanded((s) => ({
+                              ...s,
+                              [t.name]: !s[t.name],
+                            }))
+                          }
+                          aria-expanded={expanded}
+                        >
+                          <span className="processing-pink-folder-tech__name">{t.name}</span>
+                          <span className="processing-pink-folder-tech__meta d-flex align-items-center gap-2">
+                            ({t.jobs.length} job{t.jobs.length !== 1 ? 's' : ''})
+                            <i
+                              className={`bi ${expanded ? 'bi-chevron-down' : 'bi-chevron-right'}`}
+                              aria-hidden
+                            />
+                          </span>
+                        </button>
+                        <Collapse in={expanded}>
+                          <div>
+                            <ul className="list-unstyled mb-0 ps-3 pe-3 pb-3 pt-1">
+                              {t.jobs.map((j, idx) => {
+                                const jobDateLabel = formatPinkFolderJobDateMmmDdYyyy(j.job_date)
+                                return (
+                                  <li
+                                    key={`${t.name}-${idx}`}
+                                    className="processing-pink-folder-job-row d-flex flex-wrap align-items-baseline justify-content-between gap-2 mb-2"
+                                  >
+                                    <div className="flex-grow-1 min-w-0 d-flex flex-wrap align-items-baseline gap-2">
+                                      {j.job_url ? (
+                                        <a
+                                          href={j.job_url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="processing-pink-folder-tech__job-link"
+                                          onClick={(e) => e.stopPropagation()}
+                                        >
+                                          {j.job_address || 'Open job in ServiceTrade'}
+                                        </a>
+                                      ) : (
+                                        <span className="text-muted">{j.job_address || '—'}</span>
+                                      )}
+                                      {jobDateLabel ? (
+                                        <span className="text-muted small text-nowrap">{jobDateLabel}</span>
+                                      ) : null}
+                                    </div>
+                                    <div className="processing-pink-folder-job-row__upload small text-nowrap">
+                                      <span
+                                        className={
+                                          j.is_paperwork_uploaded
+                                            ? 'fw-semibold text-success'
+                                            : 'fw-semibold text-danger'
+                                        }
+                                      >
+                                        {j.is_paperwork_uploaded ? 'Uploaded' : 'Not uploaded'}
+                                      </span>
+                                    </div>
+                                  </li>
+                                )
+                              })}
+                            </ul>
+                          </div>
+                        </Collapse>
+                      </div>
+                    )
+                  })
+                )}
+              </Modal.Body>
+            </Modal>
+              </>
+            )}
+          </Tab.Pane>
+          <Tab.Pane eventKey="weekly">
+            <Card className="app-surface-card mb-3">
+              <Card.Body>
+            <Row className="g-2 align-items-end">
+              <Col xs="auto">
+                <Form.Label className="small">Week (Mon)</Form.Label>
+                <Form.Select
+                  value={selectedMonday}
+                  onChange={(e) => setSelectedMonday(e.target.value)}
+                  style={{ minWidth: 220 }}
+                >
+                  {weekOptions.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </Form.Select>
+              </Col>
+              <Col xs="auto">
+                <Button size="sm" onClick={loadWeekly}>
+                  Reload week
+                </Button>
+              </Col>
+            </Row>
+              </Card.Body>
+            </Card>
+            {processed?.error && <p className="text-warning">{processed.error}</p>}
+            {processed && !processed.error && (
+              <Row className="g-3 mb-3">
+                <Col md={6}>
+                  <Card>
+                    <Card.Header>Jobs processed</Card.Header>
+                    <Card.Body>
+                      <div className="fs-3">{processed.total_jobs_processed}</div>
+                      <div className="small text-muted">
+                        Prev week: {processed.total_jobs_processed_previous_week}
+                      </div>
+                    </Card.Body>
+                  </Card>
+                </Col>
+                <Col md={6}>
+                  <Card>
+                    <Card.Header>Tech hours</Card.Header>
+                    <Card.Body>
+                      <div className="fs-3">{processed.total_tech_hours_processed}</div>
+                      <div className="small text-muted">
+                        Prev week: {processed.total_tech_hours_processed_previous_week}
+                      </div>
+                    </Card.Body>
+                  </Card>
+                </Col>
+              </Row>
+            )}
+            <Row className="g-3">
+              <Col lg={6}>
+                {jobsByTypeData && (
+                  <Card className="mb-3">
+                    <Card.Header>Jobs by type</Card.Header>
+                    <Card.Body style={{ minHeight: 280 }}>
+                      <Chart type="bar" data={jobsByTypeData} options={barOpts} />
+                    </Card.Body>
+                  </Card>
+                )}
+              </Col>
+              <Col lg={6}>
+                {hoursByTypeData && (
+                  <Card className="mb-3">
+                    <Card.Header>Hours by type</Card.Header>
+                    <Card.Body style={{ minHeight: 280 }}>
+                      <Chart type="bar" data={hoursByTypeData} options={barOpts} />
+                    </Card.Body>
+                  </Card>
+                )}
+              </Col>
+              <Col lg={6}>
+                {procJobsChart && (
+                  <Card className="mb-3">
+                    <Card.Header>Jobs by processor</Card.Header>
+                    <Card.Body style={{ minHeight: 280 }}>
+                      <Chart type="bar" data={procJobsChart} options={barOpts} />
+                    </Card.Body>
+                  </Card>
+                )}
+              </Col>
+              <Col lg={6}>
+                {procHoursChart && (
+                  <Card className="mb-3">
+                    <Card.Header>Hours by processor</Card.Header>
+                    <Card.Body style={{ minHeight: 280 }}>
+                      <Chart type="bar" data={procHoursChart} options={barOpts} />
+                    </Card.Body>
+                  </Card>
+                )}
+              </Col>
+            </Row>
+            {trendData && (
+              <Card>
+                <Card.Header>Overall weekly trend</Card.Header>
+                <Card.Body style={{ height: 360 }}>
+                  <Chart type="line" data={trendData} options={lineOpts} />
+                </Card.Body>
+              </Card>
+            )}
+          </Tab.Pane>
+        </Tab.Content>
+      </Tab.Container>
+    </div>
+  )
+}

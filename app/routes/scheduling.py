@@ -1,12 +1,37 @@
-from flask import Blueprint, render_template, request, session, redirect, url_for, jsonify
-from datetime import datetime, timedelta, time
+from flask import Blueprint, request, session, redirect, url_for, jsonify
+from datetime import date, datetime, timedelta, time
 from zoneinfo import ZoneInfo
 import requests
 import time as time_module
+import json
 from app.db_models import db, Technician
 from app.services.scheduling_service import find_candidate_dates, find_candidate_blocks
-from flask import redirect, url_for
+from app.spa import send_spa_index
+
 scheduling_bp = Blueprint('scheduling', __name__)
+
+
+def _json_safe(obj):
+    """Recursively normalize dict keys/values to JSON-safe primitives."""
+    if isinstance(obj, dict):
+        out = {}
+        for k, v in obj.items():
+            if isinstance(k, (str, int, float, bool)) or k is None:
+                key = k
+            elif isinstance(k, (date, datetime)):
+                key = k.isoformat()
+            else:
+                key = str(k)
+            out[key] = _json_safe(v)
+        return out
+    if isinstance(obj, list):
+        return [_json_safe(x) for x in obj]
+    if isinstance(obj, tuple):
+        return [_json_safe(x) for x in obj]
+    if isinstance(obj, (date, datetime)):
+        return obj.isoformat()
+    return obj
+
 
 # --- Technician Endpoints ---
 
@@ -37,134 +62,140 @@ def update_technician_type(tech_id):
     })
 
 
-# --- Scheduling Route ---
-@scheduling_bp.route('/find_schedule', methods=['GET', 'POST'])
-def find_schedule():
+def _st_auth_session():
     api_session = requests.Session()
     auth_url = "https://api.servicetrade.com/api/auth"
     payload = {
         "username": session.get('username'),
         "password": session.get('password')
     }
+    auth_response = api_session.post(auth_url, json=payload)
+    auth_response.raise_for_status()
+    return api_session
 
-    try:
-        auth_response = api_session.post(auth_url, json=payload)
-        auth_response.raise_for_status()
-    except Exception as e:
-        return redirect(url_for("auth.login"))  # or whatever your login route is
-    
-    if request.method == 'POST':
-        # Build dynamic tech rows from the form arrays
-        tech_counts = request.form.getlist("tech_count[]")
-        tech_rows = []
 
-        for i in range(len(tech_counts)):
-            try:
-                tech_count_val = int(tech_counts[i])
-            except (TypeError, ValueError):
-                tech_count_val = 0
+def _compute_schedule_payload(body: dict):
+    """
+    body: rows[].tech_count, technician_ids[], technician_types[], day_hours[]
+          include_rrsc, include_projects_blocking, weekdays, start_time (HH:MM)
+    """
+    rows_in = body.get("rows") or []
+    tech_rows = []
+    for i, row in enumerate(rows_in):
+        try:
+            tech_count_val = int(row.get("tech_count") or 0)
+        except (TypeError, ValueError):
+            tech_count_val = 0
+        selected_ids = row.get("technician_ids") or []
+        if not isinstance(selected_ids, list):
+            selected_ids = []
+        selected_types = row.get("technician_types") or []
+        if not isinstance(selected_types, list):
+            selected_types = []
+        selected_types = [str(t).strip() for t in selected_types if str(t).strip()]
 
-            # Get selected technician IDs for this row
-            selected_ids = request.form.getlist(f"techs_row_{i}[]")
-
-            # Query the database for those technicians
-            selected_techs = []
-            if selected_ids:
-                selected_techs = Technician.query.filter(
-                    Technician.id.in_(selected_ids),
-                    Technician.active == True
+        selected_techs = []
+        if selected_ids or selected_types:
+            q = Technician.query.filter(Technician.active == True)
+            if selected_ids and selected_types:
+                selected_techs = q.filter(
+                    (Technician.id.in_(selected_ids)) | (Technician.type.in_(selected_types))
                 ).all()
+            elif selected_ids:
+                selected_techs = q.filter(Technician.id.in_(selected_ids)).all()
+            else:
+                selected_techs = q.filter(Technician.type.in_(selected_types)).all()
+        day_hours_raw = row.get("day_hours") or []
+        day_hours = []
+        for dh in day_hours_raw:
+            try:
+                day_hours.append(float(dh))
+            except (TypeError, ValueError):
+                day_hours.append(0.0)
+        tech_rows.append({
+            "tech_count": tech_count_val,
+            "technicians": [{"id": t.id, "name": t.name, "type": t.type} for t in selected_techs],
+            "technician_types": selected_types,
+            "day_hours": day_hours
+        })
 
-            # Collect the day/hour requirements
-            day_hours_raw = request.form.getlist(f"tech_day_hours_{i}[]")
-            day_hours = []
-            for dh in day_hours_raw:
-                try:
-                    day_hours.append(float(dh))
-                except (TypeError, ValueError):
-                    day_hours.append(0.0)
+    include_rrsc = bool(body.get("include_rrsc"))
+    include_projects_blocking = bool(body.get("include_projects_blocking"))
+    weekday_values = body.get("weekdays")
+    if weekday_values is not None and isinstance(weekday_values, list):
+        selected_weekdays = [int(v) for v in weekday_values]
+    else:
+        selected_weekdays = [0, 1, 2, 3, 4]
 
-            # Build structured row data
-            tech_rows.append({
-                "tech_count": tech_count_val,
-                "technicians": [{"id": t.id, "name": t.name, "type": t.type} for t in selected_techs],
-                "day_hours": day_hours
-            })
+    start_time_str = body.get("start_time") or "08:30"
+    try:
+        custom_start_time = datetime.strptime(start_time_str, "%H:%M").time()
+    except (ValueError, TypeError):
+        custom_start_time = time(8, 30)
 
-        include_rrsc = request.form.get("rrsc") == "on"
-        include_projects_blocking = request.form.get("projects_blocking") == "on"
+    account_timezone = session.get("account_timezone", "UTC")
+    today = datetime.now(ZoneInfo(account_timezone)).date()
+    end_date = today + timedelta(days=90)
+    scheduleDateFrom = int(time_module.mktime(datetime.combine(today, datetime.min.time()).timetuple()))
+    scheduleDateTo = int(time_module.mktime(datetime.combine(end_date, datetime.min.time()).timetuple()))
 
-        # Selected weekdays
-        weekday_values = request.form.getlist("weekdays")
-        selected_weekdays = [int(v) for v in weekday_values] if weekday_values else [0, 1, 2, 3, 4]
+    api_session = _st_auth_session()
 
-        # Start time
-        start_time_str = request.form.get("start_time")
-        try:
-            custom_start_time = datetime.strptime(start_time_str, "%H:%M").time()
-        except (ValueError, TypeError):
-            custom_start_time = time(8, 30)
+    query_params = {
+        "windowBeginsAfter": scheduleDateFrom,
+        "windowEndsBefore": scheduleDateTo,
+        "status": "scheduled",
+        "limit": 2000
+    }
+    appointments_response = api_session.get(
+        "https://api.servicetrade.com/api/appointment/", params=query_params
+    )
+    appointments_response.raise_for_status()
+    appointments_data = appointments_response.json().get("data", {}).get("appointments", [])
 
-        # Time window
-        account_timezone = session.get("account_timezone", "UTC")
-        today = datetime.now(ZoneInfo(account_timezone)).date()
-        end_date = today + timedelta(days=90)
-        scheduleDateFrom = int(time_module.mktime(datetime.combine(today, datetime.min.time()).timetuple()))
-        scheduleDateTo = int(time_module.mktime(datetime.combine(end_date, datetime.min.time()).timetuple()))
+    absences_response = api_session.get("https://api.servicetrade.com/api/user/absence")
+    absences_response.raise_for_status()
+    absences_data = absences_response.json().get("data", {}).get("userAbsences", [])
 
-        # Authenticate ServiceTrade
-        api_session = requests.Session()
-        auth_url = "https://api.servicetrade.com/api/auth"
-        payload = {"username": session.get('username'), "password": session.get('password')}
-        try:
-            auth_response = api_session.post(auth_url, json=payload)
-            auth_response.raise_for_status()
-        except Exception:
-            session.clear()
-            return redirect(url_for('auth.login'))
-
-        # Get appointments
-        query_params = {
-            "windowBeginsAfter": scheduleDateFrom,
-            "windowEndsBefore": scheduleDateTo,
-            "status": "scheduled",
-            "limit": 2000
+    allowable_techs = [
+        {
+            "id": t.id,
+            "name": t.name,
+            "type": (t.type or "Unassigned").strip()
         }
-        try:
-            appointments_response = api_session.get("https://api.servicetrade.com/api/appointment/", params=query_params)
-            appointments_response.raise_for_status()
-        except Exception as e:
-            return render_template("schedule_result.html", error=f"Error retrieving appointments: {e}")
+        for t in Technician.query.filter_by(active=True).all()
+    ]
 
-        appointments_data = appointments_response.json().get("data", {}).get("appointments", [])
+    daily_candidates = find_candidate_dates(
+        appointments_data, absences_data, allowable_techs,
+        include_rrsc, include_projects_blocking, selected_weekdays, custom_start_time, tech_rows
+    )
 
-        # Get absences
-        try:
-            absences_response = api_session.get("https://api.servicetrade.com/api/user/absence")
-            absences_response.raise_for_status()
-        except Exception as e:
-            return render_template("schedule_result.html", error=f"Error retrieving absences: {e}")
+    candidate_blocks = find_candidate_blocks(daily_candidates, tech_rows, allowable_techs)
 
-        absences_data = absences_response.json().get("data", {}).get("userAbsences", [])
+    raw = {"candidate_blocks": candidate_blocks, "tech_rows": tech_rows}
+    return _json_safe(raw)
 
-        # ✅ Get allowable techs from DB (safe for None types)
-        allowable_techs = [
-            {
-                "id": t.id,
-                "name": t.name,
-                "type": (t.type or "Unassigned").strip()
-            }
-            for t in Technician.query.filter_by(active=True).all()
-        ]
 
-        # Run scheduling logic
-        daily_candidates = find_candidate_dates(
-            appointments_data, absences_data, allowable_techs,
-            include_rrsc, include_projects_blocking, selected_weekdays, custom_start_time, tech_rows
-        )
+@scheduling_bp.route('/api/scheduling/compute', methods=['POST'])
+def api_scheduling_compute():
+    if not session.get("authenticated"):
+        return jsonify({"error": "Unauthorized"}), 401
+    try:
+        body = request.get_json(silent=True) or {}
+        result = _compute_schedule_payload(body)
+        return jsonify(result)
+    except requests.HTTPError as e:
+        return jsonify({"error": str(e)}), 502
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-        candidate_blocks = find_candidate_blocks(daily_candidates, tech_rows, allowable_techs)
 
-        return render_template("schedule_result.html", candidate_blocks=candidate_blocks, tech_rows=tech_rows)
-
-    return render_template("jobs_form.html")
+# --- Scheduling page (SPA) ---
+@scheduling_bp.route('/find_schedule', methods=['GET'])
+def find_schedule():
+    try:
+        _st_auth_session()
+    except Exception:
+        return redirect(url_for("auth.login"))
+    return send_spa_index()
