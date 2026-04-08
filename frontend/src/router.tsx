@@ -1,6 +1,7 @@
 import { lazy } from 'react'
 import { createBrowserRouter, Navigate } from 'react-router-dom'
 import AppLayout from './layout/AppLayout'
+import KeysPublicLayout from './layout/KeysPublicLayout'
 import LoginPage from './pages/LoginPage'
 
 const HomePage = lazy(() => import('./pages/HomePage'))
@@ -18,16 +19,26 @@ const ProcessingAttackPage = lazy(() => import('./pages/ProcessingAttackPage'))
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
   {
+    path: '/keys/metrics',
+    element: <AppLayout />,
+    children: [{ index: true, element: <KeyMetricsPage /> }],
+  },
+  {
+    path: '/keys',
+    element: <KeysPublicLayout />,
+    children: [
+      { index: true, element: <KeysHomePage /> },
+      { path: 'by-barcode/:barcode', element: <KeyByBarcodePage /> },
+      { path: ':keyId', element: <KeyDetailPage /> },
+    ],
+  },
+  {
     path: '/',
     element: <AppLayout />,
     children: [
       { index: true, element: <Navigate to="/home" replace /> },
       { path: 'home', element: <HomePage /> },
       { path: 'find_schedule', element: <FindSchedulePage /> },
-      { path: 'keys', element: <KeysHomePage /> },
-      { path: 'keys/metrics', element: <KeyMetricsPage /> },
-      { path: 'keys/by-barcode/:barcode', element: <KeyByBarcodePage /> },
-      { path: 'keys/:keyId', element: <KeyDetailPage /> },
       { path: 'deficiency_tracker', element: <DeficiencyTrackerPage /> },
       { path: 'scheduling_attack', element: <SchedulingAttackPage /> },
       { path: 'monthly_specialist', element: <MonthlySpecialistsPage /> },
