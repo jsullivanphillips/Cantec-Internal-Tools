@@ -4,6 +4,18 @@ import os
 from flask import abort, redirect, request, send_from_directory
 
 
+def _request_host_is_loopback() -> bool:
+    """True when the HTTP Host is a local loopback name (safe for Vite redirect).
+
+    If FLASK_DEBUG is on but the app is reached via a public host (e.g. Heroku),
+    redirecting to http://127.0.0.1:5173 breaks the browser (mixed origin / iframe
+    tools, or unreachable localhost from another machine).
+    """
+    raw = (request.host or "").split(":")[0].strip().lower()
+    host = raw.strip("[]")  # [::1] -> ::1
+    return host in ("localhost", "127.0.0.1", "::1")
+
+
 def frontend_dist_path() -> str:
     basedir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     return os.path.join(basedir, "frontend", "dist")
@@ -46,7 +58,9 @@ def register_spa_static_routes(app):
 
     # Files from frontend/public/ are copied to dist/ root by Vite; Flask must expose them explicitly
     # (unlike /assets/*). Keep this list in sync with files linked from index.html or the SPA.
-    _dist_root_files = frozenset({"cantec-logo-horizontal.png", "vite.svg"})
+    _dist_root_files = frozenset(
+        {"cantec-logo-horizontal.png", "vite.svg", "CANTEC Fire Alarms LOGO cropped.png"}
+    )
 
     def _send_dist_root(filename: str):
         if filename not in _dist_root_files:
@@ -67,3 +81,7 @@ def register_spa_static_routes(app):
     @app.get("/vite.svg")
     def spa_vite_svg():
         return _send_dist_root("vite.svg")
+
+    @app.get("/favicon.png")
+    def spa_favicon_png():
+        return _send_dist_root("CANTEC Fire Alarms LOGO cropped.png")
