@@ -306,6 +306,21 @@ function KpiTrendViz({
     )
   }
 
+  // In compact KPI cards, always show hit/miss squares when we have snapshot periods.
+  // Otherwise a numeric daily spark chooses the line-chart path; those charts often render
+  // invisible in the dual-lane grid (blank "Daily" row) while weekly stays on the strip path.
+  if (compact && Array.isArray(hits) && hits.length > 0) {
+    return (
+      <div className="processing-kpi-viz-fallback processing-kpi-viz-fallback--compact">
+        <KpiHitWeekStrip
+          hits={hits}
+          greySlots={greySlots ?? HISTORY_PLACEHOLDER_WEEKS}
+          emptyMessage={emptyMessage}
+        />
+      </div>
+    )
+  }
+
   if (chartData) {
     return (
       <div className={wrapClass}>
@@ -398,14 +413,21 @@ function ProcessingKpiCardGrid({
 }: {
   title: ReactNode
   value: ReactNode
-  viz: ReactNode
+  /** Omit for KPIs with no weekly/daily history (e.g. live intraday only). */
+  viz?: ReactNode
   target: ReactNode
 }) {
+  const showViz = viz != null
   return (
     <div className="processing-kpi-grid">
       <div className="processing-kpi-grid__title">{title}</div>
       <div className="processing-kpi-grid__value">{value}</div>
-      <div className="processing-kpi-grid__viz">{viz}</div>
+      <div
+        className={`processing-kpi-grid__viz${showViz ? '' : ' processing-kpi-grid__viz--empty'}`}
+        aria-hidden={showViz ? undefined : true}
+      >
+        {showViz ? viz : null}
+      </div>
       <div className="processing-kpi-grid__target">{target}</div>
     </div>
   )
@@ -708,41 +730,107 @@ export default function ProcessingAttackPage() {
 
   const refreshStatus = useCallback(async (signal?: AbortSignal) => {
     setLoading(true)
+    const cached = readProcessingStatusCache()
     try {
-      const [jt, pf, inv, nc, co, hist, histDaily] = await Promise.all([
-        apiFetch('/processing_attack/jobs_today', { signal }).then((r) => r.json()),
-        apiFetch('/processing_attack/pink_folder_data', { signal }).then((r) => r.json()),
-        apiFetch('/processing_attack/jobs_to_be_invoiced', { signal }).then((r) => r.json()),
-        apiFetch('/processing_attack/num_jobs_to_be_marked_complete', { signal }).then((r) => r.json()),
+      // Use allSettled so one slow/failing endpoint does not block history + KPI updates
+      // (empty history was leaving all strip cells gray when e.g. complete_jobs timed out).
+      const settled = await Promise.allSettled([
+        apiFetch('/processing_attack/jobs_today', { signal }).then(async (r) => {
+          if (!r.ok) throw new Error(`jobs_today ${r.status}`)
+          return r.json()
+        }),
+        apiFetch('/processing_attack/pink_folder_data', { signal }).then(async (r) => {
+          if (!r.ok) throw new Error(`pink_folder_data ${r.status}`)
+          return r.json()
+        }),
+        apiFetch('/processing_attack/jobs_to_be_invoiced', { signal }).then(async (r) => {
+          if (!r.ok) throw new Error(`jobs_to_be_invoiced ${r.status}`)
+          return r.json()
+        }),
+        apiFetch('/processing_attack/num_jobs_to_be_marked_complete', { signal }).then(async (r) => {
+          if (!r.ok) throw new Error(`num_jobs ${r.status}`)
+          return r.json()
+        }),
         apiJson<typeof complete>('/processing_attack/complete_jobs', { method: 'POST', body: '{}', signal }),
-        apiFetch('/processing_attack/history_jobs_to_be_marked_complete', { signal }).then((r) => r.json()),
+        apiFetch('/processing_attack/history_jobs_to_be_marked_complete', { signal }).then(async (r) => {
+          if (!r.ok) throw new Error(`history weekly ${r.status}`)
+          const j = await r.json()
+          if (!Array.isArray(j)) throw new Error('history weekly not an array')
+          return j as ProcessingStatusHistoryRow[]
+        }),
         apiFetch('/processing_attack/history_processing_status_daily', { signal }).then(async (r) => {
           if (!r.ok) return []
           try {
             const j = await r.json()
-            return Array.isArray(j) ? j : []
+            return Array.isArray(j) ? (j as ProcessingStatusHistoryRow[]) : []
           } catch {
             return []
           }
         }),
       ])
-      setJobsToday(jt)
-      setPink(pf)
-      setToInvoice(inv.jobs_to_be_invoiced)
-      setNumComplete(nc.jobs_to_be_marked_complete ?? nc.count ?? null)
-      setComplete(co)
-      const nextStatusHistory = Array.isArray(hist) ? hist : []
-      const nextStatusHistoryDaily = Array.isArray(histDaily) ? histDaily : []
-      setStatusHistory(nextStatusHistory)
-      setStatusHistoryDaily(nextStatusHistoryDaily)
+
+      if (signal?.aborted) return
+
+      const logRejected = (label: string, i: number) => {
+        const s = settled[i]
+        if (s.status === 'rejected') console.warn(`[Jobs Backlog] ${label} failed:`, s.reason)
+      }
+
+      logRejected('jobs_today', 0)
+      logRejected('pink_folder_data', 1)
+      logRejected('jobs_to_be_invoiced', 2)
+      logRejected('num_jobs_to_be_marked_complete', 3)
+      logRejected('complete_jobs', 4)
+      logRejected('history_jobs_to_be_marked_complete', 5)
+      logRejected('history_processing_status_daily', 6)
+
+      let jobsTodayNext = cached?.jobsToday ?? null
+      let pinkNext = cached?.pink ?? null
+      let toInvoiceNext = cached?.toInvoice ?? null
+      let numCompleteNext = cached?.numComplete ?? null
+      let completeNext = cached?.complete ?? null
+      let statusHistoryNext = cached?.statusHistory ?? []
+      let statusHistoryDailyNext = cached?.statusHistoryDaily ?? []
+
+      if (settled[0].status === 'fulfilled') {
+        jobsTodayNext = settled[0].value
+        setJobsToday(jobsTodayNext)
+      }
+      if (settled[1].status === 'fulfilled') {
+        pinkNext = settled[1].value
+        setPink(pinkNext)
+      }
+      if (settled[2].status === 'fulfilled') {
+        const inv = settled[2].value as { jobs_to_be_invoiced?: number }
+        toInvoiceNext = inv.jobs_to_be_invoiced ?? null
+        setToInvoice(toInvoiceNext)
+      }
+      if (settled[3].status === 'fulfilled') {
+        const nc = settled[3].value as { jobs_to_be_marked_complete?: number; count?: number }
+        numCompleteNext = nc.jobs_to_be_marked_complete ?? nc.count ?? null
+        setNumComplete(numCompleteNext)
+      }
+      if (settled[4].status === 'fulfilled') {
+        completeNext = settled[4].value
+        setComplete(completeNext)
+      }
+      if (settled[5].status === 'fulfilled') {
+        statusHistoryNext = settled[5].value
+        setStatusHistory(statusHistoryNext)
+      }
+      if (settled[6].status === 'fulfilled') {
+        statusHistoryDailyNext = settled[6].value
+        setStatusHistoryDaily(statusHistoryDailyNext)
+      }
+
       writeProcessingStatusCache({
-        jobsToday: jt,
-        pink: pf,
-        toInvoice: inv.jobs_to_be_invoiced,
-        numComplete: nc.jobs_to_be_marked_complete ?? nc.count ?? null,
-        complete: co,
-        statusHistory: nextStatusHistory,
-        statusHistoryDaily: nextStatusHistoryDaily,
+        jobsToday: jobsTodayNext,
+        pink: pinkNext,
+        toInvoice: toInvoiceNext,
+        numComplete: numCompleteNext,
+        complete: completeNext,
+        statusHistory: statusHistoryNext,
+        statusHistoryDaily: statusHistoryDailyNext,
       })
     } catch (e) {
       if (isAbortError(e)) return
@@ -1443,16 +1531,6 @@ export default function ProcessingAttackPage() {
                                 <span className="text-success">Processed: {processedToday}</span>
                               </div>
                             </div>
-                          }
-                          viz={
-                            <ProcessingKpiDualTrend
-                              weeklyLabels={statusHistoryDerived.weekLabels}
-                              dailyLabels={dailyHistoryDerived.dayLabels}
-                              weeklyUnsupported
-                              dailyUnsupported
-                              weeklyUnsupportedMessage="Intraday only — not stored in weekly snapshots."
-                              dailyUnsupportedMessage="Live net change — not stored in daily snapshots."
-                            />
                           }
                           target={
                             <div className="processing-kpi-target">

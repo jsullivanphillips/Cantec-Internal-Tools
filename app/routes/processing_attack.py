@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify, session, request, current_app
 import requests
 import json
+import os
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from dateutil import parser  # Use dateutil for flexible datetime parsing
@@ -625,6 +626,7 @@ def processing_attack_history_processing_status_daily():
                 period_value=record.snapshot_date,
             )
         )
+
     return jsonify(history), 200
 
 

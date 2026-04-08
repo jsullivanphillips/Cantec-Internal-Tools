@@ -1106,6 +1106,11 @@
   align-items: stretch;
 }
 
+/* Keeps the same column width / vertical rhythm as cards that render ProcessingKpiDualTrend */
+.processing-kpi-grid__viz--empty {
+  pointer-events: none;
+}
+
 .processing-kpi-grid__target {
   grid-column: 1 / -1;
   justify-self: start;
