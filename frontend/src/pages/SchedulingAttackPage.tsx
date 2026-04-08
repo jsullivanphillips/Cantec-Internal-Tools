@@ -1,430 +1,425 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { apiFetch, apiJson } from '../lib/apiClient'
-import {
-  buildHoursDatasets,
-  buildJobsDatasets,
-  type MetricsPayload,
-} from '../lib/schedulingForecastCharts'
-import {
-  Button,
-  Card,
-  Col,
-  Form,
-  Nav,
-  Row,
-  Spinner,
-  Tab,
-  Table,
-} from 'react-bootstrap'
+import { useEffect, useMemo, useState } from 'react'
+import { apiJson, isAbortError } from '../lib/apiClient'
+import { Card, Col, Row } from 'react-bootstrap'
 import { Chart } from 'react-chartjs-2'
 
-type V2Row = {
-  id: number
-  location_id: number
-  address: string
-  matched_on: string
-  scheduled: boolean
-  scheduled_date: string | null
-  confirmed: boolean
-  reached_out: boolean
-  completed: boolean
-  canceled: boolean
-  notes: string
+type SchedulingKpis = {
+  confirmed_pct?: number
 }
 
-function currentMonthYm() {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+type WeeklySchedulingVolumeResponse = {
+  job_type: string
+  generated_at: string | null
+  weeks: Array<{
+    period_start: string
+    period_end: string
+    scheduled: number
+    rescheduled: number
+  }>
 }
 
-function isCanceled(r: V2Row) {
-  return !!r.canceled
-}
-function isScheduledLike(r: V2Row) {
-  return !!r.scheduled || !!r.completed
-}
-function isConfirmed(r: V2Row) {
-  return !!r.confirmed
-}
-function isReachedOut(r: V2Row) {
-  return !!r.reached_out
+type ForwardScheduleCoverageResponse = {
+  generated_at: string
+  threshold_pct: number
+  coverage_weeks_60pct: number
+  weeks: Array<{
+    week_start_local: string
+    week_end_local: string
+    utilization_pct: number
+    meets_60pct: boolean
+  }>
 }
 
 export default function SchedulingAttackPage() {
-  const [metrics, setMetrics] = useState<MetricsPayload | null>(null)
-  const [includeTravel, setIncludeTravel] = useState(true)
-  const [metricsLoading, setMetricsLoading] = useState(true)
+  const [loading, setLoading] = useState(true)
+  const [kpis, setKpis] = useState<SchedulingKpis | null>(null)
+  const [weekly, setWeekly] = useState<WeeklySchedulingVolumeResponse | null>(null)
+  const [forward, setForward] = useState<ForwardScheduleCoverageResponse | null>(null)
 
-  const [month, setMonth] = useState(currentMonthYm)
-  const [v2rows, setV2rows] = useState<V2Row[]>([])
-  const [v2loading, setV2loading] = useState(false)
-  const [kpis, setKpis] = useState<{ confirmed_pct?: number } | null>(null)
-
-  const loadMetrics = useCallback(async () => {
-    setMetricsLoading(true)
-    try {
-      const q = new URLSearchParams({ include_travel: includeTravel ? 'true' : 'false' })
-      const r = await apiFetch(`/scheduling_attack/metrics?${q}`)
-      setMetrics(await r.json())
-    } catch (e) {
-      console.error(e)
-      setMetrics(null)
-    } finally {
-      setMetricsLoading(false)
+  useEffect(() => {
+    const controller = new AbortController()
+    let active = true
+    const run = async () => {
+      setLoading(true)
+      try {
+        const [kpiPayload, weeklyPayload, forwardPayload] = await Promise.all([
+          apiJson<SchedulingKpis>('/scheduling_attack/v2/kpis', { signal: controller.signal }),
+          apiJson<WeeklySchedulingVolumeResponse>('/scheduling_attack/v2/weekly_scheduling_volume', {
+            signal: controller.signal,
+          }),
+          apiJson<ForwardScheduleCoverageResponse>('/scheduling_attack/v2/forward_schedule_coverage', {
+            signal: controller.signal,
+          }),
+        ])
+        if (!active) return
+        setKpis(kpiPayload)
+        setWeekly(weeklyPayload)
+        setForward(forwardPayload)
+      } catch (error) {
+        if (isAbortError(error)) return
+        console.error(error)
+        if (!active) return
+        setKpis(null)
+        setWeekly(null)
+        setForward(null)
+      } finally {
+        if (active) setLoading(false)
+      }
     }
-  }, [includeTravel])
-
-  useEffect(() => {
-    loadMetrics()
-  }, [loadMetrics])
-
-  const loadV2 = useCallback(async () => {
-    setV2loading(true)
-    try {
-      const j = await apiJson<{ rows: V2Row[] }>(`/scheduling_attack/v2?month=${encodeURIComponent(month)}`)
-      setV2rows(j.rows || [])
-    } catch (e) {
-      console.error(e)
-      setV2rows([])
-    } finally {
-      setV2loading(false)
+    void run()
+    return () => {
+      active = false
+      controller.abort()
     }
-  }, [month])
-
-  useEffect(() => {
-    loadV2()
-  }, [loadV2])
-
-  useEffect(() => {
-    apiJson<{ confirmed_pct: number }>('/scheduling_attack/v2/kpis')
-      .then(setKpis)
-      .catch(console.error)
   }, [])
 
-  const currentMonthNum = new Date().getMonth() + 1
-  const hoursPack = useMemo(() => {
-    if (!metrics) return null
-    return buildHoursDatasets(metrics, includeTravel, currentMonthNum)
-  }, [metrics, includeTravel, currentMonthNum])
+  const weeklyPoints = weekly?.weeks ?? []
+  const forwardWeeks = (forward?.weeks ?? []).slice(1, 11)
+  const previousWeek = weeklyPoints.length > 1 ? weeklyPoints[weeklyPoints.length - 2] : null
 
-  const jobsPack = useMemo(() => {
-    if (!metrics) return null
-    return buildJobsDatasets(metrics, currentMonthNum)
-  }, [metrics, currentMonthNum])
-
-  const hoursChartData = useMemo(() => {
-    if (!hoursPack) return null
+  const weeklyChartData = useMemo(() => {
+    if (!weeklyPoints.length) return null
+    const labels = weeklyPoints.map((w) => formatShortDate(w.period_start))
     return {
-      labels: hoursPack.labels,
-      datasets: [...hoursPack.hoursDatasets, hoursPack.capacityDataset],
+      labels,
+      datasets: [
+        {
+          type: 'bar' as const,
+          label: 'Scheduled',
+          data: weeklyPoints.map((w) => Number(w.scheduled || 0)),
+          backgroundColor: '#4aa3ff',
+          borderRadius: 6,
+          maxBarThickness: 44,
+          order: 2,
+        },
+        {
+          type: 'line' as const,
+          label: 'Rescheduled',
+          data: weeklyPoints.map((w) => Number(w.rescheduled || 0)),
+          borderColor: '#1f2d3d',
+          borderWidth: 2,
+          pointRadius: 2,
+          pointHoverRadius: 3,
+          tension: 0.3,
+          fill: false,
+          order: 1,
+        },
+      ],
     }
-  }, [hoursPack])
+  }, [weeklyPoints])
 
-  const jobsChartData = useMemo(() => {
-    if (!jobsPack) return null
-    return { labels: jobsPack.labels, datasets: jobsPack.jobsDatasets }
-  }, [jobsPack])
+  const weeklyChartOptions = useMemo(
+    () => ({
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: true, position: 'top' as const },
+        datalabels: { display: false },
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+        },
+        y: {
+          beginAtZero: true,
+          ticks: { precision: 0 },
+        },
+      },
+    }),
+    [],
+  )
 
-  const stackOpts = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: { display: true },
-      datalabels: { display: false },
-      tooltip: {
-        mode: 'index' as const,
-        intersect: false,
-        callbacks: {
-          afterBody: (items: { dataIndex: number }[]) => {
-            try {
-              const i = items[0]?.dataIndex
-              if (i == null || !hoursPack) return ''
-              const cap = Number(hoursPack.capacityByMonth[i] ?? 0)
-              if (!cap) return ''
-              const used = hoursPack.hoursDatasets.reduce((sum, ds) => {
-                const v = ds.data[i]
-                return sum + (typeof v === 'number' ? v : 0)
-              }, 0)
-              const pct = used ? (used / cap) * 100 : 0
-              return `Utilization: ${pct.toFixed(1)}%`
-            } catch {
-              return ''
-            }
+  const forwardChartData = useMemo(() => {
+    if (!forwardWeeks.length) return null
+    const labels = forwardWeeks.map((w) => formatShortDate(w.week_start_local))
+    return {
+      labels,
+      datasets: [
+        {
+          type: 'line' as const,
+          label: 'Utilization',
+          data: forwardWeeks.map((w) => clampPct(w.utilization_pct)),
+          borderColor: '#1e90ff',
+          borderWidth: 3,
+          pointRadius: 0,
+          pointHoverRadius: 3,
+          tension: 0.3,
+          fill: false,
+        },
+        {
+          type: 'line' as const,
+          label: '60% target',
+          data: forwardWeeks.map(() => 60),
+          borderColor: '#ff6b81',
+          borderWidth: 2,
+          borderDash: [6, 6],
+          pointRadius: 0,
+          tension: 0,
+          fill: false,
+        },
+      ],
+    }
+  }, [forwardWeeks])
+
+  const forwardChartOptions = useMemo(
+    () => ({
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        datalabels: { display: false },
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+        },
+        y: {
+          beginAtZero: true,
+          min: 0,
+          max: 100,
+          ticks: {
+            stepSize: 25,
+            callback: (value: string | number) => {
+              const n = Number(value)
+              return n % 25 === 0 ? `${n}%` : ''
+            },
           },
         },
       },
-    },
-    scales: {
-      x: { stacked: true },
-      y: {
-        stacked: true,
-        beginAtZero: true,
-        ticks: {
-          callback: (v: string | number) =>
-            Number(v).toLocaleString(undefined, { maximumFractionDigits: 1 }),
-        },
-      },
-    },
-  }
+    }),
+    [],
+  )
 
-  const jobsOpts = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: { legend: { display: true }, datalabels: { display: false } },
-    scales: {
-      x: { stacked: true },
-      y: { stacked: true, beginAtZero: true },
-    },
-  }
-
-  const unscheduled = v2rows.filter((r) => !isCanceled(r) && !isScheduledLike(r))
-  const canceled = v2rows.filter((r) => isCanceled(r))
-  const needsOutreach = v2rows.filter((r) => {
-    if (isCanceled(r)) return false
-    if (!isScheduledLike(r)) return false
-    if (isConfirmed(r)) return false
-    if (isReachedOut(r)) return false
-    return true
-  })
-
-  const postReachedOut = async (id: number) => {
-    await apiJson('/scheduling_attack/v2/reached_out', {
-      method: 'POST',
-      body: JSON.stringify({ id, reached_out: true }),
-    })
-    await loadV2()
-  }
-
-  const saveNotes = async (id: number, notes: string) => {
-    await apiJson('/scheduling_attack/v2/notes', {
-      method: 'POST',
-      body: JSON.stringify({ id, notes }),
-    })
-    await loadV2()
-  }
+  const confirmedPct = Number(kpis?.confirmed_pct ?? 0)
+  const scheduledLastWeek = previousWeek ? Number(previousWeek.scheduled ?? 0) : null
+  const rescheduledLastWeek = previousWeek ? Number(previousWeek.rescheduled ?? 0) : null
+  const coverageWeeks = Number(forward?.coverage_weeks_60pct ?? 0)
+  const confirmedOk = confirmedPct >= 90
+  const scheduledOk = (scheduledLastWeek ?? 0) > 30
+  const coverageOk = coverageWeeks >= 6
+  const rescheduledHasValue = rescheduledLastWeek != null
+  const rescheduledIsZero = (rescheduledLastWeek ?? 0) === 0
 
   return (
-    <div className="container-fluid py-3 px-2">
-      <h1 className="h3 mb-3">Scheduling Attack</h1>
-      <Tab.Container defaultActiveKey="status">
-        <Nav variant="tabs" className="mb-3">
-          <Nav.Item>
-            <Nav.Link eventKey="status">Scheduling Attack</Nav.Link>
-          </Nav.Item>
-          <Nav.Item>
-            <Nav.Link eventKey="forecast">Forecast</Nav.Link>
-          </Nav.Item>
-        </Nav>
-        <Tab.Content>
-          <Tab.Pane eventKey="forecast">
-            <Form.Check
-              type="switch"
-              id="sa-travel"
-              className="mb-3"
-              label="Include travel time"
-              checked={includeTravel}
-              onChange={(e) => setIncludeTravel(e.target.checked)}
-            />
-            {metrics && (
-              <Row className="g-2 mb-2">
-                <Col md={6}>
-                  <div className="border rounded p-2 bg-light">
-                    <div className="small text-muted">Active techs</div>
-                    <div className="fs-5">{metrics.num_active_techs ?? '—'}</div>
+    <div className="container-fluid py-3 px-2 scheduling-page d-flex flex-column gap-3">
+      <Card className="app-surface-card">
+        <Card.Body className="p-3 p-md-4">
+          <h1 className="processing-page-title mb-1">Scheduling Attack</h1>
+          <p className="processing-page-subtitle mb-0">
+            Monitor confirmation health, weekly scheduling output, and forward utilization coverage.
+          </p>
+        </Card.Body>
+      </Card>
+
+      {loading ? (
+        <SchedulingAttackSkeleton />
+      ) : (
+        <>
+          <Row className="g-3">
+            <Col lg={3} md={6}>
+              <Card
+                className={`app-kpi-nested processing-tile h-100 scheduling-kpi-tile ${
+                  confirmedOk ? 'processing-tile--status-good' : 'processing-tile--status-warn'
+                }`}
+              >
+                <Card.Body className="scheduling-kpi-tile__body">
+                  <div className="processing-kpi-label">Next 2 Weeks Confirmed</div>
+                  <div className="scheduling-kpi-main">
+                    <div className={`scheduling-kpi-tile__value ${confirmedOk ? 'processing-stat--good' : 'processing-stat--warn'}`}>
+                      {formatPercent(confirmedPct)}
+                    </div>
                   </div>
-                </Col>
-              </Row>
-            )}
-            {metricsLoading && (
-              <div className="text-center py-4">
-                <Spinner />
-              </div>
-            )}
-            {!metricsLoading && hoursChartData && (
-              <Card className="mb-4">
-                <Card.Header>
-                  {includeTravel ? 'Tech hours per month (incl. travel)' : 'Tech hours per month (onsite only)'}
-                </Card.Header>
-                <Card.Body style={{ minHeight: 360 }}>
-                  <Chart type="bar" data={hoursChartData} options={stackOpts} />
+                  <div className="processing-kpi-target">Target: &gt; 90%</div>
                 </Card.Body>
               </Card>
-            )}
-            {!metricsLoading && jobsChartData && (
-              <Card>
-                <Card.Header>Job counts per month</Card.Header>
-                <Card.Body style={{ minHeight: 360 }}>
-                  <Chart type="bar" data={jobsChartData} options={jobsOpts} />
+            </Col>
+            <Col lg={3} md={6}>
+              <Card
+                className={`app-kpi-nested processing-tile h-100 scheduling-kpi-tile ${
+                  scheduledOk ? 'processing-tile--status-good' : 'processing-tile--status-warn'
+                }`}
+              >
+                <Card.Body className="scheduling-kpi-tile__body">
+                  <div className="processing-kpi-label">Scheduling Volume Last Week</div>
+                  <div className="scheduling-kpi-main">
+                    <div className={`scheduling-kpi-tile__value ${scheduledOk ? 'processing-stat--good' : 'processing-stat--warn'}`}>
+                      {scheduledLastWeek ?? '—'}
+                    </div>
+                  </div>
+                  <div className="processing-kpi-target">Target: &gt; 30 - Inspections only</div>
                 </Card.Body>
               </Card>
-            )}
-          </Tab.Pane>
+            </Col>
+            <Col lg={3} md={6}>
+              <Card
+                className={`app-kpi-nested processing-tile h-100 scheduling-kpi-tile ${
+                  rescheduledHasValue && !rescheduledIsZero ? 'processing-tile--status-good' : 'scheduling-kpi-tile--neutral'
+                }`}
+              >
+                <Card.Body className="scheduling-kpi-tile__body">
+                  <div className="processing-kpi-label">Jobs Rescheduled Last Week</div>
+                  <div className="scheduling-kpi-main">
+                    <div
+                      className={`scheduling-kpi-tile__value ${
+                        rescheduledHasValue && !rescheduledIsZero
+                          ? 'processing-stat--good'
+                          : 'scheduling-kpi-tile__value--neutral'
+                      }`}
+                    >
+                      {rescheduledLastWeek ?? '—'}
+                    </div>
+                  </div>
+                  <div className="processing-kpi-target">&nbsp;</div>
+                </Card.Body>
+              </Card>
+            </Col>
+            <Col lg={3} md={6}>
+              <Card
+                className={`app-kpi-nested processing-tile h-100 scheduling-kpi-tile ${
+                  coverageOk ? 'processing-tile--status-good' : 'processing-tile--status-warn'
+                }`}
+              >
+                <Card.Body className="scheduling-kpi-tile__body">
+                  <div className="processing-kpi-label">Forward Schedule Coverage</div>
+                  <div className="scheduling-kpi-main">
+                    <div className={`scheduling-kpi-tile__value ${coverageOk ? 'processing-stat--good' : 'processing-stat--warn'}`}>
+                      {coverageWeeks} weeks
+                    </div>
+                  </div>
+                  <div className="processing-kpi-target">Target: 6+ Weeks at &gt; 60% booked</div>
+                </Card.Body>
+              </Card>
+            </Col>
+          </Row>
 
-          <Tab.Pane eventKey="status">
-            <Row className="g-2 mb-3 align-items-end">
-              <Col xs="auto">
-                <Form.Label className="small">Month</Form.Label>
-                <Form.Control type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
-              </Col>
-              <Col xs="auto">
-                <Button size="sm" onClick={loadV2} disabled={v2loading}>
-                  Refresh
-                </Button>
-              </Col>
-              {kpis && (
-                <Col>
-                  <span className="text-muted small">
-                    Confirmed (next 2 weeks): <strong>{kpis.confirmed_pct ?? '—'}%</strong>
-                  </span>
-                </Col>
-              )}
-            </Row>
-            {v2loading && (
-              <div className="text-center py-3">
-                <Spinner size="sm" />
+          <Card className="app-surface-card scheduling-chart-card">
+            <Card.Body>
+              <div className="scheduling-chart-card__header">
+                <h2 className="h6 mb-0">Weekly Scheduling Volume</h2>
+                <span className="scheduling-chart-card__updated">Updated {formatUpdated(weekly?.generated_at)}</span>
               </div>
-            )}
-            <p className="text-muted small">
-              {unscheduled.length} unscheduled · {canceled.length} canceled · {needsOutreach.length} need outreach
-            </p>
-
-            <h2 className="h6 mt-3">Unscheduled</h2>
-            <Table size="sm" striped bordered responsive>
-              <thead>
-                <tr>
-                  <th>Address</th>
-                  <th>Notes</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {!unscheduled.length && (
-                  <tr>
-                    <td colSpan={3} className="text-muted">
-                      No unscheduled jobs
-                    </td>
-                  </tr>
+              <div className="scheduling-chart-card__canvas">
+                {weeklyChartData ? (
+                  <Chart type="bar" data={weeklyChartData} options={weeklyChartOptions} />
+                ) : (
+                  <div className="scheduling-chart-card__empty">No scheduling volume yet</div>
                 )}
-                {unscheduled.map((r) => (
-                  <V2NotesRow key={r.id} row={r} onSave={saveNotes} />
-                ))}
-              </tbody>
-            </Table>
+              </div>
+            </Card.Body>
+          </Card>
 
-            <h2 className="h6 mt-4">Needs outreach</h2>
-            <Table size="sm" striped bordered responsive>
-              <thead>
-                <tr>
-                  <th>Address</th>
-                  <th>Scheduled</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {!needsOutreach.length && (
-                  <tr>
-                    <td colSpan={3} className="text-muted">
-                      None
-                    </td>
-                  </tr>
+          <Card className="app-surface-card scheduling-chart-card">
+            <Card.Body>
+              <div className="scheduling-chart-card__header">
+                <h2 className="h6 mb-0">Forward Schedule Utilization</h2>
+                <span className="scheduling-chart-card__updated">Updated {formatUpdated(forward?.generated_at)}</span>
+              </div>
+              <div className="scheduling-chart-card__canvas scheduling-chart-card__canvas--tall">
+                {forwardChartData ? (
+                  <Chart type="line" data={forwardChartData} options={forwardChartOptions} />
+                ) : (
+                  <div className="scheduling-chart-card__empty">No forward utilization data</div>
                 )}
-                {needsOutreach.map((r) => (
-                  <tr key={r.id}>
-                    <td>
-                      <a
-                        href={`https://app.servicetrade.com/locations/${r.location_id}`}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        {r.address}
-                      </a>
-                    </td>
-                    <td>{r.scheduled_date ? new Date(r.scheduled_date).toLocaleString() : '—'}</td>
-                    <td>
-                      <Button size="sm" variant="outline-primary" onClick={() => postReachedOut(r.id)}>
-                        Mark reached out
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </Table>
-
-            <h2 className="h6 mt-4">Canceled</h2>
-            <Table size="sm" striped bordered responsive>
-              <thead>
-                <tr>
-                  <th>Address</th>
-                </tr>
-              </thead>
-              <tbody>
-                {!canceled.length && (
-                  <tr>
-                    <td className="text-muted">None</td>
-                  </tr>
-                )}
-                {canceled.map((r) => (
-                  <tr key={r.id}>
-                    <td>
-                      <a
-                        href={`https://app.servicetrade.com/locations/${r.location_id}`}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        {r.address}
-                      </a>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </Table>
-          </Tab.Pane>
-        </Tab.Content>
-      </Tab.Container>
+              </div>
+            </Card.Body>
+          </Card>
+        </>
+      )}
     </div>
   )
 }
 
-function V2NotesRow({ row, onSave }: { row: V2Row; onSave: (id: number, notes: string) => Promise<void> }) {
-  const [notes, setNotes] = useState(() => {
-    const n = (row.notes || '').trim()
-    return row.matched_on === 'planned_maintenance' ? `Planned Maintenance.\n${n}` : n
-  })
-  const [saving, setSaving] = useState(false)
-
+function SchedulingAttackSkeleton() {
   return (
-    <tr>
-      <td>
-        <a href={`https://app.servicetrade.com/locations/${row.location_id}`} target="_blank" rel="noreferrer">
-          {row.address}
-        </a>
-      </td>
-      <td>
-        <Form.Control
-          as="textarea"
-          rows={2}
-          size="sm"
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-        />
-      </td>
-      <td>
-        <Button
-          size="sm"
-          variant="outline-secondary"
-          disabled={saving}
-          onClick={async () => {
-            setSaving(true)
-            try {
-              await onSave(row.id, notes)
-            } finally {
-              setSaving(false)
-            }
-          }}
-        >
-          Save
-        </Button>
-      </td>
-    </tr>
+    <div className="home-skeleton d-flex flex-column gap-3" aria-busy="true" aria-label="Loading scheduling metrics">
+      <Row className="g-3">
+        {Array.from({ length: 4 }).map((_, idx) => (
+          <Col lg={3} md={6} key={`sched-kpi-skel-${idx}`}>
+            <Card className="app-kpi-nested processing-tile h-100 scheduling-kpi-tile">
+              <Card.Body className="scheduling-kpi-tile__body">
+                <span className="home-skeleton-bar d-block" style={{ width: '72%' }} />
+                <div className="scheduling-kpi-main">
+                  <span className="home-skeleton-bar home-skeleton-bar--value d-block" style={{ width: '48%' }} />
+                </div>
+                <span className="home-skeleton-bar d-block" style={{ width: '82%' }} />
+              </Card.Body>
+            </Card>
+          </Col>
+        ))}
+      </Row>
+
+      <Card className="app-surface-card scheduling-chart-card">
+        <Card.Body>
+          <div className="scheduling-chart-card__header">
+            <span className="home-skeleton-bar d-block" style={{ width: '12rem', height: '1.1rem' }} />
+            <span className="home-skeleton-bar d-block" style={{ width: '7rem', height: '0.9rem' }} />
+          </div>
+          <div className="scheduling-chart-card__canvas">
+            <div className="scheduling-chart-skeleton">
+              <div className="scheduling-chart-skeleton__grid">
+                <span className="home-skeleton-bar d-block" />
+                <span className="home-skeleton-bar d-block" />
+                <span className="home-skeleton-bar d-block" />
+                <span className="home-skeleton-bar d-block" />
+              </div>
+              <div className="scheduling-chart-skeleton__series">
+                <span className="home-skeleton-bar d-block" style={{ width: '14%' }} />
+                <span className="home-skeleton-bar d-block" style={{ width: '22%' }} />
+                <span className="home-skeleton-bar d-block" style={{ width: '18%' }} />
+                <span className="home-skeleton-bar d-block" style={{ width: '26%' }} />
+                <span className="home-skeleton-bar d-block" style={{ width: '16%' }} />
+              </div>
+              <span className="home-skeleton-bar d-block scheduling-chart-skeleton__xaxis" />
+            </div>
+          </div>
+        </Card.Body>
+      </Card>
+
+      <Card className="app-surface-card scheduling-chart-card">
+        <Card.Body>
+          <div className="scheduling-chart-card__header">
+            <span className="home-skeleton-bar d-block" style={{ width: '14rem', height: '1.1rem' }} />
+            <span className="home-skeleton-bar d-block" style={{ width: '7rem', height: '0.9rem' }} />
+          </div>
+          <div className="scheduling-chart-card__canvas scheduling-chart-card__canvas--tall">
+            <div className="scheduling-chart-skeleton">
+              <div className="scheduling-chart-skeleton__grid">
+                <span className="home-skeleton-bar d-block" />
+                <span className="home-skeleton-bar d-block" />
+                <span className="home-skeleton-bar d-block" />
+                <span className="home-skeleton-bar d-block" />
+              </div>
+              <div className="scheduling-chart-skeleton__line-wrap">
+                <span className="home-skeleton-bar d-block scheduling-chart-skeleton__line" />
+              </div>
+              <span className="home-skeleton-bar d-block scheduling-chart-skeleton__xaxis" />
+            </div>
+          </div>
+        </Card.Body>
+      </Card>
+    </div>
   )
+}
+
+function formatShortDate(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
+function formatUpdated(value?: string | null): string {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+  return date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+}
+
+function formatPercent(value: number): string {
+  return `${Number.isFinite(value) ? value.toFixed(1) : '0.0'} %`
+}
+
+function clampPct(value: number): number {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return 0
+  return Math.max(0, Math.min(100, n))
 }

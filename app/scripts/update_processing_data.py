@@ -1,8 +1,9 @@
 """
-Update JobSummary, ProcessorMetrics, and ProcessingStatus from ServiceTrade.
+Update JobSummary, ProcessorMetrics, ProcessingStatus, and ProcessingStatusDaily from ServiceTrade.
 
-On Heroku Scheduler this script runs at 09:00 UTC (1:00 AM PST / 2:00 AM PDT).
-The ProcessingStatus snapshot reflects "jobs to be marked complete" at that time.
+On Heroku Scheduler this script is intended to run once per calendar day (e.g. 09:00 UTC).
+- ProcessingStatus (weekly KPI row): still updated on Mondays only (one row per Vancouver week).
+- ProcessingStatusDaily: updated on weekdays only (Mon–Fri), one row per snapshot_date.
 """
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
@@ -10,7 +11,7 @@ from datetime import datetime, timedelta, timezone, time
 from zoneinfo import ZoneInfo
 from pytz import UTC
 from app import create_app
-from app.db_models import db, JobSummary, ProcessorMetrics, ProcessingStatus
+from app.db_models import db, JobSummary, ProcessorMetrics, ProcessingStatus, ProcessingStatusDaily
 from app.routes.processing_attack import (
     get_jobs_processed,
     get_jobs_processed_by_processor,
@@ -26,33 +27,9 @@ from dotenv import load_dotenv
 load_dotenv()
 app = create_app()
 
-def get_processing_status_data():
-    # Use local week boundaries (Vancouver) so the stored `week_start` and
-    # the "do not overwrite after week end" cutoff align with when the job runs.
-    PT = ZoneInfo("America/Vancouver")
-    now_local = datetime.now(PT)
-    week_start = now_local.date() - timedelta(days=now_local.weekday())
 
-    # Compute Sunday 23:59:59 local, then convert to UTC for comparisons.
-    week_end_local = datetime.combine(
-        week_start + timedelta(days=6),
-        time(23, 59, 59),
-        tzinfo=PT,
-    )
-    week_end_datetime = week_end_local.astimezone(timezone.utc)
-
-    record = ProcessingStatus.query.filter_by(week_start=week_start).first()
-    if record and record.updated_at:
-        updated_at = record.updated_at
-        if updated_at.tzinfo is None:
-            updated_at = updated_at.replace(tzinfo=timezone.utc)
-        if updated_at > week_end_datetime:
-            print(f"ProcessingStatus for week {week_start} was already updated after the week ended. Skipping update.")
-            return
-        else:
-            print(f"ProcessingStatus for week {week_start} exists but is outdated. Overwriting...")
-
-
+def collect_processing_status_payload():
+    """Fetch current KPI snapshot fields from ServiceTrade (shared by weekly + daily rows)."""
     jobs_to_be_marked_complete, oldest_job_ids, _ = get_jobs_to_be_marked_complete()
     if jobs_to_be_marked_complete and oldest_job_ids:
         oldest_job_date, oldest_job_address, oldest_job_type = get_oldest_job_data(oldest_job_ids[0])
@@ -61,8 +38,7 @@ def get_processing_status_data():
 
     jobs_to_be_invoiced = get_jobs_to_be_invoiced()
 
-    # Report conversion jobs are "inspection" jobs tied to locations with the Report_Conversion tag.
-    num_locations_to_be_converted, jobs_to_be_converted = find_report_conversion_jobs()
+    _num_locations_to_be_converted, jobs_to_be_converted = find_report_conversion_jobs()
     earliest_conversion_job = jobs_to_be_converted[0] if jobs_to_be_converted else None
 
     if earliest_conversion_job and earliest_conversion_job.get("scheduledDate"):
@@ -84,10 +60,9 @@ def get_processing_status_data():
     jobs_by_job_type = organize_jobs_by_job_type(jobs_to_be_marked_complete)
     number_of_pink_folder_jobs, _, _ = get_pink_folder_data()
 
-    status_data = {
+    return {
         "jobs_to_be_marked_complete": len(jobs_to_be_marked_complete),
         "jobs_to_be_invoiced": jobs_to_be_invoiced,
-        # UI displays the count of jobs requiring conversion (not the number of tagged locations).
         "jobs_to_be_converted": len(jobs_to_be_converted),
         "earliest_job_to_be_converted_date": earliest_conversion_date,
         "earliest_job_to_be_converted_address": earliest_conversion_address,
@@ -99,9 +74,29 @@ def get_processing_status_data():
         "number_of_pink_folder_jobs": number_of_pink_folder_jobs,
     }
 
-    print("Validation: Successfully grabbed the following processing status data:")
-    for key, value in status_data.items():
-        print(f"  {key}: {value}")
+
+def upsert_weekly_processing_status(status_data):
+    """Persist one ProcessingStatus row for the current Vancouver week (caller supplies payload)."""
+    PT = ZoneInfo("America/Vancouver")
+    now_local = datetime.now(PT)
+    week_start = now_local.date() - timedelta(days=now_local.weekday())
+
+    week_end_local = datetime.combine(
+        week_start + timedelta(days=6),
+        time(23, 59, 59),
+        tzinfo=PT,
+    )
+    week_end_datetime = week_end_local.astimezone(timezone.utc)
+
+    record = ProcessingStatus.query.filter_by(week_start=week_start).first()
+    if record and record.updated_at:
+        updated_at = record.updated_at
+        if updated_at.tzinfo is None:
+            updated_at = updated_at.replace(tzinfo=timezone.utc)
+        if updated_at > week_end_datetime:
+            print(f"ProcessingStatus for week {week_start} was already updated after the week ended. Skipping update.")
+            return
+        print(f"ProcessingStatus for week {week_start} exists but is outdated. Overwriting...")
 
     now_utc = datetime.now(timezone.utc)
     if record:
@@ -114,6 +109,43 @@ def get_processing_status_data():
 
     db.session.commit()
     print(f"Database updated successfully for week starting {week_start}.")
+
+
+def get_processing_status_data():
+    """Collect from ServiceTrade and update the weekly ProcessingStatus row (Monday routine)."""
+    status_data = collect_processing_status_payload()
+    print("Validation: Successfully grabbed the following processing status data:")
+    for key, value in status_data.items():
+        print(f"  {key}: {value}")
+    upsert_weekly_processing_status(status_data)
+
+
+def upsert_processing_status_daily(status_data=None):
+    """One row per Vancouver calendar day; only runs on Mon–Fri."""
+    PT = ZoneInfo("America/Vancouver")
+    now_local = datetime.now(PT)
+    if now_local.weekday() >= 5:
+        print("Skipping ProcessingStatusDaily (weekends).")
+        return
+
+    snapshot_date = now_local.date()
+    if status_data is None:
+        status_data = collect_processing_status_payload()
+        print("Validation (daily): processing status payload:")
+        for key, value in status_data.items():
+            print(f"  {key}: {value}")
+
+    now_utc = datetime.now(timezone.utc)
+    record = ProcessingStatusDaily.query.filter_by(snapshot_date=snapshot_date).first()
+    if record:
+        for key, value in status_data.items():
+            setattr(record, key, value)
+        record.updated_at = now_utc
+    else:
+        record = ProcessingStatusDaily(snapshot_date=snapshot_date, updated_at=now_utc, **status_data)
+        db.session.add(record)
+    db.session.commit()
+    print(f"ProcessingStatusDaily updated for {snapshot_date}.")
 
 def update_job_summary_for_week(week_start_str):
     week_start_date = datetime.strptime(week_start_str, "%Y-%m-%d").date()
@@ -218,14 +250,19 @@ def update_all_metrics():
             session['username'] = os.environ.get("PROCESSING_USERNAME")
             session['password'] = os.environ.get("PROCESSING_PASSWORD")
 
-            # Only refresh the "jobs to be marked complete" snapshot weekly.
-            # This ensures the green/red history squares don't drift throughout the week
-            # when the scheduler runs daily.
             now_local = datetime.now(ZoneInfo("America/Vancouver"))
-            if now_local.weekday() == 0:  # Monday
-                get_processing_status_data()
+            if now_local.weekday() < 5:
+                status_data = collect_processing_status_payload()
+                print("Validation (KPI snapshots, Vancouver weekday):")
+                for key, value in status_data.items():
+                    print(f"  {key}: {value}")
+                if now_local.weekday() == 0:
+                    upsert_weekly_processing_status(status_data)
+                else:
+                    print("Skipping ProcessingStatus weekly row (only runs on Mondays).")
+                upsert_processing_status_daily(status_data)
             else:
-                print("Skipping ProcessingStatus update (only runs on Mondays).")
+                print("Skipping ProcessingStatus / ProcessingStatusDaily (weekends).")
 
             today = datetime.now(timezone.utc).date()
             start_date = today - timedelta(days=365)

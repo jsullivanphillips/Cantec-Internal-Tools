@@ -70,6 +70,36 @@ class ProcessingStatus(db.Model):
         return f'<ProcessingStatus {self.week_start}: {self.jobs_to_be_marked_complete} jobs marked complete>'
 
 
+class ProcessingStatusDaily(db.Model):
+    """Weekday (Mon–Fri) snapshots of the same KPI fields as ProcessingStatus."""
+
+    __tablename__ = "processing_status_daily"
+
+    id = db.Column(db.Integer, primary_key=True)
+    snapshot_date = db.Column(db.Date, unique=True, nullable=False)
+    jobs_to_be_marked_complete = db.Column(db.Integer, default=0)
+    jobs_to_be_invoiced = db.Column(db.Integer, default=0)
+    jobs_to_be_converted = db.Column(db.Integer, default=0)
+    earliest_job_to_be_converted_date = db.Column(db.Date, nullable=True)
+    earliest_job_to_be_converted_address = db.Column(db.String(255), nullable=True)
+    earliest_job_to_be_converted_job_id = db.Column(db.BIGINT, nullable=True)
+    oldest_job_date = db.Column(db.Date, nullable=True)
+    oldest_job_address = db.Column(db.String(255), nullable=True)
+    oldest_job_type = db.Column(db.String(255), nullable=True)
+    job_type_count = db.Column(db.JSON)
+    number_of_pink_folder_jobs = db.Column(db.Integer, default=0)
+    oldest_inspection_date = db.Column(db.Date, nullable=True)
+    oldest_inspection_address = db.Column(db.String(255), nullable=True)
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    def __repr__(self):
+        return f"<ProcessingStatusDaily {self.snapshot_date}: {self.jobs_to_be_marked_complete} jobs>"
+
+
 class SchedulingAttack(db.Model):
     __tablename__ = 'scheduling_attack'
 

@@ -9,6 +9,7 @@ import re
 
 from app.db_models import db, Key, KeyAddress, KeyStatus
 from app.spa import send_spa_index
+from app.response_cache import cached_json_response, invalidate_cache_prefix
 
 keys_bp = Blueprint("keys", __name__)
 
@@ -153,6 +154,7 @@ def keys_home():
 
 
 @keys_bp.get("/api/keys/<int:key_id>/detail")
+@cached_json_response(prefix="keys:detail", ttl_seconds=45)
 def api_key_detail_route(key_id: int):
     key = _get_key_or_404(key_id)
     return jsonify(_serialize_key_for_spa(key))
@@ -208,6 +210,7 @@ def key_detail_by_barcode(barcode: int):
 
 
 @keys_bp.get("/api/keys/search")
+@cached_json_response(prefix="keys:search", ttl_seconds=20)
 def api_keys_search():
     q = (request.args.get("q") or "").strip()
     if len(q) < 2:
@@ -334,6 +337,7 @@ def sign_out_key(key_id: int):
             db.session.bulk_save_objects(bulk)
 
     _commit_or_500()
+    invalidate_cache_prefix("keys:")
     db.session.refresh(key)
 
     if request.accept_mimetypes.accept_html and not request.is_json:
@@ -448,6 +452,7 @@ def return_key(key_id: int):
             db.session.bulk_save_objects(bulk)
 
     _commit_or_500()
+    invalidate_cache_prefix("keys:")
     db.session.refresh(key)
 
     cs = key.current_status
@@ -471,6 +476,7 @@ def return_key(key_id: int):
 
 
 @keys_bp.get("/api/keys/signed-out")
+@cached_json_response(prefix="keys:signed_out", ttl_seconds=45)
 def api_keys_signed_out():
     """
     Returns keys whose LATEST KeyStatus row is 'Signed Out'
@@ -667,6 +673,7 @@ def api_airtag_conflict():
 
 
 @keys_bp.get("/api/keys/<int:key_id>/history")
+@cached_json_response(prefix="keys:history", ttl_seconds=45)
 def api_key_history(key_id: int):
     """
     Returns recent KeyStatus events for a key (newest first).
@@ -713,6 +720,7 @@ def key_metrics_page():
     return send_spa_index()
 
 @keys_bp.get("/api/keys/metrics")
+@cached_json_response(prefix="keys:metrics", ttl_seconds=120)
 def api_key_metrics():
     """
     Metrics implemented:

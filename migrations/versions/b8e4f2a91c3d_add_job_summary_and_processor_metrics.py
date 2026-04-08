@@ -1,7 +1,7 @@
 """add job_summary and processor_metrics tables
 
 These models existed in db_models.py but were never included in Alembic,
-so fresh or fully-upgraded databases lacked the tables used by Processing Attack.
+so fresh or fully-upgraded databases lacked the tables used by Jobs Backlog.
 
 Revision ID: b8e4f2a91c3d
 Revises: fc1bc3bded62

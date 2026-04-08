@@ -8,37 +8,26 @@ type NavSection = { title: string; items: NavItem[] }
 
 const NAV_SECTIONS: NavSection[] = [
   {
-    title: 'Operations',
+    title: 'Status',
     items: [
-      { to: '/monthly_specialist', label: 'Monthly Specialists', icon: 'bi-people' },
-      { to: '/keys', label: 'Keys', icon: 'bi-key', end: true },
-      { to: '/deficiency_tracker', label: 'Deficiencies', icon: 'bi-exclamation-triangle' },
-    ],
-  },
-  {
-    title: 'Scheduling',
-    items: [
-      { to: '/find_schedule', label: 'Scheduling Assistant', icon: 'bi-calendar2-check' },
+      { to: '/processing_attack', label: 'Jobs Backlog', icon: 'bi-speedometer2' },
       { to: '/scheduling_attack', label: 'Scheduling Attack', icon: 'bi-graph-up-arrow' },
     ],
   },
   {
-    title: 'Processing',
+    title: 'Tools',
     items: [
-      { to: '/processing_attack', label: 'Processing Attack', icon: 'bi-speedometer2' },
-      { to: '/limbo_job_tracker', label: 'Limbo Job Tracker', icon: 'bi-hourglass-split' },
+      { to: '/keys', label: 'Keys', icon: 'bi-key', end: true },
+      { to: '/find_schedule', label: 'Scheduling Assistant', icon: 'bi-calendar2-check' },
     ],
   },
   {
-    title: 'Insights',
+    title: 'Data',
     items: [
+      { to: '/monthly_specialist', label: 'Monthly Specialists', icon: 'bi-people' },
       { to: '/performance_summary', label: 'Performance Summary', icon: 'bi-pie-chart' },
-      { to: '/data-analytics', label: 'Data Analytics', icon: 'bi-bar-chart-line' },
+      { to: '/deficiency_tracker', label: 'Deficiencies', icon: 'bi-exclamation-triangle' },
     ],
-  },
-  {
-    title: 'More',
-    items: [{ to: '/webhooks/status', label: 'Webhook status', icon: 'bi-plug' }],
   },
 ]
 
@@ -70,19 +59,21 @@ function SidebarNav({
           <div className="app-sidebar-section-title px-3 pb-1 small text-uppercase text-muted fw-semibold">
             {section.title}
           </div>
-          {section.items.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end}
-              className={navLinkClassName}
-              onClick={onNavigate}
-              id={`${idPrefix}-${item.to.replace(/\//g, '-')}`}
-            >
-              <i className={`bi ${item.icon}`} aria-hidden />
-              {item.label}
-            </NavLink>
-          ))}
+          <div className="app-sidebar-section-items d-flex flex-column gap-1">
+            {section.items.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.end}
+                className={navLinkClassName}
+                onClick={onNavigate}
+                id={`${idPrefix}-${item.to.replace(/\//g, '-')}`}
+              >
+                <i className={`bi ${item.icon}`} aria-hidden />
+                {item.label}
+              </NavLink>
+            ))}
+          </div>
         </div>
       ))}
     </Nav>

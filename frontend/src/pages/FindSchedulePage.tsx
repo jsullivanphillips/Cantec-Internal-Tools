@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { apiFetch, apiJson } from '../lib/apiClient'
+import { apiFetch, apiJson, isAbortError } from '../lib/apiClient'
 import {
   Accordion,
   Alert,
@@ -83,10 +83,22 @@ export default function FindSchedulePage() {
   const [paramsCollapsed, setParamsCollapsed] = useState(false)
 
   useEffect(() => {
-    apiJson<Grouped>('/api/technicians')
-      .then(setGrouped)
-      .catch(console.error)
-      .finally(() => setLoadingTechs(false))
+    let active = true
+    const controller = new AbortController()
+    apiJson<Grouped>('/api/technicians', { signal: controller.signal })
+      .then((data) => {
+        if (active) setGrouped(data)
+      })
+      .catch((error) => {
+        if (!isAbortError(error)) console.error(error)
+      })
+      .finally(() => {
+        if (active) setLoadingTechs(false)
+      })
+    return () => {
+      active = false
+      controller.abort()
+    }
   }, [])
 
   const toggleWeekday = (d: number) => {
@@ -171,25 +183,30 @@ export default function FindSchedulePage() {
 
   if (loadingTechs) {
     return (
-      <div className="find-sched-page py-4 text-center text-muted">
-        <Spinner animation="border" className="text-primary" role="status" />
-        <div className="small mt-2">Loading technicians…</div>
+      <div className="container-fluid py-3 px-1">
+        <div className="find-sched-page py-4 text-center text-muted">
+          <Spinner animation="border" className="text-primary" role="status" />
+          <div className="small mt-2">Loading technicians…</div>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="find-sched-page py-2 py-md-4">
-      <h1 className="h3 text-center mb-4 fw-semibold">Scheduling Assistant</h1>
+    <div className="container-fluid py-3 px-1">
+      <div className="find-sched-page">
+      <Card className="app-surface-card mb-3">
+        <Card.Body className="p-3 p-md-4">
+          <h1 className="processing-page-title mb-1">Scheduling Assistant</h1>
+          <p className="processing-page-subtitle mb-0">
+            Build staffing requirements and find the best technician matches for your schedule.
+          </p>
+        </Card.Body>
+      </Card>
 
       <Card className="app-surface-card mb-4">
         <Card.Header className="d-flex justify-content-between align-items-center flex-wrap gap-2">
-          <div>
-            <div className="fw-semibold">Search parameters</div>
-            <div className="small text-muted">
-              Set requirements, choose preferences, then run search.
-            </div>
-          </div>
+          <div />
           {(result != null || loading) && (
             <Button
               variant="outline-secondary"
@@ -220,19 +237,19 @@ export default function FindSchedulePage() {
           <div>
             <Card.Body className="p-3 p-md-4">
               <div className="small text-uppercase fw-semibold text-muted mb-2">Step 1</div>
-              <h2 className="h6 mb-3">Requirements (tech + number of days)</h2>
-              <div className="find-sched-req-head d-none d-md-grid px-3 py-2 rounded-top border border-bottom-0 bg-light text-muted small fw-semibold">
-                <div>Count</div>
-                <div>Technician / Category</div>
-                <div>Day requirements</div>
-                <div className="text-end">Actions</div>
-              </div>
-              {rows.map((row, i) => (
-            <div
-              key={i}
-              className={`find-sched-tech-row border bg-white p-3 ${i < rows.length - 1 ? '' : ''} ${i === 0 ? 'rounded-bottom' : ''}`}
-            >
-              <div className="find-sched-req-row d-grid align-items-center gap-3">
+              <div className="find-sched-step-card mb-4">
+                <div className="find-sched-req-head d-none d-md-grid px-3 py-2 rounded-top border border-bottom-0 bg-light text-muted small fw-semibold">
+                  <div>Count</div>
+                  <div>Technician / Category</div>
+                  <div>Day requirements</div>
+                  <div className="text-end">Actions</div>
+                </div>
+                {rows.map((row, i) => (
+                  <div
+                    key={i}
+                    className={`find-sched-tech-row border bg-white p-3 ${i < rows.length - 1 ? '' : ''} ${i === 0 ? 'rounded-bottom' : ''}`}
+                  >
+                    <div className="find-sched-req-row d-grid align-items-center gap-3">
                 <div className="d-flex align-items-center gap-2">
                     <Form.Control
                       type="number"
@@ -362,75 +379,81 @@ export default function FindSchedulePage() {
                 )}
                 </div>
               </div>
-            </div>
-          ))}
+                  </div>
+                ))}
 
-              <div className="mt-3 mb-4">
-                <Button
-                  variant="outline-primary"
-                  size="lg"
-                  type="button"
-                  onClick={addRow}
-                  className="find-sched-add-row-btn w-100"
-                >
-                  + Add Tech Row
-                </Button>
+                <div className="mt-3">
+                  <Button
+                    variant="outline-primary"
+                    size="lg"
+                    type="button"
+                    onClick={addRow}
+                    className="find-sched-add-row-btn w-100"
+                  >
+                    + Add Tech Row
+                  </Button>
+                </div>
               </div>
 
               <div className="small text-uppercase fw-semibold text-muted mb-2">Step 2</div>
-              <h2 className="h6 mb-3">Preferences</h2>
 
-              <div className="text-center mb-2">
-                <span className="small fw-semibold text-secondary text-uppercase letter-spacing-wide">
-                  Select Weekdays
-                </span>
-              </div>
-              <div className="d-flex flex-wrap justify-content-center gap-2 mb-4">
-                {DAYS.map((d, idx) => {
-                  const on = weekdays.includes(idx)
-                  return (
-                    <Button
-                      key={d}
-                      type="button"
-                      size="sm"
-                      variant={on ? 'success' : 'outline-secondary'}
-                      className="find-sched-weekday-btn px-3"
-                      onClick={() => toggleWeekday(idx)}
-                      aria-pressed={on}
-                    >
-                      {d}
-                    </Button>
-                  )
-                })}
-              </div>
+              <div className="find-sched-step-card mb-4">
+                <div className="find-sched-pref-card mb-4">
+                  <div className="text-center mb-2">
+                    <span className="small fw-semibold text-secondary text-uppercase letter-spacing-wide">
+                      Select Weekdays
+                    </span>
+                  </div>
+                  <div className="d-flex flex-wrap justify-content-center gap-2">
+                    {DAYS.map((d, idx) => {
+                      const on = weekdays.includes(idx)
+                      return (
+                        <Button
+                          key={d}
+                          type="button"
+                          size="sm"
+                          variant={on ? 'success' : 'outline-secondary'}
+                          className="find-sched-weekday-btn px-3"
+                          onClick={() => toggleWeekday(idx)}
+                          aria-pressed={on}
+                        >
+                          {d}
+                        </Button>
+                      )
+                    })}
+                  </div>
+                </div>
 
-              <Row className="g-3 align-items-end justify-content-center mb-4">
-                <Col xs={12} sm="auto" className="text-center">
-                  <Form.Label className="small text-muted mb-1">Start time after</Form.Label>
-                  <Form.Control
-                    type="time"
-                    value={startTime}
-                    onChange={(e) => setStartTime(e.target.value)}
-                    className="find-sched-time-input"
-                  />
-                </Col>
-                <Col xs={12} sm="auto" className="d-flex flex-column gap-2 pt-sm-4 align-items-center">
-                  <Form.Check
-                    type="checkbox"
-                    id="findsched-rrsc"
-                    label="Include RRSC"
-                    checked={rrsc}
-                    onChange={(e) => setRrsc(e.target.checked)}
-                  />
-                  <Form.Check
-                    type="checkbox"
-                    id="findsched-proj"
-                    label="Include Projects Blocking"
-                    checked={projectsBlocking}
-                    onChange={(e) => setProjectsBlocking(e.target.checked)}
-                  />
-                </Col>
-              </Row>
+                <div className="find-sched-pref-card">
+                  <Row className="g-3 align-items-center justify-content-center">
+                    <Col xs={12} sm="auto" className="text-center">
+                      <Form.Label className="small text-muted mb-1">Start time after</Form.Label>
+                      <Form.Control
+                        type="time"
+                        value={startTime}
+                        onChange={(e) => setStartTime(e.target.value)}
+                        className="find-sched-time-input"
+                      />
+                    </Col>
+                    <Col xs={12} sm="auto" className="d-flex flex-column gap-2 align-items-center">
+                      <Form.Check
+                        type="checkbox"
+                        id="findsched-rrsc"
+                        label="Include RRSC"
+                        checked={rrsc}
+                        onChange={(e) => setRrsc(e.target.checked)}
+                      />
+                      <Form.Check
+                        type="checkbox"
+                        id="findsched-proj"
+                        label="Include Projects Blocking"
+                        checked={projectsBlocking}
+                        onChange={(e) => setProjectsBlocking(e.target.checked)}
+                      />
+                    </Col>
+                  </Row>
+                </div>
+              </div>
 
               <Button type="button" variant="primary" size="lg" className="w-100" onClick={submit} disabled={loading}>
                 {loading ? 'Computing…' : 'Find Dates'}
@@ -563,6 +586,7 @@ export default function FindSchedulePage() {
           </Accordion.Body>
         </Accordion.Item>
       </Accordion>
+      </div>
     </div>
   )
 }

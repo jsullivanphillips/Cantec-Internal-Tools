@@ -4,6 +4,7 @@ from app.routes.processing_attack import get_jobs_processed_today, get_jobs_to_b
 from app.routes.scheduling_attack import get_forward_schedule_coverage_pct, get_percent_confirmed_next_two_weeks
 from app.routes.limbo_job_tracker import get_limbo_jobs
 from app.routes.keys import get_keys_older_than
+from app.response_cache import cached_json_response
 
 import requests
 
@@ -39,6 +40,7 @@ def home():
 
 # Routes
 @home_bp.route("/home/kpi/jobs_to_process")
+@cached_json_response(prefix="home:kpi_jobs_to_process", ttl_seconds=45)
 def home_jobs_to_process():
     num_jobs_to_process = get_num_jobs_to_be_marked_complete()
     response_data =  {
@@ -47,6 +49,7 @@ def home_jobs_to_process():
     return jsonify(response_data), 200
 
 @home_bp.route("/home/kpi/jobs_to_invoice")
+@cached_json_response(prefix="home:kpi_jobs_to_invoice", ttl_seconds=45)
 def home_jobs_to_invoice():
     jobs_to_be_invoiced = get_jobs_to_be_invoiced()
     response_data =  {
@@ -55,6 +58,7 @@ def home_jobs_to_invoice():
     return jsonify(response_data), 200
 
 @home_bp.route("/home/kpi/forward_schedule_coverage")
+@cached_json_response(prefix="home:kpi_forward_schedule_coverage", ttl_seconds=60)
 def home_forward_schedule_coverage():
     forward_schedule_coverage_pct = get_percent_confirmed_next_two_weeks()
     response_data =  {
@@ -63,6 +67,7 @@ def home_forward_schedule_coverage():
     return jsonify(response_data), 200
 
 @home_bp.route("/home/kpi/jobs_completed_today")
+@cached_json_response(prefix="home:kpi_jobs_completed_today", ttl_seconds=45)
 def home_jobs_completed_today():
     jobs_completed_today = get_jobs_processed_today()
     response_data =  {
@@ -73,6 +78,7 @@ def home_jobs_completed_today():
 from flask import jsonify, url_for, current_app
 
 @home_bp.route("/home/needs_attention")
+@cached_json_response(prefix="home:needs_attention", ttl_seconds=60)
 def home_needs_attention():
     items = []
 
@@ -123,6 +129,30 @@ def home_needs_attention():
     except Exception:
         current_app.logger.exception("home_needs_attention: jobs_to_invoice failed")
 
+    # --- Processing: Jobs to be processed ---
+    try:
+        jobs_to_process = get_num_jobs_to_be_marked_complete()
+        count = safe_count(jobs_to_process)
+
+        if count > 50:
+            add_item(
+                "bad",
+                "Jobs to be processed are high",
+                f"{count} jobs are waiting to be marked complete",
+                url_for("processing_attack.processing_attack"),
+                badge=count,
+            )
+        elif count > 40:
+            add_item(
+                "warn",
+                "Jobs to be processed are trending high",
+                f"{count} jobs are waiting to be marked complete",
+                url_for("processing_attack.processing_attack"),
+                badge=count,
+            )
+    except Exception:
+        current_app.logger.exception("home_needs_attention: jobs_to_process failed")
+
     # --- Scheduling: Forward coverage ---
     try:
         forward_raw = get_forward_schedule_coverage_pct()
@@ -160,7 +190,7 @@ def home_needs_attention():
                 "bad",
                 "High number of Limbo Jobs",
                 f"{num_limbo_jobs} Limbo Jobs",
-                url_for("limbo_job_tracker.limbo_job_tracker"),
+                url_for("processing_attack.processing_attack", tab="limbo"),
                 badge=num_limbo_jobs,  # ✅ fixed badge
             )
         elif num_limbo_jobs > 10:
@@ -168,7 +198,7 @@ def home_needs_attention():
                 "warn",
                 "Number of Limbo Jobs is trending up",
                 f"{num_limbo_jobs} Limbo Jobs",
-                url_for("limbo_job_tracker.limbo_job_tracker"),
+                url_for("processing_attack.processing_attack", tab="limbo"),
                 badge=num_limbo_jobs,  # ✅ fixed badge
             )
     except Exception:

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { apiJson } from '../lib/apiClient'
-import { Badge, Card, Col, Form, Row, Spinner } from 'react-bootstrap'
+import { apiJson, isAbortError } from '../lib/apiClient'
+import { Badge, Card, Col, Form, Row } from 'react-bootstrap'
 
 type Tech = { tech_name?: string; jobs?: number; name?: string }
 
@@ -39,10 +39,22 @@ export default function MonthlySpecialistsPage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    apiJson<{ routes: RouteRow[] }>('/api/monthly_specialists')
-      .then((d) => setRoutes(d.routes || []))
-      .catch(console.error)
-      .finally(() => setLoading(false))
+    let active = true
+    const controller = new AbortController()
+    apiJson<{ routes: RouteRow[] }>('/api/monthly_specialists', { signal: controller.signal })
+      .then((d) => {
+        if (active) setRoutes(d.routes || [])
+      })
+      .catch((error) => {
+        if (!isAbortError(error)) console.error(error)
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+    return () => {
+      active = false
+      controller.abort()
+    }
   }, [])
 
   const filtered = useMemo(() => {
@@ -60,11 +72,7 @@ export default function MonthlySpecialistsPage() {
   }, [routes])
 
   if (loading) {
-    return (
-      <div className="d-flex justify-content-center py-5">
-        <Spinner />
-      </div>
-    )
+    return <MonthlySpecialistsSkeleton />
   }
 
   return (
@@ -72,7 +80,7 @@ export default function MonthlySpecialistsPage() {
       <Card className="app-surface-card monthly-filters-card">
         <Card.Body className="p-3 p-md-4">
           <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-1">
-            <h1 className="h4 mb-0">Monthly Specialists</h1>
+            <h1 className="processing-page-title mb-0">Monthly Specialists</h1>
             <span className="text-muted small">
               {filtered.length} route(s) · Updated {latestUpdatedLabel}
             </span>
@@ -133,6 +141,46 @@ export default function MonthlySpecialistsPage() {
               ))}
             </Row>
           )}
+        </Card.Body>
+      </Card>
+    </div>
+  )
+}
+
+function MonthlySpecialistsSkeleton() {
+  return (
+    <div className="monthly-page d-flex flex-column gap-3 home-skeleton" aria-busy="true" aria-label="Loading monthly specialists">
+      <Card className="app-surface-card monthly-filters-card">
+        <Card.Body className="p-3 p-md-4">
+          <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+            <span className="home-skeleton-bar d-block" style={{ width: '12rem', height: '1.35rem' }} />
+            <span className="home-skeleton-bar d-block" style={{ width: '10rem' }} />
+          </div>
+          <span className="home-skeleton-bar d-block mb-3" style={{ width: '18rem' }} />
+          <span className="home-skeleton-bar d-block" style={{ width: 'min(22rem, 100%)', height: '2.35rem' }} />
+        </Card.Body>
+      </Card>
+
+      <Card className="app-surface-card monthly-results-card">
+        <Card.Body className="p-3">
+          <Row className="g-3">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <Col key={i} xl={3} lg={4} md={6}>
+                <Card className="app-kpi-nested h-100 monthly-route-card">
+                  <Card.Body>
+                    <span className="home-skeleton-bar d-block mb-2" style={{ width: '74%' }} />
+                    <span className="home-skeleton-bar d-block mb-3" style={{ width: '62%' }} />
+                    <div className="d-flex flex-column gap-2">
+                      <span className="home-skeleton-bar d-block" style={{ width: '100%' }} />
+                      <span className="home-skeleton-bar d-block" style={{ width: '90%' }} />
+                      <span className="home-skeleton-bar d-block" style={{ width: '96%' }} />
+                      <span className="home-skeleton-bar d-block" style={{ width: '84%' }} />
+                    </div>
+                  </Card.Body>
+                </Card>
+              </Col>
+            ))}
+          </Row>
         </Card.Body>
       </Card>
     </div>

@@ -17,6 +17,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from flask import redirect, url_for
 
 from app.spa import send_spa_index
+from app.response_cache import cached_json_response
 log = logging.getLogger("month-conflicts")
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
@@ -2236,6 +2237,7 @@ def get_forward_schedule_coverage_pct() -> float | None:
 
 
 @scheduling_attack_bp.get("/scheduling_attack/v2/forward_schedule_coverage")
+@cached_json_response(prefix="scheduling_attack:v2_forward_schedule_coverage", ttl_seconds=90)
 def forward_schedule_coverage():
     """
     Read-only: uses forward_schedule_week table.
@@ -2261,8 +2263,14 @@ def forward_schedule_coverage():
             .order_by(ForwardScheduleWeek.week_start_local.asc())
             .all()
         )
+        latest_row = (
+            ForwardScheduleWeek.query.order_by(ForwardScheduleWeek.generated_at.desc())
+            .first()
+        )
+        latest_generated_at = latest_row.generated_at if latest_row else None
     else:
         rows = []
+        latest_generated_at = None
 
     # Build expected continuous week keys so missing weeks break streak
     by_ws = {r.week_start_local: r for r in rows}
@@ -2310,7 +2318,7 @@ def forward_schedule_coverage():
             last_covered_week_end = w["week_end_local"]
 
     payload = {
-        "generated_at": now.isoformat(),
+        "generated_at": latest_generated_at.isoformat() if latest_generated_at else None,
         "threshold_pct": threshold * 100.0,
         "coverage_weeks_60pct": streak,
         "coverage_through_week_end_local": last_covered_week_end,
@@ -2323,6 +2331,7 @@ def forward_schedule_coverage():
 
 
 @scheduling_attack_bp.get("/scheduling_attack/v2/weekly_scheduling_volume")
+@cached_json_response(prefix="scheduling_attack:v2_weekly_scheduling_volume", ttl_seconds=90)
 def weekly_scheduling_volume():
     now = datetime.now(timezone.utc)
 
@@ -2464,6 +2473,7 @@ def get_percent_confirmed_next_two_weeks():
     return percent_confirmed
 
 @scheduling_attack_bp.get("/scheduling_attack/v2/kpis")
+@cached_json_response(prefix="scheduling_attack:v2_kpis", ttl_seconds=90)
 def scheduling_attack_v2_kpis():
     # ------------------------------------------------------------
     # Payload

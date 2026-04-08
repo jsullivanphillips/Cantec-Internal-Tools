@@ -6,12 +6,13 @@ from zoneinfo import ZoneInfo
 from dateutil import parser  # Use dateutil for flexible datetime parsing
 from collections import Counter
 from sqlalchemy import inspect
-from app.db_models import db, JobSummary, ProcessorMetrics, ProcessingStatus
+from app.db_models import db, JobSummary, ProcessorMetrics, ProcessingStatus, ProcessingStatusDaily
 import sys
 from flask import redirect, url_for
 
 from app.spa import send_spa_index
 from app.routes.pink_folder import get_pink_folder_data as get_pink_folder_page_detail
+from app.response_cache import cached_json_response
 
 processing_attack_bp = Blueprint('processing_attack', __name__)
 api_session = requests.Session()
@@ -31,6 +32,88 @@ def _processor_metrics_table_exists() -> bool:
         return inspect(db.engine).has_table(ProcessorMetrics.__table__.name)
     except Exception:
         return False
+
+
+def _as_processing_status_date(d):
+    """DB columns are Date, but guard against datetimes/nulls."""
+    if d is None:
+        return None
+    if isinstance(d, datetime):
+        return d.date()
+    return d
+
+
+def _processing_kpi_history_entry(record, ref_date, *, period_key: str, period_value):
+    """
+    Shared JSON shape for weekly (week_start) and daily (snapshot_date) KPI history.
+    ref_date: date used for oldest-job and earliest-conversion thresholds.
+    period_key: 'week_start' or 'snapshot_date'.
+    period_value: the model's date field (for ISO string in output).
+    """
+    ref = _as_processing_status_date(ref_date)
+    jobs_count = record.jobs_to_be_marked_complete
+    hit_goal = None
+    if jobs_count is not None:
+        hit_goal = jobs_count <= 50
+
+    jobs_to_be_invoiced = record.jobs_to_be_invoiced
+    hit_goal_jobs_to_be_invoiced = None
+    if jobs_to_be_invoiced is not None:
+        hit_goal_jobs_to_be_invoiced = jobs_to_be_invoiced < 30
+
+    jobs_to_be_converted = record.jobs_to_be_converted
+    hit_goal_jobs_to_be_converted = None
+    if jobs_to_be_converted is not None:
+        hit_goal_jobs_to_be_converted = jobs_to_be_converted < 10
+
+    pink_count = record.number_of_pink_folder_jobs
+    hit_goal_pink_folder = None
+    if pink_count is not None:
+        hit_goal_pink_folder = pink_count < 10
+
+    oldest_job_date = _as_processing_status_date(record.oldest_job_date)
+    oldest_job_address = record.oldest_job_address
+    oldest_job_type = record.oldest_job_type
+    hit_goal_oldest_job = None
+    if oldest_job_date is not None and ref is not None:
+        diff_days = (ref - oldest_job_date).days
+        hit_goal_oldest_job = diff_days <= 42
+
+    earliest_job_to_be_converted_date = _as_processing_status_date(
+        record.earliest_job_to_be_converted_date
+    )
+    earliest_job_to_be_converted_address = record.earliest_job_to_be_converted_address
+    earliest_job_to_be_converted_job_id = record.earliest_job_to_be_converted_job_id
+
+    hit_goal_earliest_job_to_be_converted = None
+    if earliest_job_to_be_converted_date is not None and ref is not None:
+        threshold_date = ref + timedelta(days=14)
+        hit_goal_earliest_job_to_be_converted = (
+            earliest_job_to_be_converted_date >= threshold_date
+        )
+
+    period_iso = period_value.isoformat() if period_value else None
+    return {
+        period_key: period_iso,
+        "jobs_to_be_marked_complete": jobs_count,
+        "hit_goal": hit_goal,
+        "jobs_to_be_invoiced": jobs_to_be_invoiced,
+        "hit_goal_jobs_to_be_invoiced": hit_goal_jobs_to_be_invoiced,
+        "jobs_to_be_converted": jobs_to_be_converted,
+        "hit_goal_jobs_to_be_converted": hit_goal_jobs_to_be_converted,
+        "oldest_job_date": oldest_job_date.isoformat() if oldest_job_date else None,
+        "oldest_job_address": oldest_job_address,
+        "oldest_job_type": oldest_job_type,
+        "hit_goal_oldest_job": hit_goal_oldest_job,
+        "earliest_job_to_be_converted_date": earliest_job_to_be_converted_date.isoformat()
+        if earliest_job_to_be_converted_date
+        else None,
+        "earliest_job_to_be_converted_address": earliest_job_to_be_converted_address,
+        "earliest_job_to_be_converted_job_id": earliest_job_to_be_converted_job_id,
+        "hit_goal_earliest_job_to_be_converted": hit_goal_earliest_job_to_be_converted,
+        "number_of_pink_folder_jobs": pink_count,
+        "hit_goal_pink_folder": hit_goal_pink_folder,
+    }
 
 
 API_KEY = "YOUR_API_KEY"
@@ -74,6 +157,7 @@ def call_service_trade_api(endpoint: str, params=None):
 # JOBS TO BE MARKED COMPLETE & OLDEST JOB & PINK FOLDER JOBS
 # -------------------------------------------------------
 @processing_attack_bp.route('/processing_attack/complete_jobs', methods=['POST'])
+@cached_json_response(prefix="processing_attack:complete_jobs", ttl_seconds=45, include_body=True)
 def processing_attack_complete_jobs():
     """
     Returns:
@@ -136,6 +220,7 @@ def organize_jobs_by_job_type(jobs_to_be_marked_complete):
     return dict(counts)
 
 @processing_attack_bp.route('/processing_attack/jobs_today', methods=['GET'])
+@cached_json_response(prefix="processing_attack:jobs_today", ttl_seconds=45)
 def jobs_today():
     jobs_processed_today = get_jobs_processed_today()
 
@@ -148,6 +233,7 @@ def jobs_today():
 
 
 @processing_attack_bp.route('/processing_attack/jobs_to_be_invoiced', methods=['GET'])
+@cached_json_response(prefix="processing_attack:jobs_to_be_invoiced", ttl_seconds=45)
 def jobs_to_be_invoiced():
     num_jobs = get_jobs_to_be_invoiced()
 
@@ -199,10 +285,11 @@ def find_report_conversion_jobs():
 
 
 @processing_attack_bp.route('/processing_attack/pink_folder_data', methods=['GET'])
+@cached_json_response(prefix="processing_attack:pink_folder_data", ttl_seconds=45)
 def get_pink_folder_route():
     """
     Align with /pink_folder/data: same job set and fields (e.g. is_paperwork_uploaded),
-    grouped by technician for the Processing Attack KPI modal.
+    grouped by technician for the Jobs Backlog KPI modal.
     """
     detailed_by_job = get_pink_folder_page_detail()
     if not isinstance(detailed_by_job, dict):
@@ -460,6 +547,7 @@ def get_jobs_processed_today():
 
 
 @processing_attack_bp.route('/processing_attack/num_jobs_to_be_marked_complete', methods=['GET'])
+@cached_json_response(prefix="processing_attack:num_jobs_to_be_marked_complete", ttl_seconds=45)
 def num_jobs_to_be_marked_complete():
     num_jobs = get_num_jobs_to_be_marked_complete()
 
@@ -497,94 +585,46 @@ def processing_attack_history_jobs_to_be_marked_complete():
     )
 
     history = []
-
-    def _as_date(d):
-        # DB columns are Date, but guard against datetimes/nulls.
-        if d is None:
-            return None
-        if isinstance(d, datetime):
-            return d.date()
-        return d
-
     for record in reversed(records):
-        jobs_count = record.jobs_to_be_marked_complete
-        hit_goal = None
-        if jobs_count is not None:
-            hit_goal = jobs_count <= 50
-
-        jobs_to_be_invoiced = record.jobs_to_be_invoiced
-        hit_goal_jobs_to_be_invoiced = None
-        if jobs_to_be_invoiced is not None:
-            hit_goal_jobs_to_be_invoiced = jobs_to_be_invoiced < 30
-
-        jobs_to_be_converted = record.jobs_to_be_converted
-        hit_goal_jobs_to_be_converted = None
-        if jobs_to_be_converted is not None:
-            hit_goal_jobs_to_be_converted = jobs_to_be_converted < 10
-
-        pink_count = record.number_of_pink_folder_jobs
-        hit_goal_pink_folder = None
-        if pink_count is not None:
-            hit_goal_pink_folder = pink_count < 10
-
-        # Snapshot week_start is when the script ran (Monday ~1pm local time).
-        week_start_date = _as_date(record.week_start)
-
-        oldest_job_date = _as_date(record.oldest_job_date)
-        oldest_job_address = record.oldest_job_address
-        oldest_job_type = record.oldest_job_type
-        hit_goal_oldest_job = None
-        if oldest_job_date is not None and week_start_date is not None:
-            diff_days = (week_start_date - oldest_job_date).days
-            hit_goal_oldest_job = diff_days <= 42
-
-        earliest_job_to_be_converted_date = _as_date(
-            record.earliest_job_to_be_converted_date
-        )
-        earliest_job_to_be_converted_address = record.earliest_job_to_be_converted_address
-        earliest_job_to_be_converted_job_id = record.earliest_job_to_be_converted_job_id
-
-        hit_goal_earliest_job_to_be_converted = None
-        if earliest_job_to_be_converted_date is not None and week_start_date is not None:
-            # "Next 2 weeks" relative to the snapshot week_start.
-            threshold_date = week_start_date + timedelta(days=14)
-            hit_goal_earliest_job_to_be_converted = (
-                earliest_job_to_be_converted_date >= threshold_date
-            )
-
         history.append(
-            {
-                "week_start": record.week_start.isoformat()
-                if record.week_start
-                else None,
-                "jobs_to_be_marked_complete": jobs_count,
-                "hit_goal": hit_goal,
-
-                "jobs_to_be_invoiced": jobs_to_be_invoiced,
-                "hit_goal_jobs_to_be_invoiced": hit_goal_jobs_to_be_invoiced,
-
-                "jobs_to_be_converted": jobs_to_be_converted,
-                "hit_goal_jobs_to_be_converted": hit_goal_jobs_to_be_converted,
-
-                "oldest_job_date": oldest_job_date.isoformat()
-                if oldest_job_date
-                else None,
-                "oldest_job_address": oldest_job_address,
-                "oldest_job_type": oldest_job_type,
-                "hit_goal_oldest_job": hit_goal_oldest_job,
-
-                "earliest_job_to_be_converted_date": earliest_job_to_be_converted_date.isoformat()
-                if earliest_job_to_be_converted_date
-                else None,
-                "earliest_job_to_be_converted_address": earliest_job_to_be_converted_address,
-                "earliest_job_to_be_converted_job_id": earliest_job_to_be_converted_job_id,
-                "hit_goal_earliest_job_to_be_converted": hit_goal_earliest_job_to_be_converted,
-
-                "number_of_pink_folder_jobs": pink_count,
-                "hit_goal_pink_folder": hit_goal_pink_folder,
-            }
+            _processing_kpi_history_entry(
+                record,
+                record.week_start,
+                period_key="week_start",
+                period_value=record.week_start,
+            )
         )
 
+    return jsonify(history), 200
+
+
+@processing_attack_bp.route(
+    "/processing_attack/history_processing_status_daily",
+    methods=["GET"],
+)
+def processing_attack_history_processing_status_daily():
+    """
+    Returns up to the last 120 weekday snapshots from processing_status_daily
+    (same fields as history_jobs_to_be_marked_complete, but snapshot_date instead of week_start).
+    """
+    if not inspect(db.engine).has_table(ProcessingStatusDaily.__table__.name):
+        return jsonify([]), 200
+
+    records = (
+        ProcessingStatusDaily.query.order_by(ProcessingStatusDaily.snapshot_date.desc())
+        .limit(120)
+        .all()
+    )
+    history = []
+    for record in reversed(records):
+        history.append(
+            _processing_kpi_history_entry(
+                record,
+                record.snapshot_date,
+                period_key="snapshot_date",
+                period_value=record.snapshot_date,
+            )
+        )
     return jsonify(history), 200
 
 

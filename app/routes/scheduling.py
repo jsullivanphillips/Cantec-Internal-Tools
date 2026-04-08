@@ -7,6 +7,7 @@ import json
 from app.db_models import db, Technician
 from app.services.scheduling_service import find_candidate_dates, find_candidate_blocks
 from app.spa import send_spa_index
+from app.response_cache import cached_json_response
 
 scheduling_bp = Blueprint('scheduling', __name__)
 
@@ -178,6 +179,7 @@ def _compute_schedule_payload(body: dict):
 
 
 @scheduling_bp.route('/api/scheduling/compute', methods=['POST'])
+@cached_json_response(prefix="scheduling:compute", ttl_seconds=120, include_body=True)
 def api_scheduling_compute():
     if not session.get("authenticated"):
         return jsonify({"error": "Unauthorized"}), 401

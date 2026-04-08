@@ -9,6 +9,7 @@ from app.spa import register_spa_static_routes, send_spa_index
 from app.utils.logger import setup_logging
 from app.db_models import db
 from app.cli_commands import register_cli_commands
+from app.response_cache import init_response_cache
 from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '.env'))
@@ -59,6 +60,7 @@ def create_app():
     migrate.init_app(app, db)
     register_cli_commands(app)
     setup_logging(app)
+    init_response_cache(app)
     register_blueprints(app)
     register_api_session_auth(app)
     register_spa_static_routes(app)

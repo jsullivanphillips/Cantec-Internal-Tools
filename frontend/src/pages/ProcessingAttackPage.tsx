@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { apiFetch, apiJson } from '../lib/apiClient'
+import { useSearchParams } from 'react-router-dom'
+import { apiFetch, apiJson, isAbortError } from '../lib/apiClient'
+import LimboJobTrackerPanel from '../components/LimboJobTrackerPanel'
 import { Button, Card, Col, Collapse, Form, Modal, Nav, Row, Tab, Table } from 'react-bootstrap'
 import { Chart } from 'react-chartjs-2'
 import type { ChartData, ChartOptions } from 'chart.js'
@@ -52,9 +54,10 @@ const KPI_TARGETS = {
   earliestConversionWindowDays: 14,
 } as const
 
-/** Row from GET /processing_attack/history_jobs_to_be_marked_complete (oldest week first). */
+/** Row from weekly or daily processing KPI history endpoints (oldest first). */
 type ProcessingStatusHistoryRow = {
   week_start?: string | null
+  snapshot_date?: string | null
   oldest_job_date?: string | null
   earliest_job_to_be_converted_date?: string | null
   jobs_to_be_marked_complete?: number | null
@@ -69,11 +72,75 @@ type ProcessingStatusHistoryRow = {
   hit_goal_pink_folder?: boolean | null
 }
 
+function previousWeekMondayYmd(mondayYmd: string): string {
+  const [y, m, d] = mondayYmd.split('-').map(Number)
+  const dt = new Date(Date.UTC(y, m - 1, d))
+  dt.setUTCDate(dt.getUTCDate() - 7)
+  const yy = dt.getUTCFullYear()
+  const mm = String(dt.getUTCMonth() + 1).padStart(2, '0')
+  const dd = String(dt.getUTCDate()).padStart(2, '0')
+  return `${yy}-${mm}-${dd}`
+}
+
+function historyRowForMonday(rows: ProcessingStatusHistoryRow[], mondayYmd: string): ProcessingStatusHistoryRow | null {
+  const p = mondayYmd.slice(0, 10)
+  const hit = rows.find((r) => (r.week_start ?? '').slice(0, 10) === p)
+  return hit ?? null
+}
+
+type WowTrend = 'better' | 'worse' | 'same' | 'unknown'
+
+/** Compare two numbers; `lowerIsBetter` for backlog-style metrics. */
+function wowNumeric(
+  current: number | null | undefined,
+  previous: number | null | undefined,
+  lowerIsBetter: boolean,
+  kind: 'count' | 'hours',
+): { trend: WowTrend; delta: number | null; line: string } {
+  if (
+    current == null ||
+    previous == null ||
+    !Number.isFinite(Number(current)) ||
+    !Number.isFinite(Number(previous))
+  ) {
+    return { trend: 'unknown', delta: null, line: 'No snapshot for previous week to compare.' }
+  }
+  const c = Number(current)
+  const p = Number(previous)
+  const delta = c - p
+  const eps = kind === 'hours' ? 0.05 : 0.5
+  const unit = kind === 'hours' ? 'hrs' : 'jobs'
+  if (Math.abs(delta) < eps) {
+    const flat =
+      kind === 'hours' ? `0.0 ${unit} vs previous week` : `0 ${unit} vs previous week`
+    return { trend: 'same', delta: 0, line: flat }
+  }
+  const improved = lowerIsBetter ? delta < 0 : delta > 0
+  const trend: WowTrend = improved ? 'better' : 'worse'
+  const deltaStr =
+    kind === 'hours'
+      ? `${delta > 0 ? '+' : ''}${delta.toFixed(1)} ${unit}`
+      : `${delta > 0 ? '+' : ''}${Math.round(delta)} ${unit}`
+  return { trend, delta, line: `${deltaStr} vs previous week` }
+}
+
+function ProcessingHistoryTrendLine({ trend, children }: { trend: WowTrend; children: ReactNode }) {
+  const cls =
+    trend === 'better'
+      ? 'text-success'
+      : trend === 'worse'
+        ? 'text-danger'
+        : trend === 'same'
+          ? 'text-muted'
+          : 'text-muted'
+  return <div className={`small mt-2 fw-medium ${cls}`}>{children}</div>
+}
+
 const HISTORY_PLACEHOLDER_WEEKS = 12
 
 function KpiHitWeekStrip({
   hits = null,
-  emptyMessage = 'No weekly snapshots yet.',
+  emptyMessage = 'No snapshots yet.',
   unsupportedMessage,
   greySlots = HISTORY_PLACEHOLDER_WEEKS,
 }: {
@@ -137,12 +204,20 @@ function KpiTrendViz({
   referenceY,
   hits,
   unsupported,
+  unsupportedMessage,
+  greySlots,
+  compact,
+  emptyMessage,
 }: {
   weekLabels: string[]
   sparkValues?: (number | null)[] | null
   referenceY?: number
   hits?: (boolean | null)[] | null
   unsupported?: boolean
+  unsupportedMessage?: string
+  greySlots?: number
+  compact?: boolean
+  emptyMessage?: string
 }) {
   const chartData = useMemo((): ChartData<'line'> | null => {
     if (!sparkValues?.length) return null
@@ -151,7 +226,7 @@ function KpiTrendViz({
     const labels =
       weekLabels.length === sparkValues.length
         ? weekLabels
-        : sparkValues.map((_, i) => `Week ${i + 1}`)
+        : sparkValues.map((_, i) => `Pt ${i + 1}`)
     const data = sparkValues.map((v) =>
       v != null && Number.isFinite(Number(v)) ? Number(v) : null,
     ) as (number | null)[]
@@ -216,24 +291,103 @@ function KpiTrendViz({
     [weekLabels],
   )
 
+  const wrapClass = compact ? 'processing-kpi-sparkline-wrap processing-kpi-sparkline-wrap--compact' : 'processing-kpi-sparkline-wrap'
+
   if (unsupported) {
     return (
-      <KpiHitWeekStrip
-        unsupportedMessage="Intraday only — not stored in Monday weekly snapshots."
-        greySlots={HISTORY_PLACEHOLDER_WEEKS}
-      />
+      <div className={compact ? 'processing-kpi-viz-fallback processing-kpi-viz-fallback--compact' : 'processing-kpi-viz-fallback'}>
+        <KpiHitWeekStrip
+          unsupportedMessage={
+            unsupportedMessage ?? 'Intraday only — not stored in Monday weekly snapshots.'
+          }
+          greySlots={greySlots ?? HISTORY_PLACEHOLDER_WEEKS}
+        />
+      </div>
     )
   }
 
   if (chartData) {
     return (
-      <div className="processing-kpi-sparkline-wrap">
+      <div className={wrapClass}>
         <Chart type="line" data={chartData} options={chartOptions} />
       </div>
     )
   }
 
-  return <KpiHitWeekStrip hits={hits ?? null} />
+  return (
+    <div className={compact ? 'processing-kpi-viz-fallback processing-kpi-viz-fallback--compact' : 'processing-kpi-viz-fallback'}>
+      <KpiHitWeekStrip
+        hits={hits ?? null}
+        greySlots={greySlots ?? HISTORY_PLACEHOLDER_WEEKS}
+        emptyMessage={emptyMessage}
+      />
+    </div>
+  )
+}
+
+function ProcessingKpiDualTrend({
+  weeklyLabels,
+  dailyLabels,
+  weeklySpark,
+  dailySpark,
+  referenceY,
+  weeklyHits,
+  dailyHits,
+  weeklyUnsupported,
+  dailyUnsupported,
+  weeklyUnsupportedMessage,
+  dailyUnsupportedMessage,
+  weeklyEmptyMessage,
+  dailyEmptyMessage,
+}: {
+  weeklyLabels: string[]
+  dailyLabels: string[]
+  weeklySpark?: (number | null)[] | null
+  dailySpark?: (number | null)[] | null
+  referenceY?: number
+  weeklyHits?: (boolean | null)[] | null
+  dailyHits?: (boolean | null)[] | null
+  weeklyUnsupported?: boolean
+  dailyUnsupported?: boolean
+  weeklyUnsupportedMessage?: string
+  dailyUnsupportedMessage?: string
+  weeklyEmptyMessage?: string
+  dailyEmptyMessage?: string
+}) {
+  return (
+    <div className="processing-kpi-dual-viz">
+      <div className="processing-kpi-dual-viz__lane">
+        <span className="processing-kpi-dual-viz__grain">Weekly</span>
+        <div className="processing-kpi-dual-viz__chart">
+          <KpiTrendViz
+            weekLabels={weeklyLabels}
+            sparkValues={weeklySpark}
+            referenceY={referenceY}
+            hits={weeklyHits}
+            unsupported={weeklyUnsupported}
+            unsupportedMessage={weeklyUnsupportedMessage}
+            emptyMessage={weeklyEmptyMessage ?? 'No weekly snapshots yet.'}
+            compact
+          />
+        </div>
+      </div>
+      <div className="processing-kpi-dual-viz__lane">
+        <span className="processing-kpi-dual-viz__grain">Daily</span>
+        <div className="processing-kpi-dual-viz__chart">
+          <KpiTrendViz
+            weekLabels={dailyLabels}
+            sparkValues={dailySpark}
+            referenceY={referenceY}
+            hits={dailyHits}
+            unsupported={dailyUnsupported}
+            unsupportedMessage={dailyUnsupportedMessage}
+            emptyMessage={dailyEmptyMessage ?? 'No weekday snapshots yet.'}
+            compact
+          />
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function ProcessingKpiCardGrid({
@@ -272,10 +426,14 @@ function ProcessingKpiTileSkeleton({ hero = false }: { hero?: boolean }) {
               borderRadius: '0.5rem',
             }}
           />
-          <div className="processing-kpi-sparkline-wrap pt-1">
+          <div className="processing-kpi-skeleton-dual pt-1">
             <span
               className="home-skeleton-bar d-block w-100"
-              style={{ height: '3.25rem', borderRadius: '0.35rem' }}
+              style={{ height: '2.5rem', borderRadius: '0.35rem' }}
+            />
+            <span
+              className="home-skeleton-bar d-block w-100 mt-1"
+              style={{ height: '2.5rem', borderRadius: '0.35rem' }}
             />
           </div>
           <span className="home-skeleton-bar d-block mt-1" style={{ width: '82%' }} />
@@ -288,7 +446,7 @@ function ProcessingKpiTileSkeleton({ hero = false }: { hero?: boolean }) {
 /** Status tab layout while initial `/processing_attack/*` bundle is loading. */
 function ProcessingStatusTabSkeleton() {
   return (
-    <div className="home-skeleton d-flex flex-column" aria-busy="true" aria-label="Loading processing status">
+    <div className="home-skeleton d-flex flex-column" aria-busy="true" aria-label="Loading jobs backlog">
       <Card className="app-surface-card processing-status-card">
         <Card.Body className="p-3">
           <Row className="g-3">
@@ -402,7 +560,95 @@ function generateMondayOptions(): { value: string; label: string }[] {
   return options
 }
 
+type ProcessingTabKey = 'status' | 'weekly' | 'limbo'
+
+function parseProcessingTab(tab: string | null): ProcessingTabKey {
+  return tab === 'weekly' || tab === 'limbo' || tab === 'status' ? tab : 'status'
+}
+
+type ProcessingStatusCachePayload = {
+  ts: number
+  jobsToday: { jobs_processed_today?: number; incoming_jobs_today?: number } | null
+  pink: {
+    number_of_pink_folder_jobs?: number
+    time_in_pink_folder?: number
+    pink_folder_detailed_info?: Record<
+      string,
+      {
+        job_address?: string
+        job_url?: string
+        is_paperwork_uploaded?: boolean
+        job_date?: string | null
+      }[]
+    >
+  } | null
+  toInvoice: number | null
+  numComplete: number | null
+  complete: {
+    job_type_count?: Record<string, number>
+    oldest_jobs_to_be_marked_complete?: {
+      job_id: number
+      oldest_job_date: string
+      oldest_job_address: string
+      oldest_job_type: string
+    }[]
+    num_locations_to_be_converted?: number
+    jobs_to_be_converted?: ConversionJob[]
+  } | null
+  statusHistory: ProcessingStatusHistoryRow[]
+  statusHistoryDaily: ProcessingStatusHistoryRow[]
+}
+
+const PROCESSING_STATUS_CACHE_KEY = 'processingAttack.statusCache.v1'
+
+function readProcessingStatusCache(): ProcessingStatusCachePayload | null {
+  try {
+    const raw = localStorage.getItem(PROCESSING_STATUS_CACHE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<ProcessingStatusCachePayload>
+    if (!parsed || typeof parsed !== 'object') return null
+    return {
+      ts: Number(parsed.ts) || Date.now(),
+      jobsToday: parsed.jobsToday ?? null,
+      pink: parsed.pink ?? null,
+      toInvoice: parsed.toInvoice ?? null,
+      numComplete: parsed.numComplete ?? null,
+      complete: parsed.complete ?? null,
+      statusHistory: Array.isArray(parsed.statusHistory) ? parsed.statusHistory : [],
+      statusHistoryDaily: Array.isArray(parsed.statusHistoryDaily) ? parsed.statusHistoryDaily : [],
+    }
+  } catch {
+    return null
+  }
+}
+
+function writeProcessingStatusCache(payload: Omit<ProcessingStatusCachePayload, 'ts'>) {
+  try {
+    localStorage.setItem(
+      PROCESSING_STATUS_CACHE_KEY,
+      JSON.stringify({
+        ts: Date.now(),
+        ...payload,
+      } satisfies ProcessingStatusCachePayload),
+    )
+  } catch {
+    // Ignore cache write errors (private mode / quota).
+  }
+}
+
 export default function ProcessingAttackPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const activeTab = parseProcessingTab(searchParams.get('tab'))
+
+  const handleTabSelect = (key: string | null) => {
+    const k = parseProcessingTab(key)
+    if (k === 'status') {
+      setSearchParams({}, { replace: true })
+    } else {
+      setSearchParams({ tab: k }, { replace: true })
+    }
+  }
+
   const weekOptions = useMemo(() => generateMondayOptions(), [])
   const [selectedMonday, setSelectedMonday] = useState(weekOptions[0]?.value || '')
 
@@ -450,174 +696,379 @@ export default function ProcessingAttackPage() {
     hours_processed_by_processor?: Record<string, number>
     hours_processed_by_processor_previous_week?: Record<string, number>
   } | null>(null)
-  const [trend, setTrend] = useState<{ weeks: string[]; jobs: number[]; hours: number[] } | null>(null)
+  /** Latest history fetch for Processing History tab (falls back to statusHistory until loaded). */
+  const [weeklyTabHistory, setWeeklyTabHistory] = useState<ProcessingStatusHistoryRow[]>([])
   const [statusHistory, setStatusHistory] = useState<ProcessingStatusHistoryRow[]>([])
+  const [statusHistoryDaily, setStatusHistoryDaily] = useState<ProcessingStatusHistoryRow[]>([])
   const [oldestJobsModalOpen, setOldestJobsModalOpen] = useState(false)
   const [pinkFolderModalOpen, setPinkFolderModalOpen] = useState(false)
   const [reportConversionModalOpen, setReportConversionModalOpen] = useState(false)
   const [pinkTechExpanded, setPinkTechExpanded] = useState<Record<string, boolean>>({})
   const [loading, setLoading] = useState(true)
 
-  const refreshStatus = useCallback(async () => {
+  const refreshStatus = useCallback(async (signal?: AbortSignal) => {
     setLoading(true)
     try {
-      const [jt, pf, inv, nc, co, hist] = await Promise.all([
-        apiFetch('/processing_attack/jobs_today').then((r) => r.json()),
-        apiFetch('/processing_attack/pink_folder_data').then((r) => r.json()),
-        apiFetch('/processing_attack/jobs_to_be_invoiced').then((r) => r.json()),
-        apiFetch('/processing_attack/num_jobs_to_be_marked_complete').then((r) => r.json()),
-        apiJson<typeof complete>('/processing_attack/complete_jobs', { method: 'POST', body: '{}' }),
-        apiFetch('/processing_attack/history_jobs_to_be_marked_complete').then((r) => r.json()),
+      const [jt, pf, inv, nc, co, hist, histDaily] = await Promise.all([
+        apiFetch('/processing_attack/jobs_today', { signal }).then((r) => r.json()),
+        apiFetch('/processing_attack/pink_folder_data', { signal }).then((r) => r.json()),
+        apiFetch('/processing_attack/jobs_to_be_invoiced', { signal }).then((r) => r.json()),
+        apiFetch('/processing_attack/num_jobs_to_be_marked_complete', { signal }).then((r) => r.json()),
+        apiJson<typeof complete>('/processing_attack/complete_jobs', { method: 'POST', body: '{}', signal }),
+        apiFetch('/processing_attack/history_jobs_to_be_marked_complete', { signal }).then((r) => r.json()),
+        apiFetch('/processing_attack/history_processing_status_daily', { signal }).then(async (r) => {
+          if (!r.ok) return []
+          try {
+            const j = await r.json()
+            return Array.isArray(j) ? j : []
+          } catch {
+            return []
+          }
+        }),
       ])
       setJobsToday(jt)
       setPink(pf)
       setToInvoice(inv.jobs_to_be_invoiced)
       setNumComplete(nc.jobs_to_be_marked_complete ?? nc.count ?? null)
       setComplete(co)
-      setStatusHistory(Array.isArray(hist) ? hist : [])
+      const nextStatusHistory = Array.isArray(hist) ? hist : []
+      const nextStatusHistoryDaily = Array.isArray(histDaily) ? histDaily : []
+      setStatusHistory(nextStatusHistory)
+      setStatusHistoryDaily(nextStatusHistoryDaily)
+      writeProcessingStatusCache({
+        jobsToday: jt,
+        pink: pf,
+        toInvoice: inv.jobs_to_be_invoiced,
+        numComplete: nc.jobs_to_be_marked_complete ?? nc.count ?? null,
+        complete: co,
+        statusHistory: nextStatusHistory,
+        statusHistoryDaily: nextStatusHistoryDaily,
+      })
     } catch (e) {
+      if (isAbortError(e)) return
       console.error(e)
     } finally {
-      setLoading(false)
+      if (!signal?.aborted) setLoading(false)
     }
   }, [])
 
   useEffect(() => {
-    refreshStatus()
+    const cached = readProcessingStatusCache()
+    if (cached) {
+      setJobsToday(cached.jobsToday)
+      setPink(cached.pink)
+      setToInvoice(cached.toInvoice)
+      setNumComplete(cached.numComplete)
+      setComplete(cached.complete)
+      setStatusHistory(cached.statusHistory)
+      setStatusHistoryDaily(cached.statusHistoryDaily)
+      setLoading(false)
+    }
+    const controller = new AbortController()
+    void refreshStatus(controller.signal)
+    return () => controller.abort()
   }, [refreshStatus])
 
-  const loadWeekly = useCallback(async () => {
+  const loadWeekly = useCallback(async (signal?: AbortSignal) => {
     if (!selectedMonday) return
-    try {
-      const [pr, bp, tr] = await Promise.all([
-        apiJson<typeof processed>('/processing_attack/processed_data', {
-          method: 'POST',
-          body: JSON.stringify({ selectedMonday }),
-        }),
-        apiJson<typeof byProcessor>('/processing_attack/processed_data_by_processor', {
-          method: 'POST',
-          body: JSON.stringify({ selectedMonday }),
-        }),
-        apiFetch('/processing_attack/overall_weekly_trend').then((r) => r.json()),
-      ])
-      setProcessed(pr)
-      setByProcessor(bp)
-      setTrend(tr)
-    } catch (e) {
-      console.error(e)
+    const [prRes, bpRes, histRes] = await Promise.allSettled([
+      apiJson<typeof processed>('/processing_attack/processed_data', {
+        method: 'POST',
+        body: JSON.stringify({ selectedMonday }),
+        signal,
+      }),
+      apiJson<typeof byProcessor>('/processing_attack/processed_data_by_processor', {
+        method: 'POST',
+        body: JSON.stringify({ selectedMonday }),
+        signal,
+      }),
+      apiFetch('/processing_attack/history_jobs_to_be_marked_complete', { signal }).then((r) => r.json()),
+    ])
+    if (signal?.aborted) return
+    if (prRes.status === 'fulfilled') setProcessed(prRes.value)
+    else {
+      if (!isAbortError(prRes.reason)) console.error(prRes.reason)
       setProcessed(null)
+    }
+    if (bpRes.status === 'fulfilled') setByProcessor(bpRes.value)
+    else {
+      if (!isAbortError(bpRes.reason)) console.error(bpRes.reason)
       setByProcessor(null)
+    }
+    if (histRes.status === 'fulfilled' && Array.isArray(histRes.value)) {
+      setWeeklyTabHistory(histRes.value)
+    } else {
+      if (histRes.status === 'rejected' && !isAbortError(histRes.reason)) console.error(histRes.reason)
+      setWeeklyTabHistory([])
     }
   }, [selectedMonday])
 
   useEffect(() => {
-    loadWeekly()
+    const controller = new AbortController()
+    void loadWeekly(controller.signal)
+    return () => controller.abort()
   }, [loadWeekly])
 
-  const trendData = useMemo(() => {
-    if (!trend?.weeks?.length) return null
-    return {
-      labels: trend.weeks,
-      datasets: [
-        {
-          label: 'Jobs processed',
-          data: trend.jobs,
-          tension: 0.3,
-          borderWidth: 2,
-          borderColor: 'rgb(13, 110, 253)',
-        },
-        {
-          label: 'Tech hours',
-          data: trend.hours,
-          tension: 0.3,
-          borderWidth: 2,
-          borderColor: 'rgb(253, 126, 20)',
-          yAxisID: 'y1',
-        },
-      ],
-    }
-  }, [trend])
+  const historyRowsForWeekly = useMemo(
+    () => (weeklyTabHistory.length > 0 ? weeklyTabHistory : statusHistory),
+    [weeklyTabHistory, statusHistory],
+  )
 
-  const jobsByTypeData = useMemo(() => {
-    if (!processed?.jobs_by_type) return null
-    const labels = Object.keys(processed.jobs_by_type).map(properFormat)
-    return {
+  const jobsToProcess24WeekTrend = useMemo(() => {
+    const points = historyRowsForWeekly
+      .map((r) => {
+        const ws = r.week_start ? new Date(r.week_start) : null
+        const v = r.jobs_to_be_marked_complete
+        if (!ws || Number.isNaN(ws.getTime())) return null
+        if (v == null || !Number.isFinite(Number(v))) return null
+        return { weekStart: ws, value: Number(v) }
+      })
+      .filter((p): p is { weekStart: Date; value: number } => p != null)
+      .sort((a, b) => a.weekStart.getTime() - b.weekStart.getTime())
+      .slice(-24)
+
+    if (!points.length) return null
+
+    const labels = points.map((p) =>
+      p.weekStart.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+    )
+    const chartData: ChartData<'line'> = {
       labels,
       datasets: [
         {
-          label: 'Jobs',
-          data: Object.values(processed.jobs_by_type),
-          backgroundColor: 'rgba(12, 98, 166, 0.7)',
-          borderRadius: 8,
+          label: 'Jobs to be processed',
+          data: points.map((p) => p.value),
+          borderColor: '#164b7c',
+          backgroundColor: 'rgba(22, 75, 124, 0.12)',
+          fill: true,
+          tension: 0.34,
+          pointRadius: 0,
+          pointHoverRadius: 3,
         },
       ],
     }
-  }, [processed])
 
-  const hoursByTypeData = useMemo(() => {
-    if (!processed?.hours_by_type) return null
-    const labels = Object.keys(processed.hours_by_type).map(properFormat)
+    const options: ChartOptions<'line'> = {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        datalabels: { display: false },
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: { maxTicksLimit: 8 },
+        },
+        y: {
+          beginAtZero: true,
+          ticks: { precision: 0 },
+          grid: { color: 'rgba(15, 23, 42, 0.08)' },
+        },
+      },
+    }
+
     return {
-      labels,
-      datasets: [
-        {
-          label: 'Hours',
-          data: Object.values(processed.hours_by_type),
-          backgroundColor: 'rgba(25, 135, 84, 0.55)',
-          borderRadius: 8,
-        },
-      ],
+      chartData,
+      options,
+      windowText:
+        points.length >= 24
+          ? 'Past 24 weeks'
+          : `Past ${points.length} week${points.length === 1 ? '' : 's'}`,
     }
+  }, [historyRowsForWeekly])
+
+  const jobsProcessedWow = useMemo(() => {
+    if (!processed) {
+      return { trend: 'unknown' as WowTrend, line: 'Weekly totals could not be loaded.' }
+    }
+    if (processed.error) {
+      return { trend: 'unknown' as WowTrend, line: processed.error }
+    }
+    return wowNumeric(
+      processed.total_jobs_processed,
+      processed.total_jobs_processed_previous_week,
+      false,
+      'count',
+    )
   }, [processed])
 
-  const procJobsChart = useMemo(() => {
+  const techHoursWow = useMemo(() => {
+    if (!processed) {
+      return { trend: 'unknown' as WowTrend, line: 'Weekly totals could not be loaded.' }
+    }
+    if (processed.error) {
+      return { trend: 'unknown' as WowTrend, line: processed.error }
+    }
+    return wowNumeric(
+      processed.total_tech_hours_processed,
+      processed.total_tech_hours_processed_previous_week,
+      false,
+      'hours',
+    )
+  }, [processed])
+
+  const jobsToCompleteSnapshotWow = useMemo(() => {
+    if (!selectedMonday) {
+      return { trend: 'unknown' as WowTrend, line: 'Select a week.' }
+    }
+    const prevMon = previousWeekMondayYmd(selectedMonday)
+    const curRow = historyRowForMonday(historyRowsForWeekly, selectedMonday)
+    const prevRow = historyRowForMonday(historyRowsForWeekly, prevMon)
+    const cur = curRow?.jobs_to_be_marked_complete
+    if (cur == null || !Number.isFinite(Number(cur))) {
+      return { trend: 'unknown' as WowTrend, line: 'No snapshot for this week in history.' }
+    }
+    const prev = prevRow?.jobs_to_be_marked_complete
+    if (prev == null || !Number.isFinite(Number(prev))) {
+      return {
+        trend: 'unknown' as WowTrend,
+        line: `${Number(cur)} jobs — no snapshot for the previous week to compare.`,
+      }
+    }
+    return wowNumeric(cur, prev, true, 'count')
+  }, [historyRowsForWeekly, selectedMonday])
+
+  const procJobsByProcessorChart = useMemo(() => {
     if (!byProcessor?.jobs_processed_by_processor) return null
     const cur = byProcessor.jobs_processed_by_processor
     const prev = byProcessor.jobs_processed_by_processor_previous_week || {}
-    const labels = Object.keys(cur).map(properFormat)
-    const keys = Object.keys(cur)
-    return {
+    const names = [...new Set([...Object.keys(cur), ...Object.keys(prev)])]
+    if (names.length === 0) return null
+    const rows = names
+      .map((name) => ({
+        name,
+        cur: Number(cur[name] ?? 0) || 0,
+        prev: Number(prev[name] ?? 0) || 0,
+      }))
+      .sort((a, b) => b.cur - a.cur)
+    const labels = rows.map((r) => properFormat(r.name))
+    const chartData: ChartData<'bar'> = {
       labels,
       datasets: [
         {
-          label: 'Selected week',
-          data: keys.map((k) => cur[k]),
-          backgroundColor: 'rgba(12, 98, 166, 0.7)',
-          borderRadius: 8,
+          label: 'This week',
+          data: rows.map((r) => r.cur),
+          backgroundColor: 'rgba(12, 98, 166, 0.85)',
+          borderRadius: 6,
         },
         {
           label: 'Previous week',
-          data: keys.map((k) => prev[k] || 0),
-          backgroundColor: 'rgba(200, 200, 200, 0.8)',
-          borderRadius: 8,
+          data: rows.map((r) => r.prev),
+          backgroundColor: 'rgba(180, 188, 198, 0.9)',
+          borderRadius: 6,
         },
       ],
     }
+    const options: ChartOptions<'bar'> = {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      devicePixelRatio:
+        typeof globalThis.window !== 'undefined'
+          ? Math.min(Math.max(globalThis.window.devicePixelRatio || 1, 2), 3)
+          : 2,
+      plugins: {
+        datalabels: { display: false },
+        legend: { display: true, position: 'top' },
+        tooltip: {
+          callbacks: {
+            label(ctx) {
+              const v = Number(ctx.raw) || 0
+              return ` ${ctx.dataset.label ?? ''}: ${v} job${v !== 1 ? 's' : ''}`
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          beginAtZero: true,
+          stacked: false,
+          ticks: { precision: 0 },
+          title: { display: true, text: 'Jobs' },
+          grid: { color: 'rgba(15, 23, 42, 0.06)' },
+        },
+        y: {
+          reverse: true,
+          stacked: false,
+          grid: { display: false },
+          ticks: { autoSkip: false },
+        },
+      },
+    }
+    const minHeightPx = Math.round(Math.max(260, rows.length * 40 + 100))
+    return { chartData, options, minHeightPx }
   }, [byProcessor])
 
-  const procHoursChart = useMemo(() => {
+  const procHoursByProcessorChart = useMemo(() => {
     if (!byProcessor?.hours_processed_by_processor) return null
     const cur = byProcessor.hours_processed_by_processor
     const prev = byProcessor.hours_processed_by_processor_previous_week || {}
-    const labels = Object.keys(cur).map(properFormat)
-    const keys = Object.keys(cur)
-    return {
+    const names = [...new Set([...Object.keys(cur), ...Object.keys(prev)])]
+    if (names.length === 0) return null
+    const rows = names
+      .map((name) => ({
+        name,
+        cur: Number(cur[name] ?? 0) || 0,
+        prev: Number(prev[name] ?? 0) || 0,
+      }))
+      .sort((a, b) => b.cur - a.cur)
+    const labels = rows.map((r) => properFormat(r.name))
+    const chartData: ChartData<'bar'> = {
       labels,
       datasets: [
         {
-          label: 'Selected week',
-          data: keys.map((k) => cur[k]),
-          backgroundColor: 'rgba(12, 98, 166, 0.7)',
-          borderRadius: 8,
+          label: 'This week',
+          data: rows.map((r) => r.cur),
+          backgroundColor: 'rgba(25, 135, 84, 0.75)',
+          borderRadius: 6,
         },
         {
           label: 'Previous week',
-          data: keys.map((k) => prev[k] || 0),
-          backgroundColor: 'rgba(200, 200, 200, 0.8)',
-          borderRadius: 8,
+          data: rows.map((r) => r.prev),
+          backgroundColor: 'rgba(180, 188, 198, 0.9)',
+          borderRadius: 6,
         },
       ],
     }
+    const options: ChartOptions<'bar'> = {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      devicePixelRatio:
+        typeof globalThis.window !== 'undefined'
+          ? Math.min(Math.max(globalThis.window.devicePixelRatio || 1, 2), 3)
+          : 2,
+      plugins: {
+        datalabels: { display: false },
+        legend: { display: true, position: 'top' },
+        tooltip: {
+          callbacks: {
+            label(ctx) {
+              const v = Number(ctx.raw) || 0
+              return ` ${ctx.dataset.label ?? ''}: ${v.toFixed(1)} hrs`
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          beginAtZero: true,
+          stacked: false,
+          ticks: { precision: 1 },
+          title: { display: true, text: 'Tech hours' },
+          grid: { color: 'rgba(15, 23, 42, 0.06)' },
+        },
+        y: {
+          reverse: true,
+          stacked: false,
+          grid: { display: false },
+          ticks: { autoSkip: false },
+        },
+      },
+    }
+    const minHeightPx = Math.round(Math.max(260, rows.length * 40 + 100))
+    return { chartData, options, minHeightPx }
   }, [byProcessor])
 
   const jobsToCompleteByTypeBar = useMemo(() => {
@@ -654,7 +1105,20 @@ export default function ProcessingAttackPage() {
           ? Math.min(Math.max(globalThis.window.devicePixelRatio || 1, 2), 3)
           : 2,
       plugins: {
-        datalabels: { display: false },
+        datalabels: {
+          display: true,
+          anchor: 'start',
+          align: 'left',
+          offset: 8,
+          clamp: true,
+          clip: false,
+          color: '#164b7c',
+          font: { weight: 700, size: 11 },
+          formatter(value) {
+            const v = Number(value) || 0
+            return `${Math.round(v)}`
+          },
+        },
         legend: { display: false },
         tooltip: {
           callbacks: {
@@ -671,40 +1135,18 @@ export default function ProcessingAttackPage() {
           beginAtZero: true,
           ticks: { precision: 0 },
           title: { display: true, text: 'Jobs' },
-          grid: { color: 'rgba(15, 23, 42, 0.06)' },
+          grid: { color: 'rgba(15, 23, 42, 0.12)' },
         },
         y: {
-          reverse: true,
+          reverse: false,
           grid: { display: false },
-          ticks: { autoSkip: false },
+          ticks: { autoSkip: false, padding: 28 },
         },
       },
     }
     const minHeightPx = Math.round(Math.max(220, entries.length * 36 + 80))
     return { chartData, options, total, minHeightPx, typeCount: entries.length }
   }, [complete?.job_type_count])
-
-  const barOpts = {
-    responsive: true,
-    plugins: { datalabels: { display: false } },
-    scales: { y: { beginAtZero: true } },
-  }
-
-  const lineOpts = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: { datalabels: { display: false } },
-    interaction: { mode: 'index' as const, intersect: false },
-    scales: {
-      y: { beginAtZero: true, title: { display: true, text: 'Jobs' } },
-      y1: {
-        position: 'right' as const,
-        beginAtZero: true,
-        grid: { drawOnChartArea: false },
-        title: { display: true, text: 'Hours' },
-      },
-    },
-  }
 
   const statusHistoryDerived = useMemo(() => {
     const rows = statusHistory
@@ -778,6 +1220,78 @@ export default function ProcessingAttackPage() {
     return { weekLabels, hits, series }
   }, [statusHistory])
 
+  const dailyHistoryDerived = useMemo(() => {
+    const rows = statusHistoryDaily
+    const parseIso = (s: string | null | undefined): Date | null => {
+      if (!s) return null
+      const d = new Date(s)
+      return Number.isNaN(d.getTime()) ? null : d
+    }
+    const daysBetween = (later: Date, earlier: Date) =>
+      Math.round((later.getTime() - earlier.getTime()) / 86400000)
+
+    if (!rows.length) {
+      return {
+        dayLabels: [] as string[],
+        hits: null as null | {
+          complete: (boolean | null)[]
+          oldest: (boolean | null)[]
+          pink: (boolean | null)[]
+          invoiced: (boolean | null)[]
+          reportConv: (boolean | null)[]
+          earliest: (boolean | null)[]
+        },
+        series: null as null | {
+          complete: (number | null)[]
+          invoiced: (number | null)[]
+          reportConv: (number | null)[]
+          pink: (number | null)[]
+          oldestDays: (number | null)[]
+          earliestLeadDays: (number | null)[]
+        },
+      }
+    }
+
+    const dayLabels = rows.map((r) => {
+      const d = parseIso(r.snapshot_date ?? null)
+      return d ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : ''
+    })
+
+    const hits = {
+      complete: rows.map((r) => r.hit_goal ?? null),
+      oldest: rows.map((r) => r.hit_goal_oldest_job ?? null),
+      pink: rows.map((r) => r.hit_goal_pink_folder ?? null),
+      invoiced: rows.map((r) => r.hit_goal_jobs_to_be_invoiced ?? null),
+      reportConv: rows.map((r) => r.hit_goal_jobs_to_be_converted ?? null),
+      earliest: rows.map((r) => r.hit_goal_earliest_job_to_be_converted ?? null),
+    }
+
+    const series = {
+      complete: rows.map((r) =>
+        r.jobs_to_be_marked_complete != null ? Number(r.jobs_to_be_marked_complete) : null,
+      ),
+      invoiced: rows.map((r) => (r.jobs_to_be_invoiced != null ? Number(r.jobs_to_be_invoiced) : null)),
+      reportConv: rows.map((r) => (r.jobs_to_be_converted != null ? Number(r.jobs_to_be_converted) : null)),
+      pink: rows.map((r) =>
+        r.number_of_pink_folder_jobs != null ? Number(r.number_of_pink_folder_jobs) : null,
+      ),
+      oldestDays: rows.map((r) => {
+        const sd = parseIso(r.snapshot_date ?? null)
+        const od = parseIso(r.oldest_job_date ?? null)
+        if (!sd || !od) return null
+        return Math.max(0, daysBetween(sd, od))
+      }),
+      earliestLeadDays: rows.map((r) => {
+        const sd = parseIso(r.snapshot_date ?? null)
+        const ed = parseIso(r.earliest_job_to_be_converted_date ?? null)
+        if (!sd || !ed) return null
+        return daysBetween(ed, sd)
+      }),
+    }
+
+    return { dayLabels, hits, series }
+  }, [statusHistoryDaily])
+
   const pinkFolderByTech = useMemo(() => {
     const info = pink?.pink_folder_detailed_info
     if (!info || typeof info !== 'object') return []
@@ -842,24 +1356,30 @@ export default function ProcessingAttackPage() {
   }
 
   return (
-    <div className="processing-page d-flex flex-column gap-3">
+    <div className="container-fluid py-3 px-2 processing-page d-flex flex-column gap-3">
       <Card className="app-surface-card">
         <Card.Body className="p-3 p-md-4">
-          <h1 className="processing-page-title mb-1">Processing Attack</h1>
-          <p className="processing-page-subtitle mb-0">Track daily processing health and weekly output trends.</p>
+          <h1 className="processing-page-title mb-1">Jobs Backlog</h1>
+          <p className="processing-page-subtitle mb-0">
+            Track backlog health, daily progress, and weekly output trends.
+          </p>
         </Card.Body>
       </Card>
-      <Tab.Container defaultActiveKey="status">
-        <Nav variant="tabs" className="mb-0 processing-tabs">
-          <Nav.Item>
-            <Nav.Link eventKey="status">Processing status</Nav.Link>
-          </Nav.Item>
-          <Nav.Item>
-            <Nav.Link eventKey="weekly">Weekly summary</Nav.Link>
-          </Nav.Item>
-        </Nav>
-        <Tab.Content>
-          <Tab.Pane eventKey="status">
+      <Tab.Container activeKey={activeTab} onSelect={handleTabSelect}>
+        <div className="processing-tabs-shell app-surface-card">
+          <Nav variant="tabs" className="mb-0 processing-tabs processing-tabs-shell__nav">
+            <Nav.Item>
+              <Nav.Link eventKey="status">Processing Attack</Nav.Link>
+            </Nav.Item>
+            <Nav.Item>
+              <Nav.Link eventKey="weekly">Processing History</Nav.Link>
+            </Nav.Item>
+            <Nav.Item>
+              <Nav.Link eventKey="limbo">Limbo jobs</Nav.Link>
+            </Nav.Item>
+          </Nav>
+          <Tab.Content className="processing-tabs-shell__panel">
+            <Tab.Pane eventKey="status">
             {statusBootloading ? (
               <ProcessingStatusTabSkeleton />
             ) : (
@@ -882,11 +1402,14 @@ export default function ProcessingAttackPage() {
                             </div>
                           }
                           viz={
-                            <KpiTrendViz
-                              weekLabels={statusHistoryDerived.weekLabels}
-                              sparkValues={statusHistoryDerived.series?.complete}
+                            <ProcessingKpiDualTrend
+                              weeklyLabels={statusHistoryDerived.weekLabels}
+                              dailyLabels={dailyHistoryDerived.dayLabels}
+                              weeklySpark={statusHistoryDerived.series?.complete}
+                              dailySpark={dailyHistoryDerived.series?.complete}
                               referenceY={KPI_TARGETS.jobsToCompleteMax}
-                              hits={statusHistoryDerived.hits?.complete}
+                              weeklyHits={statusHistoryDerived.hits?.complete}
+                              dailyHits={dailyHistoryDerived.hits?.complete}
                             />
                           }
                           target={
@@ -912,9 +1435,25 @@ export default function ProcessingAttackPage() {
                               {jobsTodayNet == null
                                 ? '—'
                                 : `${jobsTodayNet > 0 ? '+' : ''}${jobsTodayNet}`}
+                              <div
+                                className="processing-jobs-today-detail fw-semibold mt-1"
+                              >
+                                <span className="text-danger">New: {incoming}</span>
+                                <span className="mx-2 text-muted">|</span>
+                                <span className="text-success">Processed: {processedToday}</span>
+                              </div>
                             </div>
                           }
-                          viz={<KpiTrendViz weekLabels={statusHistoryDerived.weekLabels} unsupported />}
+                          viz={
+                            <ProcessingKpiDualTrend
+                              weeklyLabels={statusHistoryDerived.weekLabels}
+                              dailyLabels={dailyHistoryDerived.dayLabels}
+                              weeklyUnsupported
+                              dailyUnsupported
+                              weeklyUnsupportedMessage="Intraday only — not stored in weekly snapshots."
+                              dailyUnsupportedMessage="Live net change — not stored in daily snapshots."
+                            />
+                          }
                           target={
                             <div className="processing-kpi-target">
                               Target: more processed than new (positive net)
@@ -954,20 +1493,25 @@ export default function ProcessingAttackPage() {
                             >
                               {!oldestRow
                                 ? '—'
-                                : [
-                                    oldestRow.oldest_job_address?.trim() || null,
-                                    oldestWeeks != null ? `${oldestWeeks} week(s) old` : null,
-                                  ]
-                                    .filter(Boolean)
-                                    .join(' · ') || '—'}
+                                : (
+                                    <>
+                                      <div>{oldestRow.oldest_job_address?.trim() || '—'}</div>
+                                      <div className="small mt-1">
+                                        {oldestWeeks != null ? `${oldestWeeks} week(s) old` : '—'}
+                                      </div>
+                                    </>
+                                  )}
                             </div>
                           }
                           viz={
-                            <KpiTrendViz
-                              weekLabels={statusHistoryDerived.weekLabels}
-                              sparkValues={statusHistoryDerived.series?.oldestDays}
+                            <ProcessingKpiDualTrend
+                              weeklyLabels={statusHistoryDerived.weekLabels}
+                              dailyLabels={dailyHistoryDerived.dayLabels}
+                              weeklySpark={statusHistoryDerived.series?.oldestDays}
+                              dailySpark={dailyHistoryDerived.series?.oldestDays}
                               referenceY={KPI_TARGETS.oldestJobWeeksMax * 7}
-                              hits={statusHistoryDerived.hits?.oldest}
+                              weeklyHits={statusHistoryDerived.hits?.oldest}
+                              dailyHits={dailyHistoryDerived.hits?.oldest}
                             />
                           }
                           target={
@@ -1003,11 +1547,14 @@ export default function ProcessingAttackPage() {
                             </div>
                           }
                           viz={
-                            <KpiTrendViz
-                              weekLabels={statusHistoryDerived.weekLabels}
-                              sparkValues={statusHistoryDerived.series?.pink}
+                            <ProcessingKpiDualTrend
+                              weeklyLabels={statusHistoryDerived.weekLabels}
+                              dailyLabels={dailyHistoryDerived.dayLabels}
+                              weeklySpark={statusHistoryDerived.series?.pink}
+                              dailySpark={dailyHistoryDerived.series?.pink}
                               referenceY={KPI_TARGETS.pinkFolderJobsMax}
-                              hits={statusHistoryDerived.hits?.pink}
+                              weeklyHits={statusHistoryDerived.hits?.pink}
+                              dailyHits={dailyHistoryDerived.hits?.pink}
                             />
                           }
                           target={
@@ -1032,11 +1579,14 @@ export default function ProcessingAttackPage() {
                             </div>
                           }
                           viz={
-                            <KpiTrendViz
-                              weekLabels={statusHistoryDerived.weekLabels}
-                              sparkValues={statusHistoryDerived.series?.invoiced}
+                            <ProcessingKpiDualTrend
+                              weeklyLabels={statusHistoryDerived.weekLabels}
+                              dailyLabels={dailyHistoryDerived.dayLabels}
+                              weeklySpark={statusHistoryDerived.series?.invoiced}
+                              dailySpark={dailyHistoryDerived.series?.invoiced}
                               referenceY={KPI_TARGETS.jobsToInvoiceMax}
-                              hits={statusHistoryDerived.hits?.invoiced}
+                              weeklyHits={statusHistoryDerived.hits?.invoiced}
+                              dailyHits={dailyHistoryDerived.hits?.invoiced}
                             />
                           }
                           target={
@@ -1074,11 +1624,14 @@ export default function ProcessingAttackPage() {
                             </div>
                           }
                           viz={
-                            <KpiTrendViz
-                              weekLabels={statusHistoryDerived.weekLabels}
-                              sparkValues={statusHistoryDerived.series?.reportConv}
+                            <ProcessingKpiDualTrend
+                              weeklyLabels={statusHistoryDerived.weekLabels}
+                              dailyLabels={dailyHistoryDerived.dayLabels}
+                              weeklySpark={statusHistoryDerived.series?.reportConv}
+                              dailySpark={dailyHistoryDerived.series?.reportConv}
                               referenceY={KPI_TARGETS.reportConversionJobsMax}
-                              hits={statusHistoryDerived.hits?.reportConv}
+                              weeklyHits={statusHistoryDerived.hits?.reportConv}
+                              dailyHits={dailyHistoryDerived.hits?.reportConv}
                             />
                           }
                           target={
@@ -1113,24 +1666,27 @@ export default function ProcessingAttackPage() {
                             >
                               {!reportConversionCount
                                 ? '—'
-                                : [
-                                    earliestConversionAddress !== '—'
-                                      ? earliestConversionAddress
-                                      : null,
-                                    earliestConversionWeeksAway != null
-                                      ? `${Math.max(0, earliestConversionWeeksAway)} week(s) away`
-                                      : null,
-                                  ]
-                                    .filter(Boolean)
-                                    .join(' · ') || '—'}
+                                : (
+                                    <>
+                                      <div>{earliestConversionAddress !== '—' ? earliestConversionAddress : '—'}</div>
+                                      <div className="small mt-1">
+                                        {earliestConversionWeeksAway != null
+                                          ? `${Math.max(0, earliestConversionWeeksAway)} week(s) away`
+                                          : '—'}
+                                      </div>
+                                    </>
+                                  )}
                             </div>
                           }
                           viz={
-                            <KpiTrendViz
-                              weekLabels={statusHistoryDerived.weekLabels}
-                              sparkValues={statusHistoryDerived.series?.earliestLeadDays}
+                            <ProcessingKpiDualTrend
+                              weeklyLabels={statusHistoryDerived.weekLabels}
+                              dailyLabels={dailyHistoryDerived.dayLabels}
+                              weeklySpark={statusHistoryDerived.series?.earliestLeadDays}
+                              dailySpark={dailyHistoryDerived.series?.earliestLeadDays}
                               referenceY={KPI_TARGETS.earliestConversionWindowDays}
-                              hits={statusHistoryDerived.hits?.earliest}
+                              weeklyHits={statusHistoryDerived.hits?.earliest}
+                              dailyHits={dailyHistoryDerived.hits?.earliest}
                             />
                           }
                           target={
@@ -1416,109 +1972,149 @@ export default function ProcessingAttackPage() {
           </Tab.Pane>
           <Tab.Pane eventKey="weekly">
             <Card className="app-surface-card mb-3">
-              <Card.Body>
-            <Row className="g-2 align-items-end">
-              <Col xs="auto">
-                <Form.Label className="small">Week (Mon)</Form.Label>
-                <Form.Select
-                  value={selectedMonday}
-                  onChange={(e) => setSelectedMonday(e.target.value)}
-                  style={{ minWidth: 220 }}
-                >
-                  {weekOptions.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </Form.Select>
-              </Col>
-              <Col xs="auto">
-                <Button size="sm" onClick={loadWeekly}>
-                  Reload week
-                </Button>
-              </Col>
-            </Row>
+              <Card.Header>Jobs to be processed trend</Card.Header>
+              <Card.Body className="p-3">
+                {jobsToProcess24WeekTrend ? (
+                  <>
+                    <div className="small text-muted mb-2">{jobsToProcess24WeekTrend.windowText}</div>
+                    <div className="processing-history-trend-chart-wrap">
+                      <Chart
+                        type="line"
+                        data={jobsToProcess24WeekTrend.chartData}
+                        options={jobsToProcess24WeekTrend.options}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-muted small mb-0">No weekly snapshot history yet.</p>
+                )}
               </Card.Body>
             </Card>
-            {processed?.error && <p className="text-warning">{processed.error}</p>}
-            {processed && !processed.error && (
-              <Row className="g-3 mb-3">
-                <Col md={6}>
-                  <Card>
-                    <Card.Header>Jobs processed</Card.Header>
-                    <Card.Body>
-                      <div className="fs-3">{processed.total_jobs_processed}</div>
-                      <div className="small text-muted">
-                        Prev week: {processed.total_jobs_processed_previous_week}
-                      </div>
-                    </Card.Body>
-                  </Card>
-                </Col>
-                <Col md={6}>
-                  <Card>
-                    <Card.Header>Tech hours</Card.Header>
-                    <Card.Body>
-                      <div className="fs-3">{processed.total_tech_hours_processed}</div>
-                      <div className="small text-muted">
-                        Prev week: {processed.total_tech_hours_processed_previous_week}
-                      </div>
-                    </Card.Body>
-                  </Card>
-                </Col>
-              </Row>
-            )}
-            <Row className="g-3">
-              <Col lg={6}>
-                {jobsByTypeData && (
-                  <Card className="mb-3">
-                    <Card.Header>Jobs by type</Card.Header>
-                    <Card.Body style={{ minHeight: 280 }}>
-                      <Chart type="bar" data={jobsByTypeData} options={barOpts} />
-                    </Card.Body>
-                  </Card>
-                )}
+            <Card className="app-surface-card mb-3">
+              <Card.Body>
+                <Row className="g-2 align-items-end">
+                  <Col xs="auto">
+                    <Form.Label className="small">Week (Mon)</Form.Label>
+                    <Form.Select
+                      value={selectedMonday}
+                      onChange={(e) => setSelectedMonday(e.target.value)}
+                      style={{ minWidth: 220 }}
+                    >
+                      {weekOptions.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </Form.Select>
+                  </Col>
+                  <Col xs="auto">
+                    <Button size="sm" onClick={() => void loadWeekly()}>
+                      Reload week
+                    </Button>
+                  </Col>
+                </Row>
+              </Card.Body>
+            </Card>
+            <Row className="g-3 mb-3">
+              <Col md={6} lg={4}>
+                <Card className="h-100">
+                  <Card.Header>Number of jobs processed</Card.Header>
+                  <Card.Body>
+                    <div className="fs-3">
+                      {processed && !processed.error
+                        ? (processed.total_jobs_processed ?? '—')
+                        : '—'}
+                    </div>
+                    <div className="small text-muted">
+                      Previous week:{' '}
+                      {processed && !processed.error
+                        ? (processed.total_jobs_processed_previous_week ?? '—')
+                        : '—'}
+                    </div>
+                    <ProcessingHistoryTrendLine trend={jobsProcessedWow.trend}>
+                      {jobsProcessedWow.line}
+                    </ProcessingHistoryTrendLine>
+                  </Card.Body>
+                </Card>
               </Col>
-              <Col lg={6}>
-                {hoursByTypeData && (
-                  <Card className="mb-3">
-                    <Card.Header>Hours by type</Card.Header>
-                    <Card.Body style={{ minHeight: 280 }}>
-                      <Chart type="bar" data={hoursByTypeData} options={barOpts} />
-                    </Card.Body>
-                  </Card>
-                )}
+              <Col md={6} lg={4}>
+                <Card className="h-100">
+                  <Card.Header>Tech hours processed</Card.Header>
+                  <Card.Body>
+                    <div className="fs-3">
+                      {processed && !processed.error && processed.total_tech_hours_processed != null
+                        ? Number(processed.total_tech_hours_processed).toFixed(1)
+                        : '—'}
+                    </div>
+                    <div className="small text-muted">
+                      Previous week:{' '}
+                      {processed &&
+                      !processed.error &&
+                      processed.total_tech_hours_processed_previous_week != null
+                        ? Number(processed.total_tech_hours_processed_previous_week).toFixed(1)
+                        : '—'}
+                    </div>
+                    <ProcessingHistoryTrendLine trend={techHoursWow.trend}>{techHoursWow.line}</ProcessingHistoryTrendLine>
+                  </Card.Body>
+                </Card>
               </Col>
-              <Col lg={6}>
-                {procJobsChart && (
-                  <Card className="mb-3">
-                    <Card.Header>Jobs by processor</Card.Header>
-                    <Card.Body style={{ minHeight: 280 }}>
-                      <Chart type="bar" data={procJobsChart} options={barOpts} />
-                    </Card.Body>
-                  </Card>
-                )}
-              </Col>
-              <Col lg={6}>
-                {procHoursChart && (
-                  <Card className="mb-3">
-                    <Card.Header>Hours by processor</Card.Header>
-                    <Card.Body style={{ minHeight: 280 }}>
-                      <Chart type="bar" data={procHoursChart} options={barOpts} />
-                    </Card.Body>
-                  </Card>
-                )}
+              <Col md={12} lg={4}>
+                <Card className="h-100">
+                  <Card.Header>Jobs to be marked complete (weekly snapshot)</Card.Header>
+                  <Card.Body>
+                    <div className="fs-3">
+                      {(() => {
+                        const row = selectedMonday
+                          ? historyRowForMonday(historyRowsForWeekly, selectedMonday)
+                          : null
+                        const v = row?.jobs_to_be_marked_complete
+                        return v != null && Number.isFinite(Number(v)) ? v : '—'
+                      })()}
+                    </div>
+                    <div className="small text-muted">
+                      Compared to the prior week&apos;s snapshot. A lower count means less backlog still waiting to be marked complete.
+                    </div>
+                    <ProcessingHistoryTrendLine trend={jobsToCompleteSnapshotWow.trend}>
+                      {jobsToCompleteSnapshotWow.line}
+                    </ProcessingHistoryTrendLine>
+                  </Card.Body>
+                </Card>
               </Col>
             </Row>
-            {trendData && (
-              <Card>
-                <Card.Header>Overall weekly trend</Card.Header>
-                <Card.Body style={{ height: 360 }}>
-                  <Chart type="line" data={trendData} options={lineOpts} />
-                </Card.Body>
-              </Card>
-            )}
+            <Card className="mb-3">
+              <Card.Header>Jobs processed by processor</Card.Header>
+              <Card.Body className="p-3">
+                {!procJobsByProcessorChart ? (
+                  <p className="text-muted small mb-0">No processor breakdown for this week.</p>
+                ) : (
+                  <div style={{ minHeight: procJobsByProcessorChart.minHeightPx }}>
+                    <Chart type="bar" data={procJobsByProcessorChart.chartData} options={procJobsByProcessorChart.options} />
+                  </div>
+                )}
+              </Card.Body>
+            </Card>
+            <Card className="mb-3">
+              <Card.Header>Tech hours processed by processor</Card.Header>
+              <Card.Body className="p-3">
+                {!procHoursByProcessorChart ? (
+                  <p className="text-muted small mb-0">No processor breakdown for this week.</p>
+                ) : (
+                  <div style={{ minHeight: procHoursByProcessorChart.minHeightPx }}>
+                    <Chart
+                      type="bar"
+                      data={procHoursByProcessorChart.chartData}
+                      options={procHoursByProcessorChart.options}
+                    />
+                  </div>
+                )}
+              </Card.Body>
+            </Card>
           </Tab.Pane>
-        </Tab.Content>
+            <Tab.Pane eventKey="limbo">
+              <LimboJobTrackerPanel />
+            </Tab.Pane>
+          </Tab.Content>
+        </div>
       </Tab.Container>
     </div>
   )

@@ -2,6 +2,8 @@
   /* Brand navy: lighter and more blue than legacy var(--brand-navy) — headings, structure, processing KPIs */
   --brand-navy: #164b7c;
   --brand-navy-rgb: 22, 75, 124;
+  --brand-orange: #f58220;
+  --brand-orange-rgb: 245, 130, 32;
 }
 
 /* App shell (sidebar layout) */
@@ -14,15 +16,15 @@
 }
 
 .app-topbar {
-  min-height: 3.25rem;
+  min-height: 4.25rem;
   flex-shrink: 0;
   z-index: 1030;
 }
 
 .app-topbar-logo {
-  height: 36px;
+  height: 50px;
   width: auto;
-  max-width: min(220px, 45vw);
+  max-width: min(300px, 65vw);
   object-fit: contain;
 }
 
@@ -40,6 +42,11 @@
 .app-sidebar-section-title {
   letter-spacing: 0.04em;
   font-size: 0.65rem;
+}
+
+/* Indent nav links under each section header (Operations, Processing, …) */
+.app-sidebar-section-items {
+  padding-left: 0.65rem;
 }
 
 .app-sidebar-link {
@@ -160,7 +167,8 @@
 
 /* Scheduling Assistant (FindSchedulePage) */
 .find-sched-page {
-  max-width: 52rem;
+  max-width: 78rem;
+  width: 100%;
   margin-left: auto;
   margin-right: auto;
 }
@@ -302,6 +310,20 @@
 
 .find-sched-weekday-btn {
   min-width: 3.25rem;
+}
+
+.find-sched-step-card {
+  border: 1px solid #dbe2eb;
+  border-radius: 0.75rem;
+  background: #fff;
+  padding: 0.9rem 1rem;
+}
+
+.find-sched-pref-card {
+  border: 1px solid #e0e6ee;
+  border-radius: 0.75rem;
+  background: #fff;
+  padding: 0.9rem 1rem;
 }
 
 .letter-spacing-wide {
@@ -468,14 +490,29 @@
   padding-bottom: 0.78rem;
 }
 
-.deficiency-job-link {
-  color: var(--brand-navy);
-  font-weight: 600;
+/* Zebra + hover (whole-row job link for rows with job_link) */
+.deficiency-page .deficiency-results-table tbody tr.deficiency-data-row:nth-child(odd) > td {
+  background-color: #f9fafb;
 }
 
-.deficiency-job-link:hover,
-.deficiency-job-link:focus {
-  color: #f58220;
+.deficiency-page .deficiency-results-table tbody tr.deficiency-data-row:nth-child(even) > td {
+  background-color: #fff;
+}
+
+.deficiency-page .deficiency-results-table tbody tr.deficiency-data-row:hover > td {
+  background-color: rgba(22, 75, 124, 0.1) !important;
+}
+
+.deficiency-page .deficiency-results-table tbody tr.deficiency-results-row--interactive {
+  cursor: pointer;
+}
+
+.deficiency-page .deficiency-results-table tbody tr.deficiency-results-row--interactive:focus-visible > td {
+  background-color: rgba(245, 130, 32, 0.16) !important;
+}
+
+.deficiency-page .deficiency-results-table tbody tr.deficiency-empty-row > td {
+  background-color: #fff !important;
 }
 
 .deficiency-hide-btn {
@@ -490,9 +527,80 @@
   color: #fff;
 }
 
+/* Limbo jobs (Jobs Backlog tab — same card/table rhythm as Deficiencies) */
+.processing-page .limbo-job-tracker-panel .limbo-filters-card {
+  border: 1px solid #e7eaf0;
+}
+
+.processing-page .limbo-job-tracker-panel .limbo-filters-card h2 {
+  color: var(--brand-navy);
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.processing-page .limbo-job-tracker-panel .limbo-filters-card .form-control,
+.processing-page .limbo-job-tracker-panel .limbo-filters-card .form-select {
+  border-color: #d7dee8;
+}
+
+.processing-page .limbo-job-tracker-panel .limbo-filters-card .form-control:focus,
+.processing-page .limbo-job-tracker-panel .limbo-filters-card .form-select:focus {
+  border-color: rgba(245, 130, 32, 0.65);
+  box-shadow: 0 0 0 0.2rem rgba(245, 130, 32, 0.16);
+}
+
+.processing-page .limbo-job-tracker-panel .limbo-refresh-btn {
+  color: var(--brand-navy);
+  border-color: #cfd7e3;
+}
+
+.processing-page .limbo-job-tracker-panel .limbo-results-card {
+  border: 1px solid #e7eaf0;
+  overflow: hidden;
+}
+
+.processing-page .limbo-job-tracker-panel .limbo-results-table-wrap {
+  border: 1px solid #edf0f4;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  background: #fff;
+}
+
+.processing-page .limbo-job-tracker-panel .limbo-results-table thead th {
+  font-size: 0.68rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #7a8699;
+  font-weight: 700;
+  background: #f9fafb;
+  border-bottom: 1px solid #edf0f4;
+  padding-top: 0.72rem;
+  padding-bottom: 0.72rem;
+}
+
+.processing-page .limbo-job-tracker-panel .limbo-results-table tbody td {
+  border-color: #f1f3f6;
+  padding-top: 0.78rem;
+  padding-bottom: 0.78rem;
+}
+
+.processing-page .limbo-job-tracker-panel .limbo-results-table tbody tr.limbo-results-row--interactive {
+  cursor: pointer;
+}
+
+.processing-page .limbo-job-tracker-panel .limbo-results-table tbody tr.limbo-results-row--interactive:hover td,
+.processing-page .limbo-job-tracker-panel .limbo-results-table tbody tr.limbo-results-row--interactive:focus-visible td {
+  background-color: rgba(22, 75, 124, 0.06);
+}
+
+.processing-page .limbo-job-tracker-panel .limbo-skeleton-card {
+  border: 1px solid #e7eaf0;
+}
+
 /* Home page (style-guide alignment: clean + navy/orange accents) */
 .home-page .home-overview-card {
   border: 1px solid #e7eaf0;
+  box-shadow: none;
 }
 
 .home-page .home-overview-card .card-header {
@@ -504,8 +612,68 @@
   transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 
-.home-page a:hover .app-kpi-nested,
-.home-page a:focus .app-kpi-nested {
+/* Overview KPI tiles: mirror Jobs Backlog KPI tile styling */
+.home-page .app-kpi-nested.processing-tile.home-kpi-tile {
+  border: 1px solid #e2e8f0;
+  border-top: 3px solid #cbd5e1;
+  background: #ffffff;
+  box-shadow: none;
+  overflow: hidden;
+  background-clip: padding-box;
+  transition: border-color 140ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.home-page .app-kpi-nested.processing-tile.home-kpi-tile.processing-tile--status-good {
+  border-top-color: #22a06b;
+  background: linear-gradient(
+    180deg,
+    rgba(34, 160, 107, 0.14) 0%,
+    rgba(34, 160, 107, 0.04) 28%,
+    rgba(255, 255, 255, 0.98) 55%,
+    #ffffff 100%
+  );
+}
+
+.home-page .app-kpi-nested.processing-tile.home-kpi-tile.processing-tile--status-warn {
+  border-top-color: #c62828;
+  background: linear-gradient(
+    180deg,
+    rgba(198, 40, 40, 0.12) 0%,
+    rgba(198, 40, 40, 0.04) 28%,
+    rgba(255, 255, 255, 0.98) 55%,
+    #ffffff 100%
+  );
+}
+
+.home-page .home-kpi-tile--unknown {
+  border: 1px solid #e7eaf0;
+  border-top: 3px solid #cbd5e1;
+  background: #ffffff;
+}
+
+.home-page .home-kpi-tile__label {
+  color: rgba(15, 23, 42, 0.58);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  font-size: 0.7rem;
+}
+
+.home-page .home-kpi-tile__value {
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.home-page a:hover .home-kpi-tile,
+.home-page a:focus-visible .home-kpi-tile,
+.home-page .home-kpi-tile:hover {
+  border-color: rgba(245, 130, 32, 0.4);
+  box-shadow: 0 8px 24px rgba(22, 75, 124, 0.12);
+  transform: translateY(-2px);
+}
+
+.home-page a:hover .app-kpi-nested:not(.home-kpi-tile),
+.home-page a:focus .app-kpi-nested:not(.home-kpi-tile) {
   border-color: rgba(245, 130, 32, 0.45);
   box-shadow: 0 2px 6px rgba(var(--brand-navy-rgb), 0.08);
 }
@@ -523,13 +691,62 @@
   border-left-color: #f58220;
 }
 
-/* Processing attack page */
-.processing-page .processing-tabs .nav-link {
-  font-weight: 600;
+/* Tab shell: content card attaches to selected tab (Jobs Backlog + Performance Summary) */
+.processing-page .processing-tabs-shell.app-surface-card,
+.performance-summary-page .processing-tabs-shell.app-surface-card {
+  border: 1px solid #e7eaf0;
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+  padding: 0;
 }
 
-.processing-page .processing-tabs .nav-link.active {
+.processing-page .processing-tabs-shell__nav.nav-tabs,
+.performance-summary-page .processing-tabs-shell__nav.nav-tabs {
+  gap: 0.25rem;
+  padding: 0.5rem 0.75rem 0;
+  margin-bottom: 0;
+  border-bottom: 1px solid #e7eaf0;
+  background: #f3f4f6;
+}
+
+.processing-page .processing-tabs-shell__nav .nav-link,
+.performance-summary-page .processing-tabs-shell__nav .nav-link {
+  margin-bottom: -1px;
+  font-weight: 600;
+  color: #64748b;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 0.5rem 0.5rem 0 0;
+  padding: 0.6rem 1.15rem;
+  background: transparent;
+}
+
+.processing-page .processing-tabs-shell__nav .nav-link:hover,
+.performance-summary-page .processing-tabs-shell__nav .nav-link:hover {
   color: var(--brand-navy);
+  border-color: transparent;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.processing-page .processing-tabs-shell__nav .nav-link.active,
+.performance-summary-page .processing-tabs-shell__nav .nav-link.active {
+  color: var(--brand-navy);
+  background: #fff;
+  border-color: #e7eaf0 #e7eaf0 #fff;
+  border-bottom: 1px solid #fff;
+}
+
+.processing-page .processing-tabs-shell__panel.tab-content,
+.performance-summary-page .processing-tabs-shell__panel.tab-content {
+  padding: 1rem 1.25rem 1.25rem;
+  background: #fff;
+}
+
+.processing-page .processing-tabs-shell .processing-status-card {
+  border: none;
+  box-shadow: none;
+  background: transparent;
 }
 
 .processing-page-title {
@@ -545,6 +762,50 @@
   color: #6b7280;
 }
 
+.processing-history-trend-chart-wrap {
+  min-height: 220px;
+  width: 100%;
+}
+
+/* Performance Summary — filters + chart cards (style guide: navy structure, orange focus) */
+.performance-summary-page .performance-filters-card {
+  border: 1px solid #e7eaf0;
+}
+
+.performance-summary-page .performance-filters-card .form-control,
+.performance-summary-page .performance-filters-card .form-select {
+  border-color: #d7dee8;
+}
+
+.performance-summary-page .performance-filters-card .form-control:focus,
+.performance-summary-page .performance-filters-card .form-select:focus {
+  border-color: rgba(245, 130, 32, 0.65);
+  box-shadow: 0 0 0 0.2rem rgba(245, 130, 32, 0.16);
+}
+
+.performance-summary-page .performance-apply-btn {
+  color: var(--brand-navy);
+  border-color: #cfd7e3;
+}
+
+.performance-summary-page .performance-chart-card {
+  border: 1px solid #e7eaf0;
+  overflow: hidden;
+}
+
+.performance-summary-page .performance-chart-card .card-header {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--brand-navy);
+  background: #fff;
+  border-bottom: 1px solid #edf0f4;
+  padding: 0.65rem 1rem;
+}
+
+.performance-summary-page .performance-chart-card .card-body {
+  background: #fff;
+}
+
 .processing-status-card {
   border: 1px solid #e7eaf0;
 }
@@ -552,18 +813,23 @@
 /* KPI tiles: structure + status-driven top border + gradient (see --status-good / --status-warn) */
 .processing-page .processing-kpi-card--clickable {
   cursor: pointer;
+  transition: border-color 140ms ease, box-shadow 180ms ease, transform 180ms ease, filter 120ms ease;
 }
 
 .processing-page .processing-kpi-card--clickable:hover {
   filter: brightness(0.985);
+  box-shadow: 0 8px 24px rgba(22, 75, 124, 0.12);
+  transform: translateY(-2px);
 }
 
 .processing-page .processing-kpi-card--clickable:focus-visible {
   outline: 2px solid rgba(245, 130, 32, 0.9);
   outline-offset: 2px;
+  box-shadow: 0 8px 24px rgba(22, 75, 124, 0.12);
+  transform: translateY(-2px);
 }
 
-/* Processing Attack modal tables: row hover (cells, so striped rows still change color) */
+/* Jobs Backlog modal tables: row hover (cells, so striped rows still change color) */
 .processing-modal-data-table tbody tr.processing-modal-data-table__row--interactive:hover td {
   background-color: rgba(245, 130, 32, 0.14) !important;
   transition: background-color 0.15s ease;
@@ -724,6 +990,10 @@
   position: relative;
   width: 100%;
   min-height: 220px;
+  border: 1px solid #d7dee8;
+  border-radius: 0.75rem;
+  padding: 0.35rem;
+  background: #fff;
 }
 
 /* Reduce subpixel stretching: canvas defaults to inline layout; block avoids baseline gap. */
@@ -735,7 +1005,7 @@
   border: 1px solid #e2e8f0;
   border-top: 3px solid #cbd5e1;
   background: #ffffff;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+  box-shadow: none;
   overflow: hidden;
 }
 
@@ -792,10 +1062,16 @@
   margin-top: 0;
 }
 
+.processing-page .processing-jobs-today-change .processing-jobs-today-detail {
+  display: block;
+  font-size: 1.2rem !important;
+  line-height: 1.1 !important;
+}
+
 /* KPI card: 4-row grid — title (full width), value | spark/strip (rows 2–3), target (full width) */
 .processing-kpi-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(96px, 36%);
+  grid-template-columns: minmax(0, 1fr) minmax(170px, 43%);
   grid-template-rows: auto minmax(2.5rem, auto) minmax(2.5rem, auto) auto;
   gap: 0.35rem 0.75rem;
   align-items: center;
@@ -823,7 +1099,7 @@
   align-self: stretch;
   justify-self: stretch;
   min-width: 0;
-  min-height: 52px;
+  min-height: 104px;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -845,6 +1121,51 @@
   height: 56px;
   width: 100%;
   position: relative;
+}
+
+.processing-kpi-sparkline-wrap--compact {
+  height: 44px;
+}
+
+.processing-kpi-viz-fallback {
+  width: 100%;
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+}
+
+.processing-kpi-viz-fallback--compact {
+  min-height: 44px;
+}
+
+.processing-kpi-dual-viz {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  width: 100%;
+  min-height: 0;
+}
+
+.processing-kpi-dual-viz__lane {
+  display: grid;
+  grid-template-columns: 3.1rem minmax(0, 1fr);
+  gap: 0.35rem;
+  align-items: center;
+  min-width: 0;
+}
+
+.processing-kpi-dual-viz__grain {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #6b7280;
+  line-height: 1.15;
+}
+
+.processing-kpi-dual-viz__chart {
+  min-width: 0;
+  min-height: 0;
 }
 
 .processing-kpi-label {
@@ -1103,9 +1424,287 @@
   border-left: 4px solid #f58220;
 }
 
+.scheduling-page__title {
+  color: var(--brand-navy);
+}
+
+/* Scheduling KPIs: mirror Jobs Backlog KPI tile treatment. */
+.scheduling-page .app-kpi-nested.processing-tile.scheduling-kpi-tile {
+  border: 1px solid #e2e8f0;
+  border-top: 3px solid #cbd5e1;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.scheduling-page .app-kpi-nested.processing-tile.scheduling-kpi-tile.processing-tile--status-good {
+  border-top-color: #22a06b;
+  background: linear-gradient(
+    180deg,
+    rgba(34, 160, 107, 0.14) 0%,
+    rgba(34, 160, 107, 0.04) 28%,
+    rgba(255, 255, 255, 0.98) 55%,
+    #ffffff 100%
+  );
+}
+
+.scheduling-page .app-kpi-nested.processing-tile.scheduling-kpi-tile.processing-tile--status-warn {
+  border-top-color: #c62828;
+  background: linear-gradient(
+    180deg,
+    rgba(198, 40, 40, 0.12) 0%,
+    rgba(198, 40, 40, 0.04) 28%,
+    rgba(255, 255, 255, 0.98) 55%,
+    #ffffff 100%
+  );
+}
+
+.scheduling-page .app-kpi-nested.processing-tile.scheduling-kpi-tile.scheduling-kpi-tile--neutral {
+  border-top-color: #cbd5e1;
+  background: #ffffff;
+}
+
+.scheduling-kpi-tile__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.scheduling-kpi-main {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  min-height: 4.6rem;
+  padding: 0.55rem 0;
+}
+
+.scheduling-kpi-tile__value {
+  color: #0f172a;
+  font-size: 2.15rem;
+  font-weight: 700;
+  line-height: 1.12;
+}
+
+.scheduling-page .scheduling-kpi-tile__value.processing-stat--good {
+  color: #0b8f3d;
+}
+
+.scheduling-page .scheduling-kpi-tile__value.processing-stat--warn {
+  color: #c62828;
+}
+
+.scheduling-kpi-tile__value--neutral {
+  color: #0f172a;
+}
+
+.scheduling-page .scheduling-chart-card.app-surface-card {
+  border: 1px solid #e7eaf0;
+}
+
+.scheduling-page .scheduling-chart-card .card-body {
+  padding: 1.25rem 1.7rem 1.5rem;
+}
+
+.scheduling-chart-card__header {
+  align-items: baseline;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+  padding-top: 0.3rem;
+  padding-bottom: 0.3rem;
+}
+
+.scheduling-chart-card__header .h6 {
+  color: var(--brand-navy);
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.scheduling-chart-card__updated {
+  color: #64748b;
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.scheduling-chart-card__canvas {
+  border: 2px solid #d7dee8;
+  border-radius: 0.75rem;
+  height: 260px;
+  padding: 0.25rem;
+}
+
+.scheduling-chart-card__canvas--tall {
+  height: 320px;
+  padding: 1.5rem 1.5rem 0.5rem;
+  border-width: 2px;
+  border-radius: 0.75rem;
+}
+
+.scheduling-chart-card__empty {
+  align-items: center;
+  color: #5b6470;
+  display: flex;
+  font-size: 1.2rem;
+  height: 100%;
+  justify-content: center;
+}
+
+.scheduling-chart-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  height: 100%;
+  width: 100%;
+}
+
+.scheduling-chart-skeleton__grid {
+  display: grid;
+  gap: 0.45rem;
+  padding-top: 0.2rem;
+}
+
+.scheduling-chart-skeleton__grid .home-skeleton-bar {
+  height: 0.38rem;
+  width: 100%;
+}
+
+.scheduling-chart-skeleton__series {
+  align-items: flex-end;
+  display: flex;
+  flex: 1 1 auto;
+  gap: 0.5rem;
+  min-height: 0;
+}
+
+.scheduling-chart-skeleton__series .home-skeleton-bar {
+  border-radius: 0.35rem;
+  height: 65%;
+}
+
+.scheduling-chart-skeleton__line-wrap {
+  align-items: center;
+  display: flex;
+  flex: 1 1 auto;
+}
+
+.scheduling-chart-skeleton__line {
+  border-radius: 999px;
+  height: 0.5rem;
+  width: 100%;
+}
+
+.scheduling-chart-skeleton__xaxis {
+  height: 0.42rem;
+  width: 100%;
+}
+
+.keys-signedout-list.list-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.keys-search-results-list.list-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.keys-search-result-item.list-group-item {
+  border: 1px solid #d9e0ea;
+  border-radius: 0.6rem;
+  transition: background-color 140ms ease, border-color 140ms ease;
+}
+
+.keys-search-result-item.list-group-item:hover,
+.keys-search-result-item.list-group-item:focus-visible {
+  background-color: rgba(var(--brand-orange-rgb), 0.1);
+  border-color: rgba(var(--brand-orange-rgb), 0.45);
+}
+
+.keys-signedout-item.list-group-item {
+  border: 1px solid #d9e0ea;
+  border-radius: 0.6rem;
+  transition: background-color 140ms ease, border-color 140ms ease;
+}
+
+.keys-signedout-item.list-group-item:hover,
+.keys-signedout-item.list-group-item:focus-visible {
+  background-color: rgba(var(--brand-orange-rgb), 0.1);
+  border-color: rgba(var(--brand-orange-rgb), 0.45);
+}
+
+.keys-signedout-item__row {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.keys-signedout-item__left {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.keys-signedout-item__right {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  justify-content: center;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.keys-scanner-video {
+  width: 100%;
+  border-radius: 0.5rem;
+  background: #111827;
+  min-height: 220px;
+  object-fit: cover;
+}
+
 @media (max-width: 767.98px) {
   .key-actions-grid {
     grid-template-columns: 1fr;
+  }
+
+  .keys-signedout-item__row {
+    align-items: center;
+    flex-direction: row;
+    gap: 0.6rem;
+  }
+
+  .keys-signedout-item__left {
+    min-width: 0;
+  }
+
+  .keys-signedout-item__right {
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .scheduling-kpi-tile__value {
+    font-size: 1.65rem;
+  }
+
+  .scheduling-chart-card__updated {
+    font-size: 0.78rem;
+  }
+
+  .scheduling-chart-card__header .h6 {
+    font-size: 1.02rem;
+  }
+
+  .scheduling-page .scheduling-chart-card .card-body {
+    padding: 1rem 1rem 1.05rem;
+  }
+
+  .scheduling-chart-card__canvas--tall {
+    height: 290px;
+    padding: 0.2rem 0.2rem 0.05rem;
   }
 }
 

@@ -6,6 +6,7 @@ from flask import redirect, url_for
 import requests
 
 from app.spa import send_spa_index
+from app.response_cache import cached_json_response
 
 monthly_specialist_bp = Blueprint("monthly_specialist", __name__)
 
@@ -28,6 +29,7 @@ def monthly_specialists():
     return send_spa_index()
 
 @monthly_specialist_bp.route("/api/monthly_specialists")
+@cached_json_response(prefix="monthly_specialists:list", ttl_seconds=180)
 def get_monthly_specialists():
     """
     Returns cached monthly route specialist data.

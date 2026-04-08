@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { apiFetch, apiJson } from '../lib/apiClient'
-import { Badge, Button, Card, Form, Spinner, Table } from 'react-bootstrap'
+import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from 'react'
+import { apiFetch, apiJson, isAbortError } from '../lib/apiClient'
+import { Badge, Button, Card, Form, Table } from 'react-bootstrap'
 
 type DefRow = {
   deficiency_id: string
@@ -17,6 +17,126 @@ type DefRow = {
   service_line?: string
 }
 
+/** Reported date; Pacific, e.g. Apr-07-2026. */
+function formatReportedMmmDdYyyy(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '—'
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Vancouver',
+    month: 'short',
+    day: '2-digit',
+    year: 'numeric',
+  }).formatToParts(d)
+  const month = (parts.find((p) => p.type === 'month')?.value ?? '').replace(/\.$/, '')
+  const day = parts.find((p) => p.type === 'day')?.value ?? ''
+  const year = parts.find((p) => p.type === 'year')?.value ?? ''
+  if (!month || !day || !year) return '—'
+  return `${month}-${day}-${year}`
+}
+
+function openJobInNewTab(url: string) {
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
+
+function DefSkeletonBar({
+  width,
+  height = 13,
+  className = '',
+}: {
+  width: number | string
+  height?: number
+  className?: string
+}) {
+  return (
+    <span
+      className={`home-skeleton-bar d-block ${className}`.trim()}
+      style={{
+        width: typeof width === 'number' ? `${width}px` : width,
+        height,
+        borderRadius: height > 14 ? 6 : undefined,
+        maxWidth: '100%',
+      }}
+    />
+  )
+}
+
+const DEF_FILTER_SKELETON_WIDTHS = [260, 170, 140, 160, 140]
+
+function DeficiencyTrackerPageSkeleton() {
+  return (
+    <div
+      className="deficiency-page d-flex flex-column gap-3 home-skeleton"
+      aria-busy="true"
+      aria-label="Loading deficiencies"
+    >
+      <Card className="app-surface-card deficiency-filters-card">
+        <Card.Body className="p-3 p-md-4">
+          <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-1">
+            <DefSkeletonBar width={180} height={26} />
+            <DefSkeletonBar width={76} height={31} />
+          </div>
+          <DefSkeletonBar width="min(22rem, 90%)" height={14} className="mb-3" />
+          <div className="d-flex flex-wrap align-items-end gap-2">
+            {DEF_FILTER_SKELETON_WIDTHS.map((w, i) => (
+              <div key={i}>
+                <DefSkeletonBar width={52} height={11} className="mb-1" />
+                <DefSkeletonBar width={w} height={38} />
+              </div>
+            ))}
+          </div>
+        </Card.Body>
+      </Card>
+      <Card className="app-surface-card deficiency-results-card">
+        <Card.Body className="p-2 p-md-3">
+          <div className="table-responsive deficiency-results-table-wrap">
+            <Table size="sm" className="mb-0 align-middle deficiency-results-table">
+              <thead>
+                <tr>
+                  <th>Reported</th>
+                  <th>Address</th>
+                  <th>Severity</th>
+                  <th>Company</th>
+                  <th>Reporter</th>
+                  <th>Quote</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from({ length: 12 }, (_, row) => (
+                  <tr key={row}>
+                    <td>
+                      <DefSkeletonBar width={72} height={13} />
+                    </td>
+                    <td>
+                      <DefSkeletonBar width={`${78 - (row % 4) * 6}%`} height={13} />
+                    </td>
+                    <td>
+                      <DefSkeletonBar width={56} height={13} />
+                    </td>
+                    <td>
+                      <DefSkeletonBar width={`${60 + (row % 3) * 8}%`} height={13} />
+                    </td>
+                    <td>
+                      <DefSkeletonBar width={`${50 + (row % 2) * 12}%`} height={13} />
+                    </td>
+                    <td>
+                      <DefSkeletonBar width={64} height={22} />
+                    </td>
+                    <td>
+                      <DefSkeletonBar width={52} height={28} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </div>
+        </Card.Body>
+      </Card>
+    </div>
+  )
+}
+
 export default function DeficiencyTrackerPage() {
   const [rows, setRows] = useState<DefRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -26,26 +146,31 @@ export default function DeficiencyTrackerPage() {
   const [jobComplete, setJobComplete] = useState<'all' | 'yes' | 'no'>('no')
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest')
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true)
     try {
       const r = await apiFetch('/deficiency_tracker/deficiency_list', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: '{}',
+        signal,
       })
+      if (signal?.aborted) return
       const j = (await r.json()) as DefRow[]
       setRows(Array.isArray(j) ? j : [])
     } catch (e) {
+      if (isAbortError(e)) return
       console.error(e)
       setRows([])
     } finally {
-      setLoading(false)
+      if (!signal?.aborted) setLoading(false)
     }
   }, [])
 
   useEffect(() => {
-    load()
+    const controller = new AbortController()
+    void load(controller.signal)
+    return () => controller.abort()
   }, [load])
 
   const visible = useMemo(() => {
@@ -90,11 +215,7 @@ export default function DeficiencyTrackerPage() {
   }
 
   if (loading) {
-    return (
-      <div className="d-flex justify-content-center py-5">
-        <Spinner />
-      </div>
-    )
+    return <DeficiencyTrackerPageSkeleton />
   }
 
   return (
@@ -102,8 +223,13 @@ export default function DeficiencyTrackerPage() {
       <Card className="app-surface-card deficiency-filters-card">
         <Card.Body className="p-3 p-md-4">
           <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-1">
-            <h1 className="h4 mb-0">Deficiencies</h1>
-            <Button size="sm" variant="outline-secondary" className="deficiency-refresh-btn" onClick={load}>
+            <h1 className="processing-page-title mb-0">Deficiencies</h1>
+            <Button
+              size="sm"
+              variant="outline-secondary"
+              className="deficiency-refresh-btn"
+              onClick={() => void load()}
+            >
               Refresh
             </Button>
           </div>
@@ -176,7 +302,7 @@ export default function DeficiencyTrackerPage() {
       <Card className="app-surface-card deficiency-results-card">
         <Card.Body className="p-2 p-md-3">
           <div className="table-responsive deficiency-results-table-wrap">
-            <Table hover size="sm" className="mb-0 align-middle deficiency-results-table">
+            <Table size="sm" className="mb-0 align-middle deficiency-results-table">
               <thead>
                 <tr>
                   <th>Reported</th>
@@ -185,51 +311,66 @@ export default function DeficiencyTrackerPage() {
                   <th>Company</th>
                   <th>Reporter</th>
                   <th>Quote</th>
-                  <th>Job</th>
                   <th />
                 </tr>
               </thead>
               <tbody>
-                {visible.map((r) => (
-                  <tr key={r.deficiency_id}>
-                    <td>{r.reported_on ? new Date(r.reported_on).toLocaleDateString() : '—'}</td>
-                    <td>{r.address ?? '—'}</td>
-                    <td>{r.severity ?? '—'}</td>
-                    <td>{r.company ?? '—'}</td>
-                    <td>{r.reported_by ?? '—'}</td>
-                    <td>
-                      {r.is_quote_approved ? (
-                        <Badge bg="success">Approved</Badge>
-                      ) : r.is_quote_sent ? (
-                        <Badge bg="info">Sent</Badge>
-                      ) : (
-                        <span className="text-muted">—</span>
-                      )}
-                    </td>
-                    <td>
-                      {r.job_link ? (
-                        <a href={r.job_link} target="_blank" rel="noreferrer" className="deficiency-job-link">
-                          Open
-                        </a>
-                      ) : (
-                        '—'
-                      )}
-                    </td>
-                    <td>
-                      <Button
-                        size="sm"
-                        variant="outline-warning"
-                        className="deficiency-hide-btn"
-                        onClick={() => toggleHide(r.deficiency_id, true)}
-                      >
-                        Hide
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
+                {visible.map((r) => {
+                  const href = r.job_link?.trim() || ''
+                  const interactive = Boolean(href)
+                  const label = `Open job${r.address ? `: ${r.address}` : ''} in new tab`
+                  const onRowKeyDown = interactive
+                    ? (e: KeyboardEvent<HTMLTableRowElement>) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          openJobInNewTab(href)
+                        }
+                      }
+                    : undefined
+                  return (
+                    <tr
+                      key={r.deficiency_id}
+                      className={`deficiency-data-row${interactive ? ' deficiency-results-row--interactive' : ''}`}
+                      tabIndex={interactive ? 0 : undefined}
+                      role={interactive ? 'link' : undefined}
+                      aria-label={interactive ? label : undefined}
+                      onClick={interactive ? () => openJobInNewTab(href) : undefined}
+                      onKeyDown={onRowKeyDown}
+                    >
+                      <td>{formatReportedMmmDdYyyy(r.reported_on)}</td>
+                      <td>{r.address ?? '—'}</td>
+                      <td>{r.severity ?? '—'}</td>
+                      <td>{r.company ?? '—'}</td>
+                      <td>{r.reported_by ?? '—'}</td>
+                      <td>
+                        {r.is_quote_approved ? (
+                          <Badge bg="success">Approved</Badge>
+                        ) : r.is_quote_sent ? (
+                          <Badge bg="info">Sent</Badge>
+                        ) : (
+                          <span className="text-muted">—</span>
+                        )}
+                      </td>
+                      <td>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline-warning"
+                          className="deficiency-hide-btn"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            toggleHide(r.deficiency_id, true)
+                          }}
+                        >
+                          Hide
+                        </Button>
+                      </td>
+                    </tr>
+                  )
+                })}
                 {visible.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="text-center text-muted py-4">
+                  <tr className="deficiency-empty-row">
+                    <td colSpan={7} className="text-center text-muted py-4">
                       No deficiencies match your filters.
                     </td>
                   </tr>

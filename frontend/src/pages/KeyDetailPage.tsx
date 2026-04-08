@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { apiFetch, apiJson } from '../lib/apiClient'
+import { apiFetch, apiJson, isAbortError } from '../lib/apiClient'
 import { Alert, Button, Card, Form, Pagination, Spinner, Table, Toast, ToastContainer } from 'react-bootstrap'
 
 type KeyDetail = {
@@ -52,26 +52,30 @@ export default function KeyDetailPage() {
   const [historyPage, setHistoryPage] = useState(1)
   const [historyLoading, setHistoryLoading] = useState(false)
 
-  const load = async () => {
+  const load = async (signal?: AbortSignal) => {
     if (!keyId) return
     setHistoryLoading(true)
     try {
       const [detail, hist] = await Promise.all([
-        apiJson<KeyDetail>(`/api/keys/${keyId}/detail`),
-        apiJson<{ data: KeyHistoryEvent[] }>(`/api/keys/${keyId}/history?limit=100`),
+        apiJson<KeyDetail>(`/api/keys/${keyId}/detail`, { signal }),
+        apiJson<{ data: KeyHistoryEvent[] }>(`/api/keys/${keyId}/history?limit=100`, { signal }),
       ])
+      if (signal?.aborted) return
       setData(detail)
       setHistory(hist.data || [])
       setHistoryPage(1)
-    } catch {
+    } catch (error) {
+      if (isAbortError(error)) return
       setErr('Failed to load key')
     } finally {
-      setHistoryLoading(false)
+      if (!signal?.aborted) setHistoryLoading(false)
     }
   }
 
   useEffect(() => {
-    load()
+    const controller = new AbortController()
+    void load(controller.signal)
+    return () => controller.abort()
   }, [keyId])
 
   const signOut = async (e: FormEvent) => {
@@ -124,11 +128,7 @@ export default function KeyDetailPage() {
   }
 
   if (!data && !err) {
-    return (
-      <div className="key-detail-page text-center py-5">
-        <Spinner animation="border" />
-      </div>
-    )
+    return <KeyDetailPageSkeleton />
   }
   if (err && !data) {
     return (
@@ -284,10 +284,7 @@ export default function KeyDetailPage() {
         <Card.Header className="fw-semibold">Signout history</Card.Header>
         <Card.Body>
           {historyLoading ? (
-            <div className="text-muted d-flex align-items-center gap-2">
-              <Spinner animation="border" size="sm" />
-              Loading history...
-            </div>
+            <KeyHistorySkeleton />
           ) : history.length === 0 ? (
             <div className="text-muted">No key status history yet.</div>
           ) : (
@@ -341,6 +338,75 @@ export default function KeyDetailPage() {
           )}
         </Card.Body>
       </Card>
+    </div>
+  )
+}
+
+function KeyDetailPageSkeleton() {
+  return (
+    <div className="key-detail-page py-4 home-skeleton" aria-busy="true" aria-label="Loading key details">
+      <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+        <span className="home-skeleton-bar d-block" style={{ width: '7.5rem' }} />
+        <span className="home-skeleton-bar d-block" style={{ width: '4rem' }} />
+      </div>
+
+      <Card className="app-surface-card key-hero-card mb-3">
+        <Card.Body className="p-4">
+          <span className="home-skeleton-bar d-block mb-2" style={{ width: '12rem', height: '1.6rem' }} />
+          <span className="home-skeleton-bar d-block mb-3" style={{ width: '16rem' }} />
+          <span className="home-skeleton-bar d-block" style={{ width: '14rem' }} />
+        </Card.Body>
+      </Card>
+
+      <Card className="app-surface-card mb-3">
+        <Card.Header className="fw-semibold">Addresses</Card.Header>
+        <Card.Body className="d-flex flex-column gap-2">
+          <span className="home-skeleton-bar d-block" style={{ width: '92%' }} />
+          <span className="home-skeleton-bar d-block" style={{ width: '84%' }} />
+          <span className="home-skeleton-bar d-block" style={{ width: '76%' }} />
+        </Card.Body>
+      </Card>
+
+      <div className="key-actions-grid">
+        <Card className="app-surface-card">
+          <Card.Header className="fw-semibold">Sign out</Card.Header>
+          <Card.Body className="d-flex flex-column gap-3">
+            <span className="home-skeleton-bar d-block" style={{ width: '6rem' }} />
+            <span className="home-skeleton-bar d-block" style={{ width: '100%', height: '2.25rem' }} />
+            <span className="home-skeleton-bar d-block" style={{ width: '7rem' }} />
+            <span className="home-skeleton-bar d-block" style={{ width: '100%', height: '2.25rem' }} />
+            <span className="home-skeleton-bar d-block" style={{ width: '100%', height: '2.3rem' }} />
+          </Card.Body>
+        </Card>
+
+        <Card className="app-surface-card">
+          <Card.Header className="fw-semibold">Return</Card.Header>
+          <Card.Body className="d-flex flex-column gap-3">
+            <span className="home-skeleton-bar d-block" style={{ width: '6rem' }} />
+            <span className="home-skeleton-bar d-block" style={{ width: '100%', height: '2.25rem' }} />
+            <span className="home-skeleton-bar d-block" style={{ width: '100%', height: '2.3rem' }} />
+          </Card.Body>
+        </Card>
+      </div>
+
+      <Card className="app-surface-card mt-3">
+        <Card.Header className="fw-semibold">Signout history</Card.Header>
+        <Card.Body>
+          <KeyHistorySkeleton />
+        </Card.Body>
+      </Card>
+    </div>
+  )
+}
+
+function KeyHistorySkeleton() {
+  return (
+    <div className="d-flex flex-column gap-2" aria-hidden>
+      <span className="home-skeleton-bar d-block" style={{ width: '100%', height: '1.8rem' }} />
+      <span className="home-skeleton-bar d-block" style={{ width: '100%', height: '1.8rem' }} />
+      <span className="home-skeleton-bar d-block" style={{ width: '100%', height: '1.8rem' }} />
+      <span className="home-skeleton-bar d-block" style={{ width: '100%', height: '1.8rem' }} />
+      <span className="home-skeleton-bar d-block" style={{ width: '70%', height: '1.8rem' }} />
     </div>
   )
 }

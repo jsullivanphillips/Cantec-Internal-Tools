@@ -13,6 +13,7 @@ from sqlalchemy.dialects.postgresql import insert
 from flask import redirect, url_for
 
 from app.spa import send_spa_index
+from app.response_cache import cached_json_response
 
 HOURLY_RATE = {
     'fa':        125.0,
@@ -129,6 +130,7 @@ def get_date_window():
 
 
 @performance_summary_bp.route('/api/performance/deficiencies')
+@cached_json_response(prefix="performance_summary:deficiencies", ttl_seconds=180)
 def performance_deficiencies():
     window_start, window_end = get_date_window()
 
@@ -139,6 +141,7 @@ def performance_deficiencies():
     })
 
 @performance_summary_bp.route('/api/performance/technicians')
+@cached_json_response(prefix="performance_summary:technicians", ttl_seconds=180)
 def performance_technicians():
     window_start, window_end = get_date_window()
 
@@ -152,16 +155,16 @@ def performance_technicians():
     })
 
 @performance_summary_bp.route('/api/performance/quotes')
+@cached_json_response(prefix="performance_summary:quotes", ttl_seconds=180)
 def performance_quotes():
     window_start, window_end = get_date_window()
 
     return jsonify({
         "quote_statistics_by_user": get_quote_statistics_by_user(window_start, window_end),
-        "quote_cost_comparison_by_job_type": get_quote_cost_comparison_by_job_type(window_start, window_end),
-        "quote_cost_breakdown_log": get_detailed_quote_job_stats(db.session, window_start, window_end)
     })
 
 @performance_summary_bp.route("/api/last_updated", methods=["GET"])
+@cached_json_response(prefix="performance_summary:last_updated", ttl_seconds=120)
 def get_last_updated():
     latest_job = db.session.query(func.max(Job.created_at)).scalar()
     latest_def = db.session.query(func.max(Deficiency.created_at)).scalar()
@@ -316,337 +319,6 @@ def make_aware(dt):
     if dt and dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
     return dt
-
-
-def get_detailed_quote_job_stats(session, window_start, window_end):
-    """
-    Returns a breakdown of all jobs created from quotes,
-    grouped by job, quote owner, and includes detailed line items.
-    Version WITHOUT Quote.job relationship.
-    """
-
-    SPRINKLER_TECHS = {"Colin Peterson", "Justin Walker"}
-
-    # --- Pull every quote + its job using explicit join ---
-    rows = (
-        session.query(Quote, Job)
-        .join(Job, Quote.job_id == Job.job_id)              # <-- explicit join
-        .filter(Quote.job_created.is_(True))
-        .options(
-            joinedload(Quote.items),                        # quote → quote_items
-            joinedload(Job.clock_events),                   # job → clock events
-            joinedload(Job.invoice_items)                   # job → invoice items
-        ) \
-        .limit(250) \
-        .all()
-    )
-
-    # --- bucket quotes by job ---
-    quotes_by_job = defaultdict(list)
-
-    for quote, job in rows:
-        # job must have invoices and be completed
-        if not job.invoice_items or not job.completed_on:
-            continue
-
-        completed = make_aware(job.completed_on)
-        if not (window_start <= completed <= window_end):
-            continue
-
-        quotes_by_job[job.job_id].append((quote, job))
-
-    # --- accumulate stats by quote owner ---
-    buckets_by_user = defaultdict(lambda: {"jobs": [], "margin_sum": 0.0})
-
-    for job_id, qj_list in quotes_by_job.items():
-        # Each row contains (Quote, Job)
-        first_quote, job = qj_list[0]
-        user = first_quote.owner_email or "—"
-
-        # --- gather all quote items across all quotes for this job ---
-        all_items = []
-        quote_ids = []
-
-        for quote, _job in qj_list:
-            all_items.extend(quote.items)
-            quote_ids.append(str(quote.quote_id))
-
-        # labor type determination
-        has_spr = any(it.item_type == "spr_labour" for it in all_items)
-        has_fa  = any(it.item_type == "fa_labour"  for it in all_items)
-        spr_only = has_spr and not has_fa
-
-        # --- QUOTED totals ---
-        quoted_labor = sum(it.total_price for it in all_items
-                           if it.item_type in ("fa_labour", "spr_labour"))
-        quoted_parts = sum(it.total_price for it in all_items
-                           if it.item_type == "part")
-
-        quoted_total = quoted_labor + quoted_parts
-
-        # --- ACTUAL totals ---
-        raw_events = job.clock_events or []
-        clock_events = (
-            [evt for evt in raw_events if evt.tech_name in SPRINKLER_TECHS]
-            if spr_only else
-            list(raw_events)
-        )
-
-        total_hours = sum(evt.hours for evt in clock_events)
-        rate = HOURLY_RATE["sprinkler"] if has_spr else HOURLY_RATE["fa"]
-        actual_labor = total_hours * rate
-
-        actual_parts = sum(inv.total_price for inv in job.invoice_items
-                           if inv.item_type == "part")
-        actual_total = actual_labor + actual_parts
-
-        # --- Adjust invoice revenue for annual-inspection exclusion ---
-        original_invoice_revenue = sum(inv.total_price for inv in job.invoice_items)
-        ai_amt = sum(inv.total_price for inv in job.invoice_items
-                     if "annual inspection" in inv.description.lower())
-
-        invoice_revenue = original_invoice_revenue
-        if not any("annual inspection" in it.description.lower() for it in all_items):
-            invoice_revenue -= ai_amt
-
-        # --- calculate margins ---
-        margin_labor = quoted_labor - actual_labor
-        margin_parts = quoted_parts - actual_parts
-        total_margin = margin_labor + margin_parts
-
-        # --- outlier filter ---
-        if quoted_total > 0 and abs(total_margin) / quoted_total > OUTLIER_MARGIN_RATIO:
-            continue
-
-        # --- summary text block ---
-        summary_lines = []
-        summary_lines.append("=" * 40)
-        summary_lines.append(f"Job ID:          {job.job_id}")
-        summary_lines.append(f"Quotes:          {', '.join(quote_ids)}")
-        summary_lines.append(f"User:            {user}")
-        summary_lines.append(f"Customer:        {first_quote.customer_name}")
-        summary_lines.append(f"Location Addr:   {first_quote.location_address or '—'}")
-        summary_lines.append(f"Job Completed:   {job.completed_on.isoformat()}")
-        summary_lines.append("-" * 40)
-        summary_lines.append("Quoted Items:")
-
-        for itm in all_items:
-            summary_lines.append(
-                f"  • [{itm.item_type}] {itm.description:<30} x{itm.quantity:<4} "
-                f"@ ${itm.unit_price:.2f} → ${itm.total_price:.2f}"
-            )
-
-        summary_lines.append("")
-        summary_lines.append("Invoice Items:")
-        for inv in job.invoice_items:
-            summary_lines.append(
-                f"  • [{inv.item_type}] {inv.description:<30} x{inv.quantity:<4} "
-                f"@ ${inv.unit_price:.2f} → ${inv.total_price:.2f}"
-            )
-
-        summary_lines.append("")
-        summary_lines.append(f"Invoice Total:         ${original_invoice_revenue:8.2f}")
-        if invoice_revenue != original_invoice_revenue:
-            summary_lines.append(
-                f"Adjusted Invoice Total:${invoice_revenue:8.2f} "
-                f"(-${ai_amt:.2f} Annual Inspection)"
-            )
-
-        summary_lines.append("")
-        summary_lines.append("Clock Events:")
-
-        if clock_events:
-            for evt in clock_events:
-                summary_lines.append(
-                    f"  • {evt.tech_name:<20} {evt.hours:.2f}h"
-                )
-        else:
-            summary_lines.append("  (no clock events)")
-
-        summary_lines.append("")
-        summary_lines.append("--- Summary ---")
-        summary_lines.append(f"Quoted Labour:   ${quoted_labor:8.2f}")
-        summary_lines.append(f"Actual Cost Lbr: ${actual_labor:8.2f}")
-        summary_lines.append(f"Labour Δ:        ${margin_labor:8.2f}")
-        summary_lines.append(f"Quoted Parts:    ${quoted_parts:8.2f}")
-        summary_lines.append(f"Actual Cost Prt: ${actual_parts:8.2f}")
-        summary_lines.append(f"Parts Δ:         ${margin_parts:8.2f}")
-        summary_lines.append(f"Total Margin:    ${total_margin:8.2f}")
-        summary_lines.append("")
-
-        # --- Build final payload ---
-        job_payload = {
-            "job_id":           job.job_id,
-            "quote_ids":        [int(qid) for qid in quote_ids],
-            "location_address": first_quote.location_address,
-            "quoted_labor":     round(quoted_labor, 2),
-            "actual_labor":     round(actual_labor, 2),
-            "margin_labor":     round(margin_labor, 2),
-            "quoted_parts":     round(quoted_parts, 2),
-            "actual_parts":     round(actual_parts, 2),
-            "margin_parts":     round(margin_parts, 2),
-            "total_margin":     round(total_margin, 2),
-            "invoice_revenue":  round(invoice_revenue, 2),
-            "quote_items": [
-                {
-                    "item_type":   it.item_type,
-                    "description": it.description,
-                    "quantity":    it.quantity,
-                    "unit_price":  it.unit_price,
-                    "total_price": it.total_price,
-                }
-                for it in all_items
-            ],
-            "invoice_items": [
-                {
-                    "item_type":   inv.item_type,
-                    "description": inv.description,
-                    "quantity":    inv.quantity,
-                    "unit_price":  inv.unit_price,
-                    "total_price": inv.total_price,
-                }
-                for inv in job.invoice_items
-            ],
-            "clock_events": [
-                {"tech_name": evt.tech_name, "hours": evt.hours}
-                for evt in clock_events
-            ],
-            "summary_lines": summary_lines,
-        }
-
-        # --- Bucket by user ---
-        buckets_by_user[user]["jobs"].append(job_payload)
-        buckets_by_user[user]["margin_sum"] += total_margin
-
-    # --- Build final results ---
-    results = []
-    for user, data in buckets_by_user.items():
-        count = len(data["jobs"])
-        sum_m = data["margin_sum"]
-        avg_m = (sum_m / count) if count else 0.0
-
-        overall_summary = [
-            "=" * 40,
-            f"Across {count} jobs:",
-            f"  Margin Sum:    ${sum_m:8.2f}",
-            f"  Job Count:      {count}",
-            f"  Average Margin:${avg_m:8.2f}",
-            "=" * 40,
-        ]
-
-        results.append({
-            "user":                  user,
-            "job_count":             count,
-            "margin_sum":            round(sum_m, 2),
-            "avg_margin":            round(avg_m, 2),
-            "jobs":                  data["jobs"],
-            "overall_summary_lines": overall_summary,
-        })
-
-    return results
-
-
-
-def get_quote_cost_comparison_by_job_type(window_start, window_end):
-    """
-    Returns average quoted vs actual cost margin per job_type,
-    grouping multiple quotes per job into a single record.
-    NO use of Quote.job relationship.
-    """
-
-    # --- Fetch all data with explicit JOINs ---
-    rows = (
-        db.session.query(Quote, Job)
-        .join(Job, Quote.job_id == Job.job_id)
-        .options(
-            joinedload(Quote.items),                         # quote → quote_items
-            joinedload(Job.clock_events),                   # job → clock events
-            joinedload(Job.invoice_items),                  # job → invoice items
-        )
-        .filter(
-            Quote.job_created.is_(True),
-            Job.completed_on.isnot(None),
-        )
-        .all()
-    )
-
-    # --- Group quotes by job ---
-    quotes_by_job = defaultdict(lambda: {"job": None, "quotes": []})
-
-    for quote, job in rows:
-        # Filter by window range using job.completed_on
-        completed = make_aware(job.completed_on)
-        if not (window_start <= completed <= window_end):
-            continue
-
-        jdata = quotes_by_job[job.job_id]
-        jdata["job"] = job
-        jdata["quotes"].append(quote)
-
-    # --- Compute margins grouped by job_type ---
-    type_margins = defaultdict(lambda: {"margin_sum": 0.0, "job_count": 0})
-
-    for job_id, data in quotes_by_job.items():
-        job = data["job"]
-        qlist = data["quotes"]
-        jt = job.job_type or "Unknown"
-
-        # Flatten quote items
-        all_items = [item for q in qlist for item in q.items]
-
-        # --- QUOTED totals ---
-        quoted_labor = sum(
-            it.total_price
-            for it in all_items
-            if it.item_type in ("fa_labour", "spr_labour")
-        )
-        quoted_parts = sum(
-            it.total_price
-            for it in all_items
-            if it.item_type == "part"
-        )
-        quoted_total = quoted_labor + quoted_parts
-
-        # --- ACTUAL totals ---
-        hours = sum(evt.hours for evt in job.clock_events or [])
-
-        spr_quoted = any(it.item_type == "spr_labour" for it in all_items)
-        rate = HOURLY_RATE["sprinkler"] if spr_quoted else HOURLY_RATE["fa"]
-
-        actual_labor = hours * rate
-        actual_parts = sum(
-            inv.total_price
-            for inv in job.invoice_items
-            if inv.item_type == "part"
-        )
-        actual_total = actual_labor + actual_parts
-
-        # --- OUTLIER FILTER ---
-        if quoted_total > 0 and abs(quoted_total - actual_total) / quoted_total > OUTLIER_MARGIN_RATIO:
-            continue
-
-        # --- Record margin ---
-        margin = quoted_total - actual_total
-        type_margins[jt]["margin_sum"] += margin
-        type_margins[jt]["job_count"]  += 1
-
-    # --- Build final return structure ---
-    results = []
-    for jt, vals in type_margins.items():
-        count = vals["job_count"]
-        if count == 0:
-            continue
-
-        avg_margin = vals["margin_sum"] / count
-
-        results.append({
-            "job_type": jt,
-            "avg_margin": round(avg_margin, 2),
-            "job_count": count
-        })
-
-    return results
-
 
 
 def get_quote_statistics_by_user(window_start, window_end):

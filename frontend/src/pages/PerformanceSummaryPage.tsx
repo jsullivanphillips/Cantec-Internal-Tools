@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { apiFetch } from '../lib/apiClient'
-import { Alert, Button, Col, Form, Nav, Row, Spinner, Tab } from 'react-bootstrap'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { apiFetch, isAbortError } from '../lib/apiClient'
+import { Alert, Button, Card, Col, Form, Nav, Row, Spinner, Tab } from 'react-bootstrap'
 import { Chart } from 'react-chartjs-2'
 
 function params(start: string, end: string) {
@@ -102,8 +102,8 @@ function buildJobsCompletedDatasets(
     data: jobTotalsByTech,
     type: 'line' as const,
     yAxisID: 'y1',
-    borderColor: '#add8e6',
-    backgroundColor: '#add8e6',
+    borderColor: '#164b7c',
+    backgroundColor: '#164b7c',
     borderWidth: 2,
     fill: false,
     pointRadius: 4,
@@ -204,8 +204,8 @@ function buildDefsByTechDatasets(
     data: defTotalsByTech,
     type: 'line' as const,
     yAxisID: 'y1',
-    borderColor: '#add8e6',
-    backgroundColor: '#add8e6',
+    borderColor: '#164b7c',
+    backgroundColor: '#164b7c',
     borderWidth: 2,
     fill: false,
     pointRadius: 4,
@@ -231,30 +231,35 @@ export default function PerformanceSummaryPage() {
   const [quotesData, setQuotesData] = useState<Record<string, unknown> | null>(null)
   const [techTopN, setTechTopN] = useState<TopN>(5)
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true)
     setError(null)
     const p = params(start, end)
     try {
       const [lu, d, t, q] = await Promise.all([
-        apiFetch(`/api/last_updated${p}`).then((r) => r.json()),
-        apiFetch(`/api/performance/deficiencies${p}`).then((r) => r.json()),
-        apiFetch(`/api/performance/technicians${p}`).then((r) => r.json()),
-        apiFetch(`/api/performance/quotes${p}`).then((r) => r.json()),
+        apiFetch(`/api/last_updated${p}`, { signal }).then((r) => r.json()),
+        apiFetch(`/api/performance/deficiencies${p}`, { signal }).then((r) => r.json()),
+        apiFetch(`/api/performance/technicians${p}`, { signal }).then((r) => r.json()),
+        apiFetch(`/api/performance/quotes${p}`, { signal }).then((r) => r.json()),
       ])
+      if (signal?.aborted) return
       setLastUpdated(lu.last_updated || lu.latest || JSON.stringify(lu))
       setDefData(d)
       setTechData(t)
       setQuotesData(q)
     } catch (e) {
-      setError(String(e))
+      if (isAbortError(e)) return
+      console.error(e)
+      setError('load_failed')
     } finally {
-      setLoading(false)
+      if (!signal?.aborted) setLoading(false)
     }
   }, [start, end])
 
   useEffect(() => {
-    load()
+    const controller = new AbortController()
+    void load(controller.signal)
+    return () => controller.abort()
   }, [])
 
   const deficiencyInsights = defData?.deficiency_insights as
@@ -291,7 +296,7 @@ export default function PerformanceSummaryPage() {
           {
             label: 'Funnel',
             data: funnelValues,
-            backgroundColor: ['#4e79a7', '#f28e2b', '#e15759', '#76b7b2'],
+            backgroundColor: ['#164b7c', '#f58220', '#e15759', '#76b7b2'],
             borderRadius: 6,
           },
         ],
@@ -333,7 +338,7 @@ export default function PerformanceSummaryPage() {
       data: {
         labels: svcData.map((d) => d.service_line),
         datasets: [
-          { label: 'No quote', data: svcData.map((d) => d.no_quote), backgroundColor: '#4e79a7' },
+          { label: 'No quote', data: svcData.map((d) => d.no_quote), backgroundColor: '#164b7c' },
           { label: 'Quoted, no job', data: svcData.map((d) => d.quoted_no_job), backgroundColor: '#f28e2b' },
           { label: 'Quoted → job', data: svcData.map((d) => d.quoted_to_job), backgroundColor: '#e15759' },
           { label: 'Job → completed', data: svcData.map((d) => d.quoted_to_complete), backgroundColor: '#76b7b2' },
@@ -365,7 +370,7 @@ export default function PerformanceSummaryPage() {
       data: {
         labels: displayNames,
         datasets: [
-          { label: 'Submitted', data: quoteStats.map((d) => d.submitted), backgroundColor: '#4e79a7' },
+          { label: 'Submitted', data: quoteStats.map((d) => d.submitted), backgroundColor: '#164b7c' },
           { label: 'Accepted', data: quoteStats.map((d) => d.accepted), backgroundColor: '#59a14f' },
           { label: 'Canceled', data: quoteStats.map((d) => d.canceled), backgroundColor: '#e15759' },
           { label: 'Rejected', data: quoteStats.map((d) => d.rejected), backgroundColor: '#f28e2b' },
@@ -440,7 +445,7 @@ export default function PerformanceSummaryPage() {
           {
             label: 'Job items',
             data: counts.slice(0, N),
-            backgroundColor: 'rgba(12, 98, 166, 0.65)',
+            backgroundColor: 'rgba(22, 75, 124, 0.75)',
             borderRadius: 6,
           },
         ],
@@ -560,129 +565,208 @@ export default function PerformanceSummaryPage() {
     }
   }, [techData, techTopN])
 
+  const tabInner = (body: ReactNode) =>
+    loading ? (
+      <div className="text-center py-5" aria-busy="true" aria-label="Loading performance data">
+        <Spinner />
+      </div>
+    ) : (
+      body
+    )
+
   return (
-    <div className="container my-4">
-      <h1 className="mb-4">Performance Summary</h1>
-      <Row className="mb-3 g-2">
-        <Col md={3}>
-          <Form.Label>Start date</Form.Label>
-          <Form.Control type="date" value={start} onChange={(e) => setStart(e.target.value)} />
-        </Col>
-        <Col md={3}>
-          <Form.Label>End date</Form.Label>
-          <Form.Control type="date" value={end} onChange={(e) => setEnd(e.target.value)} />
-        </Col>
-        <Col md={3} className="d-flex align-items-end">
-          <Button onClick={load} disabled={loading}>
-            Apply
-          </Button>
-        </Col>
-      </Row>
-      <p className="text-muted small">Data last updated: {String(lastUpdated)}</p>
-      {error && <Alert variant="danger">{error}</Alert>}
-      {loading && (
-        <div className="text-center py-5">
-          <Spinner />
-        </div>
-      )}
-      {!loading && (
-        <Tab.Container defaultActiveKey="def">
-          <Nav variant="tabs" className="mb-3">
+    <div className="performance-summary-page d-flex flex-column gap-3">
+      <Card className="app-surface-card">
+        <Card.Body className="p-3 p-md-4">
+          <h1 className="processing-page-title mb-1">Performance Summary</h1>
+          <p className="processing-page-subtitle mb-0">
+            Deficiency and technician metrics for the date range you choose.
+          </p>
+        </Card.Body>
+      </Card>
+
+      <Card className="app-surface-card performance-filters-card">
+        <Card.Body className="p-3 p-md-4">
+          <Row className="g-3 align-items-end">
+            <Col xs={12} sm={6} md={4} lg={3}>
+              <Form.Group>
+                <Form.Label className="small text-muted mb-1">Start date</Form.Label>
+                <Form.Control type="date" value={start} onChange={(e) => setStart(e.target.value)} />
+              </Form.Group>
+            </Col>
+            <Col xs={12} sm={6} md={4} lg={3}>
+              <Form.Group>
+                <Form.Label className="small text-muted mb-1">End date</Form.Label>
+                <Form.Control type="date" value={end} onChange={(e) => setEnd(e.target.value)} />
+              </Form.Group>
+            </Col>
+            <Col xs={12} sm="auto">
+              <Button
+                type="button"
+                variant="outline-secondary"
+                className="performance-apply-btn"
+                onClick={() => void load()}
+                disabled={loading}
+              >
+                Apply
+              </Button>
+            </Col>
+          </Row>
+          <p className="text-muted small mt-3 mb-0">
+            Data last updated: {String(lastUpdated)}
+          </p>
+          {error ? (
+            <Alert variant="warning" className="mt-3 mb-0 py-2 small">
+              Something went wrong loading this data. Try again, or pick a different range.
+            </Alert>
+          ) : null}
+        </Card.Body>
+      </Card>
+
+      <Tab.Container defaultActiveKey="def">
+        <div className="processing-tabs-shell app-surface-card">
+          <Nav variant="tabs" className="mb-0 processing-tabs processing-tabs-shell__nav">
             <Nav.Item>
-              <Nav.Link eventKey="def">Deficiencies and quotes</Nav.Link>
+              <Nav.Link eventKey="def">Deficiencies and Quotes</Nav.Link>
             </Nav.Item>
             <Nav.Item>
-              <Nav.Link eventKey="tech">Technician metrics</Nav.Link>
+              <Nav.Link eventKey="tech">Technician Metrics</Nav.Link>
             </Nav.Item>
           </Nav>
-          <Tab.Content>
+          <Tab.Content className="processing-tabs-shell__panel">
             <Tab.Pane eventKey="def">
-              <Row className="g-3 mb-3">
-                <Col md={6}>
-                  <div className="border rounded p-3 bg-light">
-                    <div className="small text-muted">Avg days (deficiency → quote)</div>
-                    <div className="fs-5">{timeMetrics?.avg_days_deficiency_to_quote ?? '—'} days</div>
-                  </div>
-                </Col>
-                <Col md={6}>
-                  <div className="border rounded p-3 bg-light">
-                    <div className="small text-muted">Avg days (quote → job)</div>
-                    <div className="fs-5">{timeMetrics?.avg_days_quote_to_job ?? '—'} days</div>
-                  </div>
-                </Col>
-              </Row>
-              {funnelChart && (
-                <div className="mb-4" style={{ maxHeight: 420 }}>
-                  <h2 className="h5">Deficiency funnel</h2>
-                  <Chart {...funnelChart} />
-                </div>
+              {tabInner(
+                <>
+                  <Row className="g-3 mb-3">
+                    <Col md={6}>
+                      <Card className="app-surface-card h-100">
+                        <Card.Body className="p-3">
+                          <div className="small text-muted">Avg days (deficiency → quote)</div>
+                          <div className="fs-5 fw-semibold text-dark">
+                            {timeMetrics?.avg_days_deficiency_to_quote ?? '—'} days
+                          </div>
+                        </Card.Body>
+                      </Card>
+                    </Col>
+                    <Col md={6}>
+                      <Card className="app-surface-card h-100">
+                        <Card.Body className="p-3">
+                          <div className="small text-muted">Avg days (quote → job)</div>
+                          <div className="fs-5 fw-semibold text-dark">
+                            {timeMetrics?.avg_days_quote_to_job ?? '—'} days
+                          </div>
+                        </Card.Body>
+                      </Card>
+                    </Col>
+                  </Row>
+                  {funnelChart ? (
+                    <Card className="app-surface-card performance-chart-card mb-3">
+                      <Card.Header as="h2" className="h6 mb-0">
+                        Deficiency funnel
+                      </Card.Header>
+                      <Card.Body className="p-3" style={{ minHeight: 360 }}>
+                        <Chart {...funnelChart} />
+                      </Card.Body>
+                    </Card>
+                  ) : null}
+                  {svcLineChart ? (
+                    <Card className="app-surface-card performance-chart-card mb-3">
+                      <Card.Header as="h2" className="h6 mb-0">
+                        By service line
+                      </Card.Header>
+                      <Card.Body className="p-3" style={{ minHeight: 400 }}>
+                        <Chart {...svcLineChart} />
+                      </Card.Body>
+                    </Card>
+                  ) : null}
+                  {quoteUserChart ? (
+                    <Card className="app-surface-card performance-chart-card mb-0">
+                      <Card.Header as="h2" className="h6 mb-0">
+                        Quote activity by user
+                      </Card.Header>
+                      <Card.Body className="p-3" style={{ minHeight: 360 }}>
+                        <Chart {...quoteUserChart} />
+                      </Card.Body>
+                    </Card>
+                  ) : null}
+                </>,
               )}
-              {svcLineChart && (
-                <div className="mb-4" style={{ maxHeight: 480 }}>
-                  <h2 className="h5">By service line</h2>
-                  <Chart {...svcLineChart} />
-                </div>
-              )}
-              {quoteUserChart && (
-                <div className="mb-4" style={{ maxHeight: 440 }}>
-                  <h2 className="h5">Quote activity by user</h2>
-                  <Chart {...quoteUserChart} />
-                </div>
-              )}
-              <h2 className="h5">Quote cost comparison (raw)</h2>
-              <pre className="bg-white border rounded p-3 small" style={{ maxHeight: 240, overflow: 'auto' }}>
-                {JSON.stringify(quotesData?.quote_cost_comparison_by_job_type ?? {}, null, 2)}
-              </pre>
             </Tab.Pane>
             <Tab.Pane eventKey="tech">
-              <Form.Select
-                className="mb-3"
-                style={{ maxWidth: 200 }}
-                value={techTopN === 'all' ? 'all' : String(techTopN)}
-                onChange={(e) => {
-                  const v = e.target.value
-                  setTechTopN(v === 'all' ? 'all' : Number(v))
-                }}
-              >
-                <option value="5">Top 5 techs</option>
-                <option value="10">Top 10</option>
-                <option value="25">Top 25</option>
-                <option value="all">All</option>
-              </Form.Select>
-              {revenueChart && (
-                <div className="mb-4" style={{ maxHeight: 400 }}>
-                  <h2 className="h5">Revenue per hour</h2>
-                  <Chart {...revenueChart} />
-                </div>
-              )}
-              {jobItemsChart && (
-                <div className="mb-4" style={{ maxHeight: 360 }}>
-                  <h2 className="h5">Job items created</h2>
-                  <Chart {...jobItemsChart} />
-                </div>
-              )}
-              {jobsCompletedChart && (
-                <div className="mb-4" style={{ maxHeight: 420 }}>
-                  <h2 className="h5">Jobs completed by type</h2>
-                  <Chart {...jobsCompletedChart} />
-                </div>
-              )}
-              {defsTechChart && (
-                <div className="mb-4" style={{ maxHeight: 420 }}>
-                  <h2 className="h5">Deficiencies by service line (by tech)</h2>
-                  <Chart type="bar" data={defsTechChart.data} options={defsTechChart.options} />
-                </div>
-              )}
-              {attachmentsChart && (
-                <div className="mb-4" style={{ maxHeight: 400 }}>
-                  <h2 className="h5">Attachments on deficiencies</h2>
-                  <Chart {...attachmentsChart} />
-                </div>
+              {tabInner(
+                <>
+                  <Form.Group className="mb-3" style={{ maxWidth: 220 }}>
+                    <Form.Label className="small text-muted mb-1">Top technicians</Form.Label>
+                    <Form.Select
+                      value={techTopN === 'all' ? 'all' : String(techTopN)}
+                      onChange={(e) => {
+                        const v = e.target.value
+                        setTechTopN(v === 'all' ? 'all' : Number(v))
+                      }}
+                      aria-label="Number of technicians to show in charts"
+                    >
+                      <option value="5">Top 5</option>
+                      <option value="10">Top 10</option>
+                      <option value="25">Top 25</option>
+                      <option value="all">All</option>
+                    </Form.Select>
+                  </Form.Group>
+                  {revenueChart ? (
+                    <Card className="app-surface-card performance-chart-card mb-3">
+                      <Card.Header as="h2" className="h6 mb-0">
+                        Revenue per hour
+                      </Card.Header>
+                      <Card.Body className="p-3" style={{ minHeight: 340 }}>
+                        <Chart {...revenueChart} />
+                      </Card.Body>
+                    </Card>
+                  ) : null}
+                  {jobItemsChart ? (
+                    <Card className="app-surface-card performance-chart-card mb-3">
+                      <Card.Header as="h2" className="h6 mb-0">
+                        Job items created
+                      </Card.Header>
+                      <Card.Body className="p-3" style={{ minHeight: 320 }}>
+                        <Chart {...jobItemsChart} />
+                      </Card.Body>
+                    </Card>
+                  ) : null}
+                  {jobsCompletedChart ? (
+                    <Card className="app-surface-card performance-chart-card mb-3">
+                      <Card.Header as="h2" className="h6 mb-0">
+                        Jobs completed by type
+                      </Card.Header>
+                      <Card.Body className="p-3" style={{ minHeight: 360 }}>
+                        <Chart {...jobsCompletedChart} />
+                      </Card.Body>
+                    </Card>
+                  ) : null}
+                  {defsTechChart ? (
+                    <Card className="app-surface-card performance-chart-card mb-3">
+                      <Card.Header as="h2" className="h6 mb-0">
+                        Deficiencies by service line (by tech)
+                      </Card.Header>
+                      <Card.Body className="p-3" style={{ minHeight: 360 }}>
+                        <Chart type="bar" data={defsTechChart.data} options={defsTechChart.options} />
+                      </Card.Body>
+                    </Card>
+                  ) : null}
+                  {attachmentsChart ? (
+                    <Card className="app-surface-card performance-chart-card mb-0">
+                      <Card.Header as="h2" className="h6 mb-0">
+                        Attachments on deficiencies
+                      </Card.Header>
+                      <Card.Body className="p-3" style={{ minHeight: 340 }}>
+                        <Chart {...attachmentsChart} />
+                      </Card.Body>
+                    </Card>
+                  ) : null}
+                </>,
               )}
             </Tab.Pane>
           </Tab.Content>
-        </Tab.Container>
-      )}
+        </div>
+      </Tab.Container>
     </div>
   )
 }

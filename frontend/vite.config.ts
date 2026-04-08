@@ -26,7 +26,6 @@ export default defineConfig({
       '/webhooks/': { target: 'http://127.0.0.1:5000', changeOrigin: true },
       '/pink_folder/': { target: 'http://127.0.0.1:5000', changeOrigin: true },
       '/limbo_job_tracker/': { target: 'http://127.0.0.1:5000', changeOrigin: true },
-      '/data-analytics/': { target: 'http://127.0.0.1:5000', changeOrigin: true },
       '/assets': { target: 'http://127.0.0.1:5000', changeOrigin: true },
     },
   },
