@@ -5,7 +5,7 @@
     "node": "20.x"
   },
   "scripts": {
-    "heroku-postbuild": "cd frontend && npm install --no-audit --no-fund && npm run build"
+    "heroku-postbuild": "cd frontend && npm install --no-audit --no-fund --include=dev && npm run build"
   },
   "dependencies": {
     "@tiptap/extension-color": "^2.25.0",
