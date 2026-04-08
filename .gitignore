@@ -21,6 +21,8 @@ sdist/
 var/
 wheels/
 share/python-wheels/
+!frontend/src/lib/
+!frontend/src/lib/**
 *.egg-info/
 .installed.cfg
 *.egg
