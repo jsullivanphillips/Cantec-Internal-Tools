@@ -78,7 +78,7 @@ export default function AppLayout() {
 
       <div className="app-body d-flex flex-grow-1">
         <aside className="app-sidebar d-none d-lg-flex flex-column border-end bg-white">
-          <div className="flex-grow-1 overflow-auto pt-3">
+          <div className="app-sidebar__inner flex-grow-1 pt-3">
             <SidebarNav idPrefix="side" />
           </div>
         </aside>
