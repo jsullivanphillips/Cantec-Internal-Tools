@@ -1397,7 +1397,16 @@ export default function ProcessingAttackPage() {
       .sort((a, b) => a.name.localeCompare(b.name))
   }, [pink?.pink_folder_detailed_info])
 
+  const hasCachedStatusData =
+    jobsToday != null ||
+    pink != null ||
+    toInvoice != null ||
+    numComplete != null ||
+    complete != null ||
+    statusHistory.length > 0 ||
+    statusHistoryDaily.length > 0
   const statusBootloading = loading && !jobsToday
+  const statusRefreshingWithCachedData = loading && hasCachedStatusData
 
   const conversionJobs = complete?.jobs_to_be_converted ?? []
   const reportConversionCount = conversionJobs.length
@@ -1472,6 +1481,12 @@ export default function ProcessingAttackPage() {
               <ProcessingStatusTabSkeleton />
             ) : (
               <>
+            {statusRefreshingWithCachedData ? (
+              <div className="processing-refreshing-indicator" role="status" aria-live="polite">
+                <span className="spinner-border spinner-border-sm" aria-hidden="true" />
+                <span>Refreshing data</span>
+              </div>
+            ) : null}
             <Card className="app-surface-card processing-status-card">
               <Card.Body className="p-3">
                 <Row className="g-3">
