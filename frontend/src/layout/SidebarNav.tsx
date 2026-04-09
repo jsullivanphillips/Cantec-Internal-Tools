@@ -17,6 +17,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { to: '/keys', label: 'Keys', icon: 'bi-key', end: true },
       { to: '/find_schedule', label: 'Scheduling Assistant', icon: 'bi-calendar2-check' },
+      { to: '/quotation_tool', label: 'Quotation Tool', icon: 'bi-calculator' },
     ],
   },
   {
