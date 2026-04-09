@@ -749,6 +749,26 @@
   background: transparent;
 }
 
+.processing-page .processing-refreshing-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.85rem;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid #d7dee8;
+  border-radius: 999px;
+  background: #f6f8fb;
+  color: #35506d;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.processing-page .processing-refreshing-indicator .spinner-border {
+  width: 0.9rem;
+  height: 0.9rem;
+  border-width: 0.14em;
+}
+
 .processing-page-title {
   font-size: 1.5rem;
   line-height: 1.25;
