@@ -136,24 +136,29 @@ function ProcessingHistoryTrendLine({ trend, children }: { trend: WowTrend; chil
   return <div className={`small mt-2 fw-medium ${cls}`}>{children}</div>
 }
 
-const HISTORY_PLACEHOLDER_WEEKS = 12
+const TARGET_HISTORY_MAX = 7
+const HISTORY_PLACEHOLDER_WEEKS = TARGET_HISTORY_MAX
 
 function KpiHitWeekStrip({
   hits = null,
+  labels = null,
   emptyMessage = 'No snapshots yet.',
   unsupportedMessage,
   greySlots = HISTORY_PLACEHOLDER_WEEKS,
 }: {
   hits?: (boolean | null)[] | null
+  labels?: string[] | null
   emptyMessage?: string
   unsupportedMessage?: string
   greySlots?: number
 }) {
+  const limitedGreySlots = Math.max(0, Math.min(greySlots, TARGET_HISTORY_MAX))
+
   if (unsupportedMessage) {
     return (
       <div className="processing-kpi-strip" role="img" aria-label={unsupportedMessage}>
         <div className="processing-kpi-strip__track processing-kpi-strip__track--end">
-          {Array.from({ length: greySlots }, (_, i) => (
+          {Array.from({ length: limitedGreySlots }, (_, i) => (
             <span key={`g-${i}`} className="processing-kpi-strip__cell processing-kpi-strip__cell--empty" />
           ))}
         </div>
@@ -164,21 +169,25 @@ function KpiHitWeekStrip({
     return (
       <div className="processing-kpi-strip" role="img" aria-label={emptyMessage}>
         <div className="processing-kpi-strip__track processing-kpi-strip__track--end">
-          {Array.from({ length: greySlots }, (_, i) => (
+          {Array.from({ length: limitedGreySlots }, (_, i) => (
             <span key={`e-${i}`} className="processing-kpi-strip__cell processing-kpi-strip__cell--empty" />
           ))}
         </div>
       </div>
     )
   }
-  const on = hits.filter((h) => h === true).length
-  const off = hits.filter((h) => h === false).length
-  const unknown = hits.filter((h) => h === null).length
-  const aria = `Target met ${on} of ${hits.length} snapshot weeks, missed ${off}, no data ${unknown}. Oldest left, newest right.`
+  const limitedHits = hits.slice(-TARGET_HISTORY_MAX)
+  const limitedLabels = labels?.slice(-TARGET_HISTORY_MAX) ?? null
+  const on = limitedHits.filter((h) => h === true).length
+  const off = limitedHits.filter((h) => h === false).length
+  const unknown = limitedHits.filter((h) => h === null).length
+  const aria = `Target met ${on} of ${limitedHits.length} snapshots, missed ${off}, no data ${unknown}. Newest left, oldest right.`
   return (
     <div className="processing-kpi-strip" role="img" aria-label={aria}>
       <div className="processing-kpi-strip__track processing-kpi-strip__track--end">
-        {hits.map((h, i) => (
+        {[...limitedHits].reverse().map((h, i) => {
+          const labelIndex = limitedHits.length - 1 - i
+          return (
           <span
             key={`w-${i}`}
             className={
@@ -188,11 +197,12 @@ function KpiHitWeekStrip({
                   ? 'processing-kpi-strip__cell processing-kpi-strip__cell--miss'
                   : 'processing-kpi-strip__cell processing-kpi-strip__cell--empty'
             }
-            title={
-              h === true ? 'Met target that week' : h === false ? 'Missed target that week' : 'No data that week'
-            }
-          />
-        ))}
+            title={limitedLabels?.[labelIndex] || `Snapshot ${labelIndex + 1}`}
+          >
+            {h === true ? '✓' : h === false ? '✕' : '·'}
+          </span>
+          )
+        })}
       </div>
     </div>
   )
@@ -203,6 +213,7 @@ function KpiTrendViz({
   sparkValues,
   referenceY,
   hits,
+  preferSparkline = false,
   unsupported,
   unsupportedMessage,
   greySlots,
@@ -213,6 +224,7 @@ function KpiTrendViz({
   sparkValues?: (number | null)[] | null
   referenceY?: number
   hits?: (boolean | null)[] | null
+  preferSparkline?: boolean
   unsupported?: boolean
   unsupportedMessage?: string
   greySlots?: number
@@ -234,18 +246,29 @@ function KpiTrendViz({
       {
         label: 'Value',
         data,
-        borderColor: '#164b7c',
-        backgroundColor: 'rgba(22, 75, 124, 0.08)',
-        fill: true,
+        borderColor: referenceY != null ? '#1f9d55' : '#164b7c',
+        backgroundColor: 'transparent',
+        fill: false,
         tension: 0.35,
         spanGaps: false,
+        segment:
+          referenceY != null
+            ? {
+                borderColor: (ctx) => {
+                  const y0 = ctx.p0.parsed.y
+                  const y1 = ctx.p1.parsed.y
+                  if (y0 == null || y1 == null) return '#164b7c'
+                  return y0 <= referenceY && y1 <= referenceY ? '#1f9d55' : '#c0392b'
+                },
+              }
+            : undefined,
       },
     ]
     if (referenceY != null && data.length > 0) {
       datasets.push({
         label: 'Target',
         data: data.map(() => referenceY),
-        borderColor: 'rgba(245, 130, 32, 0.8)',
+        borderColor: 'rgba(68, 68, 68, 0.9)',
         borderDash: [4, 4],
         fill: false,
         pointRadius: 0,
@@ -254,6 +277,18 @@ function KpiTrendViz({
     }
     return { labels, datasets }
   }, [weekLabels, sparkValues, referenceY])
+
+  const yAxisMarkerValues = useMemo(() => {
+    const numericValues = (sparkValues ?? [])
+      .map((v) => (v != null && Number.isFinite(Number(v)) ? Number(v) : null))
+      .filter((v): v is number => v != null)
+    const highestValue = numericValues.length ? Math.max(...numericValues) : 0
+    const markers = [0, highestValue]
+    if (referenceY != null && Number.isFinite(Number(referenceY))) {
+      markers.push(Number(referenceY))
+    }
+    return [...new Set(markers)].sort((a, b) => a - b)
+  }, [sparkValues, referenceY])
 
   const chartOptions = useMemo(
     (): ChartOptions<'line'> => ({
@@ -266,6 +301,7 @@ function KpiTrendViz({
         legend: { display: false },
         datalabels: { display: false },
         tooltip: {
+          filter: (item) => item.dataset.label !== 'Target',
           callbacks: {
             title: (items) => {
               const i = items[0]?.dataIndex ?? 0
@@ -280,18 +316,64 @@ function KpiTrendViz({
         },
       },
       scales: {
-        x: { display: false },
-        y: { display: false },
+        x: {
+          display: true,
+          grid: {
+            drawTicks: true,
+            tickLength: 4,
+            color: 'transparent',
+          },
+          border: { display: false },
+          ticks: {
+            display: false,
+            autoSkip: false,
+          },
+        },
+        y: {
+          display: true,
+          beginAtZero: true,
+          min: 0,
+          max: yAxisMarkerValues[yAxisMarkerValues.length - 1] ?? 0,
+          afterBuildTicks: (axis) => {
+            axis.ticks = yAxisMarkerValues.map((value) => ({ value }))
+          },
+          grid: {
+            drawTicks: false,
+            color: (ctx) => {
+              const value = Number(ctx.tick.value)
+              if (value === 0) return 'rgba(68, 68, 68, 0.35)'
+              if (referenceY != null && value === Number(referenceY)) return 'rgba(68, 68, 68, 0.28)'
+              if (value === (yAxisMarkerValues[yAxisMarkerValues.length - 1] ?? 0)) {
+                return 'rgba(15, 23, 42, 0.14)'
+              }
+              return 'transparent'
+            },
+          },
+          border: { display: false },
+          ticks: {
+            padding: 4,
+            callback: (value) => {
+              const n = Number(value)
+              if (n === 0) return '0'
+              if (referenceY != null && n === Number(referenceY)) return `${n}`
+              if (n === (yAxisMarkerValues[yAxisMarkerValues.length - 1] ?? 0)) return `${n}`
+              return ''
+            },
+          },
+        },
       },
       elements: {
         line: { borderWidth: 2 },
         point: { radius: 0, hoverRadius: 3 },
       },
     }),
-    [weekLabels],
+    [referenceY, weekLabels, yAxisMarkerValues],
   )
 
   const wrapClass = compact ? 'processing-kpi-sparkline-wrap processing-kpi-sparkline-wrap--compact' : 'processing-kpi-sparkline-wrap'
+  const numericPointCount = Array.isArray(sparkValues)
+    ? sparkValues.filter((v) => v != null && Number.isFinite(Number(v))).length
+    : 0
 
   if (unsupported) {
     return (
@@ -300,20 +382,21 @@ function KpiTrendViz({
           unsupportedMessage={
             unsupportedMessage ?? 'Intraday only — not stored in Monday weekly snapshots.'
           }
+          labels={weekLabels}
           greySlots={greySlots ?? HISTORY_PLACEHOLDER_WEEKS}
         />
       </div>
     )
   }
 
-  // In compact KPI cards, always show hit/miss squares when we have snapshot periods.
-  // Otherwise a numeric daily spark chooses the line-chart path; those charts often render
-  // invisible in the dual-lane grid (blank "Daily" row) while weekly stays on the strip path.
-  if (compact && Array.isArray(hits) && hits.length > 0) {
+  // In compact KPI cards, prefer the sparkline once we have enough numeric history
+  // to draw a meaningful trend. Fall back to hit/miss squares for sparse history.
+  if (compact && Array.isArray(hits) && hits.length > 0 && (!preferSparkline || numericPointCount < 3)) {
     return (
       <div className="processing-kpi-viz-fallback processing-kpi-viz-fallback--compact">
         <KpiHitWeekStrip
           hits={hits}
+          labels={weekLabels}
           greySlots={greySlots ?? HISTORY_PLACEHOLDER_WEEKS}
           emptyMessage={emptyMessage}
         />
@@ -333,6 +416,7 @@ function KpiTrendViz({
     <div className={compact ? 'processing-kpi-viz-fallback processing-kpi-viz-fallback--compact' : 'processing-kpi-viz-fallback'}>
       <KpiHitWeekStrip
         hits={hits ?? null}
+        labels={weekLabels}
         greySlots={greySlots ?? HISTORY_PLACEHOLDER_WEEKS}
         emptyMessage={emptyMessage}
       />
@@ -348,6 +432,7 @@ function ProcessingKpiDualTrend({
   referenceY,
   weeklyHits,
   dailyHits,
+  preferSparkline = false,
   weeklyUnsupported,
   dailyUnsupported,
   weeklyUnsupportedMessage,
@@ -362,6 +447,7 @@ function ProcessingKpiDualTrend({
   referenceY?: number
   weeklyHits?: (boolean | null)[] | null
   dailyHits?: (boolean | null)[] | null
+  preferSparkline?: boolean
   weeklyUnsupported?: boolean
   dailyUnsupported?: boolean
   weeklyUnsupportedMessage?: string
@@ -369,16 +455,26 @@ function ProcessingKpiDualTrend({
   weeklyEmptyMessage?: string
   dailyEmptyMessage?: string
 }) {
+  const weeklyCount = weeklyLabels.length
+  const weeklyDaysLabel = `Past ${weeklyCount} Week${weeklyCount === 1 ? '' : 's'}`
+  const dailyCount = dailyLabels.length
+  const dailyDaysLabel = `Past ${dailyCount} Day${dailyCount === 1 ? '' : 's'}`
+
   return (
-    <div className="processing-kpi-dual-viz">
-      <div className="processing-kpi-dual-viz__lane">
-        <span className="processing-kpi-dual-viz__grain">Weekly</span>
+    <div
+      className={`processing-kpi-dual-viz${
+        preferSparkline ? ' processing-kpi-dual-viz--spark-emphasis' : ' processing-kpi-dual-viz--strip-layout'
+      }`}
+    >
+      <div className="processing-kpi-dual-viz__lane processing-kpi-dual-viz__lane--weekly">
+        <span className="processing-kpi-dual-viz__grain">{weeklyDaysLabel}</span>
         <div className="processing-kpi-dual-viz__chart">
           <KpiTrendViz
             weekLabels={weeklyLabels}
             sparkValues={weeklySpark}
             referenceY={referenceY}
             hits={weeklyHits}
+            preferSparkline={preferSparkline}
             unsupported={weeklyUnsupported}
             unsupportedMessage={weeklyUnsupportedMessage}
             emptyMessage={weeklyEmptyMessage ?? 'No weekly snapshots yet.'}
@@ -386,14 +482,15 @@ function ProcessingKpiDualTrend({
           />
         </div>
       </div>
-      <div className="processing-kpi-dual-viz__lane">
-        <span className="processing-kpi-dual-viz__grain">Daily</span>
+      <div className="processing-kpi-dual-viz__lane processing-kpi-dual-viz__lane--daily">
+        <span className="processing-kpi-dual-viz__grain">{dailyDaysLabel}</span>
         <div className="processing-kpi-dual-viz__chart">
           <KpiTrendViz
             weekLabels={dailyLabels}
             sparkValues={dailySpark}
             referenceY={referenceY}
             hits={dailyHits}
+            preferSparkline={preferSparkline}
             unsupported={dailyUnsupported}
             unsupportedMessage={dailyUnsupportedMessage}
             emptyMessage={dailyEmptyMessage ?? 'No weekday snapshots yet.'}
@@ -410,25 +507,47 @@ function ProcessingKpiCardGrid({
   value,
   viz,
   target,
+  vizUsesParentRows = false,
+  vizCompact = false,
 }: {
   title: ReactNode
   value: ReactNode
   /** Omit for KPIs with no weekly/daily history (e.g. live intraday only). */
   viz?: ReactNode
   target: ReactNode
+  vizUsesParentRows?: boolean
+  vizCompact?: boolean
 }) {
   const showViz = viz != null
   return (
-    <div className="processing-kpi-grid">
+    <div
+      className={`processing-kpi-grid${vizUsesParentRows ? ' processing-kpi-grid--split-viz' : ''}${
+        vizCompact ? ' processing-kpi-grid--compact-viz' : ''
+      }`}
+    >
       <div className="processing-kpi-grid__title">{title}</div>
       <div className="processing-kpi-grid__value">{value}</div>
-      <div
-        className={`processing-kpi-grid__viz${showViz ? '' : ' processing-kpi-grid__viz--empty'}`}
-        aria-hidden={showViz ? undefined : true}
-      >
-        {showViz ? viz : null}
-      </div>
+      {showViz ? (
+        <div className="processing-kpi-grid__viz">
+          {viz}
+        </div>
+      ) : null}
       <div className="processing-kpi-grid__target">{target}</div>
+    </div>
+  )
+}
+
+function ProcessingKpiHeroVizColumn({
+  label,
+  children,
+}: {
+  label?: string
+  children: ReactNode
+}) {
+  return (
+    <div className="processing-kpi-hero-viz-column">
+      {label ? <span className="processing-kpi-hero-viz-column__label">{label}</span> : null}
+      <div className="processing-kpi-hero-viz-column__body">{children}</div>
     </div>
   )
 }
@@ -584,6 +703,13 @@ function generateMondayOptions(): { value: string; label: string }[] {
 
 type ProcessingTabKey = 'status' | 'weekly' | 'limbo'
 
+type ProcessingIntradayRow = {
+  snapshot_date: string
+  captured_at: string
+  captured_at_local: string
+  jobs_to_be_marked_complete: number
+}
+
 function parseProcessingTab(tab: string | null): ProcessingTabKey {
   return tab === 'weekly' || tab === 'limbo' || tab === 'status' ? tab : 'status'
 }
@@ -619,6 +745,7 @@ type ProcessingStatusCachePayload = {
   } | null
   statusHistory: ProcessingStatusHistoryRow[]
   statusHistoryDaily: ProcessingStatusHistoryRow[]
+  intradayHistory: ProcessingIntradayRow[]
 }
 
 const PROCESSING_STATUS_CACHE_KEY = 'processingAttack.statusCache.v1'
@@ -638,6 +765,7 @@ function readProcessingStatusCache(): ProcessingStatusCachePayload | null {
       complete: parsed.complete ?? null,
       statusHistory: Array.isArray(parsed.statusHistory) ? parsed.statusHistory : [],
       statusHistoryDaily: Array.isArray(parsed.statusHistoryDaily) ? parsed.statusHistoryDaily : [],
+      intradayHistory: Array.isArray(parsed.intradayHistory) ? parsed.intradayHistory : [],
     }
   } catch {
     return null
@@ -722,6 +850,7 @@ export default function ProcessingAttackPage() {
   const [weeklyTabHistory, setWeeklyTabHistory] = useState<ProcessingStatusHistoryRow[]>([])
   const [statusHistory, setStatusHistory] = useState<ProcessingStatusHistoryRow[]>([])
   const [statusHistoryDaily, setStatusHistoryDaily] = useState<ProcessingStatusHistoryRow[]>([])
+  const [intradayHistory, setIntradayHistory] = useState<ProcessingIntradayRow[]>([])
   const [oldestJobsModalOpen, setOldestJobsModalOpen] = useState(false)
   const [pinkFolderModalOpen, setPinkFolderModalOpen] = useState(false)
   const [reportConversionModalOpen, setReportConversionModalOpen] = useState(false)
@@ -732,6 +861,26 @@ export default function ProcessingAttackPage() {
     setLoading(true)
     const cached = readProcessingStatusCache()
     try {
+      try {
+        await apiFetch('/processing_attack/refresh_daily_snapshot_if_stale', {
+          method: 'POST',
+          signal,
+        })
+      } catch (e) {
+        if (isAbortError(e)) return
+        console.warn('[Jobs Backlog] refresh_daily_snapshot_if_stale failed:', e)
+      }
+
+      try {
+        await apiFetch('/processing_attack/capture_intraday_jobs_to_be_marked_complete', {
+          method: 'POST',
+          signal,
+        })
+      } catch (e) {
+        if (isAbortError(e)) return
+        console.warn('[Jobs Backlog] capture_intraday_jobs_to_be_marked_complete failed:', e)
+      }
+
       // Use allSettled so one slow/failing endpoint does not block history + KPI updates
       // (empty history was leaving all strip cells gray when e.g. complete_jobs timed out).
       const settled = await Promise.allSettled([
@@ -767,6 +916,15 @@ export default function ProcessingAttackPage() {
             return []
           }
         }),
+        apiFetch('/processing_attack/history_jobs_to_be_marked_complete_intraday', { signal }).then(async (r) => {
+          if (!r.ok) return []
+          try {
+            const j = await r.json()
+            return Array.isArray(j) ? (j as ProcessingIntradayRow[]) : []
+          } catch {
+            return []
+          }
+        }),
       ])
 
       if (signal?.aborted) return
@@ -783,6 +941,7 @@ export default function ProcessingAttackPage() {
       logRejected('complete_jobs', 4)
       logRejected('history_jobs_to_be_marked_complete', 5)
       logRejected('history_processing_status_daily', 6)
+      logRejected('history_jobs_to_be_marked_complete_intraday', 7)
 
       let jobsTodayNext = cached?.jobsToday ?? null
       let pinkNext = cached?.pink ?? null
@@ -791,6 +950,7 @@ export default function ProcessingAttackPage() {
       let completeNext = cached?.complete ?? null
       let statusHistoryNext = cached?.statusHistory ?? []
       let statusHistoryDailyNext = cached?.statusHistoryDaily ?? []
+      let intradayHistoryNext = cached?.intradayHistory ?? []
 
       if (settled[0].status === 'fulfilled') {
         jobsTodayNext = settled[0].value
@@ -822,6 +982,10 @@ export default function ProcessingAttackPage() {
         statusHistoryDailyNext = settled[6].value
         setStatusHistoryDaily(statusHistoryDailyNext)
       }
+      if (settled[7].status === 'fulfilled') {
+        intradayHistoryNext = settled[7].value
+        setIntradayHistory(intradayHistoryNext)
+      }
 
       writeProcessingStatusCache({
         jobsToday: jobsTodayNext,
@@ -831,6 +995,7 @@ export default function ProcessingAttackPage() {
         complete: completeNext,
         statusHistory: statusHistoryNext,
         statusHistoryDaily: statusHistoryDailyNext,
+        intradayHistory: intradayHistoryNext,
       })
     } catch (e) {
       if (isAbortError(e)) return
@@ -850,6 +1015,7 @@ export default function ProcessingAttackPage() {
       setComplete(cached.complete)
       setStatusHistory(cached.statusHistory)
       setStatusHistoryDaily(cached.statusHistoryDaily)
+      setIntradayHistory(cached.intradayHistory)
       setLoading(false)
     }
     const controller = new AbortController()
@@ -1404,7 +1570,8 @@ export default function ProcessingAttackPage() {
     numComplete != null ||
     complete != null ||
     statusHistory.length > 0 ||
-    statusHistoryDaily.length > 0
+    statusHistoryDaily.length > 0 ||
+    intradayHistory.length > 0
   const statusBootloading = loading && !jobsToday
   const statusRefreshingWithCachedData = loading && hasCachedStatusData
 
@@ -1435,6 +1602,136 @@ export default function ProcessingAttackPage() {
     jobsToday?.jobs_processed_today != null && jobsToday?.incoming_jobs_today != null
       ? jobsToday.jobs_processed_today - jobsToday.incoming_jobs_today
       : null
+
+  const jobsToCompleteIntradayChart = useMemo<{
+    chartData: ChartData<'line'> | null
+    options: ChartOptions<'line'> | null
+    emptyMessage: string | null
+  }>(() => {
+    const toLocalMinute = (iso: string) => {
+      const d = new Date(iso)
+      if (Number.isNaN(d.getTime())) return null
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Vancouver',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      }).formatToParts(d)
+      const hh = Number(parts.find((p) => p.type === 'hour')?.value ?? NaN)
+      const mm = Number(parts.find((p) => p.type === 'minute')?.value ?? NaN)
+      if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null
+      return hh * 60 + mm
+    }
+
+    const fmtMinuteLabel = (minuteOfDay: number) => {
+      const hour24 = Math.floor(minuteOfDay / 60)
+      const minute = minuteOfDay % 60
+      const suffix = hour24 >= 12 ? 'PM' : 'AM'
+      const hour12 = hour24 % 12 || 12
+      return `${hour12}:${String(minute).padStart(2, '0')} ${suffix}`
+    }
+
+    const windowStartMinute = 8 * 60 + 30
+    const endMinute = 16 * 60 + 30
+    const now = new Date()
+    const nowMinute = toLocalMinute(now.toISOString()) ?? endMinute
+    const maxMinute = Math.min(Math.max(nowMinute, windowStartMinute), endMinute)
+
+    const points = intradayHistory
+      .map((row) => {
+        const x = toLocalMinute(row.captured_at_local)
+        const y = Number(row.jobs_to_be_marked_complete)
+        if (x == null || !Number.isFinite(y)) return null
+        return { x, y }
+      })
+      .filter((row): row is { x: number; y: number } => row != null)
+      .filter((row) => row.x >= windowStartMinute && row.x <= endMinute)
+      .sort((a, b) => a.x - b.x)
+
+    if (!points.length) {
+      return {
+        chartData: null,
+        options: null,
+        emptyMessage:
+          maxMinute <= windowStartMinute
+            ? 'Intraday chart begins at 8:30 AM Vancouver time.'
+            : 'No intraday changes captured yet today.',
+      }
+    }
+
+    const minMinute = points[0]?.x ?? windowStartMinute
+
+    const chartData: ChartData<'line'> = {
+      datasets: [
+        {
+          label: 'Jobs to be marked complete',
+          data: points,
+          parsing: false,
+          borderColor: '#b42318',
+          backgroundColor: 'transparent',
+          fill: false,
+          tension: 0.2,
+          pointRadius: 2.5,
+          pointHoverRadius: 4,
+          pointBackgroundColor: '#b42318',
+          pointBorderColor: '#b42318',
+        },
+      ],
+    }
+
+    const options: ChartOptions<'line'> = {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      plugins: {
+        legend: { display: false },
+        datalabels: { display: false },
+        tooltip: {
+          callbacks: {
+            title: (items) => {
+              const x = Number(items[0]?.parsed.x ?? NaN)
+              return Number.isFinite(x) ? fmtMinuteLabel(x) : ''
+            },
+            label: (item) => ` Jobs to be marked complete: ${item.parsed.y}`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          type: 'linear',
+          min: minMinute,
+          max: maxMinute,
+          grid: { color: 'rgba(15, 23, 42, 0.08)' },
+          ticks: {
+            autoSkip: false,
+            minRotation: 0,
+            maxRotation: 0,
+            callback: (value, index, ticks) => {
+              const last = ticks.length - 1
+              const middle = Math.round(last / 2)
+              if (index !== 0 && index !== middle && index !== last) return ''
+              return fmtMinuteLabel(Number(value))
+            },
+          },
+        },
+        y: {
+          beginAtZero: true,
+          ticks: { precision: 0 },
+          grid: { color: 'rgba(15, 23, 42, 0.08)' },
+        },
+      },
+    }
+
+    return { chartData, options, emptyMessage: null }
+  }, [intradayHistory])
+
+  const jobsToCompleteWeeklyLabel = `Past ${statusHistoryDerived.weekLabels.length} Week${
+    statusHistoryDerived.weekLabels.length === 1 ? '' : 's'
+  }`
+  const jobsToCompleteDailyLabel = `Past ${dailyHistoryDerived.dayLabels.length} Day${
+    dailyHistoryDerived.dayLabels.length === 1 ? '' : 's'
+  }`
+  const jobsToCompleteIntradayLabel = 'Today'
 
   const pinkJobs = pink?.number_of_pink_folder_jobs ?? 0
   const pinkOk = pinkJobs < KPI_TARGETS.pinkFolderJobsMax
@@ -1495,32 +1792,66 @@ export default function ProcessingAttackPage() {
                       className={`app-kpi-nested processing-tile processing-tile--hero d-flex flex-column ${completeOk ? 'processing-tile--status-good' : 'processing-tile--status-warn'}`}
                     >
                       <Card.Body className="processing-kpi-card-body p-3 flex-grow-1">
-                        <ProcessingKpiCardGrid
-                          title={<span className="processing-kpi-label">Jobs To Be Marked Complete</span>}
-                          value={
+                        <div className="processing-kpi-grid processing-kpi-grid--hero-quad">
+                          <div className="processing-kpi-grid__title">
+                            <span className="processing-kpi-label">Jobs To Be Marked Complete</span>
+                          </div>
+                          <div className="processing-kpi-grid__value">
                             <div
                               className={`processing-hero-value ${completeOk ? 'processing-hero-value--good' : 'processing-hero-value--warn'}`}
                             >
                               {numComplete ?? '—'}
                             </div>
-                          }
-                          viz={
-                            <ProcessingKpiDualTrend
-                              weeklyLabels={statusHistoryDerived.weekLabels}
-                              dailyLabels={dailyHistoryDerived.dayLabels}
-                              weeklySpark={statusHistoryDerived.series?.complete}
-                              dailySpark={dailyHistoryDerived.series?.complete}
-                              referenceY={KPI_TARGETS.jobsToCompleteMax}
-                              weeklyHits={statusHistoryDerived.hits?.complete}
-                              dailyHits={dailyHistoryDerived.hits?.complete}
-                            />
-                          }
-                          target={
+                          </div>
+                          <div className="processing-kpi-grid__target">
                             <div className="processing-kpi-target">
                               Target: {KPI_TARGETS.jobsToCompleteMax} or fewer jobs
                             </div>
-                          }
-                        />
+                          </div>
+                          <div className="processing-kpi-grid__hero-viz processing-kpi-grid__hero-viz--intraday">
+                            <ProcessingKpiHeroVizColumn label={jobsToCompleteIntradayLabel}>
+                              {jobsToCompleteIntradayChart.emptyMessage ? (
+                                <div className="processing-intraday-chart processing-intraday-chart--empty">
+                                  <span>{jobsToCompleteIntradayChart.emptyMessage}</span>
+                                </div>
+                              ) : (
+                                <div className="processing-intraday-chart">
+                                  <Chart
+                                    type="line"
+                                    data={jobsToCompleteIntradayChart.chartData!}
+                                    options={jobsToCompleteIntradayChart.options!}
+                                  />
+                                </div>
+                              )}
+                            </ProcessingKpiHeroVizColumn>
+                          </div>
+                          <div className="processing-kpi-grid__hero-viz processing-kpi-grid__hero-viz--daily">
+                            <ProcessingKpiHeroVizColumn label={jobsToCompleteDailyLabel}>
+                              <KpiTrendViz
+                                weekLabels={dailyHistoryDerived.dayLabels}
+                                sparkValues={dailyHistoryDerived.series?.complete}
+                                referenceY={KPI_TARGETS.jobsToCompleteMax}
+                                hits={dailyHistoryDerived.hits?.complete}
+                                preferSparkline
+                                emptyMessage="No weekday snapshots yet."
+                                compact
+                              />
+                            </ProcessingKpiHeroVizColumn>
+                          </div>
+                          <div className="processing-kpi-grid__hero-viz processing-kpi-grid__hero-viz--weekly">
+                            <ProcessingKpiHeroVizColumn label={jobsToCompleteWeeklyLabel}>
+                              <KpiTrendViz
+                                weekLabels={statusHistoryDerived.weekLabels}
+                                sparkValues={statusHistoryDerived.series?.complete}
+                                referenceY={KPI_TARGETS.jobsToCompleteMax}
+                                hits={statusHistoryDerived.hits?.complete}
+                                preferSparkline
+                                emptyMessage="No weekly snapshots yet."
+                                compact
+                              />
+                            </ProcessingKpiHeroVizColumn>
+                          </div>
+                        </div>
                       </Card.Body>
                     </Card>
                   </Col>
@@ -1552,6 +1883,7 @@ export default function ProcessingAttackPage() {
                               Target: more processed than new (positive net)
                             </div>
                           }
+                          viz={<div className="processing-kpi-grid__viz--empty" aria-hidden="true" />}
                         />
                       </Card.Body>
                     </Card>

@@ -7,7 +7,14 @@ from zoneinfo import ZoneInfo
 from dateutil import parser  # Use dateutil for flexible datetime parsing
 from collections import Counter
 from sqlalchemy import inspect
-from app.db_models import db, JobSummary, ProcessorMetrics, ProcessingStatus, ProcessingStatusDaily
+from app.db_models import (
+    db,
+    JobSummary,
+    ProcessorMetrics,
+    ProcessingStatus,
+    ProcessingStatusDaily,
+    ProcessingStatusIntraday,
+)
 import sys
 from flask import redirect, url_for
 
@@ -19,6 +26,13 @@ processing_attack_bp = Blueprint('processing_attack', __name__)
 api_session = requests.Session()
 
 SERVICE_TRADE_API_BASE = "https://api.servicetrade.com/api"
+VANCOUVER_TZ = ZoneInfo("America/Vancouver")
+INTRADAY_CAPTURE_START_HOUR = 8
+INTRADAY_CAPTURE_START_MINUTE = 30
+INTRADAY_CAPTURE_END_HOUR = 16
+INTRADAY_CAPTURE_END_MINUTE = 30
+INTRADAY_WRITE_THROTTLE_MINUTES = 15
+INTRADAY_RETENTION_DAYS = 7
 
 
 def _job_summary_table_exists() -> bool:
@@ -114,6 +128,211 @@ def _processing_kpi_history_entry(record, ref_date, *, period_key: str, period_v
         "hit_goal_earliest_job_to_be_converted": hit_goal_earliest_job_to_be_converted,
         "number_of_pink_folder_jobs": pink_count,
         "hit_goal_pink_folder": hit_goal_pink_folder,
+    }
+
+
+def _collect_processing_status_payload():
+    """Fetch the shared KPI snapshot fields used by daily processing history."""
+    jobs_to_be_marked_complete, oldest_job_ids, _ = get_jobs_to_be_marked_complete()
+    if jobs_to_be_marked_complete and oldest_job_ids:
+        oldest_job_date, oldest_job_address, oldest_job_type = get_oldest_job_data(oldest_job_ids[0])
+    else:
+        oldest_job_date = oldest_job_address = oldest_job_type = None
+
+    jobs_to_be_invoiced = get_jobs_to_be_invoiced()
+
+    _num_locations_to_be_converted, jobs_to_be_converted = find_report_conversion_jobs()
+    earliest_conversion_job = jobs_to_be_converted[0] if jobs_to_be_converted else None
+
+    if earliest_conversion_job and earliest_conversion_job.get("scheduledDate"):
+        earliest_conversion_date = datetime.fromtimestamp(
+            earliest_conversion_job.get("scheduledDate"),
+            tz=timezone.utc,
+        ).date()
+        earliest_conversion_address = (
+            earliest_conversion_job.get("location", {})
+            .get("address", {})
+            .get("street")
+        )
+        earliest_conversion_job_id = earliest_conversion_job.get("id")
+    else:
+        earliest_conversion_date = None
+        earliest_conversion_address = None
+        earliest_conversion_job_id = None
+
+    jobs_by_job_type = organize_jobs_by_job_type(jobs_to_be_marked_complete)
+    number_of_pink_folder_jobs, _, _ = get_pink_folder_data()
+
+    return {
+        "jobs_to_be_marked_complete": len(jobs_to_be_marked_complete),
+        "jobs_to_be_invoiced": jobs_to_be_invoiced,
+        "jobs_to_be_converted": len(jobs_to_be_converted),
+        "earliest_job_to_be_converted_date": earliest_conversion_date,
+        "earliest_job_to_be_converted_address": earliest_conversion_address,
+        "earliest_job_to_be_converted_job_id": earliest_conversion_job_id,
+        "oldest_job_date": oldest_job_date,
+        "oldest_job_address": oldest_job_address,
+        "oldest_job_type": oldest_job_type,
+        "job_type_count": jobs_by_job_type,
+        "number_of_pink_folder_jobs": number_of_pink_folder_jobs,
+    }
+
+
+def _vancouver_now() -> datetime:
+    return datetime.now(VANCOUVER_TZ)
+
+
+def _intraday_window_for_local_day(now_local: datetime) -> tuple[datetime, datetime]:
+    start_local = now_local.replace(
+        hour=INTRADAY_CAPTURE_START_HOUR,
+        minute=INTRADAY_CAPTURE_START_MINUTE,
+        second=0,
+        microsecond=0,
+    )
+    end_local = now_local.replace(
+        hour=INTRADAY_CAPTURE_END_HOUR,
+        minute=INTRADAY_CAPTURE_END_MINUTE,
+        second=0,
+        microsecond=0,
+    )
+    return start_local, end_local
+
+
+def _serialize_processing_status_intraday(record: ProcessingStatusIntraday) -> dict[str, object]:
+    captured_at = record.captured_at
+    if captured_at.tzinfo is None:
+        captured_at = captured_at.replace(tzinfo=timezone.utc)
+    captured_at_local = captured_at.astimezone(VANCOUVER_TZ)
+    return {
+        "snapshot_date": record.snapshot_date.isoformat(),
+        "captured_at": captured_at.astimezone(timezone.utc).isoformat(),
+        "captured_at_local": captured_at_local.isoformat(),
+        "jobs_to_be_marked_complete": record.jobs_to_be_marked_complete,
+    }
+
+
+def capture_processing_status_intraday_if_due() -> dict[str, object]:
+    now_local = _vancouver_now()
+    snapshot_date = now_local.date()
+    window_start, window_end = _intraday_window_for_local_day(now_local)
+
+    if now_local < window_start:
+        return {
+            "captured": False,
+            "reason": "before_window",
+            "snapshot_date": snapshot_date.isoformat(),
+        }
+    if now_local > window_end:
+        return {
+            "captured": False,
+            "reason": "after_window",
+            "snapshot_date": snapshot_date.isoformat(),
+        }
+
+    latest = (
+        ProcessingStatusIntraday.query
+        .filter_by(snapshot_date=snapshot_date)
+        .order_by(ProcessingStatusIntraday.captured_at.desc())
+        .first()
+    )
+
+    current_value = get_num_jobs_to_be_marked_complete()
+    now_utc = datetime.now(timezone.utc)
+
+    if latest:
+        latest_captured_at = latest.captured_at
+        if latest_captured_at.tzinfo is None:
+            latest_captured_at = latest_captured_at.replace(tzinfo=timezone.utc)
+        age = now_utc - latest_captured_at.astimezone(timezone.utc)
+        if latest.jobs_to_be_marked_complete == current_value:
+            return {
+                "captured": False,
+                "reason": "unchanged",
+                "snapshot_date": snapshot_date.isoformat(),
+                "latest": _serialize_processing_status_intraday(latest),
+            }
+        if age < timedelta(minutes=INTRADAY_WRITE_THROTTLE_MINUTES):
+            return {
+                "captured": False,
+                "reason": "throttled",
+                "snapshot_date": snapshot_date.isoformat(),
+                "latest": _serialize_processing_status_intraday(latest),
+            }
+
+    record = ProcessingStatusIntraday(
+        snapshot_date=snapshot_date,
+        captured_at=now_utc,
+        jobs_to_be_marked_complete=current_value,
+    )
+    db.session.add(record)
+    db.session.commit()
+
+    return {
+        "captured": True,
+        "reason": "inserted",
+        "snapshot_date": snapshot_date.isoformat(),
+        "row": _serialize_processing_status_intraday(record),
+    }
+
+
+def cleanup_stale_processing_status_intraday_rows() -> int:
+    cutoff_date = _vancouver_now().date() - timedelta(days=INTRADAY_RETENTION_DAYS)
+    deleted = (
+        ProcessingStatusIntraday.query
+        .filter(ProcessingStatusIntraday.snapshot_date < cutoff_date)
+        .delete(synchronize_session=False)
+    )
+    db.session.commit()
+    return int(deleted or 0)
+
+
+def _refresh_processing_status_daily_if_stale(max_age_minutes: int = 30) -> dict[str, object]:
+    pt = ZoneInfo("America/Vancouver")
+    now_local = datetime.now(pt)
+    if now_local.weekday() >= 5:
+        return {
+            "refreshed": False,
+            "reason": "weekend",
+            "snapshot_date": now_local.date().isoformat(),
+        }
+
+    snapshot_date = now_local.date()
+    record = ProcessingStatusDaily.query.filter_by(snapshot_date=snapshot_date).first()
+    had_record = record is not None
+    now_utc = datetime.now(timezone.utc)
+
+    if record and record.updated_at:
+        updated_at = record.updated_at
+        if updated_at.tzinfo is None:
+            updated_at = updated_at.replace(tzinfo=timezone.utc)
+        age = now_utc - updated_at.astimezone(timezone.utc)
+        if age < timedelta(minutes=max_age_minutes):
+            return {
+                "refreshed": False,
+                "reason": "fresh",
+                "snapshot_date": snapshot_date.isoformat(),
+                "updated_at": updated_at.isoformat(),
+            }
+
+    status_data = _collect_processing_status_payload()
+    if record:
+        for key, value in status_data.items():
+            setattr(record, key, value)
+        record.updated_at = now_utc
+    else:
+        record = ProcessingStatusDaily(
+            snapshot_date=snapshot_date,
+            updated_at=now_utc,
+            **status_data,
+        )
+        db.session.add(record)
+    db.session.commit()
+
+    return {
+        "refreshed": True,
+        "reason": "stale" if had_record else "missing",
+        "snapshot_date": snapshot_date.isoformat(),
+        "updated_at": now_utc.isoformat(),
     }
 
 
@@ -231,6 +450,53 @@ def jobs_today():
         "jobs_processed_today": jobs_processed_today,
         "incoming_jobs_today": incoming_jobs_today,
         }), 200
+
+
+@processing_attack_bp.route("/processing_attack/refresh_daily_snapshot_if_stale", methods=["POST"])
+def refresh_daily_snapshot_if_stale():
+    try:
+        result = _refresh_processing_status_daily_if_stale(max_age_minutes=30)
+        return jsonify(result), 200
+    except Exception:
+        current_app.logger.exception("refresh_daily_snapshot_if_stale failed")
+        return jsonify({"refreshed": False, "reason": "error"}), 500
+
+
+@processing_attack_bp.route("/processing_attack/capture_intraday_jobs_to_be_marked_complete", methods=["POST"])
+def capture_intraday_jobs_to_be_marked_complete():
+    try:
+        result = capture_processing_status_intraday_if_due()
+        return jsonify(result), 200
+    except Exception:
+        current_app.logger.exception("capture_intraday_jobs_to_be_marked_complete failed")
+        return jsonify({"captured": False, "reason": "error"}), 500
+
+
+@processing_attack_bp.route("/processing_attack/history_jobs_to_be_marked_complete_intraday", methods=["GET"])
+def history_jobs_to_be_marked_complete_intraday():
+    if not inspect(db.engine).has_table(ProcessingStatusIntraday.__table__.name):
+        return jsonify([]), 200
+
+    now_local = _vancouver_now()
+    snapshot_date = now_local.date()
+    window_start, window_end = _intraday_window_for_local_day(now_local)
+    effective_end = min(now_local, window_end)
+
+    records = (
+        ProcessingStatusIntraday.query
+        .filter_by(snapshot_date=snapshot_date)
+        .order_by(ProcessingStatusIntraday.captured_at.asc())
+        .all()
+    )
+
+    payload = []
+    for record in records:
+        item = _serialize_processing_status_intraday(record)
+        captured_at_local = datetime.fromisoformat(str(item["captured_at_local"]))
+        if captured_at_local < window_start or captured_at_local > effective_end:
+            continue
+        payload.append(item)
+    return jsonify(payload), 200
 
 
 @processing_attack_bp.route('/processing_attack/jobs_to_be_invoiced', methods=['GET'])
@@ -1115,4 +1381,3 @@ def get_jobs_processed_by_processor(selected_monday):
             hours_difference = delta.total_seconds() / 3600
             hours_by_processor[user_name] = hours_by_processor.get(user_name, 0) + hours_difference
     return jobs_completed_by_processor, hours_by_processor
-

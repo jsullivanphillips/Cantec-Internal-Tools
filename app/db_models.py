@@ -100,6 +100,35 @@ class ProcessingStatusDaily(db.Model):
         return f"<ProcessingStatusDaily {self.snapshot_date}: {self.jobs_to_be_marked_complete} jobs>"
 
 
+class ProcessingStatusIntraday(db.Model):
+    """Intraday Vancouver-time snapshots for the Jobs To Be Marked Complete KPI."""
+
+    __tablename__ = "processing_status_intraday"
+    __table_args__ = (
+        db.Index(
+            "ix_processing_status_intraday_snapshot_date_captured_at",
+            "snapshot_date",
+            "captured_at",
+        ),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    snapshot_date = db.Column(db.Date, nullable=False, index=True)
+    captured_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        index=True,
+    )
+    jobs_to_be_marked_complete = db.Column(db.Integer, nullable=False, default=0)
+
+    def __repr__(self):
+        return (
+            f"<ProcessingStatusIntraday {self.snapshot_date} "
+            f"{self.captured_at}: {self.jobs_to_be_marked_complete} jobs>"
+        )
+
+
 class SchedulingAttack(db.Model):
     __tablename__ = 'scheduling_attack'
 
