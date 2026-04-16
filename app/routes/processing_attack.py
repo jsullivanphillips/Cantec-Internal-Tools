@@ -478,13 +478,13 @@ def history_jobs_to_be_marked_complete_intraday():
         return jsonify([]), 200
 
     now_local = _vancouver_now()
-    snapshot_date = now_local.date()
-    window_start, window_end = _intraday_window_for_local_day(now_local)
-    effective_end = min(now_local, window_end)
+    latest_snapshot_date = now_local.date()
+    earliest_snapshot_date = latest_snapshot_date - timedelta(days=INTRADAY_RETENTION_DAYS - 1)
 
     records = (
         ProcessingStatusIntraday.query
-        .filter_by(snapshot_date=snapshot_date)
+        .filter(ProcessingStatusIntraday.snapshot_date >= earliest_snapshot_date)
+        .filter(ProcessingStatusIntraday.snapshot_date <= latest_snapshot_date)
         .order_by(ProcessingStatusIntraday.captured_at.asc())
         .all()
     )
@@ -492,7 +492,9 @@ def history_jobs_to_be_marked_complete_intraday():
     payload = []
     for record in records:
         item = _serialize_processing_status_intraday(record)
-        captured_at_local = datetime.fromisoformat(str(item["captured_at_local"]))
+        captured_at_local = datetime.fromisoformat(str(item["captured_at_local"])).astimezone(VANCOUVER_TZ)
+        window_start, window_end = _intraday_window_for_local_day(captured_at_local)
+        effective_end = min(now_local, window_end) if record.snapshot_date == latest_snapshot_date else window_end
         if captured_at_local < window_start or captured_at_local > effective_end:
             continue
         payload.append(item)

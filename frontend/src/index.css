@@ -1322,6 +1322,10 @@
   justify-content: flex-start;
 }
 
+.processing-kpi-dual-viz .processing-kpi-strip {
+  justify-content: flex-start;
+}
+
 .processing-kpi-dual-viz--strip-layout {
   display: grid;
   grid-template-rows: repeat(2, minmax(0, auto));
@@ -1398,11 +1402,13 @@
 }
 
 .processing-kpi-dual-viz__lane--daily .processing-kpi-strip__track--end {
-  justify-content: center;
+  justify-content: flex-start;
+  margin-inline: 0;
 }
 
 .processing-kpi-dual-viz__lane--weekly .processing-kpi-strip__track--end {
-  justify-content: center;
+  justify-content: flex-start;
+  margin-inline: 0;
 }
 
 .processing-kpi-grid--compact-viz .processing-kpi-dual-viz--spark-emphasis .processing-kpi-dual-viz__lane--daily .processing-kpi-dual-viz__chart {

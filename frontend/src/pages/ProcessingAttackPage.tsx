@@ -138,6 +138,7 @@ function ProcessingHistoryTrendLine({ trend, children }: { trend: WowTrend; chil
 
 const TARGET_HISTORY_MAX = 7
 const HISTORY_PLACEHOLDER_WEEKS = TARGET_HISTORY_MAX
+const INTRADAY_DAILY_HISTORY_DAYS = 7
 
 function KpiHitWeekStrip({
   hits = null,
@@ -639,6 +640,30 @@ function endOfDayAfterDays(from: Date, days: number): Date {
   d.setDate(d.getDate() + days)
   d.setHours(23, 59, 59, 999)
   return d
+}
+
+function parseLocalCalendarDate(value: string | null | undefined): Date | null {
+  if (!value) return null
+  const ymd = String(value).slice(0, 10)
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd)
+  if (!m) {
+    const parsed = new Date(String(value))
+    return Number.isNaN(parsed.getTime()) ? null : parsed
+  }
+  const year = Number(m[1])
+  const month = Number(m[2])
+  const day = Number(m[3])
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null
+  const d = new Date(year, month - 1, day)
+  d.setHours(0, 0, 0, 0)
+  return Number.isNaN(d.getTime()) ? null : d
+}
+
+function toLocalYmd(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
 }
 
 function weeksSinceDate(iso: string | undefined): number | null {
@@ -1476,11 +1501,6 @@ export default function ProcessingAttackPage() {
 
   const dailyHistoryDerived = useMemo(() => {
     const rows = statusHistoryDaily
-    const parseIso = (s: string | null | undefined): Date | null => {
-      if (!s) return null
-      const d = new Date(s)
-      return Number.isNaN(d.getTime()) ? null : d
-    }
     const daysBetween = (later: Date, earlier: Date) =>
       Math.round((later.getTime() - earlier.getTime()) / 86400000)
 
@@ -1507,7 +1527,7 @@ export default function ProcessingAttackPage() {
     }
 
     const dayLabels = rows.map((r) => {
-      const d = parseIso(r.snapshot_date ?? null)
+      const d = parseLocalCalendarDate(r.snapshot_date ?? null)
       return d ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : ''
     })
 
@@ -1530,14 +1550,14 @@ export default function ProcessingAttackPage() {
         r.number_of_pink_folder_jobs != null ? Number(r.number_of_pink_folder_jobs) : null,
       ),
       oldestDays: rows.map((r) => {
-        const sd = parseIso(r.snapshot_date ?? null)
-        const od = parseIso(r.oldest_job_date ?? null)
+        const sd = parseLocalCalendarDate(r.snapshot_date ?? null)
+        const od = parseLocalCalendarDate(r.oldest_job_date ?? null)
         if (!sd || !od) return null
         return Math.max(0, daysBetween(sd, od))
       }),
       earliestLeadDays: rows.map((r) => {
-        const sd = parseIso(r.snapshot_date ?? null)
-        const ed = parseIso(r.earliest_job_to_be_converted_date ?? null)
+        const sd = parseLocalCalendarDate(r.snapshot_date ?? null)
+        const ed = parseLocalCalendarDate(r.earliest_job_to_be_converted_date ?? null)
         if (!sd || !ed) return null
         return daysBetween(ed, sd)
       }),
@@ -1608,6 +1628,22 @@ export default function ProcessingAttackPage() {
     options: ChartOptions<'line'> | null
     emptyMessage: string | null
   }>(() => {
+    const toLocalYmdInVancouver = (iso: string) => {
+      const d = new Date(iso)
+      if (Number.isNaN(d.getTime())) return null
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Vancouver',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).formatToParts(d)
+      const y = parts.find((p) => p.type === 'year')?.value
+      const m = parts.find((p) => p.type === 'month')?.value
+      const day = parts.find((p) => p.type === 'day')?.value
+      if (!y || !m || !day) return null
+      return `${y}-${m}-${day}`
+    }
+
     const toLocalMinute = (iso: string) => {
       const d = new Date(iso)
       if (Number.isNaN(d.getTime())) return null
@@ -1634,19 +1670,45 @@ export default function ProcessingAttackPage() {
     const windowStartMinute = 8 * 60 + 30
     const endMinute = 16 * 60 + 30
     const now = new Date()
+    const todayVancouverKey = toLocalYmdInVancouver(now.toISOString())
     const nowMinute = toLocalMinute(now.toISOString()) ?? endMinute
     const maxMinute = Math.min(Math.max(nowMinute, windowStartMinute), endMinute)
 
-    const points = intradayHistory
-      .map((row) => {
-        const x = toLocalMinute(row.captured_at_local)
-        const y = Number(row.jobs_to_be_marked_complete)
-        if (x == null || !Number.isFinite(y)) return null
-        return { x, y }
-      })
-      .filter((row): row is { x: number; y: number } => row != null)
-      .filter((row) => row.x >= windowStartMinute && row.x <= endMinute)
+    const perMinuteLatest = new Map<number, { x: number; y: number; capturedAtMs: number }>()
+    for (const row of intradayHistory) {
+      const rowDay = toLocalYmdInVancouver(row.captured_at_local)
+      if (!todayVancouverKey || rowDay !== todayVancouverKey) continue
+      const x = toLocalMinute(row.captured_at_local)
+      const y = Number(row.jobs_to_be_marked_complete)
+      const capturedAtMs = new Date(row.captured_at_local).getTime()
+      if (
+        x == null ||
+        x < windowStartMinute ||
+        x > endMinute ||
+        !Number.isFinite(y) ||
+        !Number.isFinite(capturedAtMs)
+      ) {
+        continue
+      }
+      const existing = perMinuteLatest.get(x)
+      if (!existing || capturedAtMs > existing.capturedAtMs) {
+        perMinuteLatest.set(x, { x, y, capturedAtMs })
+      }
+    }
+    const points = Array.from(perMinuteLatest.values())
+      .map(({ x, y }) => ({ x, y }))
       .sort((a, b) => a.x - b.x)
+
+    if (Number.isFinite(Number(numComplete)) && maxMinute >= windowStartMinute) {
+      const nowY = Number(numComplete)
+      const existingNowIdx = points.findIndex((p) => p.x === maxMinute)
+      if (existingNowIdx >= 0) {
+        points[existingNowIdx] = { x: maxMinute, y: nowY }
+      } else {
+        points.push({ x: maxMinute, y: nowY })
+        points.sort((a, b) => a.x - b.x)
+      }
+    }
 
     if (!points.length) {
       return {
@@ -1723,13 +1785,170 @@ export default function ProcessingAttackPage() {
     }
 
     return { chartData, options, emptyMessage: null }
-  }, [intradayHistory])
+  }, [intradayHistory, numComplete])
+
+  const jobsToCompletePastDaysChart = useMemo<{
+    chartData: ChartData<'line'> | null
+    options: ChartOptions<'line'> | null
+    emptyMessage: string | null
+    dayCount: number
+  }>(() => {
+    type TimelinePoint = { x: number; y: number; dayKey: string; fallback: boolean }
+    const coarseByDay = new Map<string, number>()
+    statusHistoryDaily.forEach((row) => {
+      const key = row.snapshot_date?.slice(0, 10)
+      const val = row.jobs_to_be_marked_complete
+      if (!key || val == null || !Number.isFinite(Number(val))) return
+      coarseByDay.set(key, Number(val))
+    })
+
+    const intradayPoints: TimelinePoint[] = []
+    for (const row of intradayHistory) {
+      const xDate = new Date(row.captured_at_local)
+      const y = Number(row.jobs_to_be_marked_complete)
+      if (Number.isNaN(xDate.getTime()) || !Number.isFinite(y)) continue
+      intradayPoints.push({
+        x: xDate.getTime(),
+        y,
+        dayKey: toLocalYmd(xDate),
+        fallback: false,
+      })
+    }
+
+    const today = startOfToday()
+    const todayKey = toLocalYmd(today)
+    const latestStart = new Date(today)
+    latestStart.setDate(latestStart.getDate() - (INTRADAY_DAILY_HISTORY_DAYS - 1))
+    const latestStartMs = latestStart.getTime()
+    const endOfToday = new Date(today)
+    endOfToday.setHours(23, 59, 59, 999)
+
+    const availableDayStarts = [
+      ...Array.from(coarseByDay.keys()).map((key) => parseLocalCalendarDate(key)).filter((d): d is Date => d != null),
+      ...intradayPoints.map((p) => parseLocalCalendarDate(p.dayKey)).filter((d): d is Date => d != null),
+    ].filter((d) => d.getTime() <= today.getTime())
+    if (!availableDayStarts.length) {
+      return {
+        chartData: null,
+        options: null,
+        emptyMessage: 'No daily or intraday history available yet.',
+        dayCount: 0,
+      }
+    }
+
+    const earliestAvailable = new Date(Math.min(...availableDayStarts.map((d) => d.getTime())))
+    const rangeStart = earliestAvailable.getTime() > latestStartMs ? earliestAvailable : latestStart
+
+    const dayKeys: string[] = []
+    const dayHasIntraday = new Set<string>()
+    for (let d = new Date(rangeStart); d.getTime() <= today.getTime(); d.setDate(d.getDate() + 1)) {
+      dayKeys.push(toLocalYmd(d))
+    }
+
+    const points: TimelinePoint[] = intradayPoints
+      .filter((p) => p.x >= rangeStart.getTime() && p.x <= endOfToday.getTime())
+      .sort((a, b) => a.x - b.x)
+      .map((p) => {
+        dayHasIntraday.add(p.dayKey)
+        return p
+      })
+
+    for (const dayKey of dayKeys) {
+      if (dayHasIntraday.has(dayKey)) continue
+      const day = parseLocalCalendarDate(dayKey)
+      if (!day) continue
+      const fallbackValue = coarseByDay.get(dayKey)
+      const fallbackMidday = new Date(day)
+      fallbackMidday.setHours(dayKey === todayKey ? new Date().getHours() : 12, dayKey === todayKey ? new Date().getMinutes() : 0, 0, 0)
+      points.push({
+        x: fallbackMidday.getTime(),
+        y: fallbackValue ?? Number.NaN,
+        dayKey,
+        fallback: true,
+      })
+    }
+
+    points.sort((a, b) => a.x - b.x)
+
+    const minX = rangeStart.getTime()
+    const maxX = Math.max(...points.map((p) => p.x), endOfToday.getTime())
+    const fmtAxis = (ms: number) => {
+      const d = new Date(ms)
+      return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+    }
+    const fmtTooltip = (ms: number) => {
+      const d = new Date(ms)
+      return `${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} ${d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
+    }
+
+    const chartData: ChartData<'line'> = {
+      datasets: [
+        {
+          label: 'Jobs to be marked complete',
+          data: points,
+          parsing: false,
+          borderColor: '#b42318',
+          backgroundColor: 'transparent',
+          fill: false,
+          spanGaps: false,
+          tension: 0.1,
+          pointRadius: 0,
+          pointHoverRadius: 0,
+          pointBackgroundColor: (ctx) => ((ctx.raw as { fallback?: boolean } | undefined)?.fallback ? '#667085' : '#b42318'),
+          pointBorderColor: (ctx) => ((ctx.raw as { fallback?: boolean } | undefined)?.fallback ? '#667085' : '#b42318'),
+        },
+      ],
+    }
+
+    const options: ChartOptions<'line'> = {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      plugins: {
+        legend: { display: false },
+        datalabels: { display: false },
+        tooltip: {
+          callbacks: {
+            title: (items) => {
+              const x = Number(items[0]?.parsed.x ?? NaN)
+              return Number.isFinite(x) ? fmtTooltip(x) : ''
+            },
+            label: (item) => {
+              const raw = item.raw as { fallback?: boolean } | undefined
+              const source = raw?.fallback ? ' (daily snapshot fallback)' : ''
+              const y = Number(item.parsed.y)
+              return Number.isFinite(y) ? ` Jobs to be marked complete: ${y}${source}` : ' No data'
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          type: 'linear',
+          min: minX,
+          max: maxX,
+          grid: { color: 'rgba(15, 23, 42, 0.08)' },
+          ticks: {
+            callback: (value) => fmtAxis(Number(value)),
+            maxTicksLimit: 7,
+          },
+        },
+        y: {
+          beginAtZero: true,
+          ticks: { precision: 0 },
+          grid: { color: 'rgba(15, 23, 42, 0.08)' },
+        },
+      },
+    }
+
+    return { chartData, options, emptyMessage: null, dayCount: dayKeys.length }
+  }, [intradayHistory, statusHistoryDaily])
 
   const jobsToCompleteWeeklyLabel = `Past ${statusHistoryDerived.weekLabels.length} Week${
     statusHistoryDerived.weekLabels.length === 1 ? '' : 's'
   }`
-  const jobsToCompleteDailyLabel = `Past ${dailyHistoryDerived.dayLabels.length} Day${
-    dailyHistoryDerived.dayLabels.length === 1 ? '' : 's'
+  const jobsToCompleteDailyLabel = `Past ${jobsToCompletePastDaysChart.dayCount} Day${
+    jobsToCompletePastDaysChart.dayCount === 1 ? '' : 's'
   }`
   const jobsToCompleteIntradayLabel = 'Today'
 
@@ -1827,15 +2046,19 @@ export default function ProcessingAttackPage() {
                           </div>
                           <div className="processing-kpi-grid__hero-viz processing-kpi-grid__hero-viz--daily">
                             <ProcessingKpiHeroVizColumn label={jobsToCompleteDailyLabel}>
-                              <KpiTrendViz
-                                weekLabels={dailyHistoryDerived.dayLabels}
-                                sparkValues={dailyHistoryDerived.series?.complete}
-                                referenceY={KPI_TARGETS.jobsToCompleteMax}
-                                hits={dailyHistoryDerived.hits?.complete}
-                                preferSparkline
-                                emptyMessage="No weekday snapshots yet."
-                                compact
-                              />
+                              {jobsToCompletePastDaysChart.emptyMessage ? (
+                                <div className="processing-intraday-chart processing-intraday-chart--empty">
+                                  <span>{jobsToCompletePastDaysChart.emptyMessage}</span>
+                                </div>
+                              ) : (
+                                <div className="processing-intraday-chart">
+                                  <Chart
+                                    type="line"
+                                    data={jobsToCompletePastDaysChart.chartData!}
+                                    options={jobsToCompletePastDaysChart.options!}
+                                  />
+                                </div>
+                              )}
                             </ProcessingKpiHeroVizColumn>
                           </div>
                           <div className="processing-kpi-grid__hero-viz processing-kpi-grid__hero-viz--weekly">
