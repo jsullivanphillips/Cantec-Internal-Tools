@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { apiFetch, apiJson, isAbortError } from '../lib/apiClient'
 import LimboJobTrackerPanel from '../components/LimboJobTrackerPanel'
@@ -70,22 +70,6 @@ type ProcessingStatusHistoryRow = {
   hit_goal_oldest_job?: boolean | null
   hit_goal_earliest_job_to_be_converted?: boolean | null
   hit_goal_pink_folder?: boolean | null
-}
-
-function previousWeekMondayYmd(mondayYmd: string): string {
-  const [y, m, d] = mondayYmd.split('-').map(Number)
-  const dt = new Date(Date.UTC(y, m - 1, d))
-  dt.setUTCDate(dt.getUTCDate() - 7)
-  const yy = dt.getUTCFullYear()
-  const mm = String(dt.getUTCMonth() + 1).padStart(2, '0')
-  const dd = String(dt.getUTCDate()).padStart(2, '0')
-  return `${yy}-${mm}-${dd}`
-}
-
-function historyRowForMonday(rows: ProcessingStatusHistoryRow[], mondayYmd: string): ProcessingStatusHistoryRow | null {
-  const p = mondayYmd.slice(0, 10)
-  const hit = rows.find((r) => (r.week_start ?? '').slice(0, 10) === p)
-  return hit ?? null
 }
 
 type WowTrend = 'better' | 'worse' | 'same' | 'unknown'
@@ -667,6 +651,40 @@ function ProcessingStatusTabSkeleton() {
   )
 }
 
+function ProcessingHistoryKpiRowSkeleton() {
+  return (
+    <Row className="g-3 mb-3" aria-busy="true" aria-label="Loading weekly KPI cards">
+      {[0, 1].map((i) => (
+        <Col md={6} lg={6} key={i}>
+          <Card className="h-100">
+            <Card.Body>
+              <span className="home-skeleton-bar d-block" style={{ width: '62%' }} />
+              <span
+                className="home-skeleton-bar d-block mt-2"
+                style={{ width: '36%', height: '2rem', borderRadius: '0.5rem' }}
+              />
+              <span className="home-skeleton-bar d-block mt-2" style={{ width: '58%' }} />
+              <span className="home-skeleton-bar d-block mt-2" style={{ width: '72%' }} />
+            </Card.Body>
+          </Card>
+        </Col>
+      ))}
+    </Row>
+  )
+}
+
+function ProcessingHistoryChartSkeleton({ minHeight = 220 }: { minHeight?: number }) {
+  return (
+    <div aria-busy="true" aria-label="Loading chart">
+      <span className="home-skeleton-bar d-block mb-2" style={{ width: '34%' }} />
+      <div
+        className="home-skeleton-bar d-block w-100"
+        style={{ height: `${minHeight}px`, borderRadius: '0.5rem' }}
+      />
+    </div>
+  )
+}
+
 type ConversionJob = {
   id?: number
   scheduledDate?: number
@@ -871,6 +889,11 @@ export default function ProcessingAttackPage() {
 
   const weekOptions = useMemo(() => generateMondayOptions(), [])
   const [selectedMonday, setSelectedMonday] = useState(weekOptions[0]?.value || '')
+  const [weekSelectorMonth, setWeekSelectorMonth] = useState(
+    weekOptions[0]?.value ? `${weekOptions[0].value.slice(0, 7)}-01` : '',
+  )
+  const [weekSelectorOpen, setWeekSelectorOpen] = useState(false)
+  const weekSelectorRef = useRef<HTMLDivElement | null>(null)
 
   const [jobsToday, setJobsToday] = useState<{ jobs_processed_today?: number; incoming_jobs_today?: number } | null>(
     null,
@@ -916,6 +939,12 @@ export default function ProcessingAttackPage() {
     hours_processed_by_processor?: Record<string, number>
     hours_processed_by_processor_previous_week?: Record<string, number>
   } | null>(null)
+  const [overallWeeklyTrend, setOverallWeeklyTrend] = useState<{
+    weeks?: string[]
+    jobs?: number[]
+    hours?: number[]
+    job_summary_table_missing?: boolean
+  } | null>(null)
   /** Latest history fetch for Processing History tab (falls back to statusHistory until loaded). */
   const [weeklyTabHistory, setWeeklyTabHistory] = useState<ProcessingStatusHistoryRow[]>([])
   const [statusHistory, setStatusHistory] = useState<ProcessingStatusHistoryRow[]>([])
@@ -926,6 +955,7 @@ export default function ProcessingAttackPage() {
   const [reportConversionModalOpen, setReportConversionModalOpen] = useState(false)
   const [pinkTechExpanded, setPinkTechExpanded] = useState<Record<string, boolean>>({})
   const [loading, setLoading] = useState(true)
+  const [weeklyLoading, setWeeklyLoading] = useState(true)
 
   const refreshStatus = useCallback(async (signal?: AbortSignal) => {
     setLoading(true)
@@ -1095,7 +1125,8 @@ export default function ProcessingAttackPage() {
 
   const loadWeekly = useCallback(async (signal?: AbortSignal) => {
     if (!selectedMonday) return
-    const [prRes, bpRes, histRes] = await Promise.allSettled([
+    setWeeklyLoading(true)
+    const [prRes, bpRes, histRes, overallTrendRes] = await Promise.allSettled([
       apiJson<typeof processed>('/processing_attack/processed_data', {
         method: 'POST',
         body: JSON.stringify({ selectedMonday }),
@@ -1107,6 +1138,7 @@ export default function ProcessingAttackPage() {
         signal,
       }),
       apiFetch('/processing_attack/history_jobs_to_be_marked_complete', { signal }).then((r) => r.json()),
+      apiFetch('/processing_attack/overall_weekly_trend', { signal }).then((r) => r.json()),
     ])
     if (signal?.aborted) return
     if (prRes.status === 'fulfilled') setProcessed(prRes.value)
@@ -1125,6 +1157,13 @@ export default function ProcessingAttackPage() {
       if (histRes.status === 'rejected' && !isAbortError(histRes.reason)) console.error(histRes.reason)
       setWeeklyTabHistory([])
     }
+    if (overallTrendRes.status === 'fulfilled') {
+      setOverallWeeklyTrend(overallTrendRes.value)
+    } else {
+      if (!isAbortError(overallTrendRes.reason)) console.error(overallTrendRes.reason)
+      setOverallWeeklyTrend(null)
+    }
+    setWeeklyLoading(false)
   }, [selectedMonday])
 
   useEffect(() => {
@@ -1137,57 +1176,216 @@ export default function ProcessingAttackPage() {
     () => (weeklyTabHistory.length > 0 ? weeklyTabHistory : statusHistory),
     [weeklyTabHistory, statusHistory],
   )
+  const weekLabelByValue = useMemo(() => {
+    const map = new Map<string, string>()
+    weekOptions.forEach((o) => map.set(o.value, o.label))
+    return map
+  }, [weekOptions])
+  const weekMonthKeys = useMemo(
+    () => Array.from(new Set(weekOptions.map((o) => `${o.value.slice(0, 7)}-01`))),
+    [weekOptions],
+  )
+  const availableWeekSet = useMemo(() => {
+    const set = new Set<string>()
+    ;(overallWeeklyTrend?.weeks ?? []).forEach((w) => {
+      const d = parseLocalCalendarDate(w)
+      if (d) set.add(toLocalYmd(d))
+    })
+    if (set.size === 0) {
+      historyRowsForWeekly.forEach((r) => {
+        const d = parseLocalCalendarDate(r.week_start)
+        if (d) set.add(toLocalYmd(d))
+      })
+    }
+    return set
+  }, [overallWeeklyTrend, historyRowsForWeekly])
+  useEffect(() => {
+    if (!selectedMonday) return
+    setWeekSelectorMonth(`${selectedMonday.slice(0, 7)}-01`)
+  }, [selectedMonday])
+  const activeMonthIndex = useMemo(
+    () => Math.max(0, weekMonthKeys.findIndex((m) => m === weekSelectorMonth)),
+    [weekMonthKeys, weekSelectorMonth],
+  )
+  const visibleMonthKey = weekMonthKeys[activeMonthIndex] ?? ''
+  const visibleMonthLabel = useMemo(() => {
+    const d = parseLocalCalendarDate(visibleMonthKey)
+    return d ? d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) : 'Month'
+  }, [visibleMonthKey])
+  const weeksForVisibleMonth = useMemo(
+    () => weekOptions.filter((o) => visibleMonthKey && o.value.startsWith(visibleMonthKey.slice(0, 7))),
+    [weekOptions, visibleMonthKey],
+  )
+  const selectedWeekLabel = useMemo(
+    () => weekLabelByValue.get(selectedMonday) ?? (selectedMonday || 'Select week'),
+    [weekLabelByValue, selectedMonday],
+  )
+  useEffect(() => {
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!weekSelectorOpen) return
+      if (!weekSelectorRef.current?.contains(event.target as Node)) {
+        setWeekSelectorOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handlePointerDown)
+    return () => document.removeEventListener('mousedown', handlePointerDown)
+  }, [weekSelectorOpen])
 
   const jobsToProcess24WeekTrend = useMemo(() => {
-    const points = historyRowsForWeekly
+    const dayPoints = statusHistoryDaily
       .map((r) => {
-        const ws = r.week_start ? new Date(r.week_start) : null
+        const snapshotDate = parseLocalCalendarDate(r.snapshot_date)
         const v = r.jobs_to_be_marked_complete
-        if (!ws || Number.isNaN(ws.getTime())) return null
+        if (!snapshotDate || Number.isNaN(snapshotDate.getTime())) return null
         if (v == null || !Number.isFinite(Number(v))) return null
-        return { weekStart: ws, value: Number(v) }
+        return { snapshotDate, value: Number(v) }
       })
-      .filter((p): p is { weekStart: Date; value: number } => p != null)
-      .sort((a, b) => a.weekStart.getTime() - b.weekStart.getTime())
-      .slice(-24)
+      .filter((p): p is { snapshotDate: Date; value: number } => p != null)
+      .sort((a, b) => a.snapshotDate.getTime() - b.snapshotDate.getTime())
 
-    if (!points.length) return null
+    if (!dayPoints.length) return null
 
-    const labels = points.map((p) =>
-      p.weekStart.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+    const processedByWeek = new Map<string, number>()
+    const overallWeeks = overallWeeklyTrend?.weeks ?? []
+    const overallJobs = overallWeeklyTrend?.jobs ?? []
+    const pairCount = Math.min(overallWeeks.length, overallJobs.length)
+    for (let i = 0; i < pairCount; i += 1) {
+      const weekLabel = overallWeeks[i]
+      const jobs = Number(overallJobs[i])
+      if (!weekLabel || !Number.isFinite(jobs)) continue
+      const weekDate = new Date(weekLabel)
+      if (Number.isNaN(weekDate.getTime())) continue
+      weekDate.setHours(0, 0, 0, 0)
+      processedByWeek.set(toLocalYmd(weekDate), jobs)
+    }
+
+    const pointsWithWeek = dayPoints.map((p) => {
+      const weekStart = new Date(p.snapshotDate)
+      const dayOfWeek = weekStart.getDay()
+      const mondayOffset = (dayOfWeek + 6) % 7
+      weekStart.setDate(weekStart.getDate() - mondayOffset)
+      weekStart.setHours(0, 0, 0, 0)
+      return { ...p, weekKey: toLocalYmd(weekStart), weekStart }
+    })
+
+    const distinctWeekKeys = Array.from(new Set(pointsWithWeek.map((p) => p.weekKey))).slice(-6)
+    if (!distinctWeekKeys.length) return null
+    const selectedWeekKeys = new Set(distinctWeekKeys)
+    const filteredPoints = pointsWithWeek.filter((p) => selectedWeekKeys.has(p.weekKey))
+    if (!filteredPoints.length) return null
+
+    const labels = filteredPoints.map((p) =>
+      p.snapshotDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
     )
-    const chartData: ChartData<'line'> = {
+    const jobsToComplete = filteredPoints.map((p) => p.value)
+    const lineWeekKeys = filteredPoints.map((p) => p.weekKey)
+
+    const firstIndexByWeek = new Map<string, number>()
+    lineWeekKeys.forEach((key, idx) => {
+      if (!firstIndexByWeek.has(key)) firstIndexByWeek.set(key, idx)
+    })
+    const jobsProcessedBars = Array.from({ length: labels.length }, () => null as number | null)
+    distinctWeekKeys.forEach((weekKey) => {
+      const idx = firstIndexByWeek.get(weekKey)
+      if (idx == null) return
+      jobsProcessedBars[idx] = processedByWeek.get(weekKey) ?? null
+    })
+
+    const chartData: ChartData<'bar' | 'line'> = {
       labels,
       datasets: [
         {
-          label: 'Jobs to be processed',
-          data: points.map((p) => p.value),
-          borderColor: '#164b7c',
-          backgroundColor: 'rgba(22, 75, 124, 0.12)',
-          fill: true,
-          tension: 0.34,
-          pointRadius: 0,
-          pointHoverRadius: 3,
+          type: 'bar',
+          label: 'Jobs processed',
+          data: jobsProcessedBars,
+          yAxisID: 'processed',
+          backgroundColor: 'rgba(22, 75, 124, 0.28)',
+          borderColor: 'rgba(22, 75, 124, 0.65)',
+          borderWidth: 1,
+          categoryPercentage: 0.95,
+          barPercentage: 0.95,
+          order: 2,
+        },
+        {
+          label: 'Jobs to be marked complete',
+          data: jobsToComplete,
+          yAxisID: 'backlog',
+          borderColor: '#1f9d55',
+          backgroundColor: 'transparent',
+          fill: false,
+          tension: 0.32,
+          spanGaps: true,
+          pointRadius: 2,
+          pointHoverRadius: 4,
+          pointBackgroundColor: (ctx) => {
+            const y = Number(ctx.parsed.y)
+            return Number.isFinite(y) && y > KPI_TARGETS.jobsToCompleteMax ? '#c0392b' : '#1f9d55'
+          },
+          pointBorderColor: (ctx) => {
+            const y = Number(ctx.parsed.y)
+            return Number.isFinite(y) && y > KPI_TARGETS.jobsToCompleteMax ? '#c0392b' : '#1f9d55'
+          },
+          segment: {
+            borderColor: (ctx) => {
+              const y0 = Number(ctx.p0.parsed.y)
+              const y1 = Number(ctx.p1.parsed.y)
+              if (!Number.isFinite(y0) || !Number.isFinite(y1)) return '#1f9d55'
+              return y0 <= KPI_TARGETS.jobsToCompleteMax && y1 <= KPI_TARGETS.jobsToCompleteMax
+                ? '#1f9d55'
+                : '#c0392b'
+            },
+          },
+          order: 1,
         },
       ],
     }
 
-    const options: ChartOptions<'line'> = {
+    const options: ChartOptions<'bar' | 'line'> = {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
         legend: { display: false },
         datalabels: { display: false },
+        tooltip: {
+          callbacks: {
+            title: (items) => labels[items[0]?.dataIndex ?? 0] || '',
+            label: (item) => {
+              if (item.dataset.yAxisID === 'processed') {
+                const jobs = Number(item.parsed.y)
+                if (!Number.isFinite(jobs)) return ' Jobs processed: —'
+                const weekKey = lineWeekKeys[item.dataIndex]
+                const weekDate = parseLocalCalendarDate(weekKey)
+                const weekLabel = weekDate
+                  ? weekDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+                  : weekKey
+                return ` Jobs processed (week of ${weekLabel}): ${Math.round(jobs)}`
+              }
+              const backlog = Number(item.parsed.y)
+              return Number.isFinite(backlog)
+                ? ` Jobs to be marked complete: ${Math.round(backlog)}`
+                : ' Jobs to be marked complete: —'
+            },
+          },
+        },
       },
       scales: {
         x: {
           grid: { display: false },
-          ticks: { maxTicksLimit: 8 },
+          ticks: { maxTicksLimit: 12 },
         },
-        y: {
+        backlog: {
+          type: 'linear',
+          position: 'left',
           beginAtZero: true,
           ticks: { precision: 0 },
           grid: { color: 'rgba(15, 23, 42, 0.08)' },
+        },
+        processed: {
+          type: 'linear',
+          position: 'right',
+          beginAtZero: true,
+          ticks: { precision: 0 },
+          grid: { drawOnChartArea: false },
         },
       },
     }
@@ -1195,12 +1393,9 @@ export default function ProcessingAttackPage() {
     return {
       chartData,
       options,
-      windowText:
-        points.length >= 24
-          ? 'Past 24 weeks'
-          : `Past ${points.length} week${points.length === 1 ? '' : 's'}`,
+      windowText: `Past ${distinctWeekKeys.length} week${distinctWeekKeys.length === 1 ? '' : 's'}`,
     }
-  }, [historyRowsForWeekly])
+  }, [statusHistoryDaily, overallWeeklyTrend])
 
   const jobsProcessedWow = useMemo(() => {
     if (!processed) {
@@ -1231,27 +1426,6 @@ export default function ProcessingAttackPage() {
       'hours',
     )
   }, [processed])
-
-  const jobsToCompleteSnapshotWow = useMemo(() => {
-    if (!selectedMonday) {
-      return { trend: 'unknown' as WowTrend, line: 'Select a week.' }
-    }
-    const prevMon = previousWeekMondayYmd(selectedMonday)
-    const curRow = historyRowForMonday(historyRowsForWeekly, selectedMonday)
-    const prevRow = historyRowForMonday(historyRowsForWeekly, prevMon)
-    const cur = curRow?.jobs_to_be_marked_complete
-    if (cur == null || !Number.isFinite(Number(cur))) {
-      return { trend: 'unknown' as WowTrend, line: 'No snapshot for this week in history.' }
-    }
-    const prev = prevRow?.jobs_to_be_marked_complete
-    if (prev == null || !Number.isFinite(Number(prev))) {
-      return {
-        trend: 'unknown' as WowTrend,
-        line: `${Number(cur)} jobs — no snapshot for the previous week to compare.`,
-      }
-    }
-    return wowNumeric(cur, prev, true, 'count')
-  }, [historyRowsForWeekly, selectedMonday])
 
   const procJobsByProcessorChart = useMemo(() => {
     if (!byProcessor?.jobs_processed_by_processor) return null
@@ -2764,7 +2938,7 @@ export default function ProcessingAttackPage() {
           </Tab.Pane>
           <Tab.Pane eventKey="weekly">
             <Card className="app-surface-card mb-3">
-              <Card.Header>Jobs to be processed trend</Card.Header>
+              <Card.Header className="fw-semibold">Jobs Backlog vs Weekly Throughput</Card.Header>
               <Card.Body className="p-3">
                 {jobsToProcess24WeekTrend ? (
                   <>
@@ -2778,105 +2952,139 @@ export default function ProcessingAttackPage() {
                     </div>
                   </>
                 ) : (
-                  <p className="text-muted small mb-0">No weekly snapshot history yet.</p>
+                  <p className="text-muted small mb-0">No daily snapshot history yet.</p>
                 )}
               </Card.Body>
             </Card>
             <Card className="app-surface-card mb-3">
               <Card.Body>
-                <Row className="g-2 align-items-end">
-                  <Col xs="auto">
-                    <Form.Label className="small">Week (Mon)</Form.Label>
-                    <Form.Select
-                      value={selectedMonday}
-                      onChange={(e) => setSelectedMonday(e.target.value)}
-                      style={{ minWidth: 220 }}
+                <Form.Label className="small mb-2">Week (Mon)</Form.Label>
+                <div className="position-relative" ref={weekSelectorRef}>
+                  <Button
+                    variant="outline-secondary"
+                    className="d-flex justify-content-between align-items-center"
+                    style={{ width: '100%', maxWidth: 360 }}
+                    onClick={() => setWeekSelectorOpen((s) => !s)}
+                    aria-expanded={weekSelectorOpen}
+                    aria-haspopup="true"
+                  >
+                    <span>{selectedWeekLabel}</span>
+                    <span aria-hidden>{weekSelectorOpen ? '▴' : '▾'}</span>
+                  </Button>
+                  {weekSelectorOpen ? (
+                    <div
+                      className="position-absolute bg-white border rounded shadow-sm p-2 mt-1"
+                      style={{ zIndex: 20, maxHeight: 360, overflowY: 'auto', width: '100%', maxWidth: 360 }}
                     >
-                      {weekOptions.map((o) => (
-                        <option key={o.value} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </Form.Select>
-                  </Col>
-                  <Col xs="auto">
-                    <Button size="sm" onClick={() => void loadWeekly()}>
-                      Reload week
-                    </Button>
-                  </Col>
-                </Row>
+                      <div className="d-flex align-items-center justify-content-between gap-2 mb-2">
+                        <Button
+                          variant="outline-secondary"
+                          size="sm"
+                          disabled={activeMonthIndex >= weekMonthKeys.length - 1}
+                          onClick={() => {
+                            const nextIndex = Math.min(weekMonthKeys.length - 1, activeMonthIndex + 1)
+                            setWeekSelectorMonth(weekMonthKeys[nextIndex] ?? visibleMonthKey)
+                          }}
+                        >
+                          ‹
+                        </Button>
+                        <div className="small fw-semibold text-nowrap" style={{ minWidth: 140, textAlign: 'center' }}>
+                          {visibleMonthLabel}
+                        </div>
+                        <Button
+                          variant="outline-secondary"
+                          size="sm"
+                          disabled={activeMonthIndex <= 0}
+                          onClick={() => {
+                            const nextIndex = Math.max(0, activeMonthIndex - 1)
+                            setWeekSelectorMonth(weekMonthKeys[nextIndex] ?? visibleMonthKey)
+                          }}
+                        >
+                          ›
+                        </Button>
+                      </div>
+                      <div className="d-grid gap-2">
+                        {weeksForVisibleMonth.map((o) => {
+                          const disabled = !availableWeekSet.has(o.value)
+                          return (
+                            <Button
+                              key={o.value}
+                              variant={selectedMonday === o.value ? 'primary' : 'outline-secondary'}
+                              size="sm"
+                              className="text-start"
+                              disabled={disabled}
+                              onClick={() => {
+                                setSelectedMonday(o.value)
+                                setWeekSelectorOpen(false)
+                              }}
+                            >
+                              {weekLabelByValue.get(o.value) ?? o.value}
+                            </Button>
+                          )
+                        })}
+                        {weeksForVisibleMonth.length === 0 ? (
+                          <p className="small text-muted mb-0">No weeks available for this month.</p>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
               </Card.Body>
             </Card>
-            <Row className="g-3 mb-3">
-              <Col md={6} lg={4}>
-                <Card className="h-100">
-                  <Card.Header>Number of jobs processed</Card.Header>
-                  <Card.Body>
-                    <div className="fs-3">
-                      {processed && !processed.error
-                        ? (processed.total_jobs_processed ?? '—')
-                        : '—'}
-                    </div>
-                    <div className="small text-muted">
-                      Previous week:{' '}
-                      {processed && !processed.error
-                        ? (processed.total_jobs_processed_previous_week ?? '—')
-                        : '—'}
-                    </div>
-                    <ProcessingHistoryTrendLine trend={jobsProcessedWow.trend}>
-                      {jobsProcessedWow.line}
-                    </ProcessingHistoryTrendLine>
-                  </Card.Body>
-                </Card>
-              </Col>
-              <Col md={6} lg={4}>
-                <Card className="h-100">
-                  <Card.Header>Tech hours processed</Card.Header>
-                  <Card.Body>
-                    <div className="fs-3">
-                      {processed && !processed.error && processed.total_tech_hours_processed != null
-                        ? Number(processed.total_tech_hours_processed).toFixed(1)
-                        : '—'}
-                    </div>
-                    <div className="small text-muted">
-                      Previous week:{' '}
-                      {processed &&
-                      !processed.error &&
-                      processed.total_tech_hours_processed_previous_week != null
-                        ? Number(processed.total_tech_hours_processed_previous_week).toFixed(1)
-                        : '—'}
-                    </div>
-                    <ProcessingHistoryTrendLine trend={techHoursWow.trend}>{techHoursWow.line}</ProcessingHistoryTrendLine>
-                  </Card.Body>
-                </Card>
-              </Col>
-              <Col md={12} lg={4}>
-                <Card className="h-100">
-                  <Card.Header>Jobs to be marked complete (weekly snapshot)</Card.Header>
-                  <Card.Body>
-                    <div className="fs-3">
-                      {(() => {
-                        const row = selectedMonday
-                          ? historyRowForMonday(historyRowsForWeekly, selectedMonday)
-                          : null
-                        const v = row?.jobs_to_be_marked_complete
-                        return v != null && Number.isFinite(Number(v)) ? v : '—'
-                      })()}
-                    </div>
-                    <div className="small text-muted">
-                      Compared to the prior week&apos;s snapshot. A lower count means less backlog still waiting to be marked complete.
-                    </div>
-                    <ProcessingHistoryTrendLine trend={jobsToCompleteSnapshotWow.trend}>
-                      {jobsToCompleteSnapshotWow.line}
-                    </ProcessingHistoryTrendLine>
-                  </Card.Body>
-                </Card>
-              </Col>
-            </Row>
+            {weeklyLoading ? (
+              <ProcessingHistoryKpiRowSkeleton />
+            ) : (
+              <Row className="g-3 mb-3">
+                <Col md={6} lg={6}>
+                  <Card className="h-100">
+                    <Card.Header>Number of jobs processed</Card.Header>
+                    <Card.Body>
+                      <div className="fs-3">
+                        {processed && !processed.error
+                          ? (processed.total_jobs_processed ?? '—')
+                          : '—'}
+                      </div>
+                      <div className="small text-muted">
+                        Previous week:{' '}
+                        {processed && !processed.error
+                          ? (processed.total_jobs_processed_previous_week ?? '—')
+                          : '—'}
+                      </div>
+                      <ProcessingHistoryTrendLine trend={jobsProcessedWow.trend}>
+                        {jobsProcessedWow.line}
+                      </ProcessingHistoryTrendLine>
+                    </Card.Body>
+                  </Card>
+                </Col>
+                <Col md={6} lg={6}>
+                  <Card className="h-100">
+                    <Card.Header>Tech hours processed</Card.Header>
+                    <Card.Body>
+                      <div className="fs-3">
+                        {processed && !processed.error && processed.total_tech_hours_processed != null
+                          ? Number(processed.total_tech_hours_processed).toFixed(1)
+                          : '—'}
+                      </div>
+                      <div className="small text-muted">
+                        Previous week:{' '}
+                        {processed &&
+                        !processed.error &&
+                        processed.total_tech_hours_processed_previous_week != null
+                          ? Number(processed.total_tech_hours_processed_previous_week).toFixed(1)
+                          : '—'}
+                      </div>
+                      <ProcessingHistoryTrendLine trend={techHoursWow.trend}>{techHoursWow.line}</ProcessingHistoryTrendLine>
+                    </Card.Body>
+                  </Card>
+                </Col>
+              </Row>
+            )}
             <Card className="mb-3">
               <Card.Header>Jobs processed by processor</Card.Header>
               <Card.Body className="p-3">
-                {!procJobsByProcessorChart ? (
+                {weeklyLoading ? (
+                  <ProcessingHistoryChartSkeleton minHeight={220} />
+                ) : !procJobsByProcessorChart ? (
                   <p className="text-muted small mb-0">No processor breakdown for this week.</p>
                 ) : (
                   <div style={{ minHeight: procJobsByProcessorChart.minHeightPx }}>
@@ -2888,7 +3096,9 @@ export default function ProcessingAttackPage() {
             <Card className="mb-3">
               <Card.Header>Tech hours processed by processor</Card.Header>
               <Card.Body className="p-3">
-                {!procHoursByProcessorChart ? (
+                {weeklyLoading ? (
+                  <ProcessingHistoryChartSkeleton minHeight={220} />
+                ) : !procHoursByProcessorChart ? (
                   <p className="text-muted small mb-0">No processor breakdown for this week.</p>
                 ) : (
                   <div style={{ minHeight: procHoursByProcessorChart.minHeightPx }}>
