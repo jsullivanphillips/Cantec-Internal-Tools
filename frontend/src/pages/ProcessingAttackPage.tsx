@@ -213,6 +213,7 @@ function KpiTrendViz({
   weekLabels,
   sparkValues,
   referenceY,
+  colorByLatestAgainstReference = false,
   hits,
   preferSparkline = false,
   unsupported,
@@ -224,6 +225,7 @@ function KpiTrendViz({
   weekLabels: string[]
   sparkValues?: (number | null)[] | null
   referenceY?: number
+  colorByLatestAgainstReference?: boolean
   hits?: (boolean | null)[] | null
   preferSparkline?: boolean
   unsupported?: boolean
@@ -243,17 +245,57 @@ function KpiTrendViz({
     const data = sparkValues.map((v) =>
       v != null && Number.isFinite(Number(v)) ? Number(v) : null,
     ) as (number | null)[]
+    const valueColor = referenceY != null ? '#1f9d55' : '#164b7c'
     const datasets: ChartData<'line'>['datasets'] = [
       {
         label: 'Value',
         data,
-        borderColor: referenceY != null ? '#1f9d55' : '#164b7c',
-        backgroundColor: 'transparent',
-        fill: false,
+        borderColor: valueColor,
+        backgroundColor:
+          colorByLatestAgainstReference && referenceY != null
+            ? (ctx) => {
+                const { chart } = ctx
+                const { chartArea } = chart
+                const yScale = chart.scales.y
+                if (!chartArea || !yScale) return 'rgba(31, 157, 85, 0.16)'
+                const thresholdPx = yScale.getPixelForValue(referenceY)
+                const clampedThreshold = Math.min(Math.max(thresholdPx, chartArea.top), chartArea.bottom)
+                const gradient = chart.ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom)
+                if (clampedThreshold <= chartArea.top) {
+                  gradient.addColorStop(0, 'rgba(192, 57, 43, 0.16)')
+                  gradient.addColorStop(1, 'rgba(192, 57, 43, 0.16)')
+                } else if (clampedThreshold >= chartArea.bottom) {
+                  gradient.addColorStop(0, 'rgba(31, 157, 85, 0.16)')
+                  gradient.addColorStop(1, 'rgba(31, 157, 85, 0.16)')
+                } else {
+                  const ratio = (clampedThreshold - chartArea.top) / (chartArea.bottom - chartArea.top)
+                  gradient.addColorStop(0, 'rgba(192, 57, 43, 0.16)')
+                  gradient.addColorStop(ratio, 'rgba(192, 57, 43, 0.16)')
+                  gradient.addColorStop(ratio, 'rgba(31, 157, 85, 0.16)')
+                  gradient.addColorStop(1, 'rgba(31, 157, 85, 0.16)')
+                }
+                return gradient
+              }
+            : 'transparent',
+        fill: colorByLatestAgainstReference && referenceY != null ? 'origin' : false,
         tension: 0.35,
         spanGaps: false,
+        pointBackgroundColor:
+          colorByLatestAgainstReference && referenceY != null
+            ? (ctx) => {
+                const y = Number(ctx.parsed.y)
+                return Number.isFinite(y) && y > referenceY ? '#c0392b' : '#1f9d55'
+              }
+            : valueColor,
+        pointBorderColor:
+          colorByLatestAgainstReference && referenceY != null
+            ? (ctx) => {
+                const y = Number(ctx.parsed.y)
+                return Number.isFinite(y) && y > referenceY ? '#c0392b' : '#1f9d55'
+              }
+            : valueColor,
         segment:
-          referenceY != null
+          colorByLatestAgainstReference && referenceY != null
             ? {
                 borderColor: (ctx) => {
                   const y0 = ctx.p0.parsed.y
@@ -277,7 +319,7 @@ function KpiTrendViz({
       })
     }
     return { labels, datasets }
-  }, [weekLabels, sparkValues, referenceY])
+  }, [weekLabels, sparkValues, referenceY, colorByLatestAgainstReference])
 
   const yAxisMarkerValues = useMemo(() => {
     const numericValues = (sparkValues ?? [])
@@ -365,10 +407,13 @@ function KpiTrendViz({
       },
       elements: {
         line: { borderWidth: 2 },
-        point: { radius: 0, hoverRadius: 3 },
+        point: {
+          radius: colorByLatestAgainstReference && referenceY != null ? 1.5 : 0,
+          hoverRadius: colorByLatestAgainstReference && referenceY != null ? 4 : 3,
+        },
       },
     }),
-    [referenceY, weekLabels, yAxisMarkerValues],
+    [referenceY, weekLabels, yAxisMarkerValues, colorByLatestAgainstReference],
   )
 
   const wrapClass = compact ? 'processing-kpi-sparkline-wrap processing-kpi-sparkline-wrap--compact' : 'processing-kpi-sparkline-wrap'
@@ -1726,17 +1771,65 @@ export default function ProcessingAttackPage() {
     const chartData: ChartData<'line'> = {
       datasets: [
         {
+          label: 'Below target fill',
+          data: points.map((p) => ({ ...p, y: p.y <= KPI_TARGETS.jobsToCompleteMax ? p.y : null })),
+          parsing: false,
+          borderColor: 'transparent',
+          backgroundColor: 'rgba(31, 157, 85, 0.16)',
+          fill: 'origin',
+          spanGaps: false,
+          tension: 0.2,
+          pointRadius: 0,
+          pointHoverRadius: 0,
+        },
+        {
+          label: 'Above target fill',
+          data: points.map((p, i) => {
+            const prev = points[i - 1]?.y
+            const next = points[i + 1]?.y
+            const belongsToRedSegment =
+              p.y > KPI_TARGETS.jobsToCompleteMax ||
+              (prev != null && prev > KPI_TARGETS.jobsToCompleteMax) ||
+              (next != null && next > KPI_TARGETS.jobsToCompleteMax)
+            return { ...p, y: belongsToRedSegment ? p.y : null }
+          }),
+          parsing: false,
+          borderColor: 'transparent',
+          backgroundColor: 'rgba(192, 57, 43, 0.16)',
+          fill: 'origin',
+          spanGaps: false,
+          tension: 0.2,
+          pointRadius: 0,
+          pointHoverRadius: 0,
+        },
+        {
           label: 'Jobs to be marked complete',
           data: points,
           parsing: false,
-          borderColor: '#b42318',
+          borderColor: '#1f9d55',
           backgroundColor: 'transparent',
           fill: false,
           tension: 0.2,
           pointRadius: 2.5,
           pointHoverRadius: 4,
-          pointBackgroundColor: '#b42318',
-          pointBorderColor: '#b42318',
+          pointBackgroundColor: (ctx) => {
+            const y = Number(ctx.parsed.y)
+            return Number.isFinite(y) && y > KPI_TARGETS.jobsToCompleteMax ? '#c0392b' : '#1f9d55'
+          },
+          pointBorderColor: (ctx) => {
+            const y = Number(ctx.parsed.y)
+            return Number.isFinite(y) && y > KPI_TARGETS.jobsToCompleteMax ? '#c0392b' : '#1f9d55'
+          },
+          segment: {
+            borderColor: (ctx) => {
+              const y0 = ctx.p0.parsed.y
+              const y1 = ctx.p1.parsed.y
+              if (y0 == null || y1 == null) return '#1f9d55'
+              return y0 <= KPI_TARGETS.jobsToCompleteMax && y1 <= KPI_TARGETS.jobsToCompleteMax
+                ? '#1f9d55'
+                : '#c0392b'
+            },
+          },
         },
       ],
     }
@@ -1749,6 +1842,7 @@ export default function ProcessingAttackPage() {
         legend: { display: false },
         datalabels: { display: false },
         tooltip: {
+          filter: (item) => item.dataset.label === 'Jobs to be marked complete',
           callbacks: {
             title: (items) => {
               const x = Number(items[0]?.parsed.x ?? NaN)
@@ -1884,18 +1978,66 @@ export default function ProcessingAttackPage() {
     const chartData: ChartData<'line'> = {
       datasets: [
         {
+          label: 'Below target fill',
+          data: points.map((p) => ({ ...p, y: p.y <= KPI_TARGETS.jobsToCompleteMax ? p.y : null })),
+          parsing: false,
+          borderColor: 'transparent',
+          backgroundColor: 'rgba(31, 157, 85, 0.16)',
+          fill: 'origin',
+          spanGaps: false,
+          tension: 0.1,
+          pointRadius: 0,
+          pointHoverRadius: 0,
+        },
+        {
+          label: 'Above target fill',
+          data: points.map((p, i) => {
+            const prev = points[i - 1]?.y
+            const next = points[i + 1]?.y
+            const belongsToRedSegment =
+              p.y > KPI_TARGETS.jobsToCompleteMax ||
+              (prev != null && prev > KPI_TARGETS.jobsToCompleteMax) ||
+              (next != null && next > KPI_TARGETS.jobsToCompleteMax)
+            return { ...p, y: belongsToRedSegment ? p.y : null }
+          }),
+          parsing: false,
+          borderColor: 'transparent',
+          backgroundColor: 'rgba(192, 57, 43, 0.16)',
+          fill: 'origin',
+          spanGaps: false,
+          tension: 0.1,
+          pointRadius: 0,
+          pointHoverRadius: 0,
+        },
+        {
           label: 'Jobs to be marked complete',
           data: points,
           parsing: false,
-          borderColor: '#b42318',
+          borderColor: '#1f9d55',
           backgroundColor: 'transparent',
           fill: false,
           spanGaps: false,
           tension: 0.1,
           pointRadius: 0,
-          pointHoverRadius: 0,
-          pointBackgroundColor: (ctx) => ((ctx.raw as { fallback?: boolean } | undefined)?.fallback ? '#667085' : '#b42318'),
-          pointBorderColor: (ctx) => ((ctx.raw as { fallback?: boolean } | undefined)?.fallback ? '#667085' : '#b42318'),
+          pointHoverRadius: 3,
+          pointBackgroundColor: (ctx) => {
+            const y = Number(ctx.parsed.y)
+            return Number.isFinite(y) && y > KPI_TARGETS.jobsToCompleteMax ? '#c0392b' : '#1f9d55'
+          },
+          pointBorderColor: (ctx) => {
+            const y = Number(ctx.parsed.y)
+            return Number.isFinite(y) && y > KPI_TARGETS.jobsToCompleteMax ? '#c0392b' : '#1f9d55'
+          },
+          segment: {
+            borderColor: (ctx) => {
+              const y0 = ctx.p0.parsed.y
+              const y1 = ctx.p1.parsed.y
+              if (y0 == null || y1 == null) return '#1f9d55'
+              return y0 <= KPI_TARGETS.jobsToCompleteMax && y1 <= KPI_TARGETS.jobsToCompleteMax
+                ? '#1f9d55'
+                : '#c0392b'
+            },
+          },
         },
       ],
     }
@@ -1908,6 +2050,7 @@ export default function ProcessingAttackPage() {
         legend: { display: false },
         datalabels: { display: false },
         tooltip: {
+          filter: (item) => item.dataset.label === 'Jobs to be marked complete',
           callbacks: {
             title: (items) => {
               const x = Number(items[0]?.parsed.x ?? NaN)
@@ -2067,6 +2210,7 @@ export default function ProcessingAttackPage() {
                                 weekLabels={statusHistoryDerived.weekLabels}
                                 sparkValues={statusHistoryDerived.series?.complete}
                                 referenceY={KPI_TARGETS.jobsToCompleteMax}
+                                colorByLatestAgainstReference
                                 hits={statusHistoryDerived.hits?.complete}
                                 preferSparkline
                                 emptyMessage="No weekly snapshots yet."
