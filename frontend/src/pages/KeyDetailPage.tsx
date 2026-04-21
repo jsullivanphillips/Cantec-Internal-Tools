@@ -177,6 +177,7 @@ export default function KeyDetailPage() {
           <h1 className="h2 mb-1">{data.keycode}</h1>
           <div className="text-muted mb-3 d-flex flex-wrap gap-3">
             <span><i className="bi bi-upc me-1" aria-hidden />{data.barcode ?? '—'}</span>
+            {data.ui.is_out && cs?.air_tag ? <span><i className="bi bi-broadcast-pin me-1" aria-hidden />AirTag: {cs.air_tag}</span> : null}
             {data.route ? <span><i className="bi bi-signpost me-1" aria-hidden />Route {data.route}</span> : null}
           </div>
           <div className="key-status-line d-flex align-items-center gap-2">

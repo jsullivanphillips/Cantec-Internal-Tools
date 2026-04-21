@@ -19,6 +19,7 @@ type SignedOutKey = {
   route?: string | null
   addresses: string[]
   key_location?: string | null
+  air_tag?: string | null
   status?: string | null
   inserted_at?: string | null
   is_key_bag?: boolean
@@ -293,7 +294,10 @@ export default function KeysHomePage() {
                 <ListGroup.Item key={k.id} action as={Link} to={`/keys/${k.id}`} className="keys-signedout-item">
                   <div className="keys-signedout-item__row">
                     <div className="keys-signedout-item__left">
-                      <div className="fw-semibold">{k.keycode}</div>
+                      <div className="fw-semibold d-flex align-items-center gap-2 flex-wrap">
+                        <span>{k.keycode}</span>
+                        {k.air_tag ? <span className="small text-muted">AirTag: {k.air_tag}</span> : null}
+                      </div>
                       <div className="small text-muted">
                         {k.route ? `Route ${k.route} · ` : ''}
                         {k.addresses?.join(', ') || '—'}

@@ -524,6 +524,7 @@ def api_keys_signed_out():
             "route": key.route,
             "addresses": addresses,  # ✅ added
             "key_location": ks.key_location,
+            "air_tag": ks.air_tag,
             "status": ks.status,
             "inserted_at": ks.inserted_at.isoformat() if ks.inserted_at else None,
             "is_key_bag": is_route_bag_keycode(key.keycode),
