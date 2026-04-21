@@ -58,6 +58,7 @@ const KPI_TARGETS = {
 type ProcessingStatusHistoryRow = {
   week_start?: string | null
   snapshot_date?: string | null
+  jobs_processed_today?: number | null
   oldest_job_date?: string | null
   earliest_job_to_be_converted_date?: string | null
   jobs_to_be_marked_complete?: number | null
@@ -1235,29 +1236,20 @@ export default function ProcessingAttackPage() {
     const dayPoints = statusHistoryDaily
       .map((r) => {
         const snapshotDate = parseLocalCalendarDate(r.snapshot_date)
-        const v = r.jobs_to_be_marked_complete
+        const backlog = r.jobs_to_be_marked_complete
+        const processed = r.jobs_processed_today
         if (!snapshotDate || Number.isNaN(snapshotDate.getTime())) return null
-        if (v == null || !Number.isFinite(Number(v))) return null
-        return { snapshotDate, value: Number(v) }
+        if (backlog == null || !Number.isFinite(Number(backlog))) return null
+        return {
+          snapshotDate,
+          backlog: Number(backlog),
+          processed: processed == null || !Number.isFinite(Number(processed)) ? null : Number(processed),
+        }
       })
-      .filter((p): p is { snapshotDate: Date; value: number } => p != null)
+      .filter((p): p is { snapshotDate: Date; backlog: number; processed: number | null } => p != null)
       .sort((a, b) => a.snapshotDate.getTime() - b.snapshotDate.getTime())
 
     if (!dayPoints.length) return null
-
-    const processedByWeek = new Map<string, number>()
-    const overallWeeks = overallWeeklyTrend?.weeks ?? []
-    const overallJobs = overallWeeklyTrend?.jobs ?? []
-    const pairCount = Math.min(overallWeeks.length, overallJobs.length)
-    for (let i = 0; i < pairCount; i += 1) {
-      const weekLabel = overallWeeks[i]
-      const jobs = Number(overallJobs[i])
-      if (!weekLabel || !Number.isFinite(jobs)) continue
-      const weekDate = new Date(weekLabel)
-      if (Number.isNaN(weekDate.getTime())) continue
-      weekDate.setHours(0, 0, 0, 0)
-      processedByWeek.set(toLocalYmd(weekDate), jobs)
-    }
 
     const pointsWithWeek = dayPoints.map((p) => {
       const weekStart = new Date(p.snapshotDate)
@@ -1277,19 +1269,8 @@ export default function ProcessingAttackPage() {
     const labels = filteredPoints.map((p) =>
       p.snapshotDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
     )
-    const jobsToComplete = filteredPoints.map((p) => p.value)
-    const lineWeekKeys = filteredPoints.map((p) => p.weekKey)
-
-    const firstIndexByWeek = new Map<string, number>()
-    lineWeekKeys.forEach((key, idx) => {
-      if (!firstIndexByWeek.has(key)) firstIndexByWeek.set(key, idx)
-    })
-    const jobsProcessedBars = Array.from({ length: labels.length }, () => null as number | null)
-    distinctWeekKeys.forEach((weekKey) => {
-      const idx = firstIndexByWeek.get(weekKey)
-      if (idx == null) return
-      jobsProcessedBars[idx] = processedByWeek.get(weekKey) ?? null
-    })
+    const jobsToComplete = filteredPoints.map((p) => p.backlog)
+    const jobsProcessedBars = filteredPoints.map((p) => p.processed)
 
     const chartData: ChartData<'bar' | 'line'> = {
       labels,
@@ -1353,12 +1334,7 @@ export default function ProcessingAttackPage() {
               if (item.dataset.yAxisID === 'processed') {
                 const jobs = Number(item.parsed.y)
                 if (!Number.isFinite(jobs)) return ' Jobs processed: —'
-                const weekKey = lineWeekKeys[item.dataIndex]
-                const weekDate = parseLocalCalendarDate(weekKey)
-                const weekLabel = weekDate
-                  ? weekDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-                  : weekKey
-                return ` Jobs processed (week of ${weekLabel}): ${Math.round(jobs)}`
+                return ` Jobs processed: ${Math.round(jobs)}`
               }
               const backlog = Number(item.parsed.y)
               return Number.isFinite(backlog)
@@ -1395,7 +1371,7 @@ export default function ProcessingAttackPage() {
       options,
       windowText: `Past ${distinctWeekKeys.length} week${distinctWeekKeys.length === 1 ? '' : 's'}`,
     }
-  }, [statusHistoryDaily, overallWeeklyTrend])
+  }, [statusHistoryDaily])
 
   const jobsProcessedWow = useMemo(() => {
     if (!processed) {

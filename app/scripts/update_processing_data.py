@@ -14,6 +14,7 @@ from app import create_app
 from app.db_models import db, JobSummary, ProcessorMetrics, ProcessingStatus, ProcessingStatusDaily
 from app.routes.processing_attack import (
     get_jobs_processed,
+    get_jobs_processed_today,
     get_jobs_processed_by_processor,
     get_jobs_to_be_marked_complete,
     get_jobs_to_be_invoiced,
@@ -61,6 +62,7 @@ def collect_processing_status_payload():
     number_of_pink_folder_jobs, _, _ = get_pink_folder_data()
 
     return {
+        "jobs_processed_today": get_jobs_processed_today(),
         "jobs_to_be_marked_complete": len(jobs_to_be_marked_complete),
         "jobs_to_be_invoiced": jobs_to_be_invoiced,
         "jobs_to_be_converted": len(jobs_to_be_converted),
@@ -99,12 +101,15 @@ def upsert_weekly_processing_status(status_data):
         print(f"ProcessingStatus for week {week_start} exists but is outdated. Overwriting...")
 
     now_utc = datetime.now(timezone.utc)
+    weekly_status_data = {
+        key: value for key, value in status_data.items() if hasattr(ProcessingStatus, key)
+    }
     if record:
-        for key, value in status_data.items():
+        for key, value in weekly_status_data.items():
             setattr(record, key, value)
         record.updated_at = now_utc
     else:
-        record = ProcessingStatus(week_start=week_start, updated_at=now_utc, **status_data)
+        record = ProcessingStatus(week_start=week_start, updated_at=now_utc, **weekly_status_data)
         db.session.add(record)
 
     db.session.commit()

@@ -110,6 +110,7 @@ def _processing_kpi_history_entry(record, ref_date, *, period_key: str, period_v
     period_iso = period_value.isoformat() if period_value else None
     return {
         period_key: period_iso,
+        "jobs_processed_today": getattr(record, "jobs_processed_today", None),
         "jobs_to_be_marked_complete": jobs_count,
         "hit_goal": hit_goal,
         "jobs_to_be_invoiced": jobs_to_be_invoiced,
@@ -164,6 +165,7 @@ def _collect_processing_status_payload():
     number_of_pink_folder_jobs, _, _ = get_pink_folder_data()
 
     return {
+        "jobs_processed_today": get_jobs_processed_today(),
         "jobs_to_be_marked_complete": len(jobs_to_be_marked_complete),
         "jobs_to_be_invoiced": jobs_to_be_invoiced,
         "jobs_to_be_converted": len(jobs_to_be_converted),
@@ -455,7 +457,7 @@ def jobs_today():
 @processing_attack_bp.route("/processing_attack/refresh_daily_snapshot_if_stale", methods=["POST"])
 def refresh_daily_snapshot_if_stale():
     try:
-        result = _refresh_processing_status_daily_if_stale(max_age_minutes=30)
+        result = _refresh_processing_status_daily_if_stale(max_age_minutes=15)
         return jsonify(result), 200
     except Exception:
         current_app.logger.exception("refresh_daily_snapshot_if_stale failed")

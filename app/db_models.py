@@ -77,6 +77,7 @@ class ProcessingStatusDaily(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     snapshot_date = db.Column(db.Date, unique=True, nullable=False)
+    jobs_processed_today = db.Column(db.Integer, nullable=True)
     jobs_to_be_marked_complete = db.Column(db.Integer, default=0)
     jobs_to_be_invoiced = db.Column(db.Integer, default=0)
     jobs_to_be_converted = db.Column(db.Integer, default=0)
