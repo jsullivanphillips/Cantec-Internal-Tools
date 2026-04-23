@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button, Card } from 'react-bootstrap'
 
 type BatteryVoltage = '6' | '12' | '24'
+type BatteryConfiguration = 'series' | 'parallel'
 
 type CalculatorInputs = {
   supervisoryCurrent: string
@@ -11,6 +12,7 @@ type CalculatorInputs = {
   deratingFactor: string
   batteryQty: string
   batteryVoltage: BatteryVoltage
+  batteryConfiguration: BatteryConfiguration
   batteryAhEach: string
 }
 
@@ -22,6 +24,7 @@ const DEFAULT_INPUTS: CalculatorInputs = {
   deratingFactor: '1.2',
   batteryQty: '',
   batteryVoltage: '12',
+  batteryConfiguration: 'series',
   batteryAhEach: '',
 }
 
@@ -38,8 +41,9 @@ function formatDiff(value: number) {
   return `${value >= 0 ? '+' : ''}${value.toFixed(2)} Ah`
 }
 
-function calculateInstalledSetAh(quantity: number, voltage: number, ahEach: number) {
+function calculateInstalledSetAh(quantity: number, voltage: number, ahEach: number, configuration: BatteryConfiguration) {
   if (quantity <= 0 || ahEach <= 0) return 0
+  if (configuration === 'parallel') return quantity * ahEach
   if (voltage === 24) return ahEach
   if (voltage === 12 || voltage === 6) {
     return ahEach
@@ -66,7 +70,7 @@ export default function BatteryCapacityCalculatorPage() {
     const fullLoadAh = fullLoadCurrent * alarmRequirement
     const subtotalAh = supervisoryAh + fullLoadAh
     const requiredAh = subtotalAh * deratingFactor
-    const installedAh = calculateInstalledSetAh(batteryQty, batteryVoltage, batteryAhEach)
+    const installedAh = calculateInstalledSetAh(batteryQty, batteryVoltage, batteryAhEach, inputs.batteryConfiguration)
     const differenceAh = installedAh - requiredAh
     const passes = installedAh >= requiredAh && requiredAh > 0
 
@@ -262,6 +266,17 @@ export default function BatteryCapacityCalculatorPage() {
             <h2>Installed Battery Comparison</h2>
             <div className="battery-calculator-battery-row">
               <div>
+                <label htmlFor="batteryConfiguration">Battery Configuration</label>
+                <select
+                  id="batteryConfiguration"
+                  value={inputs.batteryConfiguration}
+                  onChange={(event) => updateInput('batteryConfiguration', event.target.value as BatteryConfiguration)}
+                >
+                  <option value="series">Series</option>
+                  <option value="parallel">Parallel</option>
+                </select>
+              </div>
+              <div className="battery-calculator-battery-cell battery-calculator-battery-cell--qty">
                 <label htmlFor="batteryQty">Number of Batteries</label>
                 <input
                   id="batteryQty"
@@ -273,7 +288,7 @@ export default function BatteryCapacityCalculatorPage() {
                   onChange={(event) => updateInput('batteryQty', event.target.value)}
                 />
               </div>
-              <div>
+              <div className="battery-calculator-battery-cell battery-calculator-battery-cell--voltage">
                 <label htmlFor="batteryVoltage">Battery Voltage</label>
                 <select
                   id="batteryVoltage"

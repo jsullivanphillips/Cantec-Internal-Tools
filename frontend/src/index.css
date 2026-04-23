@@ -2094,7 +2094,17 @@
   align-items: end;
   display: grid;
   gap: 0.5rem;
-  grid-template-columns: 1fr 1fr 1fr 1fr;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.battery-calculator-battery-cell--qty input {
+  max-width: none;
+  margin-inline: 0;
+}
+
+.battery-calculator-battery-cell--voltage select {
+  max-width: none;
+  margin-inline: 0;
 }
 
 .battery-calculator-card label {
@@ -2250,7 +2260,7 @@
   }
 
   .battery-calculator-battery-row {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
   .battery-calculator-symbol {
@@ -2300,7 +2310,7 @@
 
   .battery-calculator-battery-row {
     gap: 0.4rem;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
   .battery-calculator-symbol {
