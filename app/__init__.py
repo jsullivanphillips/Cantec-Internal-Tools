@@ -1,6 +1,6 @@
 # app/__init__.py
 import os
-from flask import Flask
+from flask import Flask, abort
 from flask_migrate import Migrate
 from app.config import Config
 from app.routes import register_blueprints
@@ -67,6 +67,13 @@ def create_app():
 
     @app.get("/")
     def spa_root():
+        return send_spa_index()
+
+    @app.get("/<path:path>")
+    def spa_catch_all(path: str):
+        # Let API-style paths miss normally instead of returning SPA HTML.
+        if path.startswith("api/"):
+            abort(404)
         return send_spa_index()
 
     return app
