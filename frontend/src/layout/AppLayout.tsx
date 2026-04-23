@@ -1,4 +1,4 @@
-import { Link, Outlet, useNavigate } from 'react-router-dom'
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Suspense, useCallback, useEffect, useState } from 'react'
 import { apiFetch } from '../lib/apiClient'
 import { Button, Offcanvas } from 'react-bootstrap'
@@ -6,11 +6,17 @@ import { SidebarNav } from './SidebarNav'
 
 export default function AppLayout() {
   const nav = useNavigate()
+  const location = useLocation()
   const [ready, setReady] = useState(false)
   const [logoFailed, setLogoFailed] = useState(false)
   const [showMenu, setShowMenu] = useState(false)
+  const isPublicBatteryCalculatorRoute = location.pathname === '/battery_capacity_calculator'
 
   const check = useCallback(async () => {
+    if (isPublicBatteryCalculatorRoute) {
+      setReady(true)
+      return
+    }
     try {
       const r = await apiFetch('/api/auth/me')
       const d = await r.json()
@@ -22,7 +28,7 @@ export default function AppLayout() {
     } catch {
       nav('/login', { replace: true })
     }
-  }, [nav])
+  }, [isPublicBatteryCalculatorRoute, nav])
 
   useEffect(() => {
     check()
