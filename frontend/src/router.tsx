@@ -15,6 +15,7 @@ const KeyMetricsPage = lazy(() => import('./pages/KeyMetricsPage'))
 const DeficiencyTrackerPage = lazy(() => import('./pages/DeficiencyTrackerPage'))
 const SchedulingAttackPage = lazy(() => import('./pages/SchedulingAttackPage'))
 const ProcessingAttackPage = lazy(() => import('./pages/ProcessingAttackPage'))
+const BatteryCapacityCalculatorPage = lazy(() => import('./pages/BatteryCapacityCalculatorPage'))
 const QuotationToolPage = lazy(() => import('./pages/QuotationToolPage'))
 
 export const router = createBrowserRouter([
@@ -40,6 +41,7 @@ export const router = createBrowserRouter([
       { index: true, element: <Navigate to="/home" replace /> },
       { path: 'home', element: <HomePage /> },
       { path: 'find_schedule', element: <FindSchedulePage /> },
+      { path: 'battery_capacity_calculator', element: <BatteryCapacityCalculatorPage /> },
       { path: 'quotation_tool', element: <QuotationToolPage /> },
       { path: 'deficiency_tracker', element: <DeficiencyTrackerPage /> },
       { path: 'scheduling_attack', element: <SchedulingAttackPage /> },

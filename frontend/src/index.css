@@ -2036,6 +2036,294 @@
   }
 }
 
+.battery-calculator-page {
+  background: #f3f6f9;
+  margin: -1rem;
+  min-height: 100%;
+  padding: 0.75rem 0.75rem 5.5rem;
+}
+
+.battery-calculator-container {
+  margin: 0 auto;
+  max-width: 1100px;
+}
+
+.battery-calculator-header-card,
+.battery-calculator-card {
+  border: 1px solid #d9e2ec;
+  border-radius: 0.75rem;
+  box-shadow: none;
+  margin-bottom: 0.65rem;
+}
+
+.battery-calculator-header-card {
+  background: #fff;
+  color: inherit;
+  text-align: left;
+}
+
+.battery-calculator-title {
+  color: var(--brand-navy);
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.25;
+  margin: 0 0 0.2rem;
+}
+
+.battery-calculator-subtitle {
+  color: #6b7280;
+  font-size: 0.875rem;
+  line-height: 1.35;
+  margin: 0;
+}
+
+.battery-calculator-card h2 {
+  font-size: 1rem;
+  margin: 0 0 0.6rem;
+  text-align: center;
+}
+
+.battery-calculator-formula-row {
+  align-items: end;
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: 1fr 40px 1fr 40px 1fr;
+}
+
+.battery-calculator-battery-row {
+  align-items: end;
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+}
+
+.battery-calculator-card label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.battery-calculator-card input,
+.battery-calculator-card select {
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.65rem;
+  box-sizing: border-box;
+  font-size: 0.9rem;
+  min-height: 2.5rem;
+  padding: 0.6rem;
+  text-align: center;
+  width: 100%;
+}
+
+.battery-calculator-symbol {
+  color: #475569;
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 2.5rem;
+  text-align: center;
+}
+
+.battery-calculator-result-box {
+  background: #eaf3ff;
+  border: 1px solid #cfe0fa;
+  border-radius: 0.65rem;
+  min-height: 2.5rem;
+  padding: 0.45rem;
+  text-align: center;
+}
+
+.battery-calculator-result-label {
+  color: #475569;
+  font-size: 0.72rem;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.battery-calculator-result-value {
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin-top: 0.1rem;
+}
+
+.battery-calculator-helper-text,
+.battery-calculator-note {
+  color: #475569;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  margin-top: 0.55rem;
+  text-align: center;
+}
+
+.battery-calculator-summary-grid {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: 1fr 1fr 1fr;
+  margin-top: 0.55rem;
+}
+
+.battery-calculator-summary-box {
+  background: #f8fafc;
+  border: 1px solid #d9e2ec;
+  border-radius: 0.65rem;
+  padding: 0.6rem;
+  text-align: center;
+}
+
+.battery-calculator-summary-key {
+  color: #475569;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.battery-calculator-summary-value {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-top: 0.2rem;
+}
+
+.battery-calculator-banner {
+  border-radius: 0.65rem;
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin-top: 0.55rem;
+  padding: 0.7rem;
+  text-align: center;
+}
+
+.battery-calculator-banner-pass {
+  background: #e9f8ef;
+  border: 1px solid #b8e2c7;
+  color: #0f8a41;
+}
+
+.battery-calculator-banner-fail {
+  background: #fdeceb;
+  border: 1px solid #f1c4bf;
+  color: #c0342b;
+}
+
+.battery-calculator-info-card {
+  background: #fffdf3;
+  border-color: #eddc9f;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.battery-calculator-actions {
+  background: rgba(243, 246, 249, 0.98);
+  border-top: 1px solid #d9e2ec;
+  border-radius: 0.65rem;
+  bottom: 0;
+  box-shadow: 0 -2px 10px rgba(15, 23, 42, 0.08);
+  padding: 0.5rem 0.75rem;
+  position: fixed;
+  z-index: 20;
+}
+
+.battery-calculator-actions-inner {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: 1fr;
+}
+
+.battery-calculator-reset-btn.btn.btn-secondary {
+  background: #334155;
+  border: 0;
+  border-radius: 0.65rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  min-height: 2.6rem;
+}
+
+@media (max-width: 900px) {
+  .battery-calculator-formula-row {
+    gap: 0.4rem;
+    grid-template-columns: minmax(110px, 1.2fr) 24px minmax(110px, 1.1fr) 24px minmax(110px, 1.2fr);
+  }
+
+  .battery-calculator-battery-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .battery-calculator-symbol {
+    font-size: 1.1rem;
+    line-height: 2.4rem;
+  }
+
+  .battery-calculator-title {
+    font-size: 1.3rem;
+  }
+
+  .battery-calculator-subtitle {
+    font-size: 0.82rem;
+  }
+
+  .battery-calculator-card label {
+    font-size: 0.68rem;
+  }
+
+  .battery-calculator-card input,
+  .battery-calculator-card select {
+    font-size: 0.82rem;
+    min-height: 2.35rem;
+    padding: 0.5rem;
+  }
+
+  .battery-calculator-result-label {
+    font-size: 0.66rem;
+  }
+
+  .battery-calculator-result-value {
+    font-size: 1rem;
+  }
+}
+
+@media (max-width: 700px) {
+  .battery-calculator-summary-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .battery-calculator-formula-row {
+    gap: 0.3rem;
+    grid-template-columns: minmax(92px, 1.15fr) 20px minmax(92px, 1.05fr) 20px minmax(92px, 1.15fr);
+  }
+
+  .battery-calculator-battery-row {
+    gap: 0.4rem;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .battery-calculator-symbol {
+    font-size: 1rem;
+    line-height: 2.2rem;
+  }
+
+  .battery-calculator-card input,
+  .battery-calculator-card select {
+    font-size: 0.78rem;
+    min-height: 2.2rem;
+    padding: 0.45rem;
+  }
+
+  .battery-calculator-result-value {
+    font-size: 0.92rem;
+  }
+
+  .battery-calculator-result-label {
+    font-size: 0.62rem;
+  }
+}
+
 body {
   margin: 0;
   min-height: 100vh;
