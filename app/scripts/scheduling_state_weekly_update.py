@@ -2,7 +2,11 @@ import os
 # app/scripts/scheduling_attack_update_v2.py
 import requests
 import logging
+import argparse
+import json
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
+from collections import defaultdict
 from app.services.scheduling_diff import BaselineState, compute_scheduling_diffs
 
 
@@ -15,6 +19,7 @@ api_session.headers.update({"Accept": "application/json"})
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 log = logging.getLogger("backfill")
+LOCAL_TZ = ZoneInfo("America/Vancouver")
 
 def authenticate(username: str, password: str) -> None:
     auth_url = f"{SERVICE_TRADE_API_BASE}/auth"
@@ -75,24 +80,24 @@ def _parse_scheduled_date(job: dict):
     return None
 
 
-def _week_window_utc(anchor: datetime) -> tuple[datetime, datetime]:
+def _week_window_local(anchor: datetime) -> tuple[datetime, datetime]:
     """
     Returns (period_start, period_end) for the work week bucket.
-    Uses Monday 00:00 UTC → next Monday 00:00 UTC.
+    Uses Monday 00:00 America/Vancouver → next Monday 00:00 America/Vancouver.
     """
     if anchor.tzinfo is None:
         anchor = anchor.replace(tzinfo=timezone.utc)
-    anchor = anchor.astimezone(timezone.utc)
+    anchor_local = anchor.astimezone(LOCAL_TZ)
 
-    start = anchor - timedelta(days=anchor.weekday())
-    period_start = datetime(start.year, start.month, start.day, tzinfo=timezone.utc)
+    start = anchor_local - timedelta(days=anchor_local.weekday())
+    period_start = start.replace(hour=0, minute=0, second=0, microsecond=0)
     period_end = period_start + timedelta(days=7)
     return period_start, period_end
 
 
 def run_weekly_scheduling_snapshot(job_type: str = "inspection,reinspection,planned_maintenance"):
     now = datetime.now(timezone.utc)
-    week_start, week_end = _week_window_utc(now)
+    week_start, week_end = _week_window_local(now)
 
     # -------- 1) Load baseline --------
     baseline_rows = db.session.query(JobsSchedulingState).all()
@@ -201,7 +206,7 @@ def run_weekly_scheduling_snapshot(job_type: str = "inspection,reinspection,plan
     )
 
 def weekly_stats_already_recorded(now: datetime, job_type: str) -> bool:
-    week_start, week_end = _week_window_utc(now)
+    week_start, week_end = _week_window_local(now)
 
     return (
         db.session.query(WeeklySchedulingStats.id)
@@ -213,19 +218,135 @@ def weekly_stats_already_recorded(now: datetime, job_type: str) -> bool:
     )
 
 
+def _default_backup_name() -> str:
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    return f"weekly_scheduling_stats_backup_{stamp}"
+
+
+def _validate_backup_name(name: str) -> str:
+    allowed = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
+    if not name or any(ch not in allowed for ch in name):
+        raise ValueError("backup name may only contain letters, numbers, and underscores")
+    return name
+
+
+def _create_weekly_stats_backup(backup_name: str) -> str:
+    backup_name = _validate_backup_name(backup_name)
+    create_sql = (
+        f"CREATE TABLE {backup_name} AS "
+        "SELECT * FROM weekly_scheduling_stats"
+    )
+    with db.engine.begin() as conn:
+        conn.exec_driver_sql(create_sql)
+    return backup_name
+
+
+def repair_week_bucket_alignment(*, dry_run: bool = True, backup_name: str | None = None) -> dict:
+    """
+    Non-destructive repair:
+      - Reads all legacy rows.
+      - Computes corrected Vancouver-local week bucket.
+      - Writes corrected bucket rows (upsert by unique key).
+      - Leaves original rows untouched.
+      - Requires a full-table backup before any mutation.
+    """
+    rows = db.session.query(WeeklySchedulingStats).all()
+
+    # Aggregate only rows that need shifting. This keeps the operation idempotent.
+    aggregated = defaultdict(lambda: {"scheduled": 0, "rescheduled": 0, "generated_at": None})
+    rows_scanned = len(rows)
+    rows_needing_shift = 0
+
+    for row in rows:
+        corrected_start, corrected_end = _week_window_local(row.period_start)
+        needs_shift = (corrected_start != row.period_start) or (corrected_end != row.period_end)
+        if not needs_shift:
+            continue
+
+        rows_needing_shift += 1
+        key = (corrected_start, corrected_end, row.job_type)
+        agg = aggregated[key]
+        agg["scheduled"] += int(row.scheduled_count or 0)
+        agg["rescheduled"] += int(row.rescheduled_count or 0)
+        existing_generated = agg["generated_at"]
+        if existing_generated is None or (row.generated_at and row.generated_at > existing_generated):
+            agg["generated_at"] = row.generated_at
+
+    summary = {
+        "rows_scanned": rows_scanned,
+        "rows_needing_shift": rows_needing_shift,
+        "rows_written": 0,
+        "conflict_merges": 0,
+        "backup_table": None,
+        "dry_run": dry_run,
+    }
+
+    if dry_run or not aggregated:
+        return summary
+
+    backup_table = _create_weekly_stats_backup(backup_name or _default_backup_name())
+    summary["backup_table"] = backup_table
+
+    rows_written = 0
+    conflict_merges = 0
+    for (period_start, period_end, job_type), vals in aggregated.items():
+        stats_row = (
+            db.session.query(WeeklySchedulingStats)
+            .filter(WeeklySchedulingStats.period_start == period_start)
+            .filter(WeeklySchedulingStats.period_end == period_end)
+            .filter(WeeklySchedulingStats.job_type == job_type)
+            .one_or_none()
+        )
+
+        if stats_row is None:
+            db.session.add(
+                WeeklySchedulingStats(
+                    period_start=period_start,
+                    period_end=period_end,
+                    job_type=job_type,
+                    scheduled_count=vals["scheduled"],
+                    rescheduled_count=vals["rescheduled"],
+                    generated_at=vals["generated_at"] or datetime.now(timezone.utc),
+                )
+            )
+        else:
+            conflict_merges += 1
+            stats_row.scheduled_count = vals["scheduled"]
+            stats_row.rescheduled_count = vals["rescheduled"]
+            stats_row.generated_at = vals["generated_at"] or stats_row.generated_at
+        rows_written += 1
+
+    db.session.commit()
+    summary["rows_written"] = rows_written
+    summary["conflict_merges"] = conflict_merges
+    return summary
+
+
 def main():
+    parser = argparse.ArgumentParser(description="Update weekly scheduling stats and baseline.")
+    parser.add_argument("--job-type", default="inspection,reinspection,planned_maintenance")
+    parser.add_argument("--repair-week-buckets", action="store_true")
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--backup-name", default=None)
+    args = parser.parse_args()
+
     app = create_app()
     with app.app_context():
+        if args.repair_week_buckets:
+            result = repair_week_bucket_alignment(dry_run=args.dry_run, backup_name=args.backup_name)
+            print(json.dumps(result, default=str))
+            return
+
+        now = datetime.now(timezone.utc)
+        job_type = args.job_type
+
         username = os.getenv("PROCESSING_USERNAME")
         password = os.getenv("PROCESSING_PASSWORD")
         if not username or not password:
             raise SystemExit("Missing PROCESSING_USERNAME/PROCESSING_PASSWORD environment vars.")
         authenticate(username, password)
 
-        now = datetime.now(timezone.utc)
-        job_type = "inspection,reinspection,planned_maintenance"
-
-        if now.weekday() != 6:  # Sunday
+        if now.astimezone(LOCAL_TZ).weekday() != 6:  # Sunday in Vancouver
             log.info("Not the preferred weekly run day (Sunday), but running guard-based check.")
 
         if weekly_stats_already_recorded(now, job_type):

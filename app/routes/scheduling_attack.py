@@ -2149,6 +2149,56 @@ def _week_start_local_from_utc(dt_utc: datetime) -> datetime:
     )
 
 
+def _live_weekly_scheduling_diff(*, job_type: str, week_start_local: datetime) -> tuple[int, int]:
+    """
+    Display-only live diff for current week chart bucket.
+    Uses baseline-vs-live scheduling diff, scoped to jobs scheduled from
+    Monday 00:00 Vancouver onward.
+    """
+    baseline_rows = db.session.query(JobsSchedulingState).all()
+    baseline_by_id = {
+        r.job_id: BaselineState(job_id=r.job_id, scheduled_date=r.scheduled_date)
+        for r in baseline_rows
+    }
+
+    # Monday 00:00 local -> UTC timestamp for ServiceTrade filter
+    week_start_utc = week_start_local.astimezone(timezone.utc)
+    schedule_date_from = int(week_start_utc.timestamp())
+
+    scheduled_jobs = fetch_all_jobs_paginated({
+        "limit": 1000,
+        "type": job_type,
+        "status": "scheduled",
+        "scheduleDateFrom": schedule_date_from,
+    })
+
+    unscheduled_jobs = fetch_all_jobs_paginated({
+        "limit": 1000,
+        "type": job_type,
+        "status": "new",
+    })
+
+    jobs_by_id = {}
+    for j in scheduled_jobs:
+        if j.get("id"):
+            jobs_by_id[j["id"]] = j
+    for j in unscheduled_jobs:
+        if j.get("id") and j["id"] not in jobs_by_id:
+            jobs_by_id[j["id"]] = j
+
+    live_jobs_normalized = [
+        {"id": j["id"], "scheduled_date": _parse_scheduled_date(j)}
+        for j in jobs_by_id.values()
+        if j.get("id")
+    ]
+
+    scheduled_count, rescheduled_count = compute_scheduling_diffs(
+        baseline_by_id=baseline_by_id,
+        live_jobs=live_jobs_normalized,
+    )
+    return int(scheduled_count or 0), int(rescheduled_count or 0)
+
+
 def _forward_schedule_week_table_exists() -> bool:
     """False until migration 92413446aa72 (forward_schedule_week) has been applied."""
     try:
@@ -2338,12 +2388,8 @@ def weekly_scheduling_volume():
     JOB_TYPE = "inspection,reinspection,planned_maintenance"
     WEEKS_BACK = 6
 
-    # Normalize to Monday 00:00 UTC of current week
-    current_week_start = (
-        now
-        .replace(hour=0, minute=0, second=0, microsecond=0)
-        - timedelta(days=now.weekday())
-    )
+    # Normalize to Monday 00:00 local (America/Vancouver) of current week
+    current_week_start = _week_start_local_from_utc(now)
 
     # Build week periods (oldest → newest)
     periods = []
@@ -2375,6 +2421,16 @@ def weekly_scheduling_volume():
             "scheduled": row.scheduled_count if row else 0,
             "rescheduled": row.rescheduled_count if row else 0,
         })
+
+    # Overlay current-week bar with live (display-only) value.
+    # This does NOT write to weekly_scheduling_stats.
+    if weekly:
+        live_scheduled, live_rescheduled = _live_weekly_scheduling_diff(
+            job_type=JOB_TYPE,
+            week_start_local=current_week_start,
+        )
+        weekly[-1]["scheduled"] = live_scheduled
+        weekly[-1]["rescheduled"] = live_rescheduled
 
     return jsonify({
         "job_type": JOB_TYPE,

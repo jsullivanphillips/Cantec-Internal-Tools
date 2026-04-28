@@ -79,30 +79,35 @@ export default function SchedulingAttackPage() {
 
   const weeklyChartData = useMemo(() => {
     if (!weeklyPoints.length) return null
-    const labels = weeklyPoints.map((w) => formatShortDate(w.period_start))
+    const labels = weeklyPoints.map((w, idx) =>
+      idx === weeklyPoints.length - 1 ? 'Current week' : formatWeekRangeLabel(w.period_start, w.period_end),
+    )
+    const scheduledBarColors = weeklyPoints.map((_, idx) => (idx === weeklyPoints.length - 1 ? '#2eb67d' : '#4aa3ff'))
+    const rescheduledBarColors = weeklyPoints.map((_, idx) => (idx === weeklyPoints.length - 1 ? '#2f4858' : '#1f2d3d'))
     return {
       labels,
       datasets: [
         {
           type: 'bar' as const,
-          label: 'Scheduled',
-          data: weeklyPoints.map((w) => Number(w.scheduled || 0)),
-          backgroundColor: '#4aa3ff',
+          label: 'Rescheduled',
+          data: weeklyPoints.map((w) => Number(w.rescheduled || 0)),
+          backgroundColor: rescheduledBarColors,
           borderRadius: 6,
           maxBarThickness: 44,
+          categoryPercentage: 0.5,
+          barPercentage: 1.0,
           order: 2,
         },
         {
-          type: 'line' as const,
-          label: 'Rescheduled',
-          data: weeklyPoints.map((w) => Number(w.rescheduled || 0)),
-          borderColor: '#1f2d3d',
-          borderWidth: 2,
-          pointRadius: 2,
-          pointHoverRadius: 3,
-          tension: 0.3,
-          fill: false,
-          order: 1,
+          type: 'bar' as const,
+          label: 'Scheduled',
+          data: weeklyPoints.map((w) => Number(w.scheduled || 0)),
+          backgroundColor: scheduledBarColors,
+          borderRadius: 6,
+          maxBarThickness: 44,
+          categoryPercentage: 0.5,
+          barPercentage: 1.0,
+          order: 2,
         },
       ],
     }
@@ -405,6 +410,28 @@ function formatShortDate(value: string): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
+function formatWeekRangeLabel(periodStart: string, periodEnd: string): string {
+  const start = new Date(periodStart)
+  const endExclusive = new Date(periodEnd)
+  if (Number.isNaN(start.getTime()) || Number.isNaN(endExclusive.getTime())) return ''
+
+  // API period_end is exclusive (next Monday 00:00 UTC), so display through Sunday.
+  const endInclusive = new Date(endExclusive.getTime() - 24 * 60 * 60 * 1000)
+
+  const startLabel = start.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC',
+  })
+  const endLabel = endInclusive.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC',
+  })
+
+  return `${startLabel}-${endLabel}`
 }
 
 function formatUpdated(value?: string | null): string {
