@@ -206,6 +206,7 @@ function KpiTrendViz({
   greySlots,
   compact,
   emptyMessage,
+  yAxisCeilStep,
 }: {
   weekLabels: string[]
   sparkValues?: (number | null)[] | null
@@ -218,6 +219,7 @@ function KpiTrendViz({
   greySlots?: number
   compact?: boolean
   emptyMessage?: string
+  yAxisCeilStep?: number
 }) {
   const chartData = useMemo((): ChartData<'line'> | null => {
     if (!sparkValues?.length) return null
@@ -241,23 +243,20 @@ function KpiTrendViz({
             ? (ctx) => {
                 const { chart } = ctx
                 const { chartArea } = chart
-                const yScale = chart.scales.y
-                if (!chartArea || !yScale) return 'rgba(31, 157, 85, 0.16)'
-                const thresholdPx = yScale.getPixelForValue(referenceY)
-                const clampedThreshold = Math.min(Math.max(thresholdPx, chartArea.top), chartArea.bottom)
-                const gradient = chart.ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom)
-                if (clampedThreshold <= chartArea.top) {
-                  gradient.addColorStop(0, 'rgba(192, 57, 43, 0.16)')
-                  gradient.addColorStop(1, 'rgba(192, 57, 43, 0.16)')
-                } else if (clampedThreshold >= chartArea.bottom) {
-                  gradient.addColorStop(0, 'rgba(31, 157, 85, 0.16)')
-                  gradient.addColorStop(1, 'rgba(31, 157, 85, 0.16)')
-                } else {
-                  const ratio = (clampedThreshold - chartArea.top) / (chartArea.bottom - chartArea.top)
-                  gradient.addColorStop(0, 'rgba(192, 57, 43, 0.16)')
-                  gradient.addColorStop(ratio, 'rgba(192, 57, 43, 0.16)')
-                  gradient.addColorStop(ratio, 'rgba(31, 157, 85, 0.16)')
-                  gradient.addColorStop(1, 'rgba(31, 157, 85, 0.16)')
+                if (!chartArea) return 'rgba(31, 157, 85, 0.16)'
+                const pointValues = data
+                if (!pointValues.length) return 'rgba(31, 157, 85, 0.16)'
+
+                const gradient = chart.ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0)
+                const sliceCount = pointValues.length
+                for (let i = 0; i < sliceCount; i += 1) {
+                  const value = pointValues[i]
+                  const start = i / sliceCount
+                  const end = (i + 1) / sliceCount
+                  const isRed = value != null && Number.isFinite(value) && value > referenceY
+                  const color = isRed ? 'rgba(192, 57, 43, 0.16)' : 'rgba(31, 157, 85, 0.16)'
+                  gradient.addColorStop(start, color)
+                  gradient.addColorStop(end, color)
                 }
                 return gradient
               }
@@ -310,13 +309,17 @@ function KpiTrendViz({
     const numericValues = (sparkValues ?? [])
       .map((v) => (v != null && Number.isFinite(Number(v)) ? Number(v) : null))
       .filter((v): v is number => v != null)
-    const highestValue = numericValues.length ? Math.max(...numericValues) : 0
+    const highestRaw = numericValues.length ? Math.max(...numericValues) : 0
+    const highestValue =
+      yAxisCeilStep && yAxisCeilStep > 0 && highestRaw > 0
+        ? Math.ceil(highestRaw / yAxisCeilStep) * yAxisCeilStep
+        : highestRaw
     const markers = [0, highestValue]
     if (referenceY != null && Number.isFinite(Number(referenceY))) {
       markers.push(Number(referenceY))
     }
     return [...new Set(markers)].sort((a, b) => a - b)
-  }, [sparkValues, referenceY])
+  }, [sparkValues, referenceY, yAxisCeilStep])
 
   const chartOptions = useMemo(
     (): ChartOptions<'line'> => ({
@@ -2237,9 +2240,10 @@ export default function ProcessingAttackPage() {
     return { chartData, options, emptyMessage: null, dayCount: dayKeys.length }
   }, [intradayHistory, statusHistoryDaily])
 
-  const jobsToCompleteWeeklyLabel = `Past ${statusHistoryDerived.weekLabels.length} Week${
-    statusHistoryDerived.weekLabels.length === 1 ? '' : 's'
-  }`
+  const jobsToCompleteThreeWeekDayLabels = (dailyHistoryDerived.dayLabels ?? []).slice(-21)
+  const jobsToCompleteThreeWeekDailySeries = (dailyHistoryDerived.series?.complete ?? []).slice(-21)
+  const jobsToCompleteThreeWeekDailyHits = (dailyHistoryDerived.hits?.complete ?? []).slice(-21)
+  const jobsToCompleteWeeklyLabel = 'Past 3 Weeks'
   const jobsToCompleteDailyLabel = `Past ${jobsToCompletePastDaysChart.dayCount} Day${
     jobsToCompletePastDaysChart.dayCount === 1 ? '' : 's'
   }`
@@ -2357,13 +2361,14 @@ export default function ProcessingAttackPage() {
                           <div className="processing-kpi-grid__hero-viz processing-kpi-grid__hero-viz--weekly">
                             <ProcessingKpiHeroVizColumn label={jobsToCompleteWeeklyLabel}>
                               <KpiTrendViz
-                                weekLabels={statusHistoryDerived.weekLabels}
-                                sparkValues={statusHistoryDerived.series?.complete}
+                                weekLabels={jobsToCompleteThreeWeekDayLabels}
+                                sparkValues={jobsToCompleteThreeWeekDailySeries}
                                 referenceY={KPI_TARGETS.jobsToCompleteMax}
                                 colorByLatestAgainstReference
-                                hits={statusHistoryDerived.hits?.complete}
+                                hits={jobsToCompleteThreeWeekDailyHits}
                                 preferSparkline
-                                emptyMessage="No weekly snapshots yet."
+                                emptyMessage="No daily snapshots yet."
+                                yAxisCeilStep={5}
                                 compact
                               />
                             </ProcessingKpiHeroVizColumn>

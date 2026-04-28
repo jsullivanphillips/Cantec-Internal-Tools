@@ -1,7 +1,7 @@
 """
 Hourly intraday refresh for Jobs To Be Marked Complete.
 
-- Prunes intraday rows older than 7 Vancouver days.
+- Prunes intraday rows older than 10 Vancouver days.
 - Captures a new intraday point only during the 8:30 AM to 4:30 PM Vancouver window.
 - Uses the same 15-minute + value-changed throttle as the Processing Attack page.
 """
