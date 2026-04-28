@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { apiJson, isAbortError } from '../lib/apiClient'
-import { Card, Col, Row } from 'react-bootstrap'
+import { Card, Col, Row, Modal, Table, Button, Spinner } from 'react-bootstrap'
 import { Chart } from 'react-chartjs-2'
 
 type SchedulingKpis = {
@@ -30,11 +30,39 @@ type ForwardScheduleCoverageResponse = {
   }>
 }
 
+type ScheduledTodayActivityResponse = {
+  baseline_date_local: string
+  scheduled_today_count: number
+  rescheduled_to_today_count: number
+  generated_at: string
+  baseline_missing: boolean
+}
+
+type UnconfirmedNextTwoWeeksResponse = {
+  generated_at: string
+  window_start_local: string
+  window_end_local: string
+  rows: Array<{
+    id: number
+    location_id: number
+    address: string
+    scheduled_date: string | null
+    job_id: number | null
+    job_type: string
+    job_url: string | null
+  }>
+}
+
 export default function SchedulingAttackPage() {
   const [loading, setLoading] = useState(true)
   const [kpis, setKpis] = useState<SchedulingKpis | null>(null)
   const [weekly, setWeekly] = useState<WeeklySchedulingVolumeResponse | null>(null)
   const [forward, setForward] = useState<ForwardScheduleCoverageResponse | null>(null)
+  const [scheduledToday, setScheduledToday] = useState<ScheduledTodayActivityResponse | null>(null)
+  const [showUnconfirmedModal, setShowUnconfirmedModal] = useState(false)
+  const [loadingUnconfirmed, setLoadingUnconfirmed] = useState(false)
+  const [unconfirmedError, setUnconfirmedError] = useState<string | null>(null)
+  const [unconfirmed, setUnconfirmed] = useState<UnconfirmedNextTwoWeeksResponse | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -42,7 +70,7 @@ export default function SchedulingAttackPage() {
     const run = async () => {
       setLoading(true)
       try {
-        const [kpiPayload, weeklyPayload, forwardPayload] = await Promise.all([
+        const [kpiPayload, weeklyPayload, forwardPayload, scheduledTodayPayload] = await Promise.all([
           apiJson<SchedulingKpis>('/scheduling_attack/v2/kpis', { signal: controller.signal }),
           apiJson<WeeklySchedulingVolumeResponse>('/scheduling_attack/v2/weekly_scheduling_volume', {
             signal: controller.signal,
@@ -50,11 +78,15 @@ export default function SchedulingAttackPage() {
           apiJson<ForwardScheduleCoverageResponse>('/scheduling_attack/v2/forward_schedule_coverage', {
             signal: controller.signal,
           }),
+          apiJson<ScheduledTodayActivityResponse>('/scheduling_attack/v2/scheduled_today_activity', {
+            signal: controller.signal,
+          }),
         ])
         if (!active) return
         setKpis(kpiPayload)
         setWeekly(weeklyPayload)
         setForward(forwardPayload)
+        setScheduledToday(scheduledTodayPayload)
       } catch (error) {
         if (isAbortError(error)) return
         console.error(error)
@@ -62,6 +94,7 @@ export default function SchedulingAttackPage() {
         setKpis(null)
         setWeekly(null)
         setForward(null)
+        setScheduledToday(null)
       } finally {
         if (active) setLoading(false)
       }
@@ -197,13 +230,29 @@ export default function SchedulingAttackPage() {
 
   const confirmedPct = Number(kpis?.confirmed_pct ?? 0)
   const scheduledLastWeek = previousWeek ? Number(previousWeek.scheduled ?? 0) : null
-  const rescheduledLastWeek = previousWeek ? Number(previousWeek.rescheduled ?? 0) : null
+  const scheduledTodayCount = scheduledToday ? Number(scheduledToday.scheduled_today_count ?? 0) : null
   const coverageWeeks = Number(forward?.coverage_weeks_60pct ?? 0)
   const confirmedOk = confirmedPct >= 90
   const scheduledOk = (scheduledLastWeek ?? 0) > 30
   const coverageOk = coverageWeeks >= 6
-  const rescheduledHasValue = rescheduledLastWeek != null
-  const rescheduledIsZero = (rescheduledLastWeek ?? 0) === 0
+  const scheduledTodayHasValue = scheduledTodayCount != null
+  const scheduledTodayOk = (scheduledTodayCount ?? 0) > 0
+
+  const openUnconfirmedModal = async () => {
+    setShowUnconfirmedModal(true)
+    setLoadingUnconfirmed(true)
+    setUnconfirmedError(null)
+    try {
+      const payload = await apiJson<UnconfirmedNextTwoWeeksResponse>('/scheduling_attack/v2/unconfirmed_next_two_weeks')
+      setUnconfirmed(payload)
+    } catch (error) {
+      console.error(error)
+      setUnconfirmed(null)
+      setUnconfirmedError('Failed to load unconfirmed jobs. Please try again.')
+    } finally {
+      setLoadingUnconfirmed(false)
+    }
+  }
 
   return (
     <div className="container-fluid py-3 px-2 scheduling-page d-flex flex-column gap-3">
@@ -223,6 +272,15 @@ export default function SchedulingAttackPage() {
           <Row className="g-3">
             <Col lg={3} md={6}>
               <Card
+                role="button"
+                tabIndex={0}
+                onClick={() => void openUnconfirmedModal()}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    void openUnconfirmedModal()
+                  }
+                }}
                 className={`app-kpi-nested processing-tile h-100 scheduling-kpi-tile ${
                   confirmedOk ? 'processing-tile--status-good' : 'processing-tile--status-warn'
                 }`}
@@ -258,20 +316,20 @@ export default function SchedulingAttackPage() {
             <Col lg={3} md={6}>
               <Card
                 className={`app-kpi-nested processing-tile h-100 scheduling-kpi-tile ${
-                  rescheduledHasValue && !rescheduledIsZero ? 'processing-tile--status-good' : 'scheduling-kpi-tile--neutral'
+                  scheduledTodayHasValue && scheduledTodayOk ? 'processing-tile--status-good' : 'scheduling-kpi-tile--neutral'
                 }`}
               >
                 <Card.Body className="scheduling-kpi-tile__body">
-                  <div className="processing-kpi-label">Jobs Rescheduled Last Week</div>
+                  <div className="processing-kpi-label">Jobs Scheduled Today</div>
                   <div className="scheduling-kpi-main">
                     <div
                       className={`scheduling-kpi-tile__value ${
-                        rescheduledHasValue && !rescheduledIsZero
+                        scheduledTodayHasValue && scheduledTodayOk
                           ? 'processing-stat--good'
                           : 'scheduling-kpi-tile__value--neutral'
                       }`}
                     >
-                      {rescheduledLastWeek ?? '—'}
+                      {scheduledTodayCount ?? '—'}
                     </div>
                   </div>
                   <div className="processing-kpi-target">&nbsp;</div>
@@ -330,6 +388,58 @@ export default function SchedulingAttackPage() {
           </Card>
         </>
       )}
+
+      <Modal show={showUnconfirmedModal} onHide={() => setShowUnconfirmedModal(false)} size="lg" centered>
+        <Modal.Header closeButton>
+          <Modal.Title>Unconfirmed Jobs - Next 2 Weeks</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {loadingUnconfirmed ? (
+            <div className="d-flex align-items-center gap-2 py-3">
+              <Spinner animation="border" size="sm" />
+              <span>Loading unconfirmed jobs...</span>
+            </div>
+          ) : unconfirmedError ? (
+            <div className="text-danger">{unconfirmedError}</div>
+          ) : !unconfirmed?.rows?.length ? (
+            <div>No unconfirmed jobs in the next 2 weeks.</div>
+          ) : (
+            <Table striped hover responsive size="sm" className="mb-0">
+              <thead>
+                <tr>
+                  <th>Scheduled Date</th>
+                  <th>Address</th>
+                  <th>Job Type</th>
+                  <th>ServiceTrade Job</th>
+                </tr>
+              </thead>
+              <tbody>
+                {unconfirmed.rows.map((row) => (
+                  <tr key={row.id}>
+                    <td>{formatDateTime(row.scheduled_date)}</td>
+                    <td>{row.address}</td>
+                    <td>{formatJobType(row.job_type)}</td>
+                    <td>
+                      {row.job_url && row.job_id ? (
+                        <a href={row.job_url} target="_blank" rel="noreferrer">
+                          Job #{row.job_id}
+                        </a>
+                      ) : (
+                        'No link'
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowUnconfirmedModal(false)}>
+            Close
+          </Button>
+        </Modal.Footer>
+      </Modal>
     </div>
   )
 }
@@ -439,6 +549,27 @@ function formatUpdated(value?: string | null): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return '—'
   return date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+}
+
+function formatDateTime(value?: string | null): string {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+  return date.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
+function formatJobType(value: string): string {
+  const raw = (value || 'unknown').trim()
+  if (!raw) return 'Unknown'
+  return raw
+    .split('_')
+    .map((part) => (part ? part[0].toUpperCase() + part.slice(1) : ''))
+    .join(' ')
 }
 
 function formatPercent(value: number): string {

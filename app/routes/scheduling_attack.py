@@ -7,13 +7,13 @@ from dateutil.relativedelta import relativedelta
 from zoneinfo import ZoneInfo  # Python 3.9+
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy import or_, func, cast, Float, case, inspect
-from app.db_models import db, ServiceOccurrence, Location, ServiceRecurrence, SchedulingAttackV2, JobsSchedulingState, WeeklySchedulingStats, ForwardScheduleWeek
+from app.db_models import db, ServiceOccurrence, Location, ServiceRecurrence, SchedulingAttackV2, JobsSchedulingState, WeeklySchedulingStats, ForwardScheduleWeek, JobsSchedulingDayBaseline, JobsSchedulingDayMetricCache
 from tqdm import tqdm 
 from collections import Counter
 from collections import defaultdict
 from app.services.scheduling_diff import BaselineState, compute_scheduling_diffs
 import calendar
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from flask import redirect, url_for
 
 from app.spa import send_spa_index
@@ -2007,6 +2007,139 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _next_two_weeks_window_local() -> tuple[datetime, datetime]:
+    """
+    Vancouver-local window:
+      start = today at 00:00 local
+      end = start + 14 days
+    Returned as UTC timestamps for DB filtering.
+    """
+    now_local = datetime.now(timezone.utc).astimezone(LOCAL_TZ)
+    start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+    end_local = start_local + timedelta(days=14)
+    return start_local.astimezone(timezone.utc), end_local.astimezone(timezone.utc)
+
+
+def _today_local_date() -> date:
+    return datetime.now(timezone.utc).astimezone(LOCAL_TZ).date()
+
+
+def _intraday_scheduling_tables_exist() -> bool:
+    try:
+        inspector = inspect(db.engine)
+        return inspector.has_table("jobs_scheduling_day_baseline") and inspector.has_table("jobs_scheduling_day_metric_cache")
+    except Exception:
+        return False
+
+
+def _fetch_live_scheduling_jobs(job_type: str) -> list[dict]:
+    scheduled_jobs = fetch_all_jobs_paginated(
+        {
+            "limit": 1000,
+            "type": job_type,
+            "status": "scheduled",
+            "scheduleDateFrom": int(datetime.now(timezone.utc).timestamp()),
+        }
+    )
+    unscheduled_jobs = fetch_all_jobs_paginated(
+        {
+            "limit": 1000,
+            "type": job_type,
+            "status": "new",
+        }
+    )
+    jobs_by_id = {}
+    for j in scheduled_jobs:
+        if j.get("id"):
+            jobs_by_id[int(j["id"])] = j
+    for j in unscheduled_jobs:
+        if j.get("id") and int(j["id"]) not in jobs_by_id:
+            jobs_by_id[int(j["id"])] = j
+    return list(jobs_by_id.values())
+
+
+def _compute_scheduled_today_activity_counts(baseline_date_local: date, job_type: str) -> tuple[int, int]:
+    baseline_rows = (
+        db.session.query(JobsSchedulingDayBaseline)
+        .filter(JobsSchedulingDayBaseline.baseline_date_local == baseline_date_local)
+        .all()
+    )
+    baseline_by_id = {int(r.job_id): r.scheduled_date for r in baseline_rows}
+    live_jobs = _fetch_live_scheduling_jobs(job_type)
+    live_by_id = {
+        int(j["id"]): _parse_scheduled_date(j)
+        for j in live_jobs
+        if j.get("id")
+    }
+
+    scheduled_today_count = 0
+    rescheduled_to_today_count = 0
+    for job_id, new_sched in live_by_id.items():
+        old_sched = baseline_by_id.get(job_id)
+        if old_sched is None and new_sched is not None:
+            scheduled_today_count += 1
+            continue
+        if old_sched is not None and new_sched is not None and old_sched != new_sched:
+            rescheduled_to_today_count += 1
+    return scheduled_today_count, rescheduled_to_today_count
+
+
+def _get_or_refresh_today_activity_cache(job_type: str, freshness_seconds: int = 60) -> tuple[JobsSchedulingDayMetricCache | None, bool]:
+    if not _intraday_scheduling_tables_exist():
+        return None, True
+
+    today_local = _today_local_date()
+    cache_row = (
+        db.session.query(JobsSchedulingDayMetricCache)
+        .filter(JobsSchedulingDayMetricCache.baseline_date_local == today_local)
+        .one_or_none()
+    )
+    now_utc = datetime.now(timezone.utc)
+    if cache_row and (now_utc - cache_row.generated_at).total_seconds() <= freshness_seconds:
+        return cache_row, False
+
+    baseline_exists = (
+        db.session.query(JobsSchedulingDayBaseline.id)
+        .filter(JobsSchedulingDayBaseline.baseline_date_local == today_local)
+        .first()
+        is not None
+    )
+    if not baseline_exists:
+        return None, True
+
+    scheduled_today_count, rescheduled_to_today_count = _compute_scheduled_today_activity_counts(today_local, job_type)
+    if cache_row is None:
+        cache_row = JobsSchedulingDayMetricCache(
+            baseline_date_local=today_local,
+            scheduled_today_count=scheduled_today_count,
+            rescheduled_to_today_count=rescheduled_to_today_count,
+            generated_at=now_utc,
+        )
+        db.session.add(cache_row)
+    else:
+        cache_row.scheduled_today_count = scheduled_today_count
+        cache_row.rescheduled_to_today_count = rescheduled_to_today_count
+        cache_row.generated_at = now_utc
+    try:
+        db.session.commit()
+    except IntegrityError:
+        # Concurrent request inserted the same baseline_date_local row first.
+        # Recover by reloading and updating in-place.
+        db.session.rollback()
+        cache_row = (
+            db.session.query(JobsSchedulingDayMetricCache)
+            .filter(JobsSchedulingDayMetricCache.baseline_date_local == today_local)
+            .one_or_none()
+        )
+        if cache_row is None:
+            raise
+        cache_row.scheduled_today_count = scheduled_today_count
+        cache_row.rescheduled_to_today_count = rescheduled_to_today_count
+        cache_row.generated_at = now_utc
+        db.session.commit()
+    return cache_row, False
+
+
 def _parse_month_yyyy_mm(month_str: str) -> datetime:
     """
     Parse 'YYYY-MM' into a timezone-aware UTC month anchor datetime
@@ -2498,8 +2631,7 @@ def jobs_scheduled_this_week():
 
 
 def get_percent_confirmed_next_two_weeks():
-    now = datetime.now(timezone.utc)
-    two_weeks_out = now + timedelta(weeks=2)
+    window_start_utc, window_end_utc = _next_two_weeks_window_local()
 
     if not _scheduling_attack_v2_table_exists():
         return 0.0
@@ -2512,8 +2644,8 @@ def get_percent_confirmed_next_two_weeks():
         .filter(SchedulingAttackV2.scheduled.is_(True))
         .filter(SchedulingAttackV2.canceled.is_(False))
         .filter(SchedulingAttackV2.scheduled_date.isnot(None))
-        .filter(SchedulingAttackV2.scheduled_date >= now)
-        .filter(SchedulingAttackV2.scheduled_date < two_weeks_out)
+        .filter(SchedulingAttackV2.scheduled_date >= window_start_utc)
+        .filter(SchedulingAttackV2.scheduled_date < window_end_utc)
         .all()
     )
 
@@ -2539,6 +2671,85 @@ def scheduling_attack_v2_kpis():
     }
 
     return jsonify(payload), 200
+
+
+@scheduling_attack_bp.get("/scheduling_attack/v2/unconfirmed_next_two_weeks")
+@cached_json_response(prefix="scheduling_attack:v2_unconfirmed_next_two_weeks", ttl_seconds=90)
+def scheduling_attack_v2_unconfirmed_next_two_weeks():
+    if not _scheduling_attack_v2_table_exists():
+        return jsonify(
+            {
+                "generated_at": _utc_now_iso(),
+                "rows": [],
+                "scheduling_attack_v2_table_missing": True,
+            }
+        ), 200
+
+    window_start_utc, window_end_utc = _next_two_weeks_window_local()
+    rows = (
+        db.session.query(SchedulingAttackV2)
+        .filter(SchedulingAttackV2.scheduled.is_(True))
+        .filter(SchedulingAttackV2.canceled.is_(False))
+        .filter(SchedulingAttackV2.confirmed.is_(False))
+        .filter(SchedulingAttackV2.scheduled_date.isnot(None))
+        .filter(SchedulingAttackV2.scheduled_date >= window_start_utc)
+        .filter(SchedulingAttackV2.scheduled_date < window_end_utc)
+        .order_by(SchedulingAttackV2.scheduled_date.asc(), SchedulingAttackV2.address.asc())
+        .all()
+    )
+
+    payload_rows = []
+    for r in rows:
+        job_id = int(r.job_id) if r.job_id is not None else None
+        payload_rows.append(
+            {
+                "id": int(r.id),
+                "location_id": int(r.location_id),
+                "address": r.address,
+                "scheduled_date": r.scheduled_date.isoformat() if r.scheduled_date else None,
+                "job_id": job_id,
+                "job_type": (r.job_type or "").strip() or "unknown",
+                "job_url": f"https://app.servicetrade.com/jobs/{job_id}" if job_id else None,
+            }
+        )
+
+    return jsonify(
+        {
+            "generated_at": _utc_now_iso(),
+            "window_start_local": window_start_utc.astimezone(LOCAL_TZ).isoformat(),
+            "window_end_local": window_end_utc.astimezone(LOCAL_TZ).isoformat(),
+            "rows": payload_rows,
+        }
+    ), 200
+
+
+@scheduling_attack_bp.get("/scheduling_attack/v2/scheduled_today_activity")
+@cached_json_response(prefix="scheduling_attack:v2_scheduled_today_activity", ttl_seconds=45)
+def scheduling_attack_v2_scheduled_today_activity():
+    job_type = "inspection,reinspection,planned_maintenance"
+    cache_row, baseline_missing = _get_or_refresh_today_activity_cache(job_type=job_type, freshness_seconds=60)
+    baseline_date_local = _today_local_date().isoformat()
+
+    if baseline_missing:
+        return jsonify(
+            {
+                "baseline_date_local": baseline_date_local,
+                "scheduled_today_count": 0,
+                "rescheduled_to_today_count": 0,
+                "generated_at": _utc_now_iso(),
+                "baseline_missing": True,
+            }
+        ), 200
+
+    return jsonify(
+        {
+            "baseline_date_local": baseline_date_local,
+            "scheduled_today_count": int(cache_row.scheduled_today_count if cache_row else 0),
+            "rescheduled_to_today_count": int(cache_row.rescheduled_to_today_count if cache_row else 0),
+            "generated_at": cache_row.generated_at.isoformat() if cache_row and cache_row.generated_at else _utc_now_iso(),
+            "baseline_missing": False,
+        }
+    ), 200
 
 
 @scheduling_attack_bp.post("/scheduling_attack/v2/reached_out")

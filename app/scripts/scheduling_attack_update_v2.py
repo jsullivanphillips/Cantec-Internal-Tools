@@ -24,6 +24,8 @@ REQUIRED_KEYS = {
     "month",
     "scheduled",
     "scheduled_date",
+    "job_id",
+    "job_type",
     "confirmed",
     "reached_out",
     "completed",
@@ -124,6 +126,41 @@ def is_relevant_annual_recurrence(rec: dict) -> bool:
     return True
 
 
+def _job_is_unconfirmed(job: dict) -> bool:
+    tags = job.get("tags") or []
+    return any((t.get("name") or "").strip().lower() == "unconfirmed" for t in tags)
+
+
+def _job_scheduled_dt(job: dict):
+    ts = job.get("scheduledDate")
+    if not ts:
+        return None
+    try:
+        return datetime.fromtimestamp(ts, tz=timezone.utc)
+    except Exception:
+        return None
+
+
+def _pick_priority_job(jobs: list[dict]) -> dict | None:
+    """
+    Pick one job per location:
+      1) Any unconfirmed job first.
+      2) Earliest scheduled date among those.
+      3) If tie/no date, lower job id.
+    """
+    if not jobs:
+        return None
+
+    def key(job: dict):
+        is_unconfirmed = _job_is_unconfirmed(job)
+        scheduled_dt = _job_scheduled_dt(job)
+        has_date = 0 if scheduled_dt is not None else 1
+        jid = int(job.get("id") or 0)
+        return (0 if is_unconfirmed else 1, has_date, scheduled_dt or datetime.max.replace(tzinfo=timezone.utc), jid)
+
+    return sorted(jobs, key=key)[0]
+
+
 def delete_location_entry_if_exists(location_values: dict) -> bool:
     """
     Delete the SchedulingAttackV2 row for the given location_id (if it exists).
@@ -185,6 +222,14 @@ def upsert_into_database(location_values: dict) -> SchedulingAttackV2:
     if scheduled_date is not None and not isinstance(scheduled_date, datetime):
         raise TypeError("location_values['scheduled_date'] must be a datetime or None")
 
+    job_id = location_values["job_id"]
+    if job_id is not None and not isinstance(job_id, int):
+        raise TypeError("location_values['job_id'] must be an int or None")
+
+    job_type = location_values["job_type"]
+    if job_type is not None and not isinstance(job_type, str):
+        raise TypeError("location_values['job_type'] must be a str or None")
+
     for key in BOOL_KEYS:
         if not isinstance(location_values[key], bool):
             raise TypeError(f"location_values['{key}'] must be bool")
@@ -212,6 +257,8 @@ def upsert_into_database(location_values: dict) -> SchedulingAttackV2:
             planned_maintenance_month=location_values["planned_maintenance_month"],
             scheduled=location_values["scheduled"],
             scheduled_date = location_values["scheduled_date"],
+            job_id=location_values["job_id"],
+            job_type=location_values["job_type"],
             confirmed=location_values["confirmed"],
             reached_out=location_values["reached_out"],
             completed=location_values["completed"],
@@ -225,6 +272,8 @@ def upsert_into_database(location_values: dict) -> SchedulingAttackV2:
         row.planned_maintenance_month = location_values["planned_maintenance_month"]
         row.scheduled = location_values["scheduled"]
         row.scheduled_date = location_values["scheduled_date"]
+        row.job_id = location_values["job_id"]
+        row.job_type = location_values["job_type"]
         row.confirmed = location_values["confirmed"]
         row.completed = location_values["completed"]
         row.canceled = location_values["canceled"]
@@ -300,6 +349,8 @@ def main():
                     "planned_maintenance_month": None,
                     "scheduled": False,    
                     "scheduled_date": None,
+                    "job_id": None,
+                    "job_type": None,
                     "confirmed": False,    
                     "reached_out": None,  # Manual Insertion
                     "completed": False,    
@@ -458,7 +509,9 @@ def main():
                         # Is there a job scheduled for this location outside of service due date range?
                         if len(inspection_jobs_in_future) > 0:
                             # A job is scheduled! Just not near the service due date.
-                            inspection_job = inspection_jobs_in_future[0]
+                            inspection_job = _pick_priority_job(inspection_jobs_in_future)
+                            location_values["job_id"] = int(inspection_job.get("id")) if inspection_job and inspection_job.get("id") else None
+                            location_values["job_type"] = inspection_job.get("type") if inspection_job else None
                             # If a job exists and was returned by our API request, it is at least scheduled.
                             location_values["scheduled"] = True
                             if not inspection_job.get("scheduledDate"):
@@ -594,7 +647,10 @@ def main():
                     for job in scheduled_jobs:
                         job_type = job.get("type", "")
                         if job_type.lower() == "inspection":
-                            inspection_job = job
+                            if inspection_job is None:
+                                inspection_job = job
+                            else:
+                                inspection_job = _pick_priority_job([inspection_job, job])
                         elif job_type.lower() in ["replacement","installation","upgrade"]:
                             projects_job = job
                     
@@ -606,6 +662,8 @@ def main():
                     
                     # If a job exists and was returned by our API request, it is at least scheduled.
                     location_values["scheduled"] = True
+                    location_values["job_id"] = int(inspection_job.get("id")) if inspection_job and inspection_job.get("id") else None
+                    location_values["job_type"] = inspection_job.get("type") if inspection_job else None
                     if not inspection_job.get("scheduledDate"):
                         log.warning(f"Job [{inspection_job.get("id")} has no scheduledDate]")
                     else:
@@ -649,24 +707,6 @@ def main():
         print("skipped: ", skipped)
         print("errors: ", errors)
         
-
-
-
-
-                    
-
-
-                        
-                        
-
-                    
-                
-
-
-            
-                    
-
-                
 
 
 if __name__ == "__main__":

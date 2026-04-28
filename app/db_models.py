@@ -704,6 +704,8 @@ class SchedulingAttackV2(db.Model):
 
     scheduled = db.Column(db.Boolean, default=False)
     scheduled_date = db.Column(db.DateTime(timezone=True), nullable=True)
+    job_id = db.Column(db.BigInteger, nullable=True, index=True)
+    job_type = db.Column(db.String(255), nullable=True)
     confirmed = db.Column(db.Boolean, default=False)
     reached_out = db.Column(db.Boolean, default=False)
     completed = db.Column(db.Boolean, default=False)
@@ -799,6 +801,32 @@ class WeeklySchedulingStats(db.Model):
             name="uq_weekly_scheduling_stats_period_type",
         ),
     )
+
+
+class JobsSchedulingDayBaseline(db.Model):
+    __tablename__ = "jobs_scheduling_day_baseline"
+
+    id = db.Column(db.BigInteger, primary_key=True)
+    baseline_date_local = db.Column(db.Date, nullable=False, index=True)
+    job_id = db.Column(db.BigInteger, nullable=False)
+    scheduled_date = db.Column(db.DateTime(timezone=True), nullable=True)
+    job_type = db.Column(db.String(255), nullable=True)
+    captured_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        db.UniqueConstraint("baseline_date_local", "job_id", name="uq_jobs_sched_day_baseline_date_job"),
+    )
+
+
+class JobsSchedulingDayMetricCache(db.Model):
+    __tablename__ = "jobs_scheduling_day_metric_cache"
+
+    id = db.Column(db.BigInteger, primary_key=True)
+    baseline_date_local = db.Column(db.Date, nullable=False, unique=True, index=True)
+    scheduled_today_count = db.Column(db.Integer, nullable=False, default=0)
+    rescheduled_to_today_count = db.Column(db.Integer, nullable=False, default=0)
+    generated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
 
 class ForwardScheduleWeek(db.Model):
     __tablename__ = "forward_schedule_week"
