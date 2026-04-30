@@ -22,6 +22,12 @@ VICTORIA_PROXIMITY_LAT = 48.4284
 VICTORIA_BBOX = (-123.75, 48.25, -123.10, 48.75)
 VICTORIA_MAX_DISTANCE_KM = 80.0
 
+# Web UI deep links for ``MonthlyRoute.service_trade_route_location_id`` (route pseudo-location).
+SERVICE_TRADE_APP_LOCATIONS_BASE = os.getenv(
+    "SERVICE_TRADE_APP_LOCATIONS_BASE",
+    "https://app.servicetrade.com/locations",
+).rstrip("/")
+
 
 def _parse_month(value: str | None) -> date | None:
     if not value:
@@ -186,6 +192,15 @@ def _populate_missing_coordinates(locations: list[MonthlyRouteLocation]) -> None
         db.session.commit()
 
 
+def _english_ordinal(n: int) -> str:
+    """1st, 2nd, … for monthly week occurrence (typically 1..5)."""
+    if 11 <= (n % 100) <= 13:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
+
+
 def _serialize_monthly_route_entity(
     mr: MonthlyRoute | None,
     *,
@@ -200,13 +215,20 @@ def _serialize_monthly_route_entity(
         if isinstance(mr.weekday_iso, int) and 0 <= mr.weekday_iso <= 6
         else "?"
     )
-    label = f"{wd}{mr.week_occurrence} · R{mr.route_number}"
+    occ = int(mr.week_occurrence) if mr.week_occurrence is not None else 0
+    nth = _english_ordinal(occ) if occ >= 1 else str(occ)
+    label = f"{nth} {wd} · R{mr.route_number}"
+    st_rid = mr.service_trade_route_location_id
     out: dict[str, object] = {
         "id": mr.id,
         "route_number": mr.route_number,
         "weekday_iso": mr.weekday_iso,
         "week_occurrence": mr.week_occurrence,
         "label": label,
+        "service_trade_route_location_id": int(st_rid) if st_rid is not None else None,
+        "service_trade_route_location_url": (
+            f"{SERVICE_TRADE_APP_LOCATIONS_BASE}/{int(st_rid)}" if st_rid is not None else None
+        ),
     }
     if location_count is not None:
         out["location_count"] = location_count
@@ -304,6 +326,7 @@ def monthly_routes_library():
     q = (request.args.get("q") or "").strip().casefold()
     route = (request.args.get("route") or "").strip()
     skipped_any = (request.args.get("skipped_any") or "").strip().lower() == "true"
+    annual_tested_conflict = (request.args.get("annual_tested_conflict") or "").strip().lower() == "true"
     active_only = (request.args.get("active_only") or "").strip().lower() == "true"
     include_coordinates = (request.args.get("include_coordinates") or "").strip().lower() == "true"
     unpaginated = (request.args.get("unpaginated") or "").strip().lower() == "true"
@@ -349,25 +372,45 @@ def monthly_routes_library():
 
     count_scope_locations: list[MonthlyRouteLocation]
 
-    if skipped_any:
+    special_library_filters = skipped_any or annual_tested_conflict
+
+    if special_library_filters:
         candidate_locations = ordered_location_query.all()
         candidate_ids = [loc.id for loc in candidate_locations]
+        annual_by_location = {loc.id: loc.annual_month for loc in candidate_locations}
 
-        skipped_ids: set[int] = set()
-        if candidate_ids:
-            skipped_hist_query = MonthlyRouteTestHistory.query.filter(
-                MonthlyRouteTestHistory.location_id.in_(candidate_ids),
-                MonthlyRouteTestHistory.result_status == "skipped",
-            )
-            if range_conditions:
-                skipped_hist_query = skipped_hist_query.filter(and_(*range_conditions))
-            skipped_rows = skipped_hist_query.all()
-            annual_by_location = {loc.id: loc.annual_month for loc in candidate_locations}
-            for row in skipped_rows:
-                if not _is_annual_month(row.month_date, annual_by_location.get(row.location_id)):
-                    skipped_ids.add(row.location_id)
+        id_sets: list[set[int]] = []
 
-        filtered_locations = [loc for loc in candidate_locations if loc.id in skipped_ids]
+        if skipped_any:
+            skipped_ids: set[int] = set()
+            if candidate_ids:
+                skipped_hist_query = MonthlyRouteTestHistory.query.filter(
+                    MonthlyRouteTestHistory.location_id.in_(candidate_ids),
+                    MonthlyRouteTestHistory.result_status == "skipped",
+                )
+                if range_conditions:
+                    skipped_hist_query = skipped_hist_query.filter(and_(*range_conditions))
+                for row in skipped_hist_query.all():
+                    if not _is_annual_month(row.month_date, annual_by_location.get(row.location_id)):
+                        skipped_ids.add(row.location_id)
+            id_sets.append(skipped_ids)
+
+        if annual_tested_conflict:
+            conflict_ids: set[int] = set()
+            if candidate_ids:
+                tested_hist_query = MonthlyRouteTestHistory.query.filter(
+                    MonthlyRouteTestHistory.location_id.in_(candidate_ids),
+                    MonthlyRouteTestHistory.result_status == "tested",
+                )
+                if range_conditions:
+                    tested_hist_query = tested_hist_query.filter(and_(*range_conditions))
+                for row in tested_hist_query.all():
+                    if _is_annual_month(row.month_date, annual_by_location.get(row.location_id)):
+                        conflict_ids.add(row.location_id)
+            id_sets.append(conflict_ids)
+
+        matching_ids = set.intersection(*id_sets) if id_sets else set(candidate_ids)
+        filtered_locations = [loc for loc in candidate_locations if loc.id in matching_ids]
         count_scope_locations = filtered_locations
         total_locations = len(filtered_locations)
         if unpaginated:

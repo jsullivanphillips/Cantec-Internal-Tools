@@ -9,6 +9,10 @@ export type MonthlyRouteSummary = {
   weekday_iso: number
   week_occurrence: number
   label: string
+  /** ServiceTrade route-level pseudo-location id when linked. */
+  service_trade_route_location_id?: number | null
+  /** Deep link to ServiceTrade web UI for that location (when id is set). */
+  service_trade_route_location_url?: string | null
   location_count?: number
 }
 

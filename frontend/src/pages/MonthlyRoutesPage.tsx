@@ -31,6 +31,24 @@ type LocationEditForm = {
   annual_month: string
 }
 
+function RouteLibraryLink({ loc }: { loc: LibraryLocation }) {
+  const label = libraryRouteDisplay(loc) || '—'
+  const url = loc.monthly_route?.service_trade_route_location_url
+  if (url && label !== '—') {
+    return (
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="fw-semibold text-decoration-none"
+      >
+        {label}
+      </a>
+    )
+  }
+  return <>{label}</>
+}
+
 const LIBRARY_DETAIL_MODAL_TITLE_ID = 'library-detail-modal-title'
 const LIBRARY_PAGE_SIZE = 50
 const MONTH_NAME_OPTIONS = Array.from({ length: 12 }).map((_, idx) =>
@@ -48,10 +66,6 @@ const MONTH_TESTING_CELL_STYLE: CSSProperties = {
   textAlign: 'center',
   whiteSpace: 'normal',
   wordBreak: 'break-word',
-}
-
-const MONTH_TESTING_SKIPPED_CELL_STYLE: CSSProperties = {
-  backgroundColor: '#fff3cd',
 }
 
 const STATUS_COLUMN_STYLE: CSSProperties = {
@@ -73,21 +87,28 @@ const ADDRESS_COLUMN_STYLE: CSSProperties = {
 }
 
 const ROUTE_COLUMN_STYLE: CSSProperties = {
-  width: '4.8rem',
-  minWidth: '4.8rem',
-  maxWidth: '4.8rem',
+  width: '6.24rem',
+  minWidth: '6.24rem',
+  maxWidth: '6.24rem',
 }
 
 const KEYS_COLUMN_STYLE: CSSProperties = {
   width: '7.36rem',
   minWidth: '7.36rem',
   maxWidth: '7.36rem',
+  textAlign: 'center',
 }
 
 const ANNUAL_COLUMN_STYLE: CSSProperties = {
   width: '6.2rem',
   minWidth: '6.2rem',
   maxWidth: '6.2rem',
+}
+
+const EDIT_COLUMN_STYLE: CSSProperties = {
+  width: '4.25rem',
+  minWidth: '4.25rem',
+  maxWidth: '4.25rem',
 }
 
 const LIBRARY_TABLE_HEADER_STICKY_STYLE: CSSProperties = {
@@ -252,6 +273,7 @@ export default function MonthlyRoutesPage() {
   const [payload, setPayload] = useState<LibraryPayload | null>(null)
   const [tableSearch, setTableSearch] = useState('')
   const [showOnlySkipped, setShowOnlySkipped] = useState(false)
+  const [showAnnualTestingConflicts, setShowAnnualTestingConflicts] = useState(false)
   const [hideCancelledMbtLocations, setHideCancelledMbtLocations] = useState(true)
   const [newLocationForm, setNewLocationForm] = useState<CreateLocationForm>({
     address: '',
@@ -331,6 +353,7 @@ export default function MonthlyRoutesPage() {
     params.set('to_month', toMonthKey(finish.year, finish.month))
     if (tableSearch.trim()) params.set('q', tableSearch.trim())
     if (showOnlySkipped) params.set('skipped_any', 'true')
+    if (showAnnualTestingConflicts) params.set('annual_tested_conflict', 'true')
     params.set('page', String(page))
     params.set('page_size', String(LIBRARY_PAGE_SIZE))
 
@@ -353,7 +376,7 @@ export default function MonthlyRoutesPage() {
       active = false
       controller.abort()
     }
-  }, [fromMonth, page, showOnlySkipped, tableSearch, toMonth])
+  }, [fromMonth, page, showAnnualTestingConflicts, showOnlySkipped, tableSearch, toMonth])
 
   const monthColumns = useMemo(() => {
     const from = parseYearMonth(fromMonth)
@@ -664,7 +687,8 @@ export default function MonthlyRoutesPage() {
           {!isEditMode ? (
             <Button
               size="sm"
-              variant="outline-danger"
+              variant="danger"
+              className="text-white"
               onClick={() => deleteLocation(loc)}
               disabled={isDeleting}
             >
@@ -821,10 +845,16 @@ export default function MonthlyRoutesPage() {
                   libraryKeycodeDisplay(loc) || '—'
                 )}
               </dd>
-              <dt className="col-sm-3 text-muted">Spreadsheet KEYS</dt>
-              <dd className="col-sm-9 text-break small text-muted">{loc.keys || '—'}</dd>
+              {!loc.key ? (
+                <>
+                  <dt className="col-sm-3 text-muted">Spreadsheet KEYS</dt>
+                  <dd className="col-sm-9 text-break small text-muted">{loc.keys || '—'}</dd>
+                </>
+              ) : null}
               <dt className="col-sm-3 text-muted">Route</dt>
-              <dd className="col-sm-9">{libraryRouteDisplay(loc) || '—'}</dd>
+              <dd className="col-sm-9">
+                <RouteLibraryLink loc={loc} />
+              </dd>
               <dt className="col-sm-3 text-muted">Annual</dt>
               <dd className="col-sm-9">{loc.annual_month || '—'}</dd>
             </dl>
@@ -842,7 +872,7 @@ export default function MonthlyRoutesPage() {
     )
   }
 
-  const tableColSpan = 6 + monthColumns.length
+  const tableColSpan = 7 + monthColumns.length
 
   const tableSection = useMemo(() => {
     if (loading || error) return null
@@ -883,6 +913,15 @@ export default function MonthlyRoutesPage() {
                   {formatMonthLabel(month)}
                 </th>
               ))}
+              <th
+                className="text-center"
+                style={{
+                  ...EDIT_COLUMN_STYLE,
+                  ...LIBRARY_TABLE_HEADER_STICKY_STYLE,
+                }}
+              >
+                Edit
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -900,30 +939,21 @@ export default function MonthlyRoutesPage() {
                   <td className="text-center" style={STATUS_COLUMN_STYLE}>
                     {renderStatusDot(loc.status_normalized)}
                   </td>
-                  <td style={ROUTE_COLUMN_STYLE}>{libraryRouteDisplay(loc) || '—'}</td>
-                  <td style={ADDRESS_COLUMN_STYLE}>
-                    <button
-                      type="button"
-                      className="btn btn-link p-0 text-decoration-none fw-semibold text-start"
-                      onClick={() => openLocationDetail(loc)}
-                    >
-                      {loc.address}
-                    </button>
+                  <td style={ROUTE_COLUMN_STYLE}>
+                    <RouteLibraryLink loc={loc} />
+                  </td>
+                  <td style={ADDRESS_COLUMN_STYLE} className="text-break">
+                    {loc.address}
                   </td>
                   <td style={PROPERTY_COLUMN_STYLE}>{loc.property_management_company || '—'}</td>
                   <td style={KEYS_COLUMN_STYLE}>
                     {loc.key ? (
-                      <>
-                        <Link
-                          to={`/keys/${loc.key.id}`}
-                          className="fw-semibold text-decoration-none"
-                        >
-                          {loc.key.keycode}
-                        </Link>
-                        {loc.keys?.trim() && loc.keys.trim() !== loc.key.keycode.trim() ? (
-                          <div className="small text-muted text-break">{loc.keys}</div>
-                        ) : null}
-                      </>
+                      <Link
+                        to={`/keys/${loc.key.id}`}
+                        className="fw-semibold text-decoration-none"
+                      >
+                        {loc.key.keycode}
+                      </Link>
                     ) : (
                       loc.keys || '—'
                     )}
@@ -961,20 +991,32 @@ export default function MonthlyRoutesPage() {
                     const monthCell = loc.months?.[month]
                     const isAnnualDisplay =
                       isAnnualMonth(month, loc.annual_month) && monthCell?.result_status !== 'tested'
+                    const isSkippedSurface =
+                      !isAnnualDisplay && monthCell?.result_status === 'skipped'
                     return (
                     <td
                       key={`${loc.id}-${month}`}
-                      style={{
-                        ...MONTH_TESTING_CELL_STYLE,
-                        ...(!isAnnualDisplay && monthCell?.result_status === 'skipped'
-                            ? MONTH_TESTING_SKIPPED_CELL_STYLE
-                            : {}),
-                      }}
+                      className={
+                        isSkippedSurface
+                          ? 'month-testing-cell month-testing-skipped'
+                          : 'month-testing-cell'
+                      }
+                      style={MONTH_TESTING_CELL_STYLE}
                     >
                       {renderMonthCell(monthCell, month, loc.annual_month)}
                     </td>
                     )
                   })}
+                  <td className="text-center" style={EDIT_COLUMN_STYLE}>
+                    <button
+                      type="button"
+                      className="btn btn-link btn-sm p-0 text-decoration-none"
+                      aria-label={`Edit location ${loc.address}`}
+                      onClick={() => openLocationDetail(loc)}
+                    >
+                      Edit
+                    </button>
+                  </td>
                 </tr>
               ))
             )}
@@ -1129,56 +1171,82 @@ export default function MonthlyRoutesPage() {
     <div className="d-flex flex-column gap-3">
       <Card className="app-surface-card">
         <Card.Body className="p-3">
-          <div className="d-flex flex-wrap align-items-center gap-3">
-            <Form.Control
-              type="search"
-              value={tableSearch}
-              placeholder="Search route, address, property, key, annual"
-              onChange={(e) => {
-                setTableSearch(e.target.value)
-                setPage(1)
-              }}
-              style={{ minWidth: 260, maxWidth: 360 }}
-            />
-            <Form.Control
-              type="month"
-              value={fromMonth.slice(0, 7)}
-              onChange={(e) => {
-                setFromMonth(`${e.target.value}-01`)
-                setPage(1)
-              }}
-              style={{ maxWidth: 160 }}
-            />
-            <Form.Control
-              type="month"
-              value={toMonth.slice(0, 7)}
-              onChange={(e) => {
-                setToMonth(`${e.target.value}-01`)
-                setPage(1)
-              }}
-              style={{ maxWidth: 160 }}
-            />
-            <Form.Check
-              id="monthly-routes-skipped-only"
-              type="checkbox"
-              label="Show only skipped locations"
-              checked={showOnlySkipped}
-              onChange={(e) => {
-                setShowOnlySkipped(e.target.checked)
-                setPage(1)
-              }}
-            />
-            <Form.Check
-              id="monthly-routes-hide-cancelled"
-              type="checkbox"
-              label="Hide cancelled MBT locations"
-              checked={hideCancelledMbtLocations}
-              onChange={(e) => {
-                setHideCancelledMbtLocations(e.target.checked)
-                setPage(1)
-              }}
-            />
-            <Button size="sm" variant="primary" onClick={openCreateLocationModal}>
+          <div className="d-flex align-items-center w-100 gap-2">
+            <div
+              className="d-flex align-items-center gap-2 flex-grow-1 min-w-0 flex-nowrap"
+              style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}
+            >
+              <Form.Control
+                type="search"
+                value={tableSearch}
+                placeholder="Search route, address, property, key, annual"
+                onChange={(e) => {
+                  setTableSearch(e.target.value)
+                  setPage(1)
+                }}
+                className="flex-grow-1 flex-shrink-1"
+                style={{ minWidth: '11rem', maxWidth: '20rem', width: '14rem' }}
+              />
+              <Form.Control
+                type="month"
+                value={fromMonth.slice(0, 7)}
+                onChange={(e) => {
+                  setFromMonth(`${e.target.value}-01`)
+                  setPage(1)
+                }}
+                className="flex-shrink-0"
+                style={{ width: '9rem', maxWidth: '9rem' }}
+              />
+              <Form.Control
+                type="month"
+                value={toMonth.slice(0, 7)}
+                onChange={(e) => {
+                  setToMonth(`${e.target.value}-01`)
+                  setPage(1)
+                }}
+                className="flex-shrink-0"
+                style={{ width: '9rem', maxWidth: '9rem' }}
+              />
+              <Form.Check
+                id="monthly-routes-skipped-only"
+                type="checkbox"
+                label="Show only skipped locations"
+                checked={showOnlySkipped}
+                className="text-nowrap mb-0 flex-shrink-0"
+                onChange={(e) => {
+                  setShowOnlySkipped(e.target.checked)
+                  setPage(1)
+                }}
+              />
+              <Form.Check
+                id="monthly-routes-annual-tested-conflicts"
+                type="checkbox"
+                label="Show annual/testing conflicts"
+                checked={showAnnualTestingConflicts}
+                className="text-nowrap mb-0 flex-shrink-0"
+                onChange={(e) => {
+                  setShowAnnualTestingConflicts(e.target.checked)
+                  setPage(1)
+                }}
+              />
+              <Form.Check
+                id="monthly-routes-hide-cancelled"
+                type="checkbox"
+                label="Hide cancelled MBT locations"
+                checked={hideCancelledMbtLocations}
+                className="text-nowrap mb-0 flex-shrink-0"
+                onChange={(e) => {
+                  setHideCancelledMbtLocations(e.target.checked)
+                  setPage(1)
+                }}
+              />
+            </div>
+            <Button
+              size="sm"
+              variant="primary"
+              className="flex-shrink-0"
+              onClick={openCreateLocationModal}
+            >
               Add Location
             </Button>
           </div>

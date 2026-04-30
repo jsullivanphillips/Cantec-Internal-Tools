@@ -135,6 +135,23 @@
   height: 100%;
 }
 
+/* Library table: testing month columns — uniform slab (no striped/hover zebra from Bootstrap) */
+.monthly-routes-library-table > tbody > tr > td.month-testing-cell {
+  background-color: #f3f5f9 !important;
+}
+
+.monthly-routes-library-table.table-hover > tbody > tr:hover > td.month-testing-cell:not(.month-testing-skipped) {
+  background-color: #eceff5 !important;
+}
+
+.monthly-routes-library-table > tbody > tr > td.month-testing-cell.month-testing-skipped {
+  background-color: #fdf9ef !important;
+}
+
+.monthly-routes-library-table.table-hover > tbody > tr:hover > td.month-testing-cell.month-testing-skipped {
+  background-color: #faf3e4 !important;
+}
+
 @media (min-width: 992px) {
   .app-sidebar {
     position: sticky;
