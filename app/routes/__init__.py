@@ -11,6 +11,7 @@ from .performance_summary import performance_summary_bp
 from .pink_folder import pink_folder_bp
 from .webhook import webhook_bp
 from .monthly_specialists import monthly_specialist_bp
+from .monthly_routes import monthly_routes_bp
 from .keys import keys_bp
 
 
@@ -27,5 +28,6 @@ def register_blueprints(app):
     app.register_blueprint(pink_folder_bp)
     app.register_blueprint(webhook_bp)
     app.register_blueprint(monthly_specialist_bp)
+    app.register_blueprint(monthly_routes_bp)
     app.register_blueprint(keys_bp)
 

@@ -533,6 +533,97 @@ class Technician(db.Model):
     def __repr__(self):
         return f"<Technician {self.name} | {self.type or 'Unassigned'}>"
 
+
+class MonthlyRouteLocation(db.Model):
+    __tablename__ = "monthly_route_location"
+    __table_args__ = (
+        db.UniqueConstraint(
+            "address_normalized",
+            "property_management_company_normalized",
+            "building_normalized",
+            name="uq_monthly_route_location_address_company_building_normalized",
+        ),
+        db.Index("ix_monthly_route_location_status_normalized", "status_normalized"),
+    )
+
+    id = db.Column(db.BigInteger, primary_key=True)
+    address = db.Column(db.String(255), nullable=False)
+    address_normalized = db.Column(db.String(255), nullable=False)
+
+    property_management_company = db.Column(db.String(255), nullable=True)
+    property_management_company_normalized = db.Column(db.String(255), nullable=False, default="")
+    building = db.Column(db.String(255), nullable=True)
+    building_normalized = db.Column(db.String(255), nullable=False, default="")
+    notes = db.Column(db.Text, nullable=True)
+    barcode = db.Column(db.String(64), nullable=True)
+    price_per_month = db.Column(db.Numeric(10, 2), nullable=True)
+    area = db.Column(db.String(255), nullable=True)
+    start_up_date = db.Column(db.Date, nullable=True)
+
+    status_normalized = db.Column(db.String(32), nullable=False, default="active")
+    status_raw = db.Column(db.String(255), nullable=True)
+
+    keys = db.Column(db.Text, nullable=True)
+    test_day = db.Column(db.String(255), nullable=True)
+    annual_month = db.Column(db.String(32), nullable=True)
+    display_address = db.Column(db.String(255), nullable=True)
+    latitude = db.Column(db.Float, nullable=True)
+    longitude = db.Column(db.Float, nullable=True)
+
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        nullable=False,
+    )
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        onupdate=db.func.now(),
+        nullable=False,
+    )
+
+    monthly_history = db.relationship(
+        "MonthlyRouteTestHistory",
+        back_populates="location",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+
+
+class MonthlyRouteTestHistory(db.Model):
+    __tablename__ = "monthly_route_test_history"
+    __table_args__ = (
+        db.UniqueConstraint("location_id", "month_date", name="uq_monthly_route_test_history_location_month"),
+        db.Index("ix_monthly_route_test_history_month_date", "month_date"),
+        db.Index("ix_monthly_route_test_history_result_status", "result_status"),
+    )
+
+    id = db.Column(db.BigInteger, primary_key=True)
+    location_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monthly_route_location.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    month_date = db.Column(db.Date, nullable=False)
+    result_status = db.Column(db.String(32), nullable=False)
+    skip_reason = db.Column(db.String(255), nullable=True)
+    source_value_raw = db.Column(db.String(255), nullable=True)
+
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        nullable=False,
+    )
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        onupdate=db.func.now(),
+        nullable=False,
+    )
+
+    location = db.relationship("MonthlyRouteLocation", back_populates="monthly_history")
+
 class MonthlyRouteSnapshot(db.Model):
     __tablename__ = "monthly_route_snapshot"
 

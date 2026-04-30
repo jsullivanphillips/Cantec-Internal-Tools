@@ -10,6 +10,8 @@ const KeysHomePage = lazy(() => import('./pages/KeysHomePage'))
 const KeyDetailPage = lazy(() => import('./pages/KeyDetailPage'))
 const KeyByBarcodePage = lazy(() => import('./pages/KeyByBarcodePage'))
 const PerformanceSummaryPage = lazy(() => import('./pages/PerformanceSummaryPage'))
+const MonthlyRoutesPage = lazy(() => import('./pages/MonthlyRoutesPage'))
+const MonthlyRoutesMapPage = lazy(() => import('./pages/MonthlyRoutesMapPage'))
 const MonthlySpecialistsPage = lazy(() => import('./pages/MonthlySpecialistsPage'))
 const KeyMetricsPage = lazy(() => import('./pages/KeyMetricsPage'))
 const DeficiencyTrackerPage = lazy(() => import('./pages/DeficiencyTrackerPage'))
@@ -45,7 +47,11 @@ export const router = createBrowserRouter([
       { path: 'quotation_tool', element: <QuotationToolPage /> },
       { path: 'deficiency_tracker', element: <DeficiencyTrackerPage /> },
       { path: 'scheduling_attack', element: <SchedulingAttackPage /> },
-      { path: 'monthly_specialist', element: <MonthlySpecialistsPage /> },
+      { path: 'monthlies/routes', element: <MonthlyRoutesPage /> },
+      { path: 'monthlies/map', element: <MonthlyRoutesMapPage /> },
+      { path: 'monthlies/specialists', element: <MonthlySpecialistsPage /> },
+      { path: 'tools/monthly-routes', element: <Navigate to="/monthlies/routes" replace /> },
+      { path: 'tools/monthly-routes/map', element: <Navigate to="/monthlies/map" replace /> },
       { path: 'processing_attack', element: <ProcessingAttackPage /> },
       { path: 'limbo_job_tracker', element: <Navigate to="/processing_attack?tab=limbo" replace /> },
       { path: 'performance_summary', element: <PerformanceSummaryPage /> },

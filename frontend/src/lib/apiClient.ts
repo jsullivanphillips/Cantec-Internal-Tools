@@ -55,5 +55,13 @@ export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
     }
     throw err
   }
-  return res.json() as Promise<T>
+  // DELETE and some success handlers return 204 No Content with no body — res.json() throws.
+  if (res.status === 204 || res.status === 205) {
+    return undefined as T
+  }
+  const text = await res.text()
+  if (!text.trim()) {
+    return undefined as T
+  }
+  return JSON.parse(text) as T
 }

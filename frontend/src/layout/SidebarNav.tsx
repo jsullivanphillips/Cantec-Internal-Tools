@@ -22,9 +22,16 @@ const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
+    title: 'Monthlies',
+    items: [
+      { to: '/monthlies/routes', label: 'Routes', icon: 'bi-signpost-split', end: true },
+      { to: '/monthlies/map', label: 'Map', icon: 'bi-map' },
+      { to: '/monthlies/specialists', label: 'Specialists', icon: 'bi-people' },
+    ],
+  },
+  {
     title: 'Data',
     items: [
-      { to: '/monthly_specialist', label: 'Monthly Specialists', icon: 'bi-people' },
       { to: '/performance_summary', label: 'Performance Summary', icon: 'bi-pie-chart' },
       { to: '/deficiency_tracker', label: 'Deficiencies', icon: 'bi-exclamation-triangle' },
     ],

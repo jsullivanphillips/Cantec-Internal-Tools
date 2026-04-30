@@ -1,0 +1,851 @@
+from __future__ import annotations
+
+import argparse
+import csv
+import logging
+from dataclasses import dataclass
+from datetime import date, datetime, timezone
+from decimal import Decimal, InvalidOperation
+from pathlib import Path
+from typing import Any
+
+from sqlalchemy import select, text
+from sqlalchemy.dialects.postgresql import insert
+
+from app import create_app, db
+from app.db_models import MonthlyRouteLocation, MonthlyRouteTestHistory
+
+LOG = logging.getLogger("upload_monthly_sheet")
+
+# Emit CLI progress every N locations so long runs do not look stalled.
+PROGRESS_EVERY_N_LOCATIONS = 25
+
+
+@dataclass
+class RowConflict:
+    address: str
+    first_row_number: int
+    replacement_row_number: int
+
+
+@dataclass
+class MissingReasonLog:
+    address: str
+    month_date: date
+    row_number: int
+
+
+@dataclass
+class SkipReasonOverride:
+    address: str
+    property_management_company: str | None
+    building: str | None
+    month_date: date
+    skip_reason: str
+    source_row_number: int
+
+
+def _configure_logging() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+
+
+def _normalize_space(value: str | None) -> str:
+    return " ".join((value or "").strip().split())
+
+
+def _normalize_address(value: str | None) -> str:
+    return _normalize_space(value).casefold()
+
+
+def _normalize_company(value: str | None) -> str:
+    return _normalize_space(value).casefold()
+
+
+def _normalize_building(value: str | None) -> str:
+    return _normalize_space(value).casefold()
+
+
+def _normalize_status(value: str | None) -> str:
+    raw = _normalize_space(value).upper()
+    if raw == "ACTIVE":
+        return "active"
+    if raw == "CANCELLED":
+        return "cancelled"
+    if raw == "ON HOLD":
+        return "on_hold"
+    return "unknown"
+
+
+def _parse_price(value: str | None) -> Decimal | None:
+    text = _normalize_space(value).replace("$", "").replace(",", "")
+    if not text or text == "-":
+        return None
+    try:
+        return Decimal(text)
+    except InvalidOperation:
+        return None
+
+
+def _parse_start_up_date(value: str | None) -> date | None:
+    text = _normalize_space(value)
+    if not text or text == "-":
+        return None
+    for fmt in ("%b-%y", "%B-%y"):
+        try:
+            parsed = datetime.strptime(text, fmt)
+            return date(parsed.year, parsed.month, 1)
+        except ValueError:
+            continue
+    return None
+
+
+def _parse_month_header(header: str) -> date | None:
+    text = _normalize_space(header)
+    for fmt in ("%b-%y", "%B-%y"):
+        try:
+            parsed = datetime.strptime(text, fmt)
+            return date(parsed.year, parsed.month, 1)
+        except ValueError:
+            continue
+    return None
+
+
+def _clean_barcode(value: str | None) -> str | None:
+    text = _normalize_space(value)
+    if not text or text == "-":
+        return None
+    return text
+
+
+def _clean_text(value: str | None) -> str | None:
+    text = _normalize_space(value)
+    return text or None
+
+
+def _derive_month_result(cell_value: str | None) -> tuple[str | None, str | None]:
+    """
+    Returns (result_status, skip_reason).
+    None result_status means do not create a history row.
+    """
+    value = _normalize_space(cell_value).upper()
+    if not value or value == "-":
+        return None, None
+    if value == "Y":
+        return "tested", None
+    if value == "ANNUAL":
+        return "skipped", "annual"
+    if value == "X":
+        return "skipped", None
+    return None, None
+
+
+def _load_skip_reason_overrides(skip_reasons_csv_path: Path | None) -> dict[tuple[str, str, str, date], SkipReasonOverride]:
+    overrides: dict[tuple[str, str, str, date], SkipReasonOverride] = {}
+    if not skip_reasons_csv_path:
+        return overrides
+    if not skip_reasons_csv_path.exists():
+        raise SystemExit(f"Skip-reasons CSV file not found: {skip_reasons_csv_path}")
+
+    with skip_reasons_csv_path.open("r", newline="", encoding="utf-8-sig") as handle:
+        reader = csv.DictReader(handle)
+        required = {"address", "month_date", "skip_reason"}
+        columns = set(reader.fieldnames or [])
+        missing = required - columns
+        if missing:
+            raise SystemExit(
+                f"Skip-reasons CSV is missing required column(s): {', '.join(sorted(missing))}"
+            )
+
+        loaded = 0
+        for row_number, row in enumerate(reader, start=2):
+            address = _normalize_space(row.get("address"))
+            company = _normalize_space(row.get("property_management_company"))
+            building = _normalize_space(row.get("building"))
+            reason = _normalize_space(row.get("skip_reason"))
+            month_raw = _normalize_space(row.get("month_date"))
+            if not address or not reason or not month_raw:
+                continue
+            try:
+                month_date = date.fromisoformat(month_raw)
+            except ValueError:
+                LOG.warning(
+                    "Skipping invalid skip-reason row %s (month_date must be YYYY-MM-DD): %s",
+                    row_number,
+                    month_raw,
+                )
+                continue
+
+            key = (
+                _normalize_address(address),
+                _normalize_company(company),
+                _normalize_building(building),
+                month_date,
+            )
+            overrides[key] = SkipReasonOverride(
+                address=address,
+                property_management_company=company or None,
+                building=building or None,
+                month_date=month_date,
+                skip_reason=reason,
+                source_row_number=row_number,
+            )
+            loaded += 1
+
+    print(
+        f"[monthly-sheet] Loaded {loaded} skip-reason override row(s) from {skip_reasons_csv_path}.",
+        flush=True,
+    )
+    return overrides
+
+
+def _write_csv(path: Path, headers: list[str], rows: list[dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=headers)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def _load_duplicate_row_numbers(duplicates_csv_path: Path | None) -> set[int]:
+    if not duplicates_csv_path:
+        return set()
+    if not duplicates_csv_path.exists():
+        raise SystemExit(f"Duplicate-conflicts CSV file not found: {duplicates_csv_path}")
+
+    row_numbers: set[int] = set()
+    with duplicates_csv_path.open("r", newline="", encoding="utf-8-sig") as handle:
+        reader = csv.DictReader(handle)
+        if "replacement_row_number" not in (reader.fieldnames or []):
+            raise SystemExit(
+                "Duplicate-conflicts CSV is missing required column: replacement_row_number"
+            )
+        for row in reader:
+            raw = _normalize_space(row.get("replacement_row_number"))
+            if not raw:
+                continue
+            try:
+                row_numbers.add(int(raw))
+            except ValueError:
+                continue
+    print(
+        f"[monthly-sheet] Loaded {len(row_numbers)} duplicate row number(s) from {duplicates_csv_path}.",
+        flush=True,
+    )
+    return row_numbers
+
+
+def _collect_rows(csv_path: Path) -> tuple[list[dict[str, str]], list[RowConflict], list[date]]:
+    with csv_path.open("r", newline="", encoding="utf-8-sig") as handle:
+        reader = csv.DictReader(handle)
+        all_rows = list(reader)
+        headers = reader.fieldnames or []
+
+    month_columns: list[tuple[str, date]] = []
+    for header in headers:
+        parsed = _parse_month_header(header)
+        if parsed:
+            month_columns.append((header, parsed))
+
+    if not month_columns:
+        raise ValueError("No month columns were detected in CSV headers.")
+
+    deduped: dict[str, dict[str, str]] = {}
+    dedupe_row_numbers: dict[str, int] = {}
+    conflicts: list[RowConflict] = []
+
+    for idx, row in enumerate(all_rows, start=2):  # data starts on row 2 in CSV
+        key = _normalize_address(row.get("ADDRESS"))
+        if not key:
+            continue
+        if key in deduped:
+            conflicts.append(
+                RowConflict(
+                    address=row.get("ADDRESS", "").strip(),
+                    first_row_number=dedupe_row_numbers[key],
+                    replacement_row_number=idx,
+                )
+            )
+        deduped[key] = row
+        dedupe_row_numbers[key] = idx
+
+    return list(deduped.values()), conflicts, [m[1] for m in month_columns]
+
+
+def _upsert_location(row: dict[str, str]) -> int:
+    now = datetime.now(timezone.utc)
+    payload = {
+        "address": _normalize_space(row.get("ADDRESS")),
+        "address_normalized": _normalize_address(row.get("ADDRESS")),
+        "property_management_company": _clean_text(row.get("PROPERTY MANAGEMENT COMPANY")),
+        "property_management_company_normalized": _normalize_company(row.get("PROPERTY MANAGEMENT COMPANY")),
+        "building": _clean_text(row.get("NOTES")),
+        "building_normalized": _normalize_building(row.get("NOTES")),
+        "notes": _clean_text(row.get("NOTES")),
+        "barcode": _clean_barcode(row.get("BARCODE #")),
+        "price_per_month": _parse_price(row.get("Price/month")),
+        "area": _clean_text(row.get("Area")),
+        "start_up_date": _parse_start_up_date(row.get("start up date")),
+        "status_normalized": _normalize_status(row.get("STATUS- (ACTIVE, CANCELLED, ON HOLD)")),
+        "status_raw": _clean_text(row.get("STATUS- (ACTIVE, CANCELLED, ON HOLD)")),
+        "keys": _clean_text(row.get("KEYS")),
+        "test_day": _clean_text(row.get("TEST DAY")),
+        "annual_month": _clean_text(row.get("ANNUAL")),
+        "updated_at": now,
+    }
+
+    stmt = insert(MonthlyRouteLocation).values(**payload)
+    stmt = stmt.on_conflict_do_update(
+        constraint="uq_monthly_route_location_address_company_building_normalized",
+        set_={
+            "address": stmt.excluded.address,
+            "property_management_company": stmt.excluded.property_management_company,
+            "property_management_company_normalized": stmt.excluded.property_management_company_normalized,
+            "building": stmt.excluded.building,
+            "building_normalized": stmt.excluded.building_normalized,
+            "notes": stmt.excluded.notes,
+            "barcode": stmt.excluded.barcode,
+            "price_per_month": stmt.excluded.price_per_month,
+            "area": stmt.excluded.area,
+            "start_up_date": stmt.excluded.start_up_date,
+            "status_normalized": stmt.excluded.status_normalized,
+            "status_raw": stmt.excluded.status_raw,
+            "keys": stmt.excluded["keys"],
+            "test_day": stmt.excluded.test_day,
+            "annual_month": stmt.excluded.annual_month,
+            "updated_at": stmt.excluded.updated_at,
+        },
+    ).returning(MonthlyRouteLocation.id)
+    return int(db.session.execute(stmt).scalar_one())
+
+
+def _upsert_history(
+    location_id: int,
+    month_date: date,
+    result_status: str,
+    skip_reason: str | None,
+    source_value_raw: str | None,
+) -> None:
+    now = datetime.now(timezone.utc)
+    stmt = insert(MonthlyRouteTestHistory).values(
+        location_id=location_id,
+        month_date=month_date,
+        result_status=result_status,
+        skip_reason=skip_reason,
+        source_value_raw=source_value_raw,
+        updated_at=now,
+    )
+    stmt = stmt.on_conflict_do_update(
+        constraint="uq_monthly_route_test_history_location_month",
+        set_={
+            "result_status": stmt.excluded.result_status,
+            "skip_reason": stmt.excluded.skip_reason,
+            "source_value_raw": stmt.excluded.source_value_raw,
+            "updated_at": stmt.excluded.updated_at,
+        },
+    )
+    db.session.execute(stmt)
+
+
+def _apply_overrides_only(
+    skip_reason_overrides: dict[tuple[str, str, str, date], SkipReasonOverride],
+    dry_run: bool,
+) -> None:
+    print("[monthly-sheet] Running in overrides-only mode.", flush=True)
+    if not skip_reason_overrides:
+        print("[monthly-sheet] No overrides loaded; nothing to do.", flush=True)
+        return
+
+    updated = 0
+    missing_locations: list[dict[str, Any]] = []
+
+    override_items = list(skip_reason_overrides.items())
+    total = len(override_items)
+
+    ambiguous_locations: list[dict[str, Any]] = []
+
+    for idx, ((address_normalized, company_normalized, building_normalized, month_date), override) in enumerate(override_items, start=1):
+        if building_normalized:
+            location_ids = db.session.execute(
+                select(MonthlyRouteLocation.id).where(
+                    MonthlyRouteLocation.address_normalized == address_normalized,
+                    MonthlyRouteLocation.property_management_company_normalized == company_normalized,
+                    MonthlyRouteLocation.building_normalized == building_normalized,
+                )
+            ).scalars().all()
+        elif company_normalized:
+            location_ids = db.session.execute(
+                select(MonthlyRouteLocation.id).where(
+                    MonthlyRouteLocation.address_normalized == address_normalized,
+                    MonthlyRouteLocation.property_management_company_normalized == company_normalized,
+                )
+            ).scalars().all()
+        else:
+            location_ids = db.session.execute(
+                select(MonthlyRouteLocation.id).where(
+                    MonthlyRouteLocation.address_normalized == address_normalized
+                )
+            ).scalars().all()
+
+        if not location_ids:
+            missing_locations.append(
+                {
+                    "address": override.address,
+                    "property_management_company": override.property_management_company or "",
+                    "building": override.building or "",
+                    "month_date": override.month_date.isoformat(),
+                    "skip_reason": override.skip_reason,
+                    "source_row_number": override.source_row_number,
+                }
+            )
+            continue
+        if len(location_ids) > 1:
+            ambiguous_locations.append(
+                {
+                    "address": override.address,
+                    "property_management_company": override.property_management_company or "",
+                    "building": override.building or "",
+                    "month_date": override.month_date.isoformat(),
+                    "skip_reason": override.skip_reason,
+                    "source_row_number": override.source_row_number,
+                }
+            )
+            continue
+        location_id = location_ids[0]
+
+        _upsert_history(
+            location_id=location_id,
+            month_date=month_date,
+            result_status="skipped",
+            skip_reason=override.skip_reason,
+            source_value_raw="OVERRIDE_ONLY",
+        )
+        updated += 1
+
+        if idx == 1 or idx == total or idx % PROGRESS_EVERY_N_LOCATIONS == 0:
+            pct = (100 * idx // total) if total else 100
+            print(
+                f"[monthly-sheet] Override progress: {idx}/{total} ({pct}%) — updated: {updated}",
+                flush=True,
+            )
+
+    logs_dir = Path("logs")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    if missing_locations:
+        _write_csv(
+            logs_dir / f"monthly_sheet_override_missing_locations_{timestamp}.csv",
+            ["address", "property_management_company", "building", "month_date", "skip_reason", "source_row_number"],
+            missing_locations,
+        )
+    if ambiguous_locations:
+        _write_csv(
+            logs_dir / f"monthly_sheet_override_ambiguous_locations_{timestamp}.csv",
+            ["address", "property_management_company", "building", "month_date", "skip_reason", "source_row_number"],
+            ambiguous_locations,
+        )
+
+    if dry_run:
+        db.session.rollback()
+        print("[monthly-sheet] Rolled back (dry-run); database unchanged.", flush=True)
+    else:
+        db.session.commit()
+        print("[monthly-sheet] Changes committed.", flush=True)
+
+    print(
+        "[monthly-sheet] Overrides-only summary — "
+        f"loaded: {len(skip_reason_overrides)}, "
+        f"updated: {updated}, "
+        f"missing_locations: {len(missing_locations)}, "
+        f"ambiguous_locations: {len(ambiguous_locations)}",
+        flush=True,
+    )
+
+
+def _remap_existing_skip_reasons() -> tuple[int, int]:
+    """
+    Re-applies preserved skip reasons from migration backup table to current rows.
+    DB precedence is enforced: existing non-empty skip_reason is never overwritten.
+    Returns (applied_count, unmatched_count).
+    """
+    rows = db.session.execute(
+        text(
+            """
+            SELECT
+                b.address_normalized,
+                b.property_management_company_normalized,
+                b.month_date,
+                b.skip_reason
+            FROM monthly_route_history_reason_backup b
+            WHERE b.result_status = 'skipped'
+              AND coalesce(trim(b.skip_reason), '') <> ''
+            """
+        )
+    ).mappings().all()
+
+    applied = 0
+    unmatched = 0
+    for row in rows:
+        location_ids = db.session.execute(
+            select(MonthlyRouteLocation.id).where(
+                MonthlyRouteLocation.address_normalized == row["address_normalized"],
+                MonthlyRouteLocation.property_management_company_normalized == row["property_management_company_normalized"],
+                MonthlyRouteLocation.building_normalized == _normalize_building(row.get("building", "")),
+            )
+        ).scalars().all()
+
+        if not location_ids:
+            # Backward compatibility with backups that predate building_normalized.
+            location_ids = db.session.execute(
+                select(MonthlyRouteLocation.id).where(
+                    MonthlyRouteLocation.address_normalized == row["address_normalized"],
+                    MonthlyRouteLocation.property_management_company_normalized == row["property_management_company_normalized"],
+                )
+            ).scalars().all()
+
+        if len(location_ids) != 1:
+            unmatched += 1
+            continue
+        location_id = location_ids[0]
+
+        existing = db.session.execute(
+            select(MonthlyRouteTestHistory).where(
+                MonthlyRouteTestHistory.location_id == location_id,
+                MonthlyRouteTestHistory.month_date == row["month_date"],
+            )
+        ).scalar_one_or_none()
+        if existing is None:
+            _upsert_history(
+                location_id=location_id,
+                month_date=row["month_date"],
+                result_status="skipped",
+                skip_reason=row["skip_reason"],
+                source_value_raw="MIGRATED_BACKUP",
+            )
+            applied += 1
+            continue
+        if existing.skip_reason and existing.skip_reason.strip():
+            continue
+        _upsert_history(
+            location_id=location_id,
+            month_date=row["month_date"],
+            result_status=existing.result_status or "skipped",
+            skip_reason=row["skip_reason"],
+            source_value_raw=existing.source_value_raw or "MIGRATED_BACKUP",
+        )
+        applied += 1
+    return applied, unmatched
+
+
+def run_upload(
+    csv_path: Path,
+    dry_run: bool = True,
+    skip_reasons_csv_path: Path | None = None,
+    overrides_only: bool = False,
+    duplicates_only: bool = False,
+    duplicates_csv_path: Path | None = None,
+) -> None:
+    mode = "dry-run (no DB commit)" if dry_run else "commit"
+    print(f"[monthly-sheet] Starting upload ({mode}) …", flush=True)
+    print(f"[monthly-sheet] Reading CSV: {csv_path}", flush=True)
+    if skip_reasons_csv_path:
+        print(f"[monthly-sheet] Reading skip-reason overrides: {skip_reasons_csv_path}", flush=True)
+    skip_reason_overrides = _load_skip_reason_overrides(skip_reasons_csv_path)
+    duplicate_row_numbers = _load_duplicate_row_numbers(duplicates_csv_path)
+    used_override_keys: set[tuple[str, str, str, date]] = set()
+    if overrides_only:
+        _apply_overrides_only(skip_reason_overrides=skip_reason_overrides, dry_run=dry_run)
+        return
+
+    with csv_path.open("r", newline="", encoding="utf-8-sig") as handle:
+        reader = csv.DictReader(handle)
+        headers = reader.fieldnames or []
+        rows = list(reader)
+
+    print(f"[monthly-sheet] Parsed {len(rows)} data rows from file.", flush=True)
+
+    month_columns: list[tuple[str, date]] = []
+    for header in headers:
+        parsed = _parse_month_header(header)
+        if parsed:
+            month_columns.append((header, parsed))
+    if not month_columns:
+        raise ValueError("No month columns were detected in CSV headers.")
+
+    print(
+        f"[monthly-sheet] Found {len(month_columns)} month column(s): "
+        f"{', '.join(h for h, _ in month_columns)}",
+        flush=True,
+    )
+
+    deduped: dict[str, tuple[dict[str, str], int]] = {}
+    conflicts: list[RowConflict] = []
+
+    for row_number, row in enumerate(rows, start=2):
+        key = (
+            _normalize_address(row.get("ADDRESS")),
+            _normalize_company(row.get("PROPERTY MANAGEMENT COMPANY")),
+            _normalize_building(row.get("NOTES")),
+        )
+        if not key:
+            continue
+        if key in deduped:
+            conflicts.append(
+                RowConflict(
+                    address=f"{_normalize_space(row.get('ADDRESS'))} | {_normalize_space(row.get('PROPERTY MANAGEMENT COMPANY'))}",
+                    first_row_number=deduped[key][1],
+                    replacement_row_number=row_number,
+                )
+            )
+        deduped[key] = (row, row_number)
+
+    print(
+        f"[monthly-sheet] After address dedupe: {len(deduped)} unique location(s); "
+        f"{len(conflicts)} duplicate-address conflict(s) in file.",
+        flush=True,
+    )
+    print(
+        "[monthly-sheet] Upserting locations and monthly history (this may take a minute) …",
+        flush=True,
+    )
+
+    missing_reason_logs: list[MissingReasonLog] = []
+    invalid_rows: list[dict[str, Any]] = []
+    location_upserts = 0
+    history_upserts = 0
+    override_forced_history_rows = 0
+
+    deduped_items = list(deduped.values())
+    if duplicates_only:
+        deduped_items = [item for item in deduped_items if item[1] in duplicate_row_numbers]
+        print(
+            f"[monthly-sheet] Duplicates-only mode: {len(deduped_items)} location row(s) selected for update.",
+            flush=True,
+        )
+    total_locations = len(deduped_items)
+
+    for idx, (row, row_number) in enumerate(deduped_items, start=1):
+        address = _normalize_space(row.get("ADDRESS"))
+        normalized_address = _normalize_address(row.get("ADDRESS"))
+        normalized_company = _normalize_company(row.get("PROPERTY MANAGEMENT COMPANY"))
+        normalized_building = _normalize_building(row.get("NOTES"))
+        if not address or not normalized_address:
+            invalid_rows.append(
+                {
+                    "row_number": row_number,
+                    "reason": "missing_address",
+                    "address": row.get("ADDRESS", ""),
+                }
+            )
+            continue
+
+        location_id = _upsert_location(row)
+        location_upserts += 1
+
+        for month_col, month_date in month_columns:
+            raw_value = _normalize_space(row.get(month_col))
+            result_status, skip_reason = _derive_month_result(raw_value)
+            override_key = (normalized_address, normalized_company, normalized_building, month_date)
+            override = skip_reason_overrides.get(override_key)
+
+            # If no importable monthly value exists, allow explicit override rows
+            # to force a skipped-history record for that address/month.
+            if not result_status and override:
+                result_status = "skipped"
+                skip_reason = override.skip_reason
+                used_override_keys.add(override_key)
+                override_forced_history_rows += 1
+
+            if not result_status:
+                continue
+
+            if raw_value.upper() == "X":
+                if override:
+                    skip_reason = override.skip_reason
+                    used_override_keys.add(override_key)
+                else:
+                    missing_reason_logs.append(
+                        MissingReasonLog(address=address, month_date=month_date, row_number=row_number)
+                    )
+            _upsert_history(
+                location_id=location_id,
+                month_date=month_date,
+                result_status=result_status,
+                skip_reason=skip_reason,
+                source_value_raw=raw_value or None,
+            )
+            history_upserts += 1
+
+        if idx == 1 or idx == total_locations or idx % PROGRESS_EVERY_N_LOCATIONS == 0:
+            pct = (100 * idx // total_locations) if total_locations else 100
+            print(
+                f"[monthly-sheet] Progress: {idx}/{total_locations} locations "
+                f"({pct}%) — history rows upserted so far: {history_upserts}",
+                flush=True,
+            )
+
+    print("[monthly-sheet] Finished DB upserts; writing audit CSVs if needed …", flush=True)
+
+    logs_dir = Path("logs")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    if conflicts:
+        _write_csv(
+            logs_dir / f"monthly_sheet_address_conflicts_{timestamp}.csv",
+            ["address", "first_row_number", "replacement_row_number"],
+            [
+                {
+                    "address": c.address,
+                    "first_row_number": c.first_row_number,
+                    "replacement_row_number": c.replacement_row_number,
+                }
+                for c in conflicts
+            ],
+        )
+
+    if missing_reason_logs:
+        _write_csv(
+            logs_dir / f"monthly_sheet_missing_skip_reasons_{timestamp}.csv",
+            ["address", "month_date", "row_number"],
+            [
+                {
+                    "address": item.address,
+                    "month_date": item.month_date.isoformat(),
+                    "row_number": item.row_number,
+                }
+                for item in missing_reason_logs
+            ],
+        )
+
+    unused_override_keys = set(skip_reason_overrides.keys()) - used_override_keys
+    if unused_override_keys:
+        _write_csv(
+            logs_dir / f"monthly_sheet_unused_skip_reason_overrides_{timestamp}.csv",
+            ["address", "property_management_company", "building", "month_date", "skip_reason", "source_row_number"],
+            [
+                {
+                    "address": skip_reason_overrides[key].address,
+                    "property_management_company": skip_reason_overrides[key].property_management_company or "",
+                    "building": skip_reason_overrides[key].building or "",
+                    "month_date": skip_reason_overrides[key].month_date.isoformat(),
+                    "skip_reason": skip_reason_overrides[key].skip_reason,
+                    "source_row_number": skip_reason_overrides[key].source_row_number,
+                }
+                for key in sorted(unused_override_keys, key=lambda item: (item[0], item[1], item[2], item[3]))
+            ],
+        )
+
+    if invalid_rows:
+        _write_csv(
+            logs_dir / f"monthly_sheet_invalid_rows_{timestamp}.csv",
+            ["row_number", "reason", "address"],
+            invalid_rows,
+        )
+
+    remap_applied = 0
+    remap_unmatched = 0
+    if duplicates_only:
+        print("[monthly-sheet] Duplicates-only mode: skipping preserved-reason remap pass.", flush=True)
+    else:
+        print("[monthly-sheet] Running preserved-reason remap pass …", flush=True)
+        remap_applied, remap_unmatched = _remap_existing_skip_reasons()
+        LOG.info("Preserved skip reasons remapped: %s", remap_applied)
+        LOG.info("Preserved skip reasons unmatched: %s", remap_unmatched)
+
+    if dry_run:
+        db.session.rollback()
+        LOG.info("Dry run complete. No database changes committed.")
+        print("[monthly-sheet] Rolled back (dry-run); database unchanged.", flush=True)
+    else:
+        db.session.commit()
+        LOG.info("Upload committed.")
+        print("[monthly-sheet] Changes committed.", flush=True)
+
+    LOG.info("Rows processed (deduped by address): %s", len(deduped))
+    LOG.info("Location upserts: %s", location_upserts)
+    LOG.info("Monthly history upserts: %s", history_upserts)
+    LOG.info("Duplicate-address conflicts logged: %s", len(conflicts))
+    LOG.info("X-values missing reason logged: %s", len(missing_reason_logs))
+    LOG.info("Invalid rows logged: %s", len(invalid_rows))
+    LOG.info("Skip-reason overrides loaded: %s", len(skip_reason_overrides))
+    LOG.info("Skip-reason overrides used: %s", len(used_override_keys))
+    LOG.info("Skip-reason overrides unused: %s", len(unused_override_keys))
+    LOG.info("Skip-reason overrides forced rows: %s", override_forced_history_rows)
+
+    print(
+        "[monthly-sheet] Summary — "
+        f"locations: {location_upserts}, "
+        f"history upserts: {history_upserts}, "
+        f"conflicts: {len(conflicts)}, "
+        f"X pending reasons: {len(missing_reason_logs)}, "
+        f"invalid: {len(invalid_rows)}, "
+        f"override used: {len(used_override_keys)}/{len(skip_reason_overrides)}, "
+        f"override-forced rows: {override_forced_history_rows}, "
+        f"remapped reasons: {remap_applied}, "
+        f"unmatched remap: {remap_unmatched}",
+        flush=True,
+    )
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Upload MASTER MONTHLY SHEET CSV into monthly route tables.")
+    parser.add_argument(
+        "--csv-path",
+        default="app/MASTER MONTHLY SHEET - Copy.csv",
+        help="Path to the monthly sheet CSV file.",
+    )
+    parser.add_argument(
+        "--commit",
+        action="store_true",
+        help="Persist changes. If omitted, script runs in dry-run mode.",
+    )
+    parser.add_argument(
+        "--skip-reasons-csv",
+        default=None,
+        help=(
+            "Optional CSV with columns: address,month_date,skip_reason "
+            "(supports optional property_management_company and building; month_date as YYYY-MM-DD)."
+        ),
+    )
+    parser.add_argument(
+        "--overrides-only",
+        action="store_true",
+        help="Only apply skip-reason overrides; do not process full monthly sheet.",
+    )
+    parser.add_argument(
+        "--duplicates-only",
+        action="store_true",
+        help="Only process rows listed in duplicate-conflicts CSV replacement_row_number column.",
+    )
+    parser.add_argument(
+        "--duplicates-csv",
+        default=None,
+        help="Path to duplicate-conflicts CSV (e.g., logs/monthly_sheet_address_conflicts_*.csv).",
+    )
+    return parser.parse_args()
+
+
+def main() -> None:
+    _configure_logging()
+    args = parse_args()
+
+    app = create_app()
+    csv_path = Path(args.csv_path)
+    if not csv_path.exists():
+        raise SystemExit(f"CSV file not found: {csv_path}")
+
+    with app.app_context():
+        print("[monthly-sheet] App context ready.", flush=True)
+        if args.duplicates_only and not args.duplicates_csv:
+            raise SystemExit("--duplicates-only requires --duplicates-csv")
+        run_upload(
+            csv_path=csv_path,
+            dry_run=not args.commit,
+            skip_reasons_csv_path=Path(args.skip_reasons_csv) if args.skip_reasons_csv else None,
+            overrides_only=args.overrides_only,
+            duplicates_only=args.duplicates_only,
+            duplicates_csv_path=Path(args.duplicates_csv) if args.duplicates_csv else None,
+        )
+        print("[monthly-sheet] Done.", flush=True)
+
+
+if __name__ == "__main__":
+    main()
