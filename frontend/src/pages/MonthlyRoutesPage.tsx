@@ -1171,84 +1171,88 @@ export default function MonthlyRoutesPage() {
     <div className="d-flex flex-column gap-3">
       <Card className="app-surface-card">
         <Card.Body className="p-3">
-          <div className="d-flex align-items-center w-100 gap-2">
-            <div
-              className="d-flex align-items-center gap-2 flex-grow-1 min-w-0 flex-nowrap"
-              style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}
-            >
-              <Form.Control
-                type="search"
-                value={tableSearch}
-                placeholder="Search route, address, property, key, annual"
-                onChange={(e) => {
-                  setTableSearch(e.target.value)
-                  setPage(1)
-                }}
-                className="flex-grow-1 flex-shrink-1"
-                style={{ minWidth: '11rem', maxWidth: '20rem', width: '14rem' }}
-              />
-              <Form.Control
-                type="month"
-                value={fromMonth.slice(0, 7)}
-                onChange={(e) => {
-                  setFromMonth(`${e.target.value}-01`)
-                  setPage(1)
-                }}
-                className="flex-shrink-0"
-                style={{ width: '9rem', maxWidth: '9rem' }}
-              />
-              <Form.Control
-                type="month"
-                value={toMonth.slice(0, 7)}
-                onChange={(e) => {
-                  setToMonth(`${e.target.value}-01`)
-                  setPage(1)
-                }}
-                className="flex-shrink-0"
-                style={{ width: '9rem', maxWidth: '9rem' }}
-              />
-              <Form.Check
-                id="monthly-routes-skipped-only"
-                type="checkbox"
-                label="Show only skipped locations"
-                checked={showOnlySkipped}
-                className="text-nowrap mb-0 flex-shrink-0"
-                onChange={(e) => {
-                  setShowOnlySkipped(e.target.checked)
-                  setPage(1)
-                }}
-              />
-              <Form.Check
-                id="monthly-routes-annual-tested-conflicts"
-                type="checkbox"
-                label="Show annual/testing conflicts"
-                checked={showAnnualTestingConflicts}
-                className="text-nowrap mb-0 flex-shrink-0"
-                onChange={(e) => {
-                  setShowAnnualTestingConflicts(e.target.checked)
-                  setPage(1)
-                }}
-              />
-              <Form.Check
-                id="monthly-routes-hide-cancelled"
-                type="checkbox"
-                label="Hide cancelled MBT locations"
-                checked={hideCancelledMbtLocations}
-                className="text-nowrap mb-0 flex-shrink-0"
-                onChange={(e) => {
-                  setHideCancelledMbtLocations(e.target.checked)
-                  setPage(1)
-                }}
-              />
+          <div className="d-flex gap-3 align-items-stretch w-100">
+            <div className="d-flex flex-column gap-2 flex-grow-1 min-w-0">
+              <h2 className="processing-page-title mb-0 align-self-start">Filters</h2>
+              <div
+                className="d-flex align-items-center gap-2 min-w-0 flex-nowrap"
+                style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}
+              >
+                <Form.Control
+                  type="search"
+                  value={tableSearch}
+                  placeholder="Search route, address, property, key, annual"
+                  onChange={(e) => {
+                    setTableSearch(e.target.value)
+                    setPage(1)
+                  }}
+                  className="flex-grow-1 flex-shrink-1"
+                  style={{ minWidth: '11rem', maxWidth: '20rem', width: '14rem' }}
+                />
+                <Form.Control
+                  type="month"
+                  value={fromMonth.slice(0, 7)}
+                  onChange={(e) => {
+                    setFromMonth(`${e.target.value}-01`)
+                    setPage(1)
+                  }}
+                  className="flex-shrink-0"
+                  style={{ width: '9rem', maxWidth: '9rem' }}
+                />
+                <Form.Control
+                  type="month"
+                  value={toMonth.slice(0, 7)}
+                  onChange={(e) => {
+                    setToMonth(`${e.target.value}-01`)
+                    setPage(1)
+                  }}
+                  className="flex-shrink-0"
+                  style={{ width: '9rem', maxWidth: '9rem' }}
+                />
+                <Form.Check
+                  id="monthly-routes-skipped-only"
+                  type="checkbox"
+                  label="Show only skipped locations"
+                  checked={showOnlySkipped}
+                  className="text-nowrap mb-0 flex-shrink-0"
+                  onChange={(e) => {
+                    setShowOnlySkipped(e.target.checked)
+                    setPage(1)
+                  }}
+                />
+                <Form.Check
+                  id="monthly-routes-annual-tested-conflicts"
+                  type="checkbox"
+                  label="Show annual/testing conflicts"
+                  checked={showAnnualTestingConflicts}
+                  className="text-nowrap mb-0 flex-shrink-0"
+                  onChange={(e) => {
+                    setShowAnnualTestingConflicts(e.target.checked)
+                    setPage(1)
+                  }}
+                />
+                <Form.Check
+                  id="monthly-routes-hide-cancelled"
+                  type="checkbox"
+                  label="Hide cancelled MBT locations"
+                  checked={hideCancelledMbtLocations}
+                  className="text-nowrap mb-0 flex-shrink-0"
+                  onChange={(e) => {
+                    setHideCancelledMbtLocations(e.target.checked)
+                    setPage(1)
+                  }}
+                />
+              </div>
             </div>
-            <Button
-              size="sm"
-              variant="primary"
-              className="flex-shrink-0"
-              onClick={openCreateLocationModal}
-            >
-              Add Location
-            </Button>
+            <div className="align-self-stretch d-flex py-2 flex-shrink-0">
+              <Button
+                variant="primary"
+                className="h-100 d-flex align-items-center justify-content-center px-3 fw-semibold"
+                onClick={openCreateLocationModal}
+              >
+                Add Location
+              </Button>
+            </div>
           </div>
         </Card.Body>
       </Card>
