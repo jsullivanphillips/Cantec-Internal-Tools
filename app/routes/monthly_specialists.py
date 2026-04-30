@@ -33,7 +33,8 @@ def monthly_specialists():
 def get_monthly_specialists():
     """
     Returns cached monthly route specialist data.
-    One row per route, already aggregated.
+    One row per ServiceTrade *route* clock-in location (``MonthlyRouteSnapshot.location_id``),
+    not per street-address row in ``MonthlyRouteLocation``.
     Filters top_technicians to only currently active techs.
     """
 

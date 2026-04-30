@@ -5,6 +5,8 @@ import { Link } from 'react-router-dom'
 import {
   STATUS_OPTIONS,
   compareYearMonth,
+  libraryRouteDisplay,
+  libraryKeycodeDisplay,
   parseYearMonth,
   toMonthKey,
   type CreateLocationForm,
@@ -77,9 +79,9 @@ const ROUTE_COLUMN_STYLE: CSSProperties = {
 }
 
 const KEYS_COLUMN_STYLE: CSSProperties = {
-  width: '4.6rem',
-  minWidth: '4.6rem',
-  maxWidth: '4.6rem',
+  width: '7.36rem',
+  minWidth: '7.36rem',
+  maxWidth: '7.36rem',
 }
 
 const ANNUAL_COLUMN_STYLE: CSSProperties = {
@@ -811,10 +813,18 @@ export default function MonthlyRoutesPage() {
                   <dd className="col-sm-9">{loc.barcode}</dd>
                 </>
               ) : null}
-              <dt className="col-sm-3 text-muted">Keys</dt>
-              <dd className="col-sm-9">{loc.keys || '—'}</dd>
+              <dt className="col-sm-3 text-muted">Key</dt>
+              <dd className="col-sm-9">
+                {loc.key ? (
+                  <Link to={`/keys/${loc.key.id}`}>{loc.key.keycode}</Link>
+                ) : (
+                  libraryKeycodeDisplay(loc) || '—'
+                )}
+              </dd>
+              <dt className="col-sm-3 text-muted">Spreadsheet KEYS</dt>
+              <dd className="col-sm-9 text-break small text-muted">{loc.keys || '—'}</dd>
               <dt className="col-sm-3 text-muted">Route</dt>
-              <dd className="col-sm-9">{loc.test_day || '—'}</dd>
+              <dd className="col-sm-9">{libraryRouteDisplay(loc) || '—'}</dd>
               <dt className="col-sm-3 text-muted">Annual</dt>
               <dd className="col-sm-9">{loc.annual_month || '—'}</dd>
             </dl>
@@ -860,7 +870,7 @@ export default function MonthlyRoutesPage() {
               <th style={{ ...ROUTE_COLUMN_STYLE, ...LIBRARY_TABLE_HEADER_STICKY_STYLE }}>Route</th>
               <th style={{ ...ADDRESS_COLUMN_STYLE, ...LIBRARY_TABLE_HEADER_STICKY_STYLE }}>Address</th>
               <th style={{ ...PROPERTY_COLUMN_STYLE, ...LIBRARY_TABLE_HEADER_STICKY_STYLE }}>Property Management</th>
-              <th style={{ ...KEYS_COLUMN_STYLE, ...LIBRARY_TABLE_HEADER_STICKY_STYLE }}>Keys</th>
+              <th style={{ ...KEYS_COLUMN_STYLE, ...LIBRARY_TABLE_HEADER_STICKY_STYLE }}>Key</th>
               <th style={{ ...ANNUAL_COLUMN_STYLE, ...LIBRARY_TABLE_HEADER_STICKY_STYLE }}>Annual</th>
               {monthColumns.map((month) => (
                 <th
@@ -890,7 +900,7 @@ export default function MonthlyRoutesPage() {
                   <td className="text-center" style={STATUS_COLUMN_STYLE}>
                     {renderStatusDot(loc.status_normalized)}
                   </td>
-                  <td style={ROUTE_COLUMN_STYLE}>{loc.test_day || '—'}</td>
+                  <td style={ROUTE_COLUMN_STYLE}>{libraryRouteDisplay(loc) || '—'}</td>
                   <td style={ADDRESS_COLUMN_STYLE}>
                     <button
                       type="button"
@@ -901,7 +911,23 @@ export default function MonthlyRoutesPage() {
                     </button>
                   </td>
                   <td style={PROPERTY_COLUMN_STYLE}>{loc.property_management_company || '—'}</td>
-                  <td style={KEYS_COLUMN_STYLE}>{loc.keys || '—'}</td>
+                  <td style={KEYS_COLUMN_STYLE}>
+                    {loc.key ? (
+                      <>
+                        <Link
+                          to={`/keys/${loc.key.id}`}
+                          className="fw-semibold text-decoration-none"
+                        >
+                          {loc.key.keycode}
+                        </Link>
+                        {loc.keys?.trim() && loc.keys.trim() !== loc.key.keycode.trim() ? (
+                          <div className="small text-muted text-break">{loc.keys}</div>
+                        ) : null}
+                      </>
+                    ) : (
+                      loc.keys || '—'
+                    )}
+                  </td>
                   <td className="text-center" style={ANNUAL_COLUMN_STYLE}>
                     {annualEditLocationId === loc.id ? (
                       <Form.Select

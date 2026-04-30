@@ -9,8 +9,11 @@ import math
 
 from flask import Blueprint, jsonify, request
 from sqlalchemy import and_, func, or_
+from sqlalchemy.orm import joinedload
 
-from app.db_models import MonthlyRouteLocation, MonthlyRouteTestHistory, db
+from app.db_models import Key, MonthlyRoute, MonthlyRouteLocation, MonthlyRouteTestHistory, db
+from app.monthly.key_resolve import sync_key_fk_for_location
+from app.monthly.route_sync import sync_monthly_route_fk_for_location
 
 monthly_routes_bp = Blueprint("monthly_routes", __name__)
 VICTORIA_PROXIMITY_LNG = -123.3656
@@ -90,6 +93,17 @@ def _build_geocode_query(loc: MonthlyRouteLocation) -> str:
     tokens = [str(part).strip() for part in parts if part and str(part).strip()]
     tokens.append("Victoria, BC, Canada")
     return ", ".join(tokens)
+
+
+def _get_monthly_location(location_id: int) -> MonthlyRouteLocation | None:
+    return (
+        MonthlyRouteLocation.query.options(
+            joinedload(MonthlyRouteLocation.monthly_route),
+            joinedload(MonthlyRouteLocation.linked_key),
+        )
+        .filter_by(id=location_id)
+        .one_or_none()
+    )
 
 
 def _build_route_counts(locations: list[MonthlyRouteLocation]) -> dict[str, int]:
@@ -172,10 +186,71 @@ def _populate_missing_coordinates(locations: list[MonthlyRouteLocation]) -> None
         db.session.commit()
 
 
+def _serialize_monthly_route_entity(
+    mr: MonthlyRoute | None,
+    *,
+    location_count: int | None = None,
+) -> dict[str, object] | None:
+    """Nested route summary for API consumers (single source of truth: ``MonthlyRoute``)."""
+    if mr is None:
+        return None
+    wd_names = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+    wd = (
+        wd_names[mr.weekday_iso]
+        if isinstance(mr.weekday_iso, int) and 0 <= mr.weekday_iso <= 6
+        else "?"
+    )
+    label = f"{wd}{mr.week_occurrence} · R{mr.route_number}"
+    out: dict[str, object] = {
+        "id": mr.id,
+        "route_number": mr.route_number,
+        "weekday_iso": mr.weekday_iso,
+        "week_occurrence": mr.week_occurrence,
+        "label": label,
+    }
+    if location_count is not None:
+        out["location_count"] = location_count
+    return out
+
+
+def _meta_monthly_routes_bundle() -> tuple[list[dict[str, object]], dict[int, int]]:
+    """All route entities plus location counts keyed by ``monthly_route.id``."""
+    mr_rows = MonthlyRoute.query.order_by(MonthlyRoute.route_number.asc()).all()
+    count_rows = (
+        db.session.query(
+            MonthlyRouteLocation.monthly_route_id,
+            func.count(MonthlyRouteLocation.id),
+        )
+        .filter(MonthlyRouteLocation.monthly_route_id.isnot(None))
+        .group_by(MonthlyRouteLocation.monthly_route_id)
+        .all()
+    )
+    count_map: dict[int, int] = {int(mid): int(n) for mid, n in count_rows if mid is not None}
+    summaries: list[dict[str, object]] = []
+    for r in mr_rows:
+        entry = _serialize_monthly_route_entity(r, location_count=count_map.get(int(r.id), 0))
+        if entry:
+            summaries.append(entry)
+    return summaries, count_map
+
+
+def _serialize_linked_key(key: Key | None) -> dict[str, object] | None:
+    if key is None:
+        return None
+    bc = key.barcode
+    return {
+        "id": int(key.id),
+        "keycode": key.keycode,
+        "barcode": int(bc) if bc is not None else None,
+    }
+
+
 def _serialize_location_row(
     loc: MonthlyRouteLocation,
     months_payload: dict[str, dict[str, str | None]],
 ) -> dict[str, object]:
+    mr = loc.monthly_route
+    lk = loc.linked_key
     return {
         "id": loc.id,
         "address": loc.address,
@@ -190,10 +265,14 @@ def _serialize_location_row(
         "status_normalized": loc.status_normalized,
         "status_raw": loc.status_raw,
         "keys": loc.keys,
+        "key_id": loc.key_id,
+        "key": _serialize_linked_key(lk),
         "test_day": loc.test_day,
         "annual_month": loc.annual_month,
         "latitude": loc.latitude,
         "longitude": loc.longitude,
+        "monthly_route_id": loc.monthly_route_id,
+        "monthly_route": _serialize_monthly_route_entity(mr),
         "months": months_payload,
     }
 
@@ -247,7 +326,10 @@ def monthly_routes_library():
     )
     min_month, max_month = meta_month_query.first() or (None, None)
 
-    location_query = MonthlyRouteLocation.query
+    location_query = MonthlyRouteLocation.query.options(
+        joinedload(MonthlyRouteLocation.monthly_route),
+        joinedload(MonthlyRouteLocation.linked_key),
+    )
     if active_only:
         location_query = location_query.filter(MonthlyRouteLocation.status_normalized == "active")
     if q:
@@ -314,14 +396,25 @@ def monthly_routes_library():
                 page = total_pages
             locations = ordered_location_query.offset((page - 1) * page_size).limit(page_size).all()
     route_counts = _build_route_counts(count_scope_locations)
+    monthly_routes_meta, _ = _meta_monthly_routes_bundle()
+
     location_ids = [l.id for l in locations]
     if not location_ids:
+        route_options_query = (
+            MonthlyRouteLocation.query.with_entities(MonthlyRouteLocation.test_day)
+            .filter(MonthlyRouteLocation.test_day.isnot(None))
+            .filter(MonthlyRouteLocation.test_day != "")
+            .distinct()
+            .order_by(MonthlyRouteLocation.test_day.asc())
+        )
+        route_options = [value for (value,) in route_options_query.all()]
         return jsonify(
             {
                 "locations": [],
                 "month_columns": [],
                 "meta": {
-                    "routes": [],
+                    "routes": route_options,
+                    "monthly_routes": monthly_routes_meta,
                     "min_month": min_month.isoformat() if min_month else None,
                     "max_month": max_month.isoformat() if max_month else None,
                     "route_counts": route_counts,
@@ -375,6 +468,7 @@ def monthly_routes_library():
             "month_columns": [m.isoformat() for m in months],
             "meta": {
                 "routes": route_options,
+                "monthly_routes": monthly_routes_meta,
                 "min_month": min_month.isoformat() if min_month else None,
                 "max_month": max_month.isoformat() if max_month else None,
                 "route_counts": route_counts,
@@ -458,7 +552,28 @@ def create_monthly_route_location():
             if coords:
                 loc.latitude, loc.longitude = coords
 
-    db.session.commit()
+    try:
+        sync_monthly_route_fk_for_location(loc)
+        if "key_id" in payload:
+            raw_kid = payload.get("key_id")
+            if raw_kid is None:
+                loc.key_id = None
+            else:
+                try:
+                    kid = int(raw_kid)
+                except (TypeError, ValueError) as exc:
+                    raise ValueError("key_id must be an integer or null") from exc
+                if db.session.get(Key, kid) is None:
+                    raise ValueError("key_id does not reference an existing key")
+                loc.key_id = kid
+        else:
+            sync_key_fk_for_location(loc)
+        db.session.commit()
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({"error": str(exc)}), 400
+
+    db.session.refresh(loc)
     return jsonify({"location": _serialize_location_row(loc, {})}), 201
 
 
@@ -468,7 +583,7 @@ def update_monthly_route_location(location_id: int):
     if not isinstance(payload, dict):
         return jsonify({"error": "JSON object payload required"}), 400
 
-    loc = MonthlyRouteLocation.query.get(location_id)
+    loc = _get_monthly_location(location_id)
     if loc is None:
         return jsonify({"error": "Location not found"}), 404
 
@@ -505,8 +620,25 @@ def update_monthly_route_location(location_id: int):
             loc.status_raw = status_raw
         if "keys" in payload:
             loc.keys = _clean_text(payload.get("keys"))
+        if "barcode" in payload:
+            loc.barcode = _clean_text(payload.get("barcode"))
+        if "key_id" in payload:
+            raw_kid = payload.get("key_id")
+            if raw_kid is None:
+                loc.key_id = None
+            else:
+                try:
+                    kid = int(raw_kid)
+                except (TypeError, ValueError) as exc:
+                    raise ValueError("key_id must be an integer or null") from exc
+                if db.session.get(Key, kid) is None:
+                    raise ValueError("key_id does not reference an existing key")
+                loc.key_id = kid
+        elif "keys" in payload or "barcode" in payload:
+            sync_key_fk_for_location(loc)
         if "test_day" in payload:
             loc.test_day = _clean_text(payload.get("test_day"))
+            sync_monthly_route_fk_for_location(loc)
         if "annual_month" in payload:
             loc.annual_month = _clean_text(payload.get("annual_month"))
 
@@ -559,6 +691,14 @@ def update_monthly_route_location(location_id: int):
     except Exception:
         db.session.rollback()
         raise
+
+    if (
+        "test_day" in payload
+        or "keys" in payload
+        or "barcode" in payload
+        or "key_id" in payload
+    ):
+        db.session.refresh(loc)
 
     history_rows = (
         MonthlyRouteTestHistory.query.filter_by(location_id=location_id)
@@ -620,7 +760,7 @@ def update_monthly_route_placement(location_id: int):
     if not isinstance(payload, dict):
         return jsonify({"error": "JSON object payload required"}), 400
 
-    loc = MonthlyRouteLocation.query.get(location_id)
+    loc = _get_monthly_location(location_id)
     if loc is None:
         return jsonify({"error": "Location not found"}), 404
 
@@ -664,7 +804,7 @@ def assign_monthly_route_location(location_id: int):
     if not isinstance(payload, dict):
         return jsonify({"error": "JSON object payload required"}), 400
 
-    loc = MonthlyRouteLocation.query.get(location_id)
+    loc = _get_monthly_location(location_id)
     if loc is None:
         return jsonify({"error": "Location not found"}), 404
 
@@ -673,7 +813,14 @@ def assign_monthly_route_location(location_id: int):
         return jsonify({"error": "test_day is required"}), 400
 
     loc.test_day = route_value
-    db.session.commit()
+    try:
+        sync_monthly_route_fk_for_location(loc)
+        db.session.commit()
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({"error": str(exc)}), 400
+
+    db.session.refresh(loc)
 
     history_rows = (
         MonthlyRouteTestHistory.query.filter_by(location_id=location_id)
@@ -692,7 +839,7 @@ def assign_monthly_route_location(location_id: int):
 
 @monthly_routes_bp.delete("/api/monthly_routes/library/<int:location_id>")
 def delete_monthly_route_location(location_id: int):
-    loc = MonthlyRouteLocation.query.get(location_id)
+    loc = _get_monthly_location(location_id)
     if loc is None:
         return jsonify({"error": "Location not found"}), 404
     db.session.delete(loc)

@@ -534,7 +534,63 @@ class Technician(db.Model):
         return f"<Technician {self.name} | {self.type or 'Unassigned'}>"
 
 
+class MonthlyRoute(db.Model):
+    """
+    One calendar route (e.g. Excel route number 7 = first Wednesday).
+    ``weekday_iso`` matches ``datetime.weekday()`` (Monday=0 .. Sunday=6).
+    ``week_occurrence`` is 1-based (1 = first such weekday in the month).
+
+    ``service_trade_route_location_id`` is the ServiceTrade *route* location used
+    for clock-ins / jobs aggregated for specialists — not a real street address.
+    """
+
+    __tablename__ = "monthly_route"
+    __table_args__ = (
+        db.UniqueConstraint("route_number", name="uq_monthly_route_route_number"),
+        db.Index("ix_monthly_route_weekday_occurrence", "weekday_iso", "week_occurrence"),
+    )
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    route_number = db.Column(db.Integer, nullable=False)
+    weekday_iso = db.Column(db.SmallInteger, nullable=False)
+    week_occurrence = db.Column(db.SmallInteger, nullable=False)
+
+    service_trade_route_location_id = db.Column(
+        db.BigInteger,
+        nullable=True,
+        unique=True,
+        index=True,
+    )
+
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        nullable=False,
+    )
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        onupdate=db.func.now(),
+        nullable=False,
+    )
+
+    locations = db.relationship(
+        "MonthlyRouteLocation",
+        back_populates="monthly_route",
+        foreign_keys="MonthlyRouteLocation.monthly_route_id",
+    )
+
+    def __repr__(self):
+        return f"<MonthlyRoute R{self.route_number}>"
+
+
 class MonthlyRouteLocation(db.Model):
+    """
+    Real monthly site (address/building). Optional ``service_trade_site_location_id``
+    maps this row to a ServiceTrade *building* location when you maintain one —
+    separate from the route-level pseudo-location on ``MonthlyRoute``.
+    """
+
     __tablename__ = "monthly_route_location"
     __table_args__ = (
         db.UniqueConstraint(
@@ -546,7 +602,7 @@ class MonthlyRouteLocation(db.Model):
         db.Index("ix_monthly_route_location_status_normalized", "status_normalized"),
     )
 
-    id = db.Column(db.BigInteger, primary_key=True)
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
     address = db.Column(db.String(255), nullable=False)
     address_normalized = db.Column(db.String(255), nullable=False)
 
@@ -569,6 +625,32 @@ class MonthlyRouteLocation(db.Model):
     display_address = db.Column(db.String(255), nullable=True)
     latitude = db.Column(db.Float, nullable=True)
     longitude = db.Column(db.Float, nullable=True)
+
+    monthly_route_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monthly_route.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    service_trade_site_location_id = db.Column(db.BigInteger, nullable=True, unique=True, index=True)
+
+    key_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("keys.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    monthly_route = db.relationship(
+        "MonthlyRoute",
+        back_populates="locations",
+        foreign_keys=[monthly_route_id],
+    )
+    linked_key = db.relationship(
+        "Key",
+        back_populates="monthly_route_locations",
+        foreign_keys=[key_id],
+    )
 
     created_at = db.Column(
         db.DateTime(timezone=True),
@@ -625,11 +707,17 @@ class MonthlyRouteTestHistory(db.Model):
     location = db.relationship("MonthlyRouteLocation", back_populates="monthly_history")
 
 class MonthlyRouteSnapshot(db.Model):
+    """
+    Cached specialist stats keyed by ServiceTrade **route** pseudo-location id (clock-in
+    location for that route, not a street address). Aligns with
+    ``MonthlyRoute.service_trade_route_location_id``, not ``MonthlyRouteLocation``.
+    """
+
     __tablename__ = "monthly_route_snapshot"
 
     id = db.Column(db.BigInteger, primary_key=True)
 
-    # Route / location
+    # ServiceTrade location id for the route workspace (see module docstring).
     location_id = db.Column(db.BigInteger, nullable=False, unique=True, index=True)
     location_name = db.Column(db.String(255), nullable=False)
 
@@ -685,6 +773,12 @@ class Key(db.Model):
         cascade="all, delete-orphan",
         lazy="selectin",
         order_by="desc(KeyStatus.inserted_at)",  # newest first
+    )
+
+    monthly_route_locations = relationship(
+        "MonthlyRouteLocation",
+        back_populates="linked_key",
+        foreign_keys="MonthlyRouteLocation.key_id",
     )
 
     @property

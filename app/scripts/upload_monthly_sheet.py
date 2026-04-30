@@ -14,6 +14,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from app import create_app, db
 from app.db_models import MonthlyRouteLocation, MonthlyRouteTestHistory
+from app.monthly.key_resolve import keycode_cf_to_key_id_map, resolve_key_id_for_monthly_fields
 
 LOG = logging.getLogger("upload_monthly_sheet")
 
@@ -271,8 +272,19 @@ def _collect_rows(csv_path: Path) -> tuple[list[dict[str, str]], list[RowConflic
     return list(deduped.values()), conflicts, [m[1] for m in month_columns]
 
 
-def _upsert_location(row: dict[str, str]) -> int:
+def _upsert_location(
+    row: dict[str, str],
+    *,
+    keycode_cf_index: dict[str, int],
+) -> int:
     now = datetime.now(timezone.utc)
+    barcode = _clean_barcode(row.get("BARCODE #"))
+    keys_text = _clean_text(row.get("KEYS"))
+    key_id = resolve_key_id_for_monthly_fields(
+        barcode,
+        keys_text,
+        keycode_cf_index=keycode_cf_index,
+    )
     payload = {
         "address": _normalize_space(row.get("ADDRESS")),
         "address_normalized": _normalize_address(row.get("ADDRESS")),
@@ -281,15 +293,16 @@ def _upsert_location(row: dict[str, str]) -> int:
         "building": _clean_text(row.get("NOTES")),
         "building_normalized": _normalize_building(row.get("NOTES")),
         "notes": _clean_text(row.get("NOTES")),
-        "barcode": _clean_barcode(row.get("BARCODE #")),
+        "barcode": barcode,
         "price_per_month": _parse_price(row.get("Price/month")),
         "area": _clean_text(row.get("Area")),
         "start_up_date": _parse_start_up_date(row.get("start up date")),
         "status_normalized": _normalize_status(row.get("STATUS- (ACTIVE, CANCELLED, ON HOLD)")),
         "status_raw": _clean_text(row.get("STATUS- (ACTIVE, CANCELLED, ON HOLD)")),
-        "keys": _clean_text(row.get("KEYS")),
+        "keys": keys_text,
         "test_day": _clean_text(row.get("TEST DAY")),
         "annual_month": _clean_text(row.get("ANNUAL")),
+        "key_id": key_id,
         "updated_at": now,
     }
 
@@ -312,6 +325,7 @@ def _upsert_location(row: dict[str, str]) -> int:
             "keys": stmt.excluded["keys"],
             "test_day": stmt.excluded.test_day,
             "annual_month": stmt.excluded.annual_month,
+            "key_id": stmt.excluded.key_id,
             "updated_at": stmt.excluded.updated_at,
         },
     ).returning(MonthlyRouteLocation.id)
@@ -622,6 +636,12 @@ def run_upload(
         )
     total_locations = len(deduped_items)
 
+    keycode_cf_index = keycode_cf_to_key_id_map()
+    print(
+        f"[monthly-sheet] Loaded {len(keycode_cf_index)} keycode index entr(y/ies) for key_id resolution.",
+        flush=True,
+    )
+
     for idx, (row, row_number) in enumerate(deduped_items, start=1):
         address = _normalize_space(row.get("ADDRESS"))
         normalized_address = _normalize_address(row.get("ADDRESS"))
@@ -637,7 +657,7 @@ def run_upload(
             )
             continue
 
-        location_id = _upsert_location(row)
+        location_id = _upsert_location(row, keycode_cf_index=keycode_cf_index)
         location_upserts += 1
 
         for month_col, month_date in month_columns:

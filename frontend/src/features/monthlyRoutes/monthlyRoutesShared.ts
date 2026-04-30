@@ -2,6 +2,23 @@
 
 export type MonthCell = { result_status: string; skip_reason: string | null }
 
+/** Canonical monthly route entity (``MonthlyRoute``); aligns with ``monthly_route_id``. */
+export type MonthlyRouteSummary = {
+  id: number
+  route_number: number
+  weekday_iso: number
+  week_occurrence: number
+  label: string
+  location_count?: number
+}
+
+/** Linked row from ``keys`` when ``key_id`` FK is set. */
+export type LinkedKeySummary = {
+  id: number
+  keycode: string
+  barcode: number | null
+}
+
 export type LibraryLocation = {
   id: number
   address: string
@@ -15,11 +32,17 @@ export type LibraryLocation = {
   status_normalized: string
   status_raw?: string | null
   keys: string | null
+  /** FK to ``keys``; nested ``key`` is populated when joined. */
+  key_id?: number | null
+  key?: LinkedKeySummary | null
   test_day: string | null
   annual_month: string | null
   latitude?: number | null
   longitude?: number | null
   barcode?: string | null
+  /** FK to ``MonthlyRoute``; source of truth with ``monthly_route``. */
+  monthly_route_id?: number | null
+  monthly_route?: MonthlyRouteSummary | null
   months: Record<string, MonthCell>
 }
 
@@ -28,6 +51,8 @@ export type LibraryPayload = {
   month_columns: string[]
   meta: {
     routes: string[]
+    /** All route entities (for filters / tooling); locations still expose ``test_day`` until UI migrates. */
+    monthly_routes?: MonthlyRouteSummary[]
     route_counts?: Record<string, number>
     min_month: string | null
     max_month: string | null
@@ -38,6 +63,20 @@ export type LibraryPayload = {
       total_pages: number
     }
   }
+}
+
+/** Prefer API ``monthly_route.label``; fall back to legacy ``test_day`` string. */
+export function libraryRouteDisplay(loc: LibraryLocation): string {
+  const fromEntity = loc.monthly_route?.label?.trim()
+  if (fromEntity) return fromEntity
+  return (loc.test_day || '').trim()
+}
+
+/** Canonical keycode from linked asset; otherwise legacy spreadsheet ``keys`` text. */
+export function libraryKeycodeDisplay(loc: LibraryLocation): string {
+  const fromKey = loc.key?.keycode?.trim()
+  if (fromKey) return fromKey
+  return (loc.keys || '').trim()
 }
 
 export type GeocodeCandidate = {
