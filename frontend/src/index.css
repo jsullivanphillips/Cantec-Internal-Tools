@@ -121,6 +121,194 @@
   overflow: hidden;
 }
 
+/* Monthly location detail — hero + accordion cards: softer corners, no border stroke */
+.monthly-location-detail-surface {
+  border-radius: 1.35rem !important;
+  border: none !important;
+  overflow: hidden;
+}
+
+.monthly-location-detail-accordion > .accordion-item.monthly-location-testing-history-card,
+.monthly-location-detail-accordion > .accordion-item.monthly-location-comments-card {
+  border: none !important;
+}
+
+/* Monthly location detail: no primary-blue accordion header when expanded */
+.monthly-location-detail-accordion .accordion-button,
+.monthly-location-detail-accordion .accordion-button:not(.collapsed) {
+  background-color: #fff;
+  color: var(--bs-body-color);
+  box-shadow: none;
+}
+
+.monthly-location-detail-accordion .accordion-button:hover,
+.monthly-location-detail-accordion .accordion-button:not(.collapsed):hover {
+  background-color: #fff;
+}
+
+.monthly-location-detail-accordion .accordion-button:focus {
+  box-shadow: none;
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+/* Monthly location detail — Testing history + Comments cards share gutter */
+.monthly-location-comments-card,
+.monthly-location-testing-history-card {
+  --monthly-location-detail-card-pad-inline: calc(1rem + 14px);
+  --monthly-location-detail-card-pad-block-end: calc(1rem + 14px);
+}
+
+.monthly-location-comments-card .accordion-body.monthly-location-comments-body,
+.monthly-location-testing-history-card .accordion-body.monthly-location-testing-history-body {
+  background-color: #fff;
+  padding-top: 0;
+  padding-left: var(--monthly-location-detail-card-pad-inline);
+  padding-right: var(--monthly-location-detail-card-pad-inline);
+  padding-bottom: var(--monthly-location-detail-card-pad-block-end);
+}
+
+.monthly-location-comments-card-header.accordion-header .accordion-button,
+.monthly-location-testing-history-card-header.accordion-header .accordion-button {
+  padding-top: 0.85rem;
+  padding-bottom: 0.85rem;
+  padding-left: var(--monthly-location-detail-card-pad-inline);
+  padding-right: var(--monthly-location-detail-card-pad-inline);
+}
+
+.monthly-location-testing-history-table-wrap {
+  border-radius: 0;
+  overflow: hidden;
+}
+
+.monthly-location-testing-history-year-nav-btn {
+  width: 9.25rem;
+  flex: 0 0 auto;
+  text-align: center;
+}
+
+
+/* Fixed column widths — avoids layout jump when switching view ↔ edit */
+.monthly-location-testing-history-table-wrap table.monthly-location-testing-history-grid-table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.monthly-location-testing-history-table-wrap table.monthly-location-testing-history-grid-table th,
+.monthly-location-testing-history-table-wrap table.monthly-location-testing-history-grid-table td {
+  vertical-align: top;
+}
+
+.monthly-location-testing-history-table-wrap
+  table.monthly-location-testing-history-grid-table
+  td:nth-child(1) {
+  overflow-wrap: anywhere;
+}
+
+.monthly-location-testing-history-table-wrap
+  table.monthly-location-testing-history-grid-table
+  td:nth-child(2),
+.monthly-location-testing-history-table-wrap
+  table.monthly-location-testing-history-grid-table
+  td:nth-child(3) {
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.monthly-location-testing-history-table-wrap
+  table.monthly-location-testing-history-grid-table
+  td
+  .form-select,
+.monthly-location-testing-history-table-wrap
+  table.monthly-location-testing-history-grid-table
+  td
+  .form-control {
+  width: 100%;
+  max-width: 100%;
+}
+
+.monthly-location-testing-history-table-wrap
+  table.monthly-location-testing-history-grid-table
+  col.monthly-history-col-month {
+  width: 15%;
+}
+
+.monthly-location-testing-history-table-wrap
+  table.monthly-location-testing-history-grid-table
+  col.monthly-history-col-result {
+  width: 22%;
+}
+
+.monthly-location-testing-history-table-wrap
+  table.monthly-location-testing-history-grid-table
+  col.monthly-history-col-skip {
+  width: 63%;
+}
+
+.monthly-location-comments-divider {
+  border: 0;
+  border-top: 1px solid #dee2e6;
+  opacity: 1;
+}
+
+.monthly-location-comments-meta-link {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: #0d6efd;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.monthly-location-comments-meta-link:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.monthly-location-comments-meta-link:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Edit / Delete: inline after date; show on row hover or keyboard focus within */
+.monthly-location-comments-actions {
+  display: inline;
+  margin-left: 0.125rem;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  pointer-events: none;
+}
+
+.monthly-location-comments-entry:hover .monthly-location-comments-actions,
+.monthly-location-comments-entry:focus-within .monthly-location-comments-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.monthly-location-comments-add-bar {
+  display: block;
+  width: 100%;
+  margin-top: 0.25rem;
+  border: none;
+  border-radius: 0.5rem;
+  background-color: #e8f1fc;
+  color: #0d6efd;
+  font-weight: 500;
+  font-size: 0.95rem;
+  padding: 0.85rem 1rem;
+  text-align: center;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.monthly-location-comments-add-bar:hover:not(:disabled) {
+  background-color: #dceaf9;
+}
+
+.monthly-location-comments-add-bar:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 /* Fills remaining panel height; inner .overflow-auto blocks scroll the table only */
 .monthly-routes-map-page__side-panel-scroll {
   flex: 1;
@@ -144,12 +332,53 @@
   background-color: #eceff5 !important;
 }
 
+/* Skipped cells: tint + positioning for full-cell skip-reason hitbox */
 .monthly-routes-library-table > tbody > tr > td.month-testing-cell.month-testing-skipped {
+  position: relative;
   background-color: #fdf9ef !important;
 }
 
 .monthly-routes-library-table.table-hover > tbody > tr:hover > td.month-testing-cell.month-testing-skipped {
   background-color: #faf3e4 !important;
+}
+
+.monthly-routes-library-table > tbody > tr > td.month-testing-skipped .library-table-cell-inner {
+  overflow: visible;
+  display: block;
+  -webkit-line-clamp: unset;
+  -webkit-box-orient: unset;
+}
+
+.monthly-routes-library-table .monthly-skip-reason-hitbox {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+}
+
+/* Library body cells: at most two lines, ellipsis when overflow */
+.monthly-routes-library-table > tbody > tr > td.library-table-cell-clamp {
+  vertical-align: middle;
+}
+
+.monthly-routes-library-table > tbody > tr > td.library-table-cell-clamp .library-table-cell-inner {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  word-break: break-word;
+  line-height: 1.25;
+  min-width: 0;
+}
+
+.monthly-routes-library-table > tbody > tr > td.library-table-cell-clamp .library-table-cell-inner > a {
+  display: block;
+  overflow: hidden;
+}
+
+.monthly-routes-library-table > tbody > tr > td.month-testing-cell .library-table-cell-inner {
+  text-align: center;
 }
 
 @media (min-width: 992px) {
@@ -1830,6 +2059,20 @@
 
 .monthly-route-detail {
   border-left: 4px solid #f58220;
+}
+
+.monthly-route-detail-page table tbody td.monthly-route-detail-skip-cell-interactive {
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+
+.monthly-route-detail-page table tbody td.monthly-route-detail-skip-cell-interactive:hover {
+  background-color: rgba(13, 110, 253, 0.09);
+}
+
+.monthly-route-detail-page table tbody td.monthly-route-detail-skip-cell-interactive:focus-visible {
+  outline: 2px solid rgba(13, 110, 253, 0.45);
+  outline-offset: -2px;
 }
 
 .scheduling-page__title {

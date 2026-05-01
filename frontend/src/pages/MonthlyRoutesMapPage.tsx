@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button, Card, Form, Modal, Table } from 'react-bootstrap'
+import { Link } from 'react-router-dom'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import {
@@ -550,10 +551,16 @@ export default function MonthlyRoutesMapPage() {
             routeTextEl.textContent = `Route: ${route || '—'}`
             popupBody.appendChild(routeTextEl)
             popupBody.appendChild(document.createElement('br'))
+            const detailLink = document.createElement('a')
+            detailLink.href = `/monthlies/locations/${loc.id}`
+            detailLink.className = 'btn btn-sm btn-outline-primary mt-2 d-inline-block'
+            detailLink.textContent = 'Location page'
+            popupBody.appendChild(detailLink)
+            popupBody.appendChild(document.createElement('br'))
             const openButton = document.createElement('button')
             openButton.type = 'button'
             openButton.className = 'btn btn-sm btn-primary mt-2'
-            openButton.textContent = 'Open details'
+            openButton.textContent = 'Edit placement'
             openButton.addEventListener('click', () => {
               openPlacementEditor(loc)
             })
@@ -1197,6 +1204,12 @@ export default function MonthlyRoutesMapPage() {
               <div>
                 <div className="text-muted">Current</div>
                 <div className="fw-semibold">{placementLocation.display_address || placementLocation.address}</div>
+                <Link
+                  to={`/monthlies/locations/${placementLocation.id}`}
+                  className="small d-inline-block mt-1"
+                >
+                  Open location page
+                </Link>
               </div>
               <Form.Group>
                 <Form.Label className="small mb-1">Assign route</Form.Label>

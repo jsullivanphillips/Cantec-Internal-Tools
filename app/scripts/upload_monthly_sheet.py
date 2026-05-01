@@ -360,6 +360,34 @@ def _upsert_history(
     db.session.execute(stmt)
 
 
+def _resolve_location_id_for_history_row(row: dict[str, str]) -> tuple[int | None, str | None]:
+    """
+    Resolve ``MonthlyRouteLocation.id`` using the same normalized triple as
+    ``uq_monthly_route_location_address_company_building_normalized``.
+
+    Returns (location_id, None) on success, or (None, 'missing'/'ambiguous').
+    """
+    aid = _normalize_address(row.get("ADDRESS"))
+    cid = _normalize_company(row.get("PROPERTY MANAGEMENT COMPANY"))
+    bid = _normalize_building(row.get("NOTES"))
+    if not aid:
+        return None, "missing"
+
+    location_ids = db.session.execute(
+        select(MonthlyRouteLocation.id).where(
+            MonthlyRouteLocation.address_normalized == aid,
+            MonthlyRouteLocation.property_management_company_normalized == cid,
+            MonthlyRouteLocation.building_normalized == bid,
+        )
+    ).scalars().all()
+
+    if len(location_ids) == 1:
+        return int(location_ids[0]), None
+    if not location_ids:
+        return None, "missing"
+    return None, "ambiguous"
+
+
 def _apply_overrides_only(
     skip_reason_overrides: dict[tuple[str, str, str, date], SkipReasonOverride],
     dry_run: bool,
@@ -556,6 +584,8 @@ def run_upload(
     overrides_only: bool = False,
     duplicates_only: bool = False,
     duplicates_csv_path: Path | None = None,
+    history_only: bool = False,
+    month_years: frozenset[int] | None = None,
 ) -> None:
     mode = "dry-run (no DB commit)" if dry_run else "commit"
     print(f"[monthly-sheet] Starting upload ({mode}) …", flush=True)
@@ -590,6 +620,21 @@ def run_upload(
         flush=True,
     )
 
+    if month_years:
+        before_filter = len(month_columns)
+        month_columns = [(h, d) for h, d in month_columns if d.year in month_years]
+        if not month_columns:
+            raise ValueError(
+                f"No month columns left after --months-year filter "
+                f"{sorted(month_years)!r} (CSV had {before_filter} month column(s))."
+            )
+        print(
+            f"[monthly-sheet] After year filter {sorted(month_years)}: "
+            f"{len(month_columns)} month column(s): "
+            f"{', '.join(h for h, _ in month_columns)}",
+            flush=True,
+        )
+
     deduped: dict[str, tuple[dict[str, str], int]] = {}
     conflicts: list[RowConflict] = []
 
@@ -617,12 +662,19 @@ def run_upload(
         flush=True,
     )
     print(
-        "[monthly-sheet] Upserting locations and monthly history (this may take a minute) …",
+        "[monthly-sheet] "
+        + (
+            "Resolving existing locations and upserting monthly history only (no location upserts) …"
+            if history_only
+            else "Upserting locations and monthly history (this may take a minute) …"
+        ),
         flush=True,
     )
 
     missing_reason_logs: list[MissingReasonLog] = []
     invalid_rows: list[dict[str, Any]] = []
+    history_missing_locations: list[dict[str, Any]] = []
+    history_ambiguous_locations: list[dict[str, Any]] = []
     location_upserts = 0
     history_upserts = 0
     override_forced_history_rows = 0
@@ -636,11 +688,13 @@ def run_upload(
         )
     total_locations = len(deduped_items)
 
-    keycode_cf_index = keycode_cf_to_key_id_map()
-    print(
-        f"[monthly-sheet] Loaded {len(keycode_cf_index)} keycode index entr(y/ies) for key_id resolution.",
-        flush=True,
-    )
+    keycode_cf_index: dict[str, int] = {}
+    if not history_only:
+        keycode_cf_index = keycode_cf_to_key_id_map()
+        print(
+            f"[monthly-sheet] Loaded {len(keycode_cf_index)} keycode index entr(y/ies) for key_id resolution.",
+            flush=True,
+        )
 
     for idx, (row, row_number) in enumerate(deduped_items, start=1):
         address = _normalize_space(row.get("ADDRESS"))
@@ -657,8 +711,32 @@ def run_upload(
             )
             continue
 
-        location_id = _upsert_location(row, keycode_cf_index=keycode_cf_index)
-        location_upserts += 1
+        if history_only:
+            resolved_id, resolve_err = _resolve_location_id_for_history_row(row)
+            if resolve_err == "missing":
+                history_missing_locations.append(
+                    {
+                        "row_number": row_number,
+                        "address": address,
+                        "property_management_company": _normalize_space(row.get("PROPERTY MANAGEMENT COMPANY")),
+                        "building": _normalize_space(row.get("NOTES")),
+                    }
+                )
+                continue
+            if resolve_err == "ambiguous":
+                history_ambiguous_locations.append(
+                    {
+                        "row_number": row_number,
+                        "address": address,
+                        "property_management_company": _normalize_space(row.get("PROPERTY MANAGEMENT COMPANY")),
+                        "building": _normalize_space(row.get("NOTES")),
+                    }
+                )
+                continue
+            location_id = resolved_id
+        else:
+            location_id = _upsert_location(row, keycode_cf_index=keycode_cf_index)
+            location_upserts += 1
 
         for month_col, month_date in month_columns:
             raw_value = _normalize_space(row.get(month_col))
@@ -760,10 +838,25 @@ def run_upload(
             invalid_rows,
         )
 
+    if history_missing_locations:
+        _write_csv(
+            logs_dir / f"monthly_sheet_history_only_missing_location_{timestamp}.csv",
+            ["row_number", "address", "property_management_company", "building"],
+            history_missing_locations,
+        )
+    if history_ambiguous_locations:
+        _write_csv(
+            logs_dir / f"monthly_sheet_history_only_ambiguous_location_{timestamp}.csv",
+            ["row_number", "address", "property_management_company", "building"],
+            history_ambiguous_locations,
+        )
+
     remap_applied = 0
     remap_unmatched = 0
     if duplicates_only:
         print("[monthly-sheet] Duplicates-only mode: skipping preserved-reason remap pass.", flush=True)
+    elif history_only:
+        print("[monthly-sheet] History-only mode: skipping preserved-reason remap pass.", flush=True)
     else:
         print("[monthly-sheet] Running preserved-reason remap pass …", flush=True)
         remap_applied, remap_unmatched = _remap_existing_skip_reasons()
@@ -789,6 +882,8 @@ def run_upload(
     LOG.info("Skip-reason overrides used: %s", len(used_override_keys))
     LOG.info("Skip-reason overrides unused: %s", len(unused_override_keys))
     LOG.info("Skip-reason overrides forced rows: %s", override_forced_history_rows)
+    LOG.info("History-only missing DB location rows: %s", len(history_missing_locations))
+    LOG.info("History-only ambiguous DB location rows: %s", len(history_ambiguous_locations))
 
     print(
         "[monthly-sheet] Summary — "
@@ -797,6 +892,8 @@ def run_upload(
         f"conflicts: {len(conflicts)}, "
         f"X pending reasons: {len(missing_reason_logs)}, "
         f"invalid: {len(invalid_rows)}, "
+        f"history-only unmatched location: {len(history_missing_locations)}, "
+        f"history-only ambiguous location: {len(history_ambiguous_locations)}, "
         f"override used: {len(used_override_keys)}/{len(skip_reason_overrides)}, "
         f"override-forced rows: {override_forced_history_rows}, "
         f"remapped reasons: {remap_applied}, "
@@ -840,6 +937,22 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Path to duplicate-conflicts CSV (e.g., logs/monthly_sheet_address_conflicts_*.csv).",
     )
+    parser.add_argument(
+        "--history-only",
+        action="store_true",
+        help=(
+            "Only upsert MonthlyRouteTestHistory; do not upsert MonthlyRouteLocation "
+            "(each CSV row must match an existing location by address/company/building)."
+        ),
+    )
+    parser.add_argument(
+        "--months-year",
+        action="append",
+        type=int,
+        dest="months_years",
+        metavar="YEAR",
+        help="Only process month columns in this calendar year (repeatable). Example: --months-year 2025",
+    )
     return parser.parse_args()
 
 
@@ -856,6 +969,7 @@ def main() -> None:
         print("[monthly-sheet] App context ready.", flush=True)
         if args.duplicates_only and not args.duplicates_csv:
             raise SystemExit("--duplicates-only requires --duplicates-csv")
+        month_years_arg = frozenset(args.months_years) if args.months_years else None
         run_upload(
             csv_path=csv_path,
             dry_run=not args.commit,
@@ -863,6 +977,8 @@ def main() -> None:
             overrides_only=args.overrides_only,
             duplicates_only=args.duplicates_only,
             duplicates_csv_path=Path(args.duplicates_csv) if args.duplicates_csv else None,
+            history_only=args.history_only,
+            month_years=month_years_arg,
         )
         print("[monthly-sheet] Done.", flush=True)
 

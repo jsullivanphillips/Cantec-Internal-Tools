@@ -7,15 +7,27 @@ from urllib import error as url_error, parse as url_parse, request as url_reques
 import json
 import math
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, session
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import joinedload
 
-from app.db_models import Key, MonthlyRoute, MonthlyRouteLocation, MonthlyRouteTestHistory, db
+from app.db_models import (
+    Key,
+    MonthlyRoute,
+    MonthlyRouteComment,
+    MonthlyRouteLocation,
+    MonthlyRouteLocationComment,
+    MonthlyRouteSnapshot,
+    MonthlyRouteSpecialistMonth,
+    MonthlyRouteTestHistory,
+    db,
+)
 from app.monthly.key_resolve import sync_key_fk_for_location
 from app.monthly.route_sync import sync_monthly_route_fk_for_location
 
 monthly_routes_bp = Blueprint("monthly_routes", __name__)
+# Max rows from ``monthly_route_specialist_month`` returned on route detail (align with script default lookback).
+_ROUTE_DETAIL_SPECIALIST_MONTHS_LIMIT = int(os.getenv("MONTHLY_ROUTE_DETAIL_SPECIALIST_MONTHS", "24"))
 VICTORIA_PROXIMITY_LNG = -123.3656
 VICTORIA_PROXIMITY_LAT = 48.4284
 # Approx Greater Victoria bounding box: west,south,east,north
@@ -217,7 +229,7 @@ def _serialize_monthly_route_entity(
     )
     occ = int(mr.week_occurrence) if mr.week_occurrence is not None else 0
     nth = _english_ordinal(occ) if occ >= 1 else str(occ)
-    label = f"{nth} {wd} · R{mr.route_number}"
+    label = f"R{mr.route_number} · {nth} {wd}"
     st_rid = mr.service_trade_route_location_id
     out: dict[str, object] = {
         "id": mr.id,
@@ -265,6 +277,201 @@ def _serialize_linked_key(key: Key | None) -> dict[str, object] | None:
         "keycode": key.keycode,
         "barcode": int(bc) if bc is not None else None,
     }
+
+
+def _months_payload_for_location(location_id: int) -> dict[str, dict[str, str | None]]:
+    history_rows = (
+        MonthlyRouteTestHistory.query.filter_by(location_id=location_id)
+        .order_by(MonthlyRouteTestHistory.month_date.asc())
+        .all()
+    )
+    return {
+        row.month_date.isoformat(): {
+            "result_status": row.result_status,
+            "skip_reason": row.skip_reason,
+        }
+        for row in history_rows
+    }
+
+
+def _serialize_staff_comment(
+    id_: int,
+    body: str,
+    author_username: str | None,
+    created_at,
+    updated_at,
+) -> dict[str, object]:
+    ts = created_at.isoformat() if created_at else None
+    uts = updated_at.isoformat() if updated_at else None
+    return {
+        "id": id_,
+        "body": body,
+        "author_username": author_username,
+        "created_at": ts,
+        "updated_at": uts,
+    }
+
+
+def _serialize_monthly_location_comment(row: MonthlyRouteLocationComment) -> dict[str, object]:
+    return _serialize_staff_comment(
+        int(row.id),
+        row.body,
+        row.author_username,
+        row.created_at,
+        row.updated_at,
+    )
+
+
+def _serialize_monthly_route_comment(row: MonthlyRouteComment) -> dict[str, object]:
+    return _serialize_staff_comment(
+        int(row.id),
+        row.body,
+        row.author_username,
+        row.created_at,
+        row.updated_at,
+    )
+
+
+def _session_username_clean() -> str | None:
+    raw = session.get("username")
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    return text or None
+
+
+def _comment_modify_allowed(author_username: str | None) -> bool:
+    sess = _session_username_clean()
+    if not sess:
+        return False
+    author = (author_username or "").strip()
+    if not author:
+        return False
+    return author.casefold() == sess.casefold()
+
+
+def _get_monthly_route(route_id: int) -> MonthlyRoute | None:
+    return MonthlyRoute.query.filter_by(id=route_id).one_or_none()
+
+
+def _filtered_specialists_for_st_route_location(st_route_location_id: int) -> dict[str, object]:
+    """Align with ``/api/monthly_specialists``: active techs only, same ``top_technicians`` shape."""
+    from app.routes.scheduling_attack import get_active_techs
+
+    snap = MonthlyRouteSnapshot.query.filter_by(location_id=st_route_location_id).one_or_none()
+
+    active_techs_raw = get_active_techs() or []
+    active_name_set = {
+        (t.get("name") or "").strip().casefold()
+        for t in active_techs_raw
+        if str(t.get("status", "")).lower() == "active"
+        and t.get("isTech") is True
+        and (t.get("name") or "").strip()
+    }
+
+    def _extract_name(item: object) -> str:
+        if isinstance(item, dict):
+            return (item.get("tech_name") or "").strip()
+        if isinstance(item, str):
+            return item.strip()
+        return ""
+
+    if snap is None:
+        return {
+            "location_id": st_route_location_id,
+            "location_name": "",
+            "completed_jobs_count": 0,
+            "top_technicians": [],
+            "last_updated_at": None,
+        }
+
+    top = snap.top_technicians or []
+    filtered_top: list[object] = []
+    for item in top:
+        nm = _extract_name(item)
+        if nm and nm.casefold() in active_name_set:
+            filtered_top.append(item)
+
+    return {
+        "location_id": snap.location_id,
+        "location_name": snap.location_name,
+        "completed_jobs_count": snap.completed_jobs_count,
+        "top_technicians": filtered_top,
+        "last_updated_at": (
+            snap.last_updated_at.isoformat()
+            if snap.last_updated_at
+            else None
+        ),
+    }
+
+
+def _sheet_skip_reason_is_annual(skip_reason: str | None) -> bool:
+    """True when monthly sheet stored ``ANNUAL`` (``skip_reason`` ``annual``)."""
+    return (skip_reason or "").strip().lower() == "annual"
+
+
+def _skip_site_base(loc: MonthlyRouteLocation | None, location_id: int) -> dict:
+    """``id`` + display label for skipped-site lists on route detail."""
+    if loc is None:
+        return {"id": location_id, "label": f"Location {location_id}"}
+    label = (loc.display_address or loc.address or "").strip()
+    if not label:
+        label = f"Location {loc.id}"
+    return {"id": int(loc.id), "label": label}
+
+
+def _route_testing_by_month(route_id: int) -> dict[str, dict]:
+    """Month keys (YYYY-MM-01): counts and skipped-site lists from ``monthly_route_test_history``."""
+    loc_ids = [
+        lid
+        for (lid,) in MonthlyRouteLocation.query.with_entities(MonthlyRouteLocation.id)
+        .filter(MonthlyRouteLocation.monthly_route_id == route_id)
+        .all()
+    ]
+    if not loc_ids:
+        return {}
+    loc_by_id = {
+        loc.id: loc
+        for loc in MonthlyRouteLocation.query.filter(MonthlyRouteLocation.monthly_route_id == route_id).all()
+    }
+    history_rows = MonthlyRouteTestHistory.query.filter(
+        MonthlyRouteTestHistory.location_id.in_(loc_ids)
+    ).all()
+
+    def _fresh_month() -> dict:
+        return {
+            "sites_tested_count": 0,
+            "skipped_non_annual_count": 0,
+            "skipped_annual_count": 0,
+            "skipped_non_annual_sites": [],
+            "skipped_annual_sites": [],
+        }
+
+    by_month: dict[str, dict] = {}
+    for row in history_rows:
+        key = row.month_date.isoformat()
+        entry = by_month.setdefault(key, _fresh_month())
+        status = (row.result_status or "").strip().lower()
+        if status == "skipped":
+            lid = int(row.location_id)
+            base = _skip_site_base(loc_by_id.get(lid), lid)
+            if _sheet_skip_reason_is_annual(row.skip_reason):
+                entry["skipped_annual_count"] += 1
+                entry["skipped_annual_sites"].append(base)
+            else:
+                reason = (row.skip_reason or "").strip()
+                entry["skipped_non_annual_count"] += 1
+                entry["skipped_non_annual_sites"].append({**base, "skip_reason": reason or None})
+        else:
+            entry["sites_tested_count"] += 1
+
+    for entry in by_month.values():
+        na = entry["skipped_non_annual_sites"]
+        na.sort(key=lambda s: (str(s["label"]).casefold(), int(s["id"])))
+        ann = entry["skipped_annual_sites"]
+        ann.sort(key=lambda s: (str(s["label"]).casefold(), int(s["id"])))
+
+    return by_month
 
 
 def _serialize_location_row(
@@ -526,6 +733,223 @@ def monthly_routes_library():
     )
 
 
+@monthly_routes_bp.get("/api/monthly_routes/library/<int:location_id>")
+def get_monthly_route_location(location_id: int):
+    loc = _get_monthly_location(location_id)
+    if loc is None:
+        return jsonify({"error": "Location not found"}), 404
+
+    months_by_location = _months_payload_for_location(location_id)
+    comment_rows = (
+        MonthlyRouteLocationComment.query.filter_by(location_id=location_id)
+        .order_by(MonthlyRouteLocationComment.created_at.desc())
+        .all()
+    )
+    comments_payload = [_serialize_monthly_location_comment(r) for r in comment_rows]
+    return jsonify(
+        {
+            "location": _serialize_location_row(loc, months_by_location),
+            "comments": comments_payload,
+        }
+    )
+
+
+@monthly_routes_bp.get("/api/monthly_routes/routes/<int:route_id>")
+def get_monthly_route_detail(route_id: int):
+    mr = _get_monthly_route(route_id)
+    if mr is None:
+        return jsonify({"error": "Route not found"}), 404
+
+    location_count = MonthlyRouteLocation.query.filter_by(monthly_route_id=route_id).count()
+    comment_rows = (
+        MonthlyRouteComment.query.filter_by(monthly_route_id=route_id)
+        .order_by(MonthlyRouteComment.created_at.desc())
+        .all()
+    )
+    comments_payload = [_serialize_monthly_route_comment(r) for r in comment_rows]
+    testing_by_month = _route_testing_by_month(route_id)
+
+    st_rid = mr.service_trade_route_location_id
+    specialists_payload: dict[str, object] | None
+    if st_rid is None:
+        specialists_payload = None
+    else:
+        specialists_payload = _filtered_specialists_for_st_route_location(int(st_rid))
+
+    specialist_month_rows = (
+        MonthlyRouteSpecialistMonth.query.filter_by(monthly_route_id=route_id)
+        .order_by(MonthlyRouteSpecialistMonth.month_first.desc())
+        .limit(max(_ROUTE_DETAIL_SPECIALIST_MONTHS_LIMIT, 1))
+        .all()
+    )
+    specialists_by_month: dict[str, dict[str, object]] = {
+        row.month_first.isoformat(): {
+            "top_technicians": row.top_technicians or [],
+            "completed_jobs_attributed": row.completed_jobs_attributed,
+            "route_tested_on": row.route_tested_on.isoformat() if row.route_tested_on else None,
+            "last_updated_at": row.last_updated_at.isoformat() if row.last_updated_at else None,
+        }
+        for row in specialist_month_rows
+    }
+
+    return jsonify(
+        {
+            "route": _serialize_monthly_route_entity(mr, location_count=location_count),
+            "comments": comments_payload,
+            "testing_by_month": testing_by_month,
+            "specialists": specialists_payload,
+            "specialists_by_month": specialists_by_month,
+        }
+    )
+
+
+@monthly_routes_bp.post("/api/monthly_routes/routes/<int:route_id>/comments")
+def create_monthly_route_comment(route_id: int):
+    if _get_monthly_route(route_id) is None:
+        return jsonify({"error": "Route not found"}), 404
+
+    username = session.get("username")
+    if not username:
+        return jsonify({"error": "Session username required"}), 401
+
+    payload = request.get_json(silent=True) or {}
+    if not isinstance(payload, dict):
+        return jsonify({"error": "JSON object payload required"}), 400
+
+    body = _clean_text(payload.get("body"))
+    if not body:
+        return jsonify({"error": "body is required"}), 400
+
+    row = MonthlyRouteComment(
+        monthly_route_id=route_id,
+        body=body,
+        author_username=str(username).strip() or None,
+    )
+    db.session.add(row)
+    db.session.commit()
+    db.session.refresh(row)
+    return jsonify({"comment": _serialize_monthly_route_comment(row)}), 201
+
+
+@monthly_routes_bp.patch("/api/monthly_routes/routes/<int:route_id>/comments/<int:comment_id>")
+def update_monthly_route_comment(route_id: int, comment_id: int):
+    if _get_monthly_route(route_id) is None:
+        return jsonify({"error": "Route not found"}), 404
+
+    row = MonthlyRouteComment.query.filter_by(
+        id=comment_id, monthly_route_id=route_id
+    ).one_or_none()
+    if row is None:
+        return jsonify({"error": "Comment not found"}), 404
+
+    if not _comment_modify_allowed(row.author_username):
+        return jsonify({"error": "You can only edit your own comments"}), 403
+
+    payload = request.get_json(silent=True) or {}
+    if not isinstance(payload, dict):
+        return jsonify({"error": "JSON object payload required"}), 400
+
+    body = _clean_text(payload.get("body"))
+    if not body:
+        return jsonify({"error": "body is required"}), 400
+
+    row.body = body
+    db.session.commit()
+    db.session.refresh(row)
+    return jsonify({"comment": _serialize_monthly_route_comment(row)})
+
+
+@monthly_routes_bp.delete("/api/monthly_routes/routes/<int:route_id>/comments/<int:comment_id>")
+def delete_monthly_route_comment(route_id: int, comment_id: int):
+    if _get_monthly_route(route_id) is None:
+        return jsonify({"error": "Route not found"}), 404
+
+    row = MonthlyRouteComment.query.filter_by(
+        id=comment_id, monthly_route_id=route_id
+    ).one_or_none()
+    if row is None:
+        return jsonify({"error": "Comment not found"}), 404
+
+    if not _comment_modify_allowed(row.author_username):
+        return jsonify({"error": "You can only delete your own comments"}), 403
+
+    db.session.delete(row)
+    db.session.commit()
+    return ("", 204)
+
+
+@monthly_routes_bp.post("/api/monthly_routes/library/<int:location_id>/comments")
+def create_monthly_route_location_comment(location_id: int):
+    loc = _get_monthly_location(location_id)
+    if loc is None:
+        return jsonify({"error": "Location not found"}), 404
+
+    username = session.get("username")
+    if not username:
+        return jsonify({"error": "Session username required"}), 401
+
+    payload = request.get_json(silent=True) or {}
+    if not isinstance(payload, dict):
+        return jsonify({"error": "JSON object payload required"}), 400
+
+    body = _clean_text(payload.get("body"))
+    if not body:
+        return jsonify({"error": "body is required"}), 400
+
+    row = MonthlyRouteLocationComment(
+        location_id=location_id,
+        body=body,
+        author_username=str(username).strip() or None,
+    )
+    db.session.add(row)
+    db.session.commit()
+    db.session.refresh(row)
+    return jsonify({"comment": _serialize_monthly_location_comment(row)}), 201
+
+
+@monthly_routes_bp.patch("/api/monthly_routes/library/<int:location_id>/comments/<int:comment_id>")
+def update_monthly_route_location_comment(location_id: int, comment_id: int):
+    if _get_monthly_location(location_id) is None:
+        return jsonify({"error": "Location not found"}), 404
+
+    row = MonthlyRouteLocationComment.query.filter_by(id=comment_id, location_id=location_id).one_or_none()
+    if row is None:
+        return jsonify({"error": "Comment not found"}), 404
+
+    if not _comment_modify_allowed(row.author_username):
+        return jsonify({"error": "You can only edit your own comments"}), 403
+
+    payload = request.get_json(silent=True) or {}
+    if not isinstance(payload, dict):
+        return jsonify({"error": "JSON object payload required"}), 400
+
+    body = _clean_text(payload.get("body"))
+    if not body:
+        return jsonify({"error": "body is required"}), 400
+
+    row.body = body
+    db.session.commit()
+    db.session.refresh(row)
+    return jsonify({"comment": _serialize_monthly_location_comment(row)})
+
+
+@monthly_routes_bp.delete("/api/monthly_routes/library/<int:location_id>/comments/<int:comment_id>")
+def delete_monthly_route_location_comment(location_id: int, comment_id: int):
+    if _get_monthly_location(location_id) is None:
+        return jsonify({"error": "Location not found"}), 404
+
+    row = MonthlyRouteLocationComment.query.filter_by(id=comment_id, location_id=location_id).one_or_none()
+    if row is None:
+        return jsonify({"error": "Comment not found"}), 404
+
+    if not _comment_modify_allowed(row.author_username):
+        return jsonify({"error": "You can only delete your own comments"}), 403
+
+    db.session.delete(row)
+    db.session.commit()
+    return ("", 204)
+
+
 @monthly_routes_bp.post("/api/monthly_routes/library")
 def create_monthly_route_location():
     payload = request.get_json(silent=True) or {}
@@ -743,18 +1167,7 @@ def update_monthly_route_location(location_id: int):
     ):
         db.session.refresh(loc)
 
-    history_rows = (
-        MonthlyRouteTestHistory.query.filter_by(location_id=location_id)
-        .order_by(MonthlyRouteTestHistory.month_date.asc())
-        .all()
-    )
-    months_by_location = {
-        row.month_date.isoformat(): {
-            "result_status": row.result_status,
-            "skip_reason": row.skip_reason,
-        }
-        for row in history_rows
-    }
+    months_by_location = _months_payload_for_location(location_id)
     return jsonify({"location": _serialize_location_row(loc, months_by_location)})
 
 
@@ -826,18 +1239,7 @@ def update_monthly_route_placement(location_id: int):
     loc.longitude = lng
     db.session.commit()
 
-    history_rows = (
-        MonthlyRouteTestHistory.query.filter_by(location_id=location_id)
-        .order_by(MonthlyRouteTestHistory.month_date.asc())
-        .all()
-    )
-    months_by_location = {
-        row.month_date.isoformat(): {
-            "result_status": row.result_status,
-            "skip_reason": row.skip_reason,
-        }
-        for row in history_rows
-    }
+    months_by_location = _months_payload_for_location(location_id)
     return jsonify({"location": _serialize_location_row(loc, months_by_location)})
 
 
@@ -865,18 +1267,7 @@ def assign_monthly_route_location(location_id: int):
 
     db.session.refresh(loc)
 
-    history_rows = (
-        MonthlyRouteTestHistory.query.filter_by(location_id=location_id)
-        .order_by(MonthlyRouteTestHistory.month_date.asc())
-        .all()
-    )
-    months_by_location = {
-        row.month_date.isoformat(): {
-            "result_status": row.result_status,
-            "skip_reason": row.skip_reason,
-        }
-        for row in history_rows
-    }
+    months_by_location = _months_payload_for_location(location_id)
     return jsonify({"location": _serialize_location_row(loc, months_by_location)})
 
 

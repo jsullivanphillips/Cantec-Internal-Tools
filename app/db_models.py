@@ -579,9 +579,63 @@ class MonthlyRoute(db.Model):
         back_populates="monthly_route",
         foreign_keys="MonthlyRouteLocation.monthly_route_id",
     )
+    route_comments = db.relationship(
+        "MonthlyRouteComment",
+        back_populates="monthly_route",
+        cascade="all, delete-orphan",
+        lazy="dynamic",
+    )
+    specialist_months = db.relationship(
+        "MonthlyRouteSpecialistMonth",
+        back_populates="monthly_route",
+        cascade="all, delete-orphan",
+        lazy="dynamic",
+    )
 
     def __repr__(self):
         return f"<MonthlyRoute R{self.route_number}>"
+
+
+class MonthlyRouteSpecialistMonth(db.Model):
+    """
+    Cached top technicians per calendar month (Pacific) for a monthly route,
+    from completed ServiceTrade jobs at the route pseudo-location.
+    """
+
+    __tablename__ = "monthly_route_specialist_month"
+    __table_args__ = (
+        db.UniqueConstraint(
+            "monthly_route_id",
+            "month_first",
+            name="uq_monthly_route_specialist_month_route_month",
+        ),
+        db.Index(
+            "ix_monthly_route_specialist_month_route_month_first",
+            "monthly_route_id",
+            "month_first",
+        ),
+    )
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    monthly_route_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monthly_route.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    month_first = db.Column(db.Date, nullable=False)
+    top_technicians = db.Column(JSONB, nullable=False)
+    completed_jobs_attributed = db.Column(db.Integer, nullable=False)
+    #: Latest Pacific calendar day among attributed jobs (appointment window / completion).
+    route_tested_on = db.Column(db.Date, nullable=True)
+
+    last_updated_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        onupdate=db.func.now(),
+        nullable=False,
+    )
+
+    monthly_route = db.relationship("MonthlyRoute", back_populates="specialist_months")
 
 
 class MonthlyRouteLocation(db.Model):
@@ -670,6 +724,12 @@ class MonthlyRouteLocation(db.Model):
         cascade="all, delete-orphan",
         lazy="selectin",
     )
+    comments = db.relationship(
+        "MonthlyRouteLocationComment",
+        back_populates="location",
+        cascade="all, delete-orphan",
+        lazy="dynamic",
+    )
 
 
 class MonthlyRouteTestHistory(db.Model):
@@ -705,6 +765,67 @@ class MonthlyRouteTestHistory(db.Model):
     )
 
     location = db.relationship("MonthlyRouteLocation", back_populates="monthly_history")
+
+
+class MonthlyRouteLocationComment(db.Model):
+    """Staff-authored notes on a monthly library location (separate from legacy ``notes``)."""
+
+    __tablename__ = "monthly_route_location_comment"
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    location_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monthly_route_location.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    body = db.Column(db.Text, nullable=False)
+    author_username = db.Column(db.String(255), nullable=True)
+
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        nullable=False,
+    )
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        onupdate=db.func.now(),
+        nullable=False,
+    )
+
+    location = db.relationship("MonthlyRouteLocation", back_populates="comments")
+
+
+class MonthlyRouteComment(db.Model):
+    """Staff-authored notes on a monthly calendar route (library route entity)."""
+
+    __tablename__ = "monthly_route_comment"
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    monthly_route_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monthly_route.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    body = db.Column(db.Text, nullable=False)
+    author_username = db.Column(db.String(255), nullable=True)
+
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        nullable=False,
+    )
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        onupdate=db.func.now(),
+        nullable=False,
+    )
+
+    monthly_route = db.relationship("MonthlyRoute", back_populates="route_comments")
+
 
 class MonthlyRouteSnapshot(db.Model):
     """

@@ -2,11 +2,11 @@ import type { CSSProperties } from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button, Card, Form, Modal, OverlayTrigger, Table, Tooltip } from 'react-bootstrap'
 import { Link } from 'react-router-dom'
+import MonthlyLocationLibraryModal from '../features/monthlyRoutes/MonthlyLocationLibraryModal'
+import RouteLibraryLink from '../features/monthlyRoutes/RouteLibraryLink'
 import {
   STATUS_OPTIONS,
   compareYearMonth,
-  libraryRouteDisplay,
-  libraryKeycodeDisplay,
   parseYearMonth,
   toMonthKey,
   type CreateLocationForm,
@@ -17,39 +17,6 @@ import {
 } from '../features/monthlyRoutes/monthlyRoutesShared'
 import { apiJson, isAbortError } from '../lib/apiClient'
 
-type LocationEditForm = {
-  address: string
-  property_management_company: string
-  building: string
-  notes: string
-  price_per_month: string
-  area: string
-  start_up_date: string
-  status_raw: string
-  keys: string
-  test_day: string
-  annual_month: string
-}
-
-function RouteLibraryLink({ loc }: { loc: LibraryLocation }) {
-  const label = libraryRouteDisplay(loc) || '—'
-  const url = loc.monthly_route?.service_trade_route_location_url
-  if (url && label !== '—') {
-    return (
-      <a
-        href={url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="fw-semibold text-decoration-none"
-      >
-        {label}
-      </a>
-    )
-  }
-  return <>{label}</>
-}
-
-const LIBRARY_DETAIL_MODAL_TITLE_ID = 'library-detail-modal-title'
 const LIBRARY_PAGE_SIZE = 50
 const MONTH_NAME_OPTIONS = Array.from({ length: 12 }).map((_, idx) =>
   new Intl.DateTimeFormat('en-US', {
@@ -57,11 +24,8 @@ const MONTH_NAME_OPTIONS = Array.from({ length: 12 }).map((_, idx) =>
     timeZone: 'UTC',
   }).format(new Date(Date.UTC(2000, idx, 1)))
 )
-/** Keeps month testing columns from stretching wider than the badge content needs. */
+/** Month columns get width only via `<colgroup>` (equal share of leftover space). */
 const MONTH_TESTING_CELL_STYLE: CSSProperties = {
-  width: '3.8rem',
-  minWidth: '3.8rem',
-  maxWidth: '3.8rem',
   verticalAlign: 'middle',
   textAlign: 'center',
   whiteSpace: 'normal',
@@ -100,9 +64,9 @@ const KEYS_COLUMN_STYLE: CSSProperties = {
 }
 
 const ANNUAL_COLUMN_STYLE: CSSProperties = {
-  width: '6.2rem',
-  minWidth: '6.2rem',
-  maxWidth: '6.2rem',
+  width: '7.35rem',
+  minWidth: '7.35rem',
+  maxWidth: '7.35rem',
 }
 
 const EDIT_COLUMN_STYLE: CSSProperties = {
@@ -127,83 +91,8 @@ const LIBRARY_TABLE_WRAP_STYLE: CSSProperties = {
 }
 
 const LIBRARY_TABLE_STYLE: CSSProperties = {
-  width: 'auto',
-}
-
-const ROUTES_MODAL_SHELL_STYLE: CSSProperties = {
-  borderRadius: '1.6rem',
-  border: '0',
-  padding: '1.2rem',
-  backgroundColor: '#f9fbff',
-}
-
-const ROUTES_MODAL_CONTENT_STYLE = {
-  '--bs-modal-border-radius': '2.4rem',
-  '--bs-modal-bg': 'transparent',
-} as CSSProperties
-
-const ROUTES_MODAL_HEADER_STYLE: CSSProperties = {
-  backgroundColor: '#cfd8ec',
-  borderBottom: '0',
-  borderTopLeftRadius: '1.25rem',
-  borderTopRightRadius: '1.25rem',
-  padding: '1.05rem 1.35rem',
-}
-
-const ROUTES_MODAL_BODY_STYLE: CSSProperties = {
-  backgroundColor: '#e9edf5',
-  borderBottomLeftRadius: '1.25rem',
-  borderBottomRightRadius: '1.25rem',
-  padding: '1.15rem 1.35rem',
-}
-
-const ROUTES_MODAL_FOOTER_STYLE: CSSProperties = {
-  borderTop: '0',
-  backgroundColor: '#e9edf5',
-  borderBottomLeftRadius: '1.25rem',
-  borderBottomRightRadius: '1.25rem',
-  paddingTop: 0,
-  paddingBottom: '1.25rem',
-}
-
-const ROUTES_MODAL_INPUT_STYLE: CSSProperties = {
-  backgroundColor: '#f8fafc',
-  borderColor: '#c8d0df',
-}
-
-const ROUTES_MODAL_SUBMIT_STYLE: CSSProperties = {
-  backgroundColor: '#2f63d7',
-  borderColor: '#2f63d7',
-  fontWeight: 600,
-  paddingTop: '0.65rem',
-  paddingBottom: '0.65rem',
-}
-
-const ROUTES_MODAL_TITLE_STYLE: CSSProperties = {
-  fontSize: '2rem',
-  fontWeight: 650,
-  letterSpacing: '-0.01em',
-}
-
-const ROUTES_MODAL_SUBTITLE_STYLE: CSSProperties = {
-  fontSize: '1.05rem',
-  color: '#384a69',
-}
-
-const ROUTES_MODAL_CLOSE_BUTTON_STYLE: CSSProperties = {
-  border: 0,
-  background: 'transparent',
-  color: '#2f63d7',
-  fontSize: '1.15rem',
-  lineHeight: 1,
-  padding: '0.2rem 0.35rem',
-}
-
-const ROUTES_MODAL_EDIT_BUTTON_STYLE: CSSProperties = {
-  backgroundColor: '#2f63d7',
-  borderColor: '#2f63d7',
-  color: '#fff',
-  fontWeight: 600,
+  width: '100%',
+  tableLayout: 'fixed',
 }
 
 const CREATE_LOCATION_GEOCODE_DEBOUNCE_MS = 250
@@ -249,18 +138,6 @@ function isAnnualMonth(monthKey: string, annualMonth: string | null | undefined)
   return annual === full || annual === short
 }
 
-function normalizeStatusOption(value: string | null | undefined): string {
-  const normalized = (value || '').trim().toLowerCase().replace(/\s+/g, '_')
-  return ['active', 'cancelled', 'on_hold', 'waiting_keys'].includes(normalized) ? normalized : ''
-}
-
-function toDateInputValue(value: string | null | undefined): string {
-  if (!value) return ''
-  const trimmed = value.trim()
-  const match = trimmed.match(/^(\d{4}-\d{2}-\d{2})/)
-  return match ? match[1] : ''
-}
-
 export default function MonthlyRoutesPage() {
   const today = new Date()
   const currentYearStart = `${today.getFullYear()}-01-01`
@@ -295,11 +172,6 @@ export default function MonthlyRoutesPage() {
   const [annualEditLocationId, setAnnualEditLocationId] = useState<number | null>(null)
   const [annualSavingLocationId, setAnnualSavingLocationId] = useState<number | null>(null)
   const [selectedLocation, setSelectedLocation] = useState<LibraryLocation | null>(null)
-  const [isEditMode, setIsEditMode] = useState(false)
-  const [editForm, setEditForm] = useState<LocationEditForm | null>(null)
-  const [saveError, setSaveError] = useState<string | null>(null)
-  const [isSaving, setIsSaving] = useState(false)
-  const [isDeleting, setIsDeleting] = useState(false)
 
   const mergeUpdatedLocation = useCallback((updated: LibraryLocation) => {
     setPayload((prev) =>
@@ -414,9 +286,6 @@ export default function MonthlyRoutesPage() {
 
   const openLocationDetail = useCallback((loc: LibraryLocation) => {
     setSelectedLocation(loc)
-    setIsEditMode(false)
-    setEditForm(null)
-    setSaveError(null)
   }, [])
 
   const saveAnnualForLocation = useCallback(
@@ -453,111 +322,13 @@ export default function MonthlyRoutesPage() {
 
   function closeLocationDetail() {
     setSelectedLocation(null)
-    setIsEditMode(false)
-    setEditForm(null)
-    setSaveError(null)
-    setIsSaving(false)
-  }
-
-  function buildEditForm(loc: LibraryLocation): LocationEditForm {
-    return {
-      address: loc.address || '',
-      property_management_company: loc.property_management_company || '',
-      building: loc.building || '',
-      notes: loc.notes || '',
-      price_per_month: loc.price_per_month != null ? String(loc.price_per_month) : '',
-      area: loc.area || '',
-      start_up_date: toDateInputValue(loc.start_up_date),
-      status_raw: normalizeStatusOption(loc.status_raw || loc.status_normalized || ''),
-      keys: loc.keys || '',
-      test_day: loc.test_day || '',
-      annual_month: loc.annual_month || '',
-    }
-  }
-
-  function beginEdit(loc: LibraryLocation) {
-    setEditForm(buildEditForm(loc))
-    setIsEditMode(true)
-    setSaveError(null)
-  }
-
-  function updateEditField(field: keyof LocationEditForm, value: string) {
-    setEditForm((prev) => (prev ? { ...prev, [field]: value } : prev))
-  }
-
-  async function submitEdits() {
-    if (!selectedLocation || !editForm) return
-    setIsSaving(true)
-    setSaveError(null)
-    try {
-      const response = await apiJson<{ location: LibraryLocation }>(
-        `/api/monthly_routes/library/${selectedLocation.id}`,
-        {
-          method: 'PATCH',
-          body: JSON.stringify({
-            address: editForm.address,
-            property_management_company: editForm.property_management_company,
-            building: editForm.building,
-            notes: editForm.notes,
-            price_per_month: editForm.price_per_month.trim() ? editForm.price_per_month.trim() : null,
-            area: editForm.area,
-            start_up_date: editForm.start_up_date || null,
-            status_raw: editForm.status_raw,
-            keys: editForm.keys,
-            test_day: editForm.test_day,
-            annual_month: editForm.annual_month,
-          }),
-        }
-      )
-      setPayload((prev) => {
-        if (!prev) return prev
-        return {
-          ...prev,
-          locations: prev.locations.map((loc) =>
-            loc.id === response.location.id ? response.location : loc
-          ),
-        }
-      })
-      setSelectedLocation(response.location)
-      setIsEditMode(false)
-      setEditForm(null)
-    } catch (err) {
-      if (typeof err === 'object' && err && 'error' in err) {
-        setSaveError(String((err as { error: unknown }).error))
-      } else {
-        setSaveError('Unable to save changes.')
-      }
-    } finally {
-      setIsSaving(false)
-    }
-  }
-
-  async function deleteLocation(loc: LibraryLocation) {
-    const confirmed = window.confirm(`Delete location "${loc.address}"? This cannot be undone.`)
-    if (!confirmed) return
-    setIsDeleting(true)
-    setSaveError(null)
-    try {
-      await apiJson<unknown>(`/api/monthly_routes/library/${loc.id}`, {
-        method: 'DELETE',
-      })
-      removeLocationFromState(loc.id)
-      closeLocationDetail()
-    } catch (err) {
-      if (typeof err === 'object' && err && 'error' in err) {
-        setSaveError(String((err as { error: unknown }).error))
-      } else {
-        setSaveError('Unable to delete location.')
-      }
-    } finally {
-      setIsDeleting(false)
-    }
   }
 
   const renderMonthCell = useCallback((
     cell: MonthCell | undefined,
     monthKey: string,
-    annualMonth: string | null | undefined
+    annualMonth: string | null | undefined,
+    locationId: number
   ) => {
     const isAnnual = isAnnualMonth(monthKey, annualMonth)
     if (cell?.result_status === 'tested') {
@@ -594,13 +365,12 @@ export default function MonthlyRoutesPage() {
           trigger="click"
           rootClose
           placement="top"
-          overlay={<Tooltip id={`skip-reason-${monthKey}`}>{reason}</Tooltip>}
+          overlay={<Tooltip id={`skip-reason-${locationId}-${monthKey}`}>{reason}</Tooltip>}
         >
           <button
             type="button"
-            className="btn p-0 border-0 bg-transparent d-flex align-items-center justify-content-center w-100 h-100"
-            style={{ minHeight: '1.35rem' }}
-            aria-label={`Skipped: ${reason}. Click to view reason.`}
+            className="btn p-0 border-0 bg-transparent monthly-skip-reason-hitbox d-flex align-items-center justify-content-center"
+            aria-label={`Skipped: ${reason}. Click the cell to view reason.`}
           >
             <i
               className="bi bi-slash-circle-fill text-warning"
@@ -648,230 +418,6 @@ export default function MonthlyRoutesPage() {
     )
   }, [])
 
-  function detailModal(loc: LibraryLocation) {
-    const startup =
-      loc.start_up_date != null ? new Date(loc.start_up_date).toLocaleDateString() : '—'
-    const price =
-      loc.price_per_month != null ? `$${loc.price_per_month.toFixed(2)}` : '—'
-    const statusRaw = loc.status_raw?.trim()
-    const showRaw =
-      statusRaw &&
-      statusRaw.toLowerCase() !== (loc.status_normalized || '').toLowerCase()
-
-    return (
-      <Modal
-        show
-        onHide={closeLocationDetail}
-        size="lg"
-        centered
-        aria-labelledby={LIBRARY_DETAIL_MODAL_TITLE_ID}
-        contentClassName="border-0 shadow bg-transparent"
-        style={ROUTES_MODAL_CONTENT_STYLE}
-      >
-        <div style={ROUTES_MODAL_SHELL_STYLE}>
-        <Modal.Header style={ROUTES_MODAL_HEADER_STYLE}>
-          <Modal.Title id={LIBRARY_DETAIL_MODAL_TITLE_ID} className="text-break flex-grow-1 pe-3">
-            <span className="d-block" style={ROUTES_MODAL_TITLE_STYLE}>{loc.address}</span>
-            {loc.property_management_company ? (
-              <span className="d-block mt-1 fw-normal" style={ROUTES_MODAL_SUBTITLE_STYLE}>
-                {loc.property_management_company}
-              </span>
-            ) : null}
-          </Modal.Title>
-          <div className="d-flex align-items-center gap-2 ms-auto">
-          {!isEditMode ? (
-            <Button size="sm" style={ROUTES_MODAL_EDIT_BUTTON_STYLE} onClick={() => beginEdit(loc)}>
-              Edit
-            </Button>
-          ) : null}
-          {!isEditMode ? (
-            <Button
-              size="sm"
-              variant="danger"
-              className="text-white"
-              onClick={() => deleteLocation(loc)}
-              disabled={isDeleting}
-            >
-              {isDeleting ? 'Deleting...' : 'Delete'}
-            </Button>
-          ) : null}
-          <button
-            type="button"
-            aria-label="Close"
-            style={ROUTES_MODAL_CLOSE_BUTTON_STYLE}
-            onClick={closeLocationDetail}
-          >
-            <i className="bi bi-x-lg" />
-          </button>
-          </div>
-        </Modal.Header>
-        <Modal.Body className="small" style={ROUTES_MODAL_BODY_STYLE}>
-          {saveError ? <div className="alert alert-danger py-2">{saveError}</div> : null}
-          {isEditMode && editForm ? (
-            <div className="d-flex flex-column gap-2 mb-3">
-              <Form.Group>
-                <Form.Label className="small mb-1">Address</Form.Label>
-                <Form.Control style={ROUTES_MODAL_INPUT_STYLE} size="sm" value={editForm.address} onChange={(e) => updateEditField('address', e.target.value)} />
-              </Form.Group>
-              <Form.Group>
-                <Form.Label className="small mb-1">Property Management</Form.Label>
-                <Form.Control style={ROUTES_MODAL_INPUT_STYLE} size="sm" value={editForm.property_management_company} onChange={(e) => updateEditField('property_management_company', e.target.value)} />
-              </Form.Group>
-              <Form.Group>
-                <Form.Label className="small mb-1">Building</Form.Label>
-                <Form.Control style={ROUTES_MODAL_INPUT_STYLE} size="sm" value={editForm.building} onChange={(e) => updateEditField('building', e.target.value)} />
-              </Form.Group>
-              <Form.Group>
-                <Form.Label className="small mb-1">Notes</Form.Label>
-                <Form.Control style={ROUTES_MODAL_INPUT_STYLE} as="textarea" rows={2} size="sm" value={editForm.notes} onChange={(e) => updateEditField('notes', e.target.value)} />
-              </Form.Group>
-              <div className="row g-2">
-                <div className="col-sm-6">
-                  <Form.Group>
-                    <Form.Label className="small mb-1">Price/mo</Form.Label>
-                    <Form.Control style={ROUTES_MODAL_INPUT_STYLE} size="sm" value={editForm.price_per_month} onChange={(e) => updateEditField('price_per_month', e.target.value)} />
-                  </Form.Group>
-                </div>
-                <div className="col-sm-6">
-                  <Form.Group>
-                    <Form.Label className="small mb-1">Area</Form.Label>
-                    <Form.Control style={ROUTES_MODAL_INPUT_STYLE} size="sm" value={editForm.area} onChange={(e) => updateEditField('area', e.target.value)} />
-                  </Form.Group>
-                </div>
-              </div>
-              <div className="row g-2">
-                <div className="col-sm-6">
-                  <Form.Group>
-                    <Form.Label className="small mb-1">Start up</Form.Label>
-                    <Form.Control style={ROUTES_MODAL_INPUT_STYLE} type="date" size="sm" value={editForm.start_up_date} onChange={(e) => updateEditField('start_up_date', e.target.value)} />
-                  </Form.Group>
-                </div>
-                <div className="col-sm-6">
-                  <Form.Group>
-                    <Form.Label className="small mb-1">Status</Form.Label>
-                    <Form.Select
-                      style={ROUTES_MODAL_INPUT_STYLE}
-                      size="sm"
-                      value={editForm.status_raw}
-                      onChange={(e) => updateEditField('status_raw', e.target.value)}
-                    >
-                      <option value="">Unknown</option>
-                      {STATUS_OPTIONS.map((status) => (
-                        <option key={status.value} value={status.value}>
-                          {status.label}
-                        </option>
-                      ))}
-                    </Form.Select>
-                  </Form.Group>
-                </div>
-              </div>
-              <div className="row g-2">
-                <div className="col-sm-4">
-                  <Form.Group>
-                    <Form.Label className="small mb-1">Keys</Form.Label>
-                    <Form.Control style={ROUTES_MODAL_INPUT_STYLE} size="sm" value={editForm.keys} onChange={(e) => updateEditField('keys', e.target.value)} />
-                  </Form.Group>
-                </div>
-                <div className="col-sm-4">
-                  <Form.Group>
-                    <Form.Label className="small mb-1">Route</Form.Label>
-                    <Form.Select
-                      style={ROUTES_MODAL_INPUT_STYLE}
-                      size="sm"
-                      value={editForm.test_day}
-                      onChange={(e) => updateEditField('test_day', e.target.value)}
-                    >
-                      <option value="">—</option>
-                      {routeOptions.map((route) => (
-                        <option key={route} value={route}>
-                          {route}
-                        </option>
-                      ))}
-                      {!routeOptions.includes(editForm.test_day) && editForm.test_day ? (
-                        <option value={editForm.test_day}>{editForm.test_day}</option>
-                      ) : null}
-                    </Form.Select>
-                  </Form.Group>
-                </div>
-                <div className="col-sm-4">
-                  <Form.Group>
-                    <Form.Label className="small mb-1">Annual</Form.Label>
-                    <Form.Select
-                      style={ROUTES_MODAL_INPUT_STYLE}
-                      size="sm"
-                      value={editForm.annual_month}
-                      onChange={(e) => updateEditField('annual_month', e.target.value)}
-                    >
-                      <option value="">—</option>
-                      {MONTH_NAME_OPTIONS.map((monthName) => (
-                        <option key={monthName} value={monthName}>
-                          {monthName}
-                        </option>
-                      ))}
-                    </Form.Select>
-                  </Form.Group>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <dl className="row mb-4 gy-2">
-              <dt className="col-sm-3 text-muted">Building</dt>
-              <dd className="col-sm-9">{loc.building || '—'}</dd>
-              <dt className="col-sm-3 text-muted">Notes</dt>
-              <dd className="col-sm-9 text-break">{loc.notes || '—'}</dd>
-              <dt className="col-sm-3 text-muted">Price/mo</dt>
-              <dd className="col-sm-9">{price}</dd>
-              <dt className="col-sm-3 text-muted">Area</dt>
-              <dd className="col-sm-9">{loc.area || '—'}</dd>
-              <dt className="col-sm-3 text-muted">Start up</dt>
-              <dd className="col-sm-9">{startup}</dd>
-              <dt className="col-sm-3 text-muted">Status</dt>
-              <dd className="col-sm-9 d-flex flex-wrap align-items-center gap-2">
-                {renderStatusDot(loc.status_normalized)}
-                <span>{loc.status_normalized || '—'}</span>
-                {showRaw ? <span className="text-muted">({statusRaw})</span> : null}
-              </dd>
-              {loc.barcode ? (
-                <>
-                  <dt className="col-sm-3 text-muted">Barcode</dt>
-                  <dd className="col-sm-9">{loc.barcode}</dd>
-                </>
-              ) : null}
-              <dt className="col-sm-3 text-muted">Key</dt>
-              <dd className="col-sm-9">
-                {loc.key ? (
-                  <Link to={`/keys/${loc.key.id}`}>{loc.key.keycode}</Link>
-                ) : (
-                  libraryKeycodeDisplay(loc) || '—'
-                )}
-              </dd>
-              {!loc.key ? (
-                <>
-                  <dt className="col-sm-3 text-muted">Spreadsheet KEYS</dt>
-                  <dd className="col-sm-9 text-break small text-muted">{loc.keys || '—'}</dd>
-                </>
-              ) : null}
-              <dt className="col-sm-3 text-muted">Route</dt>
-              <dd className="col-sm-9">
-                <RouteLibraryLink loc={loc} />
-              </dd>
-              <dt className="col-sm-3 text-muted">Annual</dt>
-              <dd className="col-sm-9">{loc.annual_month || '—'}</dd>
-            </dl>
-          )}
-        </Modal.Body>
-        {isEditMode ? (
-          <Modal.Footer style={ROUTES_MODAL_FOOTER_STYLE}>
-            <Button className="w-100" style={ROUTES_MODAL_SUBMIT_STYLE} onClick={submitEdits} disabled={isSaving}>
-              {isSaving ? 'Saving...' : 'Submit Changes'}
-            </Button>
-          </Modal.Footer>
-        ) : null}
-        </div>
-      </Modal>
-    )
-  }
-
   const tableColSpan = 7 + monthColumns.length
 
   const tableSection = useMemo(() => {
@@ -886,6 +432,18 @@ export default function MonthlyRoutesPage() {
           className="align-middle monthly-routes-library-table"
           style={LIBRARY_TABLE_STYLE}
         >
+          <colgroup>
+            <col style={{ width: '5rem' }} />
+            <col style={{ width: '6.24rem' }} />
+            <col style={{ width: '11rem' }} />
+            <col style={{ width: '10rem' }} />
+            <col style={{ width: '7.36rem' }} />
+            <col style={{ width: '7.35rem' }} />
+            {monthColumns.map((monthKey) => (
+              <col key={monthKey} />
+            ))}
+            <col style={{ width: '4.25rem' }} />
+          </colgroup>
           <thead>
             <tr>
               <th
@@ -936,29 +494,47 @@ export default function MonthlyRoutesPage() {
                 <tr
                   key={loc.id}
                 >
-                  <td className="text-center" style={STATUS_COLUMN_STYLE}>
-                    {renderStatusDot(loc.status_normalized)}
+                  <td className="text-center library-table-cell-clamp" style={STATUS_COLUMN_STYLE}>
+                    <div className="library-table-cell-inner">{renderStatusDot(loc.status_normalized)}</div>
                   </td>
-                  <td style={ROUTE_COLUMN_STYLE}>
-                    <RouteLibraryLink loc={loc} />
+                  <td className="library-table-cell-clamp" style={ROUTE_COLUMN_STYLE}>
+                    <div className="library-table-cell-inner">
+                      <RouteLibraryLink loc={loc} />
+                    </div>
                   </td>
-                  <td style={ADDRESS_COLUMN_STYLE} className="text-break">
-                    {loc.address}
-                  </td>
-                  <td style={PROPERTY_COLUMN_STYLE}>{loc.property_management_company || '—'}</td>
-                  <td style={KEYS_COLUMN_STYLE}>
-                    {loc.key ? (
+                  <td className="library-table-cell-clamp text-break" style={ADDRESS_COLUMN_STYLE}>
+                    <div className="library-table-cell-inner">
                       <Link
-                        to={`/keys/${loc.key.id}`}
-                        className="fw-semibold text-decoration-none"
+                        to={`/monthlies/locations/${loc.id}`}
+                        className="fw-semibold text-decoration-none text-reset"
                       >
-                        {loc.key.keycode}
+                        {loc.address}
                       </Link>
-                    ) : (
-                      loc.keys || '—'
-                    )}
+                    </div>
                   </td>
-                  <td className="text-center" style={ANNUAL_COLUMN_STYLE}>
+                  <td className="library-table-cell-clamp" style={PROPERTY_COLUMN_STYLE}>
+                    <div className="library-table-cell-inner">{loc.property_management_company || '—'}</div>
+                  </td>
+                  <td className="library-table-cell-clamp" style={KEYS_COLUMN_STYLE}>
+                    <div className="library-table-cell-inner">
+                      {loc.key ? (
+                        <Link
+                          to={`/keys/${loc.key.id}`}
+                          className="fw-semibold text-decoration-none"
+                        >
+                          {loc.key.keycode}
+                        </Link>
+                      ) : (
+                        loc.keys || '—'
+                      )}
+                    </div>
+                  </td>
+                  <td
+                    className={
+                      annualEditLocationId === loc.id ? 'text-center' : 'text-center library-table-cell-clamp'
+                    }
+                    style={ANNUAL_COLUMN_STYLE}
+                  >
                     {annualEditLocationId === loc.id ? (
                       <Form.Select
                         size="sm"
@@ -978,13 +554,15 @@ export default function MonthlyRoutesPage() {
                         ))}
                       </Form.Select>
                     ) : (
-                      <button
-                        type="button"
-                        className="btn btn-link p-0 text-decoration-none text-reset"
-                        onClick={() => setAnnualEditLocationId(loc.id)}
-                      >
-                        {loc.annual_month || '—'}
-                      </button>
+                      <div className="library-table-cell-inner">
+                        <button
+                          type="button"
+                          className="btn btn-link p-0 text-decoration-none text-reset"
+                          onClick={() => setAnnualEditLocationId(loc.id)}
+                        >
+                          {loc.annual_month || '—'}
+                        </button>
+                      </div>
                     )}
                   </td>
                   {monthColumns.map((month) => {
@@ -998,24 +576,28 @@ export default function MonthlyRoutesPage() {
                       key={`${loc.id}-${month}`}
                       className={
                         isSkippedSurface
-                          ? 'month-testing-cell month-testing-skipped'
-                          : 'month-testing-cell'
+                          ? 'library-table-cell-clamp month-testing-cell month-testing-skipped'
+                          : 'library-table-cell-clamp month-testing-cell'
                       }
                       style={MONTH_TESTING_CELL_STYLE}
                     >
-                      {renderMonthCell(monthCell, month, loc.annual_month)}
+                      <div className="library-table-cell-inner">
+                        {renderMonthCell(monthCell, month, loc.annual_month, loc.id)}
+                      </div>
                     </td>
                     )
                   })}
-                  <td className="text-center" style={EDIT_COLUMN_STYLE}>
-                    <button
-                      type="button"
-                      className="btn btn-link btn-sm p-0 text-decoration-none"
-                      aria-label={`Edit location ${loc.address}`}
-                      onClick={() => openLocationDetail(loc)}
-                    >
-                      Edit
-                    </button>
+                  <td className="text-center library-table-cell-clamp" style={EDIT_COLUMN_STYLE}>
+                    <div className="library-table-cell-inner">
+                      <button
+                        type="button"
+                        className="btn btn-link btn-sm p-0 text-decoration-none"
+                        aria-label={`Edit location ${loc.address}`}
+                        onClick={() => openLocationDetail(loc)}
+                      >
+                        Edit
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))
@@ -1040,6 +622,18 @@ export default function MonthlyRoutesPage() {
 
   const canPrevPage = (pagination?.page ?? page) > 1
   const canNextPage = (pagination?.page ?? page) < (pagination?.total_pages ?? 1)
+
+  const paginationSummaryLabel = useMemo(() => {
+    if (!pagination) return null
+    const { page: p, page_size: pageSize, total, total_pages: totalPages } = pagination
+    const pages = totalPages >= 1 ? totalPages : 1
+    if (total <= 0) {
+      return `Showing 0 of 0 - Page ${p} of ${pages}`
+    }
+    const start = (p - 1) * pageSize + 1
+    const end = Math.min(p * pageSize, total)
+    return `Showing ${start}-${end} of ${total} - Page ${p} of ${pages}`
+  }, [pagination])
 
   const openCreateLocationModal = useCallback(() => {
     setCreateLocationError(null)
@@ -1258,30 +852,15 @@ export default function MonthlyRoutesPage() {
       </Card>
 
       <Card className="app-surface-card">
-        <Card.Header className="bg-white py-2 px-3 d-flex flex-wrap align-items-center gap-2 border-bottom">
-          <span className="fw-semibold small">Library</span>
-          <div className="ms-auto d-flex align-items-center gap-3">
-            <Link to="/monthlies/specialists" className="small text-decoration-none">
-              Specialists
-            </Link>
-            <Link to="/monthlies/map" className="small text-decoration-none">
-              Open map
-            </Link>
-          </div>
-        </Card.Header>
         <Card.Body className="p-3">
           {error ? <div className="text-danger">{error}</div> : null}
           {loading ? <div className="text-muted">Loading library data...</div> : null}
 
           {tableSection}
           {!loading && !error ? (
-            <div className="d-flex justify-content-between align-items-center mt-2">
-              <div className="small text-muted">
-                {pagination
-                  ? `Showing page ${pagination.page} of ${pagination.total_pages} (${pagination.total} total)`
-                  : null}
-              </div>
-              <div className="d-flex gap-2">
+            <div className="d-flex align-items-center flex-wrap gap-3 mt-2 w-100">
+              <div className="small text-muted mb-0">{paginationSummaryLabel}</div>
+              <div className="d-flex gap-2 align-items-center flex-shrink-0">
                 <Button
                   variant="outline-secondary"
                   size="sm"
@@ -1301,10 +880,64 @@ export default function MonthlyRoutesPage() {
                   Next
                 </Button>
               </div>
+              <div
+                className="ms-auto small text-muted d-flex align-items-center flex-wrap column-gap-4 row-gap-2"
+                aria-label="Testing history legend"
+              >
+                <span className="d-inline-flex align-items-center gap-1 text-nowrap">
+                  <i
+                    className="bi bi-check-circle-fill text-success"
+                    style={{ fontSize: '0.85rem', lineHeight: 1 }}
+                    aria-hidden
+                  />
+                  Tested
+                </span>
+                <span className="d-inline-flex align-items-center gap-1 text-nowrap">
+                  <i
+                    className="bi bi-exclamation-circle-fill"
+                    style={{ color: '#6f42c1', fontSize: '0.8rem', lineHeight: 1 }}
+                    aria-hidden
+                  />
+                  Annual month
+                </span>
+                <span className="d-inline-flex align-items-center gap-1 text-nowrap">
+                  <span className="d-inline-flex align-items-center gap-1" aria-hidden>
+                    <i
+                      className="bi bi-check-circle-fill text-success"
+                      style={{ fontSize: '0.85rem', lineHeight: 1 }}
+                    />
+                    <i
+                      className="bi bi-exclamation-circle-fill"
+                      style={{ color: '#6f42c1', fontSize: '0.8rem', lineHeight: 1 }}
+                    />
+                  </span>
+                  Tested (annual month)
+                </span>
+                <span className="d-inline-flex align-items-center gap-1 text-nowrap">
+                  <i
+                    className="bi bi-slash-circle-fill text-warning"
+                    style={{ fontSize: '0.85rem', lineHeight: 1 }}
+                    aria-hidden
+                  />
+                  Skipped
+                </span>
+                <span className="d-inline-flex align-items-center gap-1 text-nowrap">
+                  <span className="text-muted" aria-hidden>
+                    —
+                  </span>
+                  No data
+                </span>
+              </div>
             </div>
           ) : null}
 
-          {selectedLocation ? detailModal(selectedLocation) : null}
+          <MonthlyLocationLibraryModal
+            location={selectedLocation}
+            routeOptions={routeOptions}
+            onHide={closeLocationDetail}
+            onSaved={mergeUpdatedLocation}
+            onDeleted={removeLocationFromState}
+          />
         </Card.Body>
       </Card>
 

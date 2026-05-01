@@ -50,6 +50,87 @@ export type LibraryLocation = {
   months: Record<string, MonthCell>
 }
 
+/** Comment row from ``GET /api/monthly_routes/library/:id`` (newest first). */
+export type MonthlyLocationComment = {
+  id: number
+  body: string
+  author_username: string | null
+  created_at: string | null
+  updated_at?: string | null
+}
+
+export type MonthlyLocationDetailPayload = {
+  location: LibraryLocation
+  comments: MonthlyLocationComment[]
+}
+
+/** One site listed under route monthly skip breakdown (detail API). */
+export type RouteTestingSkippedSite = {
+  id: number
+  label: string
+  /** Set for non-annual skips from ``monthly_route_test_history.skip_reason``. */
+  skip_reason?: string | null
+}
+
+/** Sheet-derived counts per month from GET ``/api/monthly_routes/routes/:id``. */
+export type RouteTestingMonthCell = {
+  sites_tested_count: number
+  /** Skipped rows whose ``skip_reason`` is not annual (annual skips are excluded). */
+  skipped_non_annual_count: number
+  skipped_annual_count: number
+  skipped_non_annual_sites?: RouteTestingSkippedSite[]
+  skipped_annual_sites?: RouteTestingSkippedSite[]
+}
+
+/** Matches ``MonthlyRouteSnapshot`` row / ``/api/monthly_specialists`` route entries. */
+export type MonthlySpecialistTechRow = { tech_name?: string; jobs?: number; name?: string }
+
+export type MonthlyRouteSpecialistsPayload = {
+  location_id: number
+  location_name: string
+  completed_jobs_count: number
+  top_technicians: MonthlySpecialistTechRow[]
+  last_updated_at: string | null
+}
+
+/** One Pacific calendar month row from ``monthly_route_specialist_month``. Keys are ``YYYY-MM-01``. */
+export type MonthlyRouteSpecialistMonthPayload = {
+  top_technicians: MonthlySpecialistTechRow[]
+  completed_jobs_attributed: number
+  /** Pacific calendar date from ServiceTrade (appointment window / completion); ISO ``YYYY-MM-DD``. */
+  route_tested_on?: string | null
+  last_updated_at: string | null
+}
+
+export type MonthlyRouteDetailPayload = {
+  route: MonthlyRouteSummary
+  comments: MonthlyLocationComment[]
+  testing_by_month: Record<string, RouteTestingMonthCell>
+  /** Present when the route has a ServiceTrade route pseudo-location id; otherwise ``null``. */
+  specialists: MonthlyRouteSpecialistsPayload | null
+  /** Newest months first; month keys ``YYYY-MM-01``. */
+  specialists_by_month: Record<string, MonthlyRouteSpecialistMonthPayload>
+}
+
+export function monthlyCommentAuthorsMatch(session: string | null, author: string | null): boolean {
+  const s = session?.trim()
+  const a = author?.trim()
+  if (!s || !a) return false
+  return s.toLowerCase() === a.toLowerCase()
+}
+
+export function monthlyCommentWasEdited(c: MonthlyLocationComment): boolean {
+  return Boolean(c.updated_at && c.created_at && c.updated_at !== c.created_at)
+}
+
+export function formatMonthlyCommentTimestamp(iso: string | null): string {
+  if (!iso) return ''
+  return new Date(iso).toLocaleString(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  })
+}
+
 export type LibraryPayload = {
   locations: LibraryLocation[]
   month_columns: string[]
@@ -69,11 +150,107 @@ export type LibraryPayload = {
   }
 }
 
+/**
+ * Calendar date (UTC) of the ``week_occurrence``-th weekday identified by ``weekday_iso``
+ * in the month containing ``monthFirstIso`` (typically ``YYYY-MM-01``).
+ *
+ * ``weekday_iso`` matches Python ``datetime.weekday()`` (Monday = 0 … Sunday = 6).
+ * ``week_occurrence`` is 1-based (1 = first such weekday in the month).
+ */
+export function monthlyRouteOccurrenceDateUtc(
+  monthFirstIso: string,
+  route: MonthlyRouteSummary | null | undefined
+): Date | null {
+  if (!route || typeof route.weekday_iso !== 'number' || typeof route.week_occurrence !== 'number') {
+    return null
+  }
+  const parts = monthFirstIso.trim().split('-').map(Number)
+  const y = parts[0]
+  const mo = parts[1]
+  if (!y || !mo || mo < 1 || mo > 12) return null
+
+  const weekdayIso = route.weekday_iso
+  const occurrence = route.week_occurrence
+  if (occurrence < 1 || weekdayIso < 0 || weekdayIso > 6) return null
+
+  const monthIndex0 = mo - 1
+  const firstDow = new Date(Date.UTC(y, monthIndex0, 1)).getUTCDay()
+  const targetDow = (weekdayIso + 1) % 7
+  const delta = (targetDow - firstDow + 7) % 7
+  const dom = 1 + delta + (occurrence - 1) * 7
+
+  const out = new Date(Date.UTC(y, monthIndex0, dom))
+  if (out.getUTCFullYear() !== y || out.getUTCMonth() !== monthIndex0) {
+    return null
+  }
+  return out
+}
+
+/**
+ * Whether office edits are allowed for this month row: the scheduled route test day must be
+ * strictly **before** today's date (local midnight). If no route is linked, uses calendar month
+ * strictly before the current month (local).
+ */
+export function isMonthlyTestingHistoryEditable(
+  monthFirstIso: string,
+  loc: LibraryLocation,
+  reference: Date = new Date()
+): boolean {
+  const schedUtc = monthlyRouteOccurrenceDateUtc(monthFirstIso, loc.monthly_route)
+  const today = new Date(reference)
+  today.setHours(0, 0, 0, 0)
+
+  if (schedUtc) {
+    const y = schedUtc.getUTCFullYear()
+    const m = schedUtc.getUTCMonth()
+    const d = schedUtc.getUTCDate()
+    const schedLocal = new Date(y, m, d)
+    schedLocal.setHours(0, 0, 0, 0)
+    return schedLocal.getTime() < today.getTime()
+  }
+
+  const ym = parseYearMonth(monthFirstIso)
+  if (!ym) return false
+  const cy = today.getFullYear()
+  const cm = today.getMonth() + 1
+  return ym.year < cy || (ym.year === cy && ym.month < cm)
+}
+
 /** Prefer API ``monthly_route.label``; fall back to legacy ``test_day`` string. */
 export function libraryRouteDisplay(loc: LibraryLocation): string {
   const fromEntity = loc.monthly_route?.label?.trim()
   if (fromEntity) return fromEntity
   return (loc.test_day || '').trim()
+}
+
+const ROUTE_WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const
+
+function englishOrdinal(n: number): string {
+  const mod100 = n % 100
+  if (mod100 >= 11 && mod100 <= 13) return `${n}th`
+  const mod10 = n % 10
+  if (mod10 === 1) return `${n}st`
+  if (mod10 === 2) return `${n}nd`
+  if (mod10 === 3) return `${n}rd`
+  return `${n}th`
+}
+
+/** Library route column line 1: ``R7`` when linked; otherwise legacy ``libraryRouteDisplay``. */
+export function libraryRouteNumberLine(loc: LibraryLocation): string {
+  const n = loc.monthly_route?.route_number
+  if (typeof n === 'number' && Number.isFinite(n)) return `R${n}`
+  return libraryRouteDisplay(loc) || '—'
+}
+
+/** Library route column line 2: ``1st Wed`` when linked; ``null`` for legacy-only rows. */
+export function libraryRouteOccurrenceLine(loc: LibraryLocation): string | null {
+  const mr = loc.monthly_route
+  if (!mr) return null
+  const occ = mr.week_occurrence
+  const wd = mr.weekday_iso
+  if (typeof occ !== 'number' || occ < 1 || typeof wd !== 'number' || wd < 0 || wd > 6) return null
+  const wdLabel = ROUTE_WEEKDAY_LABELS[wd] ?? '?'
+  return `${englishOrdinal(occ)} ${wdLabel}`
 }
 
 /** Canonical keycode from linked asset; otherwise legacy spreadsheet ``keys`` text. */
@@ -133,6 +310,36 @@ export function compareYearMonth(a: YearMonth, b: YearMonth): number {
 
 export function toMonthKey(year: number, month: number): string {
   return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-01`
+}
+
+/** First-of-month key for the calendar month containing ``reference`` in local time. */
+export function monthFirstIsoLocalToday(reference: Date = new Date()): string {
+  return toMonthKey(reference.getFullYear(), reference.getMonth() + 1)
+}
+
+export function addCalendarMonths(monthFirstIso: string, delta: number): string | null {
+  const ym = parseYearMonth(monthFirstIso)
+  if (!ym) return null
+  const d = new Date(Date.UTC(ym.year, ym.month - 1 + delta, 1))
+  return toMonthKey(d.getUTCFullYear(), d.getUTCMonth() + 1)
+}
+
+/**
+ * First ``YYYY-MM-01`` on or after ``reference``’s local calendar month that is not in ``monthKeys``.
+ * Used to show “next month to be tested” given recorded history keys.
+ */
+export function nextUntestedMonthIso(
+  monthKeys: Iterable<string>,
+  reference: Date = new Date()
+): string | null {
+  const set = new Set(monthKeys)
+  let cursor = monthFirstIsoLocalToday(reference)
+  for (let i = 0; i < 240; i++) {
+    if (!set.has(cursor)) return cursor
+    cursor = addCalendarMonths(cursor, 1) ?? ''
+    if (!cursor) return null
+  }
+  return null
 }
 
 export function isLngLatInViewport(lng: number, lat: number, bounds: MapViewportBounds): boolean {
