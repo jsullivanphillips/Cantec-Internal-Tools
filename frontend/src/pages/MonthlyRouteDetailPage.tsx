@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from 'react'
+import { Chart } from 'react-chartjs-2'
 import { Accordion, Alert, Button, Card, Modal, Spinner, Table } from 'react-bootstrap'
 import { Link, useParams } from 'react-router-dom'
 import MonthlyLibraryCommentsPanel from '../features/monthlyRoutes/MonthlyLibraryCommentsPanel'
@@ -14,6 +15,7 @@ import {
   type RouteTestingSkippedSite,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
 import { apiJson, isAbortError } from '../lib/apiClient'
+import { formatCurrencyCad } from '../lib/formatCurrencyCad'
 
 const WEEKDAY_FULL = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
@@ -247,6 +249,69 @@ export default function MonthlyRouteDetailPage() {
   const testingHistoryYearIndex =
     effectiveHistoryYear != null ? testingHistoryYears.indexOf(effectiveHistoryYear) : -1
 
+  const testedRevenueChart = useMemo(() => {
+    if (effectiveHistoryYear == null) return null
+    const monthKeys = monthIsoKeysForCalendarYear(effectiveHistoryYear)
+    const anySheetMonth = monthKeys.some((iso) => testingByMonth[iso] !== undefined)
+    if (!anySheetMonth) return null
+
+    const labels = monthKeys.map((iso) => {
+      const ym = parseYearMonth(iso)
+      if (!ym) return iso
+      return new Intl.DateTimeFormat('en-CA', { month: 'short', timeZone: 'UTC' }).format(
+        new Date(Date.UTC(ym.year, ym.month - 1, 1))
+      )
+    })
+    const values = monthKeys.map((iso) => {
+      const cell = testingByMonth[iso]
+      const v = cell?.tested_revenue_total
+      return typeof v === 'number' && Number.isFinite(v) ? v : 0
+    })
+
+    return {
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Tested site revenue',
+            data: values,
+            backgroundColor: 'rgba(22, 75, 124, 0.78)',
+            borderRadius: 6,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (items: { parsed: { y: number | null } }) =>
+                formatCurrencyCad(items.parsed.y ?? 0),
+            },
+          },
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: {
+              callback: (raw: number | string) => formatCurrencyCad(Number(raw)),
+            },
+          },
+        },
+      },
+    }
+  }, [effectiveHistoryYear, testingByMonth])
+
+  const testedSitesMissingPriceYear = useMemo(() => {
+    if (effectiveHistoryYear == null) return 0
+    return monthIsoKeysForCalendarYear(effectiveHistoryYear).reduce((acc, iso) => {
+      const n = testingByMonth[iso]?.tested_sites_missing_price_count
+      return acc + (typeof n === 'number' ? n : 0)
+    }, 0)
+  }, [effectiveHistoryYear, testingByMonth])
+
   if (!routeId || Number.isNaN(idNum)) {
     return (
       <div className="container py-4">
@@ -375,16 +440,86 @@ export default function MonthlyRouteDetailPage() {
             <span className="fw-semibold">Performance</span>
           </Accordion.Header>
           <Accordion.Body className="monthly-location-testing-history-body">
-            <p className="text-muted small mb-3 mb-md-4">
-              Average route start and end times, time spent at each building, and charts will appear here when
-              ServiceTrade timing data is connected.
+            <p className="text-muted small mb-3">
+              Monthly revenue sums <span className="fw-semibold text-body">Price/month</span> for locations on this
+              route with sheet status <span className="fw-semibold text-body">tested</span> that month. Locations
+              without a price are excluded from the sum.
             </p>
-            <div
-              className="rounded-3 border border-2 border-dashed d-flex align-items-center justify-content-center text-muted small"
-              style={{ minHeight: '8rem', background: 'linear-gradient(180deg, #fafbfd 0%, #f0f3f8 100%)' }}
-            >
-              Chart placeholder
-            </div>
+            {testingHistoryYears.length > 0 ? (
+              <>
+                <div className="d-flex flex-wrap align-items-center gap-2 justify-content-start mb-3">
+                  <Button
+                    type="button"
+                    variant="outline-secondary"
+                    size="sm"
+                    className="monthly-location-testing-history-year-nav-btn"
+                    disabled={testingHistoryYearIndex <= 0}
+                    onClick={() => {
+                      if (testingHistoryYearIndex > 0) {
+                        setHistoryViewYear(testingHistoryYears[testingHistoryYearIndex - 1])
+                      }
+                    }}
+                  >
+                    Previous year
+                  </Button>
+                  <span className="fw-semibold px-1 tabular-nums" aria-live="polite">
+                    {effectiveHistoryYear}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline-secondary"
+                    size="sm"
+                    className="monthly-location-testing-history-year-nav-btn"
+                    disabled={
+                      testingHistoryYearIndex < 0 ||
+                      testingHistoryYearIndex >= testingHistoryYears.length - 1
+                    }
+                    onClick={() => {
+                      if (
+                        testingHistoryYearIndex >= 0 &&
+                        testingHistoryYearIndex < testingHistoryYears.length - 1
+                      ) {
+                        setHistoryViewYear(testingHistoryYears[testingHistoryYearIndex + 1])
+                      }
+                    }}
+                  >
+                    Next year
+                  </Button>
+                </div>
+                {testedRevenueChart ? (
+                  <>
+                    <div style={{ height: '260px', maxWidth: '100%' }}>
+                      <Chart type="bar" data={testedRevenueChart.data} options={testedRevenueChart.options} />
+                    </div>
+                    {testedSitesMissingPriceYear > 0 ? (
+                      <p className="text-muted small mt-2 mb-0">
+                        {testedSitesMissingPriceYear} tested{' '}
+                        {testedSitesMissingPriceYear === 1 ? 'site has' : 'sites have'} no Price/month set for months
+                        in {effectiveHistoryYear}.
+                      </p>
+                    ) : null}
+                  </>
+                ) : (
+                  <div
+                    className="rounded-3 border border-2 border-dashed d-flex align-items-center justify-content-center text-muted small"
+                    style={{
+                      minHeight: '8rem',
+                      background: 'linear-gradient(180deg, #fafbfd 0%, #f0f3f8 100%)',
+                    }}
+                  >
+                    No monthly sheet data for this calendar year.
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="text-muted small">
+                Revenue chart appears when monthly sheet testing history exists for this route.
+              </div>
+            )}
+            <p className="text-muted small mt-3 mb-0 fst-italic">
+              Average route start/end times and time-on-site charts may be added when ServiceTrade timing data is
+              connected.
+            </p>
           </Accordion.Body>
         </Accordion.Item>
 

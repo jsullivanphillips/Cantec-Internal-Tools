@@ -445,6 +445,8 @@ def _route_testing_by_month(route_id: int) -> dict[str, dict]:
             "skipped_annual_count": 0,
             "skipped_non_annual_sites": [],
             "skipped_annual_sites": [],
+            "tested_revenue_total": 0.0,
+            "tested_sites_missing_price_count": 0,
         }
 
     by_month: dict[str, dict] = {}
@@ -462,6 +464,14 @@ def _route_testing_by_month(route_id: int) -> dict[str, dict]:
                 reason = (row.skip_reason or "").strip()
                 entry["skipped_non_annual_count"] += 1
                 entry["skipped_non_annual_sites"].append({**base, "skip_reason": reason or None})
+        elif status == "tested":
+            entry["sites_tested_count"] += 1
+            lid = int(row.location_id)
+            loc = loc_by_id.get(lid)
+            if loc is not None and loc.price_per_month is not None:
+                entry["tested_revenue_total"] += float(loc.price_per_month)
+            else:
+                entry["tested_sites_missing_price_count"] += 1
         else:
             entry["sites_tested_count"] += 1
 

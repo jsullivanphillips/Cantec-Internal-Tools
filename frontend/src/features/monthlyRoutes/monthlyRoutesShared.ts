@@ -80,6 +80,10 @@ export type RouteTestingMonthCell = {
   skipped_annual_count: number
   skipped_non_annual_sites?: RouteTestingSkippedSite[]
   skipped_annual_sites?: RouteTestingSkippedSite[]
+  /** Sum of ``price_per_month`` for locations with ``result_status === 'tested'`` that month (missing prices omitted). */
+  tested_revenue_total?: number
+  /** Tested rows with no ``price_per_month`` set for that month. */
+  tested_sites_missing_price_count?: number
 }
 
 /** Matches ``MonthlyRouteSnapshot`` row / ``/api/monthly_specialists`` route entries. */

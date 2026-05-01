@@ -17,6 +17,7 @@ import {
   type MonthlyLocationDetailPayload,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
 import { apiJson, isAbortError } from '../lib/apiClient'
+import { formatCurrencyCad as formatPriceCad } from '../lib/formatCurrencyCad'
 
 function formatMonthHeading(monthIso: string): string {
   const [y, m] = monthIso.split('-').map(Number)
@@ -38,11 +39,6 @@ function formatScheduledTestDay(monthIso: string, loc: LibraryLocation): string 
     year: 'numeric',
     timeZone: 'UTC',
   }).format(d)
-}
-
-function formatPriceCad(value: number | null): string {
-  if (value == null) return '—'
-  return new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' }).format(value)
 }
 
 function statusBadgeVariant(status: string): string {
