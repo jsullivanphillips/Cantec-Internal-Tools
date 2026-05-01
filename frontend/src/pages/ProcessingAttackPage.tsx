@@ -489,9 +489,9 @@ function ProcessingKpiDualTrend({
   weeklyEmptyMessage?: string
   dailyEmptyMessage?: string
 }) {
-  const weeklyCount = weeklyLabels.length
+  const weeklyCount = Math.min(weeklyLabels.length, TARGET_HISTORY_MAX)
   const weeklyDaysLabel = `Past ${weeklyCount} Week${weeklyCount === 1 ? '' : 's'}`
-  const dailyCount = dailyLabels.length
+  const dailyCount = Math.min(dailyLabels.length, TARGET_HISTORY_MAX)
   const dailyDaysLabel = `Past ${dailyCount} Day${dailyCount === 1 ? '' : 's'}`
 
   return (
