@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { apiJson, isAbortError } from '../lib/apiClient'
-import { Card, Col, Row, Modal, Table, Button, Spinner } from 'react-bootstrap'
+import { Card, Col, Row, Modal, Table, Button, Spinner, Form } from 'react-bootstrap'
 import { Chart } from 'react-chartjs-2'
 
 type SchedulingKpis = {
@@ -53,6 +53,20 @@ type UnconfirmedNextTwoWeeksResponse = {
   }>
 }
 
+type JobsLeftMonthSlot = {
+  year_month: string
+  label_month: string
+  jobs_left: number | null
+  updated_at: string | null
+  updated_by: string | null
+}
+
+type JobsLeftMonthlyResponse = {
+  timezone: string
+  current: JobsLeftMonthSlot
+  next: JobsLeftMonthSlot
+}
+
 export default function SchedulingAttackPage() {
   const [loading, setLoading] = useState(true)
   const [kpis, setKpis] = useState<SchedulingKpis | null>(null)
@@ -63,6 +77,11 @@ export default function SchedulingAttackPage() {
   const [loadingUnconfirmed, setLoadingUnconfirmed] = useState(false)
   const [unconfirmedError, setUnconfirmedError] = useState<string | null>(null)
   const [unconfirmed, setUnconfirmed] = useState<UnconfirmedNextTwoWeeksResponse | null>(null)
+  const [jobsLeftMonthly, setJobsLeftMonthly] = useState<JobsLeftMonthlyResponse | null>(null)
+  const [jobsLeftModalSlot, setJobsLeftModalSlot] = useState<'current' | 'next' | null>(null)
+  const [jobsLeftDraft, setJobsLeftDraft] = useState('')
+  const [jobsLeftSaving, setJobsLeftSaving] = useState(false)
+  const [jobsLeftModalError, setJobsLeftModalError] = useState<string | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -70,7 +89,7 @@ export default function SchedulingAttackPage() {
     const run = async () => {
       setLoading(true)
       try {
-        const [kpiPayload, weeklyPayload, forwardPayload, scheduledTodayPayload] = await Promise.all([
+        const [kpiPayload, weeklyPayload, forwardPayload, scheduledTodayPayload, jobsLeftPayload] = await Promise.all([
           apiJson<SchedulingKpis>('/scheduling_attack/v2/kpis', { signal: controller.signal }),
           apiJson<WeeklySchedulingVolumeResponse>('/scheduling_attack/v2/weekly_scheduling_volume', {
             signal: controller.signal,
@@ -81,12 +100,14 @@ export default function SchedulingAttackPage() {
           apiJson<ScheduledTodayActivityResponse>('/scheduling_attack/v2/scheduled_today_activity', {
             signal: controller.signal,
           }),
+          apiJson<JobsLeftMonthlyResponse>('/scheduling_attack/v2/jobs_left_monthly', { signal: controller.signal }),
         ])
         if (!active) return
         setKpis(kpiPayload)
         setWeekly(weeklyPayload)
         setForward(forwardPayload)
         setScheduledToday(scheduledTodayPayload)
+        setJobsLeftMonthly(jobsLeftPayload)
       } catch (error) {
         if (isAbortError(error)) return
         console.error(error)
@@ -95,6 +116,7 @@ export default function SchedulingAttackPage() {
         setWeekly(null)
         setForward(null)
         setScheduledToday(null)
+        setJobsLeftMonthly(null)
       } finally {
         if (active) setLoading(false)
       }
@@ -254,6 +276,69 @@ export default function SchedulingAttackPage() {
     }
   }
 
+  const closeJobsLeftModal = () => {
+    setJobsLeftModalSlot(null)
+    setJobsLeftModalError(null)
+    setJobsLeftDraft('')
+  }
+
+  const openJobsLeftModal = (slot: 'current' | 'next') => {
+    if (!jobsLeftMonthly) return
+    const slotData = slot === 'current' ? jobsLeftMonthly.current : jobsLeftMonthly.next
+    setJobsLeftModalSlot(slot)
+    setJobsLeftDraft(slotData.jobs_left != null ? String(slotData.jobs_left) : '')
+    setJobsLeftModalError(null)
+  }
+
+  const submitJobsLeft = async () => {
+    if (!jobsLeftModalSlot || !jobsLeftMonthly) return
+    const slotData = jobsLeftModalSlot === 'current' ? jobsLeftMonthly.current : jobsLeftMonthly.next
+    const trimmed = jobsLeftDraft.trim()
+    let body: { year_month: string; jobs_left: number | null }
+    if (trimmed === '') {
+      body = { year_month: slotData.year_month, jobs_left: null }
+    } else {
+      if (!/^\d+$/.test(trimmed)) {
+        setJobsLeftModalError('Enter a non-negative whole number, or leave empty to clear.')
+        return
+      }
+      const n = Number.parseInt(trimmed, 10)
+      if (n < 0 || n > 9_999_999) {
+        setJobsLeftModalError('Enter a reasonable non-negative whole number.')
+        return
+      }
+      body = { year_month: slotData.year_month, jobs_left: n }
+    }
+
+    setJobsLeftSaving(true)
+    setJobsLeftModalError(null)
+    try {
+      await apiJson('/scheduling_attack/v2/jobs_left_monthly', {
+        method: 'PUT',
+        body: JSON.stringify(body),
+      })
+      const refreshed = await apiJson<JobsLeftMonthlyResponse>('/scheduling_attack/v2/jobs_left_monthly')
+      setJobsLeftMonthly(refreshed)
+      closeJobsLeftModal()
+    } catch (error: unknown) {
+      console.error(error)
+      const msg =
+        typeof error === 'object' && error !== null && 'error' in error
+          ? String((error as { error?: unknown }).error)
+          : 'Failed to save. Please try again.'
+      setJobsLeftModalError(msg)
+    } finally {
+      setJobsLeftSaving(false)
+    }
+  }
+
+  const editingJobsLeftSlot =
+    jobsLeftModalSlot != null && jobsLeftMonthly
+      ? jobsLeftModalSlot === 'current'
+        ? jobsLeftMonthly.current
+        : jobsLeftMonthly.next
+      : null
+
   return (
     <div className="container-fluid py-3 px-2 scheduling-page d-flex flex-column gap-3">
       <Card className="app-surface-card">
@@ -355,6 +440,69 @@ export default function SchedulingAttackPage() {
             </Col>
           </Row>
 
+          <Row className="g-3">
+            <Col lg={6} md={12}>
+              <Card
+                role="button"
+                tabIndex={0}
+                onClick={() => openJobsLeftModal('current')}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    openJobsLeftModal('current')
+                  }
+                }}
+                className="app-kpi-nested processing-tile h-100 scheduling-kpi-tile scheduling-kpi-tile--neutral"
+              >
+                <Card.Body className="scheduling-kpi-tile__body">
+                  <div className="processing-kpi-label">
+                    {jobsLeftMonthly
+                      ? `Jobs left in ${jobsLeftMonthly.current.label_month}`
+                      : 'Jobs left (current month)'}
+                  </div>
+                  <div className="scheduling-kpi-main">
+                    <div className="scheduling-kpi-tile__value scheduling-kpi-tile__value--neutral">
+                      {jobsLeftMonthly && jobsLeftMonthly.current.jobs_left != null
+                        ? jobsLeftMonthly.current.jobs_left
+                        : '—'}
+                    </div>
+                  </div>
+                  <div className="processing-kpi-target">Click to edit</div>
+                </Card.Body>
+              </Card>
+            </Col>
+            <Col lg={6} md={12}>
+              <Card
+                role="button"
+                tabIndex={0}
+                onClick={() => openJobsLeftModal('next')}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    openJobsLeftModal('next')
+                  }
+                }}
+                className="app-kpi-nested processing-tile h-100 scheduling-kpi-tile scheduling-kpi-tile--neutral"
+              >
+                <Card.Body className="scheduling-kpi-tile__body">
+                  <div className="processing-kpi-label">
+                    {jobsLeftMonthly
+                      ? `Jobs left in ${jobsLeftMonthly.next.label_month}`
+                      : 'Jobs left (next month)'}
+                  </div>
+                  <div className="scheduling-kpi-main">
+                    <div className="scheduling-kpi-tile__value scheduling-kpi-tile__value--neutral">
+                      {jobsLeftMonthly && jobsLeftMonthly.next.jobs_left != null
+                        ? jobsLeftMonthly.next.jobs_left
+                        : '—'}
+                    </div>
+                  </div>
+                  <div className="processing-kpi-target">Click to edit</div>
+                </Card.Body>
+              </Card>
+            </Col>
+          </Row>
+
           <Card className="app-surface-card scheduling-chart-card">
             <Card.Body>
               <div className="scheduling-chart-card__header">
@@ -440,6 +588,39 @@ export default function SchedulingAttackPage() {
           </Button>
         </Modal.Footer>
       </Modal>
+
+      <Modal show={jobsLeftModalSlot !== null} onHide={() => closeJobsLeftModal()} centered>
+        <Modal.Header closeButton>
+          <Modal.Title>
+            {editingJobsLeftSlot ? `Jobs left — ${editingJobsLeftSlot.label_month}` : 'Jobs left'}
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {jobsLeftModalError ? <div className="text-danger small mb-2">{jobsLeftModalError}</div> : null}
+          <Form.Group className="mb-0" controlId="jobs-left-input">
+            <Form.Label>Jobs remaining to schedule</Form.Label>
+            <Form.Control
+              type="number"
+              min={0}
+              step={1}
+              inputMode="numeric"
+              value={jobsLeftDraft}
+              onChange={(e) => setJobsLeftDraft(e.target.value)}
+              disabled={jobsLeftSaving}
+            />
+            <Form.Text className="text-muted">Leave empty and save to clear (shows —).</Form.Text>
+          </Form.Group>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => closeJobsLeftModal()} disabled={jobsLeftSaving}>
+            Cancel
+          </Button>
+          <Button variant="primary" onClick={() => void submitJobsLeft()} disabled={jobsLeftSaving}>
+            {jobsLeftSaving ? <Spinner animation="border" size="sm" className="me-1" /> : null}
+            Save
+          </Button>
+        </Modal.Footer>
+      </Modal>
     </div>
   )
 }
@@ -461,6 +642,31 @@ function SchedulingAttackSkeleton() {
             </Card>
           </Col>
         ))}
+      </Row>
+
+      <Row className="g-3">
+        <Col lg={6} md={12}>
+          <Card className="app-kpi-nested processing-tile h-100 scheduling-kpi-tile">
+            <Card.Body className="scheduling-kpi-tile__body">
+              <span className="home-skeleton-bar d-block" style={{ width: '72%' }} />
+              <div className="scheduling-kpi-main">
+                <span className="home-skeleton-bar home-skeleton-bar--value d-block" style={{ width: '48%' }} />
+              </div>
+              <span className="home-skeleton-bar d-block" style={{ width: '42%' }} />
+            </Card.Body>
+          </Card>
+        </Col>
+        <Col lg={6} md={12}>
+          <Card className="app-kpi-nested processing-tile h-100 scheduling-kpi-tile">
+            <Card.Body className="scheduling-kpi-tile__body">
+              <span className="home-skeleton-bar d-block" style={{ width: '72%' }} />
+              <div className="scheduling-kpi-main">
+                <span className="home-skeleton-bar home-skeleton-bar--value d-block" style={{ width: '48%' }} />
+              </div>
+              <span className="home-skeleton-bar d-block" style={{ width: '42%' }} />
+            </Card.Body>
+          </Card>
+        </Col>
       </Row>
 
       <Card className="app-surface-card scheduling-chart-card">

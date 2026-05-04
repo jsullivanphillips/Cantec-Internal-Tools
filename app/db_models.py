@@ -1159,6 +1159,22 @@ class ForwardScheduleWeek(db.Model):
     )
 
 
+class SchedulingJobsLeftMonth(db.Model):
+    """Manual office entry: jobs remaining to schedule for a calendar month (Vancouver)."""
+
+    __tablename__ = "scheduling_jobs_left_month"
+
+    # First day of the calendar month (date only).
+    year_month = db.Column(db.Date, primary_key=True)
+    jobs_left = db.Column(db.Integer, nullable=False)
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False)
+    updated_by = db.Column(db.String(255), nullable=False)
+
+    __table_args__ = (
+        db.CheckConstraint("jobs_left >= 0", name="ck_sjlm_jobs_left_nonneg"),
+    )
+
+
 class Vehicle(db.Model):
     __tablename__ = "vehicle"
 

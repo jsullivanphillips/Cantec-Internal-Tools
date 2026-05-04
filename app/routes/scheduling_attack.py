@@ -7,7 +7,19 @@ from dateutil.relativedelta import relativedelta
 from zoneinfo import ZoneInfo  # Python 3.9+
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy import or_, func, cast, Float, case, inspect
-from app.db_models import db, ServiceOccurrence, Location, ServiceRecurrence, SchedulingAttackV2, JobsSchedulingState, WeeklySchedulingStats, ForwardScheduleWeek, JobsSchedulingDayBaseline, JobsSchedulingDayMetricCache
+from app.db_models import (
+    db,
+    ServiceOccurrence,
+    Location,
+    ServiceRecurrence,
+    SchedulingAttackV2,
+    JobsSchedulingState,
+    WeeklySchedulingStats,
+    ForwardScheduleWeek,
+    JobsSchedulingDayBaseline,
+    JobsSchedulingDayMetricCache,
+    SchedulingJobsLeftMonth,
+)
 from tqdm import tqdm 
 from collections import Counter
 from collections import defaultdict
@@ -2024,6 +2036,36 @@ def _today_local_date() -> date:
     return datetime.now(timezone.utc).astimezone(LOCAL_TZ).date()
 
 
+def _vancouver_current_next_month_starts() -> tuple[date, date]:
+    d = _today_local_date()
+    current = d.replace(day=1)
+    nxt = current + relativedelta(months=1)
+    return current, nxt
+
+
+def _month_label_calendar(month_start: date) -> str:
+    return month_start.strftime("%B %Y")
+
+
+def _serialize_jobs_left_month_slot(row: SchedulingJobsLeftMonth | None, month_start: date) -> dict:
+    ym = month_start.isoformat()[:7]
+    if row is None:
+        return {
+            "year_month": ym,
+            "label_month": _month_label_calendar(month_start),
+            "jobs_left": None,
+            "updated_at": None,
+            "updated_by": None,
+        }
+    return {
+        "year_month": ym,
+        "label_month": _month_label_calendar(month_start),
+        "jobs_left": int(row.jobs_left),
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        "updated_by": row.updated_by,
+    }
+
+
 def _intraday_scheduling_tables_exist() -> bool:
     try:
         inspector = inspect(db.engine)
@@ -2543,11 +2585,12 @@ def weekly_scheduling_volume():
 
     stats_by_start = {row.period_start: row for row in rows}
     generated_at = None
+    for row in rows:
+        if row.generated_at is not None and (generated_at is None or row.generated_at > generated_at):
+            generated_at = row.generated_at
     weekly = []
     for start, end in periods:
         row = stats_by_start.get(start)
-        if row:
-            generated_at = row.generated_at if generated_at is None else generated_at
         weekly.append({
             "period_start": start.isoformat(),
             "period_end": end.isoformat(),
@@ -2564,6 +2607,8 @@ def weekly_scheduling_volume():
         )
         weekly[-1]["scheduled"] = live_scheduled
         weekly[-1]["rescheduled"] = live_rescheduled
+        # Current week is refreshed from live queries; "generated_at" should not be older than that.
+        generated_at = max(t for t in (generated_at, now) if t is not None)
 
     return jsonify({
         "job_type": JOB_TYPE,
@@ -2849,3 +2894,127 @@ def scheduling_attack_v2_set_notes():
             "updated_at": _utc_now_iso(),
         }
     ), 200
+
+
+@scheduling_attack_bp.get("/scheduling_attack/v2/jobs_left_monthly")
+def scheduling_attack_v2_jobs_left_monthly():
+    current_start, next_start = _vancouver_current_next_month_starts()
+    rows = (
+        db.session.query(SchedulingJobsLeftMonth)
+        .filter(SchedulingJobsLeftMonth.year_month.in_((current_start, next_start)))
+        .all()
+    )
+    by_month = {r.year_month: r for r in rows}
+    return (
+        jsonify(
+            {
+                "timezone": "America/Vancouver",
+                "current": _serialize_jobs_left_month_slot(by_month.get(current_start), current_start),
+                "next": _serialize_jobs_left_month_slot(by_month.get(next_start), next_start),
+            }
+        ),
+        200,
+    )
+
+
+@scheduling_attack_bp.put("/scheduling_attack/v2/jobs_left_monthly")
+def scheduling_attack_v2_put_jobs_left_monthly():
+    """
+    PUT /scheduling_attack/v2/jobs_left_monthly
+    Body: { "year_month": "2026-06", "jobs_left": 15 | null }
+    jobs_left null removes the value for that month (shows em dash on UI).
+    Only the Vancouver-local current or next calendar month may be updated.
+    """
+    username_raw = session.get("username")
+    if not username_raw:
+        return jsonify({"error": "Session username required"}), 401
+    username = str(username_raw).strip()
+    if not username:
+        return jsonify({"error": "Session username required"}), 401
+
+    body = request.get_json(silent=True) or {}
+    ym_str = body.get("year_month")
+
+    if ym_str is None:
+        return jsonify({"error": "Missing required field: year_month"}), 400
+    if not isinstance(ym_str, str) or not re.match(r"^\d{4}-\d{2}$", ym_str):
+        return jsonify({"error": "year_month must be YYYY-MM"}), 400
+
+    try:
+        y, mo = map(int, ym_str.split("-"))
+        target_start = date(y, mo, 1)
+    except (ValueError, TypeError):
+        return jsonify({"error": "Invalid year_month"}), 400
+
+    current_start, next_start = _vancouver_current_next_month_starts()
+    if target_start not in (current_start, next_start):
+        return jsonify({"error": "year_month must be the current or next calendar month"}), 400
+
+    if "jobs_left" not in body:
+        return jsonify({"error": "Missing jobs_left (number or null to clear)"}), 400
+    jobs_left_raw = body["jobs_left"]
+
+    if jobs_left_raw is None:
+        row = db.session.get(SchedulingJobsLeftMonth, target_start)
+        if row:
+            try:
+                db.session.delete(row)
+                db.session.commit()
+            except SQLAlchemyError:
+                db.session.rollback()
+                return jsonify({"error": "Failed to clear jobs left"}), 500
+        return (
+            jsonify(
+                {
+                    "ok": True,
+                    "year_month": target_start.isoformat()[:7],
+                    "jobs_left": None,
+                    "updated_at": _utc_now_iso(),
+                    "updated_by": None,
+                }
+            ),
+            200,
+        )
+
+    if isinstance(jobs_left_raw, bool):
+        return jsonify({"error": "jobs_left must be an integer"}), 400
+    try:
+        jobs_left = int(jobs_left_raw)
+    except (TypeError, ValueError):
+        return jsonify({"error": "jobs_left must be an integer"}), 400
+    if jobs_left < 0:
+        return jsonify({"error": "jobs_left must be >= 0"}), 400
+
+    now_utc = datetime.now(timezone.utc)
+    row = db.session.get(SchedulingJobsLeftMonth, target_start)
+    if row is None:
+        row = SchedulingJobsLeftMonth(
+            year_month=target_start,
+            jobs_left=jobs_left,
+            updated_at=now_utc,
+            updated_by=username,
+        )
+        db.session.add(row)
+    else:
+        row.jobs_left = jobs_left
+        row.updated_at = now_utc
+        row.updated_by = username
+
+    try:
+        db.session.commit()
+    except SQLAlchemyError:
+        db.session.rollback()
+        return jsonify({"error": "Failed to save jobs left"}), 500
+
+    return (
+        jsonify(
+            {
+                "ok": True,
+                "year_month": target_start.isoformat()[:7],
+                "jobs_left": int(row.jobs_left),
+                "updated_at": row.updated_at.isoformat() if row.updated_at else _utc_now_iso(),
+                "updated_by": row.updated_by,
+            }
+        ),
+        200,
+    )
