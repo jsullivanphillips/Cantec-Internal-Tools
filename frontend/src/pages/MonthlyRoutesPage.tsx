@@ -1,12 +1,14 @@
 import type { CSSProperties } from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Button, Card, Form, Modal, OverlayTrigger, Table, Tooltip } from 'react-bootstrap'
+import { Button, Card, Col, Form, Modal, OverlayTrigger, Row, Table, Tooltip } from 'react-bootstrap'
 import { Link } from 'react-router-dom'
-import MonthlyLocationLibraryModal from '../features/monthlyRoutes/MonthlyLocationLibraryModal'
 import RouteLibraryLink from '../features/monthlyRoutes/RouteLibraryLink'
 import {
   STATUS_OPTIONS,
   compareYearMonth,
+  libraryKeycodeDisplay,
+  libraryRouteNumberLine,
+  libraryRouteOccurrenceLine,
   parseYearMonth,
   toMonthKey,
   type CreateLocationForm,
@@ -67,12 +69,6 @@ const ANNUAL_COLUMN_STYLE: CSSProperties = {
   width: '7.35rem',
   minWidth: '7.35rem',
   maxWidth: '7.35rem',
-}
-
-const EDIT_COLUMN_STYLE: CSSProperties = {
-  width: '4.25rem',
-  minWidth: '4.25rem',
-  maxWidth: '4.25rem',
 }
 
 const LIBRARY_TABLE_HEADER_STICKY_STYLE: CSSProperties = {
@@ -138,6 +134,98 @@ function isAnnualMonth(monthKey: string, annualMonth: string | null | undefined)
   return annual === full || annual === short
 }
 
+function getLibraryListRange(
+  fromMonth: string,
+  toMonth: string,
+  currentYearStart: string,
+  today: Date
+): { start: YearMonth; finish: YearMonth } {
+  const from = parseYearMonth(fromMonth)
+  const to = parseYearMonth(toMonth)
+  const fallback = parseYearMonth(currentYearStart) ?? { year: today.getFullYear(), month: 1 }
+  let start = fallback
+  let finish = fallback
+  if (from && to) {
+    start = compareYearMonth(from, to) <= 0 ? from : to
+    finish = compareYearMonth(from, to) <= 0 ? to : from
+  } else if (from) {
+    start = from
+    finish = from
+  } else if (to) {
+    start = to
+    finish = to
+  }
+  return { start, finish }
+}
+
+function buildLibraryListQueryString(args: {
+  fromMonth: string
+  toMonth: string
+  currentYearStart: string
+  today: Date
+  tableSearch: string
+  showOnlySkipped: boolean
+  showAnnualTestingConflicts: boolean
+  page: number
+  pageSize: number
+  unpaginated: boolean
+}): string {
+  const { start, finish } = getLibraryListRange(
+    args.fromMonth,
+    args.toMonth,
+    args.currentYearStart,
+    args.today
+  )
+  const params = new URLSearchParams()
+  params.set('from_month', toMonthKey(start.year, start.month))
+  params.set('to_month', toMonthKey(finish.year, finish.month))
+  if (args.tableSearch.trim()) params.set('q', args.tableSearch.trim())
+  if (args.showOnlySkipped) params.set('skipped_any', 'true')
+  if (args.showAnnualTestingConflicts) params.set('annual_tested_conflict', 'true')
+  if (args.unpaginated) {
+    params.set('unpaginated', 'true')
+  } else {
+    params.set('page', String(args.page))
+    params.set('page_size', String(args.pageSize))
+  }
+  return params.toString()
+}
+
+function escapeCsvField(value: string): string {
+  if (/[",\r\n]/.test(value)) {
+    return `"${value.replace(/"/g, '""')}"`
+  }
+  return value
+}
+
+function statusExportLabel(status: string | null | undefined): string {
+  const normalized = (status || '').trim().toLowerCase()
+  if (normalized === 'active') return 'active'
+  if (normalized === 'cancelled') return 'cancelled'
+  if (normalized === 'on_hold' || normalized === 'on hold') return 'on hold'
+  if (normalized === 'waiting_keys' || normalized === 'waiting keys') return 'waiting keys'
+  return (status || '').trim() || '—'
+}
+
+function monthCellExportText(
+  cell: MonthCell | undefined,
+  monthKey: string,
+  annualMonth: string | null | undefined
+): string {
+  const isAnnual = isAnnualMonth(monthKey, annualMonth)
+  if (cell?.result_status === 'tested') {
+    if (isAnnual) return 'Tested (annual month)'
+    return 'Tested'
+  }
+  if (isAnnual) return 'Annual month'
+  if (!cell) return ''
+  if (cell.result_status === 'skipped') {
+    const reason = cell.skip_reason?.trim()
+    return reason ? `Skipped (${reason})` : 'Skipped'
+  }
+  return ''
+}
+
 export default function MonthlyRoutesPage() {
   const today = new Date()
   const currentYearStart = `${today.getFullYear()}-01-01`
@@ -171,7 +259,7 @@ export default function MonthlyRoutesPage() {
   const [page, setPage] = useState(1)
   const [annualEditLocationId, setAnnualEditLocationId] = useState<number | null>(null)
   const [annualSavingLocationId, setAnnualSavingLocationId] = useState<number | null>(null)
-  const [selectedLocation, setSelectedLocation] = useState<LibraryLocation | null>(null)
+  const [csvExporting, setCsvExporting] = useState(false)
 
   const mergeUpdatedLocation = useCallback((updated: LibraryLocation) => {
     setPayload((prev) =>
@@ -184,19 +272,6 @@ export default function MonthlyRoutesPage() {
           }
         : prev
     )
-    setSelectedLocation((prev) => (prev && prev.id === updated.id ? { ...prev, ...updated } : prev))
-  }, [])
-
-  const removeLocationFromState = useCallback((locationId: number) => {
-    setPayload((prev) =>
-      prev
-        ? {
-            ...prev,
-            locations: prev.locations.filter((loc) => loc.id !== locationId),
-          }
-        : prev
-    )
-    setSelectedLocation((prev) => (prev && prev.id === locationId ? null : prev))
   }, [])
 
   useEffect(() => {
@@ -205,31 +280,20 @@ export default function MonthlyRoutesPage() {
     setLoading(true)
     setError(null)
 
-    const params = new URLSearchParams()
-    const from = parseYearMonth(fromMonth)
-    const to = parseYearMonth(toMonth)
-    const fallback = parseYearMonth(currentYearStart) ?? { year: today.getFullYear(), month: 1 }
-    let start = fallback
-    let finish = fallback
-    if (from && to) {
-      start = compareYearMonth(from, to) <= 0 ? from : to
-      finish = compareYearMonth(from, to) <= 0 ? to : from
-    } else if (from) {
-      start = from
-      finish = from
-    } else if (to) {
-      start = to
-      finish = to
-    }
-    params.set('from_month', toMonthKey(start.year, start.month))
-    params.set('to_month', toMonthKey(finish.year, finish.month))
-    if (tableSearch.trim()) params.set('q', tableSearch.trim())
-    if (showOnlySkipped) params.set('skipped_any', 'true')
-    if (showAnnualTestingConflicts) params.set('annual_tested_conflict', 'true')
-    params.set('page', String(page))
-    params.set('page_size', String(LIBRARY_PAGE_SIZE))
+    const qs = buildLibraryListQueryString({
+      fromMonth,
+      toMonth,
+      currentYearStart,
+      today,
+      tableSearch,
+      showOnlySkipped,
+      showAnnualTestingConflicts,
+      page,
+      pageSize: LIBRARY_PAGE_SIZE,
+      unpaginated: false,
+    })
 
-    apiJson<LibraryPayload>(`/api/monthly_routes/library?${params.toString()}`, {
+    apiJson<LibraryPayload>(`/api/monthly_routes/library?${qs}`, {
       signal: controller.signal,
     })
       .then((data) => {
@@ -251,26 +315,11 @@ export default function MonthlyRoutesPage() {
   }, [fromMonth, page, showAnnualTestingConflicts, showOnlySkipped, tableSearch, toMonth])
 
   const monthColumns = useMemo(() => {
-    const from = parseYearMonth(fromMonth)
-    const to = parseYearMonth(toMonth)
-    const fallback = parseYearMonth(currentYearStart) ?? { year: today.getFullYear(), month: 1 }
-    let start = fallback
-    let finish = fallback
-    if (from && to) {
-      start = compareYearMonth(from, to) <= 0 ? from : to
-      finish = compareYearMonth(from, to) <= 0 ? to : from
-    } else if (from) {
-      start = from
-      finish = from
-    } else if (to) {
-      start = to
-      finish = to
-    }
+    const { start, finish } = getLibraryListRange(fromMonth, toMonth, currentYearStart, today)
     const cols: string[] = []
     let cursor = start
     while (compareYearMonth(cursor, finish) <= 0) {
-      const month = cursor
-      cols.push(toMonthKey(month.year, month.month))
+      cols.push(toMonthKey(cursor.year, cursor.month))
       cursor = addMonths(cursor, 1)
     }
     return cols
@@ -284,9 +333,81 @@ export default function MonthlyRoutesPage() {
   const pagination = payload?.meta.pagination
   const routeOptions = payload?.meta.routes ?? []
 
-  const openLocationDetail = useCallback((loc: LibraryLocation) => {
-    setSelectedLocation(loc)
-  }, [])
+  const exportResultsAsCsv = useCallback(async () => {
+    setCsvExporting(true)
+    try {
+      const qs = buildLibraryListQueryString({
+        fromMonth,
+        toMonth,
+        currentYearStart,
+        today,
+        tableSearch,
+        showOnlySkipped,
+        showAnnualTestingConflicts,
+        page: 1,
+        pageSize: LIBRARY_PAGE_SIZE,
+        unpaginated: true,
+      })
+      const data = await apiJson<LibraryPayload>(`/api/monthly_routes/library?${qs}`)
+      let rows = data.locations ?? []
+      if (hideCancelledMbtLocations) {
+        rows = rows.filter((loc) => (loc.status_normalized || '').trim().toLowerCase() !== 'cancelled')
+      }
+      const monthCols = data.month_columns ?? []
+      const headers = [
+        'Status',
+        'Route',
+        'Address',
+        'Property Management',
+        'Key',
+        'Annual',
+        ...monthCols.map((m) => formatMonthLabel(m)),
+      ]
+      const lines = [headers.map(escapeCsvField).join(',')]
+      for (const loc of rows) {
+        const line2 = libraryRouteOccurrenceLine(loc)
+        const routeText = line2 ? `${libraryRouteNumberLine(loc)} / ${line2}` : libraryRouteNumberLine(loc)
+        const keyText = libraryKeycodeDisplay(loc) || '—'
+        const monthCells = monthCols.map((mk) =>
+          monthCellExportText(loc.months?.[mk], mk, loc.annual_month)
+        )
+        lines.push(
+          [
+            statusExportLabel(loc.status_normalized),
+            routeText,
+            loc.address || '',
+            loc.property_management_company || '',
+            keyText,
+            loc.annual_month || '',
+            ...monthCells,
+          ]
+            .map(escapeCsvField)
+            .join(',')
+        )
+      }
+      const body = `\uFEFF${lines.join('\r\n')}`
+      const blob = new Blob([body], { type: 'text/csv;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `monthly-routes-${new Date().toISOString().slice(0, 10)}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      window.alert('Unable to export CSV. Please try again.')
+    } finally {
+      setCsvExporting(false)
+    }
+  }, [
+    currentYearStart,
+    fromMonth,
+    hideCancelledMbtLocations,
+    showAnnualTestingConflicts,
+    showOnlySkipped,
+    tableSearch,
+    toMonth,
+    today,
+  ])
 
   const saveAnnualForLocation = useCallback(
     async (locationId: number, annualMonth: string) => {
@@ -319,10 +440,6 @@ export default function MonthlyRoutesPage() {
     },
     []
   )
-
-  function closeLocationDetail() {
-    setSelectedLocation(null)
-  }
 
   const renderMonthCell = useCallback((
     cell: MonthCell | undefined,
@@ -418,7 +535,7 @@ export default function MonthlyRoutesPage() {
     )
   }, [])
 
-  const tableColSpan = 7 + monthColumns.length
+  const tableColSpan = 6 + monthColumns.length
 
   const tableSection = useMemo(() => {
     if (loading || error) return null
@@ -442,7 +559,6 @@ export default function MonthlyRoutesPage() {
             {monthColumns.map((monthKey) => (
               <col key={monthKey} />
             ))}
-            <col style={{ width: '4.25rem' }} />
           </colgroup>
           <thead>
             <tr>
@@ -459,27 +575,24 @@ export default function MonthlyRoutesPage() {
               <th style={{ ...ADDRESS_COLUMN_STYLE, ...LIBRARY_TABLE_HEADER_STICKY_STYLE }}>Address</th>
               <th style={{ ...PROPERTY_COLUMN_STYLE, ...LIBRARY_TABLE_HEADER_STICKY_STYLE }}>Property Management</th>
               <th style={{ ...KEYS_COLUMN_STYLE, ...LIBRARY_TABLE_HEADER_STICKY_STYLE }}>Key</th>
-              <th style={{ ...ANNUAL_COLUMN_STYLE, ...LIBRARY_TABLE_HEADER_STICKY_STYLE }}>Annual</th>
+              <th
+                className="text-center"
+                style={{ ...ANNUAL_COLUMN_STYLE, ...LIBRARY_TABLE_HEADER_STICKY_STYLE }}
+              >
+                Annual
+              </th>
               {monthColumns.map((month) => (
                 <th
                   key={month}
                   style={{
                     ...MONTH_TESTING_CELL_STYLE,
                     ...LIBRARY_TABLE_HEADER_STICKY_STYLE,
+                    verticalAlign: 'bottom',
                   }}
                 >
                   {formatMonthLabel(month)}
                 </th>
               ))}
-              <th
-                className="text-center"
-                style={{
-                  ...EDIT_COLUMN_STYLE,
-                  ...LIBRARY_TABLE_HEADER_STICKY_STYLE,
-                }}
-              >
-                Edit
-              </th>
             </tr>
           </thead>
           <tbody>
@@ -506,7 +619,7 @@ export default function MonthlyRoutesPage() {
                     <div className="library-table-cell-inner">
                       <Link
                         to={`/monthlies/locations/${loc.id}`}
-                        className="fw-semibold text-decoration-none text-reset"
+                        className="fw-semibold text-decoration-none text-primary"
                       >
                         {loc.address}
                       </Link>
@@ -587,18 +700,6 @@ export default function MonthlyRoutesPage() {
                     </td>
                     )
                   })}
-                  <td className="text-center library-table-cell-clamp" style={EDIT_COLUMN_STYLE}>
-                    <div className="library-table-cell-inner">
-                      <button
-                        type="button"
-                        className="btn btn-link btn-sm p-0 text-decoration-none"
-                        aria-label={`Edit location ${loc.address}`}
-                        onClick={() => openLocationDetail(loc)}
-                      >
-                        Edit
-                      </button>
-                    </div>
-                  </td>
                 </tr>
               ))
             )}
@@ -611,7 +712,6 @@ export default function MonthlyRoutesPage() {
     filteredLocations,
     loading,
     monthColumns,
-    openLocationDetail,
     annualEditLocationId,
     annualSavingLocationId,
     saveAnnualForLocation,
@@ -762,97 +862,139 @@ export default function MonthlyRoutesPage() {
   ])
 
   return (
-    <div className="d-flex flex-column gap-3">
-      <Card className="app-surface-card">
-        <Card.Body className="p-3">
-          <div className="d-flex gap-3 align-items-stretch w-100">
-            <div className="d-flex flex-column gap-2 flex-grow-1 min-w-0">
-              <h2 className="processing-page-title mb-0 align-self-start">Filters</h2>
-              <div
-                className="d-flex align-items-center gap-2 min-w-0 flex-nowrap"
-                style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}
-              >
-                <Form.Control
-                  type="search"
-                  value={tableSearch}
-                  placeholder="Search route, address, property, key, annual"
-                  onChange={(e) => {
-                    setTableSearch(e.target.value)
-                    setPage(1)
-                  }}
-                  className="flex-grow-1 flex-shrink-1"
-                  style={{ minWidth: '11rem', maxWidth: '20rem', width: '14rem' }}
-                />
-                <Form.Control
-                  type="month"
-                  value={fromMonth.slice(0, 7)}
-                  onChange={(e) => {
-                    setFromMonth(`${e.target.value}-01`)
-                    setPage(1)
-                  }}
-                  className="flex-shrink-0"
-                  style={{ width: '9rem', maxWidth: '9rem' }}
-                />
-                <Form.Control
-                  type="month"
-                  value={toMonth.slice(0, 7)}
-                  onChange={(e) => {
-                    setToMonth(`${e.target.value}-01`)
-                    setPage(1)
-                  }}
-                  className="flex-shrink-0"
-                  style={{ width: '9rem', maxWidth: '9rem' }}
-                />
-                <Form.Check
-                  id="monthly-routes-skipped-only"
-                  type="checkbox"
-                  label="Show only skipped locations"
-                  checked={showOnlySkipped}
-                  className="text-nowrap mb-0 flex-shrink-0"
-                  onChange={(e) => {
-                    setShowOnlySkipped(e.target.checked)
-                    setPage(1)
-                  }}
-                />
-                <Form.Check
-                  id="monthly-routes-annual-tested-conflicts"
-                  type="checkbox"
-                  label="Show annual/testing conflicts"
-                  checked={showAnnualTestingConflicts}
-                  className="text-nowrap mb-0 flex-shrink-0"
-                  onChange={(e) => {
-                    setShowAnnualTestingConflicts(e.target.checked)
-                    setPage(1)
-                  }}
-                />
-                <Form.Check
-                  id="monthly-routes-hide-cancelled"
-                  type="checkbox"
-                  label="Hide cancelled MBT locations"
-                  checked={hideCancelledMbtLocations}
-                  className="text-nowrap mb-0 flex-shrink-0"
-                  onChange={(e) => {
-                    setHideCancelledMbtLocations(e.target.checked)
-                    setPage(1)
-                  }}
-                />
+    <div className="monthly-routes-library-page d-flex flex-column gap-3">
+      <Card className="app-surface-card monthly-routes-filters-card">
+        <Card.Body className="p-3 p-md-4">
+          <div className="flex-grow-1 min-w-0 d-flex flex-column gap-3">
+              <div className="d-flex flex-column flex-sm-row align-items-start justify-content-between gap-2 gap-sm-3">
+                <h2 className="processing-page-title mb-0">Filters</h2>
+                <Button
+                  variant="primary"
+                  className="fw-semibold px-4 align-self-stretch align-self-sm-auto"
+                  onClick={openCreateLocationModal}
+                >
+                  Add Location
+                </Button>
               </div>
-            </div>
-            <div className="align-self-stretch d-flex py-2 flex-shrink-0">
-              <Button
-                variant="primary"
-                className="h-100 d-flex align-items-center justify-content-center px-3 fw-semibold"
-                onClick={openCreateLocationModal}
-              >
-                Add Location
-              </Button>
-            </div>
+
+              <div className="monthly-routes-filters__primary">
+                <Row className="g-2 g-md-3 align-items-end">
+                  <Col xs={12} lg>
+                    <Form.Group className="mb-0">
+                      <Form.Label className="monthly-routes-filters__label mb-1">Search</Form.Label>
+                      <Form.Control
+                        type="search"
+                        size="sm"
+                        value={tableSearch}
+                        placeholder="Route, address, property, key, annual…"
+                        onChange={(e) => {
+                          setTableSearch(e.target.value)
+                          setPage(1)
+                        }}
+                      />
+                    </Form.Group>
+                  </Col>
+                  <Col xs={6} sm="auto">
+                    <Form.Group className="mb-0">
+                      <Form.Label className="monthly-routes-filters__label mb-1">From month</Form.Label>
+                      <Form.Control
+                        type="month"
+                        size="sm"
+                        value={fromMonth.slice(0, 7)}
+                        onChange={(e) => {
+                          setFromMonth(`${e.target.value}-01`)
+                          setPage(1)
+                        }}
+                        style={{ minWidth: '9.25rem' }}
+                      />
+                    </Form.Group>
+                  </Col>
+                  <Col xs={6} sm="auto">
+                    <Form.Group className="mb-0">
+                      <Form.Label className="monthly-routes-filters__label mb-1">To month</Form.Label>
+                      <Form.Control
+                        type="month"
+                        size="sm"
+                        value={toMonth.slice(0, 7)}
+                        onChange={(e) => {
+                          setToMonth(`${e.target.value}-01`)
+                          setPage(1)
+                        }}
+                        style={{ minWidth: '9.25rem' }}
+                      />
+                    </Form.Group>
+                  </Col>
+                </Row>
+              </div>
+
+              <div className="monthly-routes-filters__display">
+                <div className="monthly-routes-filters__section-title mb-2">Display</div>
+                <div className="monthly-routes-filters__checks monthly-routes-filters__checks--row d-flex flex-nowrap align-items-center gap-3 gap-md-4 w-100 min-w-0">
+                  <Form.Check
+                    id="monthly-routes-skipped-only"
+                    type="checkbox"
+                    label="Show only skipped locations"
+                    checked={showOnlySkipped}
+                    className="monthly-routes-filters__check mb-0 flex-shrink-0"
+                    onChange={(e) => {
+                      setShowOnlySkipped(e.target.checked)
+                      setPage(1)
+                    }}
+                  />
+                  <Form.Check
+                    id="monthly-routes-annual-tested-conflicts"
+                    type="checkbox"
+                    label="Show annual/testing conflicts"
+                    checked={showAnnualTestingConflicts}
+                    className="monthly-routes-filters__check mb-0 flex-shrink-0"
+                    onChange={(e) => {
+                      setShowAnnualTestingConflicts(e.target.checked)
+                      setPage(1)
+                    }}
+                  />
+                  <Form.Check
+                    id="monthly-routes-hide-cancelled"
+                    type="checkbox"
+                    label="Hide cancelled MBT locations"
+                    checked={hideCancelledMbtLocations}
+                    className="monthly-routes-filters__check mb-0 flex-shrink-0"
+                    onChange={(e) => {
+                      setHideCancelledMbtLocations(e.target.checked)
+                      setPage(1)
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline-secondary"
+                    size="sm"
+                    className="d-inline-flex align-items-center gap-2 flex-shrink-0 ms-auto text-nowrap"
+                    disabled={csvExporting}
+                    onClick={() => void exportResultsAsCsv()}
+                  >
+                    {csvExporting ? (
+                      <>
+                        <span
+                          className="spinner-border spinner-border-sm"
+                          role="status"
+                          aria-hidden
+                        />
+                        Exporting…
+                      </>
+                    ) : (
+                      <>
+                        <i className="bi bi-download" aria-hidden />
+                        Export results as CSV
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
           </div>
         </Card.Body>
       </Card>
 
       <Card className="app-surface-card">
-        <Card.Body className="p-3">
+        <Card.Body className="p-4">
           {error ? <div className="text-danger">{error}</div> : null}
           {loading ? <div className="text-muted">Loading library data...</div> : null}
 
@@ -931,13 +1073,6 @@ export default function MonthlyRoutesPage() {
             </div>
           ) : null}
 
-          <MonthlyLocationLibraryModal
-            location={selectedLocation}
-            routeOptions={routeOptions}
-            onHide={closeLocationDetail}
-            onSaved={mergeUpdatedLocation}
-            onDeleted={removeLocationFromState}
-          />
         </Card.Body>
       </Card>
 

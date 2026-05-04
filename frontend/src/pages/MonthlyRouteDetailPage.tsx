@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from 'react'
 import { Chart } from 'react-chartjs-2'
-import { Accordion, Alert, Button, Card, Modal, Spinner, Table } from 'react-bootstrap'
+import { Accordion, Alert, Badge, Button, Card, Col, Modal, Row, Spinner, Table } from 'react-bootstrap'
 import { Link, useParams } from 'react-router-dom'
 import MonthlyLibraryCommentsPanel from '../features/monthlyRoutes/MonthlyLibraryCommentsPanel'
 import {
@@ -351,18 +351,20 @@ export default function MonthlyRouteDetailPage() {
         </Link>
       </div>
 
-      <Card className="monthly-location-detail-surface shadow-sm mb-2">
+      <Card className="monthly-location-detail-surface monthly-route-detail-hero mb-2">
         <Card.Body className="p-4">
           <div className="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-4">
-            <div>
-              <h1 className="h4 mb-2 fw-bold">{route.label}</h1>
-              <div className="text-muted small">
-                Route number <span className="fw-semibold text-body">R{route.route_number}</span>
+            <div className="min-w-0 flex-grow-1">
+              <div className="text-muted small text-uppercase fw-semibold mb-1">Route</div>
+              <h1 className="processing-page-title mb-2">{route.label}</h1>
+              <div className="d-flex flex-wrap align-items-center gap-2">
+                <Badge bg="light" text="dark" className="border fw-semibold px-2 py-1">
+                  R{route.route_number}
+                </Badge>
                 {patternLabel ? (
-                  <>
-                    {' '}
-                    · <span className="text-body">{patternLabel}</span>
-                  </>
+                  <Badge bg="secondary" className="fw-semibold px-2 py-1">
+                    {patternLabel}
+                  </Badge>
                 ) : null}
               </div>
             </div>
@@ -371,59 +373,65 @@ export default function MonthlyRouteDetailPage() {
                 href={stUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                variant="link"
+                variant="outline-primary"
                 size="sm"
-                className="align-self-start link-primary text-decoration-none border-0 shadow-none px-2 py-1"
+                className="d-inline-flex align-items-center gap-2 flex-shrink-0 align-self-start"
               >
+                <i className="bi bi-box-arrow-up-right" aria-hidden />
                 Open in ServiceTrade
               </Button>
             ) : null}
           </div>
 
-          <div className="text-muted small text-uppercase fw-semibold mb-1">Locations on route</div>
-          <div className="fw-semibold">{route.location_count ?? '—'}</div>
-
-          <div className="mt-3 pt-3 border-top">
-            <div className="text-muted small text-uppercase fw-semibold mb-1">Monthly specialists</div>
-            {specialists === null ? (
-              <div className="text-muted small">
-                Specialist roster appears when this route is linked to a ServiceTrade route workspace.
+          <Row className="g-4 align-items-start">
+            <Col xs={12} md={4} lg={3}>
+              <div className="text-muted small text-uppercase fw-semibold mb-1">Locations on route</div>
+              <div className="display-6 fw-bold tabular-nums lh-sm">
+                {route.location_count ?? '—'}
               </div>
-            ) : !specialists.location_name && specialists.top_technicians.length === 0 ? (
-              <div className="text-muted small">
-                No cached specialist data yet. Stats populate when the monthly specialists sync runs.
-              </div>
-            ) : (
-              (() => {
-                const topFive = specialists.top_technicians.slice(0, 5)
-                const summaryPrimary =
-                  topFive.length === 0
-                    ? 'No active specialists in cached rankings'
-                    : topFive.map((t) => `${specialistTechLabel(t)} (${specialistTechJobs(t)})`).join(', ')
-                const metaParts = [`${specialists.completed_jobs_count} route completions`]
-                if (specialists.last_updated_at) {
-                  metaParts.push(
-                    `Updated ${new Date(specialists.last_updated_at).toLocaleDateString()}`
-                  )
-                }
-                const metaLine = metaParts.join(' · ')
+            </Col>
+            <Col xs={12} md={8} lg={9} className="monthly-route-detail-hero__specialists-col">
+              <div className="text-muted small text-uppercase fw-semibold mb-1">Monthly specialists</div>
+              {specialists === null ? (
+                <div className="text-muted small">
+                  Specialist roster appears when this route is linked to a ServiceTrade route workspace.
+                </div>
+              ) : !specialists.location_name && specialists.top_technicians.length === 0 ? (
+                <div className="text-muted small">
+                  No cached specialist data yet. Stats populate when the monthly specialists sync runs.
+                </div>
+              ) : (
+                (() => {
+                  const topFive = specialists.top_technicians.slice(0, 5)
+                  const summaryPrimary =
+                    topFive.length === 0
+                      ? 'No active specialists in cached rankings'
+                      : topFive.map((t) => `${specialistTechLabel(t)} (${specialistTechJobs(t)})`).join(', ')
+                  const metaParts = [`${specialists.completed_jobs_count} route completions`]
+                  if (specialists.last_updated_at) {
+                    metaParts.push(
+                      `Updated ${new Date(specialists.last_updated_at).toLocaleDateString()}`
+                    )
+                  }
+                  const metaLine = metaParts.join(' · ')
 
-                return (
-                  <>
-                    {specialists.location_name ? (
-                      <div className="small fw-semibold text-truncate mb-1" title={specialists.location_name}>
-                        {specialists.location_name}
+                  return (
+                    <>
+                      {specialists.location_name ? (
+                        <div className="small fw-semibold text-truncate mb-1" title={specialists.location_name}>
+                          {specialists.location_name}
+                        </div>
+                      ) : null}
+                      <div className="small">
+                        <span className="text-body">{summaryPrimary}</span>
+                        <span className="text-muted"> · {metaLine}</span>
                       </div>
-                    ) : null}
-                    <div className="small">
-                      <span className="text-body">{summaryPrimary}</span>
-                      <span className="text-muted"> · {metaLine}</span>
-                    </div>
-                  </>
-                )
-              })()
-            )}
-          </div>
+                    </>
+                  )
+                })()
+              )}
+            </Col>
+          </Row>
         </Card.Body>
       </Card>
 
@@ -434,89 +442,101 @@ export default function MonthlyRouteDetailPage() {
       >
         <Accordion.Item
           eventKey="performance"
-          className="monthly-location-testing-history-card monthly-location-detail-surface shadow-sm bg-white"
+          className="monthly-location-testing-history-card monthly-route-detail-performance monthly-location-detail-surface shadow-sm bg-white"
         >
-          <Accordion.Header className="monthly-location-testing-history-card-header py-3">
-            <span className="fw-semibold">Performance</span>
+          <Accordion.Header className="monthly-location-testing-history-card-header monthly-route-detail-performance-header py-3">
+            <span className="d-inline-flex align-items-center gap-2 fw-semibold">
+              <i className="bi bi-graph-up-arrow text-primary" aria-hidden />
+              Performance
+            </span>
           </Accordion.Header>
           <Accordion.Body className="monthly-location-testing-history-body">
-            <p className="text-muted small mb-3">
-              Monthly revenue sums <span className="fw-semibold text-body">Price/month</span> for locations on this
-              route with sheet status <span className="fw-semibold text-body">tested</span> that month. Locations
-              without a price are excluded from the sum.
-            </p>
-            {testingHistoryYears.length > 0 ? (
-              <>
-                <div className="d-flex flex-wrap align-items-center gap-2 justify-content-start mb-3">
-                  <Button
-                    type="button"
-                    variant="outline-secondary"
-                    size="sm"
-                    className="monthly-location-testing-history-year-nav-btn"
-                    disabled={testingHistoryYearIndex <= 0}
-                    onClick={() => {
-                      if (testingHistoryYearIndex > 0) {
-                        setHistoryViewYear(testingHistoryYears[testingHistoryYearIndex - 1])
-                      }
-                    }}
-                  >
-                    Previous year
-                  </Button>
-                  <span className="fw-semibold px-1 tabular-nums" aria-live="polite">
-                    {effectiveHistoryYear}
-                  </span>
-                  <Button
-                    type="button"
-                    variant="outline-secondary"
-                    size="sm"
-                    className="monthly-location-testing-history-year-nav-btn"
-                    disabled={
-                      testingHistoryYearIndex < 0 ||
-                      testingHistoryYearIndex >= testingHistoryYears.length - 1
-                    }
-                    onClick={() => {
-                      if (
-                        testingHistoryYearIndex >= 0 &&
-                        testingHistoryYearIndex < testingHistoryYears.length - 1
-                      ) {
-                        setHistoryViewYear(testingHistoryYears[testingHistoryYearIndex + 1])
-                      }
-                    }}
-                  >
-                    Next year
-                  </Button>
+            <Card className="monthly-route-detail-performance__revenue-card mb-3">
+              <Card.Body className="p-3 p-md-4">
+                <div className="monthly-route-detail-performance__revenue-card-title text-muted small text-uppercase fw-semibold mb-3">
+                  Revenue by month
                 </div>
-                {testedRevenueChart ? (
+                <div className="monthly-route-detail-performance__intro text-muted small mb-3">
+                  <p className="mb-0">
+                    Monthly revenue sums <span className="fw-semibold text-body">Price/month</span> for locations on
+                    this route that were <span className="fw-semibold text-body">tested</span> that month. Locations
+                    without a price are excluded from the sum.
+                  </p>
+                </div>
+                {testingHistoryYears.length > 0 ? (
                   <>
-                    <div style={{ height: '260px', maxWidth: '100%' }}>
-                      <Chart type="bar" data={testedRevenueChart.data} options={testedRevenueChart.options} />
+                    <div className="monthly-route-detail-performance__year-nav d-flex flex-wrap align-items-center gap-2 justify-content-start mb-3">
+                      <Button
+                        type="button"
+                        variant="outline-secondary"
+                        size="sm"
+                        className="monthly-location-testing-history-year-nav-btn"
+                        disabled={testingHistoryYearIndex <= 0}
+                        onClick={() => {
+                          if (testingHistoryYearIndex > 0) {
+                            setHistoryViewYear(testingHistoryYears[testingHistoryYearIndex - 1])
+                          }
+                        }}
+                      >
+                        Previous year
+                      </Button>
+                      <span className="fw-semibold px-1 tabular-nums" aria-live="polite">
+                        {effectiveHistoryYear}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="outline-secondary"
+                        size="sm"
+                        className="monthly-location-testing-history-year-nav-btn"
+                        disabled={
+                          testingHistoryYearIndex < 0 ||
+                          testingHistoryYearIndex >= testingHistoryYears.length - 1
+                        }
+                        onClick={() => {
+                          if (
+                            testingHistoryYearIndex >= 0 &&
+                            testingHistoryYearIndex < testingHistoryYears.length - 1
+                          ) {
+                            setHistoryViewYear(testingHistoryYears[testingHistoryYearIndex + 1])
+                          }
+                        }}
+                      >
+                        Next year
+                      </Button>
                     </div>
-                    {testedSitesMissingPriceYear > 0 ? (
-                      <p className="text-muted small mt-2 mb-0">
-                        {testedSitesMissingPriceYear} tested{' '}
-                        {testedSitesMissingPriceYear === 1 ? 'site has' : 'sites have'} no Price/month set for months
-                        in {effectiveHistoryYear}.
-                      </p>
-                    ) : null}
+                    <div className="monthly-route-detail-performance__chart">
+                      {testedRevenueChart ? (
+                        <>
+                          <div className="monthly-route-detail-performance__chart-surface">
+                            <div className="monthly-route-detail-performance__chart-area">
+                              <Chart type="bar" data={testedRevenueChart.data} options={testedRevenueChart.options} />
+                            </div>
+                          </div>
+                          {testedSitesMissingPriceYear > 0 ? (
+                            <p className="text-muted small mt-2 mb-0">
+                              {testedSitesMissingPriceYear} tested{' '}
+                              {testedSitesMissingPriceYear === 1 ? 'site has' : 'sites have'} no Price/month set for
+                              months in {effectiveHistoryYear}.
+                            </p>
+                          ) : null}
+                        </>
+                      ) : (
+                        <div className="monthly-route-detail-performance__chart-surface">
+                          <div className="monthly-route-detail-performance__empty d-flex align-items-center justify-content-center text-muted small">
+                            No monthly sheet data for this calendar year.
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </>
                 ) : (
-                  <div
-                    className="rounded-3 border border-2 border-dashed d-flex align-items-center justify-content-center text-muted small"
-                    style={{
-                      minHeight: '8rem',
-                      background: 'linear-gradient(180deg, #fafbfd 0%, #f0f3f8 100%)',
-                    }}
-                  >
-                    No monthly sheet data for this calendar year.
+                  <div className="monthly-route-detail-performance__intro text-muted small mb-0">
+                    Revenue chart appears when monthly sheet testing history exists for this route.
                   </div>
                 )}
-              </>
-            ) : (
-              <div className="text-muted small">
-                Revenue chart appears when monthly sheet testing history exists for this route.
-              </div>
-            )}
-            <p className="text-muted small mt-3 mb-0 fst-italic">
+              </Card.Body>
+            </Card>
+            <p className="monthly-route-detail-performance__footnote text-muted small mt-3 mb-0 fst-italic">
               Average route start/end times and time-on-site charts may be added when ServiceTrade timing data is
               connected.
             </p>

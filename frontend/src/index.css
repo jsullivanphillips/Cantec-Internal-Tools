@@ -200,16 +200,31 @@
 
 .monthly-location-testing-history-table-wrap
   table.monthly-location-testing-history-grid-table
+  td.monthly-location-testing-history-result--tested {
+  background-color: rgba(25, 135, 84, 0.16) !important;
+}
+
+.monthly-location-testing-history-table-wrap
+  table.monthly-location-testing-history-grid-table
+  td.monthly-location-testing-history-result--skipped {
+  background-color: rgba(217, 164, 6, 0.28) !important;
+}
+
+.monthly-location-testing-history-table-wrap
+  table.monthly-location-testing-history-grid-table
+  td.monthly-location-testing-history-result--annual {
+  background-color: rgba(111, 66, 193, 0.18) !important;
+}
+
+.monthly-location-testing-history-table-wrap
+  table.monthly-location-testing-history-grid-table
   td:nth-child(1) {
   overflow-wrap: anywhere;
 }
 
 .monthly-location-testing-history-table-wrap
   table.monthly-location-testing-history-grid-table
-  td:nth-child(2),
-.monthly-location-testing-history-table-wrap
-  table.monthly-location-testing-history-grid-table
-  td:nth-child(3) {
+  td:nth-child(2) {
   overflow-wrap: break-word;
   word-break: break-word;
 }
@@ -229,19 +244,13 @@
 .monthly-location-testing-history-table-wrap
   table.monthly-location-testing-history-grid-table
   col.monthly-history-col-month {
-  width: 15%;
+  width: 20%;
 }
 
 .monthly-location-testing-history-table-wrap
   table.monthly-location-testing-history-grid-table
   col.monthly-history-col-result {
-  width: 22%;
-}
-
-.monthly-location-testing-history-table-wrap
-  table.monthly-location-testing-history-grid-table
-  col.monthly-history-col-skip {
-  width: 63%;
+  width: 80%;
 }
 
 .monthly-location-comments-divider {
@@ -321,6 +330,66 @@
 .monthly-routes-map-page__canvas {
   width: 100%;
   height: 100%;
+}
+
+/* Monthly routes library (/monthlies/routes) — filters card */
+.monthly-routes-library-page .monthly-routes-filters-card {
+  border: 1px solid #e7eaf0;
+}
+
+.monthly-routes-library-page .monthly-routes-filters-card .processing-page-title {
+  color: var(--brand-navy);
+}
+
+.monthly-routes-library-page .monthly-routes-filters__primary {
+  background: #f8fafc;
+  border: 1px solid #eef1f5;
+  border-radius: 0.6rem;
+  padding: 0.85rem 1rem;
+}
+
+.monthly-routes-library-page .monthly-routes-filters__label {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #64748b;
+}
+
+.monthly-routes-library-page .monthly-routes-filters__display {
+  padding-left: 4px;
+}
+
+.monthly-routes-library-page .monthly-routes-filters__section-title {
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  color: #64748b;
+}
+
+.monthly-routes-library-page .monthly-routes-filters-card .form-control {
+  border-color: #d7dee8;
+}
+
+.monthly-routes-library-page .monthly-routes-filters-card .form-control:focus {
+  border-color: rgba(245, 130, 32, 0.65);
+  box-shadow: 0 0 0 0.2rem rgba(245, 130, 32, 0.16);
+}
+
+.monthly-routes-library-page .monthly-routes-filters__check .form-check-label {
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+/* Keep Display toggles + export on one line; scroll horizontally if the viewport is narrow */
+.monthly-routes-library-page .monthly-routes-filters__checks--row {
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 0.15rem;
+}
+
+.monthly-routes-library-page .monthly-routes-filters__checks--row .form-check-label {
+  white-space: nowrap;
 }
 
 /* Library table: testing month columns — uniform slab (no striped/hover zebra from Bootstrap) */
@@ -2059,6 +2128,98 @@
 
 .monthly-route-detail {
   border-left: 4px solid #f58220;
+}
+
+/* Monthly route / library location detail — hero panel (identity + stats) */
+.monthly-route-detail-page .monthly-route-detail-hero.monthly-location-detail-surface,
+.monthly-location-detail-page .monthly-location-detail-hero.monthly-location-detail-surface {
+  background: linear-gradient(135deg, #f8fafc 0%, #ffffff 55%);
+  border-left: 4px solid var(--brand-orange) !important;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+}
+
+.monthly-route-detail-page .monthly-route-detail-hero .processing-page-title,
+.monthly-location-detail-page .monthly-location-detail-hero .processing-page-title {
+  color: var(--brand-navy);
+  font-size: clamp(1.35rem, 2.5vw, 1.85rem);
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+@media (min-width: 768px) {
+  .monthly-route-detail-page .monthly-route-detail-hero__specialists-col {
+    border-left: 1px solid #e7eaf0;
+    padding-left: 1.5rem;
+  }
+}
+
+/* Monthly route detail — Performance accordion */
+.monthly-route-detail-page .monthly-route-detail-performance.monthly-location-testing-history-card {
+  border-top: 3px solid rgba(var(--brand-orange-rgb), 0.35);
+}
+
+.monthly-route-detail-page .monthly-route-detail-performance__revenue-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.monthly-route-detail-page .monthly-route-detail-performance__revenue-card .monthly-route-detail-performance__intro {
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.monthly-route-detail-page .monthly-route-detail-performance__revenue-card-title {
+  letter-spacing: 0.04em;
+  color: #64748b !important;
+}
+
+.monthly-route-detail-page .monthly-route-detail-performance__intro {
+  background: #f8fafc;
+  border: 1px solid #eef1f5;
+  border-radius: 0.65rem;
+  padding: 0.85rem 1rem;
+}
+
+.monthly-route-detail-page .monthly-route-detail-performance__year-nav {
+  background: #f3f5f9;
+  border: 1px solid #e7eaf0;
+  border-radius: 0.65rem;
+  padding: 0.5rem 0.65rem;
+}
+
+.monthly-route-detail-page .monthly-route-detail-performance__chart {
+  min-width: 0;
+}
+
+.monthly-route-detail-page .monthly-route-detail-performance__chart-surface {
+  background: linear-gradient(180deg, #fafcff 0%, #f5f7fb 100%);
+  border: 1px solid #e7eaf0;
+  border-radius: 0.65rem;
+  padding: 0.75rem 0.75rem 0.5rem;
+  max-width: 100%;
+}
+
+.monthly-route-detail-page .monthly-route-detail-performance__chart-area {
+  height: 260px;
+  max-width: 100%;
+  position: relative;
+}
+
+.monthly-route-detail-page .monthly-route-detail-performance__empty {
+  min-height: 8rem;
+  border: 2px dashed #c5cdd8;
+  border-radius: 0.5rem;
+  background: linear-gradient(180deg, #fafbfd 0%, #f0f3f8 100%);
+  padding: 1rem;
+  text-align: center;
+}
+
+.monthly-route-detail-page .monthly-route-detail-performance__footnote {
+  border-top: 1px solid #eef1f5;
+  padding-top: 0.85rem;
 }
 
 .monthly-route-detail-page table tbody td.monthly-route-detail-skip-cell-interactive {

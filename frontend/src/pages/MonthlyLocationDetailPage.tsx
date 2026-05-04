@@ -1,4 +1,4 @@
-import type { ReactElement } from 'react'
+import type { ReactElement, ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Accordion, Alert, Badge, Button, Card, Col, Form, Row, Spinner, Table } from 'react-bootstrap'
 import { Link, useNavigate, useParams } from 'react-router-dom'
@@ -13,6 +13,7 @@ import {
   toMonthKey,
   type LibraryLocation,
   type LibraryPayload,
+  type MonthCell,
   type MonthlyLocationComment,
   type MonthlyLocationDetailPayload,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
@@ -39,6 +40,23 @@ function formatScheduledTestDay(monthIso: string, loc: LibraryLocation): string 
     year: 'numeric',
     timeZone: 'UTC',
   }).format(d)
+}
+
+function monthNameFromKey(monthKey: string): string {
+  const ym = parseYearMonth(monthKey)
+  if (!ym) return ''
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'long',
+    timeZone: 'UTC',
+  }).format(new Date(Date.UTC(ym.year, ym.month - 1, 1)))
+}
+
+function isAnnualMonth(monthKey: string, annualMonth: string | null | undefined): boolean {
+  const annual = (annualMonth || '').trim().toLowerCase()
+  if (!annual) return false
+  const full = monthNameFromKey(monthKey).toLowerCase()
+  const short = full.slice(0, 3)
+  return annual === full || annual === short
 }
 
 function statusBadgeVariant(status: string): string {
@@ -91,6 +109,61 @@ type HistoryEdit =
 
 function normalizeHistoryResultStatus(raw: string | undefined): 'tested' | 'skipped' {
   return raw?.toLowerCase() === 'skipped' ? 'skipped' : 'tested'
+}
+
+function testingHistoryResultCellClass(
+  cell: MonthCell | undefined,
+  opts: { editing: boolean; editValue?: 'tested' | 'skipped' },
+  isAnnualMonthRow: boolean
+): string {
+  if (isAnnualMonthRow) return 'monthly-location-testing-history-result--annual'
+  if (opts.editing && opts.editValue) {
+    return opts.editValue === 'tested'
+      ? 'monthly-location-testing-history-result--tested'
+      : 'monthly-location-testing-history-result--skipped'
+  }
+  if (!cell) return ''
+  const n = normalizeHistoryResultStatus(cell.result_status)
+  if (n === 'tested') return 'monthly-location-testing-history-result--tested'
+  if (n === 'skipped') return 'monthly-location-testing-history-result--skipped'
+  return ''
+}
+
+function testingHistoryResultDisplayText(
+  cell: MonthCell | undefined,
+  isNextSlot: boolean,
+  isAnnualMonthRow: boolean
+): string {
+  if (!cell) {
+    if (isAnnualMonthRow) return 'Annual'
+    if (isNextSlot) return 'Pending'
+    return 'No data'
+  }
+  return cell.result_status
+}
+
+function testingHistoryResultMainLabel(
+  cell: MonthCell | undefined,
+  isNextSlot: boolean,
+  isAnnualMonthRow: boolean
+): ReactNode {
+  if (!cell) {
+    return testingHistoryResultDisplayText(cell, isNextSlot, isAnnualMonthRow)
+  }
+  if (normalizeHistoryResultStatus(cell.result_status) === 'skipped') {
+    return (
+      <>
+        <span className="text-capitalize">Skipped</span>
+        {cell.skip_reason?.trim() ? (
+          <>
+            {' — '}
+            <span className="text-break">{cell.skip_reason.trim()}</span>
+          </>
+        ) : null}
+      </>
+    )
+  }
+  return <span className="text-capitalize">{cell.result_status}</span>
 }
 
 export default function MonthlyLocationDetailPage() {
@@ -328,15 +401,21 @@ export default function MonthlyLocationDetailPage() {
         </Link>
       </div>
 
-      <Card className="monthly-location-detail-surface shadow-sm mb-2">
+      <Card className="monthly-location-detail-surface monthly-location-detail-hero mb-2">
         <Card.Body className="p-4">
-          <div className="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-4">
-            <h1 className="h4 mb-0 fw-bold">{title}</h1>
+          <div className="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-4">
+            <div className="min-w-0 flex-grow-1">
+              <div className="text-muted small text-uppercase fw-semibold mb-1">Location</div>
+              <h1 className="processing-page-title mb-0">{title}</h1>
+            </div>
             <Button
-              variant="link"
-              className="p-0 fw-semibold text-primary text-decoration-none shadow-none align-self-start"
+              type="button"
+              variant="outline-primary"
+              size="sm"
+              className="d-inline-flex align-items-center gap-2 flex-shrink-0 align-self-start fw-semibold"
               onClick={() => setShowEditModal(true)}
             >
+              <i className="bi bi-pencil-square" aria-hidden />
               Edit location
             </Button>
           </div>
@@ -482,19 +561,16 @@ export default function MonthlyLocationDetailPage() {
                   responsive
                   size="sm"
                   bordered
-                  hover
                   className="mb-0 small monthly-location-testing-history-grid-table"
                 >
                   <colgroup>
                     <col className="monthly-history-col-month" />
                     <col className="monthly-history-col-result" />
-                    <col className="monthly-history-col-skip" />
                   </colgroup>
                   <thead>
                     <tr>
                       <th>Month</th>
                       <th>Result</th>
-                      <th>Skip reason</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -503,6 +579,7 @@ export default function MonthlyLocationDetailPage() {
                           const cell = location.months[monthIso]
                           const testDayLabel = formatScheduledTestDay(monthIso, location)
                           const isNextSlot = !cell && monthIso === nextTestingMonthIso
+                          const isAnnualMonthRow = isAnnualMonth(monthIso, location.annual_month)
                           const canEditMonth = isMonthlyTestingHistoryEditable(monthIso, location)
                           const editingResult =
                             historyEdit?.kind === 'result' && historyEdit.monthIso === monthIso
@@ -536,9 +613,70 @@ export default function MonthlyLocationDetailPage() {
                             normalizeHistoryResultStatus(cell.result_status) === 'skipped'
 
                           let resultTd: ReactElement
-                          if (editingResult && historyEdit?.kind === 'result') {
+                          if (editingSkip && historyEdit?.kind === 'skip_reason') {
                             resultTd = (
-                              <td className="text-capitalize">
+                              <td
+                                className={[
+                                  testingHistoryResultCellClass(
+                                    cell,
+                                    { editing: true, editValue: 'skipped' },
+                                    isAnnualMonthRow
+                                  ),
+                                ]
+                                  .filter(Boolean)
+                                  .join(' ')}
+                              >
+                                <Form.Control
+                                  size="sm"
+                                  type="text"
+                                  className="mb-2"
+                                  placeholder="Reason (optional)"
+                                  value={historyEdit.value}
+                                  disabled={historySaving}
+                                  onChange={(e) =>
+                                    setHistoryEdit({ ...historyEdit, value: e.target.value })
+                                  }
+                                  aria-label="Skip reason"
+                                />
+                                <div className="d-flex flex-wrap gap-2">
+                                  <Button
+                                    type="button"
+                                    variant="primary"
+                                    size="sm"
+                                    disabled={historySaving}
+                                    onClick={() => void saveHistorySkipEdit()}
+                                  >
+                                    {historySaving ? 'Saving…' : 'Save'}
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="outline-secondary"
+                                    size="sm"
+                                    disabled={historySaving}
+                                    onClick={cancelHistoryEdit}
+                                  >
+                                    Cancel
+                                  </Button>
+                                </div>
+                              </td>
+                            )
+                          } else if (editingResult && historyEdit?.kind === 'result') {
+                            resultTd = (
+                              <td
+                                className={[
+                                  'text-capitalize',
+                                  testingHistoryResultCellClass(
+                                    cell,
+                                    {
+                                      editing: true,
+                                      editValue: historyEdit.value,
+                                    },
+                                    isAnnualMonthRow
+                                  ),
+                                ]
+                                  .filter(Boolean)
+                                  .join(' ')}
+                              >
                                 <Form.Select
                                   size="sm"
                                   className="mb-2"
@@ -581,116 +719,75 @@ export default function MonthlyLocationDetailPage() {
                             resultTd = (
                               <td
                                 className={
-                                  cell
-                                    ? 'text-capitalize'
-                                    : isNextSlot
-                                      ? 'text-muted fst-italic'
-                                      : 'fst-italic'
+                                  [
+                                    cell
+                                      ? 'text-capitalize'
+                                      : isAnnualMonthRow
+                                        ? 'fw-semibold'
+                                        : isNextSlot
+                                          ? 'text-muted fst-italic'
+                                          : 'fst-italic',
+                                    testingHistoryResultCellClass(cell, { editing: false }, isAnnualMonthRow),
+                                  ]
+                                    .filter(Boolean)
+                                    .join(' ') || undefined
                                 }
                               >
-                                {cell ? cell.result_status : isNextSlot ? 'Pending' : 'No data'}
+                                {testingHistoryResultMainLabel(cell, isNextSlot, isAnnualMonthRow)}
                               </td>
                             )
                           } else {
                             resultTd = (
-                              <td className="text-capitalize">
-                                <button
-                                  type="button"
-                                  className="btn btn-link btn-sm p-0 text-decoration-none text-body text-capitalize"
-                                  disabled={historySaving}
-                                  onClick={() => {
-                                    if (historySaving) return
-                                    if (
-                                      historyEdit &&
-                                      (historyEdit.monthIso !== monthIso ||
-                                        historyEdit.kind !== 'result')
-                                    ) {
-                                      return
-                                    }
-                                    setHistorySaveError(null)
-                                    setHistoryEdit({
-                                      kind: 'result',
-                                      monthIso,
-                                      value: normalizeHistoryResultStatus(cell?.result_status),
-                                    })
-                                  }}
-                                >
-                                  {cell ? cell.result_status : isNextSlot ? 'Pending' : 'No data'}
-                                </button>
-                              </td>
-                            )
-                          }
-
-                          let skipTd: ReactElement
-                          if (editingSkip && historyEdit?.kind === 'skip_reason') {
-                            skipTd = (
-                              <td>
-                                <Form.Control
-                                  size="sm"
-                                  type="text"
-                                  className="mb-2"
-                                  placeholder="Reason (optional)"
-                                  value={historyEdit.value}
-                                  disabled={historySaving}
-                                  onChange={(e) =>
-                                    setHistoryEdit({ ...historyEdit, value: e.target.value })
-                                  }
-                                  aria-label="Skip reason"
-                                />
-                                <div className="d-flex flex-wrap gap-2">
-                                  <Button
+                              <td
+                                className={[
+                                  testingHistoryResultCellClass(cell, { editing: false }, isAnnualMonthRow),
+                                ]
+                                  .filter(Boolean)
+                                  .join(' ')}
+                              >
+                                <div className="d-flex flex-wrap align-items-baseline gap-2">
+                                  <button
                                     type="button"
-                                    variant="primary"
-                                    size="sm"
+                                    className="btn btn-link btn-sm p-0 text-decoration-none text-body text-start"
                                     disabled={historySaving}
-                                    onClick={() => void saveHistorySkipEdit()}
+                                    onClick={() => {
+                                      if (historySaving) return
+                                      if (
+                                        historyEdit &&
+                                        (historyEdit.monthIso !== monthIso ||
+                                          historyEdit.kind !== 'result')
+                                      ) {
+                                        return
+                                      }
+                                      setHistorySaveError(null)
+                                      setHistoryEdit({
+                                        kind: 'result',
+                                        monthIso,
+                                        value: normalizeHistoryResultStatus(cell?.result_status),
+                                      })
+                                    }}
                                   >
-                                    {historySaving ? 'Saving…' : 'Save'}
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    variant="outline-secondary"
-                                    size="sm"
-                                    disabled={historySaving}
-                                    onClick={cancelHistoryEdit}
-                                  >
-                                    Cancel
-                                  </Button>
+                                    {testingHistoryResultMainLabel(cell, isNextSlot, isAnnualMonthRow)}
+                                  </button>
+                                  {canEditSkip && !historyEdit ? (
+                                    <button
+                                      type="button"
+                                      className="btn btn-link btn-sm p-0 text-decoration-none"
+                                      disabled={historySaving}
+                                      onClick={() => {
+                                        if (historySaving) return
+                                        setHistorySaveError(null)
+                                        setHistoryEdit({
+                                          kind: 'skip_reason',
+                                          monthIso,
+                                          value: cell?.skip_reason ?? '',
+                                        })
+                                      }}
+                                    >
+                                      Edit reason
+                                    </button>
+                                  ) : null}
                                 </div>
-                              </td>
-                            )
-                          } else if (!cell) {
-                            skipTd = (
-                              <td className={isNextSlot ? 'text-muted' : undefined}>—</td>
-                            )
-                          } else if (!canEditSkip) {
-                            skipTd = <td>{cell.skip_reason || '—'}</td>
-                          } else {
-                            skipTd = (
-                              <td>
-                                <button
-                                  type="button"
-                                  className="btn btn-link btn-sm p-0 text-decoration-none text-body text-break text-start"
-                                  disabled={historySaving}
-                                  onClick={() => {
-                                    if (historySaving) return
-                                    if (
-                                      historyEdit &&
-                                      (historyEdit.monthIso !== monthIso ||
-                                        historyEdit.kind !== 'skip_reason')
-                                    ) {
-                                      return
-                                    }
-                                    setHistorySaveError(null)
-                                    setHistoryEdit({
-                                      kind: 'skip_reason',
-                                      monthIso,
-                                      value: cell.skip_reason ?? '',
-                                    })
-                                  }}
-                                >
-                                  {cell.skip_reason || '—'}
-                                </button>
                               </td>
                             )
                           }
@@ -699,7 +796,6 @@ export default function MonthlyLocationDetailPage() {
                             <tr key={monthIso} className={rowClass}>
                               {monthTd}
                               {resultTd}
-                              {skipTd}
                             </tr>
                           )
                         })
