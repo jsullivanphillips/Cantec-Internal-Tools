@@ -41,6 +41,18 @@ function hhmmNow(): string {
   return `${hh}:${mm}`
 }
 
+function isAnnualForMonth(annualMonth: string | null | undefined, monthIso: string): boolean {
+  const raw = (annualMonth || '').trim().toLowerCase()
+  if (!raw) return false
+  const ym = parseYearMonth(monthIso)
+  if (!ym) return false
+  const monthFull = new Intl.DateTimeFormat('en-CA', { month: 'long', timeZone: 'UTC' })
+    .format(new Date(Date.UTC(ym.year, ym.month - 1, 1)))
+    .toLowerCase()
+  const monthShort = monthFull.slice(0, 3)
+  return raw === monthFull || raw === monthShort
+}
+
 function autosizeTextarea(el: HTMLTextAreaElement): void {
   el.style.height = 'auto'
   el.style.height = `${el.scrollHeight}px`
@@ -66,7 +78,9 @@ export default function TechnicianWorksheetPage() {
   const [timeOutDraft, setTimeOutDraft] = useState('')
   const [skipReasonModalRow, setSkipReasonModalRow] = useState<TechnicianWorksheetRow | null>(null)
   const [skipReasonDraft, setSkipReasonDraft] = useState('')
+  const [topbarHeight, setTopbarHeight] = useState(0)
   const syncingRef = useRef(false)
+  const topbarRef = useRef<HTMLDivElement | null>(null)
 
   const updateLocalRow = useCallback((locationId: number, patch: WorksheetChangeSet) => {
     setPayload((prev) => {
@@ -185,6 +199,18 @@ export default function TechnicianWorksheetPage() {
     return () => clearInterval(t)
   }, [runSyncQueue])
 
+  useEffect(() => {
+    const el = topbarRef.current
+    if (!el) {
+      setTopbarHeight(0)
+      return
+    }
+    const ro = new ResizeObserver(() => setTopbarHeight(el.offsetHeight))
+    ro.observe(el)
+    setTopbarHeight(el.offsetHeight)
+    return () => ro.disconnect()
+  }, [payload])
+
   const queueLength = useMemo(() => {
     return loadSyncQueue().filter((q) => q.routeId === idNum && q.monthIso === monthQuery).length
   }, [idNum, monthQuery, payload, syncState])
@@ -245,7 +271,46 @@ export default function TechnicianWorksheetPage() {
     ) : null
 
   return (
-    <div className="container-fluid py-3 technician-worksheet-page">
+    <div className="technician-worksheet-page">
+      {payload ? (
+        <div ref={topbarRef} className="technician-worksheet-topbar card shadow-sm">
+          <div className="card-body py-2 container-fluid">
+            <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
+              <div>
+                <div className="fw-semibold">{payload.route.label}</div>
+                <div className="small text-muted">{formatMonthHeading(payload.month_date)}</div>
+              </div>
+              <div className="d-flex align-items-center gap-2">
+                {completionPending(idNum, monthQuery) ? <Badge bg="warning">Pending Confirmation</Badge> : null}
+                <Badge bg={syncState === 'conflict' ? 'danger' : syncState === 'syncing' ? 'info' : syncState === 'saved_offline' ? 'secondary' : 'success'}>
+                  {syncState === 'conflict'
+                    ? 'Conflict'
+                    : syncState === 'syncing'
+                      ? 'Syncing'
+                      : syncState === 'saved_offline'
+                        ? 'Saved offline'
+                        : 'Synced'}
+                </Badge>
+                <span className="small text-muted">{queueLength} queued</span>
+                <Button
+                  size="sm"
+                  variant="outline-secondary"
+                  onClick={() => {
+                    markCompletionPending(idNum, monthQuery, true)
+                  }}
+                >
+                  Complete (Offline)
+                </Button>
+              </div>
+            </div>
+            {syncMessage ? <div className="small text-danger mt-1">{syncMessage}</div> : null}
+          </div>
+        </div>
+      ) : null}
+      <div
+        className="container-fluid py-3"
+        style={topbarHeight ? { paddingTop: topbarHeight } : undefined}
+      >
       <div className="d-flex flex-wrap align-items-center gap-2 mb-3">
         <Link to={Number.isNaN(idNum) ? '/monthlies/routes' : `/monthlies/routes/${idNum}`} className="small">
           ← Back to route
@@ -263,45 +328,9 @@ export default function TechnicianWorksheetPage() {
       {error ? <Alert variant="danger">{error}</Alert> : null}
       {payload ? (
         <>
-          <Card className="shadow-sm mb-3 technician-worksheet-sticky-header">
-            <Card.Body className="py-2">
-              <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
-                <div>
-                  <div className="fw-semibold">{payload.route.label}</div>
-                  <div className="small text-muted">{formatMonthHeading(payload.month_date)}</div>
-                </div>
-                <div className="d-flex align-items-center gap-2">
-                  {completionPending(idNum, monthQuery) ? <Badge bg="warning">Pending Confirmation</Badge> : null}
-                  <Badge bg={syncState === 'conflict' ? 'danger' : syncState === 'syncing' ? 'info' : syncState === 'saved_offline' ? 'secondary' : 'success'}>
-                    {syncState === 'conflict'
-                      ? 'Conflict'
-                      : syncState === 'syncing'
-                        ? 'Syncing'
-                        : syncState === 'saved_offline'
-                          ? 'Saved offline'
-                          : 'Synced'}
-                  </Badge>
-                  <span className="small text-muted">{queueLength} queued</span>
-                  <Button
-                    size="sm"
-                    variant="outline-secondary"
-                    onClick={() => {
-                      markCompletionPending(idNum, monthQuery, true)
-                    }}
-                  >
-                    Complete (Offline)
-                  </Button>
-                </div>
-              </div>
-              {syncMessage ? <div className="small text-danger mt-1">{syncMessage}</div> : null}
-            </Card.Body>
-          </Card>
           <Card className="shadow-sm">
             <Card.Body className="p-0">
               <div className="technician-worksheet-table-wrap">
-                <div className="small text-muted px-2 py-1 border-bottom">
-                  Swipe left/right to view all worksheet columns
-                </div>
                 <Table size="sm" className="mb-0 align-middle technician-worksheet-table">
                   <thead className="table-light">
                     <tr>
@@ -317,7 +346,10 @@ export default function TechnicianWorksheetPage() {
                   </thead>
                   <tbody>
                     {payload.rows.map((row, index) => (
-                      <tr key={`${row.location_id}-${row.month_date}`}>
+                      <tr
+                        key={`${row.location_id}-${row.month_date}`}
+                        className={isAnnualForMonth(row.annual_month, payload.month_date) ? 'tw-row-annual' : undefined}
+                      >
                         {(() => {
                           const annualKey = `annual_month:${row.location_id}`
                           const ringKey = `ring:${row.location_id}`
@@ -325,6 +357,7 @@ export default function TechnicianWorksheetPage() {
                           const facpKey = `facp:${row.location_id}`
                           const proceduresKey = `testing_procedures:${row.location_id}`
                           const notesKey = `inspection_tech_notes:${row.location_id}`
+                          const annualMatch = isAnnualForMonth(row.annual_month, payload.month_date)
                           return (
                             <>
                         <td className="tw-col-order text-center tabular-nums">{index + 1}</td>
@@ -339,7 +372,9 @@ export default function TechnicianWorksheetPage() {
                           <div className="tw-stacked-cell">
                             <label className="tw-stacked-label">Annual</label>
                             <input
-                              className={`form-control form-control-sm ${isEditorActive(annualKey) ? '' : 'tw-readonly-field'}`}
+                              className={`form-control form-control-sm ${isEditorActive(annualKey) ? '' : 'tw-readonly-field'} ${
+                                annualMatch ? 'tw-annual-current-month' : ''
+                              }`}
                               defaultValue={row.annual_month ?? ''}
                               readOnly={!isEditorActive(annualKey)}
                               autoFocus={isEditorActive(annualKey)}
@@ -498,7 +533,7 @@ export default function TechnicianWorksheetPage() {
                                 </Button>
                               </>
                             )}
-                            <Button variant="link" size="sm" className="px-0" onClick={() => void loadAudit(row)}>
+                            <Button variant="link" size="sm" className="px-0 tw-audit-link" onClick={() => void loadAudit(row)}>
                               Audit
                             </Button>
                           </div>
@@ -645,6 +680,7 @@ export default function TechnicianWorksheetPage() {
           </Button>
         </Modal.Footer>
       </Modal>
+      </div>
     </div>
   )
 }

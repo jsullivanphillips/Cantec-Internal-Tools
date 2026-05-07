@@ -3359,10 +3359,22 @@ body {
   }
 }
 
-.technician-worksheet-page .technician-worksheet-sticky-header {
-  position: sticky;
-  top: 4.5rem;
-  z-index: 20;
+.technician-worksheet-page .technician-worksheet-topbar {
+  position: fixed;
+  top: 4.25rem;
+  left: 0;
+  right: 0;
+  z-index: 1020;
+  background: #fff;
+  border-radius: 0;
+  margin: 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+@media (min-width: 992px) {
+  .technician-worksheet-page .technician-worksheet-topbar {
+    left: 260px;
+  }
 }
 
 .technician-worksheet-page .technician-worksheet-table input,
@@ -3386,6 +3398,37 @@ body {
   vertical-align: middle !important;
 }
 
+.technician-worksheet-page .tw-col-action {
+  vertical-align: middle !important;
+  position: relative;
+  padding-bottom: 1rem;
+}
+
+.technician-worksheet-page .tw-col-action > .d-grid {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  justify-content: center;
+}
+
+.technician-worksheet-page .tw-audit-link {
+  position: absolute;
+  bottom: 0.2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.56rem !important;
+  line-height: 1;
+  padding: 0 !important;
+}
+
+.technician-worksheet-page .tw-col-action > .d-grid .btn:not(.tw-audit-link) {
+  width: 100%;
+  min-height: 2.25rem;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+  font-size: 0.82rem;
+}
+
 .technician-worksheet-page .technician-worksheet-table-wrap {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
@@ -3401,6 +3444,13 @@ body {
   white-space: normal;
   border-right: 1px solid #c7ccd1;
   border-bottom: 1px solid #c7ccd1;
+}
+
+.technician-worksheet-page .technician-worksheet-table thead th {
+  font-size: 0.72rem !important;
+  line-height: 1.2;
+  font-weight: 600;
+  vertical-align: middle !important;
 }
 
 .technician-worksheet-page .technician-worksheet-table {
@@ -3439,6 +3489,7 @@ body {
   background: #fff;
   z-index: 4;
   vertical-align: middle !important;
+  font-size: 0.55em;
 }
 
 .technician-worksheet-page .technician-worksheet-table thead .tw-col-order {
@@ -3446,12 +3497,16 @@ body {
   z-index: 5;
 }
 
+.technician-worksheet-page .technician-worksheet-table tbody tr.tw-row-annual > td {
+  background-color: #fff3df;
+}
+
 .technician-worksheet-page .tw-col-stacked-ark { min-width: 7rem; max-width: 7rem; }
-.technician-worksheet-page .tw-col-facp { min-width: 10rem; max-width: 10rem; }
-.technician-worksheet-page .tw-col-monitoring { min-width: 4.5rem; max-width: 4.5rem; }
+.technician-worksheet-page .tw-col-facp { min-width: 9rem; max-width: 9rem; }
+.technician-worksheet-page .tw-col-monitoring { min-width: 5.5rem; max-width: 5.5rem; }
 .technician-worksheet-page .tw-col-procedures { min-width: 9rem; max-width: 9rem; }
 .technician-worksheet-page .tw-col-notes { min-width: 9rem; max-width: 9rem; }
-.technician-worksheet-page .tw-col-action { min-width: 6.25rem; max-width: 6.25rem; }
+.technician-worksheet-page .tw-col-action { min-width: 8.5rem; max-width: 8.5rem; }
 
 .technician-worksheet-page .technician-worksheet-table td .form-control,
 .technician-worksheet-page .technician-worksheet-table td .form-select {
@@ -3519,6 +3574,12 @@ body {
   line-height: 1.1;
 }
 
+.technician-worksheet-page .tw-col-stacked-ark .tw-stacked-cell input.tw-annual-current-month {
+  background-color: #ff8a00 !important;
+  color: #111;
+  font-weight: 600;
+}
+
 @media (max-width: 834px) {
   .technician-worksheet-page .technician-worksheet-table-wrap {
     overflow-x: hidden;
@@ -3569,6 +3630,10 @@ body {
   .technician-worksheet-page .technician-worksheet-table select {
     font-size: 0.76rem;
     padding: 0.15rem 0.3rem;
+  }
+
+  .technician-worksheet-page .technician-worksheet-table thead th {
+    font-size: 0.66rem !important;
   }
 
   .technician-worksheet-page .tw-stacked-label {
