@@ -166,6 +166,18 @@ function testingHistoryResultMainLabel(
   return <span className="text-capitalize">{cell.result_status}</span>
 }
 
+function testingHistoryRouteContextLine(cell: MonthCell | undefined): ReactNode {
+  const tr = cell?.test_monthly_route
+  if (!tr?.route_number) return null
+  const dn = tr.display_name?.trim()
+  const label = dn ? `R${tr.route_number} · ${dn}` : tr.label || `R${tr.route_number}`
+  return (
+    <div className="text-muted small mt-1" title="Route assignment when this month was recorded">
+      Recorded on {label}
+    </div>
+  )
+}
+
 export default function MonthlyLocationDetailPage() {
   const { locationId } = useParams<{ locationId: string }>()
   const navigate = useNavigate()
@@ -734,6 +746,7 @@ export default function MonthlyLocationDetailPage() {
                                 }
                               >
                                 {testingHistoryResultMainLabel(cell, isNextSlot, isAnnualMonthRow)}
+                                {testingHistoryRouteContextLine(cell)}
                               </td>
                             )
                           } else {
@@ -788,6 +801,7 @@ export default function MonthlyLocationDetailPage() {
                                     </button>
                                   ) : null}
                                 </div>
+                                {testingHistoryRouteContextLine(cell)}
                               </td>
                             )
                           }

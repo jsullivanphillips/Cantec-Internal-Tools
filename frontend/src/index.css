@@ -3358,3 +3358,235 @@ body {
     flex-direction: column;
   }
 }
+
+.technician-worksheet-page .technician-worksheet-sticky-header {
+  position: sticky;
+  top: 4.5rem;
+  z-index: 20;
+}
+
+.technician-worksheet-page .technician-worksheet-table input,
+.technician-worksheet-page .technician-worksheet-table textarea,
+.technician-worksheet-page .technician-worksheet-table select {
+  min-width: 5rem;
+  font-size: 0.8rem;
+  padding: 0.2rem 0.35rem;
+}
+
+.technician-worksheet-page .technician-worksheet-table td {
+  vertical-align: top;
+}
+
+.technician-worksheet-page .tw-col-address,
+.technician-worksheet-page .tw-col-stacked-ark,
+.technician-worksheet-page .tw-col-facp,
+.technician-worksheet-page .tw-col-monitoring,
+.technician-worksheet-page .tw-col-procedures,
+.technician-worksheet-page .tw-col-notes {
+  vertical-align: middle !important;
+}
+
+.technician-worksheet-page .technician-worksheet-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.technician-worksheet-page .technician-worksheet-table {
+  width: max-content;
+  min-width: 100%;
+}
+
+.technician-worksheet-page .technician-worksheet-table th,
+.technician-worksheet-page .technician-worksheet-table td {
+  white-space: normal;
+  border-right: 1px solid #c7ccd1;
+  border-bottom: 1px solid #c7ccd1;
+}
+
+.technician-worksheet-page .technician-worksheet-table {
+  border-left: 1px solid #c7ccd1;
+  border-top: 1px solid #c7ccd1;
+}
+
+.technician-worksheet-page .tw-col-address {
+  min-width: 8.5rem;
+  max-width: 8.5rem;
+  position: sticky;
+  left: 2.2rem;
+  background: #fff;
+  z-index: 2;
+}
+
+.technician-worksheet-page .tw-address-block {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.15rem;
+}
+
+.technician-worksheet-page .technician-worksheet-table thead .tw-col-address {
+  background: #f8f9fa;
+  z-index: 3;
+}
+
+.technician-worksheet-page .tw-col-order {
+  min-width: 2.2rem;
+  max-width: 2.2rem;
+  width: 2.2rem;
+  position: sticky;
+  left: 0;
+  background: #fff;
+  z-index: 4;
+  vertical-align: middle !important;
+}
+
+.technician-worksheet-page .technician-worksheet-table thead .tw-col-order {
+  background: #f8f9fa;
+  z-index: 5;
+}
+
+.technician-worksheet-page .tw-col-stacked-ark { min-width: 7rem; max-width: 7rem; }
+.technician-worksheet-page .tw-col-facp { min-width: 10rem; max-width: 10rem; }
+.technician-worksheet-page .tw-col-monitoring { min-width: 4.5rem; max-width: 4.5rem; }
+.technician-worksheet-page .tw-col-procedures { min-width: 9rem; max-width: 9rem; }
+.technician-worksheet-page .tw-col-notes { min-width: 9rem; max-width: 9rem; }
+.technician-worksheet-page .tw-col-action { min-width: 6.25rem; max-width: 6.25rem; }
+
+.technician-worksheet-page .technician-worksheet-table td .form-control,
+.technician-worksheet-page .technician-worksheet-table td .form-select {
+  height: auto;
+  min-height: 0;
+  max-height: none;
+}
+
+.technician-worksheet-page .technician-worksheet-table td textarea.form-control {
+  resize: none;
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.technician-worksheet-page .tw-readonly-field {
+  background-color: #f8f9fa;
+  cursor: pointer;
+}
+
+.technician-worksheet-page .tw-col-facp .form-control,
+.technician-worksheet-page .tw-col-procedures .form-control,
+.technician-worksheet-page .tw-col-notes .form-control {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  border-radius: 0;
+  padding: 0;
+}
+
+.technician-worksheet-page .tw-col-facp .form-control.tw-readonly-field,
+.technician-worksheet-page .tw-col-procedures .form-control.tw-readonly-field,
+.technician-worksheet-page .tw-col-notes .form-control.tw-readonly-field {
+  background: transparent !important;
+}
+
+.technician-worksheet-page .tw-col-facp .form-control:not(.tw-readonly-field),
+.technician-worksheet-page .tw-col-procedures .form-control:not(.tw-readonly-field),
+.technician-worksheet-page .tw-col-notes .form-control:not(.tw-readonly-field) {
+  background: #ffffff !important;
+  border: 1px solid #9db7d4 !important;
+  box-shadow: 0 0 0 1px rgba(13, 110, 253, 0.12) inset;
+  padding: 0.2rem 0.3rem;
+}
+
+.technician-worksheet-page .tw-col-facp .form-control:not(.tw-readonly-field):focus,
+.technician-worksheet-page .tw-col-procedures .form-control:not(.tw-readonly-field):focus,
+.technician-worksheet-page .tw-col-notes .form-control:not(.tw-readonly-field):focus {
+  border-color: #0d6efd !important;
+  box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.2) !important;
+}
+
+.technician-worksheet-page .tw-stacked-cell {
+  display: grid;
+  grid-template-rows: repeat(3, auto auto);
+  gap: 0.15rem;
+  height: 100%;
+  align-content: center;
+}
+
+.technician-worksheet-page .tw-stacked-label {
+  font-size: 0.62rem;
+  color: #6c757d;
+  margin: 0;
+  line-height: 1.1;
+}
+
+@media (max-width: 834px) {
+  .technician-worksheet-page .technician-worksheet-table-wrap {
+    overflow-x: hidden;
+  }
+
+  .technician-worksheet-page .technician-worksheet-table {
+    width: 100%;
+    min-width: 100%;
+    table-layout: fixed;
+  }
+
+  .technician-worksheet-page .technician-worksheet-table thead th,
+  .technician-worksheet-page .technician-worksheet-table tbody td {
+    min-width: 0 !important;
+    max-width: none !important;
+  }
+
+  .technician-worksheet-page .tw-col-order,
+  .technician-worksheet-page .tw-col-address {
+    position: static;
+    left: auto;
+  }
+
+  .technician-worksheet-page .technician-worksheet-table thead .tw-col-order,
+  .technician-worksheet-page .technician-worksheet-table thead .tw-col-address {
+    z-index: auto;
+  }
+
+  .technician-worksheet-page .technician-worksheet-table th:nth-child(1),
+  .technician-worksheet-page .technician-worksheet-table td:nth-child(1) { width: 3%; }
+  .technician-worksheet-page .technician-worksheet-table th:nth-child(2),
+  .technician-worksheet-page .technician-worksheet-table td:nth-child(2) { width: 13%; }
+  .technician-worksheet-page .technician-worksheet-table th:nth-child(3),
+  .technician-worksheet-page .technician-worksheet-table td:nth-child(3) { width: 13%; }
+  .technician-worksheet-page .technician-worksheet-table th:nth-child(4),
+  .technician-worksheet-page .technician-worksheet-table td:nth-child(4) { width: 18%; }
+  .technician-worksheet-page .technician-worksheet-table th:nth-child(5),
+  .technician-worksheet-page .technician-worksheet-table td:nth-child(5) { width: 6%; }
+  .technician-worksheet-page .technician-worksheet-table th:nth-child(6),
+  .technician-worksheet-page .technician-worksheet-table td:nth-child(6) { width: 17%; }
+  .technician-worksheet-page .technician-worksheet-table th:nth-child(7),
+  .technician-worksheet-page .technician-worksheet-table td:nth-child(7) { width: 17%; }
+  .technician-worksheet-page .technician-worksheet-table th:nth-child(8),
+  .technician-worksheet-page .technician-worksheet-table td:nth-child(8) { width: 14%; }
+
+  .technician-worksheet-page .technician-worksheet-table input,
+  .technician-worksheet-page .technician-worksheet-table textarea,
+  .technician-worksheet-page .technician-worksheet-table select {
+    font-size: 0.76rem;
+    padding: 0.15rem 0.3rem;
+  }
+
+  .technician-worksheet-page .tw-stacked-label {
+    font-size: 0.58rem;
+  }
+
+  .technician-worksheet-page .tw-col-address {
+    font-size: 0.74rem;
+    line-height: 1.15;
+  }
+
+  .technician-worksheet-page .tw-col-facp,
+  .technician-worksheet-page .tw-col-facp .form-control,
+  .technician-worksheet-page .tw-col-procedures,
+  .technician-worksheet-page .tw-col-procedures .form-control,
+  .technician-worksheet-page .tw-col-notes,
+  .technician-worksheet-page .tw-col-notes .form-control {
+    font-size: 0.68rem;
+    line-height: 1.15;
+  }
+}

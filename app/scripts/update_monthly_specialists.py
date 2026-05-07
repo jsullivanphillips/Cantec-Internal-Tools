@@ -6,6 +6,10 @@ Requires PROCESSING_USERNAME / PROCESSING_PASSWORD.
 
 Env:
   MONTHLY_SPECIALIST_MONTH_LOOKBACK — number of Pacific months to refresh (default 24).
+
+CLI:
+  python -m app.scripts.update_monthly_specialists --route-number 1
+    Refresh snapshot + specialist months only for ``MonthlyRoute.route_number == 1`` (needs ST FK).
 """
 from __future__ import annotations
 
@@ -22,7 +26,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from app import create_app, db
 from app.db_models import MonthlyRoute, MonthlyRouteSnapshot, MonthlyRouteSpecialistMonth
-from app.routes.scheduling_attack import get_active_techs, parse_dt
+from app.routes.scheduling_attack import parse_dt
 
 load_dotenv()
 
@@ -43,10 +47,6 @@ def authenticate(username: str, password: str) -> None:
 
 def safe_str(v: object) -> str:
     return (v or "").strip()
-
-
-def _norm_name(s: str) -> str:
-    return " ".join((s or "").strip().split()).casefold()
 
 
 def pacific_month_starts(lookback: int) -> list[date]:
@@ -96,10 +96,13 @@ def completed_on_range_unix(month_first: date) -> tuple[int, int]:
     return int(start.timestamp()), int(end_exclusive.timestamp()) - 1
 
 
-def tech_increment_names_for_job(job: dict[str, Any], active_name_set: set[str]) -> list[str]:
+def tech_increment_names_for_job(job: dict[str, Any]) -> list[str]:
     """
     Display names to attribute for this job (may repeat), mirroring legacy snapshot logic:
     single appointment → techs on it; multiple → per non–Office Clerical service request × techs.
+
+    Includes every technician named on the job (including former employees no longer marked
+    active in ServiceTrade). Only skips empty names and Office Clerical service lines.
     """
     names: list[str] = []
     appointments = job.get("appointments", []) or []
@@ -109,7 +112,7 @@ def tech_increment_names_for_job(job: dict[str, Any], active_name_set: set[str])
     if len(appointments) == 1:
         for tech in appointments[0].get("techs", []) or []:
             name = safe_str(tech.get("name"))
-            if not name or _norm_name(name) not in active_name_set:
+            if not name:
                 continue
             names.append(name)
         return names
@@ -132,15 +135,15 @@ def tech_increment_names_for_job(job: dict[str, Any], active_name_set: set[str])
 
             for tech in techs:
                 name = safe_str(tech.get("name"))
-                if not name or _norm_name(name) not in active_name_set:
+                if not name:
                     continue
                 names.append(name)
 
     return names
 
 
-def apply_job_to_counts(job: dict[str, Any], tech_counts: dict[str, int], active_name_set: set[str]) -> None:
-    for name in tech_increment_names_for_job(job, active_name_set):
+def apply_job_to_counts(job: dict[str, Any], tech_counts: dict[str, int]) -> None:
+    for name in tech_increment_names_for_job(job):
         tech_counts[name] = tech_counts.get(name, 0) + 1
 
 
@@ -169,7 +172,7 @@ def fetch_completed_jobs_route_month(st_route_id: int, begin_ts: int, end_ts: in
     return all_jobs
 
 
-def monthly_specialists(*, max_routes: int | None = None) -> None:
+def monthly_specialists(*, max_routes: int | None = None, route_number: int | None = None) -> None:
     MONTHLY_COMPANY_ID = 5004069
     lookback = int(os.getenv("MONTHLY_SPECIALIST_MONTH_LOOKBACK") or "24")
     if lookback < 1:
@@ -183,16 +186,6 @@ def monthly_specialists(*, max_routes: int | None = None) -> None:
             raise SystemExit("Missing PROCESSING_USERNAME/PROCESSING_PASSWORD environment vars.")
         authenticate(username, password)
 
-        active_techs = get_active_techs() or []
-        active_name_set = {
-            _norm_name(t.get("name"))
-            for t in active_techs
-            if str(t.get("status", "")).lower() == "active"
-            and t.get("isTech") is True
-            and safe_str(t.get("name"))
-        }
-
-        print("Active techs:", len(active_name_set))
         print("Pacific month lookback:", lookback)
 
         params = {"companyId": MONTHLY_COMPANY_ID, "limit": 1000, "status": "active"}
@@ -209,11 +202,33 @@ def monthly_specialists(*, max_routes: int | None = None) -> None:
 
         print("Number of monthly routes:", len(route_locations))
 
+        route_filter_st_id: int | None = None
+        if route_number is not None:
+            mr_filter = MonthlyRoute.query.filter_by(route_number=route_number).one_or_none()
+            if mr_filter is None:
+                raise SystemExit(f"No MonthlyRoute row with route_number={route_number}.")
+            st_link = mr_filter.service_trade_route_location_id
+            if st_link is None:
+                raise SystemExit(
+                    f"MonthlyRoute R{route_number} has no service_trade_route_location_id. "
+                    "Run: python -m app.scripts.backfill_monthly_route_service_trade_from_snapshots --execute"
+                )
+            route_filter_st_id = int(st_link)
+            if route_filter_st_id not in route_locations:
+                raise SystemExit(
+                    f"ServiceTrade location id {route_filter_st_id} (R{route_number}) is not in the active "
+                    f"company {MONTHLY_COMPANY_ID} location list (first {len(route_locations)} ids returned). "
+                    "Increase API paging or fix the ST link."
+                )
+            print(f"Filtering to route_number={route_number} only (ST location_id={route_filter_st_id}).")
+
         month_first_list = pacific_month_starts(lookback)
         oldest_month = month_first_list[0]
 
         processed = 0
         for route_id, route_name in route_locations.items():
+            if route_filter_st_id is not None and route_id != route_filter_st_id:
+                continue
             if max_routes is not None and processed >= max_routes:
                 break
             processed += 1
@@ -226,7 +241,7 @@ def monthly_specialists(*, max_routes: int | None = None) -> None:
             jobs_snapshot = (snap_resp.json().get("data", {}) or {}).get("jobs", []) or []
 
             for job in jobs_snapshot:
-                apply_job_to_counts(job, tech_counts, active_name_set)
+                apply_job_to_counts(job, tech_counts)
 
             top_5 = [
                 {"tech_name": tech_name, "jobs": count}
@@ -285,7 +300,7 @@ def monthly_specialists(*, max_routes: int | None = None) -> None:
                         ij = int(jid)
                         if ij in seen_job_ids:
                             continue
-                    inc = tech_increment_names_for_job(job, active_name_set)
+                    inc = tech_increment_names_for_job(job)
                     if not inc:
                         continue
                     if jid is not None:
@@ -327,7 +342,7 @@ def monthly_specialists(*, max_routes: int | None = None) -> None:
 
             print(f"\n------\n{route_name} — snapshot: {len(jobs_snapshot)} jobs; specialist months refreshed.\n------\n")
             if not top_5:
-                print("No ACTIVE technicians found for last 100 completed jobs (snapshot).")
+                print("No technicians attributed on last 100 completed jobs (snapshot).")
             else:
                 for row in top_5:
                     print(f"{row['tech_name']}: {row['jobs']} jobs completed.")
@@ -340,10 +355,17 @@ def main() -> None:
         type=int,
         default=None,
         metavar="N",
-        help="Process at most N ServiceTrade route locations (debug).",
+        help="Process at most N ServiceTrade route locations (debug; order follows API).",
+    )
+    parser.add_argument(
+        "--route-number",
+        type=int,
+        default=None,
+        metavar="R",
+        help="Sync only this Excel route_number (requires MonthlyRoute.service_trade_route_location_id set).",
     )
     args = parser.parse_args()
-    monthly_specialists(max_routes=args.max_routes)
+    monthly_specialists(max_routes=args.max_routes, route_number=args.route_number)
 
 
 if __name__ == "__main__":

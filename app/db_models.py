@@ -552,6 +552,8 @@ class MonthlyRoute(db.Model):
 
     id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
     route_number = db.Column(db.Integer, nullable=False)
+    #: Optional human-readable label (e.g. internal subset name); not used for routing logic.
+    display_name = db.Column(db.String(255), nullable=True)
     weekday_iso = db.Column(db.SmallInteger, nullable=False)
     week_occurrence = db.Column(db.SmallInteger, nullable=False)
 
@@ -638,6 +640,90 @@ class MonthlyRouteSpecialistMonth(db.Model):
     monthly_route = db.relationship("MonthlyRoute", back_populates="specialist_months")
 
 
+class MonitoringCompany(db.Model):
+    """Office-maintained monitoring vendor directory (phone numbers live here)."""
+
+    __tablename__ = "monitoring_company"
+    __table_args__ = (
+        db.Index("ix_monitoring_company_name_normalized", "name_normalized"),
+    )
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    name = db.Column(db.String(255), nullable=False)
+    name_normalized = db.Column(db.String(255), nullable=False)
+    primary_phone = db.Column(db.String(64), nullable=True)
+    secondary_phone = db.Column(db.String(64), nullable=True)
+    active = db.Column(db.Boolean, nullable=False, server_default=db.true())
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        nullable=False,
+    )
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        onupdate=db.func.now(),
+        nullable=False,
+    )
+
+    monthly_locations = db.relationship(
+        "MonthlyRouteLocation",
+        back_populates="monitoring_company",
+        foreign_keys="MonthlyRouteLocation.monitoring_company_id",
+    )
+    proposals_resulting = db.relationship(
+        "MonitoringCompanyProposal",
+        back_populates="resulting_company",
+        foreign_keys="MonitoringCompanyProposal.resulting_monitoring_company_id",
+    )
+
+
+class MonitoringCompanyProposal(db.Model):
+    """
+    Technician-proposed monitoring company before a ``MonitoringCompany`` row exists.
+    Office promotes proposal → directory row and clears pending FK on locations.
+    """
+
+    __tablename__ = "monitoring_company_proposal"
+    __table_args__ = (
+        db.Index("ix_monitoring_company_proposal_status", "status"),
+        db.Index("ix_monitoring_company_proposal_name_normalized", "proposed_name_normalized"),
+    )
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    proposed_name = db.Column(db.String(255), nullable=False)
+    proposed_name_normalized = db.Column(db.String(255), nullable=False)
+    proposed_primary_phone = db.Column(db.String(64), nullable=True)
+    #: pending | approved | rejected | merged
+    status = db.Column(db.String(32), nullable=False, server_default="pending")
+    submitted_by_name = db.Column(db.String(255), nullable=True)
+    route_session_id = db.Column(db.BigInteger, nullable=True, index=True)
+    resulting_monitoring_company_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monitoring_company.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        nullable=False,
+    )
+    resolved_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    resolved_by_username = db.Column(db.String(255), nullable=True)
+
+    resulting_company = db.relationship(
+        "MonitoringCompany",
+        back_populates="proposals_resulting",
+        foreign_keys=[resulting_monitoring_company_id],
+    )
+    pending_locations = db.relationship(
+        "MonthlyRouteLocation",
+        back_populates="pending_monitoring_proposal",
+        foreign_keys="MonthlyRouteLocation.pending_monitoring_company_proposal_id",
+    )
+
+
 class MonthlyRouteLocation(db.Model):
     """
     Real monthly site (address/building). Optional ``service_trade_site_location_id``
@@ -654,6 +740,10 @@ class MonthlyRouteLocation(db.Model):
             name="uq_monthly_route_location_address_company_building_normalized",
         ),
         db.Index("ix_monthly_route_location_status_normalized", "status_normalized"),
+        db.CheckConstraint(
+            "(monitoring_company_id IS NULL OR pending_monitoring_company_proposal_id IS NULL)",
+            name="ck_mrl_monitoring_company_xor_pending_proposal",
+        ),
     )
 
     id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
@@ -686,6 +776,9 @@ class MonthlyRouteLocation(db.Model):
         nullable=True,
         index=True,
     )
+    #: 0-based stop index among locations on ``monthly_route_id``; NULL when not on a route.
+    route_stop_order = db.Column(db.SmallInteger, nullable=True)
+
     service_trade_site_location_id = db.Column(db.BigInteger, nullable=True, unique=True, index=True)
 
     key_id = db.Column(
@@ -694,6 +787,30 @@ class MonthlyRouteLocation(db.Model):
         nullable=True,
         index=True,
     )
+
+    monitoring_company_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monitoring_company.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    pending_monitoring_company_proposal_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monitoring_company_proposal.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    #: Technician proposal for ``annual_month`` pending office approval (canonical remains ``annual_month``).
+    annual_month_pending = db.Column(db.String(64), nullable=True)
+    annual_month_pending_submitted_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    annual_month_pending_submitted_by_name = db.Column(db.String(255), nullable=True)
+
+    ring_detail = db.Column(db.Text, nullable=True)
+    facp_detail = db.Column(db.Text, nullable=True)
+    testing_procedures = db.Column(db.Text, nullable=True)
+    #: Technician-facing sheet notes (distinct from library ``notes`` when office uses that separately).
+    inspection_tech_notes = db.Column(db.Text, nullable=True)
 
     monthly_route = db.relationship(
         "MonthlyRoute",
@@ -704,6 +821,16 @@ class MonthlyRouteLocation(db.Model):
         "Key",
         back_populates="monthly_route_locations",
         foreign_keys=[key_id],
+    )
+    monitoring_company = db.relationship(
+        "MonitoringCompany",
+        back_populates="monthly_locations",
+        foreign_keys=[monitoring_company_id],
+    )
+    pending_monitoring_proposal = db.relationship(
+        "MonitoringCompanyProposal",
+        back_populates="pending_locations",
+        foreign_keys=[pending_monitoring_company_proposal_id],
     )
 
     created_at = db.Column(
@@ -722,7 +849,7 @@ class MonthlyRouteLocation(db.Model):
         "MonthlyRouteTestHistory",
         back_populates="location",
         cascade="all, delete-orphan",
-        lazy="selectin",
+        lazy="select",
     )
     comments = db.relationship(
         "MonthlyRouteLocationComment",
@@ -730,6 +857,60 @@ class MonthlyRouteLocation(db.Model):
         cascade="all, delete-orphan",
         lazy="dynamic",
     )
+    inspection_revisions = db.relationship(
+        "MonthlyRouteLocationInspectionRevision",
+        back_populates="location",
+        cascade="all, delete-orphan",
+        lazy="dynamic",
+    )
+
+
+class MonthlyRouteLocationInspectionRevision(db.Model):
+    """
+    Append-only audit log for technician/office edits to inspection sheet fields.
+    Do not UPDATE or DELETE rows in application code (insert only); migrations exceptional.
+    """
+
+    __tablename__ = "monthly_route_location_inspection_revision"
+    __table_args__ = (
+        db.Index(
+            "ix_monthly_rloc_ins_rev_loc_field_edited",
+            "location_id",
+            "field_key",
+            "edited_at",
+        ),
+        db.Index("ix_monthly_rloc_ins_rev_loc_edited", "location_id", "edited_at"),
+    )
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    location_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monthly_route_location.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    field_key = db.Column(db.String(64), nullable=False)
+    value_previous = db.Column(JSONB, nullable=True)
+    value_new = db.Column(JSONB, nullable=True)
+    edited_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        nullable=False,
+    )
+    edited_at_client = db.Column(db.DateTime(timezone=True), nullable=True)
+    actor_name = db.Column(db.String(255), nullable=False)
+    #: technician | office | system | import
+    actor_role = db.Column(db.String(32), nullable=False)
+    route_session_id = db.Column(db.BigInteger, nullable=True, index=True)
+    client_mutation_id = db.Column(db.String(36), nullable=True, unique=True)
+    restored_from_revision_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monthly_route_location_inspection_revision.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    location = db.relationship("MonthlyRouteLocation", back_populates="inspection_revisions")
 
 
 class MonthlyRouteTestHistory(db.Model):
@@ -751,6 +932,24 @@ class MonthlyRouteTestHistory(db.Model):
     result_status = db.Column(db.String(32), nullable=False)
     skip_reason = db.Column(db.String(255), nullable=True)
     source_value_raw = db.Column(db.String(255), nullable=True)
+    #: Monthly route the stop belonged to when this month cell was recorded (CSV import / UI truth).
+    #: Differs from ``MonthlyRouteLocation.monthly_route_id`` after reassignment.
+    test_monthly_route_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monthly_route.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    #: 0-based stop index from the technician sheet ``#`` column when imported (stable after reassignment).
+    session_route_stop_order = db.Column(db.SmallInteger, nullable=True)
+
+    #: Sheet ``Testing Procedures`` at import time for this month (preserved when later months overwrite ``MonthlyRouteLocation``).
+    testing_procedures = db.Column(db.Text, nullable=True)
+    #: Sheet ``Tech Comments & Notes`` at import time for this month.
+    inspection_tech_notes = db.Column(db.Text, nullable=True)
+    #: Technician worksheet ``Time In`` raw value for this route-month row.
+    sheet_time_in_raw = db.Column(db.String(64), nullable=True)
+    #: Technician worksheet ``Time Out`` raw value for this route-month row.
+    sheet_time_out_raw = db.Column(db.String(64), nullable=True)
 
     created_at = db.Column(
         db.DateTime(timezone=True),
@@ -765,6 +964,81 @@ class MonthlyRouteTestHistory(db.Model):
     )
 
     location = db.relationship("MonthlyRouteLocation", back_populates="monthly_history")
+    test_monthly_route = db.relationship(
+        "MonthlyRoute",
+        foreign_keys=[test_monthly_route_id],
+    )
+    worksheet_audit_events = db.relationship(
+        "MonthlyRouteWorksheetAuditEvent",
+        back_populates="history_row",
+        cascade="all, delete-orphan",
+        lazy="dynamic",
+    )
+
+
+class MonthlyRouteWorksheetAuditEvent(db.Model):
+    """Append-only field-level audit trail for technician worksheet edits."""
+
+    __tablename__ = "monthly_route_worksheet_audit_event"
+    __table_args__ = (
+        db.Index(
+            "ix_mr_worksheet_audit_route_month",
+            "monthly_route_id",
+            "month_date",
+            "changed_at",
+        ),
+        db.Index(
+            "ix_mr_worksheet_audit_location_month",
+            "location_id",
+            "month_date",
+            "changed_at",
+        ),
+        db.Index(
+            "ix_mr_worksheet_audit_history_field",
+            "history_row_id",
+            "field_name",
+            "changed_at",
+        ),
+        db.UniqueConstraint("client_mutation_id", name="uq_mr_worksheet_audit_client_mutation"),
+    )
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    monthly_route_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monthly_route.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    location_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monthly_route_location.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    history_row_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monthly_route_test_history.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    month_date = db.Column(db.Date, nullable=False, index=True)
+    field_name = db.Column(db.String(64), nullable=False)
+    old_value = db.Column(db.JSON, nullable=True)
+    new_value = db.Column(db.JSON, nullable=True)
+    source = db.Column(db.String(32), nullable=False, server_default="technician_app")
+    changed_by_username = db.Column(db.String(255), nullable=True)
+    changed_by_name = db.Column(db.String(255), nullable=True)
+    client_mutation_id = db.Column(db.String(64), nullable=True)
+    changed_at_client = db.Column(db.DateTime(timezone=True), nullable=True)
+    changed_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        nullable=False,
+    )
+
+    history_row = db.relationship("MonthlyRouteTestHistory", back_populates="worksheet_audit_events")
+    location = db.relationship("MonthlyRouteLocation")
+    route = db.relationship("MonthlyRoute")
 
 
 class MonthlyRouteLocationComment(db.Model):

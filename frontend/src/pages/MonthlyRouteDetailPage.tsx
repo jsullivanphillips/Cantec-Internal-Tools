@@ -1,4 +1,22 @@
-import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from 'react'
+import {
+  closestCenter,
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+} from 'react'
 import { Chart } from 'react-chartjs-2'
 import { Accordion, Alert, Badge, Button, Card, Col, Modal, Row, Spinner, Table } from 'react-bootstrap'
 import { Link, useParams } from 'react-router-dom'
@@ -12,6 +30,7 @@ import {
   type MonthlyRouteSpecialistsPayload,
   type MonthlyRouteSummary,
   type MonthlySpecialistTechRow,
+  type RouteLocationListItem,
   type RouteTestingSkippedSite,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
 import { apiJson, isAbortError } from '../lib/apiClient'
@@ -150,6 +169,80 @@ function skipReasonTableCell(site: RouteTestingSkippedSite) {
   return <span className="text-break">{r}</span>
 }
 
+function siteStatusBadgeVariant(status: string): string {
+  switch (status) {
+    case 'active':
+      return 'success'
+    case 'cancelled':
+      return 'secondary'
+    case 'on_hold':
+      return 'warning'
+    case 'waiting_keys':
+      return 'info'
+    default:
+      return 'secondary'
+  }
+}
+
+function SortableRouteSiteRow({
+  loc,
+  index,
+  orderSaving,
+}: {
+  loc: RouteLocationListItem
+  index: number
+  orderSaving: boolean
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: loc.id,
+    disabled: orderSaving,
+  })
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.72 : undefined,
+  }
+  const line1 = (loc.display_address || loc.address || '').trim() || `Location ${loc.id}`
+  const blockLine = (loc.building || '').trim()
+
+  return (
+    <tr ref={setNodeRef} style={style}>
+      <td className="text-center px-1 align-middle">
+        <button
+          type="button"
+          className="btn btn-link p-0 text-muted monthly-route-site-drag-handle"
+          style={{ cursor: orderSaving ? 'not-allowed' : 'grab' }}
+          disabled={orderSaving}
+          aria-label={`Drag to reorder: ${line1}`}
+          {...attributes}
+          {...listeners}
+        >
+          <i className="bi bi-grip-vertical fs-5" aria-hidden />
+        </button>
+      </td>
+      <td className="text-center tabular-nums fw-semibold">{index + 1}</td>
+      <td>
+        <Link className="link-primary text-break fw-semibold" to={`/monthlies/locations/${loc.id}`}>
+          {line1}
+        </Link>
+        {blockLine ? <div className="small text-muted text-break">{blockLine}</div> : null}
+      </td>
+      <td className="small text-nowrap">
+        {loc.annual_month?.trim() ? (
+          <span className="text-body">{loc.annual_month.trim()}</span>
+        ) : (
+          <span className="text-muted">—</span>
+        )}
+      </td>
+      <td>
+        <Badge bg={siteStatusBadgeVariant(loc.status_normalized)} className="text-capitalize">
+          {(loc.status_normalized || '').replace(/_/g, ' ') || '—'}
+        </Badge>
+      </td>
+    </tr>
+  )
+}
+
 type SkipSitesModalState = {
   kind: 'non_annual' | 'annual'
   monthIso: string
@@ -172,6 +265,9 @@ export default function MonthlyRouteDetailPage() {
   const [sessionUsername, setSessionUsername] = useState<string | null>(null)
   const [historyViewYear, setHistoryViewYear] = useState<number | null>(null)
   const [skipSitesModal, setSkipSitesModal] = useState<SkipSitesModalState | null>(null)
+  const [orderedSites, setOrderedSites] = useState<RouteLocationListItem[]>([])
+  const [orderSaving, setOrderSaving] = useState(false)
+  const [orderError, setOrderError] = useState<string | null>(null)
 
   const load = useCallback(
     async (signal?: AbortSignal) => {
@@ -188,6 +284,8 @@ export default function MonthlyRouteDetailPage() {
         setComments(data.comments || [])
         setTestingByMonth(data.testing_by_month || {})
         setSpecialistsByMonth(data.specialists_by_month || {})
+        setOrderedSites(data.locations ?? [])
+        setOrderError(null)
       } catch (e) {
         if (isAbortError(e)) return
         setError('Unable to load this route.')
@@ -196,6 +294,7 @@ export default function MonthlyRouteDetailPage() {
         setComments([])
         setTestingByMonth({})
         setSpecialistsByMonth({})
+        setOrderedSites([])
       } finally {
         if (!signal?.aborted) setLoading(false)
       }
@@ -226,6 +325,52 @@ export default function MonthlyRouteDetailPage() {
   useEffect(() => {
     setHistoryViewYear(null)
   }, [routeId])
+
+  const persistRouteOrder = useCallback(
+    async (next: RouteLocationListItem[]) => {
+      if (Number.isNaN(idNum)) return
+      setOrderSaving(true)
+      setOrderError(null)
+      try {
+        const res = await apiJson<{ locations: RouteLocationListItem[] }>(
+          `/api/monthly_routes/routes/${idNum}/location_order`,
+          {
+            method: 'PUT',
+            body: JSON.stringify({ ordered_location_ids: next.map((r) => r.id) }),
+          }
+        )
+        setOrderedSites(res.locations ?? next)
+      } catch {
+        setOrderError('Unable to save stop order.')
+        void load()
+      } finally {
+        setOrderSaving(false)
+      }
+    },
+    [idNum, load]
+  )
+
+  const routeSitesSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  )
+
+  const handleSitesDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event
+      if (!over || active.id === over.id || orderSaving) return
+      const activeId = Number(active.id)
+      const overId = Number(over.id)
+      if (!Number.isFinite(activeId) || !Number.isFinite(overId)) return
+      const oldIndex = orderedSites.findIndex((s) => s.id === activeId)
+      const newIndex = orderedSites.findIndex((s) => s.id === overId)
+      if (oldIndex < 0 || newIndex < 0) return
+      const next = arrayMove(orderedSites, oldIndex, newIndex)
+      setOrderedSites(next)
+      void persistRouteOrder(next)
+    },
+    [orderedSites, orderSaving, persistRouteOrder]
+  )
 
   const testingHistoryMonthKeys = useMemo(() => {
     const keys = new Set([
@@ -436,10 +581,76 @@ export default function MonthlyRouteDetailPage() {
       </Card>
 
       <Accordion
-        defaultActiveKey={['performance', 'history', 'comments']}
+        defaultActiveKey={['sites', 'performance', 'history', 'comments']}
         alwaysOpen
         className="monthly-location-detail-accordion d-flex flex-column gap-2"
       >
+        <Accordion.Item
+          eventKey="sites"
+          className="monthly-location-testing-history-card monthly-location-detail-surface shadow-sm bg-white"
+        >
+          <Accordion.Header className="monthly-location-testing-history-card-header py-3">
+            <span className="fw-bold text-dark">Sites on this route</span>
+          </Accordion.Header>
+          <Accordion.Body className="monthly-location-testing-history-body">
+            {orderError ? (
+              <Alert variant="warning" className="py-2 small mb-3">
+                {orderError}
+              </Alert>
+            ) : null}
+            {orderedSites.length === 0 ? (
+              <p className="text-muted small mb-0">No locations are assigned to this route.</p>
+            ) : (
+              <>
+                <p className="text-muted small mb-2 mb-md-3">
+                  Drag the grip on each row to reorder. Order saves automatically when you drop a row.
+                </p>
+                <div className="table-responsive">
+                  <DndContext
+                    sensors={routeSitesSensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={handleSitesDragEnd}
+                  >
+                    <Table responsive size="sm" bordered className="mb-0 align-middle">
+                      <thead className="table-light">
+                        <tr className="small text-muted text-uppercase">
+                          <th style={{ width: '3rem' }} className="text-center" aria-label="Drag to reorder">
+                            <i className="bi bi-grip-vertical" aria-hidden />
+                            <span className="visually-hidden">Reorder</span>
+                          </th>
+                          <th style={{ width: '4rem' }} className="text-center">
+                            Stop
+                          </th>
+                          <th>Address</th>
+                          <th style={{ width: '6.5rem' }} className="text-nowrap">
+                            Annual
+                          </th>
+                          <th style={{ width: '7rem' }}>Status</th>
+                        </tr>
+                      </thead>
+                      <SortableContext
+                        items={orderedSites.map((s) => s.id)}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        <tbody>
+                          {orderedSites.map((loc, index) => (
+                            <SortableRouteSiteRow
+                              key={loc.id}
+                              loc={loc}
+                              index={index}
+                              orderSaving={orderSaving}
+                            />
+                          ))}
+                        </tbody>
+                      </SortableContext>
+                    </Table>
+                  </DndContext>
+                </div>
+              </>
+            )}
+          </Accordion.Body>
+        </Accordion.Item>
+
         <Accordion.Item
           eventKey="performance"
           className="monthly-location-testing-history-card monthly-route-detail-performance monthly-location-detail-surface shadow-sm bg-white"
@@ -536,10 +747,6 @@ export default function MonthlyRouteDetailPage() {
                 )}
               </Card.Body>
             </Card>
-            <p className="monthly-route-detail-performance__footnote text-muted small mt-3 mb-0 fst-italic">
-              Average route start/end times and time-on-site charts may be added when ServiceTrade timing data is
-              connected.
-            </p>
           </Accordion.Body>
         </Accordion.Item>
 
@@ -622,7 +829,7 @@ export default function MonthlyRouteDetailPage() {
                       <th
                         className="text-center tabular-nums px-2 align-bottom"
                         style={{ whiteSpace: 'normal', lineHeight: 1.25, fontWeight: 600 }}
-                        title="Sites with a non-skipped entry on the monthly sheet"
+                        title="Imported sheet: sites tested that month."
                       >
                         # sites tested
                       </th>
@@ -688,7 +895,23 @@ export default function MonthlyRouteDetailPage() {
                                     : undefined
                                 }
                               >
-                                {routeTestLabel ?? formatMonthHeading(monthIso)}
+                                <div>{routeTestLabel ?? formatMonthHeading(monthIso)}</div>
+                                {hasSheetHistoryForMonth ? (
+                                  <div className="d-flex flex-wrap gap-2">
+                                    <Link
+                                      className="small"
+                                      to={`/monthlies/routes/${idNum}/sessions/${encodeURIComponent(monthIso)}`}
+                                    >
+                                      Session ledger
+                                    </Link>
+                                    <Link
+                                      className="small"
+                                      to={`/monthlies/routes/${idNum}/worksheet/${encodeURIComponent(monthIso)}`}
+                                    >
+                                      Technician worksheet
+                                    </Link>
+                                  </div>
+                                ) : null}
                               </td>
                               <td className="text-center align-bottom px-2">
                                 {stTested === true ? (

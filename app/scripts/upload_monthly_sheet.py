@@ -338,6 +338,8 @@ def _upsert_history(
     result_status: str,
     skip_reason: str | None,
     source_value_raw: str | None,
+    *,
+    test_monthly_route_id: int | None = None,
 ) -> None:
     now = datetime.now(timezone.utc)
     stmt = insert(MonthlyRouteTestHistory).values(
@@ -346,16 +348,22 @@ def _upsert_history(
         result_status=result_status,
         skip_reason=skip_reason,
         source_value_raw=source_value_raw,
+        testing_procedures=None,
+        inspection_tech_notes=None,
+        test_monthly_route_id=test_monthly_route_id,
         updated_at=now,
     )
+    set_: dict[str, object] = {
+        "result_status": stmt.excluded.result_status,
+        "skip_reason": stmt.excluded.skip_reason,
+        "source_value_raw": stmt.excluded.source_value_raw,
+        "updated_at": stmt.excluded.updated_at,
+    }
+    if test_monthly_route_id is not None:
+        set_["test_monthly_route_id"] = stmt.excluded.test_monthly_route_id
     stmt = stmt.on_conflict_do_update(
         constraint="uq_monthly_route_test_history_location_month",
-        set_={
-            "result_status": stmt.excluded.result_status,
-            "skip_reason": stmt.excluded.skip_reason,
-            "source_value_raw": stmt.excluded.source_value_raw,
-            "updated_at": stmt.excluded.updated_at,
-        },
+        set_=set_,
     )
     db.session.execute(stmt)
 

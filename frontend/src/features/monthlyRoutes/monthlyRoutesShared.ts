@@ -1,11 +1,18 @@
 /** Types and pure helpers shared by Monthly Routes library and map pages. */
 
-export type MonthCell = { result_status: string; skip_reason: string | null }
+export type MonthCell = {
+  result_status: string
+  skip_reason: string | null
+  /** Monthly route when this month cell was saved (CSV / sheet capture); not necessarily ``monthly_route`` today. */
+  test_monthly_route?: MonthlyRouteSummary | null
+}
 
 /** Canonical monthly route entity (``MonthlyRoute``); aligns with ``monthly_route_id``. */
 export type MonthlyRouteSummary = {
   id: number
   route_number: number
+  /** Optional friendly label from ``MonthlyRoute.display_name`` (not used for logic). */
+  display_name?: string | null
   weekday_iso: number
   week_occurrence: number
   label: string
@@ -47,7 +54,21 @@ export type LibraryLocation = {
   /** FK to ``MonthlyRoute``; source of truth with ``monthly_route``. */
   monthly_route_id?: number | null
   monthly_route?: MonthlyRouteSummary | null
+  /** 0-based stop index when on a monthly route; from ``MonthlyRouteLocation.route_stop_order``. */
+  route_stop_order?: number | null
   months: Record<string, MonthCell>
+}
+
+/** Row from ``GET/PUT .../routes/:id`` locations list (no month grid). */
+export type RouteLocationListItem = {
+  id: number
+  address: string
+  display_address?: string | null
+  building?: string | null
+  status_normalized: string
+  annual_month?: string | null
+  route_stop_order: number | null
+  monthly_route_id?: number | null
 }
 
 /** Comment row from ``GET /api/monthly_routes/library/:id`` (newest first). */
@@ -108,12 +129,88 @@ export type MonthlyRouteSpecialistMonthPayload = {
 
 export type MonthlyRouteDetailPayload = {
   route: MonthlyRouteSummary
+  /** Stops on this route in driving order (from ``route_stop_order``). */
+  locations: RouteLocationListItem[]
   comments: MonthlyLocationComment[]
   testing_by_month: Record<string, RouteTestingMonthCell>
   /** Present when the route has a ServiceTrade route pseudo-location id; otherwise ``null``. */
   specialists: MonthlyRouteSpecialistsPayload | null
   /** Newest months first; month keys ``YYYY-MM-01``. */
   specialists_by_month: Record<string, MonthlyRouteSpecialistMonthPayload>
+}
+
+/** GET ``/api/monthly_routes/routes/:id/testing_session?month=``. */
+export type RouteTestingSessionCounts = {
+  sites_tested_count: number
+  skipped_non_annual_count: number
+  skipped_annual_count: number
+}
+
+export type RouteTestingSessionStop = {
+  location_id: number
+  label_address: string
+  building: string | null
+  result_status: string
+  skip_reason: string | null
+  source_value_raw: string | null
+  /** Month-specific from ``MonthlyRouteTestHistory`` after CSV import; else ``MonthlyRouteLocation`` fallback. */
+  testing_procedures?: string | null
+  /** Month-specific tech notes from history when captured at import; else location fallback. */
+  inspection_tech_notes?: string | null
+  time_in?: string | null
+  time_out?: string | null
+  still_on_route: boolean
+  /** 0-based stop index when ``still_on_route``; otherwise ``null``. */
+  route_stop_order: number | null
+  /** 0-based sheet ``#`` from CSV import; drives ledger order even after the site moves routes. */
+  session_route_stop_order: number | null
+  /** Row ordinal after server-side sort (1-based). */
+  display_order: number
+}
+
+export type RouteTestingSessionPayload = {
+  route: MonthlyRouteSummary
+  month_date: string
+  stops: RouteTestingSessionStop[]
+  counts: RouteTestingSessionCounts
+}
+
+export type TechnicianWorksheetRow = {
+  location_id: number
+  history_row_id: number
+  month_date: string
+  display_address: string
+  building: string | null
+  property_management_company: string | null
+  annual_month: string | null
+  ring: string | null
+  key_number: string | null
+  facp: string | null
+  monitoring: string | null
+  result_status: string
+  skip_reason: string | null
+  testing_procedures: string | null
+  inspection_tech_notes: string | null
+  time_in: string | null
+  time_out: string | null
+  version_updated_at: string | null
+}
+
+export type TechnicianWorksheetPayload = {
+  route: MonthlyRouteSummary
+  month_date: string
+  rows: TechnicianWorksheetRow[]
+}
+
+export type TechnicianWorksheetAuditEvent = {
+  id: number
+  field_name: string
+  old_value: unknown
+  new_value: unknown
+  source: string
+  changed_by_username: string | null
+  changed_by_name: string | null
+  changed_at: string | null
 }
 
 export function monthlyCommentAuthorsMatch(session: string | null, author: string | null): boolean {
