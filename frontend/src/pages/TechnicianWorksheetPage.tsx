@@ -256,6 +256,10 @@ export default function TechnicianWorksheetPage() {
   } | null>(null)
   /** iOS emits a delayed synthetic click after touch; avoid fighting textarea focus / selection. */
   const worksheetGridSuppressNextClickRef = useRef(false)
+  /** True while grid editor is open — updated synchronously so capture-phase handlers see current state. */
+  const worksheetGridEditingRef = useRef(false)
+  /** After committing edit by tapping another cell, skip pointerup/click so we don't enter edit on same gesture. */
+  const worksheetGridSkipTapAfterSwitchRef = useRef(false)
 
   const [worksheetGridSelection, setWorksheetGridSelection] = useState<{
     locationId: number
@@ -263,6 +267,10 @@ export default function TechnicianWorksheetPage() {
   } | null>(null)
   const [worksheetGridEditing, setWorksheetGridEditing] = useState(false)
   const [worksheetGridDraft, setWorksheetGridDraft] = useState('')
+
+  useEffect(() => {
+    worksheetGridEditingRef.current = worksheetGridEditing
+  }, [worksheetGridEditing])
 
   const updateLocalRow = useCallback((locationId: number, patch: WorksheetChangeSet) => {
     setPayload((prev) => {
@@ -433,6 +441,8 @@ export default function TechnicianWorksheetPage() {
   )
 
   const commitWorksheetGridEdit = useCallback(() => {
+    if (!worksheetGridEditingRef.current) return
+    worksheetGridEditingRef.current = false
     const sel = worksheetGridSelectionRef.current
     const draft = worksheetGridDraftRef.current
     setWorksheetGridEditing(false)
@@ -446,6 +456,7 @@ export default function TechnicianWorksheetPage() {
   }, [payload, onFieldChange])
 
   const cancelWorksheetGridEdit = useCallback(() => {
+    worksheetGridEditingRef.current = false
     setWorksheetGridEditing(false)
   }, [])
 
@@ -460,6 +471,7 @@ export default function TechnicianWorksheetPage() {
       setWorksheetGridSelection({ locationId, column })
       setWorksheetGridDraft(draft)
       worksheetGridDraftRef.current = draft
+      worksheetGridEditingRef.current = true
       setWorksheetGridEditing(true)
       return true
     },
@@ -785,6 +797,11 @@ export default function TechnicianWorksheetPage() {
       worksheetGridSelection?.locationId === row.location_id && worksheetGridSelection.column === column
     const showEditor = worksheetGridEditing && selected
     const valueDisplay = worksheetGridCellValue(row, column)
+    /** Selection ref is updated synchronously on select so touch second-tap sees correct state. */
+    const alreadySelectedNotEditing =
+      worksheetGridSelectionRef.current?.locationId === row.location_id &&
+      worksheetGridSelectionRef.current.column === column &&
+      !worksheetGridEditing
     return (
       <td
         ref={(el) => {
@@ -797,6 +814,30 @@ export default function TechnicianWorksheetPage() {
         aria-label={`${WORKSHEET_GRID_COLUMN_LABELS[column]}, ${row.display_address}`}
         className={`${tdClass} tw-worksheet-grid-td`}
         onKeyDown={showEditor ? undefined : onWorksheetGridCellKeyDown(row, column)}
+        onPointerDownCapture={() => {
+          if (!worksheetGridEditingRef.current) return
+          if (showEditor) return
+          const prevSel = worksheetGridSelectionRef.current
+          const next = { locationId: row.location_id, column }
+          flushSync(() => {
+            commitWorksheetGridEdit()
+          })
+          const switched =
+            prevSel != null &&
+            (prevSel.locationId !== next.locationId || prevSel.column !== next.column)
+          if (switched) {
+            worksheetGridSkipTapAfterSwitchRef.current = true
+            worksheetGridSuppressNextClickRef.current = true
+            window.setTimeout(() => {
+              worksheetGridSuppressNextClickRef.current = false
+            }, 450)
+            flushSync(() => {
+              worksheetGridSelectionRef.current = next
+              setWorksheetGridSelection(next)
+            })
+            focusWorksheetGridCellEl(next)
+          }
+        }}
         onPointerDown={(e: ReactPointerEvent<HTMLTableCellElement>) => {
           if (showEditor) return
           if (!worksheetGridIsTouchLikePointer(e.pointerType)) return
@@ -815,6 +856,11 @@ export default function TechnicianWorksheetPage() {
         }}
         onPointerUp={(e: ReactPointerEvent<HTMLTableCellElement>) => {
           if (showEditor) return
+          if (worksheetGridSkipTapAfterSwitchRef.current) {
+            worksheetGridSkipTapAfterSwitchRef.current = false
+            worksheetGridTouchPtrRef.current = null
+            return
+          }
           if (!worksheetGridIsTouchLikePointer(e.pointerType)) return
           const start = worksheetGridTouchPtrRef.current
           worksheetGridTouchPtrRef.current = null
@@ -828,7 +874,13 @@ export default function TechnicianWorksheetPage() {
           window.setTimeout(() => {
             worksheetGridSuppressNextClickRef.current = false
           }, 450)
-          beginWorksheetGridEditUserGesture(row.location_id, column)
+          if (alreadySelectedNotEditing) {
+            beginWorksheetGridEditUserGesture(row.location_id, column)
+          } else {
+            const next = { locationId: row.location_id, column }
+            worksheetGridSelectionRef.current = next
+            setWorksheetGridSelection(next)
+          }
         }}
         onClick={(e) => {
           e.stopPropagation()
@@ -837,7 +889,13 @@ export default function TechnicianWorksheetPage() {
             worksheetGridSuppressNextClickRef.current = false
             return
           }
-          beginWorksheetGridEditUserGesture(row.location_id, column)
+          if (alreadySelectedNotEditing) {
+            beginWorksheetGridEditUserGesture(row.location_id, column)
+          } else {
+            const next = { locationId: row.location_id, column }
+            worksheetGridSelectionRef.current = next
+            setWorksheetGridSelection(next)
+          }
         }}
       >
         <div className="tw-worksheet-cell-surface tw-worksheet-cell-surface--excel-shell">
