@@ -1146,10 +1146,14 @@ export default function TechnicianWorksheetPage() {
                                   <div className="small text-muted">—</div>
                                 )}
                                 {showWorksheetTimeInLine ? (
-                                  <div className="small text-muted">{worksheetTimeInOutDisplayLine('in', displayTimeIn)}</div>
+                                  <div className="text-muted tw-worksheet-time-io-line">
+                                    {worksheetTimeInOutDisplayLine('in', displayTimeIn)}
+                                  </div>
                                 ) : null}
                                 {showWorksheetTimeOutLine ? (
-                                  <div className="small text-muted">{worksheetTimeInOutDisplayLine('out', displayTimeOut)}</div>
+                                  <div className="text-muted tw-worksheet-time-io-line">
+                                    {worksheetTimeInOutDisplayLine('out', displayTimeOut)}
+                                  </div>
                                 ) : null}
                               </>
                             ) : (
@@ -1184,10 +1188,14 @@ export default function TechnicianWorksheetPage() {
                                 ) : (
                                   <>
                                     {showWorksheetTimeInLine ? (
-                                      <div className="small text-muted">{worksheetTimeInOutDisplayLine('in', displayTimeIn)}</div>
+                                      <div className="text-muted tw-worksheet-time-io-line">
+                                        {worksheetTimeInOutDisplayLine('in', displayTimeIn)}
+                                      </div>
                                     ) : null}
                                     {showWorksheetTimeOutLine ? (
-                                      <div className="small text-muted">{worksheetTimeInOutDisplayLine('out', displayTimeOut)}</div>
+                                      <div className="text-muted tw-worksheet-time-io-line">
+                                        {worksheetTimeInOutDisplayLine('out', displayTimeOut)}
+                                      </div>
                                     ) : null}
                                     {!hasTimeIn ? (
                                       <>
@@ -1198,16 +1206,7 @@ export default function TechnicianWorksheetPage() {
                                             </div>
                                             <Button
                                               size="sm"
-                                          variant="warning"
-                                          onClick={() => {
-                                            queueRowChanges(row, { result_status: 'skipped', skip_reason: 'annual' })
-                                          }}
-                                        >
-                                          Skip
-                                        </Button>
-                                        <Button
-                                          size="sm"
-                                          variant="outline-secondary"
+                                              variant="outline-secondary"
                                               className="tw-annual-test-anyway-btn"
                                               onClick={() =>
                                                 setAnnualTestAnywayRows((prev) => {
@@ -1246,7 +1245,7 @@ export default function TechnicianWorksheetPage() {
                                         )}
                                       </>
                                     ) : !hasTimeOut ? (
-                                      <>
+                                      <div className="tw-worksheet-post-timein-actions">
                                         <Button
                                           size="sm"
                                           variant="success"
@@ -1260,7 +1259,7 @@ export default function TechnicianWorksheetPage() {
                                         <Button size="sm" variant="danger" onClick={() => window.alert('Deficiency workflow next phase')}>
                                           Add Deficiency
                                         </Button>
-                                      </>
+                                      </div>
                                     ) : (
                                       <>
                                         <Button
