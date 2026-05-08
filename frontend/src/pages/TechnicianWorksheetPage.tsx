@@ -454,8 +454,15 @@ export default function TechnicianWorksheetPage() {
       worksheetGridEditing ||
       timeInModalRow != null ||
       timeOutModalRow != null ||
-      skipReasonModalRow != null
-  }, [worksheetGridEditing, timeInModalRow, timeOutModalRow, skipReasonModalRow])
+      skipReasonModalRow != null ||
+      activeEditorKey != null
+  }, [
+    worksheetGridEditing,
+    timeInModalRow,
+    timeOutModalRow,
+    skipReasonModalRow,
+    activeEditorKey,
+  ])
 
   const applyRemoteWorksheetRefresh = useCallback(() => {
     if (worksheetInteractiveBusyRef.current) {
@@ -472,12 +479,19 @@ export default function TechnicianWorksheetPage() {
       worksheetGridEditing ||
       timeInModalRow != null ||
       timeOutModalRow != null ||
-      skipReasonModalRow != null
+      skipReasonModalRow != null ||
+      activeEditorKey != null
     if (busy) return
     if (!worksheetDeferredRemoteFetchRef.current) return
     worksheetDeferredRemoteFetchRef.current = false
     void loadRef.current()
-  }, [worksheetGridEditing, timeInModalRow, timeOutModalRow, skipReasonModalRow])
+  }, [
+    worksheetGridEditing,
+    timeInModalRow,
+    timeOutModalRow,
+    skipReasonModalRow,
+    activeEditorKey,
+  ])
 
   const runSyncQueue = useCallback(async () => {
     if (syncingRef.current || Number.isNaN(idNum) || !monthOk || !navigator.onLine) return
@@ -556,9 +570,12 @@ export default function TechnicianWorksheetPage() {
     return () => clearInterval(t)
   }, [runSyncQueue])
 
-  /** SSE: notify when worksheet revision changes (session cookie auth). */
-  const sseEnabled =
-    payload !== null && payload.run !== null && monthOk && !Number.isNaN(idNum)
+  /** SSE: notify when worksheet revision changes (session cookie auth).
+
+    Must stay on while PIN portal shows preview rows before ``run`` exists so another
+    device can Start Run / edit and this tab still receives revision bumps.
+  */
+  const sseEnabled = payload !== null && monthOk && !Number.isNaN(idNum)
 
   useEffect(() => {
     if (!sseEnabled) return

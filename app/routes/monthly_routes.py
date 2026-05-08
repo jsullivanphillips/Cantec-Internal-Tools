@@ -750,6 +750,10 @@ def _worksheet_attributed_revision_token(route_id: int, month_first: date) -> st
     return f"{ts_part}:{len(rows)}"
 
 
+# Sentinel revision for PIN portal worksheet SSE before ``MonthlyRouteRun`` exists (lazy preview).
+_WORKSHEET_SSE_PORTAL_PREVIEW_TOKEN = "__worksheet_sse_portal_preview_no_run__"
+
+
 def _worksheet_history_sort_key(
     hist: MonthlyRouteTestHistory,
     loc: MonthlyRouteLocation | None,
@@ -1625,6 +1629,10 @@ def stream_monthly_route_worksheet(route_id: int):
 
     Requires session auth (staff ``authenticated`` or PIN-unlocked technician portal).
 
+    When the PIN portal is on lazy worksheet semantics and the Pacific-month run row does not
+    exist yet, the stream still polls and emits once the run appears or worksheet rows change
+    (second device ``Start Run`` / edits).
+
     Ops (nginx): disable buffering for this location e.g. ``proxy_buffering off`` and send
     ``X-Accel-Buffering: no`` (already set below). Increase proxy/read timeouts for long-lived streams.
 
@@ -1638,27 +1646,6 @@ def stream_monthly_route_worksheet(route_id: int):
     month_first = date(month_dt.year, month_dt.month, 1)
     if _get_monthly_route(route_id) is None:
         return jsonify({"error": "Route not found"}), 404
-
-    if _portal_worksheet_lazy_request():
-        existing_run = MonthlyRouteRun.query.filter_by(
-            monthly_route_id=route_id,
-            month_date=month_first,
-        ).one_or_none()
-        if existing_run is None:
-
-            def generate_no_run():
-                yield "retry: 15000\n\n"
-                yield f"event: worksheet_error\ndata: {json.dumps({'error': 'Run not started for this month.', 'code': 'run_not_started'})}\n\n"
-
-            return Response(
-                stream_with_context(generate_no_run()),
-                mimetype="text/event-stream",
-                headers={
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive",
-                    "X-Accel-Buffering": "no",
-                },
-            )
 
     poll_raw = (os.getenv("WORKSHEET_SSE_POLL_SECONDS") or "5").strip()
     try:
@@ -1677,7 +1664,17 @@ def stream_monthly_route_worksheet(route_id: int):
                 # repeatable-read snapshots otherwise hide worksheet PATCH updates indefinitely).
                 db.session.rollback()
                 db.session.expire_all()
-                token = _worksheet_attributed_revision_token(route_id, month_first)
+                if _portal_worksheet_lazy_request():
+                    existing_run = MonthlyRouteRun.query.filter_by(
+                        monthly_route_id=route_id,
+                        month_date=month_first,
+                    ).one_or_none()
+                    if existing_run is None:
+                        token = _WORKSHEET_SSE_PORTAL_PREVIEW_TOKEN
+                    else:
+                        token = _worksheet_attributed_revision_token(route_id, month_first)
+                else:
+                    token = _worksheet_attributed_revision_token(route_id, month_first)
                 if token is None:
                     yield f"event: worksheet_error\ndata: {json.dumps({'error': 'Route not found'})}\n\n"
                     break
