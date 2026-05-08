@@ -7,10 +7,11 @@ from flask import jsonify, request, session
 # Worksheet endpoints a PIN-unlocked technician needs:
 #   GET   /api/monthly_routes/routes/<id>
 #   GET   /api/monthly_routes/routes/<id>/worksheet
+#   GET   /api/monthly_routes/routes/<id>/worksheet/stream   (SSE)
 #   PATCH /api/monthly_routes/routes/<id>/worksheet/rows/<locId>
 #   GET   /api/monthly_routes/routes/<id>/worksheet/rows/<locId>/audit
 _PORTAL_WORKSHEET_PATH_RE = re.compile(
-    r"^/api/monthly_routes/routes/\d+(?:/worksheet(?:/rows/\d+(?:/audit)?)?)?$"
+    r"^/api/monthly_routes/routes/\d+(?:/worksheet(?:/stream|/rows/\d+(?:/audit)?)?)?$"
 )
 
 

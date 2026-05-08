@@ -6,9 +6,10 @@ import os
 from urllib import error as url_error, parse as url_parse, request as url_request
 import json
 import math
+import time
 from zoneinfo import ZoneInfo
 
-from flask import Blueprint, jsonify, request, session
+from flask import Blueprint, Response, jsonify, request, session, stream_with_context
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import joinedload
 
@@ -704,6 +705,28 @@ def _testing_history_rows_attributed_to_route_month(
     for row in hist_attr + hist_legacy:
         merged[(int(row.location_id), row.month_date)] = row
     return list(merged.values())
+
+
+def _worksheet_attributed_revision_token(route_id: int, month_first: date) -> str | None:
+    """Stable fingerprint for worksheet rows attributed to ``route_id`` / ``month_first``.
+
+    Aligns with ``_testing_history_rows_attributed_to_route_month`` (same merge scope as GET worksheet).
+    ``None`` when the route does not exist.
+    """
+    if _get_monthly_route(route_id) is None:
+        return None
+    rows = _testing_history_rows_attributed_to_route_month(route_id, month_first)
+    if not rows:
+        return "none:0"
+    max_ts: datetime | None = None
+    for row in rows:
+        u = row.updated_at
+        if u is None:
+            continue
+        if max_ts is None or u > max_ts:
+            max_ts = u
+    ts_part = max_ts.isoformat() if max_ts is not None else "none"
+    return f"{ts_part}:{len(rows)}"
 
 
 def _worksheet_history_sort_key(
@@ -1463,6 +1486,66 @@ def get_monthly_route_worksheet(route_id: int):
     if payload is None:
         return jsonify({"error": "Route not found"}), 404
     return jsonify(payload)
+
+
+@monthly_routes_bp.get("/api/monthly_routes/routes/<int:route_id>/worksheet/stream")
+def stream_monthly_route_worksheet(route_id: int):
+    """SSE stream: emits worksheet revision when attributed rows change (heartbeat polling).
+
+    Requires session auth (staff ``authenticated`` or PIN-unlocked technician portal).
+
+    Ops (nginx): disable buffering for this location e.g. ``proxy_buffering off`` and send
+    ``X-Accel-Buffering: no`` (already set below). Increase proxy/read timeouts for long-lived streams.
+
+    Poll interval: ``WORKSHEET_SSE_POLL_SECONDS`` (default ``5``, clamped 1.5–120).
+    """
+    month_raw = (request.args.get("month") or "").strip()
+    month_dt = _parse_month(month_raw)
+    if month_dt is None:
+        return jsonify({"error": "Invalid or missing month query param (use YYYY-MM-DD, first of month)"}), 400
+
+    month_first = date(month_dt.year, month_dt.month, 1)
+    if _get_monthly_route(route_id) is None:
+        return jsonify({"error": "Route not found"}), 404
+
+    poll_raw = (os.getenv("WORKSHEET_SSE_POLL_SECONDS") or "5").strip()
+    try:
+        poll_sec = float(poll_raw)
+    except ValueError:
+        poll_sec = 5.0
+    poll_sec = max(1.5, min(poll_sec, 120.0))
+
+    def generate():
+        last_sent: str | None = None
+        yield "retry: 15000\n\n"
+        try:
+            while True:
+                token = _worksheet_attributed_revision_token(route_id, month_first)
+                if token is None:
+                    yield f"event: worksheet_error\ndata: {json.dumps({'error': 'Route not found'})}\n\n"
+                    break
+                if token != last_sent:
+                    if last_sent is not None:
+                        payload_out = {
+                            "revision": token,
+                            "route_id": route_id,
+                            "month_date": month_first.isoformat(),
+                        }
+                        yield f"data: {json.dumps(payload_out)}\n\n"
+                    last_sent = token
+                time.sleep(poll_sec)
+        except GeneratorExit:
+            return
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @monthly_routes_bp.patch("/api/monthly_routes/routes/<int:route_id>/worksheet/rows/<int:location_id>")

@@ -1,0 +1,27 @@
+Worksheet SSE endpoint (technician / staff session cookie auth):
+
+  GET /api/monthly_routes/routes/<route_id>/worksheet/stream?month=YYYY-MM-01
+
+Reverse-proxy checklist:
+
+1. Disable response buffering for this path so events flush to the browser:
+     proxy_buffering off;
+
+2. Long-lived connection timeouts (adjust to taste):
+     proxy_read_timeout 86400s;
+     proxy_send_timeout 86400s;
+
+3. The Flask handler sets header X-Accel-Buffering: no for nginx.
+
+Example location snippet:
+
+  location ~ ^/api/monthly_routes/routes/[0-9]+/worksheet/stream {
+      proxy_pass http://your_upstream;
+      proxy_http_version 1.1;
+      proxy_set_header Connection '';
+      proxy_buffering off;
+      proxy_read_timeout 86400s;
+      proxy_send_timeout 86400s;
+  }
+
+Each open worksheet tab holds one SSE connection; size worker concurrency accordingly.

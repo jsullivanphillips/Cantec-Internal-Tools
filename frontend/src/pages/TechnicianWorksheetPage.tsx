@@ -316,6 +316,44 @@ export default function TechnicianWorksheetPage() {
     [routeId, idNum, monthOk, monthQuery]
   )
 
+  const loadRef = useRef(load)
+  useEffect(() => {
+    loadRef.current = load
+  }, [load])
+
+  /** Remote SSE refresh deferred while grid edit or worksheet modals are open. */
+  const worksheetDeferredRemoteFetchRef = useRef(false)
+  const worksheetInteractiveBusyRef = useRef(false)
+  useEffect(() => {
+    worksheetInteractiveBusyRef.current =
+      worksheetGridEditing ||
+      timeInModalRow != null ||
+      timeOutModalRow != null ||
+      skipReasonModalRow != null
+  }, [worksheetGridEditing, timeInModalRow, timeOutModalRow, skipReasonModalRow])
+
+  const applyRemoteWorksheetRefresh = useCallback(() => {
+    if (worksheetInteractiveBusyRef.current) {
+      worksheetDeferredRemoteFetchRef.current = true
+      setSyncMessage('Worksheet updated — changes apply when you finish editing.')
+      return
+    }
+    worksheetDeferredRemoteFetchRef.current = false
+    void loadRef.current()
+  }, [])
+
+  useEffect(() => {
+    const busy =
+      worksheetGridEditing ||
+      timeInModalRow != null ||
+      timeOutModalRow != null ||
+      skipReasonModalRow != null
+    if (busy) return
+    if (!worksheetDeferredRemoteFetchRef.current) return
+    worksheetDeferredRemoteFetchRef.current = false
+    void loadRef.current()
+  }, [worksheetGridEditing, timeInModalRow, timeOutModalRow, skipReasonModalRow])
+
   const runSyncQueue = useCallback(async () => {
     if (syncingRef.current || Number.isNaN(idNum) || !monthOk || !navigator.onLine) return
     const queue = loadSyncQueue()
@@ -383,11 +421,103 @@ export default function TechnicianWorksheetPage() {
   }, [load])
 
   useEffect(() => {
+    worksheetDeferredRemoteFetchRef.current = false
+  }, [idNum, monthQuery])
+
+  useEffect(() => {
     const t = setInterval(() => {
       void runSyncQueue()
     }, 3500)
     return () => clearInterval(t)
   }, [runSyncQueue])
+
+  /** SSE: notify when worksheet revision changes (session cookie auth). */
+  const sseEnabled = payload !== null && monthOk && !Number.isNaN(idNum)
+
+  useEffect(() => {
+    if (!sseEnabled) return
+
+    let es: EventSource | null = null
+    let reconnectTimer: ReturnType<typeof window.setTimeout> | null = null
+
+    const clearReconnect = () => {
+      if (reconnectTimer != null) {
+        window.clearTimeout(reconnectTimer)
+        reconnectTimer = null
+      }
+    }
+
+    const scheduleReconnect = () => {
+      clearReconnect()
+      reconnectTimer = window.setTimeout(() => {
+        reconnectTimer = null
+        openEs()
+      }, 15000)
+    }
+
+    const openEs = () => {
+      clearReconnect()
+      if (!navigator.onLine || document.visibilityState !== 'visible') return
+      const qs = new URLSearchParams({ month: monthQuery })
+      const url = `/api/monthly_routes/routes/${idNum}/worksheet/stream?${qs.toString()}`
+      try {
+        es = new EventSource(url)
+      } catch {
+        scheduleReconnect()
+        return
+      }
+      es.onmessage = (event: MessageEvent<string>) => {
+        try {
+          const msg = JSON.parse(event.data) as {
+            revision?: string
+            route_id?: number
+            month_date?: string
+          }
+          if (msg.route_id !== idNum || msg.month_date !== monthQuery) return
+        } catch {
+          return
+        }
+        applyRemoteWorksheetRefresh()
+      }
+      es.onerror = () => {
+        es?.close()
+        es = null
+        scheduleReconnect()
+      }
+    }
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        clearReconnect()
+        es?.close()
+        es = null
+      } else {
+        openEs()
+      }
+    }
+
+    const onOffline = () => {
+      clearReconnect()
+      es?.close()
+      es = null
+    }
+
+    const onOnline = () => openEs()
+
+    openEs()
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('online', onOnline)
+    window.addEventListener('offline', onOffline)
+
+    return () => {
+      clearReconnect()
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('online', onOnline)
+      window.removeEventListener('offline', onOffline)
+      es?.close()
+      es = null
+    }
+  }, [sseEnabled, idNum, monthQuery, applyRemoteWorksheetRefresh])
 
   useEffect(() => {
     const el = topbarRef.current
