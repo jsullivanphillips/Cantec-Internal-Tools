@@ -295,6 +295,25 @@ def test_patch_worksheet_row_writes_audit(worksheet_client):
         assert {e.field_name for e in events} == {"testing_procedures", "time_in"}
 
 
+def test_patch_worksheet_row_monitoring_writes_monitoring_notes(worksheet_client):
+    client, app = worksheet_client
+    with app.app_context():
+        _seed_basic_route_data()
+
+    res = client.patch(
+        "/api/monthly_routes/routes/1/worksheet/rows/101?month=2026-05-01",
+        json={"changes": {"monitoring": "Central station updated"}},
+    )
+    assert res.status_code == 200
+    body = res.get_json()
+    assert body["ok"] is True
+    assert body["row"]["monitoring"] == "Central station updated"
+
+    with app.app_context():
+        row = MonthlyRouteTestHistory.query.filter_by(location_id=101).one()
+        assert (row.monitoring_notes or "").strip() == "Central station updated"
+
+
 def test_patch_worksheet_row_stale_version_client_wins(worksheet_client):
     client, app = worksheet_client
     with app.app_context():

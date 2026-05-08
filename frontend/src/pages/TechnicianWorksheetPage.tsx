@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react'
 import { Alert, Badge, Button, Card, Modal, Spinner, Table } from 'react-bootstrap'
 import { Link, useLocation, useParams } from 'react-router-dom'
 import {
@@ -121,6 +130,46 @@ function worksheetSkipReasonDisplayBlock(skipReason: string | null | undefined):
   return s
 }
 
+type WorksheetGridColumn = 'facp' | 'monitoring' | 'testing_procedures' | 'inspection_tech_notes'
+
+const WORKSHEET_GRID_COLUMNS: WorksheetGridColumn[] = [
+  'facp',
+  'monitoring',
+  'testing_procedures',
+  'inspection_tech_notes',
+]
+
+const WORKSHEET_GRID_COLUMN_LABELS: Record<WorksheetGridColumn, string> = {
+  facp: 'FACP',
+  monitoring: 'Monitoring',
+  testing_procedures: 'Testing Procedures',
+  inspection_tech_notes: 'Tech Comments & Notes',
+}
+
+function worksheetGridCellValue(row: TechnicianWorksheetRow, column: WorksheetGridColumn): string {
+  switch (column) {
+    case 'facp':
+      return row.facp ?? ''
+    case 'monitoring':
+      return row.monitoring ?? ''
+    case 'testing_procedures':
+      return row.testing_procedures ?? ''
+    case 'inspection_tech_notes':
+      return row.inspection_tech_notes ?? ''
+  }
+}
+
+function worksheetGridCellRegistryKey(locationId: number, column: WorksheetGridColumn): string {
+  return `${locationId}:${column}`
+}
+
+/** Same normalization as ``onFieldChange`` (trim → null). */
+function worksheetGridPersistedEquals(draft: string, committed: string | null | undefined): boolean {
+  const d = draft.trim() ? draft : null
+  const c = (committed ?? '').trim() ? String(committed) : null
+  return d === c
+}
+
 function worksheetAddressCellStatusClass(
   row: TechnicianWorksheetRow,
   monthDate: string,
@@ -137,11 +186,6 @@ function worksheetAddressCellStatusClass(
   }
   if (annualMatch) return 'tw-address-cell-annual'
   return undefined
-}
-
-function autosizeTextarea(el: HTMLTextAreaElement): void {
-  el.style.height = 'auto'
-  el.style.height = `${el.scrollHeight}px`
 }
 
 function WorksheetTableColGroup() {
@@ -188,6 +232,17 @@ export default function TechnicianWorksheetPage() {
   const headerScrollRef = useRef<HTMLDivElement | null>(null)
   const tableScrollRef = useRef<HTMLDivElement | null>(null)
   const syncingScrollRef = useRef<'header' | 'table' | null>(null)
+  const worksheetGridCellRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+  const worksheetGridSelectionRef = useRef<{ locationId: number; column: WorksheetGridColumn } | null>(null)
+  const worksheetGridDraftRef = useRef('')
+  const worksheetFloatingEditorRef = useRef<HTMLTextAreaElement | null>(null)
+
+  const [worksheetGridSelection, setWorksheetGridSelection] = useState<{
+    locationId: number
+    column: WorksheetGridColumn
+  } | null>(null)
+  const [worksheetGridEditing, setWorksheetGridEditing] = useState(false)
+  const [worksheetGridDraft, setWorksheetGridDraft] = useState('')
 
   const updateLocalRow = useCallback((locationId: number, patch: WorksheetChangeSet) => {
     setPayload((prev) => {
@@ -322,6 +377,19 @@ export default function TechnicianWorksheetPage() {
     setAnnualTestAnywayRows(new Set())
   }, [idNum, monthQuery, payload?.month_date])
 
+  useEffect(() => {
+    setWorksheetGridSelection(null)
+    setWorksheetGridEditing(false)
+  }, [idNum, monthQuery])
+
+  useEffect(() => {
+    worksheetGridSelectionRef.current = worksheetGridSelection
+  }, [worksheetGridSelection])
+
+  useEffect(() => {
+    worksheetGridDraftRef.current = worksheetGridDraft
+  }, [worksheetGridDraft])
+
   const queueLength = useMemo(() => {
     return loadSyncQueue().filter((q) => q.routeId === idNum && q.monthIso === monthQuery).length
   }, [idNum, monthQuery, payload, syncState])
@@ -344,10 +412,247 @@ export default function TechnicianWorksheetPage() {
     [idNum, monthQuery, updateLocalRow]
   )
 
+  const commitWorksheetGridEdit = useCallback(() => {
+    const sel = worksheetGridSelectionRef.current
+    const draft = worksheetGridDraftRef.current
+    setWorksheetGridEditing(false)
+    if (!sel || !payload) return
+    const row = payload.rows.find((r) => r.location_id === sel.locationId)
+    if (!row) return
+    const committed = worksheetGridCellValue(row, sel.column)
+    if (!worksheetGridPersistedEquals(draft, committed)) {
+      onFieldChange(row, sel.column, draft)
+    }
+  }, [payload, onFieldChange])
+
+  const cancelWorksheetGridEdit = useCallback(() => {
+    setWorksheetGridEditing(false)
+  }, [])
+
+  const beginWorksheetGridEdit = useCallback(
+    (locationId: number, column: WorksheetGridColumn, opts?: { initialDraft?: string }) => {
+      if (!payload) return
+      const row = payload.rows.find((r) => r.location_id === locationId)
+      if (!row) return
+      const committed = worksheetGridCellValue(row, column)
+      const draft = opts?.initialDraft !== undefined ? opts.initialDraft : committed
+      setWorksheetGridSelection({ locationId, column })
+      setWorksheetGridDraft(draft)
+      worksheetGridDraftRef.current = draft
+      setWorksheetGridEditing(true)
+    },
+    [payload]
+  )
+
+  const worksheetGridTabNext = useCallback(
+    (backward: boolean) => {
+      if (!payload?.rows.length) return
+      const cols = WORKSHEET_GRID_COLUMNS
+      const sel = worksheetGridSelectionRef.current
+      if (!sel) return
+      const ri = payload.rows.findIndex((r) => r.location_id === sel.locationId)
+      if (ri < 0) return
+      const ci = cols.indexOf(sel.column)
+      let next: { locationId: number; column: WorksheetGridColumn } | null = null
+      if (!backward) {
+        if (ci < cols.length - 1) next = { locationId: sel.locationId, column: cols[ci + 1] }
+        else if (ri < payload.rows.length - 1) next = { locationId: payload.rows[ri + 1].location_id, column: cols[0] }
+      } else {
+        if (ci > 0) next = { locationId: sel.locationId, column: cols[ci - 1] }
+        else if (ri > 0) next = { locationId: payload.rows[ri - 1].location_id, column: cols[cols.length - 1] }
+      }
+      if (next) {
+        worksheetGridSelectionRef.current = next
+        setWorksheetGridSelection(next)
+      }
+    },
+    [payload]
+  )
+
+  const worksheetGridMoveSelection = useCallback(
+    (dir: 'up' | 'down' | 'left' | 'right') => {
+      if (!payload?.rows.length) return
+      const cols = WORKSHEET_GRID_COLUMNS
+      const sel = worksheetGridSelectionRef.current
+      if (!sel) return
+      const ri = payload.rows.findIndex((r) => r.location_id === sel.locationId)
+      if (ri < 0) return
+      const ci = cols.indexOf(sel.column)
+      let next: { locationId: number; column: WorksheetGridColumn } | null = null
+      if (dir === 'up') {
+        if (ri > 0) next = { locationId: payload.rows[ri - 1].location_id, column: sel.column }
+      } else if (dir === 'down') {
+        if (ri < payload.rows.length - 1) next = { locationId: payload.rows[ri + 1].location_id, column: sel.column }
+      } else if (dir === 'left') {
+        if (ci > 0) next = { locationId: sel.locationId, column: cols[ci - 1] }
+        else if (ri > 0) next = { locationId: payload.rows[ri - 1].location_id, column: cols[cols.length - 1] }
+      } else if (dir === 'right') {
+        if (ci < cols.length - 1) next = { locationId: sel.locationId, column: cols[ci + 1] }
+        else if (ri < payload.rows.length - 1) next = { locationId: payload.rows[ri + 1].location_id, column: cols[0] }
+      }
+      if (next) {
+        worksheetGridSelectionRef.current = next
+        setWorksheetGridSelection(next)
+      }
+    },
+    [payload]
+  )
+
+  useLayoutEffect(() => {
+    if (!worksheetGridEditing || !worksheetGridSelection) return
+    const ta = worksheetFloatingEditorRef.current
+    if (!ta) return
+    try {
+      ta.focus({ preventScroll: true })
+    } catch {
+      ta.focus()
+    }
+    const len = ta.value.length
+    try {
+      ta.setSelectionRange(len, len)
+    } catch {
+      // ignore
+    }
+  }, [worksheetGridEditing, worksheetGridSelection?.locationId, worksheetGridSelection?.column])
+
+  useLayoutEffect(() => {
+    if (worksheetGridEditing || !worksheetGridSelection) return
+    const el = worksheetGridCellRefs.current.get(
+      worksheetGridCellRegistryKey(worksheetGridSelection.locationId, worksheetGridSelection.column)
+    )
+    try {
+      el?.focus({ preventScroll: true })
+    } catch {
+      el?.focus()
+    }
+  }, [worksheetGridSelection, worksheetGridEditing])
+
+  const focusWorksheetGridCellEl = useCallback((sel: { locationId: number; column: WorksheetGridColumn }) => {
+    window.requestAnimationFrame(() => {
+      const el = worksheetGridCellRefs.current.get(worksheetGridCellRegistryKey(sel.locationId, sel.column))
+      try {
+        el?.focus({ preventScroll: true })
+      } catch {
+        el?.focus()
+      }
+    })
+  }, [])
+
+  const onWorksheetGridCellKeyDown = useCallback(
+    (row: TechnicianWorksheetRow, column: WorksheetGridColumn) => (e: ReactKeyboardEvent<HTMLDivElement>) => {
+      if (worksheetGridEditing) return
+      const sel = { locationId: row.location_id, column }
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        worksheetGridSelectionRef.current = sel
+        setWorksheetGridSelection(sel)
+        beginWorksheetGridEdit(row.location_id, column)
+        return
+      }
+      if (e.key === 'F2') {
+        e.preventDefault()
+        worksheetGridSelectionRef.current = sel
+        setWorksheetGridSelection(sel)
+        beginWorksheetGridEdit(row.location_id, column)
+        return
+      }
+      if (e.key === 'Tab') {
+        e.preventDefault()
+        worksheetGridSelectionRef.current = sel
+        setWorksheetGridSelection(sel)
+        worksheetGridTabNext(e.shiftKey)
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        worksheetGridSelectionRef.current = sel
+        setWorksheetGridSelection(sel)
+        worksheetGridMoveSelection('up')
+        return
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        worksheetGridSelectionRef.current = sel
+        setWorksheetGridSelection(sel)
+        worksheetGridMoveSelection('down')
+        return
+      }
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault()
+        worksheetGridSelectionRef.current = sel
+        setWorksheetGridSelection(sel)
+        worksheetGridMoveSelection('left')
+        return
+      }
+      if (e.key === 'ArrowRight') {
+        e.preventDefault()
+        worksheetGridSelectionRef.current = sel
+        setWorksheetGridSelection(sel)
+        worksheetGridMoveSelection('right')
+        return
+      }
+      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault()
+        worksheetGridSelectionRef.current = sel
+        setWorksheetGridSelection(sel)
+        beginWorksheetGridEdit(row.location_id, column, { initialDraft: e.key })
+      }
+    },
+    [
+      worksheetGridEditing,
+      beginWorksheetGridEdit,
+      worksheetGridTabNext,
+      worksheetGridMoveSelection,
+    ]
+  )
+
+  const onWorksheetFloatingEditorKeyDown = useCallback(
+    (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        cancelWorksheetGridEdit()
+        const sel = worksheetGridSelectionRef.current
+        if (sel) focusWorksheetGridCellEl(sel)
+        return
+      }
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault()
+        const sel = worksheetGridSelectionRef.current
+        commitWorksheetGridEdit()
+        if (sel && payload) {
+          const ri = payload.rows.findIndex((r) => r.location_id === sel.locationId)
+          if (ri >= 0 && ri < payload.rows.length - 1) {
+            const next = { locationId: payload.rows[ri + 1].location_id, column: sel.column }
+            worksheetGridSelectionRef.current = next
+            setWorksheetGridSelection(next)
+            focusWorksheetGridCellEl(next)
+          } else if (sel) {
+            focusWorksheetGridCellEl(sel)
+          }
+        }
+        return
+      }
+      if (e.key === 'Tab') {
+        e.preventDefault()
+        commitWorksheetGridEdit()
+        worksheetGridTabNext(e.shiftKey)
+        const sel = worksheetGridSelectionRef.current
+        if (sel) focusWorksheetGridCellEl(sel)
+      }
+    },
+    [
+      cancelWorksheetGridEdit,
+      commitWorksheetGridEdit,
+      focusWorksheetGridCellEl,
+      payload,
+      worksheetGridTabNext,
+    ]
+  )
+
   const isEditorActive = useCallback((key: string) => activeEditorKey === key, [activeEditorKey])
 
   const activateEditorAndFocus = useCallback(
-    (key: string, el: HTMLInputElement | HTMLTextAreaElement) => {
+    (key: string, el: HTMLInputElement) => {
       if (activeEditorKey !== key) setActiveEditorKey(key)
       const focusEditor = () => {
         try {
@@ -364,10 +669,18 @@ export default function TechnicianWorksheetPage() {
           }
         }
       }
-      // First call keeps focus in the same tap gesture; follow-ups handle React's readonly->editable flip.
       focusEditor()
-      window.requestAnimationFrame(focusEditor)
-      window.setTimeout(focusEditor, 0)
+      window.requestAnimationFrame(() => {
+        focusEditor()
+      })
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          focusEditor()
+        })
+      })
+      window.setTimeout(() => {
+        focusEditor()
+      }, 0)
     },
     [activeEditorKey]
   )
@@ -416,6 +729,64 @@ export default function TechnicianWorksheetPage() {
     })
   }, [])
 
+  function renderWorksheetGridColumnTd(row: TechnicianWorksheetRow, column: WorksheetGridColumn, tdClass: string) {
+    const selected =
+      worksheetGridSelection?.locationId === row.location_id && worksheetGridSelection.column === column
+    const showEditor = worksheetGridEditing && selected
+    const valueDisplay = worksheetGridCellValue(row, column)
+    return (
+      <td className={tdClass}>
+        <div className="tw-worksheet-cell-surface tw-worksheet-cell-surface--excel-shell">
+          <div className="tw-worksheet-cell-flow">
+            <div
+              ref={(el) => {
+                const k = worksheetGridCellRegistryKey(row.location_id, column)
+                if (el) worksheetGridCellRefs.current.set(k, el)
+                else worksheetGridCellRefs.current.delete(k)
+              }}
+              tabIndex={selected ? 0 : -1}
+              role="gridcell"
+              aria-label={`${WORKSHEET_GRID_COLUMN_LABELS[column]}, ${row.display_address}`}
+              className={`tw-worksheet-cell-view${showEditor ? ' tw-worksheet-cell-view--under-editor' : ''}`}
+              onKeyDown={onWorksheetGridCellKeyDown(row, column)}
+              onClick={(e) => {
+                e.stopPropagation()
+                setWorksheetGridSelection({ locationId: row.location_id, column })
+              }}
+              onDoubleClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                beginWorksheetGridEdit(row.location_id, column)
+              }}
+            >
+              {valueDisplay || '\u00a0'}
+            </div>
+          </div>
+        </div>
+        <div
+          className={`tw-worksheet-cell-overlay${selected ? ' tw-worksheet-cell-selected' : ''}`}
+          aria-hidden={!showEditor}
+        >
+          {showEditor ? (
+            <textarea
+              ref={worksheetFloatingEditorRef}
+              className="form-control form-control-sm tw-worksheet-cell-editor"
+              aria-label={`Edit ${WORKSHEET_GRID_COLUMN_LABELS[column]}, ${row.display_address}`}
+              value={worksheetGridDraft}
+              onChange={(e) => {
+                const v = e.target.value
+                setWorksheetGridDraft(v)
+                worksheetGridDraftRef.current = v
+              }}
+              onBlur={() => commitWorksheetGridEdit()}
+              onKeyDown={onWorksheetFloatingEditorKeyDown}
+            />
+          ) : null}
+        </div>
+      </td>
+    )
+  }
+
   const invalidParams =
     !routeId || Number.isNaN(idNum) || !monthIso ? (
       <Alert variant="danger">Missing route or month.</Alert>
@@ -424,11 +795,11 @@ export default function TechnicianWorksheetPage() {
     ) : null
 
   return (
-    <div className="technician-worksheet-page">
+    <div className={`technician-worksheet-page${isPortalMode ? ' technician-worksheet-page--portal' : ''}`}>
       {payload ? (
         <div ref={topbarRef} className="technician-worksheet-topbar card shadow-sm">
-          <div className="card-body py-2 container-fluid">
-            <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
+          <div className="card-body py-2 container-fluid px-0">
+            <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 px-3">
               <div className="d-flex align-items-center gap-2">
                 <Link
                   to={
@@ -478,7 +849,7 @@ export default function TechnicianWorksheetPage() {
                 </Button>
               </div>
             </div>
-            {syncMessage ? <div className="small text-danger mt-1">{syncMessage}</div> : null}
+            {syncMessage ? <div className="small text-danger mt-1 px-3">{syncMessage}</div> : null}
           </div>
           <div
             ref={headerScrollRef}
@@ -534,6 +905,7 @@ export default function TechnicianWorksheetPage() {
                   <tbody>
                     {payload.rows.map((row, index) => (
                       <tr
+                        role="row"
                         key={`${row.location_id}-${row.month_date}`}
                         className={(() => {
                           const rs = (row.result_status || '').trim().toLowerCase()
@@ -550,9 +922,6 @@ export default function TechnicianWorksheetPage() {
                           const annualKey = `annual_month:${row.location_id}`
                           const ringKey = `ring:${row.location_id}`
                           const keyNumberKey = `key_number:${row.location_id}`
-                          const facpKey = `facp:${row.location_id}`
-                          const proceduresKey = `testing_procedures:${row.location_id}`
-                          const notesKey = `inspection_tech_notes:${row.location_id}`
                           const isHistorical = payload.run?.is_historical === true
                           const addressStatusClass = worksheetAddressCellStatusClass(row, payload.month_date, isHistorical)
                           const displayTimeIn = (row.time_in || '').trim()
@@ -638,61 +1007,10 @@ export default function TechnicianWorksheetPage() {
                             />
                           </div>
                         </td>
-                        <td className="tw-col-facp">
-                          <textarea
-                            className={`form-control form-control-sm ${isEditorActive(facpKey) ? '' : 'tw-readonly-field'}`}
-                            rows={1}
-                            defaultValue={row.facp ?? ''}
-                            readOnly={!isEditorActive(facpKey)}
-                            ref={(el) => {
-                              if (el) autosizeTextarea(el)
-                            }}
-                            onInput={(e) => autosizeTextarea(e.currentTarget)}
-                            onClick={(e) => activateEditorAndFocus(facpKey, e.currentTarget)}
-                            onBlur={(e) => {
-                              autosizeTextarea(e.currentTarget)
-                              onFieldChange(row, 'facp', e.target.value)
-                              if (activeEditorKey === facpKey) setActiveEditorKey(null)
-                            }}
-                          />
-                        </td>
-                        <td className="small tw-col-monitoring">{row.monitoring ?? '—'}</td>
-                        <td className="tw-col-procedures">
-                          <textarea
-                            className={`form-control form-control-sm ${isEditorActive(proceduresKey) ? '' : 'tw-readonly-field'}`}
-                            rows={1}
-                            defaultValue={row.testing_procedures ?? ''}
-                            readOnly={!isEditorActive(proceduresKey)}
-                            ref={(el) => {
-                              if (el) autosizeTextarea(el)
-                            }}
-                            onInput={(e) => autosizeTextarea(e.currentTarget)}
-                            onClick={(e) => activateEditorAndFocus(proceduresKey, e.currentTarget)}
-                            onBlur={(e) => {
-                              autosizeTextarea(e.currentTarget)
-                              onFieldChange(row, 'testing_procedures', e.target.value)
-                              if (activeEditorKey === proceduresKey) setActiveEditorKey(null)
-                            }}
-                          />
-                        </td>
-                        <td className="tw-col-notes">
-                          <textarea
-                            className={`form-control form-control-sm ${isEditorActive(notesKey) ? '' : 'tw-readonly-field'}`}
-                            rows={1}
-                            defaultValue={row.inspection_tech_notes ?? ''}
-                            readOnly={!isEditorActive(notesKey)}
-                            ref={(el) => {
-                              if (el) autosizeTextarea(el)
-                            }}
-                            onInput={(e) => autosizeTextarea(e.currentTarget)}
-                            onClick={(e) => activateEditorAndFocus(notesKey, e.currentTarget)}
-                            onBlur={(e) => {
-                              autosizeTextarea(e.currentTarget)
-                              onFieldChange(row, 'inspection_tech_notes', e.target.value)
-                              if (activeEditorKey === notesKey) setActiveEditorKey(null)
-                            }}
-                          />
-                        </td>
+                        {renderWorksheetGridColumnTd(row, 'facp', 'tw-col-facp')}
+                        {renderWorksheetGridColumnTd(row, 'monitoring', 'tw-col-monitoring')}
+                        {renderWorksheetGridColumnTd(row, 'testing_procedures', 'tw-col-procedures')}
+                        {renderWorksheetGridColumnTd(row, 'inspection_tech_notes', 'tw-col-notes')}
                         <td className="tw-col-action">
                           <div className={`d-grid gap-1${isHistorical ? ' text-center' : ''}`}>
                             {isHistorical ? (
@@ -872,11 +1190,16 @@ export default function TechnicianWorksheetPage() {
                                           size="sm"
                                           variant="outline-secondary"
                                           onClick={() => {
+                                            setAnnualTestAnywayRows((prev) => {
+                                              const next = new Set(prev)
+                                              next.delete(row.location_id)
+                                              return next
+                                            })
                                             queueRowChanges(row, {
+                                              result_status: null,
+                                              skip_reason: null,
                                               time_in: null,
                                               time_out: null,
-                                              skip_reason: null,
-                                              result_status: 'tested',
                                             })
                                           }}
                                         >
