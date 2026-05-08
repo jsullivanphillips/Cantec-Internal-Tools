@@ -1520,6 +1520,11 @@ def stream_monthly_route_worksheet(route_id: int):
         yield "retry: 15000\n\n"
         try:
             while True:
+                # Long-lived SSE: roll back the implicit read transaction and expire ORM state so
+                # each poll sees DB commits from other requests/workers (SQLAlchemy identity map +
+                # repeatable-read snapshots otherwise hide worksheet PATCH updates indefinitely).
+                db.session.rollback()
+                db.session.expire_all()
                 token = _worksheet_attributed_revision_token(route_id, month_first)
                 if token is None:
                     yield f"event: worksheet_error\ndata: {json.dumps({'error': 'Route not found'})}\n\n"
