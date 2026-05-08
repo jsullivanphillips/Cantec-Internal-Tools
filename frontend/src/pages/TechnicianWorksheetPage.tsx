@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Alert, Badge, Button, Card, Modal, Spinner, Table } from 'react-bootstrap'
 import { Link, useLocation, useParams } from 'react-router-dom'
 import {
@@ -124,11 +124,15 @@ function worksheetSkipReasonDisplayBlock(skipReason: string | null | undefined):
 function worksheetAddressCellStatusClass(
   row: TechnicianWorksheetRow,
   monthDate: string,
+  isHistorical: boolean,
 ): string | undefined {
   const rs = (row.result_status || '').trim().toLowerCase()
   const annualMatch = isAnnualForMonth(row.annual_month, monthDate)
   if (rs === 'tested') return 'tw-address-cell-tested'
   if (rs === 'skipped') {
+    // Active run: any explicit technician skip should look "skipped" (yellow),
+    // even when reason is annual. Historical runs keep annual-vs-other tinting.
+    if (!isHistorical) return 'tw-address-cell-skipped-other'
     return sheetSkipReasonIsAnnual(row.skip_reason) ? 'tw-address-cell-annual' : 'tw-address-cell-skipped-other'
   }
   if (annualMatch) return 'tw-address-cell-annual'
@@ -138,6 +142,21 @@ function worksheetAddressCellStatusClass(
 function autosizeTextarea(el: HTMLTextAreaElement): void {
   el.style.height = 'auto'
   el.style.height = `${el.scrollHeight}px`
+}
+
+function WorksheetTableColGroup() {
+  return (
+    <colgroup>
+      <col style={{ width: '3%' }} />
+      <col style={{ width: '13%' }} />
+      <col style={{ width: '12%' }} />
+      <col style={{ width: '17%' }} />
+      <col style={{ width: '14%' }} />
+      <col style={{ width: '16%' }} />
+      <col style={{ width: '16%' }} />
+      <col style={{ width: '9%' }} />
+    </colgroup>
+  )
 }
 
 export default function TechnicianWorksheetPage() {
@@ -162,9 +181,13 @@ export default function TechnicianWorksheetPage() {
   const [timeOutDraft, setTimeOutDraft] = useState('')
   const [skipReasonModalRow, setSkipReasonModalRow] = useState<TechnicianWorksheetRow | null>(null)
   const [skipReasonDraft, setSkipReasonDraft] = useState('')
+  const [annualTestAnywayRows, setAnnualTestAnywayRows] = useState<Set<number>>(new Set())
   const [topbarHeight, setTopbarHeight] = useState(0)
   const syncingRef = useRef(false)
   const topbarRef = useRef<HTMLDivElement | null>(null)
+  const headerScrollRef = useRef<HTMLDivElement | null>(null)
+  const tableScrollRef = useRef<HTMLDivElement | null>(null)
+  const syncingScrollRef = useRef<'header' | 'table' | null>(null)
 
   const updateLocalRow = useCallback((locationId: number, patch: WorksheetChangeSet) => {
     setPayload((prev) => {
@@ -295,6 +318,10 @@ export default function TechnicianWorksheetPage() {
     return () => ro.disconnect()
   }, [payload])
 
+  useEffect(() => {
+    setAnnualTestAnywayRows(new Set())
+  }, [idNum, monthQuery, payload?.month_date])
+
   const queueLength = useMemo(() => {
     return loadSyncQueue().filter((q) => q.routeId === idNum && q.monthIso === monthQuery).length
   }, [idNum, monthQuery, payload, syncState])
@@ -318,6 +345,32 @@ export default function TechnicianWorksheetPage() {
   )
 
   const isEditorActive = useCallback((key: string) => activeEditorKey === key, [activeEditorKey])
+
+  const activateEditorAndFocus = useCallback(
+    (key: string, el: HTMLInputElement | HTMLTextAreaElement) => {
+      if (activeEditorKey !== key) setActiveEditorKey(key)
+      const focusEditor = () => {
+        try {
+          el.focus({ preventScroll: true })
+        } catch {
+          el.focus()
+        }
+        if (typeof el.setSelectionRange === 'function') {
+          const len = (el.value || '').length
+          try {
+            el.setSelectionRange(len, len)
+          } catch {
+            // Some input types do not support text selection ranges.
+          }
+        }
+      }
+      // First call keeps focus in the same tap gesture; follow-ups handle React's readonly->editable flip.
+      focusEditor()
+      window.requestAnimationFrame(focusEditor)
+      window.setTimeout(focusEditor, 0)
+    },
+    [activeEditorKey]
+  )
 
   const queueRowChanges = useCallback(
     (row: TechnicianWorksheetRow, patch: WorksheetChangeSet) => {
@@ -347,6 +400,22 @@ export default function TechnicianWorksheetPage() {
     [idNum, monthQuery]
   )
 
+  const syncWorksheetHorizontalScroll = useCallback((source: 'header' | 'table') => {
+    const headerEl = headerScrollRef.current
+    const tableEl = tableScrollRef.current
+    if (!headerEl || !tableEl) return
+    if (syncingScrollRef.current && syncingScrollRef.current !== source) return
+    syncingScrollRef.current = source
+    if (source === 'header') {
+      if (tableEl.scrollLeft !== headerEl.scrollLeft) tableEl.scrollLeft = headerEl.scrollLeft
+    } else if (headerEl.scrollLeft !== tableEl.scrollLeft) {
+      headerEl.scrollLeft = tableEl.scrollLeft
+    }
+    requestAnimationFrame(() => {
+      syncingScrollRef.current = null
+    })
+  }, [])
+
   const invalidParams =
     !routeId || Number.isNaN(idNum) || !monthIso ? (
       <Alert variant="danger">Missing route or month.</Alert>
@@ -360,15 +429,31 @@ export default function TechnicianWorksheetPage() {
         <div ref={topbarRef} className="technician-worksheet-topbar card shadow-sm">
           <div className="card-body py-2 container-fluid">
             <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
-              <div>
-                <div className="fw-semibold">{payload.route.label}</div>
-                <div className="small text-muted">{formatMonthHeading(payload.month_date)} run</div>
-                {(() => {
-                  const startedLabel = formatRunStartedAt(payload.run?.started_at ?? null)
-                  return startedLabel ? (
-                    <div className="small text-muted">Run started {startedLabel}</div>
-                  ) : null
-                })()}
+              <div className="d-flex align-items-center gap-2">
+                <Link
+                  to={
+                    isPortalMode
+                      ? '/tech/start'
+                      : Number.isNaN(idNum)
+                        ? '/monthlies/routes'
+                        : `/monthlies/routes/${idNum}`
+                  }
+                  className="btn btn-link text-primary p-0 d-inline-flex align-items-center justify-content-center tw-worksheet-back-btn"
+                  aria-label="Back"
+                  title="Back"
+                >
+                  <i className="bi bi-arrow-left-circle-fill" aria-hidden />
+                </Link>
+                <div>
+                  <div className="fw-semibold">{payload.route.label}</div>
+                  <div className="small text-muted">{formatMonthHeading(payload.month_date)} run</div>
+                  {(() => {
+                    const startedLabel = formatRunStartedAt(payload.run?.started_at ?? null)
+                    return startedLabel ? (
+                      <div className="small text-muted">Run started {startedLabel}</div>
+                    ) : null
+                  })()}
+                </div>
               </div>
               <div className="d-flex align-items-center gap-2">
                 {completionPending(idNum, monthQuery) ? <Badge bg="warning">Pending Confirmation</Badge> : null}
@@ -381,7 +466,7 @@ export default function TechnicianWorksheetPage() {
                         ? 'Saved offline'
                         : 'Synced'}
                 </Badge>
-                <span className="small text-muted">{queueLength} queued</span>
+                {queueLength > 0 ? <span className="small text-muted">{queueLength} queued</span> : null}
                 <Button
                   size="sm"
                   variant="outline-secondary"
@@ -395,28 +480,39 @@ export default function TechnicianWorksheetPage() {
             </div>
             {syncMessage ? <div className="small text-danger mt-1">{syncMessage}</div> : null}
           </div>
+          <div
+            ref={headerScrollRef}
+            className="technician-worksheet-column-header-wrap technician-worksheet-column-header-wrap--topbar"
+            onScroll={() => syncWorksheetHorizontalScroll('header')}
+          >
+            <Table size="sm" className="mb-0 align-middle technician-worksheet-column-header-table">
+              <WorksheetTableColGroup />
+              <thead className="table-light">
+                <tr>
+                  <th className="tw-col-order">#</th>
+                  <th className="tw-col-address">Address</th>
+                  <th className="tw-col-stacked-ark">Annual / Ring / Key #</th>
+                  <th className="tw-col-facp">FACP</th>
+                  <th className="tw-col-monitoring">Monitoring</th>
+                  <th className="tw-col-procedures">Testing Procedures</th>
+                  <th className="tw-col-notes">Tech Comments & Notes</th>
+                  <th className="tw-col-action">Action</th>
+                </tr>
+              </thead>
+            </Table>
+          </div>
         </div>
       ) : null}
       <div
-        className="container-fluid py-3"
-        style={topbarHeight ? { paddingTop: topbarHeight } : undefined}
+        className="container-fluid px-0"
+        style={
+          ({
+            paddingTop: topbarHeight > 0 ? topbarHeight : 0,
+            paddingBottom: '1rem',
+            ['--tw-worksheet-topbar-h' as string]: `${topbarHeight}px`,
+          } as CSSProperties)
+        }
       >
-      <div className="d-flex flex-wrap align-items-center gap-2 mb-3">
-        {isPortalMode ? (
-          <Link to="/tech/start" className="small">
-            ← Back to route picker
-          </Link>
-        ) : (
-          <>
-            <Link to={Number.isNaN(idNum) ? '/monthlies/routes' : `/monthlies/routes/${idNum}`} className="small">
-              ← Back to route
-            </Link>
-            <Link to="/monthlies/routes" className="small text-muted">
-              All routes
-            </Link>
-          </>
-        )}
-      </div>
       {invalidParams}
       {loading && !payload ? (
         <div className="d-flex align-items-center justify-content-center gap-2 text-muted py-5">
@@ -428,23 +524,28 @@ export default function TechnicianWorksheetPage() {
         <>
           <Card className="shadow-sm">
             <Card.Body className="p-0">
-              <div className="technician-worksheet-table-wrap">
+              <div
+                ref={tableScrollRef}
+                className="technician-worksheet-table-wrap"
+                onScroll={() => syncWorksheetHorizontalScroll('table')}
+              >
                 <Table size="sm" className="mb-0 align-middle technician-worksheet-table">
-                  <thead className="table-light">
-                    <tr>
-                      <th className="tw-col-order">#</th>
-                      <th className="tw-col-address">Address</th>
-                      <th className="tw-col-stacked-ark">Annual / Ring / Key #</th>
-                      <th className="tw-col-facp">FACP</th>
-                      <th className="tw-col-monitoring">Monitoring</th>
-                      <th className="tw-col-procedures">Testing Procedures</th>
-                      <th className="tw-col-notes">Tech Comments & Notes</th>
-                      <th className="tw-col-action">Action</th>
-                    </tr>
-                  </thead>
+                  <WorksheetTableColGroup />
                   <tbody>
                     {payload.rows.map((row, index) => (
-                      <tr key={`${row.location_id}-${row.month_date}`}>
+                      <tr
+                        key={`${row.location_id}-${row.month_date}`}
+                        className={(() => {
+                          const rs = (row.result_status || '').trim().toLowerCase()
+                          const annualMatch = isAnnualForMonth(row.annual_month, payload.month_date)
+                          const isHistorical = payload.run?.is_historical === true
+                          if (rs === 'skipped') {
+                            if (isHistorical && sheetSkipReasonIsAnnual(row.skip_reason)) return 'tw-row-annual'
+                            return 'tw-row-skipped'
+                          }
+                          return annualMatch ? 'tw-row-annual' : undefined
+                        })()}
+                      >
                         {(() => {
                           const annualKey = `annual_month:${row.location_id}`
                           const ringKey = `ring:${row.location_id}`
@@ -452,12 +553,13 @@ export default function TechnicianWorksheetPage() {
                           const facpKey = `facp:${row.location_id}`
                           const proceduresKey = `testing_procedures:${row.location_id}`
                           const notesKey = `inspection_tech_notes:${row.location_id}`
-                          const addressStatusClass = worksheetAddressCellStatusClass(row, payload.month_date)
+                          const isHistorical = payload.run?.is_historical === true
+                          const addressStatusClass = worksheetAddressCellStatusClass(row, payload.month_date, isHistorical)
                           const displayTimeIn = (row.time_in || '').trim()
                           const displayTimeOut = (row.time_out || '').trim()
                           const hasTimeIn = displayTimeIn.length > 0
                           const hasTimeOut = displayTimeOut.length > 0
-                          const isHistorical = payload.run?.is_historical === true
+                          const annualMatch = isAnnualForMonth(row.annual_month, payload.month_date)
                           const showOfficeStatusIcons = isHistorical && !isPortalMode
                           const worksheetResultKey = (row.result_status || '').trim().toLowerCase()
                           const worksheetHasTestedOrSkipped =
@@ -473,6 +575,11 @@ export default function TechnicianWorksheetPage() {
                               displayTimeIn,
                             )
                           const showWorksheetTimeOutLine = hasTimeOut && shouldShowWorksheetTimeOutRow(displayTimeIn, displayTimeOut)
+                          const showAnnualPromptBeforeTesting =
+                            !isHistorical &&
+                            !hasTimeIn &&
+                            annualMatch &&
+                            !annualTestAnywayRows.has(row.location_id)
                           return (
                             <>
                         <td className="tw-col-order text-center tabular-nums">{index + 1}</td>
@@ -490,25 +597,14 @@ export default function TechnicianWorksheetPage() {
                         </td>
                         <td className="tw-col-stacked-ark">
                           <div className="tw-stacked-cell">
-                            <label className="tw-stacked-label">Annual</label>
-                            <input
-                              className={`form-control form-control-sm ${isEditorActive(annualKey) ? '' : 'tw-readonly-field'}`}
-                              defaultValue={row.annual_month ?? ''}
-                              readOnly={!isEditorActive(annualKey)}
-                              autoFocus={isEditorActive(annualKey)}
-                              onClick={() => setActiveEditorKey(annualKey)}
-                              onBlur={(e) => {
-                                onFieldChange(row, 'annual_month', e.target.value)
-                                if (activeEditorKey === annualKey) setActiveEditorKey(null)
-                              }}
-                            />
                             <label className="tw-stacked-label">Ring</label>
                             <input
+                              key={`ring:${row.location_id}:${row.month_date}:${row.ring ?? ''}`}
                               className={`form-control form-control-sm ${isEditorActive(ringKey) ? '' : 'tw-readonly-field'}`}
                               defaultValue={row.ring ?? ''}
                               readOnly={!isEditorActive(ringKey)}
                               autoFocus={isEditorActive(ringKey)}
-                              onClick={() => setActiveEditorKey(ringKey)}
+                              onClick={(e) => activateEditorAndFocus(ringKey, e.currentTarget)}
                               onBlur={(e) => {
                                 onFieldChange(row, 'ring', e.target.value)
                                 if (activeEditorKey === ringKey) setActiveEditorKey(null)
@@ -516,14 +612,28 @@ export default function TechnicianWorksheetPage() {
                             />
                             <label className="tw-stacked-label">Key #</label>
                             <input
+                              key={`key:${row.location_id}:${row.month_date}:${row.key_number ?? ''}`}
                               className={`form-control form-control-sm ${isEditorActive(keyNumberKey) ? '' : 'tw-readonly-field'}`}
                               defaultValue={row.key_number ?? ''}
                               readOnly={!isEditorActive(keyNumberKey)}
                               autoFocus={isEditorActive(keyNumberKey)}
-                              onClick={() => setActiveEditorKey(keyNumberKey)}
+                              onClick={(e) => activateEditorAndFocus(keyNumberKey, e.currentTarget)}
                               onBlur={(e) => {
                                 onFieldChange(row, 'key_number', e.target.value)
                                 if (activeEditorKey === keyNumberKey) setActiveEditorKey(null)
+                              }}
+                            />
+                            <label className="tw-stacked-label">Annual</label>
+                            <input
+                              key={`annual:${row.location_id}:${row.month_date}:${row.annual_month ?? ''}`}
+                              className={`form-control form-control-sm ${isEditorActive(annualKey) ? '' : 'tw-readonly-field'}`}
+                              defaultValue={row.annual_month ?? ''}
+                              readOnly={!isEditorActive(annualKey)}
+                              autoFocus={isEditorActive(annualKey)}
+                              onClick={(e) => activateEditorAndFocus(annualKey, e.currentTarget)}
+                              onBlur={(e) => {
+                                onFieldChange(row, 'annual_month', e.target.value)
+                                if (activeEditorKey === annualKey) setActiveEditorKey(null)
                               }}
                             />
                           </div>
@@ -538,7 +648,7 @@ export default function TechnicianWorksheetPage() {
                               if (el) autosizeTextarea(el)
                             }}
                             onInput={(e) => autosizeTextarea(e.currentTarget)}
-                            onClick={() => setActiveEditorKey(facpKey)}
+                            onClick={(e) => activateEditorAndFocus(facpKey, e.currentTarget)}
                             onBlur={(e) => {
                               autosizeTextarea(e.currentTarget)
                               onFieldChange(row, 'facp', e.target.value)
@@ -557,7 +667,7 @@ export default function TechnicianWorksheetPage() {
                               if (el) autosizeTextarea(el)
                             }}
                             onInput={(e) => autosizeTextarea(e.currentTarget)}
-                            onClick={() => setActiveEditorKey(proceduresKey)}
+                            onClick={(e) => activateEditorAndFocus(proceduresKey, e.currentTarget)}
                             onBlur={(e) => {
                               autosizeTextarea(e.currentTarget)
                               onFieldChange(row, 'testing_procedures', e.target.value)
@@ -575,7 +685,7 @@ export default function TechnicianWorksheetPage() {
                               if (el) autosizeTextarea(el)
                             }}
                             onInput={(e) => autosizeTextarea(e.currentTarget)}
-                            onClick={() => setActiveEditorKey(notesKey)}
+                            onClick={(e) => activateEditorAndFocus(notesKey, e.currentTarget)}
                             onBlur={(e) => {
                               autosizeTextarea(e.currentTarget)
                               onFieldChange(row, 'inspection_tech_notes', e.target.value)
@@ -649,70 +759,134 @@ export default function TechnicianWorksheetPage() {
                               </>
                             ) : (
                               <>
-                                {showWorksheetTimeInLine ? (
-                                  <div className="small text-muted">{worksheetTimeInOutDisplayLine('in', displayTimeIn)}</div>
-                                ) : null}
-                                {showWorksheetTimeOutLine ? (
-                                  <div className="small text-muted">{worksheetTimeInOutDisplayLine('out', displayTimeOut)}</div>
-                                ) : null}
-                                {!hasTimeIn ? (
+                                {worksheetResultKey === 'skipped' ? (
                                   <>
+                                    <div className="fw-semibold small text-center">Skipped</div>
+                                    {skipReasonDisplayBlock != null ? (
+                                      <div className="small text-muted text-break text-center">{skipReasonDisplayBlock}</div>
+                                    ) : null}
                                     <Button
                                       size="sm"
-                                      variant="success"
+                                      variant="outline-secondary"
+                                      className="tw-worksheet-reset-btn"
                                       onClick={() => {
-                                        setTimeInModalRow(row)
-                                        setTimeInDraft(displayTimeIn || hhmmNow())
+                                        setAnnualTestAnywayRows((prev) => {
+                                          const next = new Set(prev)
+                                          next.delete(row.location_id)
+                                          return next
+                                        })
+                                        queueRowChanges(row, {
+                                          result_status: null,
+                                          skip_reason: null,
+                                          time_in: null,
+                                          time_out: null,
+                                        })
                                       }}
                                     >
-                                      Time In
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="warning"
-                                      onClick={() => {
-                                        setSkipReasonModalRow(row)
-                                        setSkipReasonDraft(row.skip_reason || '')
-                                      }}
-                                    >
-                                      Skip
-                                    </Button>
-                                  </>
-                                ) : !hasTimeOut ? (
-                                  <>
-                                    <Button
-                                      size="sm"
-                                      variant="success"
-                                      onClick={() => {
-                                        setTimeOutModalRow(row)
-                                        setTimeOutDraft(displayTimeOut || hhmmNow())
-                                      }}
-                                    >
-                                      Time Out
-                                    </Button>
-                                    <Button size="sm" variant="danger" onClick={() => window.alert('Deficiency workflow next phase')}>
-                                      Add Deficiency
+                                      Reset
                                     </Button>
                                   </>
                                 ) : (
                                   <>
-                                    <Button
-                                      size="sm"
-                                      variant="outline-secondary"
-                                      onClick={() => {
-                                        queueRowChanges(row, {
-                                          time_in: null,
-                                          time_out: null,
-                                          skip_reason: null,
-                                          result_status: 'tested',
-                                        })
-                                      }}
-                                    >
-                                      Clear Time In/Out
-                                    </Button>
-                                    <Button size="sm" variant="danger" onClick={() => window.alert('Deficiency workflow next phase')}>
-                                      Add Deficiency
-                                    </Button>
+                                    {showWorksheetTimeInLine ? (
+                                      <div className="small text-muted">{worksheetTimeInOutDisplayLine('in', displayTimeIn)}</div>
+                                    ) : null}
+                                    {showWorksheetTimeOutLine ? (
+                                      <div className="small text-muted">{worksheetTimeInOutDisplayLine('out', displayTimeOut)}</div>
+                                    ) : null}
+                                    {!hasTimeIn ? (
+                                      <>
+                                        {showAnnualPromptBeforeTesting ? (
+                                          <>
+                                            <div className="small fw-semibold text-uppercase text-warning-emphasis text-center">
+                                              ANNUAL
+                                            </div>
+                                            <Button
+                                              size="sm"
+                                          variant="warning"
+                                          onClick={() => {
+                                            queueRowChanges(row, { result_status: 'skipped', skip_reason: 'annual' })
+                                          }}
+                                        >
+                                          Skip
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="outline-secondary"
+                                              className="tw-annual-test-anyway-btn"
+                                              onClick={() =>
+                                                setAnnualTestAnywayRows((prev) => {
+                                                  const next = new Set(prev)
+                                                  next.add(row.location_id)
+                                                  return next
+                                                })
+                                              }
+                                            >
+                                              Test Anyway
+                                            </Button>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Button
+                                              size="sm"
+                                              variant="success"
+                                              onClick={() => {
+                                                setTimeInModalRow(row)
+                                                setTimeInDraft(displayTimeIn || hhmmNow())
+                                              }}
+                                            >
+                                              Time In
+                                            </Button>
+                                            <Button
+                                              size="sm"
+                                              variant="warning"
+                                              onClick={() => {
+                                                setSkipReasonModalRow(row)
+                                                setSkipReasonDraft(row.skip_reason || '')
+                                              }}
+                                            >
+                                              Skip
+                                            </Button>
+                                          </>
+                                        )}
+                                      </>
+                                    ) : !hasTimeOut ? (
+                                      <>
+                                        <Button
+                                          size="sm"
+                                          variant="success"
+                                          onClick={() => {
+                                            setTimeOutModalRow(row)
+                                            setTimeOutDraft(displayTimeOut || hhmmNow())
+                                          }}
+                                        >
+                                          Time Out
+                                        </Button>
+                                        <Button size="sm" variant="danger" onClick={() => window.alert('Deficiency workflow next phase')}>
+                                          Add Deficiency
+                                        </Button>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Button
+                                          size="sm"
+                                          variant="outline-secondary"
+                                          onClick={() => {
+                                            queueRowChanges(row, {
+                                              time_in: null,
+                                              time_out: null,
+                                              skip_reason: null,
+                                              result_status: 'tested',
+                                            })
+                                          }}
+                                        >
+                                          Clear Time In/Out
+                                        </Button>
+                                        <Button size="sm" variant="danger" onClick={() => window.alert('Deficiency workflow next phase')}>
+                                          Add Deficiency
+                                        </Button>
+                                      </>
+                                    )}
                                   </>
                                 )}
                               </>

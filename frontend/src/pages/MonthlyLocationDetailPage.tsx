@@ -363,7 +363,7 @@ export default function MonthlyLocationDetailPage() {
     return (
       <div className="container py-4">
         <Alert variant="warning">Invalid location.</Alert>
-        <Link to="/monthlies/routes">Back to Monthly Routes</Link>
+        <Link to="/monthlies/locations">Back to Monthly Locations</Link>
       </div>
     )
   }
@@ -382,7 +382,7 @@ export default function MonthlyLocationDetailPage() {
     return (
       <div className="container py-4">
         <Alert variant="danger">{error || 'Location not found.'}</Alert>
-        <Link to="/monthlies/routes">Back to Monthly Routes</Link>
+        <Link to="/monthlies/locations">Back to Monthly Locations</Link>
       </div>
     )
   }
@@ -408,8 +408,8 @@ export default function MonthlyLocationDetailPage() {
   return (
     <div className="monthly-location-detail-page pt-0 pb-4 px-3 px-lg-4 mt-n3">
       <div className="mb-3">
-        <Link to="/monthlies/routes" className="text-decoration-none">
-          ← Monthly Routes library
+        <Link to="/monthlies/locations" className="text-decoration-none">
+          ← Monthly Locations library
         </Link>
       </div>
 
@@ -500,7 +500,7 @@ export default function MonthlyLocationDetailPage() {
         onSaved={(loc) => {
           setLocation(loc)
         }}
-        onDeleted={() => navigate('/monthlies/routes')}
+        onDeleted={() => navigate('/monthlies/locations')}
       />
 
       <Accordion

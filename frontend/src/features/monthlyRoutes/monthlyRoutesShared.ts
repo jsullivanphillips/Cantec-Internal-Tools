@@ -139,6 +139,14 @@ export type MonthlyRouteDetailPayload = {
   specialists_by_month: Record<string, MonthlyRouteSpecialistMonthPayload>
 }
 
+export type MonthlyRouteOverviewRow = {
+  route: MonthlyRouteSummary
+}
+
+export type MonthlyRouteOverviewPayload = {
+  routes: MonthlyRouteOverviewRow[]
+}
+
 /** GET ``/api/monthly_routes/routes/:id/testing_session?month=``. */
 export type RouteTestingSessionCounts = {
   sites_tested_count: number

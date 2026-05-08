@@ -11,6 +11,7 @@ const KeysHomePage = lazy(() => import('./pages/KeysHomePage'))
 const KeyDetailPage = lazy(() => import('./pages/KeyDetailPage'))
 const KeyByBarcodePage = lazy(() => import('./pages/KeyByBarcodePage'))
 const PerformanceSummaryPage = lazy(() => import('./pages/PerformanceSummaryPage'))
+const MonthlyRoutesOverviewPage = lazy(() => import('./pages/MonthlyRoutesOverviewPage'))
 const MonthlyRoutesPage = lazy(() => import('./pages/MonthlyRoutesPage'))
 const MonthlyRouteDetailPage = lazy(() => import('./pages/MonthlyRouteDetailPage'))
 const TechnicianWorksheetPage = lazy(() => import('./pages/TechnicianWorksheetPage'))
@@ -74,14 +75,15 @@ export const router = createBrowserRouter([
       { path: 'quotation_tool', element: <QuotationToolPage /> },
       { path: 'deficiency_tracker', element: <DeficiencyTrackerPage /> },
       { path: 'scheduling_attack', element: <SchedulingAttackPage /> },
-      { path: 'monthlies/routes', element: <MonthlyRoutesPage /> },
+      { path: 'monthlies/routes', element: <MonthlyRoutesOverviewPage /> },
+      { path: 'monthlies/locations', element: <MonthlyRoutesPage /> },
       { path: 'monthlies/routes/:routeId', element: <MonthlyRouteDetailPage /> },
       { path: 'monthlies/routes/:routeId/sessions/:monthIso', element: <RedirectMonthlySessionToWorksheet /> },
       { path: 'monthlies/routes/:routeId/worksheet/:monthIso', element: <TechnicianWorksheetPage /> },
       { path: 'monthlies/locations/:locationId', element: <MonthlyLocationDetailPage /> },
       { path: 'monthlies/map', element: <MonthlyRoutesMapPage /> },
       { path: 'monthlies/specialists', element: <MonthlySpecialistsPage /> },
-      { path: 'tools/monthly-routes', element: <Navigate to="/monthlies/routes" replace /> },
+      { path: 'tools/monthly-routes', element: <Navigate to="/monthlies/locations" replace /> },
       { path: 'tools/monthly-routes/map', element: <Navigate to="/monthlies/map" replace /> },
       { path: 'processing_attack', element: <ProcessingAttackPage /> },
       { path: 'limbo_job_tracker', element: <Navigate to="/processing_attack?tab=limbo" replace /> },

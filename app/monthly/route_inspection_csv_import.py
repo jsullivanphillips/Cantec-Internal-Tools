@@ -167,6 +167,112 @@ _TRAILING_EMPTY_ADDRESS_ROWS = 10
 # ``1125 Douglas / (702 Fort)`` → primary ``1125 Douglas``; ``709 (-715) Yates`` → ``709-715 Yates``.
 _PAREN_UNIT_RANGE_RE = re.compile(r"\(\s*-?(\d+)\s*\)")
 
+# Spelled-out street ordinals (``Third``) ↔ abbreviated civic forms (``3rd``) after casefold + punctuation split.
+_NUMERIC_ORDINAL_TOKEN_RE = re.compile(r"^(\d+)(st|nd|rd|th)$")
+
+
+def _ordinal_suffix(n: int) -> str:
+    if 10 <= (n % 100) <= 20:
+        return "th"
+    return {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+
+
+def _n_to_ordinal_token(n: int) -> str:
+    return f"{n}{_ordinal_suffix(n)}"
+
+
+def _build_compound_street_ordinal_map() -> dict[tuple[str, str], str]:
+    tens = (
+        ("twenty", 20),
+        ("thirty", 30),
+        ("forty", 40),
+        ("fifty", 50),
+        ("sixty", 60),
+        ("seventy", 70),
+        ("eighty", 80),
+        ("ninety", 90),
+    )
+    ones = (
+        ("first", 1),
+        ("second", 2),
+        ("third", 3),
+        ("fourth", 4),
+        ("fifth", 5),
+        ("sixth", 6),
+        ("seventh", 7),
+        ("eighth", 8),
+        ("ninth", 9),
+    )
+    out: dict[tuple[str, str], str] = {}
+    for tw, base in tens:
+        for ow, off in ones:
+            out[(tw, ow)] = _n_to_ordinal_token(base + off)
+    return out
+
+
+_COMPOUND_STREET_ORDINAL: dict[tuple[str, str], str] = _build_compound_street_ordinal_map()
+
+_SINGLE_STREET_ORDINAL_WORDS: tuple[tuple[str, int], ...] = (
+    ("first", 1),
+    ("second", 2),
+    ("third", 3),
+    ("fourth", 4),
+    ("fifth", 5),
+    ("sixth", 6),
+    ("seventh", 7),
+    ("eighth", 8),
+    ("ninth", 9),
+    ("tenth", 10),
+    ("eleventh", 11),
+    ("twelfth", 12),
+    ("thirteenth", 13),
+    ("fourteenth", 14),
+    ("fifteenth", 15),
+    ("sixteenth", 16),
+    ("seventeenth", 17),
+    ("eighteenth", 18),
+    ("nineteenth", 19),
+    ("twentieth", 20),
+    ("thirtieth", 30),
+    ("fortieth", 40),
+    ("fiftieth", 50),
+    ("sixtieth", 60),
+    ("seventieth", 70),
+    ("eightieth", 80),
+    ("ninetieth", 90),
+)
+
+_STREET_ORDINAL_WORD_TO_TOKEN: dict[str, str] = {
+    w: _n_to_ordinal_token(n) for w, n in _SINGLE_STREET_ORDINAL_WORDS
+}
+
+
+def _merge_compound_street_ordinals(parts: list[str]) -> list[str]:
+    """Join ``twenty`` + ``first`` style pairs (from ``Twenty-First``) into ``21st``."""
+    if len(parts) < 2:
+        return parts
+    out: list[str] = []
+    i = 0
+    while i < len(parts):
+        if i + 1 < len(parts):
+            pair = (parts[i], parts[i + 1])
+            merged = _COMPOUND_STREET_ORDINAL.get(pair)
+            if merged is not None:
+                out.append(merged)
+                i += 2
+                continue
+        out.append(parts[i])
+        i += 1
+    return out
+
+
+def _canonical_street_ordinal_token(token: str) -> str:
+    """Map ``third``/``3rd``/``03rd`` to one canonical ``3rd``-style token."""
+    m = _NUMERIC_ORDINAL_TOKEN_RE.match(token)
+    if m:
+        return _n_to_ordinal_token(int(m.group(1), 10))
+    return _STREET_ORDINAL_WORD_TO_TOKEN.get(token, token)
+
 
 def _preprocess_sheet_street_for_match(line: str) -> str:
     """Normalize export quirks before ``canonical_street_address_key``.
@@ -201,10 +307,11 @@ def canonical_street_address_key(raw: str | None) -> str:
     segment = segment.replace(".", " ")
     segment = re.sub(r"[-#/]", " ", segment)
     segment = _normalize_space(segment)
-    parts = segment.split()
+    parts = _merge_compound_street_ordinals(segment.split())
     out: list[str] = []
     for p in parts:
         p = p.strip(".")
+        p = _canonical_street_ordinal_token(p)
         out.append(_STREET_TOKEN_CANON.get(p, p))
     return " ".join(out)
 

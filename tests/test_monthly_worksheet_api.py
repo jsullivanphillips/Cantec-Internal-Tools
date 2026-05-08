@@ -112,6 +112,56 @@ def test_get_worksheet_returns_rows(worksheet_client):
     assert body["rows"][0]["display_address"] == "123 Test St"
 
 
+def test_get_routes_overview_returns_route_links_payload(worksheet_client):
+    client, app = worksheet_client
+    with app.app_context():
+        route = MonthlyRoute(id=31, route_number=31, weekday_iso=0, week_occurrence=1)
+        loc = MonthlyRouteLocation(
+            id=3101,
+            address="310 Test St",
+            address_normalized="310 test st",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
+            building=None,
+            building_normalized="",
+            status_normalized="active",
+            status_raw="Active",
+            monthly_route_id=31,
+        )
+        db.session.add_all(
+            [
+                route,
+                loc,
+                MonthlyRouteTestHistory(
+                    id=31001,
+                    location_id=3101,
+                    month_date=date(2026, 1, 1),
+                    result_status="skipped",
+                    skip_reason="no access",
+                    test_monthly_route_id=31,
+                ),
+                MonthlyRouteTestHistory(
+                    id=31002,
+                    location_id=3101,
+                    month_date=date(2025, 12, 1),
+                    result_status="tested",
+                    test_monthly_route_id=31,
+                ),
+            ]
+        )
+        db.session.commit()
+
+    res = client.get("/api/monthly_routes/routes")
+    assert res.status_code == 200
+    body = res.get_json()
+    row = next((r for r in (body.get("routes") or []) if r["route"]["id"] == 31), None)
+    assert row is not None
+    assert row["route"]["label"].startswith("R31")
+    assert "last_tested_month" not in row
+    assert "skipped_non_annual_count" not in row
+    assert "next_test_date" not in row
+
+
 def test_get_worksheet_orders_by_session_route_stop_order(worksheet_client):
     """Per-run ``session_route_stop_order`` (CSV ``#``) overrides library ``route_stop_order`` for sort."""
     client, app = worksheet_client
@@ -176,6 +226,49 @@ def test_get_worksheet_orders_by_session_route_stop_order(worksheet_client):
     assert body["rows"][1]["session_route_stop_order"] == 1
 
 
+def test_patch_worksheet_row_clear_skipped_resets_outcome(worksheet_client):
+    client, app = worksheet_client
+    with app.app_context():
+        route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
+        loc = MonthlyRouteLocation(
+            id=101,
+            address="123 Test St",
+            address_normalized="123 test st",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
+            building=None,
+            building_normalized="",
+            status_normalized="active",
+            status_raw="Active",
+            monthly_route_id=1,
+        )
+        hist = MonthlyRouteTestHistory(
+            id=5001,
+            location_id=101,
+            month_date=date(2026, 5, 1),
+            result_status="skipped",
+            skip_reason="Gate locked",
+            sheet_time_in_raw="note",
+            sheet_time_out_raw="10:00",
+            test_monthly_route_id=1,
+        )
+        db.session.add_all([route, loc, hist])
+        db.session.commit()
+
+    res = client.patch(
+        "/api/monthly_routes/routes/1/worksheet/rows/101?month=2026-05-01",
+        json={"changes": {"result_status": None}},
+    )
+    assert res.status_code == 200
+    body = res.get_json()
+    assert body["ok"] is True
+    row = body["row"]
+    assert row["result_status"] is None
+    assert row["skip_reason"] is None
+    assert row["time_in"] is None
+    assert row["time_out"] is None
+
+
 def test_patch_worksheet_row_writes_audit(worksheet_client):
     client, app = worksheet_client
     with app.app_context():
@@ -222,6 +315,57 @@ def test_patch_worksheet_row_stale_version_client_wins(worksheet_client):
     body = res.get_json()
     assert body["ok"] is True
     assert body["row"]["testing_procedures"] == "client change"
+
+
+def test_get_worksheet_hydrates_missing_snapshot_fields_from_prior_run(worksheet_client):
+    client, app = worksheet_client
+    with app.app_context():
+        route = MonthlyRoute(id=21, route_number=21, weekday_iso=0, week_occurrence=1)
+        loc = MonthlyRouteLocation(
+            id=2101,
+            address="210 Seed St",
+            address_normalized="210 seed st",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
+            building=None,
+            building_normalized="",
+            status_normalized="active",
+            status_raw="Active",
+            monthly_route_id=21,
+        )
+        db.session.add_all(
+            [
+                route,
+                loc,
+                MonthlyRouteTestHistory(
+                    id=21001,
+                    location_id=2101,
+                    month_date=date(2026, 4, 1),
+                    result_status="tested",
+                    test_monthly_route_id=21,
+                    testing_procedures="Prev Proc",
+                    inspection_tech_notes="Prev Note",
+                ),
+                # Existing current-month row (e.g. legacy/import) with missing snapshots.
+                MonthlyRouteTestHistory(
+                    id=21002,
+                    location_id=2101,
+                    month_date=date(2026, 5, 1),
+                    result_status=None,
+                    test_monthly_route_id=21,
+                    testing_procedures=None,
+                    inspection_tech_notes=None,
+                ),
+            ]
+        )
+        db.session.commit()
+
+    res = client.get("/api/monthly_routes/routes/21/worksheet?month=2026-05-01")
+    assert res.status_code == 200
+    body = res.get_json()
+    assert len(body["rows"]) == 1
+    assert body["rows"][0]["testing_procedures"] == "Prev Proc"
+    assert body["rows"][0]["inspection_tech_notes"] == "Prev Note"
 
 
 def _seed_route_for_month(route_id: int, month_first: date, *, status: str = "open") -> int:

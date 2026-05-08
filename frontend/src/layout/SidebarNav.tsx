@@ -25,6 +25,7 @@ const NAV_SECTIONS: NavSection[] = [
     title: 'Monthlies',
     items: [
       { to: '/monthlies/routes', label: 'Routes', icon: 'bi-signpost-split', end: true },
+      { to: '/monthlies/locations', label: 'Monthly Locations', icon: 'bi-buildings', end: true },
       { to: '/monthlies/map', label: 'Map', icon: 'bi-map' },
       { to: '/monthlies/specialists', label: 'Specialists', icon: 'bi-people' },
     ],

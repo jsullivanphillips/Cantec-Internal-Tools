@@ -23,6 +23,7 @@ export default function TechnicianPortalLayout() {
   const [unlocked, setUnlocked] = useState<boolean | null>(null)
 
   const isLockScreen = location.pathname === LOCK_PATH || location.pathname === `${LOCK_PATH}/`
+  const isWorksheetScreen = location.pathname.includes('/worksheet/')
 
   const refreshLock = useCallback(async () => {
     try {
@@ -76,7 +77,9 @@ export default function TechnicianPortalLayout() {
         ) : null}
       </header>
 
-      <main className="app-main flex-grow-1 min-w-0 overflow-auto">
+      <main
+        className={`app-main flex-grow-1 min-w-0 overflow-auto${isWorksheetScreen ? ' app-main--flush' : ''}`}
+      >
         <Suspense
           fallback={
             <div className="d-flex justify-content-center align-items-center py-5">

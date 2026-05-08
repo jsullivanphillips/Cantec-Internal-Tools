@@ -229,7 +229,7 @@ def _serialize_monthly_route_entity(
     """Nested route summary for API consumers (single source of truth: ``MonthlyRoute``)."""
     if mr is None:
         return None
-    wd_names = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+    wd_names = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
     wd = (
         wd_names[mr.weekday_iso]
         if isinstance(mr.weekday_iso, int) and 0 <= mr.weekday_iso <= 6
@@ -578,6 +578,7 @@ def _ensure_worksheet_rows_for_route_month(route_id: int, month_first: date) -> 
             "session_route_stop_order": None,
         }
 
+    seed_by_loc: dict[int, dict[str, object]] = {}
     payload = [
         {
             "location_id": int(loc.id),
@@ -585,7 +586,7 @@ def _ensure_worksheet_rows_for_route_month(route_id: int, month_first: date) -> 
             "result_status": None,
             "test_monthly_route_id": route_id,
             "run_id": int(run.id),
-            **_seed_for(loc),
+            **seed_by_loc.setdefault(int(loc.id), _seed_for(loc)),
         }
         for loc in locs
     ]
@@ -631,6 +632,33 @@ def _ensure_worksheet_rows_for_route_month(route_id: int, month_first: date) -> 
         MonthlyRouteTestHistory.location_id.in_(loc_ids),
         MonthlyRouteTestHistory.run_id.is_(None),
     ).update({MonthlyRouteTestHistory.run_id: run.id}, synchronize_session=False)
+
+    # Legacy/imported rows for this month may already exist but have missing
+    # snapshot fields. Hydrate only NULL fields from prior-run/library seed so
+    # the worksheet opens with expected procedures/notes without overwriting
+    # any technician-entered values.
+    existing_rows = (
+        MonthlyRouteTestHistory.query.filter(
+            MonthlyRouteTestHistory.month_date == month_first,
+            MonthlyRouteTestHistory.location_id.in_(loc_ids),
+        ).all()
+    )
+    for row in existing_rows:
+        seed = seed_by_loc.get(int(row.location_id))
+        if not seed:
+            continue
+        for attr in (
+            "facp",
+            "ring",
+            "key_number",
+            "annual_month",
+            "testing_procedures",
+            "inspection_tech_notes",
+            "monitoring_notes",
+            "session_route_stop_order",
+        ):
+            if getattr(row, attr) is None and seed.get(attr) is not None:
+                setattr(row, attr, seed.get(attr))
 
     db.session.commit()
     return run
@@ -1317,6 +1345,38 @@ def get_monthly_route_location(location_id: int):
     )
 
 
+@monthly_routes_bp.get("/api/monthly_routes/routes")
+def list_monthly_routes():
+    """Route list for the office routes landing page."""
+    route_rows = MonthlyRoute.query.order_by(MonthlyRoute.route_number.asc()).all()
+    if not route_rows:
+        return jsonify({"routes": []})
+
+    count_rows = (
+        db.session.query(
+            MonthlyRouteLocation.monthly_route_id,
+            func.count(MonthlyRouteLocation.id),
+        )
+        .filter(MonthlyRouteLocation.monthly_route_id.isnot(None))
+        .group_by(MonthlyRouteLocation.monthly_route_id)
+        .all()
+    )
+    count_map: dict[int, int] = {int(mid): int(n) for mid, n in count_rows if mid is not None}
+
+    out: list[dict[str, object]] = []
+    for route in route_rows:
+        out.append(
+            {
+                "route": _serialize_monthly_route_entity(
+                    route,
+                    location_count=count_map.get(int(route.id), 0),
+                ),
+            }
+        )
+
+    return jsonify({"routes": out})
+
+
 @monthly_routes_bp.get("/api/monthly_routes/routes/<int:route_id>")
 def get_monthly_route_detail(route_id: int):
     mr = _get_monthly_route(route_id)
@@ -1483,12 +1543,19 @@ def patch_monthly_route_worksheet_row(route_id: int, location_id: int):
     if unknown:
         return jsonify({"error": f"Unsupported worksheet fields: {', '.join(sorted(unknown))}"}), 400
 
-    if "result_status" in changes:
-        rs = _normalize_ws_text(changes.get("result_status"))
-        if rs is None or rs not in {"tested", "skipped"}:
-            return jsonify({"error": "result_status must be tested or skipped"}), 400
-    if _normalize_ws_text(changes.get("result_status")) == "skipped":
-        merged_skip = _normalize_ws_text(changes.get("skip_reason"))
+    changes_eff: dict[str, object] = dict(changes)
+    # Clearing outcome returns the row to the worksheet default (not tested / not skipped yet).
+    if "result_status" in changes_eff and _normalize_ws_text(changes_eff.get("result_status")) is None:
+        changes_eff["skip_reason"] = None
+        changes_eff["time_in"] = None
+        changes_eff["time_out"] = None
+
+    if "result_status" in changes_eff:
+        rs = _normalize_ws_text(changes_eff.get("result_status"))
+        if rs is not None and rs not in {"tested", "skipped"}:
+            return jsonify({"error": "result_status must be tested, skipped, or null"}), 400
+    if _normalize_ws_text(changes_eff.get("result_status")) == "skipped":
+        merged_skip = _normalize_ws_text(changes_eff.get("skip_reason"))
         if merged_skip is None and row.skip_reason is None:
             return jsonify({"error": "skip_reason is required when result_status is skipped"}), 400
 
@@ -1501,10 +1568,10 @@ def patch_monthly_route_worksheet_row(route_id: int, location_id: int):
     changed_any = False
     mirrored_history_changes: dict[str, object] = {}
     for field_name, attr_name in editable_history_fields.items():
-        if field_name not in changes:
+        if field_name not in changes_eff:
             continue
         old_val = getattr(row, attr_name)
-        new_val = _normalize_ws_text(changes.get(field_name))
+        new_val = _normalize_ws_text(changes_eff.get(field_name))
         if old_val == new_val:
             continue
         setattr(row, attr_name, new_val)
@@ -1523,7 +1590,7 @@ def patch_monthly_route_worksheet_row(route_id: int, location_id: int):
                 source=source,
                 changed_by_username=actor_username,
                 changed_by_name=actor_name,
-                client_mutation_id=client_mutation_id if len(changes) == 1 else None,
+                client_mutation_id=client_mutation_id if len(changes_eff) == 1 else None,
                 changed_at_client=client_mutated_at,
             )
         )

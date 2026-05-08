@@ -12,6 +12,8 @@ export default function AppLayout() {
   const [showMenu, setShowMenu] = useState(false)
   const isPublicBatteryCalculatorRoute = location.pathname === '/battery_capacity_calculator'
   const isMonthlyRoutesMapRoute = location.pathname === '/monthlies/map'
+  const isWorksheetRoute =
+    location.pathname.includes('/worksheet/')
 
   const check = useCallback(async () => {
     if (isPublicBatteryCalculatorRoute) {
@@ -106,7 +108,7 @@ export default function AppLayout() {
         </Offcanvas>
 
         <main
-          className={`app-main flex-grow-1 min-w-0 overflow-auto${isMonthlyRoutesMapRoute ? ' app-main--monthly-map' : ''}`}
+          className={`app-main flex-grow-1 min-w-0 overflow-auto${isMonthlyRoutesMapRoute ? ' app-main--monthly-map' : ''}${isWorksheetRoute ? ' app-main--flush-x' : ''}`}
         >
           <Suspense
             fallback={
