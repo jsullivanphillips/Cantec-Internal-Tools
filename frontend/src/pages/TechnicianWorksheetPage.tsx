@@ -1167,7 +1167,6 @@ export default function TechnicianWorksheetPage() {
                                     <Button
                                       size="sm"
                                       variant="outline-secondary"
-                                      className="tw-worksheet-reset-btn"
                                       onClick={() => {
                                         setAnnualTestAnywayRows((prev) => {
                                           const next = new Set(prev)
@@ -1207,7 +1206,6 @@ export default function TechnicianWorksheetPage() {
                                             <Button
                                               size="sm"
                                               variant="outline-secondary"
-                                              className="tw-annual-test-anyway-btn"
                                               onClick={() =>
                                                 setAnnualTestAnywayRows((prev) => {
                                                   const next = new Set(prev)
@@ -1245,7 +1243,7 @@ export default function TechnicianWorksheetPage() {
                                         )}
                                       </>
                                     ) : !hasTimeOut ? (
-                                      <div className="tw-worksheet-post-timein-actions">
+                                      <>
                                         <Button
                                           size="sm"
                                           variant="success"
@@ -1259,7 +1257,7 @@ export default function TechnicianWorksheetPage() {
                                         <Button size="sm" variant="danger" onClick={() => window.alert('Deficiency workflow next phase')}>
                                           Add Deficiency
                                         </Button>
-                                      </div>
+                                      </>
                                     ) : (
                                       <>
                                         <Button

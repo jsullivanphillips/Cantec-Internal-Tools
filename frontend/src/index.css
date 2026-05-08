@@ -3423,6 +3423,7 @@ body {
 .technician-worksheet-page .tw-col-action > .d-grid {
   display: flex;
   flex-direction: column;
+  align-items: center;
   height: 100%;
   justify-content: center;
 }
@@ -3442,55 +3443,21 @@ body {
   height: 0.65rem;
 }
 
+/* Primary actions (excludes absolutely positioned Audit link). */
 .technician-worksheet-page .tw-col-action > .d-grid .btn:not(.tw-audit-link) {
-  width: 100%;
-  min-height: 2.25rem;
-  padding-top: 0.5rem;
-  padding-bottom: 0.5rem;
-  font-size: 0.82rem;
-}
-
-.technician-worksheet-page .tw-col-action > .d-grid .btn.btn-success,
-.technician-worksheet-page .tw-col-action > .d-grid .btn.btn-warning {
-  font-size: 0.72rem;
-}
-
-.technician-worksheet-page .tw-col-action .tw-annual-test-anyway-btn {
-  min-height: 1.7rem;
-  padding-top: 0.25rem;
-  padding-bottom: 0.25rem;
-  font-size: 0.68rem;
-}
-
-.technician-worksheet-page .tw-col-action .tw-worksheet-reset-btn {
+  box-sizing: border-box;
+  width: auto;
+  max-width: 9.5rem;
+  min-width: 0;
   min-height: 1.55rem;
-  padding-top: 0.2rem;
-  padding-bottom: 0.2rem;
-  font-size: 0.65rem;
+  padding: 0.2rem 0.45rem;
+  font-size: 0.62rem !important;
+  line-height: 1.15;
 }
 
 /* Compact readout after technician clocks in/out (smaller than Bootstrap ``small``). */
 .technician-worksheet-page .tw-worksheet-time-io-line {
   font-size: 0.62rem;
-  line-height: 1.15;
-}
-
-/* After Time In: Time Out + Add Deficiency — smaller type, narrower than full column width. */
-.technician-worksheet-page .tw-col-action > .d-grid .tw-worksheet-post-timein-actions {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.35rem;
-  width: 100%;
-}
-
-.technician-worksheet-page .tw-col-action > .d-grid .tw-worksheet-post-timein-actions .btn {
-  width: auto;
-  max-width: 7.75rem;
-  min-width: 0;
-  min-height: 1.55rem;
-  padding: 0.2rem 0.45rem;
-  font-size: 0.62rem !important;
   line-height: 1.15;
 }
 
