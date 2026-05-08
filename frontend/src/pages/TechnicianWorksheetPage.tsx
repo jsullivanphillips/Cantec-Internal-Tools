@@ -240,7 +240,7 @@ export default function TechnicianWorksheetPage() {
   const headerScrollRef = useRef<HTMLDivElement | null>(null)
   const tableScrollRef = useRef<HTMLDivElement | null>(null)
   const syncingScrollRef = useRef<'header' | 'table' | null>(null)
-  const worksheetGridCellRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+  const worksheetGridCellRefs = useRef<Map<string, HTMLTableCellElement>>(new Map())
   const worksheetGridSelectionRef = useRef<{ locationId: number; column: WorksheetGridColumn } | null>(null)
   const worksheetGridDraftRef = useRef('')
   const worksheetFloatingEditorRef = useRef<HTMLTextAreaElement | null>(null)
@@ -594,7 +594,7 @@ export default function TechnicianWorksheetPage() {
   }, [])
 
   const onWorksheetGridCellKeyDown = useCallback(
-    (row: TechnicianWorksheetRow, column: WorksheetGridColumn) => (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    (row: TechnicianWorksheetRow, column: WorksheetGridColumn) => (e: ReactKeyboardEvent<HTMLElement>) => {
       if (worksheetGridEditing) return
       const sel = { locationId: row.location_id, column }
       if (e.key === 'Enter') {
@@ -674,17 +674,7 @@ export default function TechnicianWorksheetPage() {
         e.preventDefault()
         const sel = worksheetGridSelectionRef.current
         commitWorksheetGridEdit()
-        if (sel && payload) {
-          const ri = payload.rows.findIndex((r) => r.location_id === sel.locationId)
-          if (ri >= 0 && ri < payload.rows.length - 1) {
-            const next = { locationId: payload.rows[ri + 1].location_id, column: sel.column }
-            worksheetGridSelectionRef.current = next
-            setWorksheetGridSelection(next)
-            focusWorksheetGridCellEl(next)
-          } else if (sel) {
-            focusWorksheetGridCellEl(sel)
-          }
-        }
+        if (sel) focusWorksheetGridCellEl(sel)
         return
       }
       if (e.key === 'Tab') {
@@ -699,7 +689,6 @@ export default function TechnicianWorksheetPage() {
       cancelWorksheetGridEdit,
       commitWorksheetGridEdit,
       focusWorksheetGridCellEl,
-      payload,
       worksheetGridTabNext,
     ]
   )
@@ -790,65 +779,63 @@ export default function TechnicianWorksheetPage() {
     const showEditor = worksheetGridEditing && selected
     const valueDisplay = worksheetGridCellValue(row, column)
     return (
-      <td className={tdClass}>
+      <td
+        ref={(el) => {
+          const k = worksheetGridCellRegistryKey(row.location_id, column)
+          if (el) worksheetGridCellRefs.current.set(k, el)
+          else worksheetGridCellRefs.current.delete(k)
+        }}
+        tabIndex={selected && !showEditor ? 0 : -1}
+        role="gridcell"
+        aria-label={`${WORKSHEET_GRID_COLUMN_LABELS[column]}, ${row.display_address}`}
+        className={`${tdClass} tw-worksheet-grid-td`}
+        onKeyDown={showEditor ? undefined : onWorksheetGridCellKeyDown(row, column)}
+        onPointerDown={(e: ReactPointerEvent<HTMLTableCellElement>) => {
+          if (showEditor) return
+          if (!worksheetGridIsTouchLikePointer(e.pointerType)) return
+          worksheetGridTouchPtrRef.current = {
+            pointerId: e.pointerId,
+            x: e.clientX,
+            y: e.clientY,
+            locationId: row.location_id,
+            column,
+          }
+        }}
+        onPointerCancel={(e: ReactPointerEvent<HTMLTableCellElement>) => {
+          if (worksheetGridTouchPtrRef.current?.pointerId === e.pointerId) {
+            worksheetGridTouchPtrRef.current = null
+          }
+        }}
+        onPointerUp={(e: ReactPointerEvent<HTMLTableCellElement>) => {
+          if (showEditor) return
+          if (!worksheetGridIsTouchLikePointer(e.pointerType)) return
+          const start = worksheetGridTouchPtrRef.current
+          worksheetGridTouchPtrRef.current = null
+          if (!start || start.pointerId !== e.pointerId) return
+          if (start.locationId !== row.location_id || start.column !== column) return
+          const dx = e.clientX - start.x
+          const dy = e.clientY - start.y
+          if (dx * dx + dy * dy > WORKSHEET_GRID_TAP_MOVE_THRESHOLD_SQ) return
+          e.stopPropagation()
+          worksheetGridSuppressNextClickRef.current = true
+          window.setTimeout(() => {
+            worksheetGridSuppressNextClickRef.current = false
+          }, 450)
+          beginWorksheetGridEditUserGesture(row.location_id, column)
+        }}
+        onClick={(e) => {
+          e.stopPropagation()
+          if (showEditor) return
+          if (worksheetGridSuppressNextClickRef.current) {
+            worksheetGridSuppressNextClickRef.current = false
+            return
+          }
+          beginWorksheetGridEditUserGesture(row.location_id, column)
+        }}
+      >
         <div className="tw-worksheet-cell-surface tw-worksheet-cell-surface--excel-shell">
           <div className="tw-worksheet-cell-flow">
-            <div
-              ref={(el) => {
-                const k = worksheetGridCellRegistryKey(row.location_id, column)
-                if (el) worksheetGridCellRefs.current.set(k, el)
-                else worksheetGridCellRefs.current.delete(k)
-              }}
-              tabIndex={selected ? 0 : -1}
-              role="gridcell"
-              aria-label={`${WORKSHEET_GRID_COLUMN_LABELS[column]}, ${row.display_address}`}
-              className={`tw-worksheet-cell-view${showEditor ? ' tw-worksheet-cell-view--under-editor' : ''}`}
-              onKeyDown={onWorksheetGridCellKeyDown(row, column)}
-              onPointerDown={(e: ReactPointerEvent<HTMLDivElement>) => {
-                if (!worksheetGridIsTouchLikePointer(e.pointerType)) return
-                worksheetGridTouchPtrRef.current = {
-                  pointerId: e.pointerId,
-                  x: e.clientX,
-                  y: e.clientY,
-                  locationId: row.location_id,
-                  column,
-                }
-              }}
-              onPointerCancel={(e: ReactPointerEvent<HTMLDivElement>) => {
-                if (worksheetGridTouchPtrRef.current?.pointerId === e.pointerId) {
-                  worksheetGridTouchPtrRef.current = null
-                }
-              }}
-              onPointerUp={(e: ReactPointerEvent<HTMLDivElement>) => {
-                if (!worksheetGridIsTouchLikePointer(e.pointerType)) return
-                const start = worksheetGridTouchPtrRef.current
-                worksheetGridTouchPtrRef.current = null
-                if (!start || start.pointerId !== e.pointerId) return
-                if (start.locationId !== row.location_id || start.column !== column) return
-                const dx = e.clientX - start.x
-                const dy = e.clientY - start.y
-                if (dx * dx + dy * dy > WORKSHEET_GRID_TAP_MOVE_THRESHOLD_SQ) return
-                e.stopPropagation()
-                worksheetGridSuppressNextClickRef.current = true
-                window.setTimeout(() => {
-                  worksheetGridSuppressNextClickRef.current = false
-                }, 450)
-                beginWorksheetGridEditUserGesture(row.location_id, column)
-              }}
-              onClick={(e) => {
-                e.stopPropagation()
-                if (worksheetGridSuppressNextClickRef.current) {
-                  worksheetGridSuppressNextClickRef.current = false
-                  return
-                }
-                setWorksheetGridSelection({ locationId: row.location_id, column })
-              }}
-              onDoubleClick={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                beginWorksheetGridEditUserGesture(row.location_id, column)
-              }}
-            >
+            <div className={`tw-worksheet-cell-view${showEditor ? ' tw-worksheet-cell-view--under-editor' : ''}`}>
               {valueDisplay || '\u00a0'}
             </div>
           </div>

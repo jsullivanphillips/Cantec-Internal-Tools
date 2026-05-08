@@ -3662,6 +3662,16 @@ body {
   min-height: 5rem;
 }
 
+/* Hit target + keyboard focus ring live on <td> so clicks anywhere in the cell open the editor. */
+.technician-worksheet-page .technician-worksheet-table tbody td.tw-worksheet-grid-td {
+  cursor: cell;
+}
+
+.technician-worksheet-page .technician-worksheet-table tbody td.tw-worksheet-grid-td:focus-visible {
+  outline: 2px solid rgba(13, 110, 253, 0.45);
+  outline-offset: -2px;
+}
+
 .technician-worksheet-page .technician-worksheet-table tbody td.tw-col-facp > .tw-worksheet-cell-surface,
 .technician-worksheet-page .technician-worksheet-table tbody td.tw-col-monitoring > .tw-worksheet-cell-surface,
 .technician-worksheet-page .technician-worksheet-table tbody td.tw-col-procedures > .tw-worksheet-cell-surface,
@@ -3741,8 +3751,7 @@ body {
 }
 
 .technician-worksheet-page .tw-worksheet-cell-view:focus-visible {
-  outline: 2px solid rgba(13, 110, 253, 0.45);
-  outline-offset: -2px;
+  outline: none;
 }
 
 .technician-worksheet-page .tw-worksheet-cell-view.tw-worksheet-cell-view--under-editor:focus-visible {
