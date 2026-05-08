@@ -7,6 +7,7 @@ export type WorksheetChangeSet = Partial<
     | 'ring'
     | 'key_number'
     | 'facp'
+    | 'monitoring'
     | 'result_status'
     | 'skip_reason'
     | 'testing_procedures'

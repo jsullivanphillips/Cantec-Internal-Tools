@@ -18,10 +18,11 @@ import {
   type KeyboardEvent,
 } from 'react'
 import { Chart } from 'react-chartjs-2'
-import { Accordion, Alert, Badge, Button, Card, Col, Modal, Row, Spinner, Table } from 'react-bootstrap'
+import { Accordion, Alert, Badge, Button, Card, Col, Form, Modal, Row, Spinner, Table } from 'react-bootstrap'
 import { Link, useParams } from 'react-router-dom'
 import MonthlyLibraryCommentsPanel from '../features/monthlyRoutes/MonthlyLibraryCommentsPanel'
 import {
+  monthFirstIsoPacificToday,
   parseYearMonth,
   toMonthKey,
   type MonthlyLocationComment,
@@ -33,7 +34,7 @@ import {
   type RouteLocationListItem,
   type RouteTestingSkippedSite,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
-import { apiJson, isAbortError } from '../lib/apiClient'
+import { apiJson, apiPostFormData, isAbortError } from '../lib/apiClient'
 import { formatCurrencyCad } from '../lib/formatCurrencyCad'
 
 const WEEKDAY_FULL = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
@@ -249,6 +250,241 @@ type SkipSitesModalState = {
   sites: RouteTestingSkippedSite[]
 }
 
+/** Issue surfaced by the route-inspection CSV importer for a single CSV row. */
+type UploadRunIssue = {
+  kind: string
+  csv_row: number
+  detail: string
+}
+
+/** ``POST /api/monthly_routes/routes/:id/runs/import_csv`` success payload. */
+type UploadRunResponse = {
+  ok: true
+  route: { id: number; route_number: number; label: string }
+  month_date: string
+  run: {
+    id: number
+    monthly_route_id: number
+    month_date: string
+    status: string
+    started_at: string | null
+    completed_at: string | null
+    source: string
+  } | null
+  sheet_label: string | null
+  locations_updated: number
+  history_upserts: number
+  rows_without_history_signal: number
+  issues: UploadRunIssue[]
+}
+
+type UploadRunFromCsvModalProps = {
+  show: boolean
+  onClose: () => void
+  routeId: number
+  routeNumber: number
+  routeLabel: string
+}
+
+function UploadRunFromCsvModal({
+  show,
+  onClose,
+  routeId,
+  routeNumber,
+  routeLabel,
+}: UploadRunFromCsvModalProps) {
+  const [file, setFile] = useState<File | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [result, setResult] = useState<UploadRunResponse | null>(null)
+  const [issuesExpanded, setIssuesExpanded] = useState(false)
+
+  // Reset everything when the modal closes so a fresh open starts clean.
+  useEffect(() => {
+    if (!show) {
+      setFile(null)
+      setSubmitting(false)
+      setError(null)
+      setResult(null)
+      setIssuesExpanded(false)
+    }
+  }, [show])
+
+  const onSubmit = useCallback(async () => {
+    if (!file) {
+      setError('Choose a CSV file first.')
+      return
+    }
+    setSubmitting(true)
+    setError(null)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await apiPostFormData<UploadRunResponse>(
+        `/api/monthly_routes/routes/${routeId}/runs/import_csv`,
+        fd
+      )
+      setResult(res)
+    } catch (e) {
+      const message =
+        typeof e === 'object' && e != null && 'error' in (e as Record<string, unknown>)
+          ? String((e as { error?: unknown }).error)
+          : typeof e === 'string'
+            ? e
+            : 'Upload failed.'
+      setError(message)
+    } finally {
+      setSubmitting(false)
+    }
+  }, [file, routeId])
+
+  const formattedMonth = result?.month_date
+    ? formatMonthHeading(result.month_date)
+    : null
+  const monthIso = result?.month_date ?? null
+
+  return (
+    <Modal show={show} onHide={onClose} size="lg" backdrop={submitting ? 'static' : true}>
+      <Modal.Header closeButton={!submitting}>
+        <Modal.Title>Upload run from CSV</Modal.Title>
+      </Modal.Header>
+      <Modal.Body>
+        {result ? (
+          <>
+            <Alert variant="success" className="mb-3">
+              Run materialized for <strong>{result.route.label}</strong> ·{' '}
+              <strong>{formattedMonth}</strong>.
+            </Alert>
+            <Row className="g-3 mb-3">
+              <Col xs={6} md={3}>
+                <div className="text-muted small text-uppercase fw-semibold">Stops updated</div>
+                <div className="h4 mb-0 tabular-nums">{result.locations_updated}</div>
+              </Col>
+              <Col xs={6} md={3}>
+                <div className="text-muted small text-uppercase fw-semibold">History upserts</div>
+                <div className="h4 mb-0 tabular-nums">{result.history_upserts}</div>
+              </Col>
+              <Col xs={6} md={3}>
+                <div className="text-muted small text-uppercase fw-semibold">Untimed rows</div>
+                <div className="h4 mb-0 tabular-nums">
+                  {result.rows_without_history_signal}
+                </div>
+              </Col>
+              <Col xs={6} md={3}>
+                <div className="text-muted small text-uppercase fw-semibold">Issues</div>
+                <div className="h4 mb-0 tabular-nums">{result.issues.length}</div>
+              </Col>
+            </Row>
+            {result.issues.length > 0 ? (
+              <div className="mb-3">
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="px-0"
+                  onClick={() => setIssuesExpanded((v) => !v)}
+                >
+                  {issuesExpanded ? 'Hide' : 'Show'} {result.issues.length} issue
+                  {result.issues.length === 1 ? '' : 's'}
+                </Button>
+                {issuesExpanded ? (
+                  <div className="border rounded mt-2 small" style={{ maxHeight: '14rem', overflow: 'auto' }}>
+                    <Table size="sm" className="mb-0">
+                      <thead>
+                        <tr>
+                          <th style={{ width: '7rem' }}>Kind</th>
+                          <th style={{ width: '5rem' }}>Row</th>
+                          <th>Detail</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {result.issues.map((iss, i) => (
+                          <tr key={`${iss.kind}-${iss.csv_row}-${i}`}>
+                            <td>
+                              <Badge
+                                bg={
+                                  iss.kind === 'route_mismatch'
+                                    ? 'warning'
+                                    : 'danger'
+                                }
+                              >
+                                {iss.kind}
+                              </Badge>
+                            </td>
+                            <td className="tabular-nums">{iss.csv_row}</td>
+                            <td className="text-break">{iss.detail}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </Table>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <>
+            <p className="text-muted mb-3">
+              Upload the technician inspection sheet (the same CSV you use on the route).
+              The page detects the route and month from the preamble; you'll get an error
+              if the CSV is for a different route or if a tech has already started this run.
+            </p>
+            <Form.Group controlId="upload-run-csv-file" className="mb-3">
+              <Form.Label>CSV file</Form.Label>
+              <Form.Control
+                type="file"
+                accept=".csv,text/csv"
+                onChange={(e) => {
+                  const t = e.target as HTMLInputElement
+                  setFile(t.files && t.files.length > 0 ? t.files[0] : null)
+                  setError(null)
+                }}
+                disabled={submitting}
+              />
+              <Form.Text className="text-muted">
+                Page route: <strong>R{routeNumber}</strong> — {routeLabel}
+              </Form.Text>
+            </Form.Group>
+            {error ? <Alert variant="danger">{error}</Alert> : null}
+          </>
+        )}
+      </Modal.Body>
+      <Modal.Footer>
+        {result ? (
+          <>
+            <Button variant="outline-secondary" onClick={onClose}>
+              Close
+            </Button>
+            {monthIso ? (
+              <Link
+                to={`/monthlies/routes/${routeId}/worksheet/${monthIso}`}
+                className="btn btn-primary"
+              >
+                Open run worksheet
+              </Link>
+            ) : null}
+          </>
+        ) : (
+          <>
+            <Button variant="outline-secondary" onClick={onClose} disabled={submitting}>
+              Cancel
+            </Button>
+            <Button onClick={onSubmit} disabled={!file || submitting}>
+              {submitting ? (
+                <>
+                  <Spinner size="sm" animation="border" role="status" className="me-2" />
+                  Uploading…
+                </>
+              ) : (
+                'Upload'
+              )}
+            </Button>
+          </>
+        )}
+      </Modal.Footer>
+    </Modal>
+  )
+}
+
 export default function MonthlyRouteDetailPage() {
   const { routeId } = useParams<{ routeId: string }>()
   const idNum = routeId ? parseInt(routeId, 10) : NaN
@@ -265,6 +501,7 @@ export default function MonthlyRouteDetailPage() {
   const [sessionUsername, setSessionUsername] = useState<string | null>(null)
   const [historyViewYear, setHistoryViewYear] = useState<number | null>(null)
   const [skipSitesModal, setSkipSitesModal] = useState<SkipSitesModalState | null>(null)
+  const [uploadRunOpen, setUploadRunOpen] = useState(false)
   const [orderedSites, setOrderedSites] = useState<RouteLocationListItem[]>([])
   const [orderSaving, setOrderSaving] = useState(false)
   const [orderError, setOrderError] = useState<string | null>(null)
@@ -513,19 +750,30 @@ export default function MonthlyRouteDetailPage() {
                 ) : null}
               </div>
             </div>
-            {stUrl ? (
+            <div className="d-flex flex-wrap align-items-center gap-2 flex-shrink-0 align-self-start">
               <Button
-                href={stUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                variant="outline-primary"
+                variant="outline-secondary"
                 size="sm"
-                className="d-inline-flex align-items-center gap-2 flex-shrink-0 align-self-start"
+                className="d-inline-flex align-items-center gap-2"
+                onClick={() => setUploadRunOpen(true)}
               >
-                <i className="bi bi-box-arrow-up-right" aria-hidden />
-                Open in ServiceTrade
+                <i className="bi bi-upload" aria-hidden />
+                Upload run from CSV
               </Button>
-            ) : null}
+              {stUrl ? (
+                <Button
+                  href={stUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  variant="outline-primary"
+                  size="sm"
+                  className="d-inline-flex align-items-center gap-2"
+                >
+                  <i className="bi bi-box-arrow-up-right" aria-hidden />
+                  Open in ServiceTrade
+                </Button>
+              ) : null}
+            </div>
           </div>
 
           <Row className="g-4 align-items-start">
@@ -896,14 +1144,8 @@ export default function MonthlyRouteDetailPage() {
                                 }
                               >
                                 <div>{routeTestLabel ?? formatMonthHeading(monthIso)}</div>
-                                {hasSheetHistoryForMonth ? (
-                                  <div className="d-flex flex-wrap gap-2">
-                                    <Link
-                                      className="small"
-                                      to={`/monthlies/routes/${idNum}/sessions/${encodeURIComponent(monthIso)}`}
-                                    >
-                                      Session ledger
-                                    </Link>
+                                {hasSheetHistoryForMonth && monthIso <= monthFirstIsoPacificToday() ? (
+                                  <div>
                                     <Link
                                       className="small"
                                       to={`/monthlies/routes/${idNum}/worksheet/${encodeURIComponent(monthIso)}`}
@@ -1074,6 +1316,13 @@ export default function MonthlyRouteDetailPage() {
           </Accordion.Body>
         </Accordion.Item>
       </Accordion>
+      <UploadRunFromCsvModal
+        show={uploadRunOpen}
+        onClose={() => setUploadRunOpen(false)}
+        routeId={idNum}
+        routeNumber={route.route_number}
+        routeLabel={route.label}
+      />
     </div>
   )
 }

@@ -40,7 +40,8 @@ def analyze_sheet_time_cells(time_in: str | None, time_out: str | None) -> Sheet
     """
     Classify sheet time columns for ``MonthlyRouteTestHistory`` upsert.
 
-    When both cells are empty, returns all-null classification (no history row from times).
+    When both cells are empty, returns all-null classification (CSV import still
+    upserts snapshot fields; only ``result_status`` / ``skip_reason`` stay unset).
     """
     raw_in = truncate_sheet_time_raw(time_in)
     raw_out = truncate_sheet_time_raw(time_out)

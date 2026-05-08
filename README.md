@@ -36,6 +36,10 @@ Add `cantec-logo-horizontal.png` to [`frontend/public/`](frontend/public/), then
 
 Legacy global styles from the old Flask static bundle now live under [`frontend/src/styles/`](frontend/src/styles/) (`base.css`, `legacy-global.css`).
 
+## Technician portal (`/tech`)
+
+Field technicians use a public, PIN-gated portal at `/tech` to pick today's monthly route and open the worksheet without a staff sign-in. To enable it, set `TECHNICIAN_PORTAL_PIN` in the environment (e.g. in [`app/.env`](app/.env)) to the shared PIN — when unset, `POST /api/technician_portal/auth` returns **503 portal_disabled**. Rotate by changing the env var and restarting the app. The flow is: `/tech` (PIN) → `/tech/start` (today's expected routes by `weekday_iso`/`week_occurrence`, plus a manual route-number lookup) → existing worksheet at `/tech/route/:routeId/worksheet/:monthIso`.
+
 ## Smoke checklist (after deploy)
 
 - Login / logout

@@ -65,3 +65,32 @@ export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
   }
   return JSON.parse(text) as T
 }
+
+/**
+ * POST a ``FormData`` (typically a single uploaded file) and parse the JSON response.
+ *
+ * Unlike :func:`apiJson` we do NOT set ``Content-Type``; browsers must add the
+ * multipart boundary themselves. On non-2xx responses we throw the parsed JSON
+ * (or raw text) so callers can render the server's ``error`` field directly.
+ */
+export async function apiPostFormData<T>(path: string, form: FormData): Promise<T> {
+  const res = await apiFetch(path, { method: 'POST', body: form })
+  if (!res.ok) {
+    const text = await res.text()
+    let err: unknown = text
+    try {
+      err = JSON.parse(text)
+    } catch {
+      /* keep raw text */
+    }
+    throw err
+  }
+  if (res.status === 204 || res.status === 205) {
+    return undefined as T
+  }
+  const text = await res.text()
+  if (!text.trim()) {
+    return undefined as T
+  }
+  return JSON.parse(text) as T
+}

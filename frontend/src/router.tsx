@@ -1,7 +1,8 @@
 import { lazy } from 'react'
-import { createBrowserRouter, Navigate } from 'react-router-dom'
+import { createBrowserRouter, Navigate, useParams } from 'react-router-dom'
 import AppLayout from './layout/AppLayout'
 import KeysPublicLayout from './layout/KeysPublicLayout'
+import TechnicianPortalLayout from './layout/TechnicianPortalLayout'
 import LoginPage from './pages/LoginPage'
 
 const HomePage = lazy(() => import('./pages/HomePage'))
@@ -12,7 +13,6 @@ const KeyByBarcodePage = lazy(() => import('./pages/KeyByBarcodePage'))
 const PerformanceSummaryPage = lazy(() => import('./pages/PerformanceSummaryPage'))
 const MonthlyRoutesPage = lazy(() => import('./pages/MonthlyRoutesPage'))
 const MonthlyRouteDetailPage = lazy(() => import('./pages/MonthlyRouteDetailPage'))
-const MonthlyRouteSessionPage = lazy(() => import('./pages/MonthlyRouteSessionPage'))
 const TechnicianWorksheetPage = lazy(() => import('./pages/TechnicianWorksheetPage'))
 const MonthlyLocationDetailPage = lazy(() => import('./pages/MonthlyLocationDetailPage'))
 const MonthlyRoutesMapPage = lazy(() => import('./pages/MonthlyRoutesMapPage'))
@@ -23,6 +23,20 @@ const SchedulingAttackPage = lazy(() => import('./pages/SchedulingAttackPage'))
 const ProcessingAttackPage = lazy(() => import('./pages/ProcessingAttackPage'))
 const BatteryCapacityCalculatorPage = lazy(() => import('./pages/BatteryCapacityCalculatorPage'))
 const QuotationToolPage = lazy(() => import('./pages/QuotationToolPage'))
+const TechnicianPortalLockPage = lazy(() => import('./pages/TechnicianPortalLockPage'))
+const TechnicianPortalStartPage = lazy(() => import('./pages/TechnicianPortalStartPage'))
+
+/** Old session-ledger URLs forward to the worksheet. */
+function RedirectMonthlySessionToWorksheet() {
+  const { routeId, monthIso } = useParams<{ routeId: string; monthIso: string }>()
+  if (!routeId?.trim() || !monthIso?.trim()) return <Navigate to="/monthlies/routes" replace />
+  return (
+    <Navigate
+      to={`/monthlies/routes/${routeId}/worksheet/${encodeURIComponent(monthIso)}`}
+      replace
+    />
+  )
+}
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
@@ -41,6 +55,15 @@ export const router = createBrowserRouter([
     ],
   },
   {
+    path: '/tech',
+    element: <TechnicianPortalLayout />,
+    children: [
+      { index: true, element: <TechnicianPortalLockPage /> },
+      { path: 'start', element: <TechnicianPortalStartPage /> },
+      { path: 'route/:routeId/worksheet/:monthIso', element: <TechnicianWorksheetPage /> },
+    ],
+  },
+  {
     path: '/',
     element: <AppLayout />,
     children: [
@@ -53,7 +76,7 @@ export const router = createBrowserRouter([
       { path: 'scheduling_attack', element: <SchedulingAttackPage /> },
       { path: 'monthlies/routes', element: <MonthlyRoutesPage /> },
       { path: 'monthlies/routes/:routeId', element: <MonthlyRouteDetailPage /> },
-      { path: 'monthlies/routes/:routeId/sessions/:monthIso', element: <MonthlyRouteSessionPage /> },
+      { path: 'monthlies/routes/:routeId/sessions/:monthIso', element: <RedirectMonthlySessionToWorksheet /> },
       { path: 'monthlies/routes/:routeId/worksheet/:monthIso', element: <TechnicianWorksheetPage /> },
       { path: 'monthlies/locations/:locationId', element: <MonthlyLocationDetailPage /> },
       { path: 'monthlies/map', element: <MonthlyRoutesMapPage /> },

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Badge, Button, Card, Modal, Spinner, Table } from 'react-bootstrap'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useLocation, useParams } from 'react-router-dom'
 import {
   parseYearMonth,
   type TechnicianWorksheetAuditEvent,
@@ -32,6 +32,16 @@ function formatMonthHeading(monthFirstIso: string): string {
   }).format(new Date(Date.UTC(ym.year, ym.month - 1, 1)))
 }
 
+function formatRunStartedAt(iso: string | null | undefined): string | null {
+  if (!iso) return null
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return null
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(d)
+}
+
 type SyncState = 'synced' | 'saved_offline' | 'syncing' | 'conflict'
 
 function hhmmNow(): string {
@@ -39,6 +49,49 @@ function hhmmNow(): string {
   const hh = String(d.getHours()).padStart(2, '0')
   const mm = String(d.getMinutes()).padStart(2, '0')
   return `${hh}:${mm}`
+}
+
+/** Whole-cell value is only a clock time (24h or 12h); otherwise show raw text with no Time In/Out label (e.g. skip notes in the sheet). */
+const EXPLICIT_TIME_VALUE_RE = /^\d{1,2}:\d{1,2}(:\d{1,2})?(\s*[ap]\.?m\.?)?$/i
+
+function looksLikeExplicitTimeValue(raw: string | null | undefined): boolean {
+  const s = (raw ?? '').trim()
+  if (!s) return false
+  return EXPLICIT_TIME_VALUE_RE.test(s)
+}
+
+function worksheetTimeInOutDisplayLine(kind: 'in' | 'out', value: string): string {
+  const v = value.trim()
+  if (!v) return ''
+  if (looksLikeExplicitTimeValue(v)) {
+    return kind === 'in' ? `Time In: ${v}` : `Time Out: ${v}`
+  }
+  return v
+}
+
+function normalizedActionCellDetail(s: string): string {
+  return s.trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
+/** If ``time_in`` is free text (not a clock), treat ``time_out`` as sheet noise — only show ``time_in``. */
+function shouldShowWorksheetTimeOutRow(displayTimeIn: string, displayTimeOut: string): boolean {
+  if (!displayTimeOut.trim()) return false
+  const tin = displayTimeIn.trim()
+  if (!tin) return true
+  return looksLikeExplicitTimeValue(displayTimeIn)
+}
+
+/** Skip reason line already shows the same note as a non-clock ``time_in`` cell (avoid "ANNUAL…" twice). */
+function worksheetSkipReasonDuplicatesTimeInNote(
+  skipReasonBlock: string | null,
+  resultStatus: string | null | undefined,
+  displayTimeIn: string,
+): boolean {
+  if ((resultStatus || '').trim().toLowerCase() !== 'skipped') return false
+  if (skipReasonBlock == null || skipReasonBlock === '—') return false
+  const note = displayTimeIn.trim()
+  if (!note || looksLikeExplicitTimeValue(displayTimeIn)) return false
+  return normalizedActionCellDetail(skipReasonBlock) === normalizedActionCellDetail(note)
 }
 
 function isAnnualForMonth(annualMonth: string | null | undefined, monthIso: string): boolean {
@@ -53,6 +106,35 @@ function isAnnualForMonth(annualMonth: string | null | undefined, monthIso: stri
   return raw === monthFull || raw === monthShort
 }
 
+/** Matches ``_sheet_skip_reason_is_annual`` in ``monthly_routes.py`` (sheet / CSV classification). */
+function sheetSkipReasonIsAnnual(skipReason: string | null | undefined): boolean {
+  const s = (skipReason || '').trim().toLowerCase()
+  return s === 'annual' || s === 'annual_booked'
+}
+
+/** Importer / sheet internal codes — omit separate reason line (status still shows Skipped). */
+function worksheetSkipReasonDisplayBlock(skipReason: string | null | undefined): string | null {
+  const s = (skipReason ?? '').trim()
+  const low = s.toLowerCase()
+  if (low === 'annual_booked' || low === 'sheet_value') return null
+  if (!s) return '—'
+  return s
+}
+
+function worksheetAddressCellStatusClass(
+  row: TechnicianWorksheetRow,
+  monthDate: string,
+): string | undefined {
+  const rs = (row.result_status || '').trim().toLowerCase()
+  const annualMatch = isAnnualForMonth(row.annual_month, monthDate)
+  if (rs === 'tested') return 'tw-address-cell-tested'
+  if (rs === 'skipped') {
+    return sheetSkipReasonIsAnnual(row.skip_reason) ? 'tw-address-cell-annual' : 'tw-address-cell-skipped-other'
+  }
+  if (annualMatch) return 'tw-address-cell-annual'
+  return undefined
+}
+
 function autosizeTextarea(el: HTMLTextAreaElement): void {
   el.style.height = 'auto'
   el.style.height = `${el.scrollHeight}px`
@@ -60,6 +142,8 @@ function autosizeTextarea(el: HTMLTextAreaElement): void {
 
 export default function TechnicianWorksheetPage() {
   const { routeId, monthIso } = useParams<{ routeId: string; monthIso: string }>()
+  const location = useLocation()
+  const isPortalMode = location.pathname.startsWith('/tech/')
   const idNum = routeId ? parseInt(routeId, 10) : NaN
   const monthQuery = (monthIso || '').trim()
   const monthOk = MONTH_FIRST_RE.test(monthQuery) && parseYearMonth(monthQuery) != null
@@ -278,7 +362,13 @@ export default function TechnicianWorksheetPage() {
             <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
               <div>
                 <div className="fw-semibold">{payload.route.label}</div>
-                <div className="small text-muted">{formatMonthHeading(payload.month_date)}</div>
+                <div className="small text-muted">{formatMonthHeading(payload.month_date)} run</div>
+                {(() => {
+                  const startedLabel = formatRunStartedAt(payload.run?.started_at ?? null)
+                  return startedLabel ? (
+                    <div className="small text-muted">Run started {startedLabel}</div>
+                  ) : null
+                })()}
               </div>
               <div className="d-flex align-items-center gap-2">
                 {completionPending(idNum, monthQuery) ? <Badge bg="warning">Pending Confirmation</Badge> : null}
@@ -312,12 +402,20 @@ export default function TechnicianWorksheetPage() {
         style={topbarHeight ? { paddingTop: topbarHeight } : undefined}
       >
       <div className="d-flex flex-wrap align-items-center gap-2 mb-3">
-        <Link to={Number.isNaN(idNum) ? '/monthlies/routes' : `/monthlies/routes/${idNum}`} className="small">
-          ← Back to route
-        </Link>
-        <Link to="/monthlies/routes" className="small text-muted">
-          All routes
-        </Link>
+        {isPortalMode ? (
+          <Link to="/tech/start" className="small">
+            ← Back to route picker
+          </Link>
+        ) : (
+          <>
+            <Link to={Number.isNaN(idNum) ? '/monthlies/routes' : `/monthlies/routes/${idNum}`} className="small">
+              ← Back to route
+            </Link>
+            <Link to="/monthlies/routes" className="small text-muted">
+              All routes
+            </Link>
+          </>
+        )}
       </div>
       {invalidParams}
       {loading && !payload ? (
@@ -346,10 +444,7 @@ export default function TechnicianWorksheetPage() {
                   </thead>
                   <tbody>
                     {payload.rows.map((row, index) => (
-                      <tr
-                        key={`${row.location_id}-${row.month_date}`}
-                        className={isAnnualForMonth(row.annual_month, payload.month_date) ? 'tw-row-annual' : undefined}
-                      >
+                      <tr key={`${row.location_id}-${row.month_date}`}>
                         {(() => {
                           const annualKey = `annual_month:${row.location_id}`
                           const ringKey = `ring:${row.location_id}`
@@ -357,13 +452,38 @@ export default function TechnicianWorksheetPage() {
                           const facpKey = `facp:${row.location_id}`
                           const proceduresKey = `testing_procedures:${row.location_id}`
                           const notesKey = `inspection_tech_notes:${row.location_id}`
-                          const annualMatch = isAnnualForMonth(row.annual_month, payload.month_date)
+                          const addressStatusClass = worksheetAddressCellStatusClass(row, payload.month_date)
+                          const displayTimeIn = (row.time_in || '').trim()
+                          const displayTimeOut = (row.time_out || '').trim()
+                          const hasTimeIn = displayTimeIn.length > 0
+                          const hasTimeOut = displayTimeOut.length > 0
+                          const isHistorical = payload.run?.is_historical === true
+                          const showOfficeStatusIcons = isHistorical && !isPortalMode
+                          const worksheetResultKey = (row.result_status || '').trim().toLowerCase()
+                          const worksheetHasTestedOrSkipped =
+                            worksheetResultKey === 'tested' || worksheetResultKey === 'skipped'
+                          const showHistoricalOfficeResultButtons =
+                            isHistorical && !isPortalMode && !worksheetHasTestedOrSkipped
+                          const skipReasonDisplayBlock = worksheetSkipReasonDisplayBlock(row.skip_reason)
+                          const showWorksheetTimeInLine =
+                            hasTimeIn &&
+                            !worksheetSkipReasonDuplicatesTimeInNote(
+                              skipReasonDisplayBlock,
+                              row.result_status,
+                              displayTimeIn,
+                            )
+                          const showWorksheetTimeOutLine = hasTimeOut && shouldShowWorksheetTimeOutRow(displayTimeIn, displayTimeOut)
                           return (
                             <>
                         <td className="tw-col-order text-center tabular-nums">{index + 1}</td>
-                        <td className="tw-col-address">
+                        <td className={`tw-col-address${addressStatusClass ? ` ${addressStatusClass}` : ''}`}>
                           <div className="tw-address-block">
-                            <div className="fw-semibold">{row.display_address}</div>
+                            <Link
+                              to={`/monthlies/locations/${row.location_id}`}
+                              className="fw-semibold text-break text-decoration-none link-primary d-inline-block"
+                            >
+                              {row.display_address}
+                            </Link>
                             <div className="small text-muted">{'building name'}</div>
                             <div className="small text-muted">{row.property_management_company || '—'}</div>
                           </div>
@@ -372,9 +492,7 @@ export default function TechnicianWorksheetPage() {
                           <div className="tw-stacked-cell">
                             <label className="tw-stacked-label">Annual</label>
                             <input
-                              className={`form-control form-control-sm ${isEditorActive(annualKey) ? '' : 'tw-readonly-field'} ${
-                                annualMatch ? 'tw-annual-current-month' : ''
-                              }`}
+                              className={`form-control form-control-sm ${isEditorActive(annualKey) ? '' : 'tw-readonly-field'}`}
                               defaultValue={row.annual_month ?? ''}
                               readOnly={!isEditorActive(annualKey)}
                               autoFocus={isEditorActive(annualKey)}
@@ -466,71 +584,137 @@ export default function TechnicianWorksheetPage() {
                           />
                         </td>
                         <td className="tw-col-action">
-                          <div className="d-grid gap-1">
-                            {row.time_in ? (
-                              <div className="small text-muted">Time In: {row.time_in}</div>
-                            ) : null}
-                            {row.time_out ? (
-                              <div className="small text-muted">Time Out: {row.time_out}</div>
-                            ) : null}
-                            {!row.time_in ? (
+                          <div className={`d-grid gap-1${isHistorical ? ' text-center' : ''}`}>
+                            {isHistorical ? (
                               <>
-                                <Button
-                                  size="sm"
-                                  variant="success"
-                                  onClick={() => {
-                                    setTimeInModalRow(row)
-                                    setTimeInDraft(row.time_in || hhmmNow())
-                                  }}
-                                >
-                                  Time In
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="warning"
-                                  onClick={() => {
-                                    setSkipReasonModalRow(row)
-                                    setSkipReasonDraft(row.skip_reason || '')
-                                  }}
-                                >
-                                  Skip
-                                </Button>
-                              </>
-                            ) : !row.time_out ? (
-                              <>
-                                <Button
-                                  size="sm"
-                                  variant="success"
-                                  onClick={() => {
-                                    setTimeOutModalRow(row)
-                                    setTimeOutDraft(row.time_out || hhmmNow())
-                                  }}
-                                >
-                                  Time Out
-                                </Button>
-                                <Button size="sm" variant="danger" onClick={() => window.alert('Deficiency workflow next phase')}>
-                                  Add Deficiency
-                                </Button>
+                                {worksheetResultKey === 'tested' ? (
+                                  <div className="fw-semibold small d-flex align-items-center justify-content-center gap-1">
+                                    {showOfficeStatusIcons ? (
+                                      <i
+                                        className="bi bi-check-circle-fill text-success flex-shrink-0"
+                                        style={{ fontSize: '1rem' }}
+                                        title="Tested"
+                                        aria-hidden
+                                      />
+                                    ) : null}
+                                    <span>Tested</span>
+                                  </div>
+                                ) : worksheetResultKey === 'skipped' ? (
+                                  <>
+                                    <div className="fw-semibold small d-flex align-items-center justify-content-center gap-1">
+                                      {showOfficeStatusIcons ? (
+                                        <span
+                                          className="rounded-circle bg-warning flex-shrink-0 d-inline-block tw-office-skipped-dot"
+                                          title="Skipped"
+                                          aria-hidden
+                                        />
+                                      ) : null}
+                                      <span>Skipped</span>
+                                    </div>
+                                    {skipReasonDisplayBlock != null ? (
+                                      <div className="small text-muted text-break text-center">{skipReasonDisplayBlock}</div>
+                                    ) : null}
+                                  </>
+                                ) : showHistoricalOfficeResultButtons ? (
+                                  <>
+                                    <Button
+                                      size="sm"
+                                      variant="success"
+                                      onClick={() => {
+                                        queueRowChanges(row, { result_status: 'tested', skip_reason: null })
+                                      }}
+                                    >
+                                      Set as tested
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="warning"
+                                      onClick={() => {
+                                        setSkipReasonModalRow(row)
+                                        setSkipReasonDraft(row.skip_reason || '')
+                                      }}
+                                    >
+                                      Set as skipped
+                                    </Button>
+                                  </>
+                                ) : (
+                                  <div className="small text-muted">—</div>
+                                )}
+                                {showWorksheetTimeInLine ? (
+                                  <div className="small text-muted">{worksheetTimeInOutDisplayLine('in', displayTimeIn)}</div>
+                                ) : null}
+                                {showWorksheetTimeOutLine ? (
+                                  <div className="small text-muted">{worksheetTimeInOutDisplayLine('out', displayTimeOut)}</div>
+                                ) : null}
                               </>
                             ) : (
                               <>
-                                <Button
-                                  size="sm"
-                                  variant="outline-secondary"
-                                  onClick={() => {
-                                    queueRowChanges(row, {
-                                      time_in: null,
-                                      time_out: null,
-                                      skip_reason: null,
-                                      result_status: 'tested',
-                                    })
-                                  }}
-                                >
-                                  Clear Time In/Out
-                                </Button>
-                                <Button size="sm" variant="danger" onClick={() => window.alert('Deficiency workflow next phase')}>
-                                  Add Deficiency
-                                </Button>
+                                {showWorksheetTimeInLine ? (
+                                  <div className="small text-muted">{worksheetTimeInOutDisplayLine('in', displayTimeIn)}</div>
+                                ) : null}
+                                {showWorksheetTimeOutLine ? (
+                                  <div className="small text-muted">{worksheetTimeInOutDisplayLine('out', displayTimeOut)}</div>
+                                ) : null}
+                                {!hasTimeIn ? (
+                                  <>
+                                    <Button
+                                      size="sm"
+                                      variant="success"
+                                      onClick={() => {
+                                        setTimeInModalRow(row)
+                                        setTimeInDraft(displayTimeIn || hhmmNow())
+                                      }}
+                                    >
+                                      Time In
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="warning"
+                                      onClick={() => {
+                                        setSkipReasonModalRow(row)
+                                        setSkipReasonDraft(row.skip_reason || '')
+                                      }}
+                                    >
+                                      Skip
+                                    </Button>
+                                  </>
+                                ) : !hasTimeOut ? (
+                                  <>
+                                    <Button
+                                      size="sm"
+                                      variant="success"
+                                      onClick={() => {
+                                        setTimeOutModalRow(row)
+                                        setTimeOutDraft(displayTimeOut || hhmmNow())
+                                      }}
+                                    >
+                                      Time Out
+                                    </Button>
+                                    <Button size="sm" variant="danger" onClick={() => window.alert('Deficiency workflow next phase')}>
+                                      Add Deficiency
+                                    </Button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Button
+                                      size="sm"
+                                      variant="outline-secondary"
+                                      onClick={() => {
+                                        queueRowChanges(row, {
+                                          time_in: null,
+                                          time_out: null,
+                                          skip_reason: null,
+                                          result_status: 'tested',
+                                        })
+                                      }}
+                                    >
+                                      Clear Time In/Out
+                                    </Button>
+                                    <Button size="sm" variant="danger" onClick={() => window.alert('Deficiency workflow next phase')}>
+                                      Add Deficiency
+                                    </Button>
+                                  </>
+                                )}
                               </>
                             )}
                             <Button variant="link" size="sm" className="px-0 tw-audit-link" onClick={() => void loadAudit(row)}>

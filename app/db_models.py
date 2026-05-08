@@ -593,9 +593,70 @@ class MonthlyRoute(db.Model):
         cascade="all, delete-orphan",
         lazy="dynamic",
     )
+    runs = db.relationship(
+        "MonthlyRouteRun",
+        back_populates="monthly_route",
+        cascade="all, delete-orphan",
+        lazy="dynamic",
+    )
 
     def __repr__(self):
         return f"<MonthlyRoute R{self.route_number}>"
+
+
+class MonthlyRouteRun(db.Model):
+    """
+    One execution of a monthly route in a calendar month — the "run file."
+
+    A Run groups together every ``MonthlyRouteTestHistory`` row for a
+    ``(monthly_route_id, month_date)`` pair, plus a status / timestamps so the
+    office can later see when the techs started, when it was completed, and
+    which surface created it (``technician_app``, ``csv_import``, ``office_manual``).
+    """
+
+    __tablename__ = "monthly_route_run"
+    __table_args__ = (
+        db.UniqueConstraint(
+            "monthly_route_id",
+            "month_date",
+            name="uq_monthly_route_run_route_month",
+        ),
+        db.Index("ix_monthly_route_run_month_date", "month_date"),
+    )
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    monthly_route_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monthly_route.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    month_date = db.Column(db.Date, nullable=False)
+    started_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    completed_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    status = db.Column(db.String(16), nullable=False, server_default="open")
+    source = db.Column(db.String(32), nullable=False, server_default="technician_app")
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        nullable=False,
+    )
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        onupdate=db.func.now(),
+        nullable=False,
+    )
+
+    monthly_route = db.relationship("MonthlyRoute", back_populates="runs")
+    history_rows = db.relationship(
+        "MonthlyRouteTestHistory",
+        back_populates="run",
+        foreign_keys="MonthlyRouteTestHistory.run_id",
+    )
+
+    def __repr__(self):
+        return f"<MonthlyRouteRun route={self.monthly_route_id} month={self.month_date}>"
 
 
 class MonthlyRouteSpecialistMonth(db.Model):
@@ -929,7 +990,9 @@ class MonthlyRouteTestHistory(db.Model):
         index=True,
     )
     month_date = db.Column(db.Date, nullable=False)
-    result_status = db.Column(db.String(32), nullable=False)
+    #: Nullable: NULL means "not yet tested" for rows materialized when a technician
+    #: opens the worksheet; CSV imports and worksheet edits set this to "tested" or "skipped".
+    result_status = db.Column(db.String(32), nullable=True)
     skip_reason = db.Column(db.String(255), nullable=True)
     source_value_raw = db.Column(db.String(255), nullable=True)
     #: Monthly route the stop belonged to when this month cell was recorded (CSV import / UI truth).
@@ -939,17 +1002,39 @@ class MonthlyRouteTestHistory(db.Model):
         db.ForeignKey("monthly_route.id", ondelete="SET NULL"),
         nullable=True,
     )
-    #: 0-based stop index from the technician sheet ``#`` column when imported (stable after reassignment).
+    #: 0-based index from the sheet ``#`` column (CSV import). Historical per
+    #: ``(location, month)``; technician worksheet sorts by this when set, else
+    #: falls back to ``MonthlyRouteLocation.route_stop_order``.
     session_route_stop_order = db.Column(db.SmallInteger, nullable=True)
 
-    #: Sheet ``Testing Procedures`` at import time for this month (preserved when later months overwrite ``MonthlyRouteLocation``).
+    #: Run-scoped snapshot fields. NULL until set during a run; copied forward to
+    #: the next month's row on materialize. Reads always come from these columns
+    #: so old months stay faithful to what was true at that time.
+    #: Run-scoped FACP snapshot (often multi-line; mirrors ``MonthlyRouteLocation.facp_detail``).
+    facp = db.Column(db.Text, nullable=True)
+    ring = db.Column(db.String(255), nullable=True)
+    key_number = db.Column(db.String(255), nullable=True)
+    annual_month = db.Column(db.String(32), nullable=True)
+    #: Sheet ``Testing Procedures`` snapshot for this month (run-scoped, like FACP).
     testing_procedures = db.Column(db.Text, nullable=True)
-    #: Sheet ``Tech Comments & Notes`` at import time for this month.
+    #: Sheet ``Tech Comments & Notes`` snapshot for this month.
     inspection_tech_notes = db.Column(db.Text, nullable=True)
     #: Technician worksheet ``Time In`` raw value for this route-month row.
     sheet_time_in_raw = db.Column(db.String(64), nullable=True)
     #: Technician worksheet ``Time Out`` raw value for this route-month row.
     sheet_time_out_raw = db.Column(db.String(64), nullable=True)
+    #: Free-form monitoring block from the technician sheet CSV (signals, acct #, etc.).
+    #: The worksheet shows this when set; otherwise falls back to ``MonitoringCompany`` on the location.
+    monitoring_notes = db.Column(db.Text, nullable=True)
+
+    #: FK to the parent ``MonthlyRouteRun`` (one row per (route, month_date)).
+    #: Nullable because legacy rows may not yet be linked, or the route attribution may be ambiguous.
+    run_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monthly_route_run.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     created_at = db.Column(
         db.DateTime(timezone=True),
@@ -967,6 +1052,11 @@ class MonthlyRouteTestHistory(db.Model):
     test_monthly_route = db.relationship(
         "MonthlyRoute",
         foreign_keys=[test_monthly_route_id],
+    )
+    run = db.relationship(
+        "MonthlyRouteRun",
+        back_populates="history_rows",
+        foreign_keys=[run_id],
     )
     worksheet_audit_events = db.relationship(
         "MonthlyRouteWorksheetAuditEvent",

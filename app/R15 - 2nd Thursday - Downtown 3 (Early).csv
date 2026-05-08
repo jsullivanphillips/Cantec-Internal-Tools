@@ -1,0 +1,469 @@
+﻿,,,,,,,,,,,,,,,,,,,,
+MONTHLY BELL TESTING,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,Telus: 1-855-958-8181,Victoria Alarm Service: 1-855-777-8632,,,Tyco: 1-800-289-2647,,,,,,,,,,,,,,,
+,Absolute: 250-475-3262,PR Bridge Systems: 1877-685-5625,,,Fusion: 1-778-371-7376,,,,,,,,,,,,,,,
+,Reliance Protection: 250-388-9211,Paladin: 1-800-241-1122,,,ADT: 250-381-5133,,,,,,,,,,,,,,,
+,Protec: 250-474-0151,Chubb: 1-877-856-3852,,,Bullet: 1-866-282-6544,,,,,,,,,,,,,,,
+,Thorn: 1-800-561-5433,Shark (Kane): 250-884-6469,,,Troy: 1-833-920-2166,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,ROUTE:,2nd Thurs,,Route 15,Downtown 3 (Early),,,,,,,,,,,,,,,
+,DATE:,April,,2026,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+#,Location Details,Annual,Ring,Key #,FACP,Monitoring,Testing Procedures,Technician Notes & Comments,Time In:,Time Out:,,,,,,,,,,
+1,"Address: 2020 Richmond 
+Name: Richmond Medical
+Managemet: Brown Bros.
+",December,N/A,w/ Parking Attendant,"PANEL: EDWARDS 6500
+LOCATION: Electrical room","COMPANY: Bullet
+SIGNALS: A T
+ACCT: # 19-6103 
+PASSWORD: Control","RING BELLS BY 7:45AM
+
+Meet Mike (parking attendant) in the parkade and he will open the electrical room","Mike (Parking Attendant) 250-217-9695
+
+NOV/25(VCS) - Signal silence didn't work has to use the reset to silence bells. 
+
+",7:08,7:21,,,,,,,,,,
+2,"Address: 1830 Oak Bay Avenue 
+Name: Jubilee Professional Building 
+Management:  Richmond Property Group
+",April,R1,KA 0381,"PANEL: Mircom 1000
+LOCATION: Parkade Level 1 Electrical Room (Corner) ","COMPANY: Protec
+SIGNALS: 
+ACCT: 303254 
+PHONE: 250-474-0151 ext 1","**Dentists onsite** Request by site to give them a heads up before to ring bells
+**test before 8:30am**","Annual has not been done here since may 2024 due to site cancelling & rennovations.
+VV issue on Projects radar FEB/25:
+
+CONFIRM MONITORING INFO IN AUGUST 2025",ANNUAL BOOKED APRIL,ANNUAL BOOKED APRIL,,,,,,,,,,
+3,"Address: 908 Pandora Avenue
+Name: VEFRA
+Management: Coliers
+",January,R1,PD 809,"PANEL: Simplex 4007ES
+LOCATION: Parkade Electrical by Stall 52","COMPANY: Paladin
+SIGNALS: 
+ACCT: PTDD21","Test before 8am. 
+
+Park in underground parkade accessible on Mason St. Use keycard for access.               March 2026 hf : bring B key next month for panel    ","Colin (778-974-4527)
+
+Keyfob works for underground parking. Red key for elec room.
+ 
+Red key for electrical room is correct, but the key is very sticky. Keep trying it.
+ 
+Clear pin pad with 1234 a few times
+
+Dec24 DF: New fob added ",7:31,7:41,,,,,,,,,,
+4,"Address:1205 Broad St
+(650 View St) 
+Name:
+Management: Servissio
+",December,R1,FB 056 [K2],"PANEL: EDWARDS QUICKSTART (CONVENTIONAL) 
+LOCATION: Elec Room in 1205 Broad St Basement","COMPANY: Paladin
+SIGNALS: A T
+ACCT: 112096","Access by unlocking the front door using the lock at the bottom of the door, then using the fob.
+Key on key ring overrides the FOB system for the front door.
+May/21 (cs) Door Code #125 for basement access.","😊 Washrooms on opposite electrical room.
+Rick Restell (Phone: 250-686-7924) has advised that the doors have been rekeyed in the last couple weeks so our MBT keys may not work. Call him after stop #2 and he will meet us onsite. He has made a calendar entry for himself and I told we arrive between 8-830am. Also there are electricians onsite that may be relocating the FAP in the next few days as well.
+LW KD AUG 2025: They are mid construction and all devices were pulled off the wall. Rick said he will let us know when building is in testing condition.
+1/26(KD): As per previous note, this building is not accessible/testable due to ongoing construction. FACP dismantled and no devices installed/operational.  ",SKIP DUE CONSTRUCTION,SKIP DUE CONSTRUCTION,,,,,,,,,,
+5,"Address:8 Bastion Square 
+Name: 
+Management: Servissio
+",September,R1,Y 8  [K9],"PANEL: MIRCOM FX-2000
+LOCATION: in electrical room off back alley through gate and downstairs. ","COMPANY: Thorn
+SIGNALS: A T
+ACCT: 52 01 5239
+PASSWORD: Cantec@8bastion","FACP PW: 3333, 2222 & 1111
+
+Building has intrusion alarm (not monitored) Will turn off after alarm. 
+
+NO front door key will be provided for this monthly, enter at back through chain link fence door, electrical room down the stairs and straight ahead on the left.
+
+Use Relay Bypass",3rd floor is never accessible as it is a high security government office. Rotate through other zones.,7:51,8:00,,,,,,,,,,
+6,"Address:1127 Wharf Street
+Name: Darcy’s/Upstairs Cabaret
+Management: Darcy’s
+",May ,N/A,On Site,"PANEL: MIRTONE MR1-2Z6
+LOCATION: in electrical room","COMPANY: Telus
+SIGNALS: A T
+ACCT: PA-04-01-3303","Kitchen Staff Usually there by 7:00  – Warn before testing.
+Doorbell by front door under left end of wood bar (white button).  Access from entrance. Electrical room up small staircase by main floor washrooms.","April/21 (SD) Try door, it’s usually unlocked.
+Feb/22 (JG) Key for 2nd floor access under the bar by the telephone on post. 
+Electrical room code: 1127
+
+March/24: Monitoring problem has been resolved
+
+",ANNUAL BOOKED APRIL,ANNUAL BOOKED APRIL,,,,,,,,,,
+7,"Address:500 Fort Street
+Name: Keg at The Harbour
+Management: Bigstake Ventures Ltd
+",June,N/A,Manager on site,"PANEL: MIRCOM FX2000 (NEW 2011)
+LOCATION: Back door for access","COMPANY: Kobaltb(Same As Thorn)
+SIGNALS: 
+ACCT: 2401-7443
+PHONE: 1-800-561-5433","Prep staff are onsite at 7:30am and they don't open until 4:30pm so we can test anytime. Jon Tinker should have arranged for a manager to give access to the electrical room. He can get us keys or a lock box and give us the code if it would be better than having an onsite manager give access.
+
+Check in with kitchen staff before ringing bells for safety reasons.
+
+Acess alley off Langley, 2nd floor black door (up the greasy metal stairs). Door will be open.","John Tinker direct phone 250-889-5555 / 250-386-7789 - call if don't have access 
+
+April/25 (WD) Fire alarm panel is located in upper dining hall, back right corner near host station. We tested the pull station beside fire alarm breaker.
+May/25 (WD) Head chef is on site he has access to fire alarm panel, the breaker is located in kitchen behind white painted cupboard with little lock latch beside freezer you will pass it on your way in.",8:07,8:16,,,,,,,,,,
+8,"Address:506 Fort Street 
+Name: 
+Management: Homesphere Prop
+",July,R1,383,"PANEL: Mircom Flexnet 
+LOCATION: Electrical room on left down hall from entrance","COMPANY: Bullet
+SIGNALS: 
+ACCT: #19-7958
+PASSWORD: Grape",Use Fan/Light bypass,"AUG 2025 LW & KD GAVE KEY TO ADAM.
+",8:17,8:23,,,,,,,,,,
+9,"Address:1001 Wharf Street
+Name: Army & Navy
+Management: Pastoral Developments
+",September,R1,"NA 1001
+[K2, F1]","PANEL: POTTER PFC 5000 SERIES
+LOCATION: in Basement Elec. Room. ","COMPANY: Telus
+SIGNALS: A T
+ACCT: PA-06-03-0988","Access Basement Electrician room by going to 2nd floor, walk down hallway to SW stairs. Follow stairs to basement.
+
+Door code for basement: Push green button, then press 6480
+
+**test before 11am**","April 20/22 (sd’) Unit #300-Sunday Market, Access Code: 8989 (key card n key ring)
+Nick Houniet: 250-888-8129",8:24,,,,,,,,,,,
+10,"1002 Wharf Street
+Name: Malahat Bld
+Management: Malahat Prop.
+",January,N/A,at reception,"PANEL: MIRTONE 7600
+LOCATION: Basement electrical room outside around back.","COMPANY: Telus
+SIGNALS: A T
+ACCT: T080-332-022",Buzz door for staff to get access. Ask for blue electrical room keys. Kept in a lock box in the room to the right of the main floor elevator. ,,,8:50,,,,,,,,,,
+11,"Address:1000-1012 Douglas Street 
+Name: Broughton Building
+Management: Itziar Management Ltd. (0824606 BC Ltd.)
+",June,R1,D 2101,"PANEL: EDWARDS 2280
+LOCATION: In Alley Electrical Room. (access alley between Tibetan Restaurant and Broughton Deli)","COMPANY: Troy
+SIGNALS: 
+ACCT: 53-01-1514",Access to the main building on Douglas St. ,"New keys received. No access to 3rd floor.
+
+August/25(KD): Confirmed relay operation. The monitoring wires were very loosely held in terminal, this could explain why it worked only some of the time. Confirmed trouble and alarm transmission for August and the issue is likely resolved.",8:55,9:03,,,,,,,,,,
+12,"Address:1005 Broad Street
+Name: Counting House
+Management: Richmond
+",March,R1,K 5001 [K4],"PANEL: EDWARDS 2280
+LOCATION: In Power Room on 3rd Floor by 307.","COMPANY: Telus
+SIGNALS: A T
+ACCT: PA-06-03-0923",WARN DENTIST ON 3RD FLOOR ,,9:06,,,,,,,,,,,
+13,"Address:645 Fort Street 
+Name: Yarrow Bldg.
+Management: Newport Prop
+",June,N/A,N/A,"PANEL: Simplex 4100
+LOCATION: Basement electrical room ","COMPANY: Telus
+SIGNALS: 
+ACCT: #g272422790","Panel code 333 as needed 
+Menu - 1 - Enter - 333 - Enter.
+Enter main entrance, take elevator to basement. Follow hallway to the courtyard. Enter door on left, key code 629. Enter and electrical room is on the right. Brian should be there. 
+Call Brian 778-676-0343 if boiler/bike room is locked. FACP breaker in boiler/bike room 
+
+Enable manual control ahead of time to silence bells ",,9:17,9:27,,,,,,,,,,
+14,"Address:623 Fort St. 
+Name: Argus Building
+Management: Fort St Prop
+",March,R1,FS 326,"PANEL: Mircom 2000
+LOCATION: Basement Electrical Room ","COMPANY: Paladin/M6
+SIGNALS: 
+ACCT:PTD412
+PASSWORD: duty","Pass 2222. Front desk has fob for elevator and floor access
+ 
+Enable relay and elevator bypass. Use signal bypass instead of signal silence (signal silence only silences some of the bells)","
+
+MAY/24 (JM): Signal silence did not appear to silence bells. Used signal bypass to silence.
+
+May/24 (JZ) - Verify signal silence function June MBT
+
+JUN/25 (KD) - signal silence illuminates but only silences basement and 1st floor, use signal bypass to silence bells
+",9:29,9:37,,,,,,,,,,
+15,"Address:719-725 Yates 
+Name: Churchill Place
+Management: Pacific Cove
+",January,R1,"R 527
+[K6, F1]","PANEL: MIRCOM FX 2000
+LOCATION:  In basement electrical room.","COMPANY: Telus
+SIGNALS: A T
+ACCT: G-272-422-872","**1 min inhibit**
+
+1: Enable Manual Control (2222)
+2: press Bell Bypass
+3: turn off booster breaker on 3rd floor.
+4: turn off FACP breaker
+5: send alarm
+6: wait 1.5min
+7: press Bell Bypass
+BELLS WILL RING NOW
+8: Signal silence
+9: confirm Annunciator zone
+10: Reset
+11: restore power to booster and FACP
+12: turn off manual control.",,9:51,10:02,,,,,,,,,,
+16,"Address:709 (-715) Yates 
+Name: 
+Management: Churchill on Yates
+",January,R1,"R 527
+[K6, F1]","PANEL: EDWARDS EST 6616 
+LOCATION: In basement electrical room.  ","COMPANY: Telus
+SIGNALS: A T
+ACCT: PA-04-01-2203","Stairs behind post office to access basement. 4-5 second delay in signal silence due to booster panel. Takes 5 seconds to silence.
+
+Annunciator in Post office.
+
+WARN POST OFFICE
+***BE SURE TO LOCK BASEMENT ACCESS DOOR WHEN DONE***",,10:03,10:15,,,,,,,,,,
+17,"Address:1222 Douglas Street
+Name: Dollarama
+Management: Firm Management (new Jan 1 2024)
+",October,R1,DR 2221 (to access upstairs area),"PANEL: EDWARDS FIRESHIELD PLUS
+LOCATION: In the basement at the end of hallway.","COMPANY: Bullet
+SIGNALS: 
+ACCT: 19-6848
+PASSWORD: String","To access rear hallway, get the on-site store manager to use their key to open the door. Our monthly keys open the electrical room door. 
+Panel breaker located in the basement hallway.
+A common area horn in the staff break room continues to sound even after alarm silence is engaged. Unsure if this is intentional or not. ","JAN/25 AT: It is possible that monitoring signals are being received backwards. Double check the time signatures of the signals with Paladin during February MBT.
+Feb25 - 1222 Douglas: Bullet is receiving signals backwards; during MBT, the Fire Alarm signal was received at 11:20, and the Trouble signal was received at 11:21, which is backwards to the order in which they were sent. Requires a service call 1T x 1hr to troubleshoot. VV sent to service
+Dec/25(KD): No monitoring issue, troubles have a delay and can be recieved after alarm depending how quickly alarm is sent.",10:18,10:38,,,,,,,,,,
+18,"Address:1125 Douglas  / (702 Fort) 
+Name: Cactus Club
+Management: Ritz Hotel
+",June,N/A,Call Ken Cooper,"PANEL: MIRCOM FA1000 
+LOCATION: In basement electrical room.","COMPANY: Telus
+SIGNALS: A T
+ACCT: PA-06-03-0410
+*(ARPEG Grove – 702 Fort St)* ","Call Ken Cooper 250-812-1752 to gain access.
+
+PW - 2222 3333
+1111, 2222, 3333","NOV/25(VCS) - Monitoring from Telus stopped in Oct 2025
+
+VV site confirmed that the monitoring is back online. Please confirm in December 2025",,10:56,,,,,,,,,,
+19,"Address:710 Fort Street
+Name: Ritz Hotel
+Management: Ritz Hotel
+",June,N/A,Call Ken Cooper,"PANEL: EDWARDS 6500
+LOCATION:  In basement. 2 Annunciators. 
+Breaker in hydro room by elevator.",NONE,"Meet Ken Cooper 250-812-1752 to gain access to basement fire panel.
+ 
+Before testing check if middle CCT breaker (red button for annunciation inside FAP) is tripped. Then recheck after testing alarms. Take note when zone trips this breaker.","
+
+
+ 
+Dec24 KD: Panel AC bulb is burnt out. Need replacement AC bulb for Edwards 6500.",,10:50,,,,,,,,,,
+20,"Address:747 Fort Street 
+Name: 
+Management: Richmond
+",June,R1,RF 747,"PANEL: Edwards EST-3 (& Audio AMP)
+LOCATION: Annunciator w/ voice paging in Front Lobby.
+FACP & Breakers in  Electrical Room","COMPANY: Telus
+SIGNALS: 
+ACCT: T080131485","Go through 2 doors across from annunciator, up stairs to second landing.
+Do Monthly test from annunciator.
+
+Soft key bypasses are now working. Bypass Elevator and AUX, and flip both FA breakers.
+
+PANEL (mezzanine) - Breaker #1
+AUDIO AMP (lobby) - Breaker #2","Ralph: 250 893 0262
+
+NOV Basement Bell Panel in trouble VV service & projects reach out site.
+
+July25(KD): Trouble on arrival, sprinkler tamper trouble, ground fault active. New monitoring information, added to building notes. Completed MBT. Telus did NOT receive trouble signal and had no record of a trouble even though there had been one active on the panel on arrival. VV sent to Service.
+PANEL DOES NOT HAVE 1 MINITE INHIBIT EVEN THOUGH THERE IS A ZONE
+",11:32,11:53,,,,,,,,,,
+21,"Address:734-736 Broughton Street
+Name: Lindholm
+Management: Trafalgar
+",October,R1,BL 437 [K1],"PANEL: SIMPLEX 4007
+LOCATION: in the electrical room off main stairs.","COMPANY: Fusion
+SIGNALS: A
+ACCT: S8682
+PASSWORD: Fire","Procedures:
+1.  When AC is turned off 
+a.  Silence Trouble – ACK1
+2.  To silence bells
+a.  Alarm Silence –> ALARM FUNCTIONS –> ALARM SILENCE –> ARE YOU SURE –> CHECKMARK.
+
+TEST BEFORE 2:00 PM *SEE NOTES PAGE IN BINDER
+No trouble. Fusion thinks there is but it is not wired for trouble monitoring. 
+See notes for touch screen.   FACP PW: 333","May 2014 (CM) - Be aware – new suppression panel with several pulls in Japanese Village.
+
+Monitoring did not receive trouble. Oct 24
+Ralph 250-893-0262 if needed.",12:09,12:14,,,,,,,,,,
+22,   ,December,R1,H 307 [K4],"PANEL: EDWARDS 2280
+LOCATION:  In basement electrical room.","COMPANY: Telus
+SIGNALS: A T
+ACCT: G272423039","Breaker behind Electrical Room Door. 
+
+New FOB gives access to elevator and all floors (previously no access to 3rd). Main door FOB behind glass to the right of main entrance.","Dec24 KD: Site asked us not to ring bells as they have important meetings going on. They also have an annual inspection booked Dec 17.
+ ",,12:26,,,,,,,,,,
+23,"Address:1120 Blanshard 
+Name: Montrose
+Management: Equitex
+",April,N/A,Call Mike 15 mins ahead,"PANEL: Edwards iO1000
+LOCATION:  2nd floor electrical room",NONE,"Mike 250-686-0254 Call 15 Min Ahead. 
+Park on Fort St for ease of routing. ",,ANNUAL BOOKED APRIL,ANNUAL BOOKED APRIL,,,,,,,,,,
+24,"Address:818 Fort Street 
+Name: Vital Statistics
+Management: Servissio
+",July,N/A,N/A,"PANEL: EDWARDS 1523
+LOCATION: Basement Electrical room. ","COMPANY: Paladin
+SIGNALS: A
+ACCT: BC2035
+PASSWORD: Cetnac","Use main floor intercom. Ask for maintenance coordinator (new guy, John) for access. 
+Paladin did NOT receive trouble signal.
+Reset keypad on main floor to clear alarm to monitoring x2. Doesn’t Monitor Trouble.  If you cannot reset pin pad use ( * 2, then # #, then access code X2 )
+
+Nov/21 (JG) Key Pad #0527 STAY AT KEY PAD UNTIL CONFIRMED RESTORAL
+If John is away, ask for Laurie on 4th floor for access.
+STILL NEEDS NEW MONTHLY SHEET FOR 2026.                 ",,12:42,12:53,,,,,,,,,,
+25,"Address:840 Fort Street
+Name: The Sawyer
+Management: Servissio Prop Services
+",January,R1,414,"PANEL: SIMPLEX 4007
+LOCATION: Basement electrical by elevator lobby through break room. ","COMPANY: Paladin/M6
+SIGNALS: 
+ACCT: PTC 104","Notify Belle General before ring.
+Elevator bypass not required, pull stations do not activate elevator homing.
+
+This type of panel is fully touch screen. The alarm silence function is
+ access by selecting 2-3 different options in order to get the alarms to fully silence.
+
+If unsilencable alarm re-triggering is a concern, perform the test on AC power with batteries unhooked. That way, the power can be cut if there are any issues.
+","Chad 250-514-1028
+Bathroom in basement 😁
+Jun/25(KD): New building manager as of June, she was unaware of MBT and upset that we did not provide any notice. Would recommend office reach out to new manager, she says they are changing all the maintenance keys over as well and will need to arrange getting those for next month. VV email sent to site.
+",12:55,13:02,,,,,,,,,,
+26,"Address: 1468 Vancouver Street
+Name: The Neighbour
+Management: Townline
+",June,R1,CV 8641,"PANEL: Edwards EST 4
+LOCATION: Parkade P1 Communications Room","COMPANY: Bullet 
+SIGNALS: 
+ACCT: 19-6977
+PW: Neighbour","**1 minute inhibit**
+
+BREAKERS:
+
+**Parkade P2 EMS Room (Panel EM)**
+1. FACP Communications Room (CCT #7)
+2. FACP Lobby Control Centre (CCT #77)
+
+Staff at front desk will open communications room for FACP and electrical room for breakers. At main FACP, enable ALL bypasses. Go to annunciator. From here, test fire phone, test voice paging. Have field tech pull alarm. Wait 1 minute and head back to main panel. After 1 minute, disable signal and suite buzzer bypass. After confirming signals, use signal silence. Reset and restore system. ","
+
+Dec/25(KD): I've moved this stop later in the route. The first few stops have a time requirement and this stop does not.
+JAN HF 26- generator Trouble in panel upon arrival.— Fire Phone on 2nd Floor by Laundromat Failed - no steady Connection - Calls kept dropping and did not consistently come in at the panel VV sent to Service.  									APR HF 26, Voice paging did not work during test but did however work when Panel was normal with AC On ",13:16,13:48,,,,,,,,,,
+27,"Address:844 Courtney Street 
+Name: 
+Management: Richmond
+",November,R1,"V 448 
+[K1, F1]","PANEL: Edwards 6500
+LOCATION: In electrical room, parkade, turn right first door","COMPANY: Protec
+SIGNALS: A T
+ACCT: 30322D
+PASSWORD: Cetnac","Be sure to disconnect elevator plug before testing so it doesn’t home
+
+3rd floor security alarm code:6333","
+
+David Boon @ 250-588-2555, if needed. 
+",14:00,14:10,,,,,,,,,,
+28,"Address:810 Blanshard St 
+Name: Robert Kerr
+MANAGEMENT: Colliers",July,R1,N 018 [K1],"PANEL: MIRCOM FX-2000
+LOCATION: Parkade electrical room.","COMPANY: Telus
+SIGNALS: A T
+ACCT: T080331732","Electrical room in parkade
+Disable elevator homing, fans and shunt bypasses.","JAN/25 AT: Contact Sarah Fraser @ Colliers (1-250-414-8376) (1175 Douglas Steet Suite 1110) for potential building access after Public Services vacates the building.
+FEB/25:Public Services vacated the building  no need to warn anyone
+CHRIS BLANCHARD 250-216-1768 
+Dec/25(KD): We no longer need to call Chris for access. Enter parkade door around rear if building with key. Key will provide access throughout most of building. Previously we needed FOB for access but tenants have vacated and key is sufficient for access. ",14:20,14:28,,,,,,,,,,
+29,"Address:777 Blanshard Street 
+Name: The Savoy
+Management: South Island
+",September,R1,"TS 777 
+[K3, F1]","PANEL: EPE
+LOCATION: Electrical room – Basement room “C”",NONE,Remove bell wire marette. Activate pull station (leave in alarm). Check Annunciator. Touch bell wires to ring bells.  Reset pull station and panel.  Replace marette on bell wires.,"
+LW AUG 2025: Annunciator did not annunciate main floor zone during initial test. Opened up annunciator and fixed disconnected wires. Annunciate zone during silent retest.
+
+",14:30,,,,,,,,,,,
+30,"Address:853 Burdett Avenue
+Name: Royal Anne
+Management: TPM
+",May ,R1,397,"PANEL: Mircom
+LOCATION: Basement Hydro Room. ",NONE,ACCESS RIGHT SIDE OF BUILDING much closer to electrical room. ,"Bathroom in electrical room 😎
+
+Lock is sticky and takes some maneuvering 
+
+If No access. VV call Rick to see about access - Rick – 778-350-9837
+
+",14:47,2:52,,,,,,,,,,
+30,"Address:853 Burdett Avenue
+Name: Royal Anne
+Management: TPM
+",May ,R1,397,"PANEL: Mircom
+LOCATION: Basement Hydro Room. ",NONE,ACCESS RIGHT SIDE OF BUILDING much closer to electrical room. ,"Bathroom in electrical room 😎
+
+Lock is sticky and takes some maneuvering 
+
+If No access. VV call Rick to see about access - Rick – 778-350-9837
+
+",,,,,,,,,,,,
+ROUTE FULL,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+39,,,,,,,,,,,,,,,,,,,,
+40,,,,,,,,,,,,,,,,,,,,
+41,,,,,,,,,,,,,,,,,,,,
+42,,,,,,,,,,,,,,,,,,,,
+43,,,,,,,,,,,,,,,,,,,,
+44,,,,,,,,,,,,,,,,,,,,
+45,,,,,,,,,,,,,,,,,,,,
+46,,,,,,,,,,,,,,,,,,,,
+47,,,,,,,,,,,,,,,,,,,,
+48,,,,,,,,,,,,,,,,,,,,
+49,,,,,,,,,,,,,,,,,,,,
+50,,,,,,,,,,,,,,,,,,,,
+51,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,

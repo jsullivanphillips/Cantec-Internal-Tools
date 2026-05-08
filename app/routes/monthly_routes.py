@@ -18,6 +18,7 @@ from app.db_models import (
     MonthlyRouteComment,
     MonthlyRouteLocation,
     MonthlyRouteLocationComment,
+    MonthlyRouteRun,
     MonthlyRouteSnapshot,
     MonthlyRouteSpecialistMonth,
     MonthlyRouteTestHistory,
@@ -25,7 +26,12 @@ from app.db_models import (
     db,
 )
 from app.monthly.key_resolve import sync_key_fk_for_location
+from app.monthly.route_inspection_csv_import import (
+    parse_preamble_only,
+    run_route_inspection_csv_import,
+)
 from app.monthly.route_sync import sync_monthly_route_fk_for_location
+from app.monthly.runs import get_or_create_monthly_route_run
 monthly_routes_bp = Blueprint("monthly_routes", __name__)
 # Max rows from ``monthly_route_specialist_month`` returned on route detail (align with script default lookback).
 _ROUTE_DETAIL_SPECIALIST_MONTHS_LIMIT = int(os.getenv("MONTHLY_ROUTE_DETAIL_SPECIALIST_MONTHS", "24"))
@@ -488,6 +494,163 @@ def _route_testing_by_month(route_id: int) -> dict[str, dict]:
     return by_month
 
 
+def _get_or_create_run(route_id: int, month_first: date) -> MonthlyRouteRun:
+    """Worksheet-opening alias for :func:`get_or_create_monthly_route_run` (default ``technician_app`` source)."""
+    return get_or_create_monthly_route_run(route_id, month_first, source="technician_app")
+
+
+def _prior_history_by_location(
+    location_ids: list[int], month_first: date
+) -> dict[int, MonthlyRouteTestHistory]:
+    """Most-recent ``MonthlyRouteTestHistory`` row per location strictly before ``month_first``.
+
+    Used to forward-carry per-run snapshot fields (FACP, ring, key #, annual,
+    procedures, tech notes) when materializing rows for a new month so the next
+    run opens with the previous run's values.
+    """
+    if not location_ids:
+        return {}
+    rows = (
+        db.session.query(MonthlyRouteTestHistory)
+        .filter(
+            MonthlyRouteTestHistory.location_id.in_(location_ids),
+            MonthlyRouteTestHistory.month_date < month_first,
+        )
+        .order_by(
+            MonthlyRouteTestHistory.location_id.asc(),
+            MonthlyRouteTestHistory.month_date.desc(),
+        )
+        .all()
+    )
+    out: dict[int, MonthlyRouteTestHistory] = {}
+    for r in rows:
+        out.setdefault(int(r.location_id), r)
+    return out
+
+
+def _ensure_worksheet_rows_for_route_month(route_id: int, month_first: date) -> MonthlyRouteRun:
+    """Materialize a ``MonthlyRouteTestHistory`` placeholder for every route location for ``month_first``.
+
+    Called when a technician opens the worksheet so all stops on the route appear,
+    not only those that already have a history row from a CSV import. New rows are
+    created with ``result_status=NULL`` ("not yet tested") and snapshot fields
+    forward-carried from the previous run (or the location's "library current"
+    values for the very first run after migration), including
+    ``session_route_stop_order`` when the prior month had sheet order. Editing
+    flows update those snapshot fields later. Idempotent and safe to call repeatedly.
+
+    Returns the ``MonthlyRouteRun`` for ``(route_id, month_first)`` so callers can
+    surface run metadata in their payload.
+    """
+    run = _get_or_create_run(route_id, month_first)
+    locs = (
+        MonthlyRouteLocation.query.filter(
+            MonthlyRouteLocation.monthly_route_id == route_id
+        )
+        .all()
+    )
+    if not locs:
+        return run
+    loc_ids = [int(loc.id) for loc in locs]
+    prior_by_loc = _prior_history_by_location(loc_ids, month_first)
+
+    def _seed_for(loc: MonthlyRouteLocation) -> dict[str, object]:
+        prior = prior_by_loc.get(int(loc.id))
+        if prior is not None:
+            return {
+                "facp": prior.facp,
+                "ring": prior.ring,
+                "key_number": prior.key_number,
+                "annual_month": prior.annual_month,
+                "testing_procedures": prior.testing_procedures,
+                "inspection_tech_notes": prior.inspection_tech_notes,
+                "monitoring_notes": prior.monitoring_notes,
+                "session_route_stop_order": prior.session_route_stop_order,
+            }
+        return {
+            "facp": loc.facp_detail,
+            "ring": loc.ring_detail,
+            "key_number": loc.keys,
+            "annual_month": loc.annual_month,
+            "testing_procedures": loc.testing_procedures,
+            "inspection_tech_notes": loc.inspection_tech_notes,
+            "monitoring_notes": None,
+            "session_route_stop_order": None,
+        }
+
+    payload = [
+        {
+            "location_id": int(loc.id),
+            "month_date": month_first,
+            "result_status": None,
+            "test_monthly_route_id": route_id,
+            "run_id": int(run.id),
+            **_seed_for(loc),
+        }
+        for loc in locs
+    ]
+    bind = db.session.get_bind()
+    dialect_name = getattr(getattr(bind, "dialect", None), "name", "") or ""
+    table = MonthlyRouteTestHistory.__table__
+    if dialect_name == "postgresql":
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+        stmt = pg_insert(table).values(payload).on_conflict_do_nothing(
+            constraint="uq_monthly_route_test_history_location_month",
+        )
+        db.session.execute(stmt)
+    else:
+        # SQLite (test) and other dialects: select missing rows then bulk-insert with
+        # pre-assigned IDs (BIGINT PK isn't reliably autoincremented on SQLite).
+        existing = {
+            int(lid)
+            for (lid,) in db.session.query(MonthlyRouteTestHistory.location_id)
+            .filter(
+                MonthlyRouteTestHistory.month_date == month_first,
+                MonthlyRouteTestHistory.location_id.in_([row["location_id"] for row in payload]),
+            )
+            .all()
+        }
+        missing = [row for row in payload if row["location_id"] not in existing]
+        if missing:
+            next_id = int(
+                db.session.query(
+                    func.coalesce(func.max(MonthlyRouteTestHistory.id), 0)
+                ).scalar()
+                or 0
+            )
+            for row in missing:
+                next_id += 1
+                row["id"] = next_id
+            db.session.execute(table.insert(), missing)
+
+    # Backfill run_id on any existing rows (e.g. from CSV import) that were
+    # never linked to a run; idempotent and cheap.
+    db.session.query(MonthlyRouteTestHistory).filter(
+        MonthlyRouteTestHistory.month_date == month_first,
+        MonthlyRouteTestHistory.location_id.in_(loc_ids),
+        MonthlyRouteTestHistory.run_id.is_(None),
+    ).update({MonthlyRouteTestHistory.run_id: run.id}, synchronize_session=False)
+
+    db.session.commit()
+    return run
+
+
+def _is_latest_run_for_location(location_id: int, month_first: date) -> bool:
+    """True iff ``month_first`` is at or after the most recent ``MonthlyRouteTestHistory.month_date`` for ``location_id``.
+
+    Used by the worksheet PATCH path to decide whether to mirror snapshot edits
+    onto ``MonthlyRouteLocation`` (the library "current" view). Edits to an older
+    month must never overwrite the library current.
+    """
+    latest = (
+        db.session.query(func.max(MonthlyRouteTestHistory.month_date))
+        .filter(MonthlyRouteTestHistory.location_id == location_id)
+        .scalar()
+    )
+    return latest is None or month_first >= latest
+
+
 def _testing_history_rows_attributed_to_route_month(
     route_id: int, month_first: date
 ) -> list[MonthlyRouteTestHistory]:
@@ -513,6 +676,29 @@ def _testing_history_rows_attributed_to_route_month(
     for row in hist_attr + hist_legacy:
         merged[(int(row.location_id), row.month_date)] = row
     return list(merged.values())
+
+
+def _worksheet_history_sort_key(
+    hist: MonthlyRouteTestHistory,
+    loc: MonthlyRouteLocation | None,
+) -> tuple[int, int]:
+    """Worksheet row order: per-run CSV ``#`` (``session_route_stop_order``) first, else library order."""
+    if hist.session_route_stop_order is not None:
+        return (0, int(hist.session_route_stop_order))
+    if loc is not None and loc.route_stop_order is not None:
+        return (1, int(loc.route_stop_order))
+    return (2, 10**9)
+
+
+def _worksheet_history_address_sort_key(
+    hist: MonthlyRouteTestHistory,
+    loc: MonthlyRouteLocation | None,
+) -> str:
+    if loc is not None:
+        s = (loc.display_address or loc.address or "").strip()
+        if s:
+            return s.casefold()
+    return f"location {int(hist.location_id)}".casefold()
 
 
 def _session_stop_sheet_notes_from_history_and_location(
@@ -542,8 +728,18 @@ def _worksheet_row_from_history(
         display_address = f"Location {int(row.location_id)}"
 
     monitoring_label: str | None = None
-    if loc is not None and loc.monitoring_company is not None:
+    snap = (row.monitoring_notes or "").strip() or None
+    if snap:
+        monitoring_label = snap
+    elif loc is not None and loc.monitoring_company is not None:
         monitoring_label = (loc.monitoring_company.name or "").strip() or None
+    library_order = (
+        int(loc.route_stop_order)
+        if loc is not None and loc.route_stop_order is not None
+        else None
+    )
+    sess = row.session_route_stop_order
+    session_order = int(sess) if sess is not None else None
     return {
         "location_id": int(row.location_id),
         "history_row_id": int(row.id),
@@ -551,10 +747,12 @@ def _worksheet_row_from_history(
         "display_address": display_address,
         "building": (loc.building or "").strip() if loc else None,
         "property_management_company": (loc.property_management_company or "").strip() if loc else None,
-        "annual_month": (loc.annual_month or "").strip() if loc else None,
-        "ring": (loc.ring_detail or "").strip() if loc else None,
-        "key_number": (loc.keys or "").strip() if loc else None,
-        "facp": (loc.facp_detail or "").strip() if loc else None,
+        # Run-scoped snapshot fields: read only from the history row so old months
+        # never bleed in current "library" values.
+        "annual_month": row.annual_month,
+        "ring": row.ring,
+        "key_number": row.key_number,
+        "facp": row.facp,
         "monitoring": monitoring_label,
         "result_status": row.result_status,
         "skip_reason": row.skip_reason,
@@ -562,7 +760,42 @@ def _worksheet_row_from_history(
         "inspection_tech_notes": row.inspection_tech_notes,
         "time_in": row.sheet_time_in_raw,
         "time_out": row.sheet_time_out_raw,
+        #: Library template order (``MonthlyRouteLocation.route_stop_order``).
+        "route_stop_order": library_order,
+        #: Per-run order from sheet ``#`` (CSV import); drives worksheet sort when set.
+        "session_route_stop_order": session_order,
         "version_updated_at": row.updated_at.isoformat() if row.updated_at else None,
+    }
+
+
+def _current_pacific_month_first() -> date:
+    now_pacific = datetime.now(PACIFIC_TZ)
+    return date(now_pacific.year, now_pacific.month, 1)
+
+
+def _serialize_run(run: MonthlyRouteRun | None) -> dict[str, object] | None:
+    """Frontend payload for a ``MonthlyRouteRun`` (the "run file" header).
+
+    ``is_historical`` flips the worksheet into a read-only-ish surface (no
+    Time In / Time Out / Skip / Clear / Add Deficiency buttons). It is true when
+    the run is explicitly completed (``status == 'completed'``) or its month is
+    strictly before the current Pacific month.
+    """
+    if run is None:
+        return None
+    is_historical = (
+        (run.status or "").strip().lower() == "completed"
+        or run.month_date < _current_pacific_month_first()
+    )
+    return {
+        "id": int(run.id),
+        "monthly_route_id": int(run.monthly_route_id),
+        "month_date": run.month_date.isoformat(),
+        "status": run.status,
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+        "completed_at": run.completed_at.isoformat() if run.completed_at else None,
+        "source": run.source,
+        "is_historical": bool(is_historical),
     }
 
 
@@ -570,12 +803,15 @@ def _serialize_technician_worksheet_payload(route_id: int, month_first: date) ->
     mr = _get_monthly_route(route_id)
     if mr is None:
         return None
+    run = _ensure_worksheet_rows_for_route_month(route_id, month_first)
     rows = _testing_history_rows_attributed_to_route_month(route_id, month_first)
     location_count = MonthlyRouteLocation.query.filter_by(monthly_route_id=route_id).count()
+    run_block = _serialize_run(run)
     if not rows:
         return {
             "route": _serialize_monthly_route_entity(mr, location_count=location_count),
             "month_date": month_first.isoformat(),
+            "run": run_block,
             "rows": [],
         }
     loc_by_id = {
@@ -584,11 +820,22 @@ def _serialize_technician_worksheet_payload(route_id: int, month_first: date) ->
         .filter(MonthlyRouteLocation.id.in_({int(r.location_id) for r in rows}))
         .all()
     }
-    out_rows = [_worksheet_row_from_history(r, loc_by_id.get(int(r.location_id)), route_id=route_id) for r in rows]
-    out_rows.sort(key=lambda r: str(r["display_address"]).casefold())
+
+    def _worksheet_row_sort_tuple(hist: MonthlyRouteTestHistory) -> tuple[int, int, str]:
+        loc = loc_by_id.get(int(hist.location_id))
+        tier, ord_ = _worksheet_history_sort_key(hist, loc)
+        addr = _worksheet_history_address_sort_key(hist, loc)
+        return (tier, ord_, addr)
+
+    rows_sorted = sorted(rows, key=_worksheet_row_sort_tuple)
+    out_rows = [
+        _worksheet_row_from_history(r, loc_by_id.get(int(r.location_id)), route_id=route_id)
+        for r in rows_sorted
+    ]
     return {
         "route": _serialize_monthly_route_entity(mr, location_count=location_count),
         "month_date": month_first.isoformat(),
+        "run": run_block,
         "rows": out_rows,
     }
 
@@ -1205,12 +1452,10 @@ def patch_monthly_route_worksheet_row(route_id: int, location_id: int):
                 }
             )
 
-    editable_location_fields = {
-        "annual_month": "annual_month",
-        "ring": "ring_detail",
-        "key_number": "keys",
-        "facp": "facp_detail",
-    }
+    # All technician-editable fields are run-scoped (snapshotted on the history row).
+    # The library "current" view (``MonthlyRouteLocation``) is mirrored from history
+    # only when the patched run is the most recent run for that location, so editing
+    # an old month does not pollute the library current value.
     editable_history_fields = {
         "result_status": "result_status",
         "skip_reason": "skip_reason",
@@ -1218,8 +1463,22 @@ def patch_monthly_route_worksheet_row(route_id: int, location_id: int):
         "inspection_tech_notes": "inspection_tech_notes",
         "time_in": "sheet_time_in_raw",
         "time_out": "sheet_time_out_raw",
+        "annual_month": "annual_month",
+        "ring": "ring",
+        "key_number": "key_number",
+        "facp": "facp",
+        "monitoring": "monitoring_notes",
     }
-    known_fields = set(editable_location_fields.keys()) | set(editable_history_fields.keys())
+    # Map field -> attribute on ``MonthlyRouteLocation`` for the latest-run mirror.
+    library_mirror_fields = {
+        "annual_month": "annual_month",
+        "ring": "ring_detail",
+        "key_number": "keys",
+        "facp": "facp_detail",
+        "testing_procedures": "testing_procedures",
+        "inspection_tech_notes": "inspection_tech_notes",
+    }
+    known_fields = set(editable_history_fields.keys())
     unknown = [k for k in changes.keys() if k not in known_fields]
     if unknown:
         return jsonify({"error": f"Unsupported worksheet fields: {', '.join(sorted(unknown))}"}), 400
@@ -1240,14 +1499,17 @@ def patch_monthly_route_worksheet_row(route_id: int, location_id: int):
     next_audit_id = _next_worksheet_audit_event_id()
 
     changed_any = False
-    for field_name, attr_name in editable_location_fields.items():
+    mirrored_history_changes: dict[str, object] = {}
+    for field_name, attr_name in editable_history_fields.items():
         if field_name not in changes:
             continue
-        old_val = getattr(loc, attr_name)
+        old_val = getattr(row, attr_name)
         new_val = _normalize_ws_text(changes.get(field_name))
         if old_val == new_val:
             continue
-        setattr(loc, attr_name, new_val)
+        setattr(row, attr_name, new_val)
+        if field_name in library_mirror_fields:
+            mirrored_history_changes[field_name] = new_val
         db.session.add(
             MonthlyRouteWorksheetAuditEvent(
                 id=next_audit_id,
@@ -1268,36 +1530,16 @@ def patch_monthly_route_worksheet_row(route_id: int, location_id: int):
         next_audit_id += 1
         changed_any = True
 
-    for field_name, attr_name in editable_history_fields.items():
-        if field_name not in changes:
-            continue
-        old_val = getattr(row, attr_name)
-        if field_name == "result_status":
-            new_val = _normalize_ws_text(changes.get(field_name))
-        else:
-            new_val = _normalize_ws_text(changes.get(field_name))
-        if old_val == new_val:
-            continue
-        setattr(row, attr_name, new_val)
-        db.session.add(
-            MonthlyRouteWorksheetAuditEvent(
-                id=next_audit_id,
-                monthly_route_id=route_id,
-                location_id=location_id,
-                history_row_id=row.id,
-                month_date=month_first,
-                field_name=field_name,
-                old_value=old_val,
-                new_value=new_val,
-                source=source,
-                changed_by_username=actor_username,
-                changed_by_name=actor_name,
-                client_mutation_id=client_mutation_id if len(changes) == 1 else None,
-                changed_at_client=client_mutated_at,
-            )
-        )
-        next_audit_id += 1
-        changed_any = True
+    # Mirror snapshot edits onto ``MonthlyRouteLocation`` only when the patched
+    # run is the most recent run for that location. Past-month edits stay confined
+    # to the run file.
+    if mirrored_history_changes and _is_latest_run_for_location(location_id, month_first):
+        for field_name, new_val in mirrored_history_changes.items():
+            attr = library_mirror_fields.get(field_name)
+            if attr is None:
+                continue
+            if getattr(loc, attr) != new_val:
+                setattr(loc, attr, new_val)
 
     # Enforce invariant after merged state updates.
     if (row.result_status or "").strip().lower() == "skipped" and not _normalize_ws_text(row.skip_reason):
@@ -1348,6 +1590,132 @@ def get_monthly_route_worksheet_row_audit(route_id: int, location_id: int):
                 }
                 for r in rows
             ]
+        }
+    )
+
+
+_RUN_CSV_MAX_BYTES = 5 * 1024 * 1024  # 5 MB ceiling on uploaded inspection CSVs.
+
+
+@monthly_routes_bp.post("/api/monthly_routes/routes/<int:route_id>/runs/import_csv")
+def import_route_run_csv(route_id: int):
+    """Upload a technician inspection CSV and materialize a run for ``route_id``.
+
+    Validates that the CSV's preamble route number matches ``route_id`` (otherwise
+    400). The importer merges with the technician portal: existing
+    ``MonthlyRouteTestHistory`` rows that already carry a ``result_status``
+    (tested/skipped from the worksheet) keep their status, ``skip_reason``,
+    ``time_in``, ``time_out`` and ``source_value_raw``; CSV-only snapshot fields
+    (FACP, ring, key, annual, monitoring, procedures, notes, session order,
+    ``run_id``) always overwrite. ``rows_without_history_signal`` counts CSV
+    rows whose sheet times did not classify as tested/skipped (irrelevant when
+    the existing row already carried a status); ``existing_status_preserved``
+    counts rows where a tech-set status was kept.
+    """
+    if not session.get("username"):
+        return jsonify({"error": "Session username required"}), 401
+
+    route = _get_monthly_route(route_id)
+    if route is None:
+        return jsonify({"error": "Route not found"}), 404
+
+    upload = request.files.get("file") or request.files.get("csv")
+    if upload is None or not upload.filename:
+        return jsonify({"error": "Missing file (multipart field 'file')"}), 400
+    csv_bytes = upload.read()
+    if not csv_bytes:
+        return jsonify({"error": "Uploaded CSV is empty"}), 400
+    if len(csv_bytes) > _RUN_CSV_MAX_BYTES:
+        return (
+            jsonify(
+                {
+                    "error": (
+                        f"Uploaded CSV is too large ({len(csv_bytes):,} bytes); "
+                        f"limit is {_RUN_CSV_MAX_BYTES:,}."
+                    )
+                }
+            ),
+            413,
+        )
+
+    try:
+        preamble = parse_preamble_only(csv_bytes)
+    except ValueError as e:
+        return jsonify({"error": f"Could not parse CSV header: {e}"}), 400
+
+    if preamble.route_number is None:
+        return (
+            jsonify(
+                {
+                    "error": (
+                        "CSV preamble is missing a 'ROUTE:' row identifying the route number "
+                        "(e.g. 'Route 8'). Re-export the technician sheet."
+                    )
+                }
+            ),
+            400,
+        )
+    if preamble.month_date is None:
+        return (
+            jsonify(
+                {
+                    "error": (
+                        "CSV preamble is missing a 'DATE:' row with month + year "
+                        "(e.g. 'April' / '2026')."
+                    )
+                }
+            ),
+            400,
+        )
+    if int(preamble.route_number) != int(route.route_number):
+        return (
+            jsonify(
+                {
+                    "error": (
+                        f"CSV is for Route {preamble.route_number} but you uploaded it on "
+                        f"the page for Route {route.route_number}. Open the matching route "
+                        "page or re-export the CSV."
+                    ),
+                    "csv_route_number": int(preamble.route_number),
+                    "page_route_number": int(route.route_number),
+                }
+            ),
+            400,
+        )
+
+    month_first = preamble.month_date
+
+    run = get_or_create_monthly_route_run(
+        int(route.id), month_first, source="csv_import"
+    )
+
+    try:
+        result = run_route_inspection_csv_import(
+            csv_bytes=csv_bytes,
+            run=run,
+            route=route,
+            month_date=month_first,
+            dry_run=False,
+        )
+    except ValueError as e:
+        db.session.rollback()
+        return jsonify({"error": f"CSV parse error: {e}"}), 400
+
+    return jsonify(
+        {
+            "ok": True,
+            "route": _serialize_monthly_route_entity(route),
+            "month_date": month_first.isoformat(),
+            "run": _serialize_run(run),
+            "sheet_label": result.sheet_label,
+            "locations_updated": result.locations_updated,
+            "history_upserts": result.history_upserts,
+            "rows_without_history_signal": result.skipped_no_history,
+            "existing_status_preserved": result.existing_status_preserved,
+            "issues": [
+                {"kind": i.kind, "csv_row": i.csv_row, "detail": i.detail}
+                for i in result.issues
+            ],
         }
     )
 

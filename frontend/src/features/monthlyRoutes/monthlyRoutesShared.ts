@@ -187,18 +187,51 @@ export type TechnicianWorksheetRow = {
   key_number: string | null
   facp: string | null
   monitoring: string | null
-  result_status: string
+  /** ``null`` for placeholder rows materialized when a technician opens the worksheet but hasn't tested or skipped yet. */
+  result_status: string | null
   skip_reason: string | null
   testing_procedures: string | null
   inspection_tech_notes: string | null
   time_in: string | null
   time_out: string | null
+  /** Library template order: ``MonthlyRouteLocation.route_stop_order`` (0-based). */
+  route_stop_order: number | null
+  /** Per-run sheet ``#`` order when set (e.g. CSV import); worksheet sorts by this first. */
+  session_route_stop_order: number | null
   version_updated_at: string | null
+}
+
+/**
+ * Header for one execution of a monthly route in a given calendar month — the
+ * "run file." Aligns with ``MonthlyRouteRun`` rows; one row per
+ * ``(monthly_route_id, month_date)``. Returned in ``TechnicianWorksheetPayload.run``.
+ */
+export type TechnicianWorksheetRun = {
+  id: number
+  monthly_route_id: number
+  /** First-of-month ISO ``YYYY-MM-DD``. */
+  month_date: string
+  /** ``open`` until the run is completed; future ``completed``. */
+  status: string
+  /** ISO timestamp set the first time the worksheet is opened for this run. */
+  started_at: string | null
+  completed_at: string | null
+  /** Where the run was created: ``technician_app``, ``csv_import``, ``office_manual``. */
+  source: string
+  /**
+   * Server-computed flag: ``true`` when ``status === 'completed'`` or when the
+   * run's month is strictly before the current Pacific month. Worksheet uses
+   * this to switch the Action column from active buttons (Time In / Time Out /
+   * Skip / Clear / Add Deficiency) to a static Tested / Skipped:reason label.
+   */
+  is_historical: boolean
 }
 
 export type TechnicianWorksheetPayload = {
   route: MonthlyRouteSummary
   month_date: string
+  /** ``null`` for routes with no locations; otherwise the run header for ``month_date``. */
+  run: TechnicianWorksheetRun | null
   rows: TechnicianWorksheetRow[]
 }
 
@@ -416,6 +449,24 @@ export function toMonthKey(year: number, month: number): string {
 /** First-of-month key for the calendar month containing ``reference`` in local time. */
 export function monthFirstIsoLocalToday(reference: Date = new Date()): string {
   return toMonthKey(reference.getFullYear(), reference.getMonth() + 1)
+}
+
+const PACIFIC_TZ = 'America/Los_Angeles'
+
+/**
+ * First-of-month ``YYYY-MM-01`` for the calendar month containing ``reference`` in Pacific time
+ * (aligned with worksheet ``is_historical`` / route testing month semantics).
+ */
+export function monthFirstIsoPacificToday(reference: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: PACIFIC_TZ,
+    year: 'numeric',
+    month: '2-digit',
+  }).formatToParts(reference)
+  const y = parts.find((p) => p.type === 'year')?.value
+  const mo = parts.find((p) => p.type === 'month')?.value
+  if (!y || !mo) return monthFirstIsoLocalToday(reference)
+  return `${y}-${mo}-01`
 }
 
 export function addCalendarMonths(monthFirstIso: string, delta: number): string | null {

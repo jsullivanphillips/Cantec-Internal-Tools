@@ -3421,6 +3421,11 @@ body {
   padding: 0 !important;
 }
 
+.technician-worksheet-page .tw-office-skipped-dot {
+  width: 0.65rem;
+  height: 0.65rem;
+}
+
 .technician-worksheet-page .tw-col-action > .d-grid .btn:not(.tw-audit-link) {
   width: 100%;
   min-height: 2.25rem;
@@ -3467,6 +3472,55 @@ body {
   z-index: 2;
 }
 
+.technician-worksheet-page .tw-col-address.tw-address-cell-tested {
+  background: #77ac44 !important;
+}
+
+.technician-worksheet-page .tw-col-address.tw-address-cell-tested .link-primary {
+  color: #052c65 !important;
+}
+
+.technician-worksheet-page .tw-col-address.tw-address-cell-tested .link-primary:hover,
+.technician-worksheet-page .tw-col-address.tw-address-cell-tested .link-primary:focus {
+  color: #031633 !important;
+}
+
+.technician-worksheet-page .tw-col-address.tw-address-cell-skipped-other {
+  background: #ffff00 !important;
+  color: #212529;
+}
+
+.technician-worksheet-page .tw-col-address.tw-address-cell-skipped-other .link-primary {
+  color: #052c65 !important;
+}
+
+.technician-worksheet-page .tw-col-address.tw-address-cell-skipped-other .link-primary:hover,
+.technician-worksheet-page .tw-col-address.tw-address-cell-skipped-other .link-primary:focus {
+  color: #031633 !important;
+}
+
+.technician-worksheet-page .tw-col-address.tw-address-cell-skipped-other .text-muted {
+  color: rgba(33, 37, 41, 0.75) !important;
+}
+
+.technician-worksheet-page .tw-col-address.tw-address-cell-annual {
+  background: #ed8b33 !important;
+  color: #1a1a1a;
+}
+
+.technician-worksheet-page .tw-col-address.tw-address-cell-annual .link-primary {
+  color: #052c65 !important;
+}
+
+.technician-worksheet-page .tw-col-address.tw-address-cell-annual .link-primary:hover,
+.technician-worksheet-page .tw-col-address.tw-address-cell-annual .link-primary:focus {
+  color: #031633 !important;
+}
+
+.technician-worksheet-page .tw-col-address.tw-address-cell-annual .text-muted {
+  color: rgba(26, 26, 26, 0.8) !important;
+}
+
 .technician-worksheet-page .tw-address-block {
   height: 100%;
   display: flex;
@@ -3497,11 +3551,6 @@ body {
   z-index: 5;
 }
 
-.technician-worksheet-page .technician-worksheet-table tbody tr.tw-row-annual > td {
-  background-color: #fff3df;
-}
-
-.technician-worksheet-page .tw-col-stacked-ark { min-width: 7rem; max-width: 7rem; }
 .technician-worksheet-page .tw-col-facp { min-width: 9rem; max-width: 9rem; }
 .technician-worksheet-page .tw-col-monitoring { min-width: 5.5rem; max-width: 5.5rem; }
 .technician-worksheet-page .tw-col-procedures { min-width: 9rem; max-width: 9rem; }
@@ -3572,12 +3621,6 @@ body {
   color: #6c757d;
   margin: 0;
   line-height: 1.1;
-}
-
-.technician-worksheet-page .tw-col-stacked-ark .tw-stacked-cell input.tw-annual-current-month {
-  background-color: #ff8a00 !important;
-  color: #111;
-  font-weight: 600;
 }
 
 @media (max-width: 834px) {
