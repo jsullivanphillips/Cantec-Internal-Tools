@@ -7,7 +7,9 @@ import {
   useState,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
 } from 'react'
+import { flushSync } from 'react-dom'
 import { Alert, Badge, Button, Card, Modal, Spinner, Table } from 'react-bootstrap'
 import { Link, useLocation, useParams } from 'react-router-dom'
 import {
@@ -170,6 +172,12 @@ function worksheetGridPersistedEquals(draft: string, committed: string | null | 
   return d === c
 }
 
+const WORKSHEET_GRID_TAP_MOVE_THRESHOLD_SQ = 100 // 10px — ignore scroll-like drags
+
+function worksheetGridIsTouchLikePointer(pointerType: string): boolean {
+  return pointerType === 'touch' || pointerType === 'pen'
+}
+
 function worksheetAddressCellStatusClass(
   row: TechnicianWorksheetRow,
   monthDate: string,
@@ -236,6 +244,16 @@ export default function TechnicianWorksheetPage() {
   const worksheetGridSelectionRef = useRef<{ locationId: number; column: WorksheetGridColumn } | null>(null)
   const worksheetGridDraftRef = useRef('')
   const worksheetFloatingEditorRef = useRef<HTMLTextAreaElement | null>(null)
+  /** Touch/pen: pointerdown origin so pointerup can distinguish tap vs scroll and same cell. */
+  const worksheetGridTouchPtrRef = useRef<{
+    pointerId: number
+    x: number
+    y: number
+    locationId: number
+    column: WorksheetGridColumn
+  } | null>(null)
+  /** iOS emits a delayed synthetic click after touch; avoid fighting textarea focus / selection. */
+  const worksheetGridSuppressNextClickRef = useRef(false)
 
   const [worksheetGridSelection, setWorksheetGridSelection] = useState<{
     locationId: number
@@ -429,19 +447,56 @@ export default function TechnicianWorksheetPage() {
     setWorksheetGridEditing(false)
   }, [])
 
-  const beginWorksheetGridEdit = useCallback(
+  const openWorksheetGridEditorState = useCallback(
     (locationId: number, column: WorksheetGridColumn, opts?: { initialDraft?: string }) => {
-      if (!payload) return
+      if (!payload) return false
       const row = payload.rows.find((r) => r.location_id === locationId)
-      if (!row) return
+      if (!row) return false
       const committed = worksheetGridCellValue(row, column)
       const draft = opts?.initialDraft !== undefined ? opts.initialDraft : committed
+      worksheetGridSelectionRef.current = { locationId, column }
       setWorksheetGridSelection({ locationId, column })
       setWorksheetGridDraft(draft)
       worksheetGridDraftRef.current = draft
       setWorksheetGridEditing(true)
+      return true
     },
     [payload]
+  )
+
+  const focusWorksheetFloatingEditorAtEnd = useCallback(() => {
+    const ta = worksheetFloatingEditorRef.current
+    if (!ta) return
+    try {
+      ta.focus({ preventScroll: true })
+    } catch {
+      ta.focus()
+    }
+    const len = ta.value.length
+    try {
+      ta.setSelectionRange(len, len)
+    } catch {
+      // ignore
+    }
+  }, [])
+
+  /** Opens editor; ``useLayoutEffect`` focuses the textarea (fine for keyboard-driven opens). */
+  const beginWorksheetGridEdit = useCallback(
+    (locationId: number, column: WorksheetGridColumn, opts?: { initialDraft?: string }) => {
+      openWorksheetGridEditorState(locationId, column, opts)
+    },
+    [openWorksheetGridEditorState]
+  )
+
+  /** Same as ``beginWorksheetGridEdit`` but commits synchronously and focuses immediately — required for iOS virtual keyboard. */
+  const beginWorksheetGridEditUserGesture = useCallback(
+    (locationId: number, column: WorksheetGridColumn, opts?: { initialDraft?: string }) => {
+      flushSync(() => {
+        openWorksheetGridEditorState(locationId, column, opts)
+      })
+      focusWorksheetFloatingEditorAtEnd()
+    },
+    [openWorksheetGridEditorState, focusWorksheetFloatingEditorAtEnd]
   )
 
   const worksheetGridTabNext = useCallback(
@@ -749,14 +804,49 @@ export default function TechnicianWorksheetPage() {
               aria-label={`${WORKSHEET_GRID_COLUMN_LABELS[column]}, ${row.display_address}`}
               className={`tw-worksheet-cell-view${showEditor ? ' tw-worksheet-cell-view--under-editor' : ''}`}
               onKeyDown={onWorksheetGridCellKeyDown(row, column)}
+              onPointerDown={(e: ReactPointerEvent<HTMLDivElement>) => {
+                if (!worksheetGridIsTouchLikePointer(e.pointerType)) return
+                worksheetGridTouchPtrRef.current = {
+                  pointerId: e.pointerId,
+                  x: e.clientX,
+                  y: e.clientY,
+                  locationId: row.location_id,
+                  column,
+                }
+              }}
+              onPointerCancel={(e: ReactPointerEvent<HTMLDivElement>) => {
+                if (worksheetGridTouchPtrRef.current?.pointerId === e.pointerId) {
+                  worksheetGridTouchPtrRef.current = null
+                }
+              }}
+              onPointerUp={(e: ReactPointerEvent<HTMLDivElement>) => {
+                if (!worksheetGridIsTouchLikePointer(e.pointerType)) return
+                const start = worksheetGridTouchPtrRef.current
+                worksheetGridTouchPtrRef.current = null
+                if (!start || start.pointerId !== e.pointerId) return
+                if (start.locationId !== row.location_id || start.column !== column) return
+                const dx = e.clientX - start.x
+                const dy = e.clientY - start.y
+                if (dx * dx + dy * dy > WORKSHEET_GRID_TAP_MOVE_THRESHOLD_SQ) return
+                e.stopPropagation()
+                worksheetGridSuppressNextClickRef.current = true
+                window.setTimeout(() => {
+                  worksheetGridSuppressNextClickRef.current = false
+                }, 450)
+                beginWorksheetGridEditUserGesture(row.location_id, column)
+              }}
               onClick={(e) => {
                 e.stopPropagation()
+                if (worksheetGridSuppressNextClickRef.current) {
+                  worksheetGridSuppressNextClickRef.current = false
+                  return
+                }
                 setWorksheetGridSelection({ locationId: row.location_id, column })
               }}
               onDoubleClick={(e) => {
                 e.preventDefault()
                 e.stopPropagation()
-                beginWorksheetGridEdit(row.location_id, column)
+                beginWorksheetGridEditUserGesture(row.location_id, column)
               }}
             >
               {valueDisplay || '\u00a0'}
