@@ -1436,6 +1436,21 @@ export default function TechnicianWorksheetPage() {
                                             >
                                               Skip
                                             </Button>
+                                            {annualMatch && annualTestAnywayRows.has(row.location_id) ? (
+                                              <Button
+                                                size="sm"
+                                                variant="outline-secondary"
+                                                onClick={() =>
+                                                  setAnnualTestAnywayRows((prev) => {
+                                                    const next = new Set(prev)
+                                                    next.delete(row.location_id)
+                                                    return next
+                                                  })
+                                                }
+                                              >
+                                                Cancel
+                                              </Button>
+                                            ) : null}
                                           </>
                                         )}
                                       </>
@@ -1457,6 +1472,9 @@ export default function TechnicianWorksheetPage() {
                                       </>
                                     ) : (
                                       <>
+                                        <Button size="sm" variant="danger" onClick={() => window.alert('Deficiency workflow next phase')}>
+                                          Add Deficiency
+                                        </Button>
                                         <Button
                                           size="sm"
                                           variant="outline-secondary"
@@ -1475,9 +1493,6 @@ export default function TechnicianWorksheetPage() {
                                           }}
                                         >
                                           Clear Time In/Out
-                                        </Button>
-                                        <Button size="sm" variant="danger" onClick={() => window.alert('Deficiency workflow next phase')}>
-                                          Add Deficiency
                                         </Button>
                                       </>
                                     )}
