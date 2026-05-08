@@ -233,6 +233,8 @@ export default function TechnicianWorksheetPage() {
   const [timeOutDraft, setTimeOutDraft] = useState('')
   const [skipReasonModalRow, setSkipReasonModalRow] = useState<TechnicianWorksheetRow | null>(null)
   const [skipReasonDraft, setSkipReasonDraft] = useState('')
+  /** Time Out → Skipped: apply ``time_out`` only when skip reason is submitted (avoids time_out without skipped/tested). */
+  const pendingTimeOutForSkipModalRef = useRef<string | null>(null)
   const [annualTestAnywayRows, setAnnualTestAnywayRows] = useState<Set<number>>(new Set())
   const [topbarHeight, setTopbarHeight] = useState(0)
   const syncingRef = useRef(false)
@@ -745,6 +747,11 @@ export default function TechnicianWorksheetPage() {
     [idNum, monthQuery, updateLocalRow]
   )
 
+  const dismissSkipReasonModal = useCallback(() => {
+    pendingTimeOutForSkipModalRef.current = null
+    setSkipReasonModalRow(null)
+  }, [])
+
   const loadAudit = useCallback(
     async (row: TechnicianWorksheetRow) => {
       const qs = new URLSearchParams({ month: monthQuery })
@@ -1135,6 +1142,7 @@ export default function TechnicianWorksheetPage() {
                                       size="sm"
                                       variant="warning"
                                       onClick={() => {
+                                        pendingTimeOutForSkipModalRef.current = null
                                         setSkipReasonModalRow(row)
                                         setSkipReasonDraft(row.skip_reason || '')
                                       }}
@@ -1233,6 +1241,7 @@ export default function TechnicianWorksheetPage() {
                                               size="sm"
                                               variant="warning"
                                               onClick={() => {
+                                                pendingTimeOutForSkipModalRef.current = null
                                                 setSkipReasonModalRow(row)
                                                 setSkipReasonDraft(row.skip_reason || '')
                                               }}
@@ -1395,7 +1404,7 @@ export default function TechnicianWorksheetPage() {
             variant="warning"
             onClick={() => {
               if (!timeOutModalRow) return
-              queueRowChanges(timeOutModalRow, { time_out: timeOutDraft })
+              pendingTimeOutForSkipModalRef.current = timeOutDraft
               setSkipReasonModalRow(timeOutModalRow)
               setSkipReasonDraft(timeOutModalRow.skip_reason || '')
               setTimeOutModalRow(null)
@@ -1405,7 +1414,7 @@ export default function TechnicianWorksheetPage() {
           </Button>
         </Modal.Footer>
       </Modal>
-      <Modal show={skipReasonModalRow != null} onHide={() => setSkipReasonModalRow(null)} centered>
+      <Modal show={skipReasonModalRow != null} onHide={dismissSkipReasonModal} centered>
         <Modal.Header closeButton>
           <Modal.Title className="h6 mb-0">Skip Reason</Modal.Title>
         </Modal.Header>
@@ -1419,12 +1428,17 @@ export default function TechnicianWorksheetPage() {
           />
         </Modal.Body>
         <Modal.Footer>
-          <Button variant="secondary" onClick={() => setSkipReasonModalRow(null)}>Cancel</Button>
+          <Button variant="secondary" onClick={dismissSkipReasonModal}>
+            Cancel
+          </Button>
           <Button
             variant="primary"
             onClick={() => {
               if (!skipReasonModalRow) return
+              const pendingOut = pendingTimeOutForSkipModalRef.current
+              pendingTimeOutForSkipModalRef.current = null
               queueRowChanges(skipReasonModalRow, {
+                ...(pendingOut != null ? { time_out: pendingOut } : {}),
                 result_status: 'skipped',
                 skip_reason: skipReasonDraft.trim() || 'No reason provided',
               })
