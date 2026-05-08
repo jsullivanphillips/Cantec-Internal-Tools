@@ -529,7 +529,12 @@ def _prior_history_by_location(
     return out
 
 
-def _ensure_worksheet_rows_for_route_month(route_id: int, month_first: date) -> MonthlyRouteRun:
+def _ensure_worksheet_rows_for_route_month(
+    route_id: int,
+    month_first: date,
+    *,
+    create_run_if_missing: bool = True,
+) -> MonthlyRouteRun | None:
     """Materialize a ``MonthlyRouteTestHistory`` placeholder for every route location for ``month_first``.
 
     Called when a technician opens the worksheet so all stops on the route appear,
@@ -540,10 +545,21 @@ def _ensure_worksheet_rows_for_route_month(route_id: int, month_first: date) -> 
     ``session_route_stop_order`` when the prior month had sheet order. Editing
     flows update those snapshot fields later. Idempotent and safe to call repeatedly.
 
+    When ``create_run_if_missing`` is ``False`` (PIN portal worksheet GET before a run
+    exists), returns ``None`` if there is no ``MonthlyRouteRun`` row yet.
+
     Returns the ``MonthlyRouteRun`` for ``(route_id, month_first)`` so callers can
     surface run metadata in their payload.
     """
-    run = _get_or_create_run(route_id, month_first)
+    if create_run_if_missing:
+        run = _get_or_create_run(route_id, month_first)
+    else:
+        run = MonthlyRouteRun.query.filter_by(
+            monthly_route_id=route_id,
+            month_date=month_first,
+        ).one_or_none()
+        if run is None:
+            return None
     locs = (
         MonthlyRouteLocation.query.filter(
             MonthlyRouteLocation.monthly_route_id == route_id
@@ -850,11 +866,22 @@ def _serialize_run(run: MonthlyRouteRun | None) -> dict[str, object] | None:
     }
 
 
-def _serialize_technician_worksheet_payload(route_id: int, month_first: date) -> dict[str, object] | None:
+def _serialize_technician_worksheet_payload(
+    route_id: int,
+    month_first: date,
+    *,
+    portal_lazy_run: bool = False,
+) -> dict[str, object] | None:
     mr = _get_monthly_route(route_id)
     if mr is None:
         return None
-    run = _ensure_worksheet_rows_for_route_month(route_id, month_first)
+    run = _ensure_worksheet_rows_for_route_month(
+        route_id,
+        month_first,
+        create_run_if_missing=not portal_lazy_run,
+    )
+    if run is None:
+        return None
     rows = _testing_history_rows_attributed_to_route_month(route_id, month_first)
     location_count = MonthlyRouteLocation.query.filter_by(monthly_route_id=route_id).count()
     run_block = _serialize_run(run)
@@ -1475,6 +1502,13 @@ def get_monthly_route_testing_session(route_id: int):
     return jsonify(payload)
 
 
+def _session_is_portal_worksheet_lazy() -> bool:
+    """PIN portal without staff login — worksheet opens only after an explicit run start."""
+    return bool(session.get("tech_portal_unlocked")) and not bool(
+        session.get("authenticated")
+    )
+
+
 @monthly_routes_bp.get("/api/monthly_routes/routes/<int:route_id>/worksheet")
 def get_monthly_route_worksheet(route_id: int):
     month_raw = (request.args.get("month") or "").strip()
@@ -1482,8 +1516,20 @@ def get_monthly_route_worksheet(route_id: int):
     if month_dt is None:
         return jsonify({"error": "Invalid or missing month query param (use YYYY-MM-DD, first of month)"}), 400
     month_first = date(month_dt.year, month_dt.month, 1)
-    payload = _serialize_technician_worksheet_payload(route_id, month_first)
+    if _get_monthly_route(route_id) is None:
+        return jsonify({"error": "Route not found"}), 404
+    portal_lazy = _session_is_portal_worksheet_lazy()
+    payload = _serialize_technician_worksheet_payload(
+        route_id, month_first, portal_lazy_run=portal_lazy
+    )
     if payload is None:
+        if portal_lazy:
+            return jsonify(
+                {
+                    "error": "Run not started for this month.",
+                    "code": "run_not_started",
+                }
+            ), 404
         return jsonify({"error": "Route not found"}), 404
     return jsonify(payload)
 
@@ -1507,6 +1553,27 @@ def stream_monthly_route_worksheet(route_id: int):
     month_first = date(month_dt.year, month_dt.month, 1)
     if _get_monthly_route(route_id) is None:
         return jsonify({"error": "Route not found"}), 404
+
+    if _session_is_portal_worksheet_lazy():
+        existing_run = MonthlyRouteRun.query.filter_by(
+            monthly_route_id=route_id,
+            month_date=month_first,
+        ).one_or_none()
+        if existing_run is None:
+
+            def generate_no_run():
+                yield "retry: 15000\n\n"
+                yield f"event: worksheet_error\ndata: {json.dumps({'error': 'Run not started for this month.', 'code': 'run_not_started'})}\n\n"
+
+            return Response(
+                stream_with_context(generate_no_run()),
+                mimetype="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",
+                },
+            )
 
     poll_raw = (os.getenv("WORKSHEET_SSE_POLL_SECONDS") or "5").strip()
     try:

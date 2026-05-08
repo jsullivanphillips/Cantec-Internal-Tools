@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Alert, Button, Card, Form, Spinner } from 'react-bootstrap'
 import { useNavigate } from 'react-router-dom'
 import { apiJson } from '../lib/apiClient'
-import { monthFirstIsoLocalToday } from '../features/monthlyRoutes/monthlyRoutesShared'
 
 type PortalRoute = {
   id: number
@@ -47,8 +46,6 @@ export default function TechnicianPortalStartPage() {
   const [manualError, setManualError] = useState<string | null>(null)
   const [lookingUp, setLookingUp] = useState(false)
 
-  const monthIso = useMemo(() => monthFirstIsoLocalToday(), [])
-
   useEffect(() => {
     let cancelled = false
     setLoading(true)
@@ -77,9 +74,9 @@ export default function TechnicianPortalStartPage() {
 
   const openRoute = useCallback(
     (routeId: number) => {
-      nav(`/tech/route/${routeId}/worksheet/${monthIso}`)
+      nav(`/tech/route/${routeId}`)
     },
-    [monthIso, nav]
+    [nav],
   )
 
   const onManualSubmit = useCallback(
@@ -134,22 +131,49 @@ export default function TechnicianPortalStartPage() {
         {heading ? <div className="text-muted small">{heading}</div> : null}
       </div>
 
+      {error ? <Alert variant="danger">{error}</Alert> : null}
+
+      <Card className="shadow-sm mb-4">
+        <Card.Body>
+          <div className="fw-semibold mb-1">Look up by route number</div>
+          <div className="small text-muted mb-2">
+            Enter the route number to open that worksheet (even if it isn’t on today’s list).
+          </div>
+          <Form onSubmit={onManualSubmit} className="d-flex gap-2">
+            <Form.Control
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              placeholder="e.g. 7"
+              value={manual}
+              onChange={(e) => setManual(e.target.value)}
+              disabled={lookingUp}
+              aria-label="Route number"
+            />
+            <Button type="submit" variant="outline-primary" disabled={lookingUp || !manual.trim()}>
+              {lookingUp ? <Spinner size="sm" animation="border" /> : 'Open'}
+            </Button>
+          </Form>
+          {manualError ? <div className="small text-danger mt-2">{manualError}</div> : null}
+        </Card.Body>
+      </Card>
+
+      <div className="fw-semibold mb-2">Today’s runs</div>
+
       {loading ? (
-        <div className="d-flex align-items-center gap-2 text-muted py-3">
+        <div className="d-flex align-items-center gap-2 text-muted py-3 mb-2">
           <Spinner size="sm" animation="border" /> Loading today’s runs…
         </div>
       ) : null}
 
-      {error ? <Alert variant="danger">{error}</Alert> : null}
-
       {!loading && data && data.routes.length === 0 ? (
-        <Alert variant="info" className="mb-4">
-          No runs are scheduled for today. Use the lookup below to start a run for a different route.
+        <Alert variant="info" className="mb-0">
+          No runs are scheduled for today. Use the lookup above if you’re on a different route.
         </Alert>
       ) : null}
 
       {!loading && data && data.routes.length > 0 ? (
-        <div className="d-grid gap-2 mb-4">
+        <div className="d-grid gap-2">
           {data.routes.map((r) => (
             <Card
               key={r.id}
@@ -180,30 +204,6 @@ export default function TechnicianPortalStartPage() {
           ))}
         </div>
       ) : null}
-
-      <Card className="shadow-sm">
-        <Card.Body>
-          <div className="fw-semibold mb-1">Different route?</div>
-          <div className="small text-muted mb-2">
-            Type the route number to start a run for it even if it isn’t scheduled for today.
-          </div>
-          <Form onSubmit={onManualSubmit} className="d-flex gap-2">
-            <Form.Control
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              placeholder="e.g. 7"
-              value={manual}
-              onChange={(e) => setManual(e.target.value)}
-              disabled={lookingUp}
-            />
-            <Button type="submit" variant="outline-primary" disabled={lookingUp || !manual.trim()}>
-              {lookingUp ? <Spinner size="sm" animation="border" /> : 'Open'}
-            </Button>
-          </Form>
-          {manualError ? <div className="small text-danger mt-2">{manualError}</div> : null}
-        </Card.Body>
-      </Card>
     </div>
   )
 }

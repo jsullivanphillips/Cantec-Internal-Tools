@@ -21,7 +21,7 @@ from zoneinfo import ZoneInfo
 from flask import Blueprint, jsonify, request, session
 from sqlalchemy import func
 
-from app.db_models import MonthlyRoute, MonthlyRouteLocation, db
+from app.db_models import MonthlyRoute, MonthlyRouteLocation, MonthlyRouteRun, db
 
 
 technician_portal_bp = Blueprint("technician_portal", __name__, url_prefix="/api/technician_portal")
@@ -199,3 +199,61 @@ def portal_routes_lookup():
     return jsonify(
         {"route": _serialize_route_for_portal(mr, location_count=counts.get(int(mr.id), 0))}
     )
+
+
+@technician_portal_bp.get("/routes/<int:route_id>/portal_route_summary")
+def portal_route_summary(route_id: int):
+    """Route hub: today's Pacific month, optional current-month run, prior runs for worksheet picks."""
+    if not session.get(SESSION_FLAG):
+        return jsonify({"error": "Portal locked", "code": "portal_locked"}), 401
+    from app.routes.monthly_routes import _current_pacific_month_first, _serialize_run
+
+    mr = MonthlyRoute.query.filter_by(id=route_id).one_or_none()
+    if mr is None:
+        return jsonify({"error": "Route not found", "code": "not_found"}), 404
+    counts = _location_counts_for([int(mr.id)])
+    month_first = _current_pacific_month_first()
+    current_run = MonthlyRouteRun.query.filter_by(
+        monthly_route_id=route_id,
+        month_date=month_first,
+    ).one_or_none()
+    prior_runs = (
+        MonthlyRouteRun.query.filter(
+            MonthlyRouteRun.monthly_route_id == route_id,
+            MonthlyRouteRun.month_date < month_first,
+        )
+        .order_by(MonthlyRouteRun.month_date.desc())
+        .all()
+    )
+    return jsonify(
+        {
+            "route": _serialize_route_for_portal(mr, location_count=counts.get(int(mr.id), 0)),
+            "current_month_first": month_first.isoformat(),
+            "current_month_run": _serialize_run(current_run),
+            "prior_runs": [_serialize_run(r) for r in prior_runs],
+        }
+    )
+
+
+@technician_portal_bp.post("/routes/<int:route_id>/runs")
+def portal_start_current_month_run(route_id: int):
+    """Materialize (idempotently) the Pacific current-month run and worksheet rows."""
+    if not session.get(SESSION_FLAG):
+        return jsonify({"error": "Portal locked", "code": "portal_locked"}), 401
+    from app.routes.monthly_routes import (
+        _current_pacific_month_first,
+        _ensure_worksheet_rows_for_route_month,
+        _serialize_run,
+    )
+
+    mr = MonthlyRoute.query.filter_by(id=route_id).one_or_none()
+    if mr is None:
+        return jsonify({"error": "Route not found", "code": "not_found"}), 404
+    month_first = _current_pacific_month_first()
+    run = _ensure_worksheet_rows_for_route_month(
+        route_id,
+        month_first,
+        create_run_if_missing=True,
+    )
+    assert run is not None
+    return jsonify({"run": _serialize_run(run)})

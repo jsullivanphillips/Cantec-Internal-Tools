@@ -1,4 +1,5 @@
 import {
+  Fragment,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -8,10 +9,12 @@ import {
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
+  type ReactNode,
 } from 'react'
 import { flushSync } from 'react-dom'
 import { Alert, Badge, Button, Card, Modal, Spinner, Table } from 'react-bootstrap'
 import { Link, useLocation, useParams } from 'react-router-dom'
+import { parseMonitoringSheetDisplay } from '../features/monthlyRoutes/monitoringSheetDisplay'
 import {
   parseYearMonth,
   type TechnicianWorksheetAuditEvent,
@@ -172,6 +175,30 @@ function worksheetGridPersistedEquals(draft: string, committed: string | null | 
   return d === c
 }
 
+function renderMonitoringSheetCellView(raw: string): ReactNode {
+  const parsed = parseMonitoringSheetDisplay(raw)
+  if (!parsed.isStructured) {
+    if (!raw.trim()) return '\u00a0'
+    return <span className="tw-monitoring-plain text-break">{raw}</span>
+  }
+  return (
+    <div className="tw-stacked-cell tw-stacked-cell--monitoring">
+      {parsed.remainderBefore ? (
+        <div className="tw-monitoring-remainder text-break">{parsed.remainderBefore}</div>
+      ) : null}
+      {parsed.fields.map((f) => (
+        <Fragment key={f.key}>
+          <label className="tw-stacked-label">{f.label}</label>
+          <div className="tw-monitoring-field-value form-control form-control-sm">{f.value ? f.value : '—'}</div>
+        </Fragment>
+      ))}
+      {parsed.remainderAfter ? (
+        <div className="tw-monitoring-remainder text-break">{parsed.remainderAfter}</div>
+      ) : null}
+    </div>
+  )
+}
+
 const WORKSHEET_GRID_TAP_MOVE_THRESHOLD_SQ = 100 // 10px — ignore scroll-like drags
 
 function worksheetGridIsTouchLikePointer(pointerType: string): boolean {
@@ -222,6 +249,8 @@ export default function TechnicianWorksheetPage() {
   const [payload, setPayload] = useState<TechnicianWorksheetPayload | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  /** Portal-only: worksheet GET returned ``run_not_started`` (open route hub first). */
+  const [portalRunNotStarted, setPortalRunNotStarted] = useState(false)
   const [syncState, setSyncState] = useState<SyncState>('synced')
   const [auditForRow, setAuditForRow] = useState<TechnicianWorksheetRow | null>(null)
   const [auditEvents, setAuditEvents] = useState<TechnicianWorksheetAuditEvent[]>([])
@@ -295,6 +324,7 @@ export default function TechnicianWorksheetPage() {
         setLoading(false)
       }
       setError(null)
+      setPortalRunNotStarted(false)
       try {
         const qs = new URLSearchParams({ month: monthQuery })
         const data = await apiJson<TechnicianWorksheetPayload>(
@@ -307,13 +337,23 @@ export default function TechnicianWorksheetPage() {
         setSyncState('synced')
       } catch (e) {
         if (isAbortError(e)) return
-        if (!cached) setError('Unable to load worksheet.')
-        setSyncState('saved_offline')
+        const code =
+          typeof e === 'object' && e !== null && 'code' in e
+            ? String((e as { code?: string }).code || '')
+            : ''
+        if (isPortalMode && code === 'run_not_started') {
+          setPortalRunNotStarted(true)
+          setPayload(null)
+          setSyncState('saved_offline')
+        } else if (!cached) {
+          setError('Unable to load worksheet.')
+          setSyncState('saved_offline')
+        }
       } finally {
         if (!signal?.aborted) setLoading(false)
       }
     },
-    [routeId, idNum, monthOk, monthQuery]
+    [routeId, idNum, monthOk, monthQuery, isPortalMode]
   )
 
   const loadRef = useRef(load)
@@ -927,6 +967,8 @@ export default function TechnicianWorksheetPage() {
       worksheetGridSelection?.locationId === row.location_id && worksheetGridSelection.column === column
     const showEditor = worksheetGridEditing && selected
     const valueDisplay = worksheetGridCellValue(row, column)
+    const cellViewContent =
+      column === 'monitoring' && !showEditor ? renderMonitoringSheetCellView(valueDisplay) : valueDisplay || '\u00a0'
     /** Selection ref is updated synchronously on select so touch second-tap sees correct state. */
     const alreadySelectedNotEditing =
       worksheetGridSelectionRef.current?.locationId === row.location_id &&
@@ -1031,7 +1073,7 @@ export default function TechnicianWorksheetPage() {
         <div className="tw-worksheet-cell-surface tw-worksheet-cell-surface--excel-shell">
           <div className="tw-worksheet-cell-flow">
             <div className={`tw-worksheet-cell-view${showEditor ? ' tw-worksheet-cell-view--under-editor' : ''}`}>
-              {valueDisplay || '\u00a0'}
+              {cellViewContent}
             </div>
           </div>
         </div>
@@ -1076,7 +1118,9 @@ export default function TechnicianWorksheetPage() {
                 <Link
                   to={
                     isPortalMode
-                      ? '/tech/start'
+                      ? Number.isNaN(idNum)
+                        ? '/tech/start'
+                        : `/tech/route/${idNum}`
                       : Number.isNaN(idNum)
                         ? '/monthlies/routes'
                         : `/monthlies/routes/${idNum}`
@@ -1161,6 +1205,23 @@ export default function TechnicianWorksheetPage() {
         <div className="d-flex align-items-center justify-content-center gap-2 text-muted py-5">
           <Spinner animation="border" size="sm" /> Loading worksheet…
         </div>
+      ) : null}
+      {portalRunNotStarted ? (
+        <Alert variant="warning" className="mt-2">
+          <p className="mb-2">
+            No run file exists for this month yet. Go back to the route page and tap <strong>Start new run</strong>, or
+            open a previous month below.
+          </p>
+          {!Number.isNaN(idNum) ? (
+            <Link className="btn btn-primary btn-sm" to={`/tech/route/${idNum}`}>
+              Back to route
+            </Link>
+          ) : (
+            <Link className="btn btn-primary btn-sm" to="/tech/start">
+              Back to routes
+            </Link>
+          )}
+        </Alert>
       ) : null}
       {error ? <Alert variant="danger">{error}</Alert> : null}
       {payload ? (
@@ -1492,7 +1553,7 @@ export default function TechnicianWorksheetPage() {
                                             })
                                           }}
                                         >
-                                          Clear Time In/Out
+                                          Reset
                                         </Button>
                                       </>
                                     )}

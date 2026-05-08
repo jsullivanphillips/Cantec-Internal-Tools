@@ -3827,6 +3827,33 @@ body {
   line-height: 1.1;
 }
 
+.technician-worksheet-page .tw-stacked-cell.tw-stacked-cell--monitoring {
+  grid-template-rows: none;
+  grid-auto-rows: auto;
+  align-content: start;
+}
+
+.technician-worksheet-page .tw-monitoring-plain {
+  display: block;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.technician-worksheet-page .tw-monitoring-remainder {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.15;
+}
+
+.technician-worksheet-page .tw-monitoring-field-value.form-control {
+  background-color: #f8f9fa;
+  cursor: default;
+  min-height: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 834px) {
   .technician-worksheet-page .technician-worksheet-table-wrap {
     overflow-x: hidden;

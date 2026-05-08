@@ -72,6 +72,48 @@ def worksheet_client(monkeypatch):
         )
 
 
+@pytest.fixture
+def portal_only_client(monkeypatch):
+    """PIN portal session without ``authenticated`` (lazy worksheet run creation)."""
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    app = create_app()
+    app.config["TESTING"] = True
+    app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///:memory:"
+    app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+    with app.app_context():
+        db.metadata.create_all(
+            db.engine,
+            tables=[
+                MonthlyRoute.__table__,
+                Key.__table__,
+                MonitoringCompany.__table__,
+                MonthlyRouteLocation.__table__,
+                MonthlyRouteRun.__table__,
+                MonthlyRouteTestHistory.__table__,
+                MonthlyRouteWorksheetAuditEvent.__table__,
+            ],
+        )
+        with app.test_client() as client:
+            with client.session_transaction() as sess:
+                sess["tech_portal_unlocked"] = True
+                sess.pop("authenticated", None)
+            yield client, app
+        db.session.remove()
+        db.metadata.drop_all(
+            db.engine,
+            tables=[
+                MonthlyRouteWorksheetAuditEvent.__table__,
+                MonthlyRouteTestHistory.__table__,
+                MonthlyRouteRun.__table__,
+                MonthlyRouteLocation.__table__,
+                MonitoringCompany.__table__,
+                Key.__table__,
+                MonthlyRoute.__table__,
+            ],
+        )
+
+
 def _seed_basic_route_data():
     route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
     loc = MonthlyRouteLocation(
@@ -458,3 +500,138 @@ def test_worksheet_run_not_historical_for_open_current_month(worksheet_client):
     body = res.get_json()
     assert body["run"] is not None
     assert body["run"]["is_historical"] is False
+
+
+def test_staff_worksheet_auto_creates_run_when_missing(worksheet_client):
+    """Staff GET worksheet materializes ``MonthlyRouteRun`` even when none existed."""
+    client, app = worksheet_client
+    with app.app_context():
+        route = MonthlyRoute(id=96, route_number=96, weekday_iso=0, week_occurrence=1)
+        loc = MonthlyRouteLocation(
+            id=9601,
+            address="96 Staff Auto Run St",
+            address_normalized="96 staff auto run st",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
+            building=None,
+            building_normalized="",
+            status_normalized="active",
+            status_raw="Active",
+            monthly_route_id=96,
+        )
+        db.session.add_all([route, loc])
+        db.session.commit()
+
+    res = client.get("/api/monthly_routes/routes/96/worksheet?month=2026-07-01")
+    assert res.status_code == 200
+    body = res.get_json()
+    assert body["run"] is not None
+    assert len(body["rows"]) == 1
+
+
+def test_portal_worksheet_get_run_not_started_without_monthly_route_run(
+    portal_only_client, monkeypatch,
+):
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
+
+    client, app = portal_only_client
+    with app.app_context():
+        route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
+        loc = MonthlyRouteLocation(
+            id=101,
+            address="123 Test St",
+            address_normalized="123 test st",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
+            building=None,
+            building_normalized="",
+            status_normalized="active",
+            status_raw="Active",
+            monthly_route_id=1,
+            annual_month="May",
+        )
+        db.session.add_all([route, loc])
+        db.session.commit()
+
+    res = client.get("/api/monthly_routes/routes/1/worksheet?month=2026-05-01")
+    assert res.status_code == 404
+    body = res.get_json()
+    assert body.get("code") == "run_not_started"
+
+
+def test_portal_post_runs_then_get_worksheet(portal_only_client, monkeypatch):
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
+
+    client, app = portal_only_client
+    with app.app_context():
+        route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
+        loc = MonthlyRouteLocation(
+            id=101,
+            address="123 Test St",
+            address_normalized="123 test st",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
+            building=None,
+            building_normalized="",
+            status_normalized="active",
+            status_raw="Active",
+            monthly_route_id=1,
+            annual_month="May",
+        )
+        db.session.add_all([route, loc])
+        db.session.commit()
+
+    post = client.post("/api/technician_portal/routes/1/runs")
+    assert post.status_code == 200
+    started = post.get_json()
+    assert started["run"]["month_date"] == "2026-05-01"
+
+    res = client.get("/api/monthly_routes/routes/1/worksheet?month=2026-05-01")
+    assert res.status_code == 200
+    body = res.get_json()
+    assert body["run"] is not None
+    assert len(body["rows"]) == 1
+
+
+def test_portal_route_summary(portal_only_client, monkeypatch):
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
+
+    client, app = portal_only_client
+    with app.app_context():
+        route = MonthlyRoute(id=1, route_number=16, weekday_iso=0, week_occurrence=1)
+        loc = MonthlyRouteLocation(
+            id=101,
+            address="R16 St",
+            address_normalized="r16 st",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
+            building=None,
+            building_normalized="",
+            status_normalized="active",
+            status_raw="Active",
+            monthly_route_id=1,
+        )
+        prior = MonthlyRouteRun(
+            id=9001,
+            monthly_route_id=1,
+            month_date=date(2026, 4, 1),
+            status="open",
+            source="technician_app",
+        )
+        db.session.add_all([route, loc, prior])
+        db.session.commit()
+
+    res = client.get("/api/technician_portal/routes/1/portal_route_summary")
+    assert res.status_code == 200
+    body = res.get_json()
+    assert body["route"]["route_number"] == 16
+    assert body["current_month_first"] == "2026-05-01"
+    assert body["current_month_run"] is None
+    assert len(body["prior_runs"]) == 1
+    assert body["prior_runs"][0]["month_date"] == "2026-04-01"
