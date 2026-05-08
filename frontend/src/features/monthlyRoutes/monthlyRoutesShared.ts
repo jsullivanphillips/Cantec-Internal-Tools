@@ -230,10 +230,10 @@ export type TechnicianWorksheetRun = {
   /** Where the run was created: ``technician_app``, ``csv_import``, ``office_manual``. */
   source: string
   /**
-   * Server-computed flag: ``true`` when ``status === 'completed'`` or when the
-   * run's month is strictly before the current Pacific month. Worksheet uses
-   * this to switch the Action column from active buttons (Time In / Time Out /
-   * Skip / Clear / Add Deficiency) to a static Tested / Skipped:reason label.
+   * Server-computed flag: ``true`` when the run is explicitly finished (``completed_at`` / terminal ``status``),
+   * or when the run's month is strictly before the current Pacific month. Worksheet uses this to switch the
+   * Action column from active buttons (Time In / Time Out / Skip / Clear / Add Deficiency) to a static
+   * Tested / Skipped:reason label.
    */
   is_historical: boolean
 }
@@ -243,7 +243,24 @@ export function worksheetRunExplicitlyCompleted(run: TechnicianWorksheetRun | nu
   if (!run) return false
   const ts = (run.completed_at || '').trim()
   if (ts.length > 0) return true
-  return (run.status || '').trim().toLowerCase() === 'completed'
+  const st = (run.status || '').trim().toLowerCase()
+  return st === 'completed' || st === 'closed'
+}
+
+/** Field technicians started the run (portal) and it is not finished — office must not edit outcomes. */
+export function worksheetRunFieldActive(run: TechnicianWorksheetRun | null | undefined): boolean {
+  if (!run || worksheetRunExplicitlyCompleted(run)) return false
+  return (run.started_at || '').trim().length > 0
+}
+
+export type WorksheetOfficeRunActivity = 'completed' | 'active' | 'inactive'
+
+/** Office worksheet header: whether the field session is in progress or editable from the office. */
+export function worksheetOfficeRunActivity(run: TechnicianWorksheetRun | null | undefined): WorksheetOfficeRunActivity {
+  if (!run) return 'inactive'
+  if (worksheetRunExplicitlyCompleted(run)) return 'completed'
+  if (worksheetRunFieldActive(run)) return 'active'
+  return 'inactive'
 }
 
 export type TechnicianWorksheetPayload = {

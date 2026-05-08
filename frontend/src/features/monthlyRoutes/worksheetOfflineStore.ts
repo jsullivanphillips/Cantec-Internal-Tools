@@ -24,6 +24,8 @@ export type WorksheetQueueItem = {
   monthIso: string
   expectedUpdatedAt: string | null
   clientMutatedAt: string
+  /** When true, PATCH includes ``tech_portal=1`` (technician worksheet); omit on legacy queued items. */
+  techPortal?: boolean
   changes: WorksheetChangeSet
   attempts: number
   nextAttemptAt: number

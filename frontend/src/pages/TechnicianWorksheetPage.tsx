@@ -18,18 +18,18 @@ import { parseMonitoringSheetDisplay } from '../features/monthlyRoutes/monitorin
 import {
   monthFirstIsoPacificToday,
   parseYearMonth,
+  worksheetOfficeRunActivity,
   worksheetRunExplicitlyCompleted,
+  worksheetRunFieldActive,
   type TechnicianWorksheetAuditEvent,
   type TechnicianWorksheetPayload,
   type TechnicianWorksheetRow,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
 import {
   backoffMs,
-  completionPending,
   enqueueWorksheetChange,
   loadSyncQueue,
   loadWorksheetCache,
-  markCompletionPending,
   saveSyncQueue,
   saveWorksheetCache,
   type WorksheetChangeSet,
@@ -253,6 +253,8 @@ export default function TechnicianWorksheetPage() {
   const [error, setError] = useState<string | null>(null)
   const [portalStartingRun, setPortalStartingRun] = useState(false)
   const [runLifecycleBusy, setRunLifecycleBusy] = useState(false)
+  const [resetRunModalOpen, setResetRunModalOpen] = useState(false)
+  const [resetRunBusy, setResetRunBusy] = useState(false)
   const [syncState, setSyncState] = useState<SyncState>('synced')
   const [auditForRow, setAuditForRow] = useState<TechnicianWorksheetRow | null>(null)
   const [auditEvents, setAuditEvents] = useState<TechnicianWorksheetAuditEvent[]>([])
@@ -423,6 +425,37 @@ export default function TechnicianWorksheetPage() {
     }
   }, [isPortalMode, idNum, monthOk, monthQuery, payload?.run, load])
 
+  const onConfirmResetRun = useCallback(async () => {
+    if (Number.isNaN(idNum) || !monthOk) return
+    setResetRunBusy(true)
+    try {
+      const qs = new URLSearchParams({ month: monthQuery })
+      if (isPortalMode) qs.set('tech_portal', '1')
+      const res = await apiJson<{
+        ok: boolean
+        worksheet: TechnicianWorksheetPayload
+        cleared_rows: number
+        preserved_annual_skip_rows: number
+      }>(`/api/monthly_routes/routes/${idNum}/worksheet/reset_run?${qs.toString()}`, {
+        method: 'POST',
+        body: JSON.stringify({ source: 'technician_app' }),
+      })
+      setPayload(res.worksheet)
+      saveWorksheetCache(res.worksheet)
+      setAnnualTestAnywayRows(new Set())
+      setResetRunModalOpen(false)
+      setSyncMessage(null)
+    } catch (e) {
+      const msg =
+        typeof e === 'object' && e != null && 'error' in (e as Record<string, unknown>)
+          ? String((e as { error?: unknown }).error)
+          : 'Could not reset run.'
+      window.alert(msg)
+    } finally {
+      setResetRunBusy(false)
+    }
+  }, [idNum, monthOk, monthQuery, isPortalMode])
+
   const onStaffReopenRun = useCallback(async () => {
     if (isPortalMode || Number.isNaN(idNum) || !monthOk || payload?.run == null) return
     if (!worksheetRunExplicitlyCompleted(payload.run)) return
@@ -467,7 +500,6 @@ export default function TechnicianWorksheetPage() {
   const applyRemoteWorksheetRefresh = useCallback(() => {
     if (worksheetInteractiveBusyRef.current) {
       worksheetDeferredRemoteFetchRef.current = true
-      setSyncMessage('Worksheet updated — changes apply when you finish editing.')
       return
     }
     worksheetDeferredRemoteFetchRef.current = false
@@ -508,6 +540,7 @@ export default function TechnicianWorksheetPage() {
       if (item.routeId !== idNum || item.monthIso !== monthQuery) continue
       try {
         const qs = new URLSearchParams({ month: item.monthIso })
+        if (item.techPortal) qs.set('tech_portal', '1')
         const res = await apiJson<{ row: TechnicianWorksheetRow }>(
           `/api/monthly_routes/routes/${item.routeId}/worksheet/rows/${item.locationId}?${qs.toString()}`,
           {
@@ -708,11 +741,12 @@ export default function TechnicianWorksheetPage() {
         monthIso: monthQuery,
         expectedUpdatedAt: row.version_updated_at,
         clientMutatedAt: new Date().toISOString(),
+        techPortal: isPortalMode,
         changes: patch,
       })
       setSyncState('saved_offline')
     },
-    [idNum, monthQuery, payload, updateLocalRow]
+    [idNum, monthQuery, payload, updateLocalRow, isPortalMode]
   )
 
   const commitWorksheetGridEdit = useCallback(() => {
@@ -1025,11 +1059,12 @@ export default function TechnicianWorksheetPage() {
         monthIso: monthQuery,
         expectedUpdatedAt: row.version_updated_at,
         clientMutatedAt: new Date().toISOString(),
+        techPortal: isPortalMode,
         changes: patch,
       })
       setSyncState('saved_offline')
     },
-    [idNum, monthQuery, payload, updateLocalRow]
+    [idNum, monthQuery, payload, updateLocalRow, isPortalMode]
   )
 
   const dismissSkipReasonModal = useCallback(() => {
@@ -1225,6 +1260,11 @@ export default function TechnicianWorksheetPage() {
   }
 
   const worksheetFrozenNoRun = payload !== null && payload.run == null
+  const officeLocksOutcomeColumn =
+    !isPortalMode && worksheetRunFieldActive(payload?.run ?? undefined)
+  const officeRunActivityPhase =
+    payload?.run != null ? worksheetOfficeRunActivity(payload.run) : null
+
   /** Portal + current Pacific month: show until field run is explicitly started (preview ``run === null`` or materialized but ``started_at`` unset). */
   const showPortalStartRun =
     isPortalMode &&
@@ -1232,6 +1272,13 @@ export default function TechnicianWorksheetPage() {
     monthOk &&
     payload.month_date === monthFirstIsoPacificToday() &&
     (payload.run == null || payload.run.started_at == null)
+
+  const showResetRun =
+    payload !== null &&
+    payload.run != null &&
+    payload.run.is_historical !== true &&
+    monthOk &&
+    !Number.isNaN(idNum)
 
   const invalidParams =
     !routeId || Number.isNaN(idNum) || !monthIso ? (
@@ -1290,11 +1337,41 @@ export default function TechnicianWorksheetPage() {
                       )
                     })()
                   ) : null}
+                  {!isPortalMode && officeRunActivityPhase != null ? (
+                    <div className="small mt-1">
+                      <Badge
+                        bg={officeRunActivityPhase === 'active' ? 'primary' : 'secondary'}
+                        className={
+                          officeRunActivityPhase === 'inactive'
+                            ? 'fw-normal bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle'
+                            : 'fw-normal'
+                        }
+                      >
+                        {officeRunActivityPhase === 'active'
+                          ? 'Field run active'
+                          : officeRunActivityPhase === 'completed'
+                            ? 'Completed'
+                            : 'Field run not active'}
+                      </Badge>
+                    </div>
+                  ) : null}
                 </div>
               </div>
               <div className="d-flex align-items-center gap-2 flex-wrap justify-content-end">
-                {completionPending(idNum, monthQuery) ? <Badge bg="warning">Pending Confirmation</Badge> : null}
-                <Badge bg={syncState === 'conflict' ? 'danger' : syncState === 'syncing' ? 'info' : syncState === 'saved_offline' ? 'secondary' : 'success'}>
+                <Badge
+                  bg={
+                    syncState === 'conflict'
+                      ? 'danger'
+                      : syncState === 'syncing'
+                        ? 'info'
+                        : syncState === 'saved_offline'
+                          ? 'secondary'
+                          : undefined
+                  }
+                  className={
+                    syncState === 'synced' ? 'bg-success-subtle text-success-emphasis' : undefined
+                  }
+                >
                   {syncState === 'conflict'
                     ? 'Conflict'
                     : syncState === 'syncing'
@@ -1303,6 +1380,25 @@ export default function TechnicianWorksheetPage() {
                         ? 'Saved offline'
                         : 'Synced'}
                 </Badge>
+                {showResetRun ? (
+                  <Button
+                    size="sm"
+                    variant="outline-danger"
+                    disabled={
+                      resetRunBusy ||
+                      portalStartingRun ||
+                      runLifecycleBusy ||
+                      worksheetGridEditing ||
+                      activeEditorKey != null ||
+                      timeInModalRow != null ||
+                      timeOutModalRow != null ||
+                      skipReasonModalRow != null
+                    }
+                    onClick={() => setResetRunModalOpen(true)}
+                  >
+                    Reset run
+                  </Button>
+                ) : null}
                 {showPortalStartRun ? (
                   <Button
                     size="sm"
@@ -1347,7 +1443,7 @@ export default function TechnicianWorksheetPage() {
                 !worksheetRunExplicitlyCompleted(payload.run) ? (
                   <Button
                     size="sm"
-                    variant="primary"
+                    variant="success"
                     disabled={runLifecycleBusy || portalStartingRun}
                     onClick={() => void onPortalCompleteRun()}
                   >
@@ -1397,17 +1493,6 @@ export default function TechnicianWorksheetPage() {
                   )
                 ) : null}
                 {queueLength > 0 ? <span className="small text-muted">{queueLength} queued</span> : null}
-                {!worksheetFrozenNoRun ? (
-                  <Button
-                    size="sm"
-                    variant="outline-secondary"
-                    onClick={() => {
-                      markCompletionPending(idNum, monthQuery, true)
-                    }}
-                  >
-                    Complete (Offline)
-                  </Button>
-                ) : null}
               </div>
             </div>
             {syncMessage ? <div className="small text-danger mt-1 px-3">{syncMessage}</div> : null}
@@ -1428,7 +1513,7 @@ export default function TechnicianWorksheetPage() {
                   <th className="tw-col-monitoring">Monitoring</th>
                   <th className="tw-col-procedures">Testing Procedures</th>
                   <th className="tw-col-notes">Tech Comments & Notes</th>
-                  <th className="tw-col-action">Action</th>
+                  <th className="tw-col-action">{isPortalMode ? 'Action' : 'Result'}</th>
                 </tr>
               </thead>
             </Table>
@@ -1484,19 +1569,28 @@ export default function TechnicianWorksheetPage() {
                           const ringKey = `ring:${row.location_id}`
                           const keyNumberKey = `key_number:${row.location_id}`
                           const isHistorical = payload.run?.is_historical === true
-                          const addressStatusClass = worksheetAddressCellStatusClass(row, payload.month_date, isHistorical)
+                          const outcomeColumnReadOnly = isHistorical || officeLocksOutcomeColumn
+                          const addressStatusClass = worksheetAddressCellStatusClass(
+                            row,
+                            payload.month_date,
+                            isHistorical,
+                          )
                           const displayTimeIn = (row.time_in || '').trim()
                           const displayTimeOut = (row.time_out || '').trim()
                           const hasTimeIn = displayTimeIn.length > 0
                           const hasTimeOut = displayTimeOut.length > 0
                           const annualMatch = isAnnualForMonth(row.annual_month, payload.month_date)
-                          /** Same icons as staff worksheet for tested / skipped (historical read-only rows). */
-                          const showHistoricalStatusIcons = isHistorical
+                          /** Icons for tested/skipped when the Result column is non-interactive (historical or active field run on office view). */
+                          const showHistoricalStatusIcons = outcomeColumnReadOnly
                           const worksheetResultKey = (row.result_status || '').trim().toLowerCase()
                           const worksheetHasTestedOrSkipped =
                             worksheetResultKey === 'tested' || worksheetResultKey === 'skipped'
                           const showHistoricalOfficeResultButtons =
-                            isHistorical && !isPortalMode && !worksheetHasTestedOrSkipped
+                            isHistorical &&
+                            !isPortalMode &&
+                            !worksheetHasTestedOrSkipped &&
+                            !worksheetRunExplicitlyCompleted(payload.run) &&
+                            !worksheetRunFieldActive(payload.run)
                           const skipReasonDisplayBlock = worksheetSkipReasonDisplayBlock(row.skip_reason)
                           const showWorksheetTimeInLine =
                             hasTimeIn &&
@@ -1585,10 +1679,10 @@ export default function TechnicianWorksheetPage() {
                         {renderWorksheetGridColumnTd(row, 'testing_procedures', 'tw-col-procedures')}
                         {renderWorksheetGridColumnTd(row, 'inspection_tech_notes', 'tw-col-notes')}
                         <td className="tw-col-action">
-                          <div className={`d-grid gap-1${isHistorical ? ' text-center' : ''}`}>
+                          <div className={`d-grid gap-1${outcomeColumnReadOnly ? ' text-center' : ''}`}>
                             {worksheetFrozenNoRun ? (
                               <div className="small text-muted text-center">Start run to log testing.</div>
-                            ) : isHistorical ? (
+                            ) : outcomeColumnReadOnly ? (
                               <>
                                 {worksheetResultKey === 'tested' ? (
                                   <div className="fw-semibold small d-flex align-items-center justify-content-center gap-1">
@@ -1822,6 +1916,46 @@ export default function TechnicianWorksheetPage() {
           </Card>
         </>
       ) : null}
+      <Modal
+        show={resetRunModalOpen}
+        onHide={() => {
+          if (!resetRunBusy) setResetRunModalOpen(false)
+        }}
+        centered
+        backdrop={resetRunBusy ? 'static' : true}
+      >
+        <Modal.Header closeButton={!resetRunBusy}>
+          <Modal.Title className="h6 mb-0">Reset this run?</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <p className="mb-2">
+            This clears all <strong>Time In</strong> / <strong>Time Out</strong> values and removes{' '}
+            <strong>skipped</strong> outcomes that are <em>not</em> annual skips. The{' '}
+            <strong>field run started</strong> timestamp is cleared so technicians must tap{' '}
+            <strong>Start Run</strong> again before logging times.
+          </p>
+          <p className="mb-0 small text-muted">
+            Sites skipped as <code className="text-muted">annual</code> or{' '}
+            <code className="text-muted">annual_booked</code> are left unchanged. FACP, monitoring,
+            procedures, and notes are not cleared.
+          </p>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" size="sm" disabled={resetRunBusy} onClick={() => setResetRunModalOpen(false)}>
+            Cancel
+          </Button>
+          <Button variant="danger" size="sm" disabled={resetRunBusy} onClick={() => void onConfirmResetRun()}>
+            {resetRunBusy ? (
+              <>
+                <Spinner animation="border" size="sm" className="me-1" aria-hidden />
+                Resetting…
+              </>
+            ) : (
+              'Yes, reset run'
+            )}
+          </Button>
+        </Modal.Footer>
+      </Modal>
       <Modal show={auditForRow != null} onHide={() => setAuditForRow(null)} size="lg" centered>
         <Modal.Header closeButton>
           <Modal.Title className="h6 mb-0">{auditForRow?.display_address} · Audit</Modal.Title>

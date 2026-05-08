@@ -399,6 +399,13 @@ def _sheet_skip_reason_is_annual(skip_reason: str | None) -> bool:
     return s in {"annual", "annual_booked"}
 
 
+def _history_row_is_preserved_annual_skip(row: MonthlyRouteTestHistory) -> bool:
+    """Annual-classification skips keep outcome/times when resetting the run."""
+    if (row.result_status or "").strip().lower() != "skipped":
+        return False
+    return _sheet_skip_reason_is_annual(row.skip_reason)
+
+
 def _skip_site_base(loc: MonthlyRouteLocation | None, location_id: int) -> dict:
     """``id`` + display label for skipped-site lists on route detail."""
     if loc is None:
@@ -918,7 +925,15 @@ def _run_explicitly_completed(run: MonthlyRouteRun) -> bool:
     """True when the run was marked finished (blocks replacing the month via CSV import)."""
     if run.completed_at is not None:
         return True
-    return (run.status or "").strip().lower() == "completed"
+    st = (run.status or "").strip().lower()
+    return st in {"completed", "closed"}
+
+
+def _run_field_active(run: MonthlyRouteRun) -> bool:
+    """Technicians explicitly started the run in the portal and it is not finished."""
+    if _run_explicitly_completed(run):
+        return False
+    return run.started_at is not None
 
 
 def _serialize_run(run: MonthlyRouteRun | None) -> dict[str, object] | None:
@@ -930,8 +945,8 @@ def _serialize_run(run: MonthlyRouteRun | None) -> dict[str, object] | None:
 
     ``is_historical`` flips the worksheet into a read-only-ish surface (no
     Time In / Time Out / Skip / Clear / Add Deficiency buttons). It is true when
-    the run is explicitly completed (``status`` / ``completed_at``) or its month is
-    strictly before the current Pacific month.
+    the run is explicitly finished (``completed`` / ``closed`` status or ``completed_at``)
+    or its month is strictly before the current Pacific month.
     """
     if run is None:
         return None
@@ -1728,6 +1743,38 @@ def patch_monthly_route_worksheet_row(route_id: int, location_id: int):
     if loc is None:
         return jsonify({"error": "Location not found"}), 404
 
+    run_for_month = MonthlyRouteRun.query.filter_by(
+        monthly_route_id=route_id,
+        month_date=month_first,
+    ).one_or_none()
+    if run_for_month is not None and _run_explicitly_completed(run_for_month):
+        outcome_fields = {"result_status", "skip_reason"}
+        if outcome_fields.intersection(changes.keys()):
+            return jsonify(
+                {
+                    "error": "This run is completed; reopen it before changing tested/skipped outcomes.",
+                    "code": "run_completed_outcome_locked",
+                }
+            ), 409
+
+    outcome_fields_mut = {"result_status", "skip_reason"}
+    staff_browser_outcome_lock = (
+        session.get("authenticated")
+        and outcome_fields_mut.intersection(changes.keys())
+        and (request.args.get("tech_portal") or "").strip() != "1"
+    )
+    if (
+        run_for_month is not None
+        and _run_field_active(run_for_month)
+        and staff_browser_outcome_lock
+    ):
+        return jsonify(
+            {
+                "error": "Technicians are actively logging this run; office cannot change tested/skipped outcomes until the run completes or is reset.",
+                "code": "run_active_office_outcome_locked",
+            }
+        ), 409
+
     expected = _normalize_ws_text(payload.get("expected_updated_at"))
     current_version = row.updated_at.isoformat() if row.updated_at else None
     # Client-wins policy: stale client versions do not block write.
@@ -1861,6 +1908,132 @@ def patch_monthly_route_worksheet_row(route_id: int, location_id: int):
     db.session.refresh(row)
     db.session.refresh(loc)
     return jsonify({"ok": True, "row": _worksheet_row_from_history(row, loc, route_id=route_id)})
+
+
+@monthly_routes_bp.post("/api/monthly_routes/routes/<int:route_id>/worksheet/reset_run")
+def post_monthly_route_worksheet_reset_run(route_id: int):
+    """Clear worksheet outcomes (times / non-annual skips / tested) for one route-month.
+
+    Rows skipped as annual (``annual`` / ``annual_booked``) are left unchanged.
+    Clears ``MonthlyRouteRun.started_at`` so the field run shows as not started (portal Start Run).
+    """
+    month_raw = (request.args.get("month") or "").strip()
+    month_dt = _parse_month(month_raw)
+    if month_dt is None:
+        return jsonify({"error": "Invalid or missing month query param (use YYYY-MM-DD, first of month)"}), 400
+    month_first = date(month_dt.year, month_dt.month, 1)
+    if _get_monthly_route(route_id) is None:
+        return jsonify({"error": "Route not found"}), 404
+
+    if _portal_worksheet_lazy_request():
+        run_gate = MonthlyRouteRun.query.filter_by(
+            monthly_route_id=route_id,
+            month_date=month_first,
+        ).one_or_none()
+        if run_gate is None:
+            return (
+                jsonify(
+                    {
+                        "error": "Run not started for this month.",
+                        "code": "run_not_started",
+                    }
+                ),
+                400,
+            )
+
+    run = MonthlyRouteRun.query.filter_by(
+        monthly_route_id=route_id,
+        month_date=month_first,
+    ).one_or_none()
+    if run is not None and _run_explicitly_completed(run):
+        return (
+            jsonify(
+                {
+                    "error": "This run is completed; reopen it before resetting.",
+                    "code": "run_completed",
+                }
+            ),
+            409,
+        )
+
+    rows = _testing_history_rows_attributed_to_route_month(route_id, month_first)
+    actor_username = _session_username_clean()
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        body = {}
+    source = _normalize_ws_text(body.get("source")) or "technician_app"
+
+    next_audit_id = _next_worksheet_audit_event_id()
+    cleared = 0
+    preserved_annual = 0
+
+    for hist in rows:
+        if _history_row_is_preserved_annual_skip(hist):
+            preserved_annual += 1
+            continue
+        has_outcome = (
+            hist.result_status is not None
+            or _normalize_ws_text(hist.sheet_time_in_raw) is not None
+            or _normalize_ws_text(hist.sheet_time_out_raw) is not None
+        )
+        if not has_outcome:
+            continue
+
+        old_snapshot = {
+            "result_status": hist.result_status,
+            "skip_reason": hist.skip_reason,
+            "time_in": hist.sheet_time_in_raw,
+            "time_out": hist.sheet_time_out_raw,
+            "source_value_raw": hist.source_value_raw,
+        }
+
+        hist.result_status = None
+        hist.skip_reason = None
+        hist.sheet_time_in_raw = None
+        hist.sheet_time_out_raw = None
+        hist.source_value_raw = None
+
+        db.session.add(
+            MonthlyRouteWorksheetAuditEvent(
+                id=next_audit_id,
+                monthly_route_id=route_id,
+                location_id=int(hist.location_id),
+                history_row_id=int(hist.id),
+                month_date=month_first,
+                field_name="reset_run",
+                old_value=old_snapshot,
+                new_value=None,
+                source=source,
+                changed_by_username=actor_username,
+                changed_by_name=actor_username,
+                client_mutation_id=None,
+                changed_at_client=None,
+            )
+        )
+        next_audit_id += 1
+        cleared += 1
+
+    if run is not None:
+        run.started_at = None
+
+    db.session.commit()
+
+    payload_out = _serialize_technician_worksheet_payload(
+        route_id,
+        month_first,
+        portal_lazy_run=_portal_worksheet_lazy_request(),
+    )
+    if payload_out is None:
+        return jsonify({"error": "Route not found"}), 404
+
+    return jsonify(
+        {
+            "ok": True,
+            "cleared_rows": cleared,
+            "preserved_annual_skip_rows": preserved_annual,
+            "worksheet": payload_out,
+        }
+    )
 
 
 @monthly_routes_bp.get("/api/monthly_routes/routes/<int:route_id>/worksheet/rows/<int:location_id>/audit")

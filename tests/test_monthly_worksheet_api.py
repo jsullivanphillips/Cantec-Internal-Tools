@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -195,6 +195,130 @@ def test_get_worksheet_returns_rows(worksheet_client):
     assert body["route"]["id"] == 1
     assert len(body["rows"]) == 1
     assert body["rows"][0]["display_address"] == "123 Test St"
+
+
+def test_worksheet_reset_run_clears_non_annual_preserves_annual(worksheet_client):
+    client, app = worksheet_client
+    with app.app_context():
+        route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
+        loc_a = MonthlyRouteLocation(
+            id=101,
+            address="111 Oak St",
+            address_normalized="111 oak st",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
+            building=None,
+            building_normalized="",
+            status_normalized="active",
+            status_raw="Active",
+            monthly_route_id=1,
+        )
+        loc_b = MonthlyRouteLocation(
+            id=102,
+            address="222 Elm St",
+            address_normalized="222 elm st",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
+            building=None,
+            building_normalized="",
+            status_normalized="active",
+            status_raw="Active",
+            monthly_route_id=1,
+        )
+        run = MonthlyRouteRun(
+            id=9001,
+            monthly_route_id=1,
+            month_date=date(2026, 5, 1),
+            started_at=datetime(2026, 5, 2, 10, 0, 0, tzinfo=PACIFIC_TZ),
+            status="open",
+            source="technician_app",
+        )
+        h_clear = MonthlyRouteTestHistory(
+            id=8001,
+            location_id=101,
+            month_date=date(2026, 5, 1),
+            result_status="tested",
+            sheet_time_in_raw="8am",
+            sheet_time_out_raw="9am",
+            test_monthly_route_id=1,
+        )
+        h_annual = MonthlyRouteTestHistory(
+            id=8002,
+            location_id=102,
+            month_date=date(2026, 5, 1),
+            result_status="skipped",
+            skip_reason="annual",
+            test_monthly_route_id=1,
+        )
+        db.session.add_all([route, loc_a, loc_b, run, h_clear, h_annual])
+        db.session.commit()
+
+    res = client.post("/api/monthly_routes/routes/1/worksheet/reset_run?month=2026-05-01", json={})
+    assert res.status_code == 200, res.get_data(as_text=True)
+    body = res.get_json()
+    assert body["ok"] is True
+    assert body["cleared_rows"] == 1
+    assert body["preserved_annual_skip_rows"] == 1
+    assert body["worksheet"]["run"] is not None
+    assert body["worksheet"]["run"]["started_at"] is None
+    rows_by_loc = {int(r["location_id"]): r for r in body["worksheet"]["rows"]}
+    assert rows_by_loc[101]["time_in"] is None
+    assert rows_by_loc[101]["time_out"] is None
+    assert rows_by_loc[102]["result_status"] == "skipped"
+    assert (rows_by_loc[102]["skip_reason"] or "").strip().lower() == "annual"
+
+    with app.app_context():
+        r1 = db.session.get(MonthlyRouteTestHistory, 8001)
+        assert r1 is not None
+        assert r1.result_status is None
+        assert r1.sheet_time_in_raw is None
+        assert r1.sheet_time_out_raw is None
+        r2 = db.session.get(MonthlyRouteTestHistory, 8002)
+        assert r2 is not None
+        assert r2.result_status == "skipped"
+        assert (r2.skip_reason or "").strip().lower() == "annual"
+        run_after = db.session.get(MonthlyRouteRun, 9001)
+        assert run_after is not None
+        assert run_after.started_at is None
+
+
+def test_worksheet_reset_run_rejects_completed(worksheet_client):
+    client, app = worksheet_client
+    with app.app_context():
+        route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
+        loc = MonthlyRouteLocation(
+            id=101,
+            address="123 Test St",
+            address_normalized="123 test st",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
+            building=None,
+            building_normalized="",
+            status_normalized="active",
+            status_raw="Active",
+            monthly_route_id=1,
+        )
+        run = MonthlyRouteRun(
+            id=9101,
+            monthly_route_id=1,
+            month_date=date(2026, 5, 1),
+            status="completed",
+            completed_at=datetime.now(PACIFIC_TZ),
+            source="technician_app",
+        )
+        hist = MonthlyRouteTestHistory(
+            id=9201,
+            location_id=101,
+            month_date=date(2026, 5, 1),
+            result_status="tested",
+            sheet_time_in_raw="7am",
+            test_monthly_route_id=1,
+        )
+        db.session.add_all([route, loc, run, hist])
+        db.session.commit()
+
+    res = client.post("/api/monthly_routes/routes/1/worksheet/reset_run?month=2026-05-01", json={})
+    assert res.status_code == 409
 
 
 def test_get_routes_overview_returns_route_links_payload(worksheet_client):
@@ -419,6 +543,127 @@ def test_patch_worksheet_row_stale_version_client_wins(worksheet_client):
     body = res.get_json()
     assert body["ok"] is True
     assert body["row"]["testing_procedures"] == "client change"
+
+
+def test_patch_worksheet_row_outcome_rejected_when_run_completed(worksheet_client):
+    """Completed/closed runs cannot change tested/skipped via PATCH until reopened."""
+    client, app = worksheet_client
+    current = _current_pacific_month_first()
+    with app.app_context():
+        loc_id = _seed_route_for_month(11, current, status="completed")
+        hist = MonthlyRouteTestHistory(
+            id=119999,
+            location_id=loc_id,
+            month_date=current,
+            result_status=None,
+            test_monthly_route_id=11,
+        )
+        db.session.add(hist)
+        db.session.commit()
+
+    month_q = current.isoformat()
+    res = client.patch(
+        f"/api/monthly_routes/routes/11/worksheet/rows/{loc_id}?month={month_q}",
+        json={"changes": {"result_status": "tested"}},
+    )
+    assert res.status_code == 409
+    assert res.get_json().get("code") == "run_completed_outcome_locked"
+
+    res_skip_key = client.patch(
+        f"/api/monthly_routes/routes/11/worksheet/rows/{loc_id}?month={month_q}",
+        json={"changes": {"skip_reason": "annual"}},
+    )
+    assert res_skip_key.status_code == 409
+
+    res_facp = client.patch(
+        f"/api/monthly_routes/routes/11/worksheet/rows/{loc_id}?month={month_q}",
+        json={"changes": {"facp": "Panel OK"}},
+    )
+    assert res_facp.status_code == 200
+    assert res_facp.get_json()["row"]["facp"] == "Panel OK"
+
+
+def test_patch_outcome_rejected_office_when_field_run_active(worksheet_client):
+    """Authenticated office PATCH cannot change outcomes while technicians have started the run."""
+    client, app = worksheet_client
+    current = _current_pacific_month_first()
+    with app.app_context():
+        loc_id = _seed_route_for_month(12, current, status="open")
+        run = MonthlyRouteRun.query.filter_by(monthly_route_id=12, month_date=current).one()
+        run.started_at = datetime.now(timezone.utc)
+        db.session.add(
+            MonthlyRouteTestHistory(
+                id=129999,
+                location_id=loc_id,
+                month_date=current,
+                result_status=None,
+                test_monthly_route_id=12,
+            )
+        )
+        db.session.commit()
+
+    month_q = current.isoformat()
+    res = client.patch(
+        f"/api/monthly_routes/routes/12/worksheet/rows/{loc_id}?month={month_q}",
+        json={"changes": {"result_status": "tested"}},
+    )
+    assert res.status_code == 409
+    assert res.get_json().get("code") == "run_active_office_outcome_locked"
+
+
+def test_patch_outcome_allowed_tech_portal_query_when_field_run_active(worksheet_client):
+    """Staff session acting as technician worksheet (``tech_portal=1``) may PATCH outcomes during active run."""
+    client, app = worksheet_client
+    current = _current_pacific_month_first()
+    with app.app_context():
+        loc_id = _seed_route_for_month(13, current, status="open")
+        run = MonthlyRouteRun.query.filter_by(monthly_route_id=13, month_date=current).one()
+        run.started_at = datetime.now(timezone.utc)
+        db.session.add(
+            MonthlyRouteTestHistory(
+                id=139999,
+                location_id=loc_id,
+                month_date=current,
+                result_status=None,
+                test_monthly_route_id=13,
+            )
+        )
+        db.session.commit()
+
+    month_q = current.isoformat()
+    res = client.patch(
+        f"/api/monthly_routes/routes/13/worksheet/rows/{loc_id}?month={month_q}&tech_portal=1",
+        json={"changes": {"result_status": "tested"}},
+    )
+    assert res.status_code == 200
+    assert res.get_json()["row"]["result_status"] == "tested"
+
+
+def test_patch_outcome_allowed_portal_only_when_field_run_active(portal_only_client):
+    """PIN-only portal session is not treated as office staff; outcomes PATCH succeeds during active run."""
+    client, app = portal_only_client
+    current = _current_pacific_month_first()
+    with app.app_context():
+        loc_id = _seed_route_for_month(14, current, status="open")
+        run = MonthlyRouteRun.query.filter_by(monthly_route_id=14, month_date=current).one()
+        run.started_at = datetime.now(timezone.utc)
+        db.session.add(
+            MonthlyRouteTestHistory(
+                id=149999,
+                location_id=loc_id,
+                month_date=current,
+                result_status=None,
+                test_monthly_route_id=14,
+            )
+        )
+        db.session.commit()
+
+    month_q = current.isoformat()
+    res = client.patch(
+        f"/api/monthly_routes/routes/14/worksheet/rows/{loc_id}?month={month_q}",
+        json={"changes": {"result_status": "tested"}},
+    )
+    assert res.status_code == 200
 
 
 def test_get_worksheet_hydrates_missing_snapshot_fields_from_prior_run(worksheet_client):

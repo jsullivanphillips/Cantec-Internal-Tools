@@ -830,182 +830,13 @@ export default function MonthlyRouteDetailPage() {
         </Card.Body>
       </Card>
 
-      <Accordion
-        defaultActiveKey={['sites', 'performance', 'history', 'comments']}
-        alwaysOpen
-        className="monthly-location-detail-accordion d-flex flex-column gap-2"
-      >
-        <Accordion.Item
-          eventKey="sites"
-          className="monthly-location-testing-history-card monthly-location-detail-surface shadow-sm bg-white"
-        >
-          <Accordion.Header className="monthly-location-testing-history-card-header py-3">
-            <span className="fw-bold text-dark">Sites on this route</span>
-          </Accordion.Header>
-          <Accordion.Body className="monthly-location-testing-history-body">
-            {orderError ? (
-              <Alert variant="warning" className="py-2 small mb-3">
-                {orderError}
-              </Alert>
-            ) : null}
-            {orderedSites.length === 0 ? (
-              <p className="text-muted small mb-0">No locations are assigned to this route.</p>
-            ) : (
-              <>
-                <p className="text-muted small mb-2 mb-md-3">
-                  Drag the grip on each row to reorder. Order saves automatically when you drop a row.
-                </p>
-                <div className="table-responsive">
-                  <DndContext
-                    sensors={routeSitesSensors}
-                    collisionDetection={closestCenter}
-                    onDragEnd={handleSitesDragEnd}
-                  >
-                    <Table responsive size="sm" bordered className="mb-0 align-middle">
-                      <thead className="table-light">
-                        <tr className="small text-muted text-uppercase">
-                          <th style={{ width: '3rem' }} className="text-center" aria-label="Drag to reorder">
-                            <i className="bi bi-grip-vertical" aria-hidden />
-                            <span className="visually-hidden">Reorder</span>
-                          </th>
-                          <th style={{ width: '4rem' }} className="text-center">
-                            Stop
-                          </th>
-                          <th>Address</th>
-                          <th style={{ width: '6.5rem' }} className="text-nowrap">
-                            Annual
-                          </th>
-                          <th style={{ width: '7rem' }}>Status</th>
-                        </tr>
-                      </thead>
-                      <SortableContext
-                        items={orderedSites.map((s) => s.id)}
-                        strategy={verticalListSortingStrategy}
-                      >
-                        <tbody>
-                          {orderedSites.map((loc, index) => (
-                            <SortableRouteSiteRow
-                              key={loc.id}
-                              loc={loc}
-                              index={index}
-                              orderSaving={orderSaving}
-                            />
-                          ))}
-                        </tbody>
-                      </SortableContext>
-                    </Table>
-                  </DndContext>
-                </div>
-              </>
-            )}
-          </Accordion.Body>
-        </Accordion.Item>
-
-        <Accordion.Item
-          eventKey="performance"
-          className="monthly-location-testing-history-card monthly-route-detail-performance monthly-location-detail-surface shadow-sm bg-white"
-        >
-          <Accordion.Header className="monthly-location-testing-history-card-header monthly-route-detail-performance-header py-3">
-            <span className="d-inline-flex align-items-center gap-2 fw-semibold">
-              <i className="bi bi-graph-up-arrow text-primary" aria-hidden />
-              Performance
-            </span>
-          </Accordion.Header>
-          <Accordion.Body className="monthly-location-testing-history-body">
-            <Card className="monthly-route-detail-performance__revenue-card mb-3">
-              <Card.Body className="p-3 p-md-4">
-                <div className="monthly-route-detail-performance__revenue-card-title text-muted small text-uppercase fw-semibold mb-3">
-                  Revenue by month
-                </div>
-                <div className="monthly-route-detail-performance__intro text-muted small mb-3">
-                  <p className="mb-0">
-                    Monthly revenue sums <span className="fw-semibold text-body">Price/month</span> for locations on
-                    this route that were <span className="fw-semibold text-body">tested</span> that month. Locations
-                    without a price are excluded from the sum.
-                  </p>
-                </div>
-                {testingHistoryYears.length > 0 ? (
-                  <>
-                    <div className="monthly-route-detail-performance__year-nav d-flex flex-wrap align-items-center gap-2 justify-content-start mb-3">
-                      <Button
-                        type="button"
-                        variant="outline-secondary"
-                        size="sm"
-                        className="monthly-location-testing-history-year-nav-btn"
-                        disabled={testingHistoryYearIndex <= 0}
-                        onClick={() => {
-                          if (testingHistoryYearIndex > 0) {
-                            setHistoryViewYear(testingHistoryYears[testingHistoryYearIndex - 1])
-                          }
-                        }}
-                      >
-                        Previous year
-                      </Button>
-                      <span className="fw-semibold px-1 tabular-nums" aria-live="polite">
-                        {effectiveHistoryYear}
-                      </span>
-                      <Button
-                        type="button"
-                        variant="outline-secondary"
-                        size="sm"
-                        className="monthly-location-testing-history-year-nav-btn"
-                        disabled={
-                          testingHistoryYearIndex < 0 ||
-                          testingHistoryYearIndex >= testingHistoryYears.length - 1
-                        }
-                        onClick={() => {
-                          if (
-                            testingHistoryYearIndex >= 0 &&
-                            testingHistoryYearIndex < testingHistoryYears.length - 1
-                          ) {
-                            setHistoryViewYear(testingHistoryYears[testingHistoryYearIndex + 1])
-                          }
-                        }}
-                      >
-                        Next year
-                      </Button>
-                    </div>
-                    <div className="monthly-route-detail-performance__chart">
-                      {testedRevenueChart ? (
-                        <>
-                          <div className="monthly-route-detail-performance__chart-surface">
-                            <div className="monthly-route-detail-performance__chart-area">
-                              <Chart type="bar" data={testedRevenueChart.data} options={testedRevenueChart.options} />
-                            </div>
-                          </div>
-                          {testedSitesMissingPriceYear > 0 ? (
-                            <p className="text-muted small mt-2 mb-0">
-                              {testedSitesMissingPriceYear} tested{' '}
-                              {testedSitesMissingPriceYear === 1 ? 'site has' : 'sites have'} no Price/month set for
-                              months in {effectiveHistoryYear}.
-                            </p>
-                          ) : null}
-                        </>
-                      ) : (
-                        <div className="monthly-route-detail-performance__chart-surface">
-                          <div className="monthly-route-detail-performance__empty d-flex align-items-center justify-content-center text-muted small">
-                            No monthly sheet data for this calendar year.
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  <div className="monthly-route-detail-performance__intro text-muted small mb-0">
-                    Revenue chart appears when monthly sheet testing history exists for this route.
-                  </div>
-                )}
-              </Card.Body>
-            </Card>
-          </Accordion.Body>
-        </Accordion.Item>
-
+      <Accordion defaultActiveKey={[]} alwaysOpen className="monthly-location-detail-accordion d-flex flex-column gap-2">
         <Accordion.Item
           eventKey="history"
           className="monthly-location-testing-history-card monthly-location-detail-surface shadow-sm bg-white"
         >
           <Accordion.Header className="monthly-location-testing-history-card-header py-3">
-            <span className="fw-semibold">Testing history</span>
+            <span className="fw-semibold">Runs</span>
           </Accordion.Header>
           <Accordion.Body className="monthly-location-testing-history-body">
             {testingHistoryYears.length === 0 ? (
@@ -1297,6 +1128,171 @@ export default function MonthlyRouteDetailPage() {
                 </Modal>
               </>
             )}
+          </Accordion.Body>
+        </Accordion.Item>
+
+        <Accordion.Item
+          eventKey="sites"
+          className="monthly-location-testing-history-card monthly-location-detail-surface shadow-sm bg-white"
+        >
+          <Accordion.Header className="monthly-location-testing-history-card-header py-3">
+            <span className="fw-bold text-dark">Sites on this route</span>
+          </Accordion.Header>
+          <Accordion.Body className="monthly-location-testing-history-body">
+            {orderError ? (
+              <Alert variant="warning" className="py-2 small mb-3">
+                {orderError}
+              </Alert>
+            ) : null}
+            {orderedSites.length === 0 ? (
+              <p className="text-muted small mb-0">No locations are assigned to this route.</p>
+            ) : (
+              <>
+                <p className="text-muted small mb-2 mb-md-3">
+                  Drag the grip on each row to reorder. Order saves automatically when you drop a row.
+                </p>
+                <div className="table-responsive">
+                  <DndContext
+                    sensors={routeSitesSensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={handleSitesDragEnd}
+                  >
+                    <Table responsive size="sm" bordered className="mb-0 align-middle">
+                      <thead className="table-light">
+                        <tr className="small text-muted text-uppercase">
+                          <th style={{ width: '3rem' }} className="text-center" aria-label="Drag to reorder">
+                            <i className="bi bi-grip-vertical" aria-hidden />
+                            <span className="visually-hidden">Reorder</span>
+                          </th>
+                          <th style={{ width: '4rem' }} className="text-center">
+                            Stop
+                          </th>
+                          <th>Address</th>
+                          <th style={{ width: '6.5rem' }} className="text-nowrap">
+                            Annual
+                          </th>
+                          <th style={{ width: '7rem' }}>Status</th>
+                        </tr>
+                      </thead>
+                      <SortableContext
+                        items={orderedSites.map((s) => s.id)}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        <tbody>
+                          {orderedSites.map((loc, index) => (
+                            <SortableRouteSiteRow
+                              key={loc.id}
+                              loc={loc}
+                              index={index}
+                              orderSaving={orderSaving}
+                            />
+                          ))}
+                        </tbody>
+                      </SortableContext>
+                    </Table>
+                  </DndContext>
+                </div>
+              </>
+            )}
+          </Accordion.Body>
+        </Accordion.Item>
+
+        <Accordion.Item
+          eventKey="performance"
+          className="monthly-location-testing-history-card monthly-route-detail-performance monthly-location-detail-surface shadow-sm bg-white"
+        >
+          <Accordion.Header className="monthly-location-testing-history-card-header monthly-route-detail-performance-header py-3">
+            <span className="d-inline-flex align-items-center gap-2 fw-semibold">
+              <i className="bi bi-graph-up-arrow text-primary" aria-hidden />
+              Performance
+            </span>
+          </Accordion.Header>
+          <Accordion.Body className="monthly-location-testing-history-body">
+            <Card className="monthly-route-detail-performance__revenue-card mb-3">
+              <Card.Body className="p-3 p-md-4">
+                <div className="monthly-route-detail-performance__revenue-card-title text-muted small text-uppercase fw-semibold mb-3">
+                  Revenue by month
+                </div>
+                <div className="monthly-route-detail-performance__intro text-muted small mb-3">
+                  <p className="mb-0">
+                    Monthly revenue sums <span className="fw-semibold text-body">Price/month</span> for locations on
+                    this route that were <span className="fw-semibold text-body">tested</span> that month. Locations
+                    without a price are excluded from the sum.
+                  </p>
+                </div>
+                {testingHistoryYears.length > 0 ? (
+                  <>
+                    <div className="monthly-route-detail-performance__year-nav d-flex flex-wrap align-items-center gap-2 justify-content-start mb-3">
+                      <Button
+                        type="button"
+                        variant="outline-secondary"
+                        size="sm"
+                        className="monthly-location-testing-history-year-nav-btn"
+                        disabled={testingHistoryYearIndex <= 0}
+                        onClick={() => {
+                          if (testingHistoryYearIndex > 0) {
+                            setHistoryViewYear(testingHistoryYears[testingHistoryYearIndex - 1])
+                          }
+                        }}
+                      >
+                        Previous year
+                      </Button>
+                      <span className="fw-semibold px-1 tabular-nums" aria-live="polite">
+                        {effectiveHistoryYear}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="outline-secondary"
+                        size="sm"
+                        className="monthly-location-testing-history-year-nav-btn"
+                        disabled={
+                          testingHistoryYearIndex < 0 ||
+                          testingHistoryYearIndex >= testingHistoryYears.length - 1
+                        }
+                        onClick={() => {
+                          if (
+                            testingHistoryYearIndex >= 0 &&
+                            testingHistoryYearIndex < testingHistoryYears.length - 1
+                          ) {
+                            setHistoryViewYear(testingHistoryYears[testingHistoryYearIndex + 1])
+                          }
+                        }}
+                      >
+                        Next year
+                      </Button>
+                    </div>
+                    <div className="monthly-route-detail-performance__chart">
+                      {testedRevenueChart ? (
+                        <>
+                          <div className="monthly-route-detail-performance__chart-surface">
+                            <div className="monthly-route-detail-performance__chart-area">
+                              <Chart type="bar" data={testedRevenueChart.data} options={testedRevenueChart.options} />
+                            </div>
+                          </div>
+                          {testedSitesMissingPriceYear > 0 ? (
+                            <p className="text-muted small mt-2 mb-0">
+                              {testedSitesMissingPriceYear} tested{' '}
+                              {testedSitesMissingPriceYear === 1 ? 'site has' : 'sites have'} no Price/month set for
+                              months in {effectiveHistoryYear}.
+                            </p>
+                          ) : null}
+                        </>
+                      ) : (
+                        <div className="monthly-route-detail-performance__chart-surface">
+                          <div className="monthly-route-detail-performance__empty d-flex align-items-center justify-content-center text-muted small">
+                            No monthly sheet data for this calendar year.
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <div className="monthly-route-detail-performance__intro text-muted small mb-0">
+                    Revenue chart appears when monthly sheet testing history exists for this route.
+                  </div>
+                )}
+              </Card.Body>
+            </Card>
           </Accordion.Body>
         </Accordion.Item>
 
