@@ -632,7 +632,11 @@ class MonthlyRouteRun(db.Model):
         index=True,
     )
     month_date = db.Column(db.Date, nullable=False)
+    #: First time the run file / worksheet rows existed (staff open, CSV import, etc.).
+    opened_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    #: Field technicians explicitly started the run (portal ``POST …/runs``); not auto-set on browse.
     started_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    #: Run marked completed (office / future workflow).
     completed_at = db.Column(db.DateTime(timezone=True), nullable=True)
     status = db.Column(db.String(16), nullable=False, server_default="open")
     source = db.Column(db.String(32), nullable=False, server_default="technician_app")

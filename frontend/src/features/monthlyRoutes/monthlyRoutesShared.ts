@@ -221,8 +221,11 @@ export type TechnicianWorksheetRun = {
   month_date: string
   /** ``open`` until the run is completed; future ``completed``. */
   status: string
-  /** ISO timestamp set the first time the worksheet is opened for this run. */
+  /** ISO timestamp when the run file / worksheet rows first existed (browse, import, etc.). */
+  opened_at: string | null
+  /** ISO timestamp when field techs explicitly started the run (portal ``Start Run``). */
   started_at: string | null
+  /** ISO timestamp when the run was marked completed (office / workflow). */
   completed_at: string | null
   /** Where the run was created: ``technician_app``, ``csv_import``, ``office_manual``. */
   source: string
@@ -233,6 +236,14 @@ export type TechnicianWorksheetRun = {
    * Skip / Clear / Add Deficiency) to a static Tested / Skipped:reason label.
    */
   is_historical: boolean
+}
+
+/** Run marked finished (CSV import is blocked until staff reopens). */
+export function worksheetRunExplicitlyCompleted(run: TechnicianWorksheetRun | null | undefined): boolean {
+  if (!run) return false
+  const ts = (run.completed_at || '').trim()
+  if (ts.length > 0) return true
+  return (run.status || '').trim().toLowerCase() === 'completed'
 }
 
 export type TechnicianWorksheetPayload = {
@@ -459,7 +470,8 @@ export function monthFirstIsoLocalToday(reference: Date = new Date()): string {
   return toMonthKey(reference.getFullYear(), reference.getMonth() + 1)
 }
 
-const PACIFIC_TZ = 'America/Los_Angeles'
+/** Matches backend ``PACIFIC_TZ`` (``America/Vancouver`` in ``app.routes.monthly_routes``). */
+const PACIFIC_TZ = 'America/Vancouver'
 
 /**
  * First-of-month ``YYYY-MM-01`` for the calendar month containing ``reference`` in Pacific time
@@ -469,12 +481,16 @@ export function monthFirstIsoPacificToday(reference: Date = new Date()): string 
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: PACIFIC_TZ,
     year: 'numeric',
-    month: '2-digit',
+    month: 'numeric',
   }).formatToParts(reference)
   const y = parts.find((p) => p.type === 'year')?.value
   const mo = parts.find((p) => p.type === 'month')?.value
-  if (!y || !mo) return monthFirstIsoLocalToday(reference)
-  return `${y}-${mo}-01`
+  const yi = y ? parseInt(y, 10) : NaN
+  const mi = mo ? parseInt(mo, 10) : NaN
+  if (!Number.isFinite(yi) || !Number.isFinite(mi) || mi < 1 || mi > 12) {
+    return monthFirstIsoLocalToday(reference)
+  }
+  return toMonthKey(yi, mi)
 }
 
 export function addCalendarMonths(monthFirstIso: string, delta: number): string | null {

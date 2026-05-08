@@ -13,10 +13,12 @@ import {
 } from 'react'
 import { flushSync } from 'react-dom'
 import { Alert, Badge, Button, Card, Modal, Spinner, Table } from 'react-bootstrap'
-import { Link, useLocation, useParams } from 'react-router-dom'
+import { Link, useMatch, useParams } from 'react-router-dom'
 import { parseMonitoringSheetDisplay } from '../features/monthlyRoutes/monitoringSheetDisplay'
 import {
+  monthFirstIsoPacificToday,
   parseYearMonth,
+  worksheetRunExplicitlyCompleted,
   type TechnicianWorksheetAuditEvent,
   type TechnicianWorksheetPayload,
   type TechnicianWorksheetRow,
@@ -240,8 +242,8 @@ function WorksheetTableColGroup() {
 
 export default function TechnicianWorksheetPage() {
   const { routeId, monthIso } = useParams<{ routeId: string; monthIso: string }>()
-  const location = useLocation()
-  const isPortalMode = location.pathname.startsWith('/tech/')
+  /** Route-driven detection (works with Router ``basename``); ``pathname.startsWith('/tech/')`` misses subpath deploys. */
+  const isPortalMode = useMatch({ path: '/tech/route/:routeId/worksheet/:monthIso', end: true }) != null
   const idNum = routeId ? parseInt(routeId, 10) : NaN
   const monthQuery = (monthIso || '').trim()
   const monthOk = MONTH_FIRST_RE.test(monthQuery) && parseYearMonth(monthQuery) != null
@@ -249,8 +251,8 @@ export default function TechnicianWorksheetPage() {
   const [payload, setPayload] = useState<TechnicianWorksheetPayload | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  /** Portal-only: worksheet GET returned ``run_not_started`` (open route hub first). */
-  const [portalRunNotStarted, setPortalRunNotStarted] = useState(false)
+  const [portalStartingRun, setPortalStartingRun] = useState(false)
+  const [runLifecycleBusy, setRunLifecycleBusy] = useState(false)
   const [syncState, setSyncState] = useState<SyncState>('synced')
   const [auditForRow, setAuditForRow] = useState<TechnicianWorksheetRow | null>(null)
   const [auditEvents, setAuditEvents] = useState<TechnicianWorksheetAuditEvent[]>([])
@@ -324,9 +326,9 @@ export default function TechnicianWorksheetPage() {
         setLoading(false)
       }
       setError(null)
-      setPortalRunNotStarted(false)
       try {
         const qs = new URLSearchParams({ month: monthQuery })
+        if (isPortalMode) qs.set('tech_portal', '1')
         const data = await apiJson<TechnicianWorksheetPayload>(
           `/api/monthly_routes/routes/${idNum}/worksheet?${qs.toString()}`,
           { signal }
@@ -337,15 +339,7 @@ export default function TechnicianWorksheetPage() {
         setSyncState('synced')
       } catch (e) {
         if (isAbortError(e)) return
-        const code =
-          typeof e === 'object' && e !== null && 'code' in e
-            ? String((e as { code?: string }).code || '')
-            : ''
-        if (isPortalMode && code === 'run_not_started') {
-          setPortalRunNotStarted(true)
-          setPayload(null)
-          setSyncState('saved_offline')
-        } else if (!cached) {
+        if (!cached) {
           setError('Unable to load worksheet.')
           setSyncState('saved_offline')
         }
@@ -355,6 +349,97 @@ export default function TechnicianWorksheetPage() {
     },
     [routeId, idNum, monthOk, monthQuery, isPortalMode]
   )
+
+  const onPortalStartRun = useCallback(async () => {
+    if (!isPortalMode || Number.isNaN(idNum)) return
+    if (payload?.run != null && payload.run.started_at != null) return
+    setPortalStartingRun(true)
+    try {
+      await apiJson<{ run: { month_date: string } }>(`/api/technician_portal/routes/${idNum}/runs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      })
+      await load()
+    } catch {
+      window.alert('Could not start run. Try again.')
+    } finally {
+      setPortalStartingRun(false)
+    }
+  }, [isPortalMode, idNum, payload?.run, load])
+
+  const onPortalCompleteRun = useCallback(async () => {
+    if (!isPortalMode || Number.isNaN(idNum) || !monthOk) return
+    const run = payload?.run
+    if (!run?.started_at || worksheetRunExplicitlyCompleted(run)) return
+    setRunLifecycleBusy(true)
+    try {
+      await apiJson(`/api/technician_portal/routes/${idNum}/runs/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ month_date: monthQuery }),
+      })
+      await load()
+    } catch {
+      window.alert('Could not complete run. Try again.')
+    } finally {
+      setRunLifecycleBusy(false)
+    }
+  }, [isPortalMode, idNum, monthOk, monthQuery, payload?.run, load])
+
+  const onPortalReopenRun = useCallback(async () => {
+    if (!isPortalMode || Number.isNaN(idNum) || !monthOk || payload?.run == null) return
+    if (!worksheetRunExplicitlyCompleted(payload.run)) return
+    setRunLifecycleBusy(true)
+    try {
+      await apiJson(`/api/technician_portal/routes/${idNum}/runs/reopen`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ month_date: monthQuery }),
+      })
+      await load()
+    } catch {
+      window.alert('Could not reopen run. Try again.')
+    } finally {
+      setRunLifecycleBusy(false)
+    }
+  }, [isPortalMode, idNum, monthOk, monthQuery, payload?.run, load])
+
+  const onStaffCompleteRun = useCallback(async () => {
+    if (isPortalMode || Number.isNaN(idNum) || !monthOk || payload?.run == null) return
+    if (worksheetRunExplicitlyCompleted(payload.run)) return
+    setRunLifecycleBusy(true)
+    try {
+      await apiJson(`/api/monthly_routes/routes/${idNum}/runs/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ month_date: monthQuery }),
+      })
+      await load()
+    } catch {
+      window.alert('Could not mark run complete.')
+    } finally {
+      setRunLifecycleBusy(false)
+    }
+  }, [isPortalMode, idNum, monthOk, monthQuery, payload?.run, load])
+
+  const onStaffReopenRun = useCallback(async () => {
+    if (isPortalMode || Number.isNaN(idNum) || !monthOk || payload?.run == null) return
+    if (!worksheetRunExplicitlyCompleted(payload.run)) return
+    setRunLifecycleBusy(true)
+    try {
+      await apiJson(`/api/monthly_routes/routes/${idNum}/runs/reopen`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ month_date: monthQuery }),
+      })
+      await load()
+    } catch {
+      window.alert('Could not reopen run.')
+    } finally {
+      setRunLifecycleBusy(false)
+    }
+  }, [isPortalMode, idNum, monthOk, monthQuery, payload?.run, load])
 
   const loadRef = useRef(load)
   useEffect(() => {
@@ -472,7 +557,8 @@ export default function TechnicianWorksheetPage() {
   }, [runSyncQueue])
 
   /** SSE: notify when worksheet revision changes (session cookie auth). */
-  const sseEnabled = payload !== null && monthOk && !Number.isNaN(idNum)
+  const sseEnabled =
+    payload !== null && payload.run !== null && monthOk && !Number.isNaN(idNum)
 
   useEffect(() => {
     if (!sseEnabled) return
@@ -499,6 +585,7 @@ export default function TechnicianWorksheetPage() {
       clearReconnect()
       if (!navigator.onLine || document.visibilityState !== 'visible') return
       const qs = new URLSearchParams({ month: monthQuery })
+      if (isPortalMode) qs.set('tech_portal', '1')
       const url = `/api/monthly_routes/routes/${idNum}/worksheet/stream?${qs.toString()}`
       try {
         es = new EventSource(url)
@@ -557,7 +644,7 @@ export default function TechnicianWorksheetPage() {
       es?.close()
       es = null
     }
-  }, [sseEnabled, idNum, monthQuery, applyRemoteWorksheetRefresh])
+  }, [sseEnabled, idNum, monthQuery, isPortalMode, applyRemoteWorksheetRefresh])
 
   useEffect(() => {
     const el = topbarRef.current
@@ -594,6 +681,7 @@ export default function TechnicianWorksheetPage() {
 
   const onFieldChange = useCallback(
     (row: TechnicianWorksheetRow, field: keyof WorksheetChangeSet, value: string) => {
+      if (!payload || payload.run === null) return
       const normalized = value.trim() ? value : null
       const patch = { [field]: normalized } as WorksheetChangeSet
       updateLocalRow(row.location_id, patch)
@@ -607,7 +695,7 @@ export default function TechnicianWorksheetPage() {
       })
       setSyncState('saved_offline')
     },
-    [idNum, monthQuery, updateLocalRow]
+    [idNum, monthQuery, payload, updateLocalRow]
   )
 
   const commitWorksheetGridEdit = useCallback(() => {
@@ -632,7 +720,7 @@ export default function TechnicianWorksheetPage() {
 
   const openWorksheetGridEditorState = useCallback(
     (locationId: number, column: WorksheetGridColumn, opts?: { initialDraft?: string }) => {
-      if (!payload) return false
+      if (!payload || payload.run === null) return false
       const row = payload.rows.find((r) => r.location_id === locationId)
       if (!row) return false
       const committed = worksheetGridCellValue(row, column)
@@ -779,6 +867,7 @@ export default function TechnicianWorksheetPage() {
 
   const onWorksheetGridCellKeyDown = useCallback(
     (row: TechnicianWorksheetRow, column: WorksheetGridColumn) => (e: ReactKeyboardEvent<HTMLElement>) => {
+      if (!payload || payload.run === null) return
       if (worksheetGridEditing) return
       const sel = { locationId: row.location_id, column }
       if (e.key === 'Enter') {
@@ -837,12 +926,7 @@ export default function TechnicianWorksheetPage() {
         beginWorksheetGridEdit(row.location_id, column, { initialDraft: e.key })
       }
     },
-    [
-      worksheetGridEditing,
-      beginWorksheetGridEdit,
-      worksheetGridTabNext,
-      worksheetGridMoveSelection,
-    ]
+    [payload, worksheetGridEditing, beginWorksheetGridEdit, worksheetGridTabNext, worksheetGridMoveSelection]
   )
 
   const onWorksheetFloatingEditorKeyDown = useCallback(
@@ -881,6 +965,7 @@ export default function TechnicianWorksheetPage() {
 
   const activateEditorAndFocus = useCallback(
     (key: string, el: HTMLInputElement) => {
+      if (!payload || payload.run === null) return
       if (activeEditorKey !== key) setActiveEditorKey(key)
       const focusEditor = () => {
         try {
@@ -910,11 +995,12 @@ export default function TechnicianWorksheetPage() {
         focusEditor()
       }, 0)
     },
-    [activeEditorKey]
+    [activeEditorKey, payload]
   )
 
   const queueRowChanges = useCallback(
     (row: TechnicianWorksheetRow, patch: WorksheetChangeSet) => {
+      if (!payload || payload.run === null) return
       updateLocalRow(row.location_id, patch)
       enqueueWorksheetChange({
         routeId: idNum,
@@ -926,7 +1012,7 @@ export default function TechnicianWorksheetPage() {
       })
       setSyncState('saved_offline')
     },
-    [idNum, monthQuery, updateLocalRow]
+    [idNum, monthQuery, payload, updateLocalRow]
   )
 
   const dismissSkipReasonModal = useCallback(() => {
@@ -963,11 +1049,31 @@ export default function TechnicianWorksheetPage() {
   }, [])
 
   function renderWorksheetGridColumnTd(row: TechnicianWorksheetRow, column: WorksheetGridColumn, tdClass: string) {
+    const valueDisplay = worksheetGridCellValue(row, column)
+    const cellViewContent =
+      column === 'monitoring'
+        ? renderMonitoringSheetCellView(valueDisplay)
+        : valueDisplay || '\u00a0'
+    if (!payload || payload.run === null) {
+      return (
+        <td
+          className={`${tdClass} tw-worksheet-grid-td`}
+          tabIndex={-1}
+          role="gridcell"
+          aria-label={`${WORKSHEET_GRID_COLUMN_LABELS[column]} (preview), ${row.display_address}`}
+        >
+          <div className="tw-worksheet-cell-surface tw-worksheet-cell-surface--excel-shell">
+            <div className="tw-worksheet-cell-flow">
+              <div className="tw-worksheet-cell-view">{cellViewContent}</div>
+            </div>
+          </div>
+        </td>
+      )
+    }
     const selected =
       worksheetGridSelection?.locationId === row.location_id && worksheetGridSelection.column === column
     const showEditor = worksheetGridEditing && selected
-    const valueDisplay = worksheetGridCellValue(row, column)
-    const cellViewContent =
+    const cellViewContentInteractive =
       column === 'monitoring' && !showEditor ? renderMonitoringSheetCellView(valueDisplay) : valueDisplay || '\u00a0'
     /** Selection ref is updated synchronously on select so touch second-tap sees correct state. */
     const alreadySelectedNotEditing =
@@ -1073,7 +1179,7 @@ export default function TechnicianWorksheetPage() {
         <div className="tw-worksheet-cell-surface tw-worksheet-cell-surface--excel-shell">
           <div className="tw-worksheet-cell-flow">
             <div className={`tw-worksheet-cell-view${showEditor ? ' tw-worksheet-cell-view--under-editor' : ''}`}>
-              {cellViewContent}
+              {cellViewContentInteractive}
             </div>
           </div>
         </div>
@@ -1100,6 +1206,15 @@ export default function TechnicianWorksheetPage() {
       </td>
     )
   }
+
+  const worksheetFrozenNoRun = payload !== null && payload.run == null
+  /** Portal + current Pacific month: show until field run is explicitly started (preview ``run === null`` or materialized but ``started_at`` unset). */
+  const showPortalStartRun =
+    isPortalMode &&
+    payload !== null &&
+    monthOk &&
+    payload.month_date === monthFirstIsoPacificToday() &&
+    (payload.run == null || payload.run.started_at == null)
 
   const invalidParams =
     !routeId || Number.isNaN(idNum) || !monthIso ? (
@@ -1133,16 +1248,34 @@ export default function TechnicianWorksheetPage() {
                 </Link>
                 <div>
                   <div className="fw-semibold">{payload.route.label}</div>
-                  <div className="small text-muted">{formatMonthHeading(payload.month_date)} run</div>
-                  {(() => {
-                    const startedLabel = formatRunStartedAt(payload.run?.started_at ?? null)
-                    return startedLabel ? (
-                      <div className="small text-muted">Run started {startedLabel}</div>
-                    ) : null
-                  })()}
+                  <div className="small text-muted">
+                    {worksheetFrozenNoRun ? (
+                      <>
+                        {formatMonthHeading(payload.month_date)} — preview (run not started)
+                      </>
+                    ) : (
+                      <>{formatMonthHeading(payload.month_date)} run</>
+                    )}
+                  </div>
+                  {!worksheetFrozenNoRun ? (
+                    (() => {
+                      const startedLabel = formatRunStartedAt(payload.run?.started_at ?? null)
+                      const completedLabel = formatRunStartedAt(payload.run?.completed_at ?? null)
+                      return (
+                        <>
+                          {startedLabel ? (
+                            <div className="small text-muted">Field run started {startedLabel}</div>
+                          ) : null}
+                          {completedLabel ? (
+                            <div className="small text-muted">Run completed {completedLabel}</div>
+                          ) : null}
+                        </>
+                      )
+                    })()
+                  ) : null}
                 </div>
               </div>
-              <div className="d-flex align-items-center gap-2">
+              <div className="d-flex align-items-center gap-2 flex-wrap justify-content-end">
                 {completionPending(idNum, monthQuery) ? <Badge bg="warning">Pending Confirmation</Badge> : null}
                 <Badge bg={syncState === 'conflict' ? 'danger' : syncState === 'syncing' ? 'info' : syncState === 'saved_offline' ? 'secondary' : 'success'}>
                   {syncState === 'conflict'
@@ -1153,16 +1286,111 @@ export default function TechnicianWorksheetPage() {
                         ? 'Saved offline'
                         : 'Synced'}
                 </Badge>
+                {showPortalStartRun ? (
+                  <Button
+                    size="sm"
+                    variant="success"
+                    disabled={portalStartingRun}
+                    onClick={() => void onPortalStartRun()}
+                  >
+                    {portalStartingRun ? (
+                      <>
+                        <Spinner animation="border" size="sm" className="me-1" aria-hidden />
+                        Starting…
+                      </>
+                    ) : (
+                      'Start Run'
+                    )}
+                  </Button>
+                ) : null}
+                {isPortalMode &&
+                payload !== null &&
+                payload.run != null &&
+                worksheetRunExplicitlyCompleted(payload.run) ? (
+                  <Button
+                    size="sm"
+                    variant="outline-warning"
+                    disabled={runLifecycleBusy || portalStartingRun}
+                    onClick={() => void onPortalReopenRun()}
+                  >
+                    {runLifecycleBusy ? (
+                      <>
+                        <Spinner animation="border" size="sm" className="me-1" aria-hidden />
+                        Reopening…
+                      </>
+                    ) : (
+                      'Reopen run'
+                    )}
+                  </Button>
+                ) : null}
+                {isPortalMode &&
+                payload !== null &&
+                payload.run != null &&
+                payload.run.started_at != null &&
+                !worksheetRunExplicitlyCompleted(payload.run) ? (
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    disabled={runLifecycleBusy || portalStartingRun}
+                    onClick={() => void onPortalCompleteRun()}
+                  >
+                    {runLifecycleBusy ? (
+                      <>
+                        <Spinner animation="border" size="sm" className="me-1" aria-hidden />
+                        Completing…
+                      </>
+                    ) : (
+                      'Complete run'
+                    )}
+                  </Button>
+                ) : null}
+                {!isPortalMode && payload !== null && payload.run != null ? (
+                  worksheetRunExplicitlyCompleted(payload.run) ? (
+                    <Button
+                      size="sm"
+                      variant="outline-warning"
+                      disabled={runLifecycleBusy}
+                      onClick={() => void onStaffReopenRun()}
+                    >
+                      {runLifecycleBusy ? (
+                        <>
+                          <Spinner animation="border" size="sm" className="me-1" aria-hidden />
+                          Reopening…
+                        </>
+                      ) : (
+                        'Reopen run'
+                      )}
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline-primary"
+                      disabled={runLifecycleBusy}
+                      onClick={() => void onStaffCompleteRun()}
+                    >
+                      {runLifecycleBusy ? (
+                        <>
+                          <Spinner animation="border" size="sm" className="me-1" aria-hidden />
+                          Saving…
+                        </>
+                      ) : (
+                        'Mark run complete'
+                      )}
+                    </Button>
+                  )
+                ) : null}
                 {queueLength > 0 ? <span className="small text-muted">{queueLength} queued</span> : null}
-                <Button
-                  size="sm"
-                  variant="outline-secondary"
-                  onClick={() => {
-                    markCompletionPending(idNum, monthQuery, true)
-                  }}
-                >
-                  Complete (Offline)
-                </Button>
+                {!worksheetFrozenNoRun ? (
+                  <Button
+                    size="sm"
+                    variant="outline-secondary"
+                    onClick={() => {
+                      markCompletionPending(idNum, monthQuery, true)
+                    }}
+                  >
+                    Complete (Offline)
+                  </Button>
+                ) : null}
               </div>
             </div>
             {syncMessage ? <div className="small text-danger mt-1 px-3">{syncMessage}</div> : null}
@@ -1206,23 +1434,6 @@ export default function TechnicianWorksheetPage() {
           <Spinner animation="border" size="sm" /> Loading worksheet…
         </div>
       ) : null}
-      {portalRunNotStarted ? (
-        <Alert variant="warning" className="mt-2">
-          <p className="mb-2">
-            No run file exists for this month yet. Go back to the route page and tap <strong>Start new run</strong>, or
-            open a previous month below.
-          </p>
-          {!Number.isNaN(idNum) ? (
-            <Link className="btn btn-primary btn-sm" to={`/tech/route/${idNum}`}>
-              Back to route
-            </Link>
-          ) : (
-            <Link className="btn btn-primary btn-sm" to="/tech/start">
-              Back to routes
-            </Link>
-          )}
-        </Alert>
-      ) : null}
       {error ? <Alert variant="danger">{error}</Alert> : null}
       {payload ? (
         <>
@@ -1262,7 +1473,8 @@ export default function TechnicianWorksheetPage() {
                           const hasTimeIn = displayTimeIn.length > 0
                           const hasTimeOut = displayTimeOut.length > 0
                           const annualMatch = isAnnualForMonth(row.annual_month, payload.month_date)
-                          const showOfficeStatusIcons = isHistorical && !isPortalMode
+                          /** Same icons as staff worksheet for tested / skipped (historical read-only rows). */
+                          const showHistoricalStatusIcons = isHistorical
                           const worksheetResultKey = (row.result_status || '').trim().toLowerCase()
                           const worksheetHasTestedOrSkipped =
                             worksheetResultKey === 'tested' || worksheetResultKey === 'skipped'
@@ -1278,6 +1490,7 @@ export default function TechnicianWorksheetPage() {
                             )
                           const showWorksheetTimeOutLine = hasTimeOut && shouldShowWorksheetTimeOutRow(displayTimeIn, displayTimeOut)
                           const showAnnualPromptBeforeTesting =
+                            !worksheetFrozenNoRun &&
                             !isHistorical &&
                             !hasTimeIn &&
                             annualMatch &&
@@ -1304,9 +1517,11 @@ export default function TechnicianWorksheetPage() {
                               key={`ring:${row.location_id}:${row.month_date}:${row.ring ?? ''}`}
                               className={`form-control form-control-sm ${isEditorActive(ringKey) ? '' : 'tw-readonly-field'}`}
                               defaultValue={row.ring ?? ''}
-                              readOnly={!isEditorActive(ringKey)}
+                              readOnly={worksheetFrozenNoRun || !isEditorActive(ringKey)}
                               autoFocus={isEditorActive(ringKey)}
-                              onClick={(e) => activateEditorAndFocus(ringKey, e.currentTarget)}
+                              onClick={
+                                worksheetFrozenNoRun ? undefined : (e) => activateEditorAndFocus(ringKey, e.currentTarget)
+                              }
                               onBlur={(e) => {
                                 onFieldChange(row, 'ring', e.target.value)
                                 if (activeEditorKey === ringKey) setActiveEditorKey(null)
@@ -1317,9 +1532,13 @@ export default function TechnicianWorksheetPage() {
                               key={`key:${row.location_id}:${row.month_date}:${row.key_number ?? ''}`}
                               className={`form-control form-control-sm ${isEditorActive(keyNumberKey) ? '' : 'tw-readonly-field'}`}
                               defaultValue={row.key_number ?? ''}
-                              readOnly={!isEditorActive(keyNumberKey)}
+                              readOnly={worksheetFrozenNoRun || !isEditorActive(keyNumberKey)}
                               autoFocus={isEditorActive(keyNumberKey)}
-                              onClick={(e) => activateEditorAndFocus(keyNumberKey, e.currentTarget)}
+                              onClick={
+                                worksheetFrozenNoRun
+                                  ? undefined
+                                  : (e) => activateEditorAndFocus(keyNumberKey, e.currentTarget)
+                              }
                               onBlur={(e) => {
                                 onFieldChange(row, 'key_number', e.target.value)
                                 if (activeEditorKey === keyNumberKey) setActiveEditorKey(null)
@@ -1330,9 +1549,13 @@ export default function TechnicianWorksheetPage() {
                               key={`annual:${row.location_id}:${row.month_date}:${row.annual_month ?? ''}`}
                               className={`form-control form-control-sm ${isEditorActive(annualKey) ? '' : 'tw-readonly-field'}`}
                               defaultValue={row.annual_month ?? ''}
-                              readOnly={!isEditorActive(annualKey)}
+                              readOnly={worksheetFrozenNoRun || !isEditorActive(annualKey)}
                               autoFocus={isEditorActive(annualKey)}
-                              onClick={(e) => activateEditorAndFocus(annualKey, e.currentTarget)}
+                              onClick={
+                                worksheetFrozenNoRun
+                                  ? undefined
+                                  : (e) => activateEditorAndFocus(annualKey, e.currentTarget)
+                              }
                               onBlur={(e) => {
                                 onFieldChange(row, 'annual_month', e.target.value)
                                 if (activeEditorKey === annualKey) setActiveEditorKey(null)
@@ -1346,11 +1569,13 @@ export default function TechnicianWorksheetPage() {
                         {renderWorksheetGridColumnTd(row, 'inspection_tech_notes', 'tw-col-notes')}
                         <td className="tw-col-action">
                           <div className={`d-grid gap-1${isHistorical ? ' text-center' : ''}`}>
-                            {isHistorical ? (
+                            {worksheetFrozenNoRun ? (
+                              <div className="small text-muted text-center">Start run to log testing.</div>
+                            ) : isHistorical ? (
                               <>
                                 {worksheetResultKey === 'tested' ? (
                                   <div className="fw-semibold small d-flex align-items-center justify-content-center gap-1">
-                                    {showOfficeStatusIcons ? (
+                                    {showHistoricalStatusIcons ? (
                                       <i
                                         className="bi bi-check-circle-fill text-success flex-shrink-0"
                                         style={{ fontSize: '1rem' }}
@@ -1363,7 +1588,7 @@ export default function TechnicianWorksheetPage() {
                                 ) : worksheetResultKey === 'skipped' ? (
                                   <>
                                     <div className="fw-semibold small d-flex align-items-center justify-content-center gap-1">
-                                      {showOfficeStatusIcons ? (
+                                      {showHistoricalStatusIcons ? (
                                         <span
                                           className="rounded-circle bg-warning flex-shrink-0 d-inline-block tw-office-skipped-dot"
                                           title="Skipped"
@@ -1561,9 +1786,11 @@ export default function TechnicianWorksheetPage() {
                                 )}
                               </>
                             )}
-                            <Button variant="link" size="sm" className="px-0 tw-audit-link" onClick={() => void loadAudit(row)}>
-                              Audit
-                            </Button>
+                            {!worksheetFrozenNoRun ? (
+                              <Button variant="link" size="sm" className="px-0 tw-audit-link" onClick={() => void loadAudit(row)}>
+                                Audit
+                              </Button>
+                            ) : null}
                           </div>
                         </td>
                             </>

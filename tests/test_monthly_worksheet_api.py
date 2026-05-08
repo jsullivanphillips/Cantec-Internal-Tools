@@ -73,6 +73,49 @@ def worksheet_client(monkeypatch):
 
 
 @pytest.fixture
+def hybrid_portal_staff_client(monkeypatch):
+    """Staff session and PIN portal unlocked (common when testing ``/tech/`` while logged into office)."""
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    app = create_app()
+    app.config["TESTING"] = True
+    app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///:memory:"
+    app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+    with app.app_context():
+        db.metadata.create_all(
+            db.engine,
+            tables=[
+                MonthlyRoute.__table__,
+                Key.__table__,
+                MonitoringCompany.__table__,
+                MonthlyRouteLocation.__table__,
+                MonthlyRouteRun.__table__,
+                MonthlyRouteTestHistory.__table__,
+                MonthlyRouteWorksheetAuditEvent.__table__,
+            ],
+        )
+        with app.test_client() as client:
+            with client.session_transaction() as sess:
+                sess["username"] = "staff.one"
+                sess["authenticated"] = True
+                sess["tech_portal_unlocked"] = True
+            yield client, app
+        db.session.remove()
+        db.metadata.drop_all(
+            db.engine,
+            tables=[
+                MonthlyRouteWorksheetAuditEvent.__table__,
+                MonthlyRouteTestHistory.__table__,
+                MonthlyRouteRun.__table__,
+                MonthlyRouteLocation.__table__,
+                MonitoringCompany.__table__,
+                Key.__table__,
+                MonthlyRoute.__table__,
+            ],
+        )
+
+
+@pytest.fixture
 def portal_only_client(monkeypatch):
     """PIN portal session without ``authenticated`` (lazy worksheet run creation)."""
     monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
@@ -529,9 +572,8 @@ def test_staff_worksheet_auto_creates_run_when_missing(worksheet_client):
     assert len(body["rows"]) == 1
 
 
-def test_portal_worksheet_get_run_not_started_without_monthly_route_run(
-    portal_only_client, monkeypatch,
-):
+def test_portal_worksheet_preview_without_monthly_route_run(portal_only_client, monkeypatch):
+    """Portal GET returns read-only preview rows when no ``MonthlyRouteRun`` exists yet."""
     from app.routes import monthly_routes as mr_mod
 
     monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
@@ -556,9 +598,11 @@ def test_portal_worksheet_get_run_not_started_without_monthly_route_run(
         db.session.commit()
 
     res = client.get("/api/monthly_routes/routes/1/worksheet?month=2026-05-01")
-    assert res.status_code == 404
+    assert res.status_code == 200
     body = res.get_json()
-    assert body.get("code") == "run_not_started"
+    assert body.get("run") is None
+    assert len(body.get("rows") or []) == 1
+    assert body["rows"][0]["display_address"] == "123 Test St"
 
 
 def test_portal_post_runs_then_get_worksheet(portal_only_client, monkeypatch):
@@ -589,12 +633,59 @@ def test_portal_post_runs_then_get_worksheet(portal_only_client, monkeypatch):
     assert post.status_code == 200
     started = post.get_json()
     assert started["run"]["month_date"] == "2026-05-01"
+    assert started["run"]["opened_at"] is not None
+    assert started["run"]["started_at"] is not None
 
     res = client.get("/api/monthly_routes/routes/1/worksheet?month=2026-05-01")
     assert res.status_code == 200
     body = res.get_json()
     assert body["run"] is not None
     assert len(body["rows"]) == 1
+
+
+def test_portal_reopen_completed_run(portal_only_client, monkeypatch):
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
+
+    client, app = portal_only_client
+    with app.app_context():
+        route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
+        loc = MonthlyRouteLocation(
+            id=101,
+            address="123 Test St",
+            address_normalized="123 test st",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
+            building=None,
+            building_normalized="",
+            status_normalized="active",
+            status_raw="Active",
+            monthly_route_id=1,
+            annual_month="May",
+        )
+        run = MonthlyRouteRun(
+            id=5001,
+            monthly_route_id=1,
+            month_date=date(2026, 5, 1),
+            opened_at=datetime(2026, 5, 1, 10, 0, tzinfo=PACIFIC_TZ),
+            started_at=datetime(2026, 5, 1, 10, 5, tzinfo=PACIFIC_TZ),
+            completed_at=datetime(2026, 5, 1, 14, 0, tzinfo=PACIFIC_TZ),
+            status="completed",
+            source="technician_app",
+        )
+        db.session.add_all([route, loc, run])
+        db.session.commit()
+
+    res = client.post(
+        "/api/technician_portal/routes/1/runs/reopen",
+        json={"month_date": "2026-05-01"},
+        content_type="application/json",
+    )
+    assert res.status_code == 200, res.get_data(as_text=True)
+    body = res.get_json()
+    assert body["run"]["status"] == "open"
+    assert body["run"]["completed_at"] is None
 
 
 def test_portal_route_summary(portal_only_client, monkeypatch):
@@ -635,3 +726,118 @@ def test_portal_route_summary(portal_only_client, monkeypatch):
     assert body["current_month_run"] is None
     assert len(body["prior_runs"]) == 1
     assert body["prior_runs"][0]["month_date"] == "2026-04-01"
+
+
+def test_hybrid_staff_portal_uses_tech_portal_param_for_lazy_worksheet(monkeypatch, hybrid_portal_staff_client):
+    """``/tech/`` worksheet reads must pass ``tech_portal=1`` or staff GET behaves like staff materialization."""
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
+
+    client, app = hybrid_portal_staff_client
+    with app.app_context():
+        route = MonthlyRoute(id=79, route_number=79, weekday_iso=0, week_occurrence=1)
+        loc = MonthlyRouteLocation(
+            id=7901,
+            address="Hybrid Lazy St",
+            address_normalized="hybrid lazy st",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
+            building=None,
+            building_normalized="",
+            status_normalized="active",
+            status_raw="Active",
+            monthly_route_id=79,
+            annual_month="May",
+        )
+        run = MonthlyRouteRun(
+            id=79001,
+            monthly_route_id=79,
+            month_date=date(2026, 5, 1),
+            started_at=None,
+            status="open",
+            source="office_manual",
+        )
+        db.session.add_all([route, loc, run])
+        db.session.commit()
+
+    res_lazy = client.get(
+        "/api/monthly_routes/routes/79/worksheet?month=2026-05-01&tech_portal=1",
+    )
+    assert res_lazy.status_code == 200
+    lazy_body = res_lazy.get_json()
+    assert lazy_body["run"] is not None
+    assert lazy_body["run"]["started_at"] is None
+    assert lazy_body["run"]["opened_at"] is not None
+    with app.app_context():
+        run_row = MonthlyRouteRun.query.filter_by(monthly_route_id=79, month_date=date(2026, 5, 1)).one()
+        assert run_row.started_at is None
+
+    res_staff = client.get("/api/monthly_routes/routes/79/worksheet?month=2026-05-01")
+    assert res_staff.status_code == 200
+    staff_body = res_staff.get_json()
+    assert staff_body["run"]["started_at"] is None
+    assert staff_body["run"]["opened_at"] is not None
+
+    with app.app_context():
+        run_row = MonthlyRouteRun.query.filter_by(monthly_route_id=79, month_date=date(2026, 5, 1)).one()
+        run_row.started_at = None
+        db.session.commit()
+
+    res_lazy_after = client.get(
+        "/api/monthly_routes/routes/79/worksheet?month=2026-05-01&tech_portal=1",
+    )
+    assert res_lazy_after.get_json()["run"]["started_at"] is None
+    with app.app_context():
+        run_row = MonthlyRouteRun.query.filter_by(monthly_route_id=79, month_date=date(2026, 5, 1)).one()
+        assert run_row.started_at is None
+
+
+def test_portal_routes_lookup_accepts_r_prefix(portal_only_client):
+    client, app = portal_only_client
+    with app.app_context():
+        route = MonthlyRoute(id=55, route_number=18, weekday_iso=1, week_occurrence=3)
+        db.session.add(route)
+        db.session.commit()
+    res = client.get("/api/technician_portal/routes_lookup?route_number=R18")
+    assert res.status_code == 200
+    assert res.get_json()["route"]["route_number"] == 18
+
+
+def test_portal_routes_suggest_orders_exact_first(portal_only_client):
+    client, app = portal_only_client
+    with app.app_context():
+        rows = [
+            MonthlyRoute(id=201, route_number=1, weekday_iso=0, week_occurrence=1),
+            MonthlyRoute(id=202, route_number=12, weekday_iso=0, week_occurrence=1),
+            MonthlyRoute(id=203, route_number=13, weekday_iso=0, week_occurrence=1),
+            MonthlyRoute(id=204, route_number=100, weekday_iso=0, week_occurrence=1),
+            MonthlyRoute(id=205, route_number=18, weekday_iso=0, week_occurrence=1),
+        ]
+        db.session.add_all(rows)
+        db.session.commit()
+    res = client.get("/api/technician_portal/routes_suggest?q=1")
+    assert res.status_code == 200
+    nums = [r["route_number"] for r in res.get_json()["routes"]]
+    assert nums == [1, 12, 13, 18, 100]
+
+
+def test_portal_routes_suggest_accepts_r_prefix(portal_only_client):
+    client, app = portal_only_client
+    with app.app_context():
+        rows = [
+            MonthlyRoute(id=301, route_number=1, weekday_iso=0, week_occurrence=1),
+            MonthlyRoute(id=302, route_number=12, weekday_iso=0, week_occurrence=1),
+        ]
+        db.session.add_all(rows)
+        db.session.commit()
+    res = client.get("/api/technician_portal/routes_suggest?q=R1")
+    assert res.status_code == 200
+    assert [r["route_number"] for r in res.get_json()["routes"]][:2] == [1, 12]
+
+
+def test_portal_routes_suggest_empty_returns_empty(portal_only_client):
+    client, app = portal_only_client
+    res = client.get("/api/technician_portal/routes_suggest?q=")
+    assert res.status_code == 200
+    assert res.get_json()["routes"] == []

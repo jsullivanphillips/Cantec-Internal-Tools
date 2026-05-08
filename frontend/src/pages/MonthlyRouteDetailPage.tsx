@@ -425,8 +425,10 @@ function UploadRunFromCsvModal({
           <>
             <p className="text-muted mb-3">
               Upload the technician inspection sheet (the same CSV you use on the route).
-              The page detects the route and month from the preamble; you'll get an error
-              if the CSV is for a different route or if a tech has already started this run.
+              The page detects the route and month from the preamble; you'll get an error if the CSV is for a
+              different route. If this month's run has been marked{' '}
+              <span className="fw-semibold text-body">completed</span> on the worksheet, reopen it there before
+              uploading again—started-but-open runs can still be refreshed from CSV.
             </p>
             <Form.Group controlId="upload-run-csv-file" className="mb-3">
               <Form.Label>CSV file</Form.Label>

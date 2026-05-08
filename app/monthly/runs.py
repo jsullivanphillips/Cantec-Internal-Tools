@@ -28,29 +28,33 @@ def get_or_create_monthly_route_run(
     month_first: date,
     *,
     source: str = "technician_app",
-    set_started_at: bool = True,
+    set_started_at: bool = False,
 ) -> MonthlyRouteRun:
     """Idempotently fetch (or create) the ``MonthlyRouteRun`` for ``(route, month)``.
 
-    On first call, stamps ``started_at`` (when ``set_started_at``) and the given
-    ``source``. On subsequent calls, leaves the existing run intact: source is
-    not downgraded from a human surface to ``csv_import``, and ``started_at`` is
-    only filled if it was previously NULL. Race-safe: a concurrent caller may
-    have created the row, so we retry-fetch on IntegrityError.
+    New rows get ``opened_at`` when created (run file exists). ``started_at`` is the
+    **field run start** and is only set when ``set_started_at`` is true (legacy callers)
+    or when the technician portal explicitly starts the run — not when staff merely opens
+    the worksheet.
+
+    On subsequent calls, leaves the existing run intact: source is not downgraded from a
+    human surface to ``csv_import``. Race-safe: retry-fetch on IntegrityError.
     """
+    now = datetime.now(PACIFIC_TZ)
     run = MonthlyRouteRun.query.filter_by(
         monthly_route_id=route_id, month_date=month_first
     ).one_or_none()
     if run is not None:
         if set_started_at and run.started_at is None:
-            run.started_at = datetime.now(PACIFIC_TZ)
+            run.started_at = now
             db.session.commit()
         return run
     run = MonthlyRouteRun(
         id=_next_monthly_route_run_id(),
         monthly_route_id=route_id,
         month_date=month_first,
-        started_at=datetime.now(PACIFIC_TZ) if set_started_at else None,
+        opened_at=now,
+        started_at=now if set_started_at else None,
         status="open",
         source=source,
     )

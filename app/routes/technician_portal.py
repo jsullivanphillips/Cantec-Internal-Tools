@@ -19,7 +19,7 @@ from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 from flask import Blueprint, jsonify, request, session
-from sqlalchemy import func
+from sqlalchemy import String, case, cast, func
 
 from app.db_models import MonthlyRoute, MonthlyRouteLocation, MonthlyRouteRun, db
 
@@ -49,6 +49,19 @@ def _parse_iso_date(value: str | None) -> date | None:
 def _week_occurrence_for(d: date) -> int:
     """1-based n-th occurrence of this weekday within ``d``'s calendar month."""
     return ((d.day - 1) // 7) + 1
+
+
+def _normalize_portal_route_number_token(raw: str) -> str | None:
+    """Strip optional ``R``/``r`` prefix; return digit-only string (no leading zeros), or ``None``."""
+    s = (raw or "").strip()
+    if not s:
+        return None
+    if s[0].upper() == "R":
+        s = s[1:].strip()
+    if not s or not s.isdigit():
+        return None
+    collapsed = s.lstrip("0")
+    return collapsed if collapsed else "0"
 
 
 def _portal_pin_configured() -> str | None:
@@ -180,16 +193,50 @@ def portal_routes_today():
     )
 
 
+@technician_portal_bp.get("/routes_suggest")
+def portal_routes_suggest():
+    """Return up to 5 routes whose ``route_number`` string starts with the typed digits.
+
+    Exact numeric match is sorted first (e.g. ``q=1`` yields R1 before R12).
+    Accepts ``R18`` or ``18`` in ``q``.
+    """
+    if not session.get(SESSION_FLAG):
+        return jsonify({"error": "Portal locked", "code": "portal_locked"}), 401
+    raw = (request.args.get("q") or "").strip()
+    prefix = _normalize_portal_route_number_token(raw)
+    if not prefix:
+        return jsonify({"routes": []})
+
+    rn_text = cast(MonthlyRoute.route_number, String)
+    qry = MonthlyRoute.query.filter(rn_text.like(f"{prefix}%"))
+    exact = int(prefix)
+    primary = case((MonthlyRoute.route_number == exact, 0), else_=1)
+    rows = (
+        qry.order_by(primary.asc(), MonthlyRoute.route_number.asc()).limit(5).all()
+    )
+    ids = [int(r.id) for r in rows]
+    counts = _location_counts_for(ids)
+    return jsonify(
+        {
+            "routes": [
+                _serialize_route_for_portal(r, location_count=counts.get(int(r.id), 0))
+                for r in rows
+            ]
+        }
+    )
+
+
 @technician_portal_bp.get("/routes_lookup")
 def portal_routes_lookup():
     """Look up a single route by ``route_number`` so techs can open off-schedule routes."""
     if not session.get(SESSION_FLAG):
         return jsonify({"error": "Portal locked", "code": "portal_locked"}), 401
     raw = (request.args.get("route_number") or "").strip()
-    if not raw:
+    token = _normalize_portal_route_number_token(raw)
+    if token is None:
         return jsonify({"error": "route_number required"}), 400
     try:
-        rn = int(raw)
+        rn = int(token)
     except ValueError:
         return jsonify({"error": "route_number must be an integer"}), 400
     mr = MonthlyRoute.query.filter_by(route_number=rn).one_or_none()
@@ -256,4 +303,80 @@ def portal_start_current_month_run(route_id: int):
         create_run_if_missing=True,
     )
     assert run is not None
+    now = datetime.now(PACIFIC_TZ)
+    if run.started_at is None:
+        run.started_at = now
+    db.session.add(run)
+    db.session.commit()
+    return jsonify({"run": _serialize_run(run)})
+
+
+@technician_portal_bp.post("/routes/<int:route_id>/runs/complete")
+def portal_complete_run_for_month(route_id: int):
+    """Mark the worksheet month run completed after field Start Run (idempotent).
+
+    Body JSON must include ``month_date`` (first-of-month ISO) so reopening a prior
+    month's sheet completes that month, not the Pacific calendar current month.
+    """
+    if not session.get(SESSION_FLAG):
+        return jsonify({"error": "Portal locked", "code": "portal_locked"}), 401
+    from app.routes.monthly_routes import _run_explicitly_completed, _serialize_run
+
+    mr = MonthlyRoute.query.filter_by(id=route_id).one_or_none()
+    if mr is None:
+        return jsonify({"error": "Route not found", "code": "not_found"}), 404
+    data = request.get_json(silent=True) or {}
+    month_first = _parse_iso_date(data.get("month_date"))
+    if month_first is None:
+        return jsonify({"error": "month_date required (YYYY-MM-01)", "code": "bad_request"}), 400
+    run = MonthlyRouteRun.query.filter_by(
+        monthly_route_id=route_id, month_date=month_first
+    ).one_or_none()
+    if run is None:
+        return jsonify({"error": "Run not found", "code": "run_not_found"}), 404
+    if run.started_at is None:
+        return (
+            jsonify(
+                {
+                    "error": "Run has not been started yet",
+                    "code": "run_not_started",
+                }
+            ),
+            400,
+        )
+    if _run_explicitly_completed(run):
+        return jsonify({"run": _serialize_run(run)})
+    now = datetime.now(PACIFIC_TZ)
+    run.status = "completed"
+    run.completed_at = now
+    db.session.add(run)
+    db.session.commit()
+    return jsonify({"run": _serialize_run(run)})
+
+
+@technician_portal_bp.post("/routes/<int:route_id>/runs/reopen")
+def portal_reopen_run_for_month(route_id: int):
+    """Clear completion for the worksheet month (same effect as staff reopen)."""
+    if not session.get(SESSION_FLAG):
+        return jsonify({"error": "Portal locked", "code": "portal_locked"}), 401
+    from app.routes.monthly_routes import _run_explicitly_completed, _serialize_run
+
+    mr = MonthlyRoute.query.filter_by(id=route_id).one_or_none()
+    if mr is None:
+        return jsonify({"error": "Route not found", "code": "not_found"}), 404
+    data = request.get_json(silent=True) or {}
+    month_first = _parse_iso_date(data.get("month_date"))
+    if month_first is None:
+        return jsonify({"error": "month_date required (YYYY-MM-01)", "code": "bad_request"}), 400
+    run = MonthlyRouteRun.query.filter_by(
+        monthly_route_id=route_id, month_date=month_first
+    ).one_or_none()
+    if run is None:
+        return jsonify({"error": "Run not found", "code": "run_not_found"}), 404
+    if not _run_explicitly_completed(run):
+        return jsonify({"run": _serialize_run(run)})
+    run.status = "open"
+    run.completed_at = None
+    db.session.add(run)
+    db.session.commit()
     return jsonify({"run": _serialize_run(run)})

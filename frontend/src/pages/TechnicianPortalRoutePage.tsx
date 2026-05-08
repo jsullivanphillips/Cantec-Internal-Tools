@@ -38,10 +38,22 @@ function formatRunSubtitle(run: TechnicianWorksheetRun): string {
   const parts: string[] = []
   if (run.status === 'completed') parts.push('Completed')
   else parts.push('Open')
+  if (run.opened_at) {
+    const d = new Date(run.opened_at)
+    if (!Number.isNaN(d.getTime())) {
+      parts.push(`File opened ${d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}`)
+    }
+  }
   if (run.started_at) {
     const d = new Date(run.started_at)
     if (!Number.isNaN(d.getTime())) {
-      parts.push(`Started ${d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}`)
+      parts.push(`Field started ${d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}`)
+    }
+  }
+  if (run.completed_at) {
+    const d = new Date(run.completed_at)
+    if (!Number.isNaN(d.getTime())) {
+      parts.push(`Ended ${d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}`)
     }
   }
   return parts.join(' · ')
@@ -55,9 +67,6 @@ export default function TechnicianPortalRoutePage() {
   const [data, setData] = useState<PortalRouteSummaryResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [starting, setStarting] = useState(false)
-  const [startError, setStartError] = useState<string | null>(null)
-
   const load = useCallback(async () => {
     if (Number.isNaN(idNum)) {
       setLoading(false)
@@ -99,32 +108,6 @@ export default function TechnicianPortalRoutePage() {
     [idNum, nav],
   )
 
-  const onStartNewRun = useCallback(async () => {
-    if (Number.isNaN(idNum)) return
-    setStartError(null)
-    setStarting(true)
-    try {
-      const res = await apiJson<{ run: TechnicianWorksheetRun }>(
-        `/api/technician_portal/routes/${idNum}/runs`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: '{}',
-        },
-      )
-      openWorksheetForMonth(res.run.month_date)
-    } catch (e) {
-      const maybe = e as { code?: string; error?: string }
-      if (maybe?.code === 'portal_locked') {
-        nav('/tech', { replace: true })
-        return
-      }
-      setStartError(maybe?.error || 'Could not start run. Try again.')
-    } finally {
-      setStarting(false)
-    }
-  }, [idNum, nav, openWorksheetForMonth])
-
   const monthLabel = data ? formatMonthHeading(data.current_month_first) : ''
 
   return (
@@ -156,20 +139,18 @@ export default function TechnicianPortalRoutePage() {
               <Card.Body className="py-4">
                 <div className="fw-semibold mb-2">This month</div>
                 <p className="text-muted small mb-3">
-                  No run file exists for {monthLabel} yet. Start one to open the worksheet — other techs on the same
-                  route will join this run.
+                  No run file exists for {monthLabel} yet. Open the worksheet to review stops, then start the run from
+                  the worksheet when you are ready. Other techs on the same route will join that run.
                 </p>
-                <Button variant="primary" size="lg" className="w-100" disabled={starting} onClick={() => void onStartNewRun()}>
-                  {starting ? (
-                    <>
-                      <Spinner size="sm" animation="border" className="me-2" aria-hidden />
-                      Starting…
-                    </>
-                  ) : (
-                    `Start new run for ${monthLabel}`
-                  )}
+                <Button
+                  variant="primary"
+                  size="lg"
+                  className="w-100"
+                  type="button"
+                  onClick={() => openWorksheetForMonth(data.current_month_first)}
+                >
+                  Open worksheet for {monthLabel}
                 </Button>
-                {startError ? <div className="small text-danger mt-2">{startError}</div> : null}
               </Card.Body>
             </Card>
           ) : (

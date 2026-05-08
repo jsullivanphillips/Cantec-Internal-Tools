@@ -3,14 +3,14 @@
 Exercises ``POST /api/monthly_routes/routes/<id>/runs/import_csv`` with the
 two header variants the example sheets use (``Address`` + ``Tech Comments &
 Notes`` vs. ``Location Details`` + ``Technician Notes & Comments``), plus
-the route-mismatch (400) and edits-already-present (409) safety paths.
+the route-mismatch (400) and completed-run CSV block (409) paths.
 """
 
 from __future__ import annotations
 
 import csv
 import io
-from datetime import date
+from datetime import date, datetime, timezone
 
 import pytest
 
@@ -206,6 +206,91 @@ def test_import_handles_location_details_header_variant(import_client):
     body = res.get_json()
     assert body["locations_updated"] == 2
     assert body["history_upserts"] == 2
+
+
+def test_import_rejects_completed_run_409(import_client):
+    """Runs marked completed cannot be replaced by CSV until staff reopens."""
+    client, app = import_client
+    with app.app_context():
+        route_id, _, _ = _seed_route8_with_two_stops()
+        db.session.add(
+            MonthlyRouteRun(
+                id=7200,
+                monthly_route_id=route_id,
+                month_date=date(2026, 4, 1),
+                status="completed",
+                completed_at=datetime(2026, 4, 15, 12, 0, tzinfo=timezone.utc),
+                source="technician_app",
+            )
+        )
+        db.session.commit()
+
+    csv_bytes = _build_csv(
+        address_header="Address",
+        tech_notes_header="Tech Comments & Notes",
+    )
+    res = _post_csv(client, route_id, csv_bytes)
+    assert res.status_code == 409, res.get_data(as_text=True)
+    body = res.get_json()
+    assert body.get("code") == "run_completed_csv_blocked"
+
+
+def test_import_allows_started_open_run(import_client):
+    """Started field run with status still open must remain replaceable via CSV."""
+    client, app = import_client
+    with app.app_context():
+        route_id, _, _ = _seed_route8_with_two_stops()
+        db.session.add(
+            MonthlyRouteRun(
+                id=7201,
+                monthly_route_id=route_id,
+                month_date=date(2026, 4, 1),
+                started_at=datetime(2026, 4, 10, 8, 0, tzinfo=timezone.utc),
+                status="open",
+                source="technician_app",
+            )
+        )
+        db.session.commit()
+
+    csv_bytes = _build_csv(
+        address_header="Address",
+        tech_notes_header="Tech Comments & Notes",
+    )
+    res = _post_csv(client, route_id, csv_bytes)
+    assert res.status_code == 200, res.get_data(as_text=True)
+
+
+def test_import_csv_allowed_after_staff_reopen(import_client):
+    client, app = import_client
+    with app.app_context():
+        route_id, _, _ = _seed_route8_with_two_stops()
+        db.session.add(
+            MonthlyRouteRun(
+                id=7202,
+                monthly_route_id=route_id,
+                month_date=date(2026, 4, 1),
+                status="completed",
+                completed_at=datetime(2026, 4, 15, 12, 0, tzinfo=timezone.utc),
+                source="technician_app",
+            )
+        )
+        db.session.commit()
+
+    csv_bytes = _build_csv(
+        address_header="Address",
+        tech_notes_header="Tech Comments & Notes",
+    )
+    assert _post_csv(client, route_id, csv_bytes).status_code == 409
+
+    reopen = client.post(
+        f"/api/monthly_routes/routes/{route_id}/runs/reopen",
+        json={"month_date": "2026-04-01"},
+        content_type="application/json",
+    )
+    assert reopen.status_code == 200, reopen.get_data(as_text=True)
+
+    res2 = _post_csv(client, route_id, csv_bytes)
+    assert res2.status_code == 200, res2.get_data(as_text=True)
 
 
 def test_import_second_csv_same_month_is_idempotent(import_client):

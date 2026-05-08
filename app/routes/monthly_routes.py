@@ -567,6 +567,9 @@ def _ensure_worksheet_rows_for_route_month(
         .all()
     )
     if not locs:
+        if run.opened_at is None:
+            run.opened_at = datetime.now(PACIFIC_TZ)
+            db.session.commit()
         return run
     loc_ids = [int(loc.id) for loc in locs]
     prior_by_loc = _prior_history_by_location(loc_ids, month_first)
@@ -677,6 +680,8 @@ def _ensure_worksheet_rows_for_route_month(
             if getattr(row, attr) is None and seed.get(attr) is not None:
                 setattr(row, attr, seed.get(attr))
 
+    if run.opened_at is None:
+        run.opened_at = datetime.now(PACIFIC_TZ)
     db.session.commit()
     return run
 
@@ -782,6 +787,71 @@ def _session_stop_sheet_notes_from_history_and_location(
     return tp, tn
 
 
+def _worksheet_preview_row_from_location(
+    loc: MonthlyRouteLocation,
+    month_first: date,
+) -> dict[str, object]:
+    """Read-only worksheet row shape before ``MonthlyRouteRun`` exists (portal preview)."""
+    display_address = ((loc.display_address or loc.address or "").strip()) or f"Location {int(loc.id)}"
+    monitoring_label: str | None = None
+    if loc.monitoring_company is not None:
+        monitoring_label = (loc.monitoring_company.name or "").strip() or None
+    library_order = (
+        int(loc.route_stop_order) if loc.route_stop_order is not None else None
+    )
+    tp = (loc.testing_procedures or "").strip() or None
+    tn = (loc.inspection_tech_notes or "").strip() or None
+    return {
+        "location_id": int(loc.id),
+        "history_row_id": 0,
+        "month_date": month_first.isoformat(),
+        "display_address": display_address,
+        "building": (loc.building or "").strip() or None,
+        "property_management_company": ((loc.property_management_company or "").strip() or None),
+        "annual_month": loc.annual_month,
+        "ring": loc.ring_detail,
+        "key_number": loc.keys,
+        "facp": loc.facp_detail,
+        "monitoring": monitoring_label,
+        "result_status": None,
+        "skip_reason": None,
+        "testing_procedures": tp,
+        "inspection_tech_notes": tn,
+        "time_in": None,
+        "time_out": None,
+        "route_stop_order": library_order,
+        "session_route_stop_order": None,
+        "version_updated_at": None,
+    }
+
+
+def _portal_worksheet_preview_payload(
+    mr: MonthlyRoute,
+    route_id: int,
+    month_first: date,
+) -> dict[str, object]:
+    """Portal worksheet view before ``POST …/runs`` — same row shape, ``run``: null, no DB writes."""
+    locs = (
+        MonthlyRouteLocation.query.options(joinedload(MonthlyRouteLocation.monitoring_company))
+        .filter(MonthlyRouteLocation.monthly_route_id == route_id)
+        .all()
+    )
+
+    def _loc_sort_key(loc: MonthlyRouteLocation) -> tuple[int, int]:
+        ro = loc.route_stop_order
+        return (0, int(ro)) if ro is not None else (1, 10**9)
+
+    locs_sorted = sorted(locs, key=_loc_sort_key)
+    rows = [_worksheet_preview_row_from_location(loc, month_first) for loc in locs_sorted]
+    location_count = len(locs)
+    return {
+        "route": _serialize_monthly_route_entity(mr, location_count=location_count),
+        "month_date": month_first.isoformat(),
+        "run": None,
+        "rows": rows,
+    }
+
+
 def _worksheet_row_from_history(
     row: MonthlyRouteTestHistory,
     loc: MonthlyRouteLocation | None,
@@ -840,18 +910,29 @@ def _current_pacific_month_first() -> date:
     return date(now_pacific.year, now_pacific.month, 1)
 
 
+def _run_explicitly_completed(run: MonthlyRouteRun) -> bool:
+    """True when the run was marked finished (blocks replacing the month via CSV import)."""
+    if run.completed_at is not None:
+        return True
+    return (run.status or "").strip().lower() == "completed"
+
+
 def _serialize_run(run: MonthlyRouteRun | None) -> dict[str, object] | None:
     """Frontend payload for a ``MonthlyRouteRun`` (the "run file" header).
 
+    ``opened_at`` is when the run file / worksheet rows first existed (materialization).
+    ``started_at`` is when field technicians explicitly started the run (portal Start Run).
+    ``completed_at`` is when the run was marked finished.
+
     ``is_historical`` flips the worksheet into a read-only-ish surface (no
     Time In / Time Out / Skip / Clear / Add Deficiency buttons). It is true when
-    the run is explicitly completed (``status == 'completed'``) or its month is
+    the run is explicitly completed (``status`` / ``completed_at``) or its month is
     strictly before the current Pacific month.
     """
     if run is None:
         return None
     is_historical = (
-        (run.status or "").strip().lower() == "completed"
+        _run_explicitly_completed(run)
         or run.month_date < _current_pacific_month_first()
     )
     return {
@@ -859,6 +940,7 @@ def _serialize_run(run: MonthlyRouteRun | None) -> dict[str, object] | None:
         "monthly_route_id": int(run.monthly_route_id),
         "month_date": run.month_date.isoformat(),
         "status": run.status,
+        "opened_at": run.opened_at.isoformat() if run.opened_at else None,
         "started_at": run.started_at.isoformat() if run.started_at else None,
         "completed_at": run.completed_at.isoformat() if run.completed_at else None,
         "source": run.source,
@@ -881,6 +963,8 @@ def _serialize_technician_worksheet_payload(
         create_run_if_missing=not portal_lazy_run,
     )
     if run is None:
+        if portal_lazy_run:
+            return _portal_worksheet_preview_payload(mr, route_id, month_first)
         return None
     rows = _testing_history_rows_attributed_to_route_month(route_id, month_first)
     location_count = MonthlyRouteLocation.query.filter_by(monthly_route_id=route_id).count()
@@ -1502,11 +1586,19 @@ def get_monthly_route_testing_session(route_id: int):
     return jsonify(payload)
 
 
-def _session_is_portal_worksheet_lazy() -> bool:
-    """PIN portal without staff login — worksheet opens only after an explicit run start."""
-    return bool(session.get("tech_portal_unlocked")) and not bool(
-        session.get("authenticated")
-    )
+def _portal_worksheet_lazy_request() -> bool:
+    """Use lazy run semantics for worksheet GET/SSE (no auto ``MonthlyRouteRun``).
+
+    Field techs normally have only ``tech_portal_unlocked``. If the browser still has a staff session
+    (``authenticated``), opening ``/tech/`` worksheets must pass ``tech_portal=1`` so those reads do not
+    fall through to staff auto-materialization (which would materialize placeholder rows without going
+    through the portal preview flow).
+    """
+    if not session.get("tech_portal_unlocked"):
+        return False
+    if session.get("authenticated"):
+        return (request.args.get("tech_portal") or "").strip() == "1"
+    return True
 
 
 @monthly_routes_bp.get("/api/monthly_routes/routes/<int:route_id>/worksheet")
@@ -1518,18 +1610,11 @@ def get_monthly_route_worksheet(route_id: int):
     month_first = date(month_dt.year, month_dt.month, 1)
     if _get_monthly_route(route_id) is None:
         return jsonify({"error": "Route not found"}), 404
-    portal_lazy = _session_is_portal_worksheet_lazy()
+    portal_lazy = _portal_worksheet_lazy_request()
     payload = _serialize_technician_worksheet_payload(
         route_id, month_first, portal_lazy_run=portal_lazy
     )
     if payload is None:
-        if portal_lazy:
-            return jsonify(
-                {
-                    "error": "Run not started for this month.",
-                    "code": "run_not_started",
-                }
-            ), 404
         return jsonify({"error": "Route not found"}), 404
     return jsonify(payload)
 
@@ -1554,7 +1639,7 @@ def stream_monthly_route_worksheet(route_id: int):
     if _get_monthly_route(route_id) is None:
         return jsonify({"error": "Route not found"}), 404
 
-    if _session_is_portal_worksheet_lazy():
+    if _portal_worksheet_lazy_request():
         existing_run = MonthlyRouteRun.query.filter_by(
             monthly_route_id=route_id,
             month_date=month_first,
@@ -1911,6 +1996,20 @@ def import_route_run_csv(route_id: int):
         int(route.id), month_first, source="csv_import"
     )
 
+    if _run_explicitly_completed(run):
+        return (
+            jsonify(
+                {
+                    "error": (
+                        "This month's run is marked completed. Upload a CSV again only "
+                        "after staff reopens the run from the worksheet."
+                    ),
+                    "code": "run_completed_csv_blocked",
+                }
+            ),
+            409,
+        )
+
     try:
         result = run_route_inspection_csv_import(
             csv_bytes=csv_bytes,
@@ -1940,6 +2039,71 @@ def import_route_run_csv(route_id: int):
             ],
         }
     )
+
+
+@monthly_routes_bp.post("/api/monthly_routes/routes/<int:route_id>/runs/complete")
+def post_monthly_route_run_complete(route_id: int):
+    """Mark the run for ``month_date`` finished (office); enables worksheet historical lock via status."""
+    username = session.get("username")
+    if not username:
+        return jsonify({"error": "Session username required"}), 401
+
+    route = _get_monthly_route(route_id)
+    if route is None:
+        return jsonify({"error": "Route not found"}), 404
+
+    data = request.get_json(silent=True) or {}
+    month_first = _parse_month(data.get("month_date"))
+    if month_first is None:
+        return jsonify({"error": "month_date required (YYYY-MM-01)"}), 400
+
+    run = MonthlyRouteRun.query.filter_by(
+        monthly_route_id=route_id, month_date=month_first
+    ).one_or_none()
+    if run is None:
+        return jsonify({"error": "No run for this route/month"}), 404
+
+    if _run_explicitly_completed(run):
+        return jsonify({"ok": True, "run": _serialize_run(run)})
+
+    now = datetime.now(PACIFIC_TZ)
+    run.status = "completed"
+    run.completed_at = now
+    db.session.add(run)
+    db.session.commit()
+    return jsonify({"ok": True, "run": _serialize_run(run)})
+
+
+@monthly_routes_bp.post("/api/monthly_routes/routes/<int:route_id>/runs/reopen")
+def post_monthly_route_run_reopen(route_id: int):
+    """Clear completion so the month can be edited and replaced via CSV import again."""
+    username = session.get("username")
+    if not username:
+        return jsonify({"error": "Session username required"}), 401
+
+    route = _get_monthly_route(route_id)
+    if route is None:
+        return jsonify({"error": "Route not found"}), 404
+
+    data = request.get_json(silent=True) or {}
+    month_first = _parse_month(data.get("month_date"))
+    if month_first is None:
+        return jsonify({"error": "month_date required (YYYY-MM-01)"}), 400
+
+    run = MonthlyRouteRun.query.filter_by(
+        monthly_route_id=route_id, month_date=month_first
+    ).one_or_none()
+    if run is None:
+        return jsonify({"error": "No run for this route/month"}), 404
+
+    if not _run_explicitly_completed(run):
+        return jsonify({"ok": True, "run": _serialize_run(run)})
+
+    run.status = "open"
+    run.completed_at = None
+    db.session.add(run)
+    db.session.commit()
+    return jsonify({"ok": True, "run": _serialize_run(run)})
 
 
 @monthly_routes_bp.put("/api/monthly_routes/routes/<int:route_id>/location_order")

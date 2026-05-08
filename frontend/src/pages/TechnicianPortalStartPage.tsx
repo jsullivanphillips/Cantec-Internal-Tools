@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
-import { Alert, Button, Card, Form, Spinner } from 'react-bootstrap'
+import { useCallback, useEffect, useState, type FormEvent, type KeyboardEvent } from 'react'
+import { Alert, Button, Card, Form, ListGroup, Spinner } from 'react-bootstrap'
 import { useNavigate } from 'react-router-dom'
-import { apiJson } from '../lib/apiClient'
+import { apiJson, isAbortError } from '../lib/apiClient'
 
 type PortalRoute = {
   id: number
@@ -24,6 +24,10 @@ type RouteLookupResponse = {
   route: PortalRoute
 }
 
+type RoutesSuggestResponse = {
+  routes: PortalRoute[]
+}
+
 function formatTodayHeading(iso: string): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso
   const [y, m, d] = iso.split('-').map(Number)
@@ -37,6 +41,18 @@ function formatTodayHeading(iso: string): string {
   }).format(dt)
 }
 
+/** Digits after optional ``R`` prefix (leading zeros collapsed). */
+function normalizePortalRouteQuery(raw: string): string | null {
+  let s = raw.trim()
+  if (!s) return null
+  if (s[0].toUpperCase() === 'R') {
+    s = s.slice(1).trim()
+  }
+  if (!s || !/^\d+$/.test(s)) return null
+  const collapsed = s.replace(/^0+/, '')
+  return collapsed.length > 0 ? collapsed : '0'
+}
+
 export default function TechnicianPortalStartPage() {
   const nav = useNavigate()
   const [data, setData] = useState<RoutesTodayResponse | null>(null)
@@ -45,6 +61,11 @@ export default function TechnicianPortalStartPage() {
   const [manual, setManual] = useState('')
   const [manualError, setManualError] = useState<string | null>(null)
   const [lookingUp, setLookingUp] = useState(false)
+  const [suggestions, setSuggestions] = useState<PortalRoute[]>([])
+  const [suggestHighlight, setSuggestHighlight] = useState(0)
+  const [inputFocused, setInputFocused] = useState(false)
+
+  const dropdownVisible = inputFocused && suggestions.length > 0 && !lookingUp
 
   useEffect(() => {
     let cancelled = false
@@ -72,6 +93,40 @@ export default function TechnicianPortalStartPage() {
     }
   }, [nav])
 
+  useEffect(() => {
+    const trimmed = manual.trim()
+    if (!trimmed) {
+      setSuggestions([])
+      setSuggestHighlight(0)
+      return
+    }
+
+    const ac = new AbortController()
+    const timer = window.setTimeout(async () => {
+      try {
+        const res = await apiJson<RoutesSuggestResponse>(
+          `/api/technician_portal/routes_suggest?q=${encodeURIComponent(trimmed)}`,
+          { signal: ac.signal }
+        )
+        setSuggestions(res.routes ?? [])
+        setSuggestHighlight(0)
+      } catch (err) {
+        if (isAbortError(err)) return
+        const maybe = err as { code?: string }
+        if (maybe?.code === 'portal_locked') {
+          nav('/tech', { replace: true })
+          return
+        }
+        setSuggestions([])
+      }
+    }, 200)
+
+    return () => {
+      clearTimeout(timer)
+      ac.abort()
+    }
+  }, [manual, nav])
+
   const openRoute = useCallback(
     (routeId: number) => {
       nav(`/tech/route/${routeId}`)
@@ -79,16 +134,25 @@ export default function TechnicianPortalStartPage() {
     [nav],
   )
 
+  const pickSuggestion = useCallback(
+    (route: PortalRoute) => {
+      setInputFocused(false)
+      setSuggestions([])
+      openRoute(route.id)
+    },
+    [openRoute],
+  )
+
   const onManualSubmit = useCallback(
     async (e: FormEvent<HTMLFormElement>) => {
       e.preventDefault()
       setManualError(null)
-      const trimmed = manual.trim()
-      if (!/^\d+$/.test(trimmed)) {
-        setManualError('Enter a route number, e.g. 7.')
+      const token = normalizePortalRouteQuery(manual)
+      if (!token) {
+        setManualError('Enter a route number, e.g. R7 or 7.')
         return
       }
-      const rn = parseInt(trimmed, 10)
+      const rn = parseInt(token, 10)
       const fromToday = data?.routes.find((r) => r.route_number === rn)
       if (fromToday) {
         openRoute(fromToday.id)
@@ -97,13 +161,13 @@ export default function TechnicianPortalStartPage() {
       setLookingUp(true)
       try {
         const res = await apiJson<RouteLookupResponse>(
-          `/api/technician_portal/routes_lookup?route_number=${encodeURIComponent(trimmed)}`
+          `/api/technician_portal/routes_lookup?route_number=${encodeURIComponent(token)}`
         )
         if (res?.route?.id != null) {
           openRoute(res.route.id)
           return
         }
-        setManualError(`No route #${trimmed} was found.`)
+        setManualError(`No route #${token} was found.`)
       } catch (err) {
         const maybe = err as { code?: string; error?: string }
         if (maybe?.code === 'portal_locked') {
@@ -111,7 +175,7 @@ export default function TechnicianPortalStartPage() {
           return
         }
         if (maybe?.code === 'not_found') {
-          setManualError(`No route #${trimmed} was found.`)
+          setManualError(`No route #${token} was found.`)
           return
         }
         setManualError('Could not look up that route. Try again.')
@@ -119,7 +183,26 @@ export default function TechnicianPortalStartPage() {
         setLookingUp(false)
       }
     },
-    [data, manual, nav, openRoute]
+    [data, manual, nav, openRoute],
+  )
+
+  const onManualKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLInputElement>) => {
+      if (!dropdownVisible || suggestions.length === 0) return
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setSuggestHighlight((i) => Math.min(i + 1, suggestions.length - 1))
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setSuggestHighlight((i) => Math.max(i - 1, 0))
+      } else if (e.key === 'Enter') {
+        e.preventDefault()
+        pickSuggestion(suggestions[suggestHighlight])
+      } else if (e.key === 'Escape') {
+        setInputFocused(false)
+      }
+    },
+    [dropdownVisible, pickSuggestion, suggestHighlight, suggestions],
   )
 
   const heading = data?.date ? formatTodayHeading(data.date) : ''
@@ -137,20 +220,64 @@ export default function TechnicianPortalStartPage() {
         <Card.Body>
           <div className="fw-semibold mb-1">Look up by route number</div>
           <div className="small text-muted mb-2">
-            Enter the route number to open that worksheet (even if it isn’t on today’s list).
+            Type <strong>R18</strong> or <strong>18</strong>; choose from suggestions or press Open.
           </div>
-          <Form onSubmit={onManualSubmit} className="d-flex gap-2">
-            <Form.Control
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              placeholder="e.g. 7"
-              value={manual}
-              onChange={(e) => setManual(e.target.value)}
-              disabled={lookingUp}
-              aria-label="Route number"
-            />
-            <Button type="submit" variant="outline-primary" disabled={lookingUp || !manual.trim()}>
+          <Form onSubmit={onManualSubmit} className="d-flex flex-column flex-sm-row gap-2 align-items-stretch">
+            <div className="flex-grow-1 position-relative min-w-0">
+              <Form.Control
+                type="text"
+                autoComplete="off"
+                placeholder="e.g. R18 or 18"
+                value={manual}
+                onChange={(e) => setManual(e.target.value)}
+                onKeyDown={onManualKeyDown}
+                onFocus={() => setInputFocused(true)}
+                onBlur={() => {
+                  window.setTimeout(() => setInputFocused(false), 200)
+                }}
+                disabled={lookingUp}
+                aria-label="Route number"
+                aria-autocomplete="list"
+                aria-expanded={dropdownVisible}
+                aria-controls="portal-route-suggest-list"
+                id="portal-route-lookup-input"
+              />
+              {dropdownVisible ? (
+                <ListGroup
+                  id="portal-route-suggest-list"
+                  variant="flush"
+                  className="position-absolute top-100 start-0 end-0 mt-1 shadow-sm border rounded overflow-hidden bg-white"
+                  style={{ zIndex: 25 }}
+                >
+                  {suggestions.map((r, i) => (
+                    <ListGroup.Item
+                      key={r.id}
+                      as="button"
+                      type="button"
+                      action
+                      aria-selected={i === suggestHighlight}
+                      className={`text-start py-2 px-3${i === suggestHighlight ? ' bg-primary-subtle' : ''}`}
+                      onMouseDown={(ev) => ev.preventDefault()}
+                      onMouseEnter={() => setSuggestHighlight(i)}
+                      onClick={() => pickSuggestion(r)}
+                    >
+                      <span className="fw-semibold">R{r.route_number}</span>
+                      <span className="text-muted small ms-2">{r.label}</span>
+                      <span className="d-block small text-muted">
+                        {r.location_count} {r.location_count === 1 ? 'stop' : 'stops'}
+                        {r.display_name ? ` · ${r.display_name}` : ''}
+                      </span>
+                    </ListGroup.Item>
+                  ))}
+                </ListGroup>
+              ) : null}
+            </div>
+            <Button
+              type="submit"
+              variant="outline-primary"
+              className="flex-shrink-0 align-self-sm-start"
+              disabled={lookingUp || !manual.trim()}
+            >
               {lookingUp ? <Spinner size="sm" animation="border" /> : 'Open'}
             </Button>
           </Form>
