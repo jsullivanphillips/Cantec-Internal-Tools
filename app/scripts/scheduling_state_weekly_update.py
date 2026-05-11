@@ -95,9 +95,23 @@ def _week_window_local(anchor: datetime) -> tuple[datetime, datetime]:
     return period_start, period_end
 
 
+def _weekly_stats_bucket_for_run(now: datetime) -> tuple[datetime, datetime]:
+    """
+    Vancouver Mon→Mon bucket that the snapshot counts should be stored under.
+
+    Uses the week containing (now - 1 day) in local time so that:
+      - A run on Sunday still maps to the in-progress week (Mon..Sun).
+      - A run just after Monday 00:00 maps to the week that ended at that
+        Monday, not the new week (fixes stats written under the next period_*).
+    """
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    return _week_window_local(now - timedelta(days=1))
+
+
 def run_weekly_scheduling_snapshot(job_type: str = "inspection,reinspection,planned_maintenance"):
     now = datetime.now(timezone.utc)
-    week_start, week_end = _week_window_local(now)
+    week_start, week_end = _weekly_stats_bucket_for_run(now)
 
     # -------- 1) Load baseline --------
     baseline_rows = db.session.query(JobsSchedulingState).all()
@@ -206,7 +220,7 @@ def run_weekly_scheduling_snapshot(job_type: str = "inspection,reinspection,plan
     )
 
 def weekly_stats_already_recorded(now: datetime, job_type: str) -> bool:
-    week_start, week_end = _week_window_local(now)
+    week_start, week_end = _weekly_stats_bucket_for_run(now)
 
     return (
         db.session.query(WeeklySchedulingStats.id)
