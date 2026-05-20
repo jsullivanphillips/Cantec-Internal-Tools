@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { apiJson, isAbortError } from '../lib/apiClient'
 import { Card, Col, Row, Modal, Table, Button, Spinner, Form } from 'react-bootstrap'
 import { Chart } from 'react-chartjs-2'
@@ -57,14 +57,21 @@ type JobsLeftMonthSlot = {
   year_month: string
   label_month: string
   jobs_left: number | null
+  jobs_total: number | null
+  jobs_left_source?: 'manual' | 'servicetrade' | null
+  jobs_total_source?: 'servicetrade' | null
   updated_at: string | null
   updated_by: string | null
 }
 
 type JobsLeftMonthlyResponse = {
   timezone: string
-  current: JobsLeftMonthSlot
-  next: JobsLeftMonthSlot
+  anchor_year_month: string
+  months_back: number
+  months_forward: number
+  servicetrade_job_type?: string
+  servicetrade_statuses?: string[]
+  months: JobsLeftMonthSlot[]
 }
 
 export default function SchedulingAttackPage() {
@@ -78,7 +85,9 @@ export default function SchedulingAttackPage() {
   const [unconfirmedError, setUnconfirmedError] = useState<string | null>(null)
   const [unconfirmed, setUnconfirmed] = useState<UnconfirmedNextTwoWeeksResponse | null>(null)
   const [jobsLeftMonthly, setJobsLeftMonthly] = useState<JobsLeftMonthlyResponse | null>(null)
-  const [jobsLeftModalSlot, setJobsLeftModalSlot] = useState<'current' | 'next' | null>(null)
+  const [editingYearMonth, setEditingYearMonth] = useState<string | null>(null)
+  const jobsLeftStripRef = useRef<HTMLDivElement>(null)
+  const anchorMonthSlideRef = useRef<HTMLDivElement>(null)
   const [jobsLeftDraft, setJobsLeftDraft] = useState('')
   const [jobsLeftSaving, setJobsLeftSaving] = useState(false)
   const [jobsLeftModalError, setJobsLeftModalError] = useState<string | null>(null)
@@ -127,6 +136,13 @@ export default function SchedulingAttackPage() {
       controller.abort()
     }
   }, [])
+
+  useEffect(() => {
+    if (loading || !jobsLeftMonthly) return
+    const anchorEl = anchorMonthSlideRef.current
+    if (!anchorEl) return
+    anchorEl.scrollIntoView({ inline: 'start', block: 'nearest', behavior: 'instant' })
+  }, [loading, jobsLeftMonthly?.anchor_year_month])
 
   const weeklyPoints = weekly?.weeks ?? []
   const forwardWeeks = (forward?.weeks ?? []).slice(1, 11)
@@ -277,22 +293,33 @@ export default function SchedulingAttackPage() {
   }
 
   const closeJobsLeftModal = () => {
-    setJobsLeftModalSlot(null)
+    setEditingYearMonth(null)
     setJobsLeftModalError(null)
     setJobsLeftDraft('')
   }
 
-  const openJobsLeftModal = (slot: 'current' | 'next') => {
+  const openJobsLeftModal = (yearMonth: string) => {
     if (!jobsLeftMonthly) return
-    const slotData = slot === 'current' ? jobsLeftMonthly.current : jobsLeftMonthly.next
-    setJobsLeftModalSlot(slot)
+    const slotData = jobsLeftMonthly.months.find((m) => m.year_month === yearMonth)
+    if (!slotData) return
+    setEditingYearMonth(yearMonth)
     setJobsLeftDraft(slotData.jobs_left != null ? String(slotData.jobs_left) : '')
     setJobsLeftModalError(null)
   }
 
+  const scrollJobsLeftStrip = (direction: -1 | 1) => {
+    const el = jobsLeftStripRef.current
+    if (!el) return
+    const slide = el.querySelector<HTMLElement>('.scheduling-jobs-left-strip__slide')
+    const gap = 12
+    const amount = slide ? slide.offsetWidth + gap : 280
+    el.scrollBy({ left: direction * amount, behavior: 'smooth' })
+  }
+
   const submitJobsLeft = async () => {
-    if (!jobsLeftModalSlot || !jobsLeftMonthly) return
-    const slotData = jobsLeftModalSlot === 'current' ? jobsLeftMonthly.current : jobsLeftMonthly.next
+    if (!editingYearMonth || !jobsLeftMonthly) return
+    const slotData = jobsLeftMonthly.months.find((m) => m.year_month === editingYearMonth)
+    if (!slotData) return
     const trimmed = jobsLeftDraft.trim()
     let body: { year_month: string; jobs_left: number | null }
     if (trimmed === '') {
@@ -333,10 +360,8 @@ export default function SchedulingAttackPage() {
   }
 
   const editingJobsLeftSlot =
-    jobsLeftModalSlot != null && jobsLeftMonthly
-      ? jobsLeftModalSlot === 'current'
-        ? jobsLeftMonthly.current
-        : jobsLeftMonthly.next
+    editingYearMonth != null && jobsLeftMonthly
+      ? jobsLeftMonthly.months.find((m) => m.year_month === editingYearMonth) ?? null
       : null
 
   return (
@@ -440,68 +465,75 @@ export default function SchedulingAttackPage() {
             </Col>
           </Row>
 
-          <Row className="g-3">
-            <Col lg={6} md={12}>
-              <Card
-                role="button"
-                tabIndex={0}
-                onClick={() => openJobsLeftModal('current')}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault()
-                    openJobsLeftModal('current')
-                  }
-                }}
-                className="app-kpi-nested processing-tile h-100 scheduling-kpi-tile scheduling-kpi-tile--neutral"
-              >
-                <Card.Body className="scheduling-kpi-tile__body">
-                  <div className="processing-kpi-label">
-                    {jobsLeftMonthly
-                      ? `Jobs left in ${jobsLeftMonthly.current.label_month}`
-                      : 'Jobs left (current month)'}
-                  </div>
-                  <div className="scheduling-kpi-main">
-                    <div className="scheduling-kpi-tile__value scheduling-kpi-tile__value--neutral">
-                      {jobsLeftMonthly && jobsLeftMonthly.current.jobs_left != null
-                        ? jobsLeftMonthly.current.jobs_left
-                        : '—'}
+          <div className="scheduling-jobs-left-strip-wrap">
+            <button
+              type="button"
+              className="scheduling-jobs-left-strip__nav scheduling-jobs-left-strip__nav--prev"
+              onClick={() => scrollJobsLeftStrip(-1)}
+              aria-label="Scroll to earlier months"
+            >
+              <i className="bi bi-chevron-left" aria-hidden />
+            </button>
+            <div
+              ref={jobsLeftStripRef}
+              className="scheduling-jobs-left-strip"
+              role="region"
+              aria-label="Jobs left by month"
+            >
+              <div className="scheduling-jobs-left-strip__track">
+                {(jobsLeftMonthly?.months ?? []).map((slot, _index, months) => {
+                  const isAnchor = slot.year_month === jobsLeftMonthly?.anchor_year_month
+                  const anchorIndex = months.findIndex(
+                    (m) => m.year_month === jobsLeftMonthly?.anchor_year_month,
+                  )
+                  const isNextMonth = anchorIndex >= 0 && months[anchorIndex + 1]?.year_month === slot.year_month
+                  return (
+                    <div
+                      key={slot.year_month}
+                      ref={isAnchor ? anchorMonthSlideRef : undefined}
+                      className={`scheduling-jobs-left-strip__slide${isAnchor ? ' scheduling-jobs-left-strip__slide--current' : ''}${isNextMonth ? ' scheduling-jobs-left-strip__slide--next' : ''}`}
+                    >
+                      <Card
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => openJobsLeftModal(slot.year_month)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault()
+                            openJobsLeftModal(slot.year_month)
+                          }
+                        }}
+                        className="app-kpi-nested processing-tile h-100 scheduling-kpi-tile scheduling-kpi-tile--neutral"
+                      >
+                        <Card.Body className="scheduling-kpi-tile__body">
+                          {isAnchor ? (
+                            <span className="scheduling-jobs-left-strip__current-badge">Current</span>
+                          ) : isNextMonth ? (
+                            <span className="scheduling-jobs-left-strip__next-badge">Next</span>
+                          ) : null}
+                          <div className="processing-kpi-label">Jobs left in {slot.label_month}</div>
+                          <div className="scheduling-kpi-main">
+                            <div className="scheduling-kpi-tile__value scheduling-kpi-tile__value--neutral scheduling-kpi-tile__value--fraction">
+                              {formatJobsLeftKpi(slot)}
+                            </div>
+                          </div>
+                          <div className="processing-kpi-target">{jobsLeftFooterText(slot)}</div>
+                        </Card.Body>
+                      </Card>
                     </div>
-                  </div>
-                  <div className="processing-kpi-target">Click to edit</div>
-                </Card.Body>
-              </Card>
-            </Col>
-            <Col lg={6} md={12}>
-              <Card
-                role="button"
-                tabIndex={0}
-                onClick={() => openJobsLeftModal('next')}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault()
-                    openJobsLeftModal('next')
-                  }
-                }}
-                className="app-kpi-nested processing-tile h-100 scheduling-kpi-tile scheduling-kpi-tile--neutral"
-              >
-                <Card.Body className="scheduling-kpi-tile__body">
-                  <div className="processing-kpi-label">
-                    {jobsLeftMonthly
-                      ? `Jobs left in ${jobsLeftMonthly.next.label_month}`
-                      : 'Jobs left (next month)'}
-                  </div>
-                  <div className="scheduling-kpi-main">
-                    <div className="scheduling-kpi-tile__value scheduling-kpi-tile__value--neutral">
-                      {jobsLeftMonthly && jobsLeftMonthly.next.jobs_left != null
-                        ? jobsLeftMonthly.next.jobs_left
-                        : '—'}
-                    </div>
-                  </div>
-                  <div className="processing-kpi-target">Click to edit</div>
-                </Card.Body>
-              </Card>
-            </Col>
-          </Row>
+                  )
+                })}
+              </div>
+            </div>
+            <button
+              type="button"
+              className="scheduling-jobs-left-strip__nav scheduling-jobs-left-strip__nav--next"
+              onClick={() => scrollJobsLeftStrip(1)}
+              aria-label="Scroll to later months"
+            >
+              <i className="bi bi-chevron-right" aria-hidden />
+            </button>
+          </div>
 
           <Card className="app-surface-card scheduling-chart-card">
             <Card.Body>
@@ -589,7 +621,7 @@ export default function SchedulingAttackPage() {
         </Modal.Footer>
       </Modal>
 
-      <Modal show={jobsLeftModalSlot !== null} onHide={() => closeJobsLeftModal()} centered>
+      <Modal show={editingYearMonth !== null} onHide={() => closeJobsLeftModal()} centered>
         <Modal.Header closeButton>
           <Modal.Title>
             {editingJobsLeftSlot ? `Jobs left — ${editingJobsLeftSlot.label_month}` : 'Jobs left'}
@@ -597,6 +629,15 @@ export default function SchedulingAttackPage() {
         </Modal.Header>
         <Modal.Body>
           {jobsLeftModalError ? <div className="text-danger small mb-2">{jobsLeftModalError}</div> : null}
+          {editingJobsLeftSlot ? (
+            <p className="text-muted small mb-2">
+              {editingJobsLeftSlot.jobs_left_source === 'manual'
+                ? `Showing manual entry for ${editingJobsLeftSlot.label_month}.`
+                : editingJobsLeftSlot.jobs_left_source === 'servicetrade'
+                  ? `Showing ServiceTrade for ${editingJobsLeftSlot.label_month}: ${formatJobsLeftKpi(editingJobsLeftSlot)}.`
+                  : `No count for ${editingJobsLeftSlot.label_month} yet.`}
+            </p>
+          ) : null}
           <Form.Group className="mb-0" controlId="jobs-left-input">
             <Form.Label>Jobs remaining to schedule</Form.Label>
             <Form.Control
@@ -608,7 +649,9 @@ export default function SchedulingAttackPage() {
               onChange={(e) => setJobsLeftDraft(e.target.value)}
               disabled={jobsLeftSaving}
             />
-            <Form.Text className="text-muted">Leave empty and save to clear (shows —).</Form.Text>
+            <Form.Text className="text-muted">
+              Save a number to override ServiceTrade for this month. Leave empty and save to clear (shows —).
+            </Form.Text>
           </Form.Group>
         </Modal.Body>
         <Modal.Footer>
@@ -644,30 +687,25 @@ function SchedulingAttackSkeleton() {
         ))}
       </Row>
 
-      <Row className="g-3">
-        <Col lg={6} md={12}>
-          <Card className="app-kpi-nested processing-tile h-100 scheduling-kpi-tile">
-            <Card.Body className="scheduling-kpi-tile__body">
-              <span className="home-skeleton-bar d-block" style={{ width: '72%' }} />
-              <div className="scheduling-kpi-main">
-                <span className="home-skeleton-bar home-skeleton-bar--value d-block" style={{ width: '48%' }} />
+      <div className="scheduling-jobs-left-strip-wrap scheduling-jobs-left-strip-wrap--skeleton" aria-hidden>
+        <div className="scheduling-jobs-left-strip">
+          <div className="scheduling-jobs-left-strip__track">
+            {Array.from({ length: 2 }).map((_, idx) => (
+              <div key={`jobs-left-skel-${idx}`} className="scheduling-jobs-left-strip__slide">
+                <Card className="app-kpi-nested processing-tile h-100 scheduling-kpi-tile">
+                  <Card.Body className="scheduling-kpi-tile__body">
+                    <span className="home-skeleton-bar d-block" style={{ width: '72%' }} />
+                    <div className="scheduling-kpi-main">
+                      <span className="home-skeleton-bar home-skeleton-bar--value d-block" style={{ width: '48%' }} />
+                    </div>
+                    <span className="home-skeleton-bar d-block" style={{ width: '42%' }} />
+                  </Card.Body>
+                </Card>
               </div>
-              <span className="home-skeleton-bar d-block" style={{ width: '42%' }} />
-            </Card.Body>
-          </Card>
-        </Col>
-        <Col lg={6} md={12}>
-          <Card className="app-kpi-nested processing-tile h-100 scheduling-kpi-tile">
-            <Card.Body className="scheduling-kpi-tile__body">
-              <span className="home-skeleton-bar d-block" style={{ width: '72%' }} />
-              <div className="scheduling-kpi-main">
-                <span className="home-skeleton-bar home-skeleton-bar--value d-block" style={{ width: '48%' }} />
-              </div>
-              <span className="home-skeleton-bar d-block" style={{ width: '42%' }} />
-            </Card.Body>
-          </Card>
-        </Col>
-      </Row>
+            ))}
+          </div>
+        </div>
+      </div>
 
       <Card className="app-surface-card scheduling-chart-card">
         <Card.Body>
@@ -780,6 +818,28 @@ function formatJobType(value: string): string {
 
 function formatPercent(value: number): string {
   return `${Number.isFinite(value) ? value.toFixed(1) : '0.0'} %`
+}
+
+function formatJobsLeftCount(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(Number(value))) return '—'
+  return String(Math.trunc(Number(value)))
+}
+
+function formatJobsLeftKpi(slot: JobsLeftMonthSlot): string {
+  const left = formatJobsLeftCount(slot.jobs_left)
+  const total = formatJobsLeftCount(slot.jobs_total)
+  if (left === '—' && total === '—') return '—'
+  return `${left} / ${total}`
+}
+
+function jobsLeftFooterText(slot: JobsLeftMonthSlot): string {
+  if (slot.jobs_left_source === 'manual') {
+    return 'Manual entry · click to edit'
+  }
+  if (slot.jobs_left_source === 'servicetrade') {
+    return 'From ServiceTrade · click to override'
+  }
+  return 'No data · click to set'
 }
 
 function clampPct(value: number): number {

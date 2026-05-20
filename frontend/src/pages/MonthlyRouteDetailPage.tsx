@@ -1202,10 +1202,7 @@ export default function MonthlyRouteDetailPage() {
           className="monthly-location-testing-history-card monthly-route-detail-performance monthly-location-detail-surface shadow-sm bg-white"
         >
           <Accordion.Header className="monthly-location-testing-history-card-header monthly-route-detail-performance-header py-3">
-            <span className="d-inline-flex align-items-center gap-2 fw-semibold">
-              <i className="bi bi-graph-up-arrow text-primary" aria-hidden />
-              Performance
-            </span>
+            <span className="fw-semibold">Performance</span>
           </Accordion.Header>
           <Accordion.Body className="monthly-location-testing-history-body">
             <Card className="monthly-route-detail-performance__revenue-card mb-3">

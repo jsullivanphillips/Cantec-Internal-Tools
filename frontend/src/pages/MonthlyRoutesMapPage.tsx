@@ -4,15 +4,14 @@ import { Button, Card, Form, Modal, Table } from 'react-bootstrap'
 import { Link } from 'react-router-dom'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
+import AddMonthlyLocationWizardModal from '../features/monthlyRoutes/AddMonthlyLocationWizardModal'
 import {
   MAP_ROUTE_UNASSIGNED,
-  STATUS_OPTIONS,
   compareMonthlyRouteFilterNames,
   isLngLatInViewport,
   normalizeMapCoordinates,
   parseYearMonth,
   toMonthKey,
-  type CreateLocationForm,
   type GeocodeCandidate,
   type LibraryLocation,
   type LibraryPayload,
@@ -24,14 +23,6 @@ import { apiJson, isAbortError } from '../lib/apiClient'
 const MAP_MARKER_BATCH_SIZE = 80
 
 const MAP_SEARCH_DEBOUNCE_MS = 250
-
-/** Add-location modal: debounced `/api/monthly_routes/geocode_candidates` */
-const CREATE_LOCATION_GEOCODE_DEBOUNCE_MS = 250
-
-const CREATE_LOCATION_CANDIDATES_STYLE: CSSProperties = {
-  maxHeight: '11rem',
-  overflowY: 'auto',
-}
 
 const MAP_SEARCH_RESULTS_STYLE: CSSProperties = {
   maxHeight: '13rem',
@@ -59,23 +50,7 @@ export default function MonthlyRoutesMapPage() {
   const [mapSearchLoading, setMapSearchLoading] = useState(false)
   const [mapSearchError, setMapSearchError] = useState<string | null>(null)
   const [showMapSearchResults, setShowMapSearchResults] = useState(false)
-  const [newLocationForm, setNewLocationForm] = useState<CreateLocationForm>({
-    address: '',
-    property_management_company: '',
-    status_raw: 'active',
-    keys: '',
-    test_day: '',
-  })
   const [showCreateLocationModal, setShowCreateLocationModal] = useState(false)
-  const [createLocationSaving, setCreateLocationSaving] = useState(false)
-  const [createLocationError, setCreateLocationError] = useState<string | null>(null)
-  /** Address line + geocode lookup (modal); submit uses selection or typed text */
-  const [createLocationAddressQuery, setCreateLocationAddressQuery] = useState('')
-  const [createLocationCandidates, setCreateLocationCandidates] = useState<GeocodeCandidate[]>([])
-  const [createLocationLookupLoading, setCreateLocationLookupLoading] = useState(false)
-  const [createLocationLookupError, setCreateLocationLookupError] = useState<string | null>(null)
-  const [createLocationSelectedCandidate, setCreateLocationSelectedCandidate] =
-    useState<GeocodeCandidate | null>(null)
   const [placementLocation, setPlacementLocation] = useState<LibraryLocation | null>(null)
   const [placementQuery, setPlacementQuery] = useState('')
   const [placementCandidates, setPlacementCandidates] = useState<GeocodeCandidate[]>([])
@@ -121,7 +96,7 @@ export default function MonthlyRoutesMapPage() {
     params.set('unpaginated', 'true')
     params.set('include_coordinates', 'true')
 
-    apiJson<LibraryPayload>(`/api/monthly_routes/library?${params.toString()}`, {
+    apiJson<LibraryPayload>(`/api/monthly_sites/library?${params.toString()}`, {
       signal: controller.signal,
     })
       .then((data) => {
@@ -234,7 +209,7 @@ export default function MonthlyRoutesMapPage() {
       setPlacementError(null)
       try {
         const response = await apiJson<{ location: LibraryLocation }>(
-          `/api/monthly_routes/library/${placementLocation.id}/placement`,
+          `/api/monthly_sites/library/${placementLocation.id}/placement`,
           {
             method: 'PATCH',
             body: JSON.stringify({
@@ -269,7 +244,7 @@ export default function MonthlyRoutesMapPage() {
     setPlacementRouteError(null)
     try {
       const response = await apiJson<{ location: LibraryLocation }>(
-        `/api/monthly_routes/library/${placementLocation.id}/assign_route`,
+        `/api/monthly_sites/library/${placementLocation.id}/assign_route`,
         {
           method: 'PATCH',
           body: JSON.stringify({ test_day: placementRouteValue.trim() }),
@@ -287,132 +262,6 @@ export default function MonthlyRoutesMapPage() {
       setPlacementSaving(false)
     }
   }, [closePlacementEditor, mergeUpdatedLocation, placementLocation, placementRouteValue])
-
-  const openCreateLocationModal = useCallback(() => {
-    setCreateLocationError(null)
-    setCreateLocationAddressQuery('')
-    setCreateLocationCandidates([])
-    setCreateLocationLookupLoading(false)
-    setCreateLocationLookupError(null)
-    setCreateLocationSelectedCandidate(null)
-    setNewLocationForm({
-      address: '',
-      property_management_company: '',
-      status_raw: 'active',
-      keys: '',
-      test_day: '',
-    })
-    setShowCreateLocationModal(true)
-  }, [])
-
-  useEffect(() => {
-    if (!showCreateLocationModal) return
-    const query = createLocationAddressQuery.trim()
-    if (query.length < 3) {
-      setCreateLocationCandidates([])
-      setCreateLocationLookupLoading(false)
-      setCreateLocationLookupError(null)
-      return
-    }
-
-    let active = true
-    const controller = new AbortController()
-    const timer = window.setTimeout(() => {
-      setCreateLocationLookupLoading(true)
-      setCreateLocationLookupError(null)
-      const params = new URLSearchParams({ q: query })
-      apiJson<{ candidates: GeocodeCandidate[] }>(
-        `/api/monthly_routes/geocode_candidates?${params.toString()}`,
-        { signal: controller.signal }
-      )
-        .then((data) => {
-          if (active) setCreateLocationCandidates(data.candidates || [])
-        })
-        .catch((err) => {
-          if (!isAbortError(err) && active) {
-            setCreateLocationCandidates([])
-            setCreateLocationLookupError('Unable to fetch address suggestions.')
-          }
-        })
-        .finally(() => {
-          if (active) setCreateLocationLookupLoading(false)
-        })
-    }, CREATE_LOCATION_GEOCODE_DEBOUNCE_MS)
-
-    return () => {
-      active = false
-      window.clearTimeout(timer)
-      controller.abort()
-    }
-  }, [showCreateLocationModal, createLocationAddressQuery])
-
-  const submitCreateLocation = useCallback(async () => {
-    const addressLine = (
-      createLocationSelectedCandidate?.display_address ||
-      createLocationAddressQuery ||
-      ''
-    ).trim()
-    if (!addressLine) {
-      setCreateLocationError('Address is required.')
-      return
-    }
-    if (!newLocationForm.property_management_company.trim()) {
-      setCreateLocationError('Property management company is required.')
-      return
-    }
-
-    setCreateLocationSaving(true)
-    setCreateLocationError(null)
-    try {
-      const payload: Record<string, unknown> = {
-        address: addressLine,
-        property_management_company: newLocationForm.property_management_company.trim(),
-        status_raw: newLocationForm.status_raw,
-      }
-      const keysTrimmed = newLocationForm.keys.trim()
-      if (keysTrimmed) payload.keys = keysTrimmed
-      const routeTrimmed = (newLocationForm.test_day || '').trim()
-      if (routeTrimmed) payload.test_day = routeTrimmed
-      if (createLocationSelectedCandidate) {
-        payload.display_address = createLocationSelectedCandidate.display_address
-        payload.latitude = createLocationSelectedCandidate.latitude
-        payload.longitude = createLocationSelectedCandidate.longitude
-      }
-
-      const response = await apiJson<{ location: LibraryLocation }>('/api/monthly_routes/library', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      })
-      mergeUpdatedLocation(response.location)
-      setShowCreateLocationModal(false)
-      setCreateLocationAddressQuery('')
-      setCreateLocationCandidates([])
-      setCreateLocationSelectedCandidate(null)
-      setNewLocationForm({
-        address: '',
-        property_management_company: '',
-        status_raw: 'active',
-        keys: '',
-        test_day: '',
-      })
-    } catch (err) {
-      if (typeof err === 'object' && err && 'error' in err) {
-        setCreateLocationError(String((err as { error: unknown }).error))
-      } else {
-        setCreateLocationError('Unable to create location.')
-      }
-    } finally {
-      setCreateLocationSaving(false)
-    }
-  }, [
-    mergeUpdatedLocation,
-    newLocationForm.keys,
-    newLocationForm.property_management_company,
-    newLocationForm.status_raw,
-    newLocationForm.test_day,
-    createLocationAddressQuery,
-    createLocationSelectedCandidate,
-  ])
 
   const filteredMapLocations = useMemo(() => {
     const allowed = new Set(selectedMapRoutes)
@@ -617,7 +466,7 @@ export default function MonthlyRoutesMapPage() {
     setPlacementError(null)
     const params = new URLSearchParams({ q: query })
     apiJson<{ candidates: GeocodeCandidate[] }>(
-      `/api/monthly_routes/geocode_candidates?${params.toString()}`,
+      `/api/monthly_sites/geocode_candidates?${params.toString()}`,
       { signal: controller.signal }
     )
       .then((data) => {
@@ -655,7 +504,7 @@ export default function MonthlyRoutesMapPage() {
       setMapSearchError(null)
       const params = new URLSearchParams({ q: query })
       apiJson<{ candidates: GeocodeCandidate[] }>(
-        `/api/monthly_routes/geocode_candidates?${params.toString()}`,
+        `/api/monthly_sites/geocode_candidates?${params.toString()}`,
         { signal: controller.signal }
       )
         .then((data) => {
@@ -1068,131 +917,18 @@ export default function MonthlyRoutesMapPage() {
         onClick={(e) => e.stopPropagation()}
       >
         <Card.Body className="py-2 px-3">
-          <Button size="sm" variant="primary" onClick={openCreateLocationModal}>
+          <Button size="sm" variant="primary" onClick={() => setShowCreateLocationModal(true)}>
             Add Location
           </Button>
         </Card.Body>
       </Card>
 
-      <Modal show={showCreateLocationModal} onHide={() => setShowCreateLocationModal(false)} centered>
-        <Modal.Header closeButton>
-          <Modal.Title className="h6 mb-0">Add Location</Modal.Title>
-        </Modal.Header>
-        <Modal.Body className="small d-flex flex-column gap-2">
-          {createLocationError ? <div className="text-danger">{createLocationError}</div> : null}
-          <Form.Group>
-            <Form.Label className="small mb-1">Address</Form.Label>
-            <Form.Control
-              size="sm"
-              type="search"
-              value={createLocationAddressQuery}
-              placeholder="Search address (Greater Victoria)"
-              onChange={(e) => {
-                const v = e.target.value
-                setCreateLocationAddressQuery(v)
-                setCreateLocationSelectedCandidate(null)
-              }}
-            />
-            {!createLocationSelectedCandidate && createLocationLookupLoading ? (
-              <div className="text-muted mt-1">Searching addresses...</div>
-            ) : null}
-            {!createLocationSelectedCandidate && createLocationLookupError ? (
-              <div className="text-danger mt-1">{createLocationLookupError}</div>
-            ) : null}
-            {!createLocationSelectedCandidate &&
-            !createLocationLookupLoading &&
-            createLocationAddressQuery.trim().length >= 3 &&
-            createLocationCandidates.length === 0 ? (
-              <div className="text-muted mt-1">No matching addresses.</div>
-            ) : null}
-            {!createLocationSelectedCandidate && createLocationCandidates.length > 0 ? (
-              <div className="d-flex flex-column gap-1 mt-2" style={CREATE_LOCATION_CANDIDATES_STYLE}>
-                {createLocationCandidates.map((candidate) => (
-                  <Button
-                    key={`${candidate.display_address}-${candidate.latitude}-${candidate.longitude}`}
-                    variant="outline-secondary"
-                    size="sm"
-                    className="text-start"
-                    onClick={() => {
-                      setCreateLocationSelectedCandidate(candidate)
-                      setCreateLocationAddressQuery(candidate.display_address)
-                      setCreateLocationCandidates([])
-                    }}
-                  >
-                    {candidate.display_address}
-                  </Button>
-                ))}
-              </div>
-            ) : null}
-            {createLocationSelectedCandidate ? (
-              <div className="text-success small mt-1">Map pin will use the selected address.</div>
-            ) : null}
-          </Form.Group>
-          <Form.Group>
-            <Form.Label className="small mb-1">Route (optional)</Form.Label>
-            <Form.Select
-              size="sm"
-              value={newLocationForm.test_day ?? ''}
-              onChange={(e) => setNewLocationForm((prev) => ({ ...prev, test_day: e.target.value }))}
-            >
-              <option value="">Unassigned</option>
-              {routeOptions.map((route) => (
-                <option key={route} value={route}>
-                  {route}
-                </option>
-              ))}
-            </Form.Select>
-          </Form.Group>
-          <Form.Group>
-            <Form.Label className="small mb-1">Property Management Company</Form.Label>
-            <Form.Control
-              size="sm"
-              value={newLocationForm.property_management_company}
-              onChange={(e) =>
-                setNewLocationForm((prev) => ({
-                  ...prev,
-                  property_management_company: e.target.value,
-                }))
-              }
-            />
-          </Form.Group>
-          <Form.Group>
-            <Form.Label className="small mb-1">Status</Form.Label>
-            <Form.Select
-              size="sm"
-              value={newLocationForm.status_raw}
-              onChange={(e) => setNewLocationForm((prev) => ({ ...prev, status_raw: e.target.value }))}
-            >
-              {STATUS_OPTIONS.map((status) => (
-                <option key={status.value} value={status.value}>
-                  {status.label}
-                </option>
-              ))}
-            </Form.Select>
-          </Form.Group>
-          <Form.Group>
-            <Form.Label className="small mb-1">Keys (optional)</Form.Label>
-            <Form.Control
-              size="sm"
-              value={newLocationForm.keys}
-              onChange={(e) => setNewLocationForm((prev) => ({ ...prev, keys: e.target.value }))}
-            />
-          </Form.Group>
-          <div className="d-flex justify-content-end gap-2 mt-2">
-            <Button
-              size="sm"
-              variant="outline-secondary"
-              onClick={() => setShowCreateLocationModal(false)}
-              disabled={createLocationSaving}
-            >
-              Cancel
-            </Button>
-            <Button size="sm" onClick={submitCreateLocation} disabled={createLocationSaving}>
-              {createLocationSaving ? 'Saving...' : 'Create Location'}
-            </Button>
-          </div>
-        </Modal.Body>
-      </Modal>
+      <AddMonthlyLocationWizardModal
+        show={showCreateLocationModal}
+        onHide={() => setShowCreateLocationModal(false)}
+        routeOptions={routeOptions}
+        onCreated={mergeUpdatedLocation}
+      />
 
       <Modal show={Boolean(placementLocation)} onHide={closePlacementEditor} centered>
         <Modal.Header closeButton>

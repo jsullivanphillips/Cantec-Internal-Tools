@@ -928,6 +928,241 @@ class MonthlyRouteLocation(db.Model):
         cascade="all, delete-orphan",
         lazy="dynamic",
     )
+    monthly_site = db.relationship(
+        "MonthlySite",
+        back_populates="legacy_location",
+        foreign_keys="MonthlySite.legacy_monthly_route_location_id",
+        uselist=False,
+    )
+
+
+class MonthlySite(db.Model):
+    """
+    V2 monthly billing anchor, bridged to legacy ``MonthlyRouteLocation`` until cutover completes.
+
+    Testing stops and per-stop pricing live on ``MonthlyTestingSite`` children.
+    """
+
+    __tablename__ = "monthly_site"
+    __table_args__ = (
+        db.UniqueConstraint(
+            "legacy_monthly_route_location_id",
+            name="uq_monthly_site_legacy_monthly_route_location_id",
+        ),
+    )
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    legacy_monthly_route_location_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monthly_route_location.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        nullable=False,
+    )
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        onupdate=db.func.now(),
+        nullable=False,
+    )
+
+    legacy_location = db.relationship(
+        "MonthlyRouteLocation",
+        back_populates="monthly_site",
+        foreign_keys=[legacy_monthly_route_location_id],
+    )
+    testing_sites = db.relationship(
+        "MonthlyTestingSite",
+        back_populates="monthly_site",
+        cascade="all, delete-orphan",
+        order_by="MonthlyTestingSite.sort_order",
+    )
+
+
+class MonthlyTestingSite(db.Model):
+    """V2 physical testing stop (one worksheet row); owns price, FACP, procedures, notes, and ``key_id``."""
+
+    __tablename__ = "monthly_testing_site"
+    __table_args__ = (
+        db.UniqueConstraint(
+            "monthly_site_id",
+            "sort_order",
+            name="uq_monthly_testing_site_site_sort_order",
+        ),
+        db.Index("ix_monthly_testing_site_monthly_site_id", "monthly_site_id"),
+        db.Index("ix_monthly_testing_site_key_id", "key_id"),
+    )
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    monthly_site_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monthly_site.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    sort_order = db.Column(db.SmallInteger, nullable=False, default=0)
+    label = db.Column(db.String(255), nullable=True)
+    price_per_month = db.Column(db.Numeric(10, 2), nullable=True)
+    ring_detail = db.Column(db.Text, nullable=True)
+    facp_detail = db.Column(db.Text, nullable=True)
+    testing_procedures = db.Column(db.Text, nullable=True)
+    inspection_tech_notes = db.Column(db.Text, nullable=True)
+
+    key_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("keys.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    keys = db.Column(db.Text, nullable=True)
+    barcode = db.Column(db.String(64), nullable=True)
+
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        nullable=False,
+    )
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        onupdate=db.func.now(),
+        nullable=False,
+    )
+
+    monthly_site = db.relationship("MonthlySite", back_populates="testing_sites")
+    linked_key = db.relationship(
+        "Key",
+        back_populates="monthly_testing_sites",
+        foreign_keys=[key_id],
+    )
+    month_rows = db.relationship(
+        "MonthlyTestingSiteMonth",
+        back_populates="testing_site",
+        cascade="all, delete-orphan",
+        lazy="dynamic",
+    )
+
+
+class MonthlyTestingSiteMonth(db.Model):
+    """V2 per-calendar-month snapshot for a testing site (parallel to ``MonthlyRouteTestHistory`` grain)."""
+
+    __tablename__ = "monthly_testing_site_month"
+    __table_args__ = (
+        db.UniqueConstraint(
+            "monthly_testing_site_id",
+            "month_date",
+            name="uq_mtsm_testing_site_month",
+        ),
+        db.Index("ix_mtsm_month_date", "month_date"),
+        db.Index("ix_mtsm_run_id", "run_id"),
+    )
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    monthly_testing_site_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monthly_testing_site.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    month_date = db.Column(db.Date, nullable=False)
+    run_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monthly_route_run.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    test_monthly_route_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monthly_route.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    session_route_stop_order = db.Column(db.SmallInteger, nullable=True)
+    result_status = db.Column(db.String(32), nullable=True)
+    skip_reason = db.Column(db.String(255), nullable=True)
+    source_value_raw = db.Column(db.String(255), nullable=True)
+    facp = db.Column(db.Text, nullable=True)
+    ring = db.Column(db.String(255), nullable=True)
+    key_number = db.Column(db.String(255), nullable=True)
+    annual_month = db.Column(db.String(32), nullable=True)
+    testing_procedures = db.Column(db.Text, nullable=True)
+    inspection_tech_notes = db.Column(db.Text, nullable=True)
+    sheet_time_in_raw = db.Column(db.String(64), nullable=True)
+    sheet_time_out_raw = db.Column(db.String(64), nullable=True)
+    monitoring_notes = db.Column(db.Text, nullable=True)
+
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        nullable=False,
+    )
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        onupdate=db.func.now(),
+        nullable=False,
+    )
+
+    testing_site = db.relationship("MonthlyTestingSite", back_populates="month_rows")
+    run = db.relationship(
+        "MonthlyRouteRun",
+        foreign_keys=[run_id],
+    )
+    test_monthly_route = db.relationship(
+        "MonthlyRoute",
+        foreign_keys=[test_monthly_route_id],
+    )
+
+
+class MonthlyKeyBridge(db.Model):
+    """
+    Archive of key-to-site associations before monthly location wipes.
+
+    Does not FK to ``monthly_route_location`` / ``monthly_testing_site``—legacy ids are snapshots only.
+    """
+
+    __tablename__ = "monthly_key_bridge"
+    __table_args__ = (
+        db.Index("ix_monthly_key_bridge_key_id", "key_id"),
+        db.Index(
+            "ix_monthly_key_bridge_legacy_location_id",
+            "legacy_monthly_route_location_id",
+        ),
+        db.Index(
+            "ix_monthly_key_bridge_st_site_id",
+            "service_trade_site_location_id",
+        ),
+    )
+
+    id = db.Column(
+        db.BigInteger().with_variant(db.Integer(), "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
+    key_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("keys.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    service_trade_site_location_id = db.Column(db.BigInteger, nullable=True)
+    address_normalized = db.Column(db.String(255), nullable=True)
+    property_management_company_normalized = db.Column(db.String(255), nullable=True)
+    building_normalized = db.Column(db.String(255), nullable=True)
+    display_address = db.Column(db.String(255), nullable=True)
+    legacy_monthly_route_location_id = db.Column(db.BigInteger, nullable=True)
+    legacy_testing_site_id = db.Column(db.BigInteger, nullable=True)
+    keys_text = db.Column(db.Text, nullable=True)
+    barcode_text = db.Column(db.String(64), nullable=True)
+    #: legacy_location | testing_site
+    source = db.Column(db.String(32), nullable=False)
+    exported_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        nullable=False,
+    )
+
+    key = db.relationship("Key", back_populates="monthly_key_bridges")
 
 
 class MonthlyRouteLocationInspectionRevision(db.Model):
@@ -1268,6 +1503,18 @@ class Key(db.Model):
         "MonthlyRouteLocation",
         back_populates="linked_key",
         foreign_keys="MonthlyRouteLocation.key_id",
+    )
+
+    monthly_testing_sites = relationship(
+        "MonthlyTestingSite",
+        back_populates="linked_key",
+        foreign_keys="MonthlyTestingSite.key_id",
+    )
+
+    monthly_key_bridges = relationship(
+        "MonthlyKeyBridge",
+        back_populates="key",
+        foreign_keys="MonthlyKeyBridge.key_id",
     )
 
     @property

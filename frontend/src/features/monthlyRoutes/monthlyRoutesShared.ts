@@ -30,6 +30,23 @@ export type LinkedKeySummary = {
   barcode: number | null
 }
 
+/** V2 testing stop (``MonthlyTestingSite``); one worksheet row / billing line item. */
+export type TestingSiteSummary = {
+  id: number
+  monthly_site_id: number
+  sort_order: number
+  label: string | null
+  price_per_month: number | null
+  ring_detail: string | null
+  facp_detail: string | null
+  testing_procedures: string | null
+  inspection_tech_notes: string | null
+  keys: string | null
+  barcode: string | null
+  key_id?: number | null
+  key?: LinkedKeySummary | null
+}
+
 export type LibraryLocation = {
   id: number
   address: string
@@ -57,6 +74,12 @@ export type LibraryLocation = {
   /** 0-based stop index when on a monthly route; from ``MonthlyRouteLocation.route_stop_order``. */
   route_stop_order?: number | null
   months: Record<string, MonthCell>
+  /** V2 bridge: ``MonthlySite.id`` when present. */
+  monthly_site_id?: number | null
+  /** Sum of ``testing_sites[].price_per_month`` when any are set. */
+  rollup_price_per_month?: number | null
+  /** V2 testing stops for this legacy library row. */
+  testing_sites?: TestingSiteSummary[]
 }
 
 /** Row from ``GET/PUT .../routes/:id`` locations list (no month grid). */
@@ -71,7 +94,7 @@ export type RouteLocationListItem = {
   monthly_route_id?: number | null
 }
 
-/** Comment row from ``GET /api/monthly_routes/library/:id`` (newest first). */
+/** Comment row from ``GET /api/monthly_routes/library/:id`` (newest first); comments remain on legacy routes. */
 export type MonthlyLocationComment = {
   id: number
   body: string
@@ -443,6 +466,62 @@ export type CreateLocationForm = {
   keys: string
   /** Monthly route (test_day); omit or empty for unassigned */
   test_day?: string
+}
+
+/** Wizard step index for add-location flow. */
+export type MonthlyLocationWizardStep = 1 | 2
+
+/** Step 1 fields (monthly library row); keys live on testing stops in step 2. */
+export type CreateLocationStep1Form = {
+  property_management_company: string
+  status_raw: string
+  /** Monthly route (test_day); omit or empty for unassigned */
+  test_day?: string
+}
+
+/** Client-only id for React list keys in the add-location wizard. */
+export type TestingSiteDraft = {
+  clientId: string
+  label: string
+  keys: string
+  price_per_month: string
+  ring_detail: string
+  facp_detail: string
+  testing_procedures: string
+  inspection_tech_notes: string
+}
+
+export function createEmptyTestingSiteDraft(): TestingSiteDraft {
+  return {
+    clientId: `ts-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    label: '',
+    keys: '',
+    price_per_month: '',
+    ring_detail: '',
+    facp_detail: '',
+    testing_procedures: '',
+    inspection_tech_notes: '',
+  }
+}
+
+/** Build API payload for PATCH/POST testing site from a wizard draft. */
+export function testingSitePayloadFromDraft(draft: TestingSiteDraft): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
+    label: draft.label.trim(),
+  }
+  const keys = draft.keys.trim()
+  if (keys) payload.keys = keys
+  const price = draft.price_per_month.trim()
+  if (price) payload.price_per_month = price
+  const ring = draft.ring_detail.trim()
+  if (ring) payload.ring_detail = ring
+  const facp = draft.facp_detail.trim()
+  if (facp) payload.facp_detail = facp
+  const proc = draft.testing_procedures.trim()
+  if (proc) payload.testing_procedures = proc
+  const notes = draft.inspection_tech_notes.trim()
+  if (notes) payload.inspection_tech_notes = notes
+  return payload
 }
 
 export const STATUS_OPTIONS: Array<{ value: string; label: string }> = [

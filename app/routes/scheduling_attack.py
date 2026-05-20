@@ -41,6 +41,13 @@ SERVICE_TRADE_API_BASE = "https://api.servicetrade.com/api"
 
 BUSINESS_TZ = ZoneInfo("America/Vancouver")  # or a per-location tz if you have one
 LOCAL_TZ = ZoneInfo("America/Vancouver")
+DEFAULT_SCHEDULING_JOB_TYPE = "inspection,reinspection,planned_maintenance,preventative_maintenance"
+# Historical weekly snapshots may use a shorter job_type string than the current default.
+WEEKLY_STATS_JOB_TYPES = (
+    DEFAULT_SCHEDULING_JOB_TYPE,
+    "inspection,reinspection",
+    "inspection,reinspection,planned_maintenance",
+)
 
 APPOINTMENT_SERVICE_LINE_IDS = [168, 3, 1, 2, 556] 
 
@@ -2043,26 +2050,206 @@ def _vancouver_current_next_month_starts() -> tuple[date, date]:
     return current, nxt
 
 
+JOBS_LEFT_MONTHS_BACK = 6
+JOBS_LEFT_MONTHS_FORWARD = 6
+# Jobs-left KPI: inspection jobs with ServiceTrade status scheduled or new (unscheduled).
+JOBS_LEFT_JOB_TYPE = "inspection"
+JOBS_LEFT_JOB_STATUSES = ("scheduled", "new")
+
+
+def _vancouver_anchor_month_start() -> date:
+    return _today_local_date().replace(day=1)
+
+
+def _jobs_left_month_window(
+    months_back: int = JOBS_LEFT_MONTHS_BACK,
+    months_forward: int = JOBS_LEFT_MONTHS_FORWARD,
+) -> tuple[date, date, list[date]]:
+    """Anchor month (Vancouver), window start, and ordered month-start dates in range."""
+    anchor = _vancouver_anchor_month_start()
+    window_start = anchor - relativedelta(months=months_back)
+    window_end = anchor + relativedelta(months=months_forward)
+    months: list[date] = []
+    cur = window_start
+    while cur <= window_end:
+        months.append(cur)
+        cur = cur + relativedelta(months=1)
+    return anchor, window_start, months
+
+
+def _jobs_left_month_in_window(
+    target_start: date,
+    months_back: int = JOBS_LEFT_MONTHS_BACK,
+    months_forward: int = JOBS_LEFT_MONTHS_FORWARD,
+) -> bool:
+    _, _, months = _jobs_left_month_window(months_back, months_forward)
+    return target_start in months
+
+
 def _month_label_calendar(month_start: date) -> str:
     return month_start.strftime("%B %Y")
 
 
-def _serialize_jobs_left_month_slot(row: SchedulingJobsLeftMonth | None, month_start: date) -> dict:
-    ym = month_start.isoformat()[:7]
-    if row is None:
+def _vancouver_month_schedule_bounds(month_start: date) -> tuple[int, int]:
+    """UTC unix timestamps for [month_start 00:00 local, first day of next month 00:00 local)."""
+    start_local = datetime(
+        month_start.year,
+        month_start.month,
+        month_start.day,
+        0,
+        0,
+        0,
+        tzinfo=LOCAL_TZ,
+    )
+    end_local = start_local + relativedelta(months=1)
+    return (
+        int(start_local.astimezone(timezone.utc).timestamp()),
+        int(end_local.astimezone(timezone.utc).timestamp()),
+    )
+
+
+def _vancouver_month_due_by_bounds(month_start: date) -> tuple[int, int]:
+    """UTC unix timestamps for Due By range matching ServiceTrade UI (inclusive month)."""
+    start_local = datetime(
+        month_start.year,
+        month_start.month,
+        month_start.day,
+        0,
+        0,
+        0,
+        tzinfo=LOCAL_TZ,
+    )
+    end_local = start_local + relativedelta(months=1) - timedelta(seconds=1)
+    return (
+        int(start_local.astimezone(timezone.utc).timestamp()),
+        int(end_local.astimezone(timezone.utc).timestamp()),
+    )
+
+
+def _jobs_left_year_month_key(month_start: date) -> str:
+    return month_start.isoformat()[:7]
+
+
+def _parse_due_by(job: dict) -> datetime | None:
+    raw = job.get("dueBy")
+    if raw is None:
+        return None
+
+    if isinstance(raw, (int, float)):
+        return datetime.fromtimestamp(raw, tz=timezone.utc)
+
+    if isinstance(raw, str):
+        s = raw.strip()
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        try:
+            dt = datetime.fromisoformat(s)
+        except ValueError:
+            return None
+        return dt.astimezone(timezone.utc) if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+    return None
+
+
+def _bucket_jobs_left_metrics_by_local_month(
+    jobs: list[dict],
+    month_starts: list[date],
+) -> dict[str, dict[str, int]]:
+    """
+    Bucket inspection jobs by Vancouver calendar month (dueBy).
+
+    jobs_total: scheduled + new in month
+    jobs_left: new (unscheduled) only in month
+    """
+    month_keys = {_jobs_left_year_month_key(m) for m in month_starts}
+    jobs_left = {k: 0 for k in month_keys}
+    jobs_total = {k: 0 for k in month_keys}
+    for job in jobs:
+        due_by = _parse_due_by(job)
+        if due_by is None:
+            continue
+        ym = due_by.astimezone(LOCAL_TZ).strftime("%Y-%m")
+        if ym not in jobs_total:
+            continue
+        jobs_total[ym] += 1
+        if (job.get("status") or "").lower() == "new":
+            jobs_left[ym] += 1
+    return {ym: {"jobs_left": jobs_left[ym], "jobs_total": jobs_total[ym]} for ym in month_keys}
+
+
+def _compute_jobs_left_from_servicetrade(month_starts: list[date]) -> dict[str, dict[str, int]]:
+    """
+    Inspection jobs (status scheduled,new) whose dueBy falls in the carousel window.
+    Matches ServiceTrade Jobs UI: Type=Inspection, Status=Unscheduled+Scheduled, Due By range.
+    """
+    if not month_starts:
+        return {}
+
+    due_from, _ = _vancouver_month_due_by_bounds(month_starts[0])
+    _, due_to = _vancouver_month_due_by_bounds(month_starts[-1])
+
+    jobs_by_id: dict[int, dict] = {}
+    params = {
+        "limit": 1000,
+        "type": JOBS_LEFT_JOB_TYPE,
+        "status": ",".join(JOBS_LEFT_JOB_STATUSES),
+        "dueByBegin": due_from,
+        "dueByEnd": due_to,
+    }
+
+    try:
+        for job in fetch_all_jobs_paginated(params):
+            job_id = job.get("id")
+            if job_id is not None:
+                jobs_by_id[int(job_id)] = job
+    except Exception:
+        log.exception("jobs_left_monthly: ServiceTrade fetch failed")
+        return {}
+
+    return _bucket_jobs_left_metrics_by_local_month(list(jobs_by_id.values()), month_starts)
+
+
+def _serialize_jobs_left_month_slot(
+    row: SchedulingJobsLeftMonth | None,
+    month_start: date,
+    *,
+    servicetrade_metrics: dict[str, int] | None = None,
+) -> dict:
+    ym = _jobs_left_year_month_key(month_start)
+    st_left = servicetrade_metrics.get("jobs_left") if servicetrade_metrics else None
+    st_total = servicetrade_metrics.get("jobs_total") if servicetrade_metrics else None
+
+    if row is not None:
         return {
             "year_month": ym,
             "label_month": _month_label_calendar(month_start),
-            "jobs_left": None,
+            "jobs_left": int(row.jobs_left),
+            "jobs_total": int(st_total) if st_total is not None else None,
+            "jobs_left_source": "manual",
+            "jobs_total_source": "servicetrade" if st_total is not None else None,
+            "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+            "updated_by": row.updated_by,
+        }
+    if st_left is not None or st_total is not None:
+        return {
+            "year_month": ym,
+            "label_month": _month_label_calendar(month_start),
+            "jobs_left": int(st_left) if st_left is not None else None,
+            "jobs_total": int(st_total) if st_total is not None else None,
+            "jobs_left_source": "servicetrade" if st_left is not None else None,
+            "jobs_total_source": "servicetrade" if st_total is not None else None,
             "updated_at": None,
             "updated_by": None,
         }
     return {
         "year_month": ym,
         "label_month": _month_label_calendar(month_start),
-        "jobs_left": int(row.jobs_left),
-        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
-        "updated_by": row.updated_by,
+        "jobs_left": None,
+        "jobs_total": None,
+        "jobs_left_source": None,
+        "jobs_total_source": None,
+        "updated_at": None,
+        "updated_by": None,
     }
 
 
@@ -2317,11 +2504,22 @@ def _parse_scheduled_date(job: dict):
     return None
 
 
-def _week_start_local_from_utc(dt_utc: datetime) -> datetime:
-    dt_local = dt_utc.astimezone(LOCAL_TZ)
+def _canonical_week_period_start(dt: datetime) -> datetime:
+    """Monday 00:00 America/Vancouver for the calendar week containing dt."""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    dt_local = dt.astimezone(LOCAL_TZ)
     return (dt_local - timedelta(days=dt_local.weekday())).replace(
         hour=0, minute=0, second=0, microsecond=0
     )
+
+
+def _week_period_start_key(dt: datetime) -> int:
+    return int(_canonical_week_period_start(dt).timestamp())
+
+
+def _week_start_local_from_utc(dt_utc: datetime) -> datetime:
+    return _canonical_week_period_start(dt_utc)
 
 
 def _live_weekly_scheduling_diff(*, job_type: str, week_start_local: datetime) -> tuple[int, int]:
@@ -2560,7 +2758,7 @@ def forward_schedule_coverage():
 def weekly_scheduling_volume():
     now = datetime.now(timezone.utc)
 
-    JOB_TYPE = "inspection,reinspection,planned_maintenance"
+    JOB_TYPE = DEFAULT_SCHEDULING_JOB_TYPE
     WEEKS_BACK = 6
 
     # Normalize to Monday 00:00 local (America/Vancouver) of current week
@@ -2573,24 +2771,33 @@ def weekly_scheduling_volume():
         end = start + timedelta(days=7)
         periods.append((start, end))
 
-    # Fetch stats for those exact period_starts
+    # Fetch stats across the chart window (tolerant of job_type variants and tz storage).
+    window_start = periods[0][0]
+    window_end_exclusive = periods[-1][1]
     rows = (
         db.session.query(WeeklySchedulingStats)
         .filter(
-            WeeklySchedulingStats.job_type == JOB_TYPE,
-            WeeklySchedulingStats.period_start.in_([p[0] for p in periods]),
+            WeeklySchedulingStats.job_type.in_(WEEKLY_STATS_JOB_TYPES),
+            WeeklySchedulingStats.period_start >= window_start,
+            WeeklySchedulingStats.period_start < window_end_exclusive,
         )
         .all()
     )
 
-    stats_by_start = {row.period_start: row for row in rows}
+    stats_by_week_key: dict[int, WeeklySchedulingStats] = {}
+    for row in rows:
+        key = _week_period_start_key(row.period_start)
+        existing = stats_by_week_key.get(key)
+        if existing is None or row.job_type == JOB_TYPE:
+            stats_by_week_key[key] = row
+
     generated_at = None
     for row in rows:
         if row.generated_at is not None and (generated_at is None or row.generated_at > generated_at):
             generated_at = row.generated_at
     weekly = []
     for start, end in periods:
-        row = stats_by_start.get(start)
+        row = stats_by_week_key.get(_week_period_start_key(start))
         weekly.append({
             "period_start": start.isoformat(),
             "period_end": end.isoformat(),
@@ -2608,7 +2815,15 @@ def weekly_scheduling_volume():
         weekly[-1]["scheduled"] = live_scheduled
         weekly[-1]["rescheduled"] = live_rescheduled
         # Current week is refreshed from live queries; "generated_at" should not be older than that.
-        generated_at = max(t for t in (generated_at, now) if t is not None)
+        candidates = []
+        for t in (generated_at, now):
+            if t is None:
+                continue
+            if t.tzinfo is None:
+                t = t.replace(tzinfo=timezone.utc)
+            candidates.append(t.astimezone(timezone.utc))
+        if candidates:
+            generated_at = max(candidates)
 
     return jsonify({
         "job_type": JOB_TYPE,
@@ -2771,7 +2986,7 @@ def scheduling_attack_v2_unconfirmed_next_two_weeks():
 @scheduling_attack_bp.get("/scheduling_attack/v2/scheduled_today_activity")
 @cached_json_response(prefix="scheduling_attack:v2_scheduled_today_activity", ttl_seconds=45)
 def scheduling_attack_v2_scheduled_today_activity():
-    job_type = "inspection,reinspection,planned_maintenance"
+    job_type = DEFAULT_SCHEDULING_JOB_TYPE
     cache_row, baseline_missing = _get_or_refresh_today_activity_cache(job_type=job_type, freshness_seconds=60)
     baseline_date_local = _today_local_date().isoformat()
 
@@ -2898,10 +3113,11 @@ def scheduling_attack_v2_set_notes():
 
 @scheduling_attack_bp.get("/scheduling_attack/v2/jobs_left_monthly")
 def scheduling_attack_v2_jobs_left_monthly():
-    current_start, next_start = _vancouver_current_next_month_starts()
+    anchor, _, month_starts = _jobs_left_month_window()
+    servicetrade_metrics_by_month = _compute_jobs_left_from_servicetrade(month_starts)
     rows = (
         db.session.query(SchedulingJobsLeftMonth)
-        .filter(SchedulingJobsLeftMonth.year_month.in_((current_start, next_start)))
+        .filter(SchedulingJobsLeftMonth.year_month.in_(tuple(month_starts)))
         .all()
     )
     by_month = {r.year_month: r for r in rows}
@@ -2909,8 +3125,22 @@ def scheduling_attack_v2_jobs_left_monthly():
         jsonify(
             {
                 "timezone": "America/Vancouver",
-                "current": _serialize_jobs_left_month_slot(by_month.get(current_start), current_start),
-                "next": _serialize_jobs_left_month_slot(by_month.get(next_start), next_start),
+                "anchor_year_month": anchor.isoformat()[:7],
+                "months_back": JOBS_LEFT_MONTHS_BACK,
+                "months_forward": JOBS_LEFT_MONTHS_FORWARD,
+                "servicetrade_job_type": JOBS_LEFT_JOB_TYPE,
+                "servicetrade_statuses": list(JOBS_LEFT_JOB_STATUSES),
+                "servicetrade_due_by_field": "dueByBegin,dueByEnd",
+                "months": [
+                    _serialize_jobs_left_month_slot(
+                        by_month.get(month_start),
+                        month_start,
+                        servicetrade_metrics=servicetrade_metrics_by_month.get(
+                            _jobs_left_year_month_key(month_start)
+                        ),
+                    )
+                    for month_start in month_starts
+                ],
             }
         ),
         200,
@@ -2923,7 +3153,7 @@ def scheduling_attack_v2_put_jobs_left_monthly():
     PUT /scheduling_attack/v2/jobs_left_monthly
     Body: { "year_month": "2026-06", "jobs_left": 15 | null }
     jobs_left null removes the value for that month (shows em dash on UI).
-    Only the Vancouver-local current or next calendar month may be updated.
+    year_month must fall within ±6 Vancouver-local calendar months of the current month.
     """
     username_raw = session.get("username")
     if not username_raw:
@@ -2946,9 +3176,18 @@ def scheduling_attack_v2_put_jobs_left_monthly():
     except (ValueError, TypeError):
         return jsonify({"error": "Invalid year_month"}), 400
 
-    current_start, next_start = _vancouver_current_next_month_starts()
-    if target_start not in (current_start, next_start):
-        return jsonify({"error": "year_month must be the current or next calendar month"}), 400
+    if not _jobs_left_month_in_window(target_start):
+        return (
+            jsonify(
+                {
+                    "error": (
+                        f"year_month must be within ±{JOBS_LEFT_MONTHS_BACK} months "
+                        "of the current calendar month"
+                    )
+                }
+            ),
+            400,
+        )
 
     if "jobs_left" not in body:
         return jsonify({"error": "Missing jobs_left (number or null to clear)"}), 400

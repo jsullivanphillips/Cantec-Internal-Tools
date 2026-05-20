@@ -2317,6 +2317,107 @@
   color: #0f172a;
 }
 
+.scheduling-kpi-tile__value--fraction {
+  font-size: 1.85rem;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+
+.scheduling-jobs-left-strip-wrap {
+  align-items: stretch;
+  display: flex;
+  gap: 0.35rem;
+  position: relative;
+}
+
+.scheduling-jobs-left-strip-wrap--skeleton .scheduling-jobs-left-strip__nav {
+  visibility: hidden;
+}
+
+.scheduling-jobs-left-strip__nav {
+  align-items: center;
+  align-self: center;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 50%;
+  color: #334155;
+  display: flex;
+  flex: 0 0 auto;
+  height: 2.25rem;
+  justify-content: center;
+  padding: 0;
+  width: 2.25rem;
+}
+
+.scheduling-jobs-left-strip__nav:hover {
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+.scheduling-jobs-left-strip__nav:focus-visible {
+  outline: 2px solid var(--brand-navy, #1e3a5f);
+  outline-offset: 2px;
+}
+
+.scheduling-jobs-left-strip {
+  container-type: inline-size;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scroll-behavior: smooth;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.scheduling-jobs-left-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.scheduling-jobs-left-strip__track {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.15rem 0.5rem 0.35rem;
+}
+
+.scheduling-jobs-left-strip__slide {
+  flex: 0 0 calc((100cqi - 0.75rem) / 2);
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+
+.scheduling-jobs-left-strip__slide--current .scheduling-kpi-tile {
+  border-top-color: #1e90ff;
+}
+
+.scheduling-jobs-left-strip__current-badge,
+.scheduling-jobs-left-strip__next-badge {
+  align-self: flex-start;
+  border-radius: 4px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  padding: 0.15rem 0.4rem;
+  text-transform: uppercase;
+}
+
+.scheduling-jobs-left-strip__current-badge {
+  background: rgba(30, 144, 255, 0.12);
+  color: #1565c0;
+}
+
+.scheduling-jobs-left-strip__next-badge {
+  background: rgba(100, 116, 139, 0.12);
+  color: #475569;
+}
+
+.scheduling-jobs-left-strip__slide--next .scheduling-kpi-tile {
+  border-top-color: #94a3b8;
+}
+
 .scheduling-page .scheduling-chart-card.app-surface-card {
   border: 1px solid #e7eaf0;
 }

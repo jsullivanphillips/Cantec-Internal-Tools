@@ -27,6 +27,10 @@ from app.db_models import (
     db,
 )
 from app.monthly.key_resolve import sync_key_fk_for_location
+from app.monthly.monthly_sites_sync import (
+    push_legacy_keys_to_primary_testing_site,
+    sync_testing_sites_from_legacy,
+)
 from app.monthly.route_inspection_csv_import import (
     parse_preamble_only,
     run_route_inspection_csv_import,
@@ -2570,6 +2574,8 @@ def create_monthly_route_location():
                 loc.key_id = kid
         else:
             sync_key_fk_for_location(loc)
+        sync_testing_sites_from_legacy(loc)
+        push_legacy_keys_to_primary_testing_site(loc)
         db.session.commit()
     except ValueError as exc:
         db.session.rollback()
@@ -2690,6 +2696,9 @@ def update_monthly_route_location(location_id: int):
                     row.skip_reason = skip_reason
                     row.test_monthly_route_id = loc.monthly_route_id
 
+        sync_testing_sites_from_legacy(loc)
+        if {"keys", "barcode", "key_id"}.intersection(payload.keys()):
+            push_legacy_keys_to_primary_testing_site(loc)
         db.session.commit()
     except ValueError as exc:
         db.session.rollback()

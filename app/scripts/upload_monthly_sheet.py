@@ -15,6 +15,7 @@ from sqlalchemy.dialects.postgresql import insert
 from app import create_app, db
 from app.db_models import MonthlyRouteLocation, MonthlyRouteTestHistory
 from app.monthly.key_resolve import keycode_cf_to_key_id_map, resolve_key_id_for_monthly_fields
+from app.monthly.monthly_sites_sync import refresh_primary_testing_site_from_legacy
 
 LOG = logging.getLogger("upload_monthly_sheet")
 
@@ -745,6 +746,9 @@ def run_upload(
         else:
             location_id = _upsert_location(row, keycode_cf_index=keycode_cf_index)
             location_upserts += 1
+            loc_row = db.session.get(MonthlyRouteLocation, location_id)
+            if loc_row is not None:
+                refresh_primary_testing_site_from_legacy(loc_row)
 
         for month_col, month_date in month_columns:
             raw_value = _normalize_space(row.get(month_col))

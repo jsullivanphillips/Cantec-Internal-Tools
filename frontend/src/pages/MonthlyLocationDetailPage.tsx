@@ -202,7 +202,7 @@ export default function MonthlyLocationDetailPage() {
       setLoading(true)
       setError(null)
       try {
-        const data = await apiJson<MonthlyLocationDetailPayload>(`/api/monthly_routes/library/${idNum}`, {
+        const data = await apiJson<MonthlyLocationDetailPayload>(`/api/monthly_sites/library/${idNum}`, {
           signal,
         })
         if (signal?.aborted) return
@@ -228,7 +228,7 @@ export default function MonthlyLocationDetailPage() {
 
   useEffect(() => {
     let active = true
-    apiJson<LibraryPayload>('/api/monthly_routes/library?page=1&page_size=1')
+    apiJson<LibraryPayload>('/api/monthly_sites/library?page=1&page_size=1')
       .then((data) => {
         if (active) setRouteOptions(data.meta?.routes ?? [])
       })
@@ -290,7 +290,7 @@ export default function MonthlyLocationDetailPage() {
     setHistorySaveError(null)
     try {
       const res = await apiJson<{ location: LibraryLocation }>(
-        `/api/monthly_routes/library/${location.id}`,
+        `/api/monthly_sites/library/${location.id}`,
         {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -325,7 +325,7 @@ export default function MonthlyLocationDetailPage() {
     setHistorySaveError(null)
     try {
       const res = await apiJson<{ location: LibraryLocation }>(
-        `/api/monthly_routes/library/${location.id}`,
+        `/api/monthly_sites/library/${location.id}`,
         {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -830,7 +830,7 @@ export default function MonthlyLocationDetailPage() {
           </Accordion.Header>
           <Accordion.Body className="monthly-location-comments-body">
             <MonthlyLibraryCommentsPanel
-              commentsApiPrefix={`/api/monthly_routes/library/${idNum}`}
+              commentsApiPrefix={`/api/monthly_sites/library/${idNum}`}
               comments={comments}
               setComments={setComments}
               sessionUsername={sessionUsername}

@@ -7,6 +7,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from collections import defaultdict
+from sqlalchemy import inspect
 from app.services.scheduling_diff import BaselineState, compute_scheduling_diffs
 
 
@@ -20,6 +21,7 @@ api_session.headers.update({"Accept": "application/json"})
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 log = logging.getLogger("backfill")
 LOCAL_TZ = ZoneInfo("America/Vancouver")
+DEFAULT_WEEKLY_JOB_TYPE = "inspection,reinspection,planned_maintenance,preventative_maintenance"
 
 def authenticate(username: str, password: str) -> None:
     auth_url = f"{SERVICE_TRADE_API_BASE}/auth"
@@ -109,7 +111,7 @@ def _weekly_stats_bucket_for_run(now: datetime) -> tuple[datetime, datetime]:
     return _week_window_local(now - timedelta(days=1))
 
 
-def run_weekly_scheduling_snapshot(job_type: str = "inspection,reinspection,planned_maintenance"):
+def run_weekly_scheduling_snapshot(job_type: str = DEFAULT_WEEKLY_JOB_TYPE):
     now = datetime.now(timezone.utc)
     week_start, week_end = _weekly_stats_bucket_for_run(now)
 
@@ -255,6 +257,39 @@ def _create_weekly_stats_backup(backup_name: str) -> str:
     return backup_name
 
 
+def _table_exists(table_name: str) -> bool:
+    return inspect(db.engine).has_table(table_name)
+
+
+def restore_weekly_stats_from_backup(*, backup_table: str, dry_run: bool = True, backup_name: str | None = None) -> dict:
+    backup_table = _validate_backup_name(backup_table)
+    summary = {
+        "backup_table": backup_table,
+        "dry_run": dry_run,
+        "action": None,
+        "pre_restore_backup": None,
+        "backup_table_exists": _table_exists(backup_table),
+    }
+
+    if not summary["backup_table_exists"]:
+        summary["action"] = "backup_table_missing"
+        return summary
+
+    if dry_run:
+        summary["action"] = "would_restore"
+        return summary
+
+    if backup_name is not None:
+        summary["pre_restore_backup"] = _create_weekly_stats_backup(backup_name)
+
+    with db.engine.begin() as conn:
+        conn.exec_driver_sql("DELETE FROM weekly_scheduling_stats")
+        conn.exec_driver_sql(f"INSERT INTO weekly_scheduling_stats SELECT * FROM {backup_table}")
+
+    summary["action"] = "restored"
+    return summary
+
+
 def repair_week_bucket_alignment(*, dry_run: bool = True, backup_name: str | None = None) -> dict:
     """
     Non-destructive repair:
@@ -336,18 +371,163 @@ def repair_week_bucket_alignment(*, dry_run: bool = True, backup_name: str | Non
     return summary
 
 
+def _parse_tz_aware_datetime(value: str) -> datetime:
+    value = value.strip()
+    if value.endswith("Z"):
+        value = value[:-1] + "+00:00"
+    elif len(value) >= 3 and value[-3] in "+-" and value[-2:].isdigit():
+        value = value + ":00"
+    dt = datetime.fromisoformat(value)
+    return dt.astimezone(timezone.utc) if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def shift_week_bucket_backward(*, week_start: datetime, dry_run: bool = True, backup_name: str | None = None) -> dict:
+    row = (
+        db.session.query(WeeklySchedulingStats)
+        .filter(WeeklySchedulingStats.period_start == week_start)
+        .one_or_none()
+    )
+
+    summary = {
+        "requested_week_start": week_start.isoformat(),
+        "row_found": bool(row),
+        "target_week_start": None,
+        "target_week_end": None,
+        "dry_run": dry_run,
+        "backup_table": None,
+        "action": None,
+    }
+
+    if row is None:
+        summary["action"] = "row_not_found"
+        return summary
+
+    target_start = row.period_start - timedelta(days=7)
+    target_end = row.period_end - timedelta(days=7)
+    summary["target_week_start"] = target_start.isoformat()
+    summary["target_week_end"] = target_end.isoformat()
+
+    target_row = (
+        db.session.query(WeeklySchedulingStats)
+        .filter(WeeklySchedulingStats.period_start == target_start)
+        .filter(WeeklySchedulingStats.period_end == target_end)
+        .filter(WeeklySchedulingStats.job_type == row.job_type)
+        .one_or_none()
+    )
+
+    if dry_run:
+        summary["action"] = "would_shift"
+        summary["existing_target_row"] = bool(target_row)
+        return summary
+
+    if backup_name is not None:
+        summary["backup_table"] = _create_weekly_stats_backup(backup_name)
+
+    if target_row is None:
+        row.period_start = target_start
+        row.period_end = target_end
+        db.session.add(row)
+        summary["action"] = "moved_row"
+    else:
+        target_row.scheduled_count = row.scheduled_count
+        target_row.rescheduled_count = row.rescheduled_count
+        target_row.generated_at = row.generated_at or target_row.generated_at
+        summary["action"] = "replaced_target_row"
+        db.session.delete(row)
+
+    db.session.commit()
+    return summary
+
+
+def set_week_counts(*, week_start: datetime, scheduled_count: int | None = None, rescheduled_count: int | None = None, dry_run: bool = True) -> dict:
+    row = (
+        db.session.query(WeeklySchedulingStats)
+        .filter(WeeklySchedulingStats.period_start == week_start)
+        .one_or_none()
+    )
+
+    summary = {
+        "requested_week_start": week_start.isoformat(),
+        "row_found": bool(row),
+        "scheduled_count": scheduled_count,
+        "rescheduled_count": rescheduled_count,
+        "dry_run": dry_run,
+        "action": None,
+    }
+
+    if row is None:
+        summary["action"] = "row_not_found"
+        return summary
+
+    if dry_run:
+        summary["action"] = "would_update"
+        return summary
+
+    if scheduled_count is not None:
+        row.scheduled_count = scheduled_count
+    if rescheduled_count is not None:
+        row.rescheduled_count = rescheduled_count
+    row.generated_at = datetime.now(timezone.utc)
+    db.session.commit()
+
+    summary["action"] = "updated"
+    return summary
+
+
 def main():
     parser = argparse.ArgumentParser(description="Update weekly scheduling stats and baseline.")
-    parser.add_argument("--job-type", default="inspection,reinspection,planned_maintenance")
+    parser.add_argument("--job-type", default=DEFAULT_WEEKLY_JOB_TYPE)
     parser.add_argument("--repair-week-buckets", action="store_true")
+    parser.add_argument("--shift-week-start", default=None,
+                        help="Shift the weekly stats row for this week start back by one week.")
+    parser.add_argument("--set-week-counts", action="store_true",
+                        help="Set scheduled and/or rescheduled counts for a specific week start.")
+    parser.add_argument("--scheduled-count", type=int, default=None,
+                        help="Scheduled count to apply when setting weekly counts.")
+    parser.add_argument("--rescheduled-count", type=int, default=None,
+                        help="Rescheduled count to apply when setting weekly counts.")
+    parser.add_argument("--restore-backup", default=None,
+                        help="Restore weekly_scheduling_stats from a named backup table.")
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--backup-name", default=None)
+    parser.add_argument("--backup-name", default=None,
+                        help="Backup table name to create before restoring or shifting.")
     args = parser.parse_args()
 
     app = create_app()
     with app.app_context():
         if args.repair_week_buckets:
             result = repair_week_bucket_alignment(dry_run=args.dry_run, backup_name=args.backup_name)
+            print(json.dumps(result, default=str))
+            return
+
+        if args.restore_backup:
+            result = restore_weekly_stats_from_backup(
+                backup_table=args.restore_backup,
+                dry_run=args.dry_run,
+                backup_name=args.backup_name,
+            )
+            print(json.dumps(result, default=str))
+            return
+
+        if args.set_week_counts:
+            week_start = _parse_tz_aware_datetime(args.shift_week_start)
+            result = set_week_counts(
+                week_start=week_start,
+                scheduled_count=args.scheduled_count,
+                rescheduled_count=args.rescheduled_count,
+                dry_run=args.dry_run,
+            )
+            print(json.dumps(result, default=str))
+            return
+
+        if args.shift_week_start:
+            week_start = _parse_tz_aware_datetime(args.shift_week_start)
+            backup_name = args.backup_name or (_default_backup_name() if not args.dry_run else None)
+            result = shift_week_bucket_backward(
+                week_start=week_start,
+                dry_run=args.dry_run,
+                backup_name=backup_name,
+            )
             print(json.dumps(result, default=str))
             return
 

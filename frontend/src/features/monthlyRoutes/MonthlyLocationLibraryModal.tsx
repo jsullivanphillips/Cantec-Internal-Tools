@@ -249,7 +249,7 @@ export default function MonthlyLocationLibraryModal({
     setSaveError(null)
     try {
       const response = await apiJson<{ location: LibraryLocation }>(
-        `/api/monthly_routes/library/${loc.id}`,
+        `/api/monthly_sites/library/${loc.id}`,
         {
           method: 'PATCH',
           body: JSON.stringify({
@@ -288,7 +288,7 @@ export default function MonthlyLocationLibraryModal({
     setIsDeleting(true)
     setSaveError(null)
     try {
-      await apiJson<unknown>(`/api/monthly_routes/library/${loc.id}`, {
+      await apiJson<unknown>(`/api/monthly_sites/library/${loc.id}`, {
         method: 'DELETE',
       })
       onDeleted?.(loc.id)

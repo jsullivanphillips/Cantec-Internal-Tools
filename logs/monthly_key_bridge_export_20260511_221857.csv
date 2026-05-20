@@ -1,0 +1,670 @@
+key_id,service_trade_site_location_id,address_normalized,property_management_company_normalized,building_normalized,display_address,legacy_monthly_route_location_id,legacy_testing_site_id,keys_text,barcode_text,source,exported_at
+2,,10 paul kane/11 cooperage place,proline,,10 Paul Kane/11 Cooperage Place,928,,UV 01,100161,legacy_location,2026-05-11T22:18:57.352487+00:00
+3,,1000 mckenzie avenue,starlight/devon,,1000 Mckenzie Avenue,929,,M 0001,100229,legacy_location,2026-05-11T22:18:57.352487+00:00
+4,,1000-1012 douglas street,itziar management ltd. (0824606 bc ltd.),,1000-1012 Douglas Street,930,,D 2101,100539,legacy_location,2026-05-11T22:18:57.352487+00:00
+5,,1001 wharf street,pastoral developments ltd.,,1001 Wharf Street,931,,"NA 1001
+[K2, F1]",100861,legacy_location,2026-05-11T22:18:57.352487+00:00
+6,,10016 3rd street,cornerstone,,10016 3rd Street,932,,358,100203,legacy_location,2026-05-11T22:18:57.352487+00:00
+7,,10017 avenger way,lumberworld operations ltd.,,10017 Avenger Way,933,,VG 71001,,legacy_location,2026-05-11T22:18:57.352487+00:00
+8,,1002 mckenzie avenue,starlight/devon,,1002 Mckenzie Avenue,934,,M 2001,100966,legacy_location,2026-05-11T22:18:57.352487+00:00
+9,,1002 pakington,proline,,1002 Pakington,935,,146,100903,legacy_location,2026-05-11T22:18:57.352487+00:00
+10,,1002 wharf street,malahat properties,,1002 Wharf Street,936,,at reception,,legacy_location,2026-05-11T22:18:57.352487+00:00
+11,,10025 resthaven drive,inken roller c/o richmond property group,,10025 Resthaven Drive,937,,349,100398,legacy_location,2026-05-11T22:18:57.352487+00:00
+12,,10030 resthaven drive,raven property management ltd.,,10030 Resthaven Drive,938,,SC 03001,100998,legacy_location,2026-05-11T22:18:57.352487+00:00
+13,,1004 pemberton road,raul caballero,,1004 Pemberton Road,939,,PB 4001,100404,legacy_location,2026-05-11T22:18:57.352487+00:00
+14,,1005 & 1009 mckenzie avenue,firm management,,1005 & 1009 McKenzie Avenue,940,,MN 5001,100535,legacy_location,2026-05-11T22:18:57.352487+00:00
+15,,1005 broad street,richmond property group,,1005 Broad Street,941,,K 5001 [K4],100340,legacy_location,2026-05-11T22:18:57.352487+00:00
+16,,1005 pakington street,century 21 queenswood,,1005 Pakington Street,942,,171,100590,legacy_location,2026-05-11T22:18:57.352487+00:00
+17,,1005 st. charles street,bross holdings,,1005 St. Charles Street,943,,HC 5001,100464,legacy_location,2026-05-11T22:18:57.352487+00:00
+18,,1006 fort street,colliers,,1006 Fort Street,944,,ZZ 6001 K3-F1,100619,legacy_location,2026-05-11T22:18:57.352487+00:00
+19,,1006 tolmie avenue,century 21 queenswood,,1006 Tolmie Avenue,945,,163,100251,legacy_location,2026-05-11T22:18:57.352487+00:00
+20,,1007 esquimalt road,starlight properties,,1007 Esquimalt Road,946,,LT 7001,100595,legacy_location,2026-05-11T22:18:57.352487+00:00
+21,,101 ontario street,proline property management,,101 Ontario Street,947,,TO 101,100210,legacy_location,2026-05-11T22:18:57.352487+00:00
+22,,1010 mckenzie avenue,starlight/devon,,1010 Mckenzie Avenue,948,,M 101,100836,legacy_location,2026-05-11T22:18:57.352487+00:00
+23,,1012 collinson street,hutton,,1012 Collinson Street,949,,M 2101 K3,100792,legacy_location,2026-05-11T22:18:57.352487+00:00
+24,,1013 vancouver street,devon properties,,1013 Vancouver Street,950,,183,100959,legacy_location,2026-05-11T22:18:57.352487+00:00
+25,,1015 kings road,darioush diba,,1015 Kings Road,951,,KQ 5101,100272,legacy_location,2026-05-11T22:18:57.352487+00:00
+26,,10159 third street,realstar management,,10159 Third Street,952,,93,100807,legacy_location,2026-05-11T22:18:57.352487+00:00
+27,,1017 queens avenue,starlight/devon,,1017 Queens Avenue,953,,111,100242,legacy_location,2026-05-11T22:18:57.352487+00:00
+28,,1019 mcclure street,strata plan vis 308,,1019 McClure Street,954,,CL 9101,100450,legacy_location,2026-05-11T22:18:57.352487+00:00
+29,,1019 rockland avenue,proline,,1019 Rockland Avenue,955,,ST 9101 K2,100558,legacy_location,2026-05-11T22:18:57.352487+00:00
+30,,1020 park boulevard,pemberton holmes,,1020 Park Boulevard,956,,92,100728,legacy_location,2026-05-11T22:18:57.352487+00:00
+31,,1020 pembroke street,brown bros.,,1020 Pembroke Street,957,,RT 0201 K2,100397,legacy_location,2026-05-11T22:18:57.352487+00:00
+32,,1024 fairfield road,firm management,,1024 Fairfield Road,958,,WT 4201 K3,100782,legacy_location,2026-05-11T22:18:57.352487+00:00
+33,,1025 johnson street,devon properties,,1025 Johnson Street,959,,JD 5201 K5-F2,100923,legacy_location,2026-05-11T22:18:57.352487+00:00
+34,,1026 johnson street,firm management,,1026 Johnson Street,960,,WS 6201 K4-F1,,legacy_location,2026-05-11T22:18:57.352487+00:00
+35,,1030 pendergast street,starlight/devon,,1030 Pendergast Street,961,,GT 0301,100580,legacy_location,2026-05-11T22:18:57.352487+00:00
+36,,1031 burdett avenue,hutton,,1031 Burdett Avenue,962,,BA 1301 K2,,legacy_location,2026-05-11T22:18:57.352487+00:00
+37,,1032 north park,pacific quorum $55,,1032 North Park,963,,435,100547,legacy_location,2026-05-11T22:18:57.352487+00:00
+38,,1035 belmont avenue,belmont properties,,1035 Belmont Avenue,964,,445,100083,legacy_location,2026-05-11T22:18:57.352487+00:00
+39,,1035 north park / 1720 cook street,first service residential,,1035 North Park / 1720 Cook Street,965,,TH 5301,100909,legacy_location,2026-05-11T22:18:57.352487+00:00
+35,,1035 pendergast street,starlight/devon,,1035 Pendergast Street,966,,GT 0301,100580,legacy_location,2026-05-11T22:18:57.352487+00:00
+41,,1036 stellys cross road,aleutian property management ltd,,1036 Stellys Cross Road,967,,424,100565,legacy_location,2026-05-11T22:18:57.352487+00:00
+42,,104 dallas road,strata #1374 the dolphins,,104 Dallas Road,968,,SP 401 K1-F1,100373,legacy_location,2026-05-11T22:18:57.352487+00:00
+41,,1040 stellys cross road,aleutian property management ltd,,1040 Stellys Cross Road,969,,424,100565,legacy_location,2026-05-11T22:18:57.352487+00:00
+44,,1041 fairfield road,pemberton holmes,,1041 Fairfield Road,970,,68,100206,legacy_location,2026-05-11T22:18:57.352487+00:00
+45,,1041 richardson road,capital west,,1041 Richardson Road,971,,RR 1401,100149,legacy_location,2026-05-11T22:18:57.352487+00:00
+46,,1045 mcclure street,brown bros.,,1045 McClure Street,972,,332,100543,legacy_location,2026-05-11T22:18:57.352487+00:00
+47,,10459 resthaven drive,proline,,10459 Resthaven Drive,973,,392,100335,legacy_location,2026-05-11T22:18:57.352487+00:00
+47,,10461 resthaven drive,proline,,10461 Resthaven Drive,974,,392,100335,legacy_location,2026-05-11T22:18:57.352487+00:00
+49,,1049 southgate street,devon properties,,1049 Southgate Street,975,,186,100822,legacy_location,2026-05-11T22:18:57.352487+00:00
+50,,105 wilson street,pacifica housing,,105 Wilson Street,976,,W 501,100379,legacy_location,2026-05-11T22:18:57.352487+00:00
+51,,1050 park boulevard,hutton,,1050 Park Boulevard,977,,P 0501 K2,100168,legacy_location,2026-05-11T22:18:57.352487+00:00
+52,,10520 mcdonald park,complete residential property management,,10520 McDonald Park,978,,DN 02501,100337,legacy_location,2026-05-11T22:18:57.352487+00:00
+53,,1055 hillside avenue,firm management,,1055 Hillside Avenue,979,,LM 5501,100864,legacy_location,2026-05-11T22:18:57.352487+00:00
+54,,1057 moss street,tim slater,,1057 Moss Street,980,,SM 7501,100122,legacy_location,2026-05-11T22:18:57.352487+00:00
+55,,1060 craigdarroch road,pemberton holmes,,1060 Craigdarroch Road,981,,373,100247,legacy_location,2026-05-11T22:18:57.352487+00:00
+56,,1060 goldstream avenue,centurion properties,,1060 Goldstream Avenue,982,,412,100522,legacy_location,2026-05-11T22:18:57.352487+00:00
+57,,1060 southgate street,southgate manor,,1060 Southgate Street,983,,42,100974,legacy_location,2026-05-11T22:18:57.352487+00:00
+58,,1066 foul bay road,newport property,,1066 Foul Bay Road,984,,124,100843,legacy_location,2026-05-11T22:18:57.352487+00:00
+59,,1069 southgate street,newport property management,,1069 Southgate Street,985,,307,100138,legacy_location,2026-05-11T22:18:57.352487+00:00
+60,,1080 cypress road,storyoga inc.,,1080 Cypress Road,986,,CP 801,100497,legacy_location,2026-05-11T22:18:57.352487+00:00
+61,,1088 johnson street,centurion property associates inc.,,1088 Johnson Street,987,,HJ 8801,100979,legacy_location,2026-05-11T22:18:57.352487+00:00
+62,,109 wilson street,pacifica housing,,109 Wilson Street,988,,A 901,100795,legacy_location,2026-05-11T22:18:57.352487+00:00
+63,,1090 johnson street,firm management,,1090 Johnson Street,989,,TM 0901,100365,legacy_location,2026-05-11T22:18:57.352487+00:00
+64,,1097 view street,firm management,,1097 View Street,990,,VS 7901,100077,legacy_location,2026-05-11T22:18:57.352487+00:00
+65,,110 douglas street,devon properties,,110 Douglas Street,991,,344,100483,legacy_location,2026-05-11T22:18:57.352487+00:00
+66,,1106 balmoral road,peter hejjas,,1106 Balmoral Road,992,,127,100458,legacy_location,2026-05-11T22:18:57.352487+00:00
+67,,1110 samar crescent,breakwater realty inc.,,1110 Samar Crescent,993,,MS 0111,100627,legacy_location,2026-05-11T22:18:57.352487+00:00
+68,,1111 hillside avenue,century 21,,1111 Hillside Avenue,994,,OP 1111,100921,legacy_location,2026-05-11T22:18:57.352487+00:00
+67,,1114 samar crescent,breakwater realty inc.,,1114 Samar Crescent,995,,MS 0111,100627,legacy_location,2026-05-11T22:18:57.352487+00:00
+70,,1115 craigflower road,proline,,1115 Craigflower Road,996,,IW 5111 K6-G1,100437,legacy_location,2026-05-11T22:18:57.352487+00:00
+661,,1118 balmoral road,devon properties ltd.,,1118 Balmoral Road,997,,BM 8111,100042,legacy_location,2026-05-11T22:18:57.352487+00:00
+72,,1120 burdett ave,devon properties,,1120 Burdett Ave,999,,B0211,100153,legacy_location,2026-05-11T22:18:57.352487+00:00
+73,,1120 richardson street,gibraltar,,1120 Richardson Street,1000,,4,100477,legacy_location,2026-05-11T22:18:57.352487+00:00
+74,,1120 yates street,colliers,,1120 Yates Street,1001,,321,100550,legacy_location,2026-05-11T22:18:57.352487+00:00
+75,,1122 hilda street,pemberton strata,,1122 Hilda Street,1002,,427,100013,legacy_location,2026-05-11T22:18:57.352487+00:00
+76,,1122 mckenzie street,pemberton holmes,,1122 McKenzie Street,1003,,100,100226,legacy_location,2026-05-11T22:18:57.352487+00:00
+77,,1125 douglas street,arpeg holdings cactus club,,1125 Douglas Street,1004,,Call Ken Cooper,,legacy_location,2026-05-11T22:18:57.352487+00:00
+78,,1125 hillside avenue,devon properties,,1125 Hillside Avenue,1005,,H 5211,,legacy_location,2026-05-11T22:18:57.352487+00:00
+79,,1126 rockland avenue,starlight/devon,,1126 Rockland Avenue,1006,,LD 6211,100410,legacy_location,2026-05-11T22:18:57.352487+00:00
+80,,1127 wharf street,darcy's pub,,1127 Wharf Street,1007,,On Site,,legacy_location,2026-05-11T22:18:57.352487+00:00
+81,,1130 fort street,pacifica housing,,1130 Fort Street,1008,,F 0311,100080,legacy_location,2026-05-11T22:18:57.352487+00:00
+662,,1130 pandora avenue,devon properties ltd.,,1130 Pandora Avenue,1009,,PD 311,100752,legacy_location,2026-05-11T22:18:57.352487+00:00
+82,,1132 mcclure street,devon properties,,1132 McClure Street,1010,,162,100791,legacy_location,2026-05-11T22:18:57.352487+00:00
+83,,1133a reynolds road,abbeyfield st. peters,,1133A Reynolds Road,1011,,PQ 3311,100304,legacy_location,2026-05-11T22:18:57.352487+00:00
+84,,1137-1139 yates street,equitex property management,,1137-1139 Yates Street,1012,,TY 7311,100964,legacy_location,2026-05-11T22:18:57.352487+00:00
+85,,1145 bay street,ashton oaks c/o gateway prop,,1145 Bay Street,1013,,322,100095,legacy_location,2026-05-11T22:18:57.352487+00:00
+86,,1150 hilda street,devon properties,,1150 Hilda Street,1014,,AH 0511,100134,legacy_location,2026-05-11T22:18:57.352487+00:00
+87,,1150 queens avenue,pacific quorum,,1150 Queens Avenue,1015,,406,100452,legacy_location,2026-05-11T22:18:57.352487+00:00
+88,,1150 rockland avenue,pemberton holmes,,1150 Rockland Avenue,1016,,346,100259,legacy_location,2026-05-11T22:18:57.352487+00:00
+89,,1160 esquimalt road,starlight/devon,,1160 Esquimalt Road,1017,,EQ 611,100443,legacy_location,2026-05-11T22:18:57.352487+00:00
+90,,1160 richardson street,lee & sharpe,,1160 Richardson Street,1018,,164,100364,legacy_location,2026-05-11T22:18:57.352487+00:00
+91,,1165 meares street,pemberton holmes (new june 13/24),,1165 Meares Street,1019,,MA 5611 K2,100094,legacy_location,2026-05-11T22:18:57.352487+00:00
+92,,1165 yates street,devon properties,,1165 Yates Street,1020,,340,100463,legacy_location,2026-05-11T22:18:57.352487+00:00
+93,,1166 rockland avenue,freelance,,1166 Rockland Avenue,1021,,K 6611 K3,100160,legacy_location,2026-05-11T22:18:57.352487+00:00
+94,,1177 esquimalt road,devon properties,,1177 Esquimalt Road,1022,,368,100290,legacy_location,2026-05-11T22:18:57.352487+00:00
+95,,1178 beach drive,devon properties,,1178 Beach Drive,1023,,108,100656,legacy_location,2026-05-11T22:18:57.352487+00:00
+96,,118 croft street,brown bros.,,118 Croft Street,1024,,366,100395,legacy_location,2026-05-11T22:18:57.352487+00:00
+97,,1180 colville road,starlight properties c/o devon properties,,1180 Colville Road,1025,,CR 0811,100479,legacy_location,2026-05-11T22:18:57.352487+00:00
+2472,,1180 fort street,western pacific property group,,1180 Fort Street,1026,,FT 811,100393,legacy_location,2026-05-11T22:18:57.352487+00:00
+98,,1180 view street,devon properties,,1180 View Street,1027,,404,100571,legacy_location,2026-05-11T22:18:57.352487+00:00
+99,,1185 yates street,devon properties,,1185 Yates Street,1028,,386,100303,legacy_location,2026-05-11T22:18:57.352487+00:00
+100,,1190 may street,devon properties,,1190 May Street,1029,,409,100695,legacy_location,2026-05-11T22:18:57.352487+00:00
+101,,1194 esquimalt road,capital west,,1194 Esquimalt Road,1030,,FM 4911,100078,legacy_location,2026-05-11T22:18:57.352487+00:00
+103,,1196 sluggett road,firm management,,1196 Sluggett Road,1032,,OW 6911,100876,legacy_location,2026-05-11T22:18:57.352487+00:00
+104,,120 douglas street,oakwood,,120 Douglas Street,1034,,AT 021 K3,100501,legacy_location,2026-05-11T22:18:57.352487+00:00
+105,,"120 gorge road east - building ""a""",victoria native friendship centre,,"120 Gorge Road East - Building ""A""",1035,,GG 021,100978,legacy_location,2026-05-11T22:18:57.352487+00:00
+105,,"120 gorge road east - building ""b""",victoria native friendship centre,,"120 Gorge Road East - Building ""B""",1036,,GG 021,100978,legacy_location,2026-05-11T22:18:57.352487+00:00
+107,,1205 rudlin street,starlight properties c/o devon properties ltd.,,1205 Rudlin Street,1037,,DR 5021,100894,legacy_location,2026-05-11T22:18:57.352487+00:00
+108,,1208 rockland avenue,devon properties,,1208 Rockland Avenue,1038,,133,100794,legacy_location,2026-05-11T22:18:57.352487+00:00
+109,,1209 & 1229 clarke road,central saanich municipality,,1209 & 1229 Clarke Road,1039,,CC 9021 K4,100519,legacy_location,2026-05-11T22:18:57.352487+00:00
+110,,1210 tattersall drive,bross holdings,,1210 Tattersall Drive,1040,,TT 0121,100625,legacy_location,2026-05-11T22:18:57.352487+00:00
+111,,1216 johnson street,devon properties,,1216 Johnson Street,1041,,180,100347,legacy_location,2026-05-11T22:18:57.352487+00:00
+112,,1217 pandora avenue,south island property management,,1217 Pandora Avenue,1042,,RP 7121,100957,legacy_location,2026-05-11T22:18:57.352487+00:00
+113,,1220 pandora avenue,devon properties,,1220 Pandora Avenue,1043,,136,100237,legacy_location,2026-05-11T22:18:57.352487+00:00
+114,,1222 douglas street,firm management,,1222 Douglas Street,1044,,DR 2221 (to access upstairs area),100405,legacy_location,2026-05-11T22:18:57.352487+00:00
+115,,1224 balmoral road,devon properties,,1224 Balmoral Road,1045,,B4221,100684,legacy_location,2026-05-11T22:18:57.352487+00:00
+116,,1226 johnson street,pemberton holmes - residential,,1226 Johnson Street,1046,,HJ 1226,100928,legacy_location,2026-05-11T22:18:57.352487+00:00
+118,,1230 fort street,pacific quorum,,1230 Fort Street,1048,,x405,,legacy_location,2026-05-11T22:18:57.352487+00:00
+119,,1230 verdier avenue,starlight/devon,,1230 Verdier Avenue,1049,,440,100826,legacy_location,2026-05-11T22:18:57.352487+00:00
+120,,1233 fairfield road,starlight/devon,,1233 Fairfield Road,1050,,178,100724,legacy_location,2026-05-11T22:18:57.352487+00:00
+121,,1234 fort street,hutton,,1234 Fort Street,1051,,CP 4321 K2,100432,legacy_location,2026-05-11T22:18:57.352487+00:00
+80,,1234 wharf street,complete residential,,1234 Wharf Street,1052,,KEY AT SITE,,legacy_location,2026-05-11T22:18:57.352487+00:00
+123,,1235 johnson street,century 21 queenswood realty ltd.,,1235 Johnson Street,1053,,HJ 5321,100735,legacy_location,2026-05-11T22:18:57.352487+00:00
+113,,1236 pandora avenue,starlight/devon,,1236 Pandora Avenue,1054,,136,100237,legacy_location,2026-05-11T22:18:57.352487+00:00
+119,,1236 verdier avenue,starlight/devon,,1236 Verdier Avenue,1055,,440,100826,legacy_location,2026-05-11T22:18:57.352487+00:00
+126,,1249 rockland avenue,sanpra real estate inc.,,1249 Rockland Avenue,1056,,137,100359,legacy_location,2026-05-11T22:18:57.352487+00:00
+127,,125 croft street,pacific cove,,125 Croft Street,1057,,TC 521,100942,legacy_location,2026-05-11T22:18:57.352487+00:00
+128,,1250 wharf street,servissio property services ltd.,,1250 Wharf Street,1058,,TG 0521 K4,100218,legacy_location,2026-05-11T22:18:57.352487+00:00
+129,,1252 pandora avenue,brown bros.,,1252 Pandora Avenue,1059,,TA 2521 K2,100351,legacy_location,2026-05-11T22:18:57.352487+00:00
+130,,1255 denman street,devon properties,,1255 Denman Street,1060,,408,100211,legacy_location,2026-05-11T22:18:57.352487+00:00
+131,,127 howe street,newport property,,127 Howe Street,1061,,101,100643,legacy_location,2026-05-11T22:18:57.352487+00:00
+132,,1270 beach drive,associa bc,,1270 Beach Drive,1062,,306,100816,legacy_location,2026-05-11T22:18:57.352487+00:00
+133,,1275 oscar street,1275 oscar street holdings ltd,,1275 Oscar Street,1063,,OC 5721 K1,100686,legacy_location,2026-05-11T22:18:57.352487+00:00
+134,,129 gorge road e,belmont properties,,129 Gorge Road E,1064,,453,100851,legacy_location,2026-05-11T22:18:57.352487+00:00
+135,,1291 craigflower road,devon properties,,1291 Craigflower Road,1065,,413,100891,legacy_location,2026-05-11T22:18:57.352487+00:00
+135,,1293 craigflower road,devon properties,,1293 Craigflower Road,1066,,413,100891,legacy_location,2026-05-11T22:18:57.352487+00:00
+135,,1295 craigflower road,devon properties,,1295 Craigflower Road,1067,,413,100891,legacy_location,2026-05-11T22:18:57.352487+00:00
+135,,1297 craigflower road,devon properties,,1297 Craigflower Road,1068,,413,100891,legacy_location,2026-05-11T22:18:57.352487+00:00
+139,,1300 yates street,pacific cove,,1300 Yates Street,1069,,RA 0031 K2,100044,legacy_location,2026-05-11T22:18:57.352487+00:00
+140,,1301 fort street,proline,,1301 Fort Street,1070,,YT 1031 K1,100294,legacy_location,2026-05-11T22:18:57.352487+00:00
+141,,1301 pandora,devon properties,,1301 Pandora,1071,,153,100466,legacy_location,2026-05-11T22:18:57.352487+00:00
+142,,1308-1312 douglas street,exchequer,,1308-1312 Douglas Street,1072,,339,100310,legacy_location,2026-05-11T22:18:57.352487+00:00
+134,,131 gorge road e,belmont properties,,131 Gorge Road E,1073,,453,100851,legacy_location,2026-05-11T22:18:57.352487+00:00
+144,,1312 beach drive,south island,,1312 Beach Drive,1074,,3,100641,legacy_location,2026-05-11T22:18:57.352487+00:00
+145,,1312 blanshard street,richmond property group,,1312 Blanshard Street,1075,,CB 2131 K1-F2,100034,legacy_location,2026-05-11T22:18:57.352487+00:00
+146,,1317 hillside,vince collard,,1317 Hillside,1076,,H 7131,100352,legacy_location,2026-05-11T22:18:57.352487+00:00
+147,,1319 newport avenue,christiane selenz,,1319 Newport Avenue,1077,,NA 9131,100688,legacy_location,2026-05-11T22:18:57.352487+00:00
+148,,1320 rockland avenue,brown bros.,,1320 Rockland Avenue,1078,,161,100532,legacy_location,2026-05-11T22:18:57.352487+00:00
+149,,1321 broad street,richmond property group ltd.,,1321 Broad Street,1079,,378,100739,legacy_location,2026-05-11T22:18:57.352487+00:00
+150,,1321 fernwood road,victoria native friendship centre,,1321 Fernwood Road,1080,,WF 1231,100092,legacy_location,2026-05-11T22:18:57.352487+00:00
+151,,1322 blanshard street,devon properties,,1322 Blanshard Street,1081,,382,100445,legacy_location,2026-05-11T22:18:57.352487+00:00
+152,,1325 franklin terrace,newport property management,,1325 Franklin Terrace,1082,,173,100605,legacy_location,2026-05-11T22:18:57.352487+00:00
+154,,133 gorge road e,belmont properties,,133 Gorge Road E,1084,,454,,legacy_location,2026-05-11T22:18:57.352487+00:00
+155,,1337 saunders street,belmont properties,,1337 Saunders Street,1085,,DS 7331,100810,legacy_location,2026-05-11T22:18:57.352487+00:00
+156,,1340 sussex road,belmont properties,,1340 Sussex Road,1086,,447,100143,legacy_location,2026-05-11T22:18:57.352487+00:00
+134,,135 gorge road e,belmont properties,,135 Gorge Road E,1087,,453,100851,legacy_location,2026-05-11T22:18:57.352487+00:00
+158,,1350 stanley avenue,capital west,,1350 Stanley Avenue,1088,,SA 0531,100808,legacy_location,2026-05-11T22:18:57.352487+00:00
+159,,1354 craigdarroch road,newport property management,,1354 Craigdarroch Road,1089,,174,100451,legacy_location,2026-05-11T22:18:57.352487+00:00
+160,,1368 pandora avenue,capital west,,1368 Pandora Avenue,1090,,PP 8631,100130,legacy_location,2026-05-11T22:18:57.352487+00:00
+161,,1369 mitchell street,oak bay united church,,1369 Mitchell Street,1091,,UC 9631 K2,100394,legacy_location,2026-05-11T22:18:57.352487+00:00
+162,,1392 rockland avenue,gibraltar,,1392 Rockland Avenue,1092,,30,100256,legacy_location,2026-05-11T22:18:57.352487+00:00
+163,,1399 stanley avenue,belmont properties,,1399 Stanley Avenue,1093,,452,100123,legacy_location,2026-05-11T22:18:57.352487+00:00
+164,,1400 beach drive,capital west,,1400 Beach Drive,1094,,BR 0041,100690,legacy_location,2026-05-11T22:18:57.352487+00:00
+165,,1400 quadra street,starlight properties c/o devon properties ltd.,,1400 Quadra Street,1095,,DQ 0041,100271,legacy_location,2026-05-11T22:18:57.352487+00:00
+166,,1407 fort street,proline,,1407 Fort Street,1096,,ZT 7041 K2,100003,legacy_location,2026-05-11T22:18:57.352487+00:00
+167,,1407 government street,south island property mgmt,,1407 Government Street,1097,,GS 7041 K6,100409,legacy_location,2026-05-11T22:18:57.352487+00:00
+168,,1410 fort street,devon,,1410 Fort Street,1098,,FS 0141,100183,legacy_location,2026-05-11T22:18:57.352487+00:00
+169,,1414 hillside avenue,brown bros.,,1414 Hillside Avenue,1099,,461,100202,legacy_location,2026-05-11T22:18:57.352487+00:00
+171,,1419 stadacona avenue & 1545 pandora avenue,gibraltar + colliers,,1419 Stadacona Avenue & 1545 Pandora Avenue,1101,,SC 9141 K2-F1,100449,legacy_location,2026-05-11T22:18:57.352487+00:00
+172,,1430 stadacona avenue,starlight/devon,,1430 Stadacona Avenue,1102,,396,100457,legacy_location,2026-05-11T22:18:57.352487+00:00
+173,,1433 faircliff lane,oakwood property management,,1433 Faircliff Lane,1103,,IT 3341 K3,100845,legacy_location,2026-05-11T22:18:57.352487+00:00
+174,,1435 elford street,tpm management,,1435 Elford Street,1104,,395,100623,legacy_location,2026-05-11T22:18:57.352487+00:00
+175,,1436 harrison street,firm management,,1436 Harrison Street,1105,,H 6341 K1-F1,100317,legacy_location,2026-05-11T22:18:57.352487+00:00
+176,,1445 fort street,brown bros.,,1445 Fort Street,1106,,141,100112,legacy_location,2026-05-11T22:18:57.352487+00:00
+177,,146 clarence street,century 21,,146 Clarence Street,1108,,112,100856,legacy_location,2026-05-11T22:18:57.352487+00:00
+178,,1461 blanshard street,congregation emanu-el,,1461 Blanshard Street,1109,,LD 1641,100154,legacy_location,2026-05-11T22:18:57.352487+00:00
+179,,1465 fort street,brown brothers property management,,1465 Fort Street,1110,,FT5641,100981,legacy_location,2026-05-11T22:18:57.352487+00:00
+180,,1468 vancouver street,townline,,1468 Vancouver Street,1111,,CV 8641,100944,legacy_location,2026-05-11T22:18:57.352487+00:00
+181,,1483 douglas street,porte realty,,1483 Douglas Street,1112,,SA 3841,100872,legacy_location,2026-05-11T22:18:57.352487+00:00
+182,,1485 fort street,peter hejjas,,1485 Fort Street,1113,,138,100459,legacy_location,2026-05-11T22:18:57.352487+00:00
+183,,1488 cook street,centurion properties,,1488 Cook Street,1114,,347,100821,legacy_location,2026-05-11T22:18:57.352487+00:00
+184,,1490 garnet road,complete residential,,1490 Garnet Road,1115,,LA 0941,100932,legacy_location,2026-05-11T22:18:57.352487+00:00
+186,,1501 laurel lane,srl fire protection,,1501 Laurel Lane,1117,,LL 1051 K2,100702,legacy_location,2026-05-11T22:18:57.352487+00:00
+187,,1504 church street,proline property management ltd.,,1504 Church Street,1118,,HC 4051,100748,legacy_location,2026-05-11T22:18:57.352487+00:00
+188,,1505 belcher avenue,brown bros.,,1505 Belcher Avenue,1119,,140,100707,legacy_location,2026-05-11T22:18:57.352487+00:00
+189,,1505 morrison street,newport property management,,1505 Morrison Street,1120,,06,100188,legacy_location,2026-05-11T22:18:57.352487+00:00
+190,,151 st. andrews street,devon properties,,151 St. Andrews Street,1121,,147,100914,legacy_location,2026-05-11T22:18:57.352487+00:00
+191,,1510 / 1520 mckenzie avenue,greystar,,1510 / 1520 McKenzie Avenue,1122,,MK151,100069,legacy_location,2026-05-11T22:18:57.352487+00:00
+192,,1510 hillside avenue,south island property mgmt,,1510 Hillside Avenue,1123,,BT 0151 K6,100815,legacy_location,2026-05-11T22:18:57.352487+00:00
+193,,1510 jubilee avenue,pemberton holmes,,1510 Jubilee Avenue,1124,,95,100377,legacy_location,2026-05-11T22:18:57.352487+00:00
+195,,1520 belcher avenue,pemberton holmes,,1520 Belcher Avenue,1126,,97,100720,legacy_location,2026-05-11T22:18:57.352487+00:00
+196,,1520 jubilee avenue,pemberton holmes,,1520 Jubilee Avenue,1127,,96,100712,legacy_location,2026-05-11T22:18:57.352487+00:00
+197,,1527 cedar hill cross road,devon properties,,1527 Cedar Hill Cross Road,1128,,107,100797,legacy_location,2026-05-11T22:18:57.352487+00:00
+198,,1527 fort street,pemberton holmes ltd.,,1527 Fort Street,1129,,TF 7251,100470,legacy_location,2026-05-11T22:18:57.352487+00:00
+199,,1530 belcher avenue,newport bornemann,,1530 Belcher Avenue,1130,,60,,legacy_location,2026-05-11T22:18:57.352487+00:00
+200,,1535 jubilee avenue,szlanko family trust,,1535 Jubilee Avenue,1131,,JL 5351,100884,legacy_location,2026-05-11T22:18:57.352487+00:00
+202,,1550 richmond road,itziar management,,1550 Richmond Road,1133,,OO 0551 K2,100936,legacy_location,2026-05-11T22:18:57.352487+00:00
+203,,1550 stockton crescent,devon properties,,1550 Stockton Crescent,1134,,LY 0551,100235,legacy_location,2026-05-11T22:18:57.352487+00:00
+204,,1555 jubilee avenue,devon properties,,1555 Jubilee Avenue,1135,,"CJ 5551
+[K2]",100361,legacy_location,2026-05-11T22:18:57.352487+00:00
+205,,1555 richmond road,devon properties,,1555 Richmond Road,1136,,329,100881,legacy_location,2026-05-11T22:18:57.352487+00:00
+206,,1573/1575 begbie street,devon properties,,1573/1575 Begbie Street,1137,,74,100447,legacy_location,2026-05-11T22:18:57.352487+00:00
+208,,1581 hillside avenue,brown brothers property management,,1581 Hillside Avenue,1139,,W 1851 K2,100814,legacy_location,2026-05-11T22:18:57.352487+00:00
+209,,1585 oak bay avenue,pemberton holmes,,1585 Oak Bay Avenue,1140,,364,100455,legacy_location,2026-05-11T22:18:57.352487+00:00
+211,,1595 rockland avenue,j gordon enterprises ltd,,1595 Rockland Avenue,1142,,"PG 5951
+K1",100227,legacy_location,2026-05-11T22:18:57.352487+00:00
+212,,1597 mortimer street,firm management corporation,,1597 Mortimer Street,1143,,MT 7951,100934,legacy_location,2026-05-11T22:18:57.352487+00:00
+213,,160 wilson street,proline,,160 Wilson Street,1144,,PT061 K3-F1,100240,legacy_location,2026-05-11T22:18:57.352487+00:00
+214,,1612 quadra street,yeung's family holdings,,1612 Quadra Street,1145,,56,100255,legacy_location,2026-05-11T22:18:57.352487+00:00
+215,,1615 belcher avenue,strata plan vis 457,,1615 Belcher Avenue,1146,,BC 5161,100324,legacy_location,2026-05-11T22:18:57.352487+00:00
+216,,1625 richmond road,devon properties,,1625 Richmond Road,1147,,330,100574,legacy_location,2026-05-11T22:18:57.352487+00:00
+217,,1653 oak bay ave,century 21,,1653 Oak Bay Ave,1148,,BO 3561,100239,legacy_location,2026-05-11T22:18:57.352487+00:00
+218,,1655 begbie street,proline,,1655 Begbie Street,1149,,G 5561 K2,100157,legacy_location,2026-05-11T22:18:57.352487+00:00
+219,,1655 chambers street,pacific cove properties,,1655 Chambers Street,1150,,BR 5561,100577,legacy_location,2026-05-11T22:18:57.352487+00:00
+220,,1660 fort street,century 21,,1660 Fort Street,1151,,167,100617,legacy_location,2026-05-11T22:18:57.352487+00:00
+221,,1669 fairfield road,newport property management,,1669 Fairfield Road,1152,,336,100189,legacy_location,2026-05-11T22:18:57.352487+00:00
+222,,1677 hollywood crescent,newport property,,"1677 Hollywood Crescent, Victoria, British Columbia V8S 1J2, Canada",1153,,335,100742,legacy_location,2026-05-11T22:18:57.352487+00:00
+223,,1678 fort street,cascadia comm. solutions new late 2022) (was tpm properties),,1678 Fort Street,1154,,HC 8761 K2,100376,legacy_location,2026-05-11T22:18:57.352487+00:00
+226,,1720 richmond avenue,proline,,1720 Richmond Avenue,1157,,QL 0271,100179,legacy_location,2026-05-11T22:18:57.352487+00:00
+227,,1721 quadra street,strata plan vis 5799,,1721 Quadra Street,1158,,P 1271 K4,100286,legacy_location,2026-05-11T22:18:57.352487+00:00
+228,,1731 cook street,tri-eagle,,1731 Cook Street,1159,,52,100336,legacy_location,2026-05-11T22:18:57.352487+00:00
+229,,1760 fort street,pemberton holmes,,1760 Fort Street,1160,,157,100537,legacy_location,2026-05-11T22:18:57.352487+00:00
+230,,1791 rockland avenue,devon properties,,1791 Rockland Avenue,1161,,158,100177,legacy_location,2026-05-11T22:18:57.352487+00:00
+231,,1801 fern street,oakwood property management,,1801 Fern Street,1162,,NF 1081,100261,legacy_location,2026-05-11T22:18:57.352487+00:00
+232,,1802-1826 government street,devon properties,,1802-1826 Government Street,1163,,379,100801,legacy_location,2026-05-11T22:18:57.352487+00:00
+233,,1809 hovey road,panorma recreation centre,,1809 Hovey Road,1164,,FH 9081,100653,legacy_location,2026-05-11T22:18:57.352487+00:00
+234,,1821 cook street,cornerstone,,1821 Cook Street,1165,,Z 1281 K5,100559,legacy_location,2026-05-11T22:18:57.352487+00:00
+235,,1830 oak bay avenue,richmond property group,,1830 Oak Bay Avenue,1166,,KA 0381,100685,legacy_location,2026-05-11T22:18:57.352487+00:00
+236,,1841 oak bay avenue,starlight properties c/o devon properties,,1841 Oak Bay Avenue,1167,,OB 1481,100330,legacy_location,2026-05-11T22:18:57.352487+00:00
+238,,188 douglas street,hutton,,188 Douglas Street,1169,,B 881 K4-F1,,legacy_location,2026-05-11T22:18:57.352487+00:00
+240,,1901 mt. newton cross road,central saanich municipality,,1901 Mt. Newton Cross Road,1171,,FM 1091,100694,legacy_location,2026-05-11T22:18:57.352487+00:00
+241,,1903 mt newton cross road,central saanich municipality,,1903 Mt Newton Cross Road,1172,,MH 3091,100017,legacy_location,2026-05-11T22:18:57.352487+00:00
+242,,1928 lee avenue,starlight/devon,,1928 Lee Avenue,1173,,175,100838,legacy_location,2026-05-11T22:18:57.352487+00:00
+243,,1939 lee avenue,tpm property management,,1939 Lee Avenue,1174,,384,100338,legacy_location,2026-05-11T22:18:57.352487+00:00
+244,,1950-1952 blanshard street,realhomes management corp.,,1950-1952 Blanshard Street,1175,,AZ 0591 K3-F2,100481,legacy_location,2026-05-11T22:18:57.352487+00:00
+245,,1964 fort street,hutton,,1964 Fort Street,1176,,181,100103,legacy_location,2026-05-11T22:18:57.352487+00:00
+246,,1975 lee avenue,hutton,,1975 Lee Avenue,1177,,F 5791 K3,100817,legacy_location,2026-05-11T22:18:57.352487+00:00
+247,,1990 fort street,devon properties,,1990 Fort Street,1178,,TF 0991,100300,legacy_location,2026-05-11T22:18:57.352487+00:00
+248,,20 olympia avenue,devon properties,,20 Olympia Avenue,1179,,177,100659,legacy_location,2026-05-11T22:18:57.352487+00:00
+249,,200 dallas road,devon properties,,200 Dallas Road,1180,,362,100756,legacy_location,2026-05-11T22:18:57.352487+00:00
+250,,2000 west park lane,strata corp eps 8048,,2000 West Park Lane,1181,,SW 0002,100729,legacy_location,2026-05-11T22:18:57.352487+00:00
+251,,2006 sooke road,pacifica housing,,2006 Sooke Road,1182,,S 6002,100163,legacy_location,2026-05-11T22:18:57.352487+00:00
+80,,2020 richmond road,brown bros.,,2020 Richmond Road,1183,,w/ Parking Attendant,,legacy_location,2026-05-11T22:18:57.352487+00:00
+253,,203 kimta road,firm management,,203 Kimta Road,1184,,P 302,100411,legacy_location,2026-05-11T22:18:57.352487+00:00
+256,,2040 white birch drive,marina park apartments,,2040 White Birch Drive,1187,,WB 0402,100651,legacy_location,2026-05-11T22:18:57.352487+00:00
+257,,2045 carrick / 2060 haultain,st. patrick's church/ st. clare villa,,2045 Carrick / 2060 Haultain,1188,,CH 5402 K2,100647,legacy_location,2026-05-11T22:18:57.352487+00:00
+258,,205 kimta road,firm management,,205 Kimta Road,1189,,P 302A,100552,legacy_location,2026-05-11T22:18:57.352487+00:00
+256,,2050 white birch drive,marina park apartments,,2050 White Birch Drive,1190,,WB 0402,100651,legacy_location,2026-05-11T22:18:57.352487+00:00
+260,,206 oswego street,dorset realty,,206 Oswego Street,1191,,C 602 K2,100403,legacy_location,2026-05-11T22:18:57.352487+00:00
+261,,2065 oak bay avenue,brown bros.,,2065 Oak Bay Avenue,1192,,428,100441,legacy_location,2026-05-11T22:18:57.352487+00:00
+262,,2067 cadboro bay,devon properties,,2067 Cadboro Bay,1193,,338,100699,legacy_location,2026-05-11T22:18:57.352487+00:00
+263,,209 cook street,pemberton holmes,,209 Cook Street,1194,,Q 902 K4,100082,legacy_location,2026-05-11T22:18:57.352487+00:00
+264,,2100 cadboro bay,pemberton holmes,,2100 Cadboro Bay,1195,,419,100703,legacy_location,2026-05-11T22:18:57.352487+00:00
+265,,2120 cadboro bay,tpm properties,,2120 Cadboro Bay,1196,,390,100554,legacy_location,2026-05-11T22:18:57.352487+00:00
+266,,2129 florence street,devon properties,,2129 Florence Street,1197,,305,100599,legacy_location,2026-05-11T22:18:57.352487+00:00
+267,,2136 ridge road,brown bros.,,2136 Ridge Road,1198,,RG 6312,100444,legacy_location,2026-05-11T22:18:57.352487+00:00
+268,,214 moss street,century 21 queenswood,,214 Moss Street,1199,,165,100873,legacy_location,2026-05-11T22:18:57.352487+00:00
+265,,2140 cadboro bay,tpm properties,,2140 Cadboro Bay,1200,,390,100554,legacy_location,2026-05-11T22:18:57.352487+00:00
+270,,215 oswego street,belmont properties,,215 Oswego Street,1201,,"AQ 512 [K2,F1]",100387,legacy_location,2026-05-11T22:18:57.352487+00:00
+271,,2150 cadboro bay,century 21 queenswood,,2150 Cadboro Bay,1202,,170,100655,legacy_location,2026-05-11T22:18:57.352487+00:00
+272,,2151 haultain street,devon properties,,2151 Haultain Street,1203,,155,100287,legacy_location,2026-05-11T22:18:57.352487+00:00
+274,,2161 haultain street,brookridge,,2161 Haultain Street,1205,,H 1612,100709,legacy_location,2026-05-11T22:18:57.352487+00:00
+275,,217 cook street,brown bros.,,217 Cook Street,1206,,C 712,,legacy_location,2026-05-11T22:18:57.352487+00:00
+276,,2170 haultain street,750 pemberton developments ltd.,,2170 Haultain Street,1207,,367,100746,legacy_location,2026-05-11T22:18:57.352487+00:00
+277,,2181 haultain street,belmont properties,,2181 Haultain Street,1208,,446,100275,legacy_location,2026-05-11T22:18:57.352487+00:00
+278,,2184 cadboro bay road,devon properties,,2184 Cadboro Bay Road,1209,,134,100425,legacy_location,2026-05-11T22:18:57.352487+00:00
+279,,220 douglas street,devon properties,,220 Douglas Street,1210,,62,100141,legacy_location,2026-05-11T22:18:57.352487+00:00
+280,,2210 cadboro bay road,brown bros.,,2210 Cadboro Bay Road,1211,,DA 0122,100209,legacy_location,2026-05-11T22:18:57.352487+00:00
+281,,2211 shelbourne street,south island property mgmt,,2211 Shelbourne Street,1212,,GT 1122 K2w,100345,legacy_location,2026-05-11T22:18:57.352487+00:00
+282,,2230 cadboro bay road,devon properties,,2230 Cadboro Bay Road,1213,,156,100731,legacy_location,2026-05-11T22:18:57.352487+00:00
+283,,2233 bowker avenue,devon properties,,2233 Bowker Avenue,1214,,301,100970,legacy_location,2026-05-11T22:18:57.352487+00:00
+285,,225 belleville street,brown bros.,,225 Belleville Street,1216,,LB 522,100184,legacy_location,2026-05-11T22:18:57.352487+00:00
+286,,2250 oak bay avenue,colliers,,2250 Oak Bay Avenue,1217,,E 0522 K4,100454,legacy_location,2026-05-11T22:18:57.352487+00:00
+287,,2261 keating cross road,vancouver island commercial (vic) properties,,2261 Keating Cross Road,1218,,Call for access,,legacy_location,2026-05-11T22:18:57.352487+00:00
+288,,2270 harbour road,harbour haven marina & self-storage,,2270 Harbour Road,1219,,BH722,100755,legacy_location,2026-05-11T22:18:57.352487+00:00
+289,,2286 henry avenue,claridge house,,2286 Henry Avenue,1220,,429,100857,legacy_location,2026-05-11T22:18:57.352487+00:00
+291,,230 cook street,richmond property group,,230 Cook Street,1222,,Z 032 K1,100885,legacy_location,2026-05-11T22:18:57.352487+00:00
+292,,230 oswego street,dorset realty,,230 Oswego Street,1223,,D 032 K2,100258,legacy_location,2026-05-11T22:18:57.352487+00:00
+660,,2310 quadra street,devon properties ltd.,,2310 Quadra Street,1226,,DQ 132,100408,legacy_location,2026-05-11T22:18:57.352487+00:00
+295,,2311 mills road,complete residential,,2311 Mills Road,1227,,BV 1132,100249,legacy_location,2026-05-11T22:18:57.352487+00:00
+296,,2318 james white,colyvan pacific,,2318 James White,1228,,377,100743,legacy_location,2026-05-11T22:18:57.352487+00:00
+297,,2326 harbour road,miraloma strata council vis 5766,,2326 Harbour Road,1229,,425,100887,legacy_location,2026-05-11T22:18:57.352487+00:00
+298,,2330 cook street,devon properties,,2330 Cook Street,1230,,CK 0332,100339,legacy_location,2026-05-11T22:18:57.352487+00:00
+299,,2339 beacon avenue,richmond property group,,2339 Beacon Avenue,1231,,BP 9332,100097,legacy_location,2026-05-11T22:18:57.352487+00:00
+300,,235 cook street,pacific quorum,,235 Cook Street,1232,,411,100967,legacy_location,2026-05-11T22:18:57.352487+00:00
+301,,235 michigan street,brown brothers property management,,235 Michigan Street,1233,,CG 532,100047,legacy_location,2026-05-11T22:18:57.352487+00:00
+302,,2380 brethour avenue,pemberton strata,,2380 Brethour Avenue,1234,,434,100654,legacy_location,2026-05-11T22:18:57.352487+00:00
+303,,2390 city gate boulevard,high street,,2390 City Gate Boulevard,1235,,YC 932,100677,legacy_location,2026-05-11T22:18:57.352487+00:00
+304,,240 douglas street,devon properties,,240 Douglas Street,1236,,63,100299,legacy_location,2026-05-11T22:18:57.352487+00:00
+305,,2421 sidney avenue,complete residential,,2421 Sidney Avenue,1237,,416,100603,legacy_location,2026-05-11T22:18:57.352487+00:00
+306,,2427 amherst avenue,colyvan pacific,,2427 Amherst Avenue,1238,,HS 7242,100322,legacy_location,2026-05-11T22:18:57.352487+00:00
+307,,2433 malaview avenue,starlight properties,,2433 Malaview Avenue,1239,,VW 3342,100645,legacy_location,2026-05-11T22:18:57.352487+00:00
+308,,2440 oakville avenue,colyvan pacific,,2440 Oakville Avenue,1240,,IL 0442,100634,legacy_location,2026-05-11T22:18:57.352487+00:00
+309,,2447 henry avenue,converge condo management,,2447 Henry Avenue,1241,,359,100870,legacy_location,2026-05-11T22:18:57.352487+00:00
+310,,2471 sidney avenue,devon properties,,2471 Sidney Avenue,1242,,444,100806,legacy_location,2026-05-11T22:18:57.352487+00:00
+311,,247-271 cook street,devon properties,,247-271 Cook Street,1243,,407,100604,legacy_location,2026-05-11T22:18:57.352487+00:00
+658,,2475 mount newton cross road,"island nil/tu,o child & family services",,2475 Mount Newton Cross Road,1244,,WN 5742,100006,legacy_location,2026-05-11T22:18:57.352487+00:00
+313,,2490 bevan avenue,ocean court,,2490 Bevan Avenue,1246,,391,100329,legacy_location,2026-05-11T22:18:57.352487+00:00
+314,,250 oswego street,starlight properties c/o devon properties ltd.,,250 Oswego Street,1247,,WG 052,100778,legacy_location,2026-05-11T22:18:57.352487+00:00
+315,,2500-2512 douglas street,capital west,,"2500 Douglas Street, Victoria, British Columbia V8T 4M1, Canada",1248,,DS 2152,100799,legacy_location,2026-05-11T22:18:57.352487+00:00
+316,,2511 quadra street,complete residential,,2511 Quadra Street,1249,,AQ 1152,100995,legacy_location,2026-05-11T22:18:57.352487+00:00
+317,,252 gorge road e,first service residential,,252 Gorge Road E,1250,,GG 252,100772,legacy_location,2026-05-11T22:18:57.352487+00:00
+318,,2530 mt newton cross road,starlight/devon,,2530 Mt Newton Cross Road,1251,,CH 0487,100669,legacy_location,2026-05-11T22:18:57.352487+00:00
+319,,2533 dowler place,first service residential,,2533 Dowler Place,1252,,LW 3352,100321,legacy_location,2026-05-11T22:18:57.352487+00:00
+317,,254 gorge road e,first service residential,,254 Gorge Road E,1253,,GG 252,100772,legacy_location,2026-05-11T22:18:57.352487+00:00
+322,,2549 dowler place,century 21 queenswood,,2549 Dowler Place,1255,,35,100341,legacy_location,2026-05-11T22:18:57.352487+00:00
+323,,2550 bevan avenue,pemberton holmes - strata (sidney),,2550 Bevan Avenue,1256,,VB 0552,100717,legacy_location,2026-05-11T22:18:57.352487+00:00
+324,,2565 beach drive,starlight/devon,,2565 Beach Drive,1257,,98,100671,legacy_location,2026-05-11T22:18:57.352487+00:00
+317,,258 gorge road e,first service residential,,258 Gorge Road E,1258,,GG 252,100772,legacy_location,2026-05-11T22:18:57.352487+00:00
+326,,2580 cadboro bay,strata plan 4934,,2580 Cadboro Bay,1259,,BD 0852,100385,legacy_location,2026-05-11T22:18:57.352487+00:00
+327,,260 michigan street,starlight/devon,,260 Michigan Street,1260,,73,100629,legacy_location,2026-05-11T22:18:57.352487+00:00
+328,,2605 windsor road,south island property mgmt,,2605 Windsor Road,1261,,WS 5062 K3,100689,legacy_location,2026-05-11T22:18:57.352487+00:00
+329,,2608 prior street,south island prop.,,2608 Prior Street,1262,,47,100855,legacy_location,2026-05-11T22:18:57.352487+00:00
+330,,2610 graham street,graham manor c/o raven property,,2610 Graham Street,1263,,26,100866,legacy_location,2026-05-11T22:18:57.352487+00:00
+331,,2626 blackwood street,firm management,,2626 Blackwood Street,1264,,BC 6262,100253,legacy_location,2026-05-11T22:18:57.352487+00:00
+332,,2630 cook street,devon properties,,2630 Cook Street,1265,,KC 0362,,legacy_location,2026-05-11T22:18:57.352487+00:00
+333,,2631 prior street,strata plan #787,,2631 Prior Street,1266,,KT 1362,100769,legacy_location,2026-05-11T22:18:57.352487+00:00
+334,,2644 prior street,belmont properties,,2644 Prior Street,1267,,456,100805,legacy_location,2026-05-11T22:18:57.352487+00:00
+335,,2646 cook street,devon properties,,2646 Cook Street,1268,,KC 6462,,legacy_location,2026-05-11T22:18:57.352487+00:00
+336,,2647 graham street,complete residential,,2647 Graham Street,1269,,QR 7462,100877,legacy_location,2026-05-11T22:18:57.352487+00:00
+337,,2648 graham street,starlight/devon,,2648 Graham Street,1270,,342,100868,legacy_location,2026-05-11T22:18:57.352487+00:00
+338,,2676 wilfert road - building a,mainline living property management,,2676 Wilfert Road - Building A,1271,,FW 6762,100086,legacy_location,2026-05-11T22:18:57.352487+00:00
+338,,2676 wilfert road - building b,mainline living property management,,2676 Wilfert Road - Building B,1272,,FW 6762,100086,legacy_location,2026-05-11T22:18:57.352487+00:00
+338,,2676 wilfert road - building c,mainline living property management,,2676 Wilfert Road - Building C,1273,,FW 6762,100086,legacy_location,2026-05-11T22:18:57.352487+00:00
+341,,268 superior street,hadden investments,,268 Superior Street,1274,,201,100311,legacy_location,2026-05-11T22:18:57.352487+00:00
+342,,2680 blanshard street,groupe denux,,2680 Blanshard Street,1275,,431,,legacy_location,2026-05-11T22:18:57.352487+00:00
+343,,2680 prior street,century 21 queenswood,,2680 Prior Street,1276,,168,100243,legacy_location,2026-05-11T22:18:57.352487+00:00
+344,,2705 cook street,devon properties,,2705 Cook Street,1277,,372,100819,legacy_location,2026-05-11T22:18:57.352487+00:00
+345,,2718 strathmore road,pemberton holmes,,2718 Strathmore Road,1278,,S 8172,100584,legacy_location,2026-05-11T22:18:57.352487+00:00
+348,,2747 quadra street,proline property management ltd.,,2747 Quadra Street,1280,,KJ 9472,100962,legacy_location,2026-05-11T22:18:57.352487+00:00
+349,,275 burnside road w,starlight properties c/o devon properties,,275 Burnside Road W,1281,,CM 5813,100680,legacy_location,2026-05-11T22:18:57.352487+00:00
+350,,2751 shelbourne street,devon properties,,2751 Shelbourne Street,1282,,151,100823,legacy_location,2026-05-11T22:18:57.352487+00:00
+351,,2771 jacklin road,groupe denux,,2771 Jacklin Road,1283,,418,,legacy_location,2026-05-11T22:18:57.352487+00:00
+352,,2785 quadra street,pacific cove property management ltd.,,2785 Quadra Street,1284,,DQ 5872,100683,legacy_location,2026-05-11T22:18:57.352487+00:00
+353,,2790 cedar hill road,century 21 queenswood,,2790 Cedar Hill Road,1285,,176,100811,legacy_location,2026-05-11T22:18:57.352487+00:00
+354,,280 douglas street,oakwood property,,280 Douglas Street,1286,,T 082 K3,100102,legacy_location,2026-05-11T22:18:57.352487+00:00
+355,,2821 quesnel street,colyvan pacific,,2821 Quesnel Street,1287,,QU 1282,100495,legacy_location,2026-05-11T22:18:57.352487+00:00
+356,,283 michigan street,starlight/devon,,283 Michigan Street,1288,,VA 382 K3-F1,100681,legacy_location,2026-05-11T22:18:57.352487+00:00
+357,,2830 peatt road,boardwalk general partnership,,2830 Peatt Road,1289,,TP 0382,100548,legacy_location,2026-05-11T22:18:57.352487+00:00
+358,,2840 nanaimo street,devon,,2840 Nanaimo Street,1290,,58,100418,legacy_location,2026-05-11T22:18:57.352487+00:00
+359,,2840 peatt road,cornerstone,,2840 Peatt Road,1291,,433 F-1,100172,legacy_location,2026-05-11T22:18:57.352487+00:00
+361,,2854 peatt road,centurion properties,,2854 Peatt Road,1293,,331,100475,legacy_location,2026-05-11T22:18:57.352487+00:00
+362,,2861 quadra street,pacific cove property management ltd.,,2861 Quadra Street,1294,,DQ 1682,100498,legacy_location,2026-05-11T22:18:57.352487+00:00
+364,,2931 qu'appelle street,castera properties,,2931 Qu'Appelle Street,1296,,Q 1392,100665,legacy_location,2026-05-11T22:18:57.352487+00:00
+364,,2947 qu'appelle street,castera properties,,2947 Qu'Appelle Street,1297,,Q 1392,100665,legacy_location,2026-05-11T22:18:57.352487+00:00
+80,,2994 douglas street,bcgeu,,2994 Douglas Street,1298,,KEY AT SITE,,legacy_location,2026-05-11T22:18:57.352487+00:00
+367,,3005 cook street,kiwanis village society,,3005 Cook Street,1299,,CK 5003,100781,legacy_location,2026-05-11T22:18:57.352487+00:00
+368,,3008-3010 washington avenue,proline,,3008-3010 Washington Avenue,1300,,CD 8003,100544,legacy_location,2026-05-11T22:18:57.352487+00:00
+370,,3033 cook street,kiwanis village society,,3033 Cook Street,1302,,OC3303,100840,legacy_location,2026-05-11T22:18:57.352487+00:00
+371,,3035 cook street,kiwanis village society,,3035 Cook Street,1303,,OC5303,100869,legacy_location,2026-05-11T22:18:57.352487+00:00
+372,,3045 douglas street,richmond property group,,3045 Douglas Street,1304,,GH 5403,100438,legacy_location,2026-05-11T22:18:57.352487+00:00
+373,,31 bastion square,colliers,,31 Bastion Square,1305,,BQ 13 [K1],100812,legacy_location,2026-05-11T22:18:57.352487+00:00
+374,,314 cook street,pacific quorum,,314 Cook Street,1306,,121,100108,legacy_location,2026-05-11T22:18:57.352487+00:00
+375,,3157 tillicum road,firm management,,3157 Tillicum Road,1307,,AT 7506,100236,legacy_location,2026-05-11T22:18:57.352487+00:00
+376,,3159 shelbourne street,brown bros.,,3159 Shelbourne Street,1308,,438,100818,legacy_location,2026-05-11T22:18:57.352487+00:00
+375,,3160 albina street,firm management,,3160 Albina Street,1309,,AT 7506,100236,legacy_location,2026-05-11T22:18:57.352487+00:00
+664,,3177 harriet road,associa british columbia inc.,,3177 Harriet Road,1310,,HT 7713,100427,legacy_location,2026-05-11T22:18:57.352487+00:00
+349,,3185 tillicum road,starlight properties c/o devon properties,,3185 Tillicum Road,1311,,CM 5813,100680,legacy_location,2026-05-11T22:18:57.352487+00:00
+379,,3187 shelbourne street,devon,,3187 Shelbourne Street,1312,,437,100874,legacy_location,2026-05-11T22:18:57.352487+00:00
+380,,3205 wetherby road,first service residential,,3205 Wetherby Road,1313,,TH 5023,100988,legacy_location,2026-05-11T22:18:57.352487+00:00
+380,,3215 wetherby road,first service residential,,3215 Wetherby Road,1314,,TH 5023,100988,legacy_location,2026-05-11T22:18:57.352487+00:00
+382,,3221 cedar hill cross road,beacon community services,,3221 Cedar Hill Cross Road,1315,,IB 1223,100831,legacy_location,2026-05-11T22:18:57.352487+00:00
+383,,3226 alder street,pacifica housing,,3226 Alder Street,1316,,A 6223,100165,legacy_location,2026-05-11T22:18:57.352487+00:00
+384,,323 michigan street,devon properties,,323 Michigan Street,1317,,MG 323 [K2],100830,legacy_location,2026-05-11T22:18:57.352487+00:00
+385,,3255 cook street,first service residential,,3255 Cook Street,1318,,KC 5523,100127,legacy_location,2026-05-11T22:18:57.352487+00:00
+386,,3255 quadra street,devon properties,,3255 Quadra Street,1319,,RA 5523,100644,legacy_location,2026-05-11T22:18:57.352487+00:00
+387,,3277 glasgow avenue,south island property management,,3277 Glasgow Avenue,1320,,G 7723 K5lrg+7sm,100389,legacy_location,2026-05-11T22:18:57.352487+00:00
+388,,328-454 burnside road w & 3528-3628 tillicum road,pemberton holmes (new july 31/22),,328-454 Burnside Road W & 3528-3628 Tillicum Road,1321,,PP 823 K7,100954,legacy_location,2026-05-11T22:18:57.352487+00:00
+389,,331/333 robert street,hutton,,331/333 Robert Street,1322,,75,100485,legacy_location,2026-05-11T22:18:57.352487+00:00
+390,,3319a painter road,pemberton holmes,,3319A Painter Road,1323,,333,100892,legacy_location,2026-05-11T22:18:57.352487+00:00
+391,,3319b painter road,pemberton holmes,,3319B Painter Road,1324,,334,100173,legacy_location,2026-05-11T22:18:57.352487+00:00
+392,,335 st. james street,devon properties,,335 St. James Street,1325,,CM 733,100366,legacy_location,2026-05-11T22:18:57.352487+00:00
+392,,337 st. james street,devon properties,,337 St. James Street,1326,,CM 733,100366,legacy_location,2026-05-11T22:18:57.352487+00:00
+394,,3381 whittier avenue,centurion properties,,3381 Whittier Avenue,1327,,352,100786,legacy_location,2026-05-11T22:18:57.352487+00:00
+395,,3400 davidson avenue,colliers,,3400 Davidson Avenue,1328,,RS 0043,100847,legacy_location,2026-05-11T22:18:57.352487+00:00
+396,,341 latoria boulevard,devon properties,,341 Latoria Boulevard,1329,,AL 143,100524,legacy_location,2026-05-11T22:18:57.352487+00:00
+397,,343 simcoe street,brown brothers property management,,343 Simcoe Street,1330,,67,100893,legacy_location,2026-05-11T22:18:57.352487+00:00
+398,,344 goldstream avenue,pemberton holmes,,344 Goldstream Avenue,1331,,SG 443,100693,legacy_location,2026-05-11T22:18:57.352487+00:00
+399,,345 latoria boulevard,warrington pci managment,,345 Latoria Boulevard,1332,,BL 547,100105,legacy_location,2026-05-11T22:18:57.352487+00:00
+404,,345-349 cook street,aqp property management (was burr),,345-349 Cook Street,1333,,123,100035,legacy_location,2026-05-11T22:18:57.352487+00:00
+405,,350 douglas street,starlight/devon,,350 Douglas Street,1335,,442,100776,legacy_location,2026-05-11T22:18:57.352487+00:00
+406,,360 dallas road,complete residenial property management,,360 Dallas Road,1336,,SL 063,100353,legacy_location,2026-05-11T22:18:57.352487+00:00
+405,,360 douglas street,starlight/devon,,360 Douglas Street,1337,,442,100776,legacy_location,2026-05-11T22:18:57.352487+00:00
+408,,360 gorge road e,pacifica housing,,360 Gorge Road E,1338,,G 063,,legacy_location,2026-05-11T22:18:57.352487+00:00
+409,,3610 + 3614 richmond road & 1696 pear street,firm management,,3610 + 3614 Richmond Road & 1696 Pear Street,1339,,RG 0163,100346,legacy_location,2026-05-11T22:18:57.352487+00:00
+410,,364 moss street,gibraltar management ltd.,,364 Moss Street,1340,,OS 463,100691,legacy_location,2026-05-11T22:18:57.352487+00:00
+411,,3724 harriet road,proline property management ltd.,,3724 Harriet Road,1341,,RH 4273,100736,legacy_location,2026-05-11T22:18:57.352487+00:00
+412,,3861 shelbourne street,century 21 queenswood,,3861 Shelbourne Street,1342,,172,100252,legacy_location,2026-05-11T22:18:57.352487+00:00
+413,,3868 shelbourne street,first service residential,,3868 Shelbourne Street,1343,,BL 8683,100774,legacy_location,2026-05-11T22:18:57.352487+00:00
+414,,3880 quadra street,associa british columbia inc.,,3880 Quadra Street,1344,,QD 883,100383,legacy_location,2026-05-11T22:18:57.352487+00:00
+415,,3880 shelbourne street,complete residential,,3880 Shelbourne Street,1345,,TC 0883,100178,legacy_location,2026-05-11T22:18:57.352487+00:00
+416,,3905 quadra street,brown bros.,,3905 Quadra Street,1346,,402,100865,legacy_location,2026-05-11T22:18:57.352487+00:00
+417,,3914 shelbourne street,devon properties,,3914 Shelbourne Street,1347,,SB 4193,100230,legacy_location,2026-05-11T22:18:57.352487+00:00
+418,,3915 carey road,firm management,,3915 Carey Road,1348,,C 5193 K2,100392,legacy_location,2026-05-11T22:18:57.352487+00:00
+419,,3949 shelbourne street,"hs canada 3949 shelbourne street, l.p",,3949 Shelbourne Street,1349,,MS 9493,100270,legacy_location,2026-05-11T22:18:57.352487+00:00
+420,,3958 cedar hill road,firm management,,3958 Cedar Hill Road,1350,,HD 8593,100231,legacy_location,2026-05-11T22:18:57.352487+00:00
+420,,3962 cedar hill road,firm management,,3962 Cedar Hill Road,1352,,HD 8593,100231,legacy_location,2026-05-11T22:18:57.352487+00:00
+423,,4026 quadra street,starlight/devon,,4026 Quadra Street,1353,,DQ 6204,100205,legacy_location,2026-05-11T22:18:57.352487+00:00
+424,,4030 shelbourne street,pemberton holmes ltd.,,4030 Shelbourne Street,1354,,HS 0304,100415,legacy_location,2026-05-11T22:18:57.352487+00:00
+425,,4036 quadra street,devon properties,,4036 Quadra Street,1355,,DQ 6304,100837,legacy_location,2026-05-11T22:18:57.352487+00:00
+425,,4038 quadra street,devon properties,,4038 Quadra Street,1356,,DQ 6304,100837,legacy_location,2026-05-11T22:18:57.352487+00:00
+427,,404 dundas street,devon properties,,404 Dundas Street,1357,,145,100356,legacy_location,2026-05-11T22:18:57.352487+00:00
+428,,404 linden avenue,steve calder,,404 Linden Avenue,1358,,ND 404,100136,legacy_location,2026-05-11T22:18:57.352487+00:00
+429,,410 garbally road,richmond property group,,410 Garbally Road,1359,,EF 014,100960,legacy_location,2026-05-11T22:18:57.352487+00:00
+430,,4144 wilkinson road,colliers,,4144 Wilkinson Road,1360,,WP 4414,100945,legacy_location,2026-05-11T22:18:57.352487+00:00
+429,,415 dunedin avenue,richmond property group,,415 Dunedin Avenue,1361,,EF 014,100960,legacy_location,2026-05-11T22:18:57.352487+00:00
+432,,415 linden avenue,gibraltar management ltd.,,415 Linden Avenue,1362,,R 514 K2,100589,legacy_location,2026-05-11T22:18:57.352487+00:00
+433,,415 michigan street,starlight/devon,,415 Michigan Street,1363,,U 514 K3,100045,legacy_location,2026-05-11T22:18:57.352487+00:00
+434,,420 catherine street,pemberton holmes,,420 Catherine Street,1364,,104,100790,legacy_location,2026-05-11T22:18:57.352487+00:00
+435,,420 parry street,firm management,,420 Parry Street,1365,,ET 024 K1-F1,,legacy_location,2026-05-11T22:18:57.352487+00:00
+436,,421 vancouver street,bross holdings,,421 Vancouver Street,1366,,VV 124,100529,legacy_location,2026-05-11T22:18:57.352487+00:00
+437,,423 superior street,brown brothers property management,,423 Superior Street,1367,,119,100182,legacy_location,2026-05-11T22:18:57.352487+00:00
+439,,425 michigan street,starlight properties c/o devon properties ltd.,,425 Michigan Street,1369,,CG 524,100763,legacy_location,2026-05-11T22:18:57.352487+00:00
+440,,425 wilson street,century 21 queenswood,,425 Wilson Street,1370,,169,100803,legacy_location,2026-05-11T22:18:57.352487+00:00
+441,,429 linden avenue,gibraltar now colyvan pacific,,429 Linden Avenue,1372,,61,100635,legacy_location,2026-05-11T22:18:57.352487+00:00
+442,,435 michigan street,starlight/devon,,435 Michigan Street,1373,,V 534 K2,100530,legacy_location,2026-05-11T22:18:57.352487+00:00
+443,,4398 w. saanich rd,devon properties,,4398 W. Saanich Rd,1374,,370,100563,legacy_location,2026-05-11T22:18:57.352487+00:00
+444,,440 parry street,oakwood properties,,440 Parry Street,1375,,RS 044,100573,legacy_location,2026-05-11T22:18:57.352487+00:00
+445,,4420 chatterton way,colliers,,4420 Chatterton Way,1376,,CW 0244,100063,legacy_location,2026-05-11T22:18:57.352487+00:00
+447,,4480 chatterton way,cornerstone,,4480 Chatterton Way,1378,,BT 4944 [K7],100926,legacy_location,2026-05-11T22:18:57.352487+00:00
+447,,4484 chatterton way,cornerstone,,4484 Chatterton Way,1379,,BT 4944 [K7],100926,legacy_location,2026-05-11T22:18:57.352487+00:00
+447,,4488 chatterton way,cornerstone,,4488 Chatterton Way,1380,,BT 4944 [K7],100926,legacy_location,2026-05-11T22:18:57.352487+00:00
+447,,4490 chatterton way,cornerstone,,4490 Chatterton Way,1381,,BT 4944 [K7],100926,legacy_location,2026-05-11T22:18:57.352487+00:00
+447,,4494 chatterton way,cornerstone,,4494 Chatterton Way,1382,,BT 4944 [K7],100926,legacy_location,2026-05-11T22:18:57.352487+00:00
+452,,45 gorge road,devon properties ltd.,,45 Gorge Road,1383,,GG54,100777,legacy_location,2026-05-11T22:18:57.352487+00:00
+453,,465 niagara street,devon properties,,465 Niagara Street,1384,,120,100065,legacy_location,2026-05-11T22:18:57.352487+00:00
+454,,4678 elk lake drive,complete residential,building e,4678 Elk Lake Drive,1385,,KL 8764,100747,legacy_location,2026-05-11T22:18:57.352487+00:00
+459,,470 belleville street,equitex realty ltd.,,470 Belleville Street,1386,,TB 074 K3,100575,legacy_location,2026-05-11T22:18:57.352487+00:00
+460,,493 burnside road east,devon properties,,493 Burnside Road East,1387,,SB 394,100770,legacy_location,2026-05-11T22:18:57.352487+00:00
+462,,500 rithet street,belmont properties,,500 Rithet Street,1389,,443,100354,legacy_location,2026-05-11T22:18:57.352487+00:00
+463,,502 dallas road,brown bros.,,502 Dallas Road,1390,,CT 205 K3,100419,legacy_location,2026-05-11T22:18:57.352487+00:00
+464,,505 quadra street,surfside holdings ltd. (analogue projects),,505 Quadra Street,1391,,QB 505,100204,legacy_location,2026-05-11T22:18:57.352487+00:00
+465,,505 su'it street,devon properties,,505 Su'it Street,1392,,148,100787,legacy_location,2026-05-11T22:18:57.352487+00:00
+466,,506 fort street,homesphere properties,,506 Fort Street,1393,,383,100061,legacy_location,2026-05-11T22:18:57.352487+00:00
+469,,5100 pat bay highway,victoria rowing society,,5100 Pat Bay Highway,1396,,VC 0015 [K1],100401,legacy_location,2026-05-11T22:18:57.352487+00:00
+470,,516 quadra street,douglas mgmt corp. (was hugh & mckinnon - but same owner),,516 Quadra Street,1397,,HA 615 K3,100991,legacy_location,2026-05-11T22:18:57.352487+00:00
+471,,517 fisgard street & 528 pandora avenue,proline,,517 Fisgard Street & 528 Pandora Avenue,1398,,YZ 715,,legacy_location,2026-05-11T22:18:57.352487+00:00
+472,,520 cook street,newport,,520 Cook Street,1399,,423,100859,legacy_location,2026-05-11T22:18:57.352487+00:00
+473,,520 rithet street,newport property management,,520 Rithet Street,1400,,403,100413,legacy_location,2026-05-11T22:18:57.352487+00:00
+474,,524 culduthel road,devon properties,,524 Culduthel Road,1401,,C 425,100630,legacy_location,2026-05-11T22:18:57.352487+00:00
+475,,531 west bay terrace,starlight properties c/o devon properties ltd.,,531 West Bay Terrace,1402,,BW 135,100706,legacy_location,2026-05-11T22:18:57.352487+00:00
+476,,532 & 536 herald street,belmont properties,,532 & 536 Herald Street,1403,,179,100133,legacy_location,2026-05-11T22:18:57.352487+00:00
+477,,5332 sayward hill crescent,firm management,,5332 Sayward Hill Crescent,1404,,WS 2335,100512,legacy_location,2026-05-11T22:18:57.352487+00:00
+478,,539-545 fisgard street,servissio,,539-545 Fisgard Street,1405,,FA 935,100598,legacy_location,2026-05-11T22:18:57.352487+00:00
+479,,540 pandora avenue,pemberton holmes,,540 Pandora Avenue,1406,,DR 045,100170,legacy_location,2026-05-11T22:18:57.352487+00:00
+480,,540 west bay terrace,belmont properties,,540 West Bay Terrace,1407,,YB 045,100984,legacy_location,2026-05-11T22:18:57.352487+00:00
+481,,545 johnson street,devon properties,,545 Johnson Street,1408,,401,100156,legacy_location,2026-05-11T22:18:57.352487+00:00
+482,,546 pandora avenue,servissio,,546 Pandora Avenue,1409,,HD 645,100611,legacy_location,2026-05-11T22:18:57.352487+00:00
+483,,55 bay street,first service residential,,55 Bay Street,1410,,YB 55,100238,legacy_location,2026-05-11T22:18:57.352487+00:00
+484,,55 songhees road,brown bros.,,55 Songhees Road,1411,,AB 55,100696,legacy_location,2026-05-11T22:18:57.352487+00:00
+485,,553/563 johnson street,devon properties,,553/563 Johnson Street,1412,,400,100171,legacy_location,2026-05-11T22:18:57.352487+00:00
+486,,556 herald street,devon properties,,556 Herald Street,1413,,381,100011,legacy_location,2026-05-11T22:18:57.352487+00:00
+487,,565 manchester road,belmont properties,,565 Manchester Road,1414,,455,,legacy_location,2026-05-11T22:18:57.352487+00:00
+488,,565 toronto street,devon properties,,565 Toronto Street,1415,,TN 565,100862,legacy_location,2026-05-11T22:18:57.352487+00:00
+489,,60 dallas road,south island property mgmt,,60 Dallas Road,1416,,FT 06 K10,100313,legacy_location,2026-05-11T22:18:57.352487+00:00
+493,,605 cook street,brown bros.,,605 Cook Street,1420,,N 506 K3,100375,legacy_location,2026-05-11T22:18:57.352487+00:00
+494,,612 constance avenue,devon properties ltd.,,612 Constance Avenue,1421,,CT 216,100295,legacy_location,2026-05-11T22:18:57.352487+00:00
+495,,612 goldstream avenue,pacifica housing,,612 Goldstream Avenue,1422,,G 216,100169,legacy_location,2026-05-11T22:18:57.352487+00:00
+496,,614 esquimalt road,horizon contracting ltd,,614 Esquimalt Road,1423,,QS 416,100896,legacy_location,2026-05-11T22:18:57.352487+00:00
+495,,616 goldstream avenue,pacifica housing,,616 Goldstream Avenue,1424,,G 216,100169,legacy_location,2026-05-11T22:18:57.352487+00:00
+499,,622 admirals road,chartwell retirement residences,,622 Admirals Road,1425,,DA 226,,legacy_location,2026-05-11T22:18:57.352487+00:00
+500,,623 fort street,fort street properties (colliers),,623 Fort Street,1426,,FS 326,100423,legacy_location,2026-05-11T22:18:57.352487+00:00
+501,,625 fernhill road,belmont properties,,625 Fernhill Road,1427,,448,100429,legacy_location,2026-05-11T22:18:57.352487+00:00
+502,,625 hillside avenue,devon,,625 Hillside Avenue,1428,,436,,legacy_location,2026-05-11T22:18:57.352487+00:00
+503,,635 battery street,newport property management,,635 Battery Street,1430,,343,100533,legacy_location,2026-05-11T22:18:57.352487+00:00
+504,,636 dallas road,devon properties,,636 Dallas Road,1431,,LD 636,100723,legacy_location,2026-05-11T22:18:57.352487+00:00
+80,,636 fisgard street,vic chinese school,,636 Fisgard Street,1432,,KEY AT SITE,,legacy_location,2026-05-11T22:18:57.352487+00:00
+506,,640 dallas road,starlight properties c/o devon properties ltd.,,640 Dallas Road,1433,,LD 46,100969,legacy_location,2026-05-11T22:18:57.352487+00:00
+507,,640 michigan street,tribe management inc,,640 Michigan Street,1434,,SM 046,100090,legacy_location,2026-05-11T22:18:57.352487+00:00
+508,,644 linden avenue,brown bros.,,644 Linden Avenue,1435,,BL 446,,legacy_location,2026-05-11T22:18:57.352487+00:00
+510,,646 fairway avenue,brown brothers property management,,646 Fairway Avenue,1437,,DG 746,100793,legacy_location,2026-05-11T22:18:57.352487+00:00
+510,,647 goldstream avenue,brown brothers property management,,647 Goldstream Avenue,1438,,DG 746,100793,legacy_location,2026-05-11T22:18:57.352487+00:00
+512,,650 view street,servissio,,650 View Street,1439,,FB 056 [K2],,legacy_location,2026-05-11T22:18:57.352487+00:00
+513,,651 jolly place,cornerstone,,651 Jolly Place,1440,,JP 156,100462,legacy_location,2026-05-11T22:18:57.352487+00:00
+514,,654 granderson road,pemberton holmes - residential,,654 Granderson Road,1441,,GD 456,100363,legacy_location,2026-05-11T22:18:57.352487+00:00
+515,,655 douglas street,concert properties,,655 Douglas Street,1442,,QA 556,100121,legacy_location,2026-05-11T22:18:57.352487+00:00
+516,,655 herald street,brown bros.,,655 Herald Street,1443,,CW 556 K1-F2,100561,legacy_location,2026-05-11T22:18:57.352487+00:00
+517,,663 goldstream avenue,proline,,663 Goldstream Avenue,1444,,MPW 366 K8-G1,100700,legacy_location,2026-05-11T22:18:57.352487+00:00
+518,,6649 butler crescent,tpm properties,,6649 Butler Crescent,1445,,BB 9466,100701,legacy_location,2026-05-11T22:18:57.352487+00:00
+519,,670 dallas road,proline,,670 Dallas Road,1446,,O 076 K2-F1,100863,legacy_location,2026-05-11T22:18:57.352487+00:00
+520,,6772 oldfield road,capital west,,6772 Oldfield Road,1447,,OF 2776,100515,legacy_location,2026-05-11T22:18:57.352487+00:00
+520,,6776 oldfield road,capital west,,6776 Oldfield Road,1448,,OF 2776,100515,legacy_location,2026-05-11T22:18:57.352487+00:00
+522,,681 allandale road,sherringham holdings,building e,681 Allandale Road,1449,,AR 186,100925,legacy_location,2026-05-11T22:18:57.352487+00:00
+526,,703 broughton street,devon properties,,703 Broughton Street,1451,,H 307 [K4],100586,legacy_location,2026-05-11T22:18:57.352487+00:00
+527,,707 esquimalt road,first service residential,,707 Esquimalt Road,1452,,QE 707,100993,legacy_location,2026-05-11T22:18:57.352487+00:00
+528,,7088 wallace drive,capital west,,7088 Wallace Drive,1453,,VB 8077,100708,legacy_location,2026-05-11T22:18:57.352487+00:00
+529,,709-715 yates street,churchill on yates gp c/o daniel belanger,,"709 Yates Street, Victoria, British Columbia V8W 1L6, Canada",1454,,"R 527
+[K6, F1]",100578,legacy_location,2026-05-11T22:18:57.352487+00:00
+77,,710 fort street,ritz hotel -arpeg group of companies,,710 Fort Street,1455,,Call Ken Cooper,,legacy_location,2026-05-11T22:18:57.352487+00:00
+531,,710 redbrick street,710 redbrick joint venture,,710 Redbrick Street,1456,,NO 017,100953,legacy_location,2026-05-11T22:18:57.352487+00:00
+532,,711 hillside avenue,pacific cove property management ltd.,,711 Hillside Avenue,1457,,HD 117,100631,legacy_location,2026-05-11T22:18:57.352487+00:00
+533,,712 yates street,concert realty services ltd.,,712 Yates Street,1458,,LW 217 K2-F1,100804,legacy_location,2026-05-11T22:18:57.352487+00:00
+534,,7161 west saanich road,cornerstone,,7161 West Saanich Road,1459,,BPV 1617,100664,legacy_location,2026-05-11T22:18:57.352487+00:00
+529,,719-725 yates street,pcpm as agent for the churchill on yates,,719-725 Yates Street,1460,,"R 527
+[K6, F1]",100578,legacy_location,2026-05-11T22:18:57.352487+00:00
+536,,720 vancouver street,century 21 queenswood,,720 Vancouver Street,1461,,69,100785,legacy_location,2026-05-11T22:18:57.352487+00:00
+537,,722 johnson street,722 johnson street joint venture,,722 Johnson Street,1462,,JS 227,100402,legacy_location,2026-05-11T22:18:57.352487+00:00
+538,,723 field street,pemberton holmes,,723 Field Street,1463,,LF 327,100200,legacy_location,2026-05-11T22:18:57.352487+00:00
+539,,727 fisgard street,colliers,,727 Fisgard Street,1464,,FI 727 K4-F1,,legacy_location,2026-05-11T22:18:57.352487+00:00
+540,,728 yates street,tribe management,,728 Yates Street,1465,,TE 827,100783,legacy_location,2026-05-11T22:18:57.352487+00:00
+541,,730 vancouver street,devon properties,,730 Vancouver Street,1466,,149,100800,legacy_location,2026-05-11T22:18:57.352487+00:00
+542,,733 goldstream avenue,starlight/devon,,733 Goldstream Avenue,1467,,326,100471,legacy_location,2026-05-11T22:18:57.352487+00:00
+543,,734 - 736 broughton street,richmond property group,,734 - 736 Broughton Street,1468,,BL 437 [K1],100705,legacy_location,2026-05-11T22:18:57.352487+00:00
+544,,738 sayward hill,firm management,,738 Sayward Hill,1469,,SH 837,100262,legacy_location,2026-05-11T22:18:57.352487+00:00
+545,,747 fort street,associated building credits ltd. c/o breakwater realty inc.,,747 Fort Street,1470,,RF 747,100372,legacy_location,2026-05-11T22:18:57.352487+00:00
+546,,750 pemberton road,750 pemberton developments ltd.,,750 Pemberton Road,1471,,"CP 057
+K1",100568,legacy_location,2026-05-11T22:18:57.352487+00:00
+547,,755 market street,tpm $45,,755 Market Street,1472,,398,100430,legacy_location,2026-05-11T22:18:57.352487+00:00
+548,,760 johnson street,tribe management,,760 Johnson Street,1473,,ND 067,,legacy_location,2026-05-11T22:18:57.352487+00:00
+549,,7611 central saanich road,victoria native friendship centre,,7611 Central Saanich Road,1474,,SC1167,100049,legacy_location,2026-05-11T22:18:57.352487+00:00
+550,,765 hockley avenue,centurion property associates,,765 Hockley Avenue,1475,,327,100007,legacy_location,2026-05-11T22:18:57.352487+00:00
+551,,765 vanalman avenue,bosa properties,,765 Vanalman Avenue,1476,,LA 567,100223,legacy_location,2026-05-11T22:18:57.352487+00:00
+552,,770 cormorant street,firm management,,770 Cormorant Street,1477,,DP 077 K6-F1,100867,legacy_location,2026-05-11T22:18:57.352487+00:00
+550,,772 hockley avenue,centurion property associates,,772 Hockley Avenue,1478,,327,100007,legacy_location,2026-05-11T22:18:57.352487+00:00
+554,,777 blanshard street,proline,,777 Blanshard Street,1479,,"TS 777 
+[K3, F1]",100638,legacy_location,2026-05-11T22:18:57.352487+00:00
+555,,777 cook street,devon properties,,777 Cook Street,1480,,184,100358,legacy_location,2026-05-11T22:18:57.352487+00:00
+550,,777 hockley avenue,centurion property associates,,777 Hockley Avenue,1481,,327,100007,legacy_location,2026-05-11T22:18:57.352487+00:00
+550,,778 hockley avenue,centurion property associates,,778 Hockley Avenue,1483,,327,100007,legacy_location,2026-05-11T22:18:57.352487+00:00
+559,,780 kings road,chek tv,,780 Kings Road,1484,,CN 087,100208,legacy_location,2026-05-11T22:18:57.352487+00:00
+550,,784 hockley avenue,centurion property associates,,784 Hockley Avenue,1485,,327,100007,legacy_location,2026-05-11T22:18:57.352487+00:00
+318,,7840 lochside drive,starlight/devon,,7840 Lochside Drive,1486,,CH 0487,100669,legacy_location,2026-05-11T22:18:57.352487+00:00
+563,,7878 e. saanich road,devon properties,,7878 E. Saanich Road,1488,,421,100886,legacy_location,2026-05-11T22:18:57.352487+00:00
+550,,790 hockley avenue,centurion property associates,,790 Hockley Avenue,1489,,327,100007,legacy_location,2026-05-11T22:18:57.352487+00:00
+565,,8 bastion square,servissio,,8 Bastion Square,1490,,Y 8  [K9],100697,legacy_location,2026-05-11T22:18:57.352487+00:00
+566,,800 johnson street,357689 bc ltd.,,800 Johnson Street,1491,,TH 008 K1,100412,legacy_location,2026-05-11T22:18:57.352487+00:00
+567,,803 esquimalt road,capital west,,803 Esquimalt Road,1492,,DC 308,100446,legacy_location,2026-05-11T22:18:57.352487+00:00
+568,,805 academy close,tpm,,805 Academy Close,1493,,399,100472,legacy_location,2026-05-11T22:18:57.352487+00:00
+569,,810 blanshard street,colliers,,810 Blanshard Street,1494,,N 018 [K1],100137,legacy_location,2026-05-11T22:18:57.352487+00:00
+570,,815 queens avenue,devon properties,,815 Queens Avenue,1495,,337,100414,legacy_location,2026-05-11T22:18:57.352487+00:00
+571,,818 broughton street,hardal management,,818 Broughton Street,1496,,TO 818,,legacy_location,2026-05-11T22:18:57.352487+00:00
+573,,820 craigflower road,starlight properties c/o devon properties ltd.,,820 Craigflower Road,1498,,FW 28,100110,legacy_location,2026-05-11T22:18:57.352487+00:00
+574,,821 hockley avenue,centurion properties,,821 Hockley Avenue,1499,,353,100228,legacy_location,2026-05-11T22:18:57.352487+00:00
+575,,825 cook street,devon properties,,825 Cook Street,1500,,51,100924,legacy_location,2026-05-11T22:18:57.352487+00:00
+659,,829 admirals road,associa british columbia inc.,,829 Admirals Road,1501,,DA 928,100158,legacy_location,2026-05-11T22:18:57.352487+00:00
+576,,829 fisgard street,pacifica housing,,829 Fisgard Street,1502,,F 928,100399,legacy_location,2026-05-11T22:18:57.352487+00:00
+577,,830 pembroke street,devon properties 45,,830 Pembroke Street,1503,,154,100072,legacy_location,2026-05-11T22:18:57.352487+00:00
+578,,831 dunsmuir road,belmont properties,,831 Dunsmuir Road,1504,,DN 138,100509,legacy_location,2026-05-11T22:18:57.352487+00:00
+579,,831 ellery street,m.r.b. holdings ltd.,,831 Ellery Street,1505,,EY 138,100473,legacy_location,2026-05-11T22:18:57.352487+00:00
+580,,831 fisgard street,1134819 bc ltd.,,831 Fisgard Street,1506,,IM 138 K1,100241,legacy_location,2026-05-11T22:18:57.352487+00:00
+581,,836 yates street,colliers,,836 Yates Street,1507,,YC 638 K1-F1,100640,legacy_location,2026-05-11T22:18:57.352487+00:00
+582,,837 ellery street,devon properties ltd.,,837 Ellery Street,1508,,EY 738,100018,legacy_location,2026-05-11T22:18:57.352487+00:00
+583,,838 fort street,martello property services,,838 Fort Street,1509,,E 838 K2-F1,100745,legacy_location,2026-05-11T22:18:57.352487+00:00
+584,,840 fort street,servisso property service,,840 Fort Street,1510,,414,100999,legacy_location,2026-05-11T22:18:57.352487+00:00
+585,,840 humboldt street,devon properties,,840 Humboldt Street,1511,,122,,legacy_location,2026-05-11T22:18:57.352487+00:00
+586,,843 craigflower road,belmont properties,,843 Craigflower Road,1512,,450,100809,legacy_location,2026-05-11T22:18:57.352487+00:00
+587,,844 courtney street,richmond property group,,844 Courtney Street,1513,,"V 448 
+[K1, F1]",100716,legacy_location,2026-05-11T22:18:57.352487+00:00
+588,,844 fisgard road,north park manor society,,844 Fisgard Road,1514,,KP 578,100758,legacy_location,2026-05-11T22:18:57.352487+00:00
+589,,845 yates street,firm management,,845 Yates Street,1515,,TW 548 K1-F1,,legacy_location,2026-05-11T22:18:57.352487+00:00
+591,,850 cook street,newport c. selenz,,850 Cook Street,1517,,11,100075,legacy_location,2026-05-11T22:18:57.352487+00:00
+592,,853 burdett avenue,tpm,,853 Burdett Avenue,1518,,397,100596,legacy_location,2026-05-11T22:18:57.352487+00:00
+593,,855 ellery street,devon properties,,855 Ellery Street,1519,,144,100104,legacy_location,2026-05-11T22:18:57.352487+00:00
+594,,866 craigflower road,belmont properties,,866 Craigflower Road,1520,,449,100908,legacy_location,2026-05-11T22:18:57.352487+00:00
+588,,875 north park street,north park manor society,,875 North Park Street,1521,,KP 578,100758,legacy_location,2026-05-11T22:18:57.352487+00:00
+596,,877 goldstream avenue,richmond property group,,877 Goldstream Avenue,1522,,LT 778 K2,,legacy_location,2026-05-11T22:18:57.352487+00:00
+597,,879 esquimalt road,brown bros.,,879 Esquimalt Road,1523,,430,100005,legacy_location,2026-05-11T22:18:57.352487+00:00
+599,,890 academy close,breakwater realty,,890 Academy Close,1525,,S 098 K2,100534,legacy_location,2026-05-11T22:18:57.352487+00:00
+600,,894 vernon avenue,firm management,,894 Vernon Avenue,1526,,CG 498,100220,legacy_location,2026-05-11T22:18:57.352487+00:00
+601,,895 fort street,pacific arbour,,895 Fort Street,1527,,71,100176,legacy_location,2026-05-11T22:18:57.352487+00:00
+600,,898 vernon avneue,firm management,,898 Vernon Avneue,1528,,CG 498,100220,legacy_location,2026-05-11T22:18:57.352487+00:00
+600,,899 darwin avenue,firm management,,899 Darwin Avenue,1529,,CG 498,100220,legacy_location,2026-05-11T22:18:57.352487+00:00
+604,,903 esquimalt road,proline management,,903 Esquimalt Road,1530,,457,100357,legacy_location,2026-05-11T22:18:57.352487+00:00
+605,,906 southgate street,south island property mgmt (was strata plan vis 742,,906 Southgate Street,1531,,HT 609 K2,100989,legacy_location,2026-05-11T22:18:57.352487+00:00
+606,,908 market street,starlight properties c/o devon properties,,908 Market Street,1532,,MS 809,100195,legacy_location,2026-05-11T22:18:57.352487+00:00
+607,,908 pandora avenue,colliers,,908 Pandora Avenue,1533,,PD 809,100678,legacy_location,2026-05-11T22:18:57.352487+00:00
+80,,909 fairfield road,red cross,,909 Fairfield Road,1534,,KEY AT SITE,,legacy_location,2026-05-11T22:18:57.352487+00:00
+609,,909 pendergast street,devon properties,,909 Pendergast Street,1535,,GT 909,100905,legacy_location,2026-05-11T22:18:57.352487+00:00
+610,,911 yates street & 990 view street,colliers,,911 Yates Street & 990 View Street,1536,,HG 099 K7,100349,legacy_location,2026-05-11T22:18:57.352487+00:00
+611,,912 selkirk avenue,century 21 queenswood realty ltd.,,912 Selkirk Avenue,1537,,KK 219,100956,legacy_location,2026-05-11T22:18:57.352487+00:00
+612,,914 yates street,colliers,,914 Yates Street,1538,,PG 419 K2,100692,legacy_location,2026-05-11T22:18:57.352487+00:00
+613,,915 cook street,devon properties,,915 Cook Street,1539,,185,100439,legacy_location,2026-05-11T22:18:57.352487+00:00
+614,,919 fort street,newport,,919 Fort Street,1540,,131,100935,legacy_location,2026-05-11T22:18:57.352487+00:00
+615,,919 market street,pemberton residential,,919 Market Street,1541,,376,100327,legacy_location,2026-05-11T22:18:57.352487+00:00
+616,,920 hillside avenue,tetcum property,,920 Hillside Avenue,1542,,385 (K2),100474,legacy_location,2026-05-11T22:18:57.352487+00:00
+617,,925 esquimalt road,belmont properties,,925 Esquimalt Road,1543,,451,100309,legacy_location,2026-05-11T22:18:57.352487+00:00
+618,,931 foul bay road,abbeyfield legacy society,,931 Foul Bay Road,1544,,AA 139 K1,100096,legacy_location,2026-05-11T22:18:57.352487+00:00
+619,,938 dunford ave,tribe management,,938 Dunford Ave,1545,,TD 839 K3,,legacy_location,2026-05-11T22:18:57.352487+00:00
+620,,942 preston way,pemberton holmes - residential,,942 Preston Way,1546,,RL 249 K3,100448,legacy_location,2026-05-11T22:18:57.352487+00:00
+621,,945 reunion avenue,killam apartments reit,,945 Reunion Avenue,1547,,459,100567,legacy_location,2026-05-11T22:18:57.352487+00:00
+622,,950 rockland avenue,pacific cove property management ltd as agent,,950 Rockland Avenue,1548,,VT 059 K2,100074,legacy_location,2026-05-11T22:18:57.352487+00:00
+623,,955 cook street,devon properties,,955 Cook Street,1549,,50,100813,legacy_location,2026-05-11T22:18:57.352487+00:00
+624,,964 heywood avenue,devon properties,,964 Heywood Avenue,1550,,WD 469,100780,legacy_location,2026-05-11T22:18:57.352487+00:00
+657,,9667 first street,island views,,9667 First Street,1551,,FT7669,100265,legacy_location,2026-05-11T22:18:57.352487+00:00
+625,,971 finlayson street,pacific quorum,,971 Finlayson Street,1552,,FG 179,100167,legacy_location,2026-05-11T22:18:57.352487+00:00
+626,,9710 2nd street,pemberton holmes,,9710 2nd Street,1553,,374,100663,legacy_location,2026-05-11T22:18:57.352487+00:00
+627,,976 inverness road,inverness court,,976 Inverness Road,1554,,VN 679,100276,legacy_location,2026-05-11T22:18:57.352487+00:00
+628,,9762 third street,devon properties,,9762 Third Street,1555,,HD 2679,100839,legacy_location,2026-05-11T22:18:57.352487+00:00
+630,,9810 seventh street,colliers - mall,,"9810 Seventh Street, Sidney, British Columbia V8L 4W6, Canada",1556,,MM 0189,100951,legacy_location,2026-05-11T22:18:57.352487+00:00
+631,,9824-9830 fourth street,realhomes management corp.,,9824-9830 Fourth Street,1557,,TA 0389,100802,legacy_location,2026-05-11T22:18:57.352487+00:00
+632,,9830 second street,firm management,,9830 Second Street,1558,,355,100350,legacy_location,2026-05-11T22:18:57.352487+00:00
+310,,9836 second street,devon properties,,9836 Second Street,1559,,444,100806,legacy_location,2026-05-11T22:18:57.352487+00:00
+634,,984 mckenzie avenue,starlight/devon,,984 Mckenzie Avenue,1560,,ZM 489,100849,legacy_location,2026-05-11T22:18:57.352487+00:00
+635,,9843 second street,devon properties,,9843 Second Street,1561,,SC 3489,100494,legacy_location,2026-05-11T22:18:57.352487+00:00
+636,,9851 seaport place,shops at the port of sidney c/o the marker group,,9851 Seaport Place,1562,,SEA 1598,100860,legacy_location,2026-05-11T22:18:57.352487+00:00
+637,,9851 second street,firm management,,9851 Second Street,1563,,415,100021,legacy_location,2026-05-11T22:18:57.352487+00:00
+638,,9858 fifth street,wexford condominiums,,9858 Fifth Street,1564,,360,100672,legacy_location,2026-05-11T22:18:57.352487+00:00
+639,,9861 fifth street,brown bros.,,9861 Fifth Street,1565,,354,100767,legacy_location,2026-05-11T22:18:57.352487+00:00
+640,,9861 third street,colyvan pacific,,9861 Third Street,1566,,441,100465,legacy_location,2026-05-11T22:18:57.352487+00:00
+641,,9870 second street,gibraltar,,9870 Second Street,1567,,389,100880,legacy_location,2026-05-11T22:18:57.352487+00:00
+642,,9871 second street,harbour front,,9871 Second Street,1568,,357,100902,legacy_location,2026-05-11T22:18:57.352487+00:00
+643,,9880 fourth street,associa british columbia inc.,,9880 Fourth Street,1569,,380,100714,legacy_location,2026-05-11T22:18:57.352487+00:00
+645,,990 fort street,devon properties,,990 Fort Street,1571,,159,100378,legacy_location,2026-05-11T22:18:57.352487+00:00
+646,,9900 fifth street,edgeware place,,9900 Fifth Street,1572,,369,100101,legacy_location,2026-05-11T22:18:57.352487+00:00
+647,,9905 fifth street,pemberton holmes,,9905 Fifth Street,1573,,FS 5099,100732,legacy_location,2026-05-11T22:18:57.352487+00:00
+649,,9919 fourth street,colyvan pacific,,9919 Fourth Street,1575,,FT 9199,100442,legacy_location,2026-05-11T22:18:57.352487+00:00
+650,,9924 third street,beacon community services,,9924 Third Street,1576,,IO 4299,100796,legacy_location,2026-05-11T22:18:57.352487+00:00
+651,,9950 4th street,freelance strata management,,9950 4th Street,1577,,350,100710,legacy_location,2026-05-11T22:18:57.352487+00:00
+652,,9960 4th street,freelance strata management,,9960 4th Street,1578,,375,100648,legacy_location,2026-05-11T22:18:57.352487+00:00
+655,,9975 fifth street,strata corporation vis 2278,,9975 Fifth Street,1581,,FT 5799,100118,legacy_location,2026-05-11T22:18:57.352487+00:00
+656,,9993 fourth street,complete residential,,9993 Fourth Street,1582,,417,100901,legacy_location,2026-05-11T22:18:57.352487+00:00
+347,,2747 quadra street,colyvan pacific,,2747 Quadra Street,3187,,DQ 7472,100985,legacy_location,2026-05-11T22:18:57.352487+00:00
+491,,600 richmond avenue,st. matthias angelican church,,600 Richmond Avenue,3326,,MC006,100637,legacy_location,2026-05-11T22:18:57.352487+00:00
+454,,4678 elk lake drive,complete residential,building a,4678 Elk Lake Drive,3954,,KL 8764,100747,legacy_location,2026-05-11T22:18:57.352487+00:00
+454,,4678 elk lake drive,complete residential,building b,4678 Elk Lake Drive,3955,,KL 8764,100747,legacy_location,2026-05-11T22:18:57.352487+00:00
+454,,4678 elk lake drive,complete residential,building c,4678 Elk Lake Drive,3956,,KL 8764,100747,legacy_location,2026-05-11T22:18:57.352487+00:00
+454,,4678 elk lake drive,complete residential,building d,4678 Elk Lake Drive,3957,,KL 8764,100747,legacy_location,2026-05-11T22:18:57.352487+00:00
+522,,681 allandale road,sherringham holdings,building b,681 Allandale Road,4023,,AR 186,100925,legacy_location,2026-05-11T22:18:57.352487+00:00
+522,,681 allandale road,sherringham holdings,building c,681 Allandale Road,4024,,AR 186,100925,legacy_location,2026-05-11T22:18:57.352487+00:00
+522,,681 allandale road,sherringham holdings,building d,681 Allandale Road,4025,,AR 186,100925,legacy_location,2026-05-11T22:18:57.352487+00:00
+4,,1000-1012 douglas street,itziar management ltd. (0824606 bc ltd.),,1000-1012 Douglas Street,930,1,D 2101,100539,testing_site,2026-05-11T22:18:57.352487+00:00
+3,,1000 mckenzie avenue,starlight/devon,,1000 Mckenzie Avenue,929,2,M 0001,100229,testing_site,2026-05-11T22:18:57.352487+00:00
+6,,10016 3rd street,cornerstone,,10016 3rd Street,932,3,358,100203,testing_site,2026-05-11T22:18:57.352487+00:00
+7,,10017 avenger way,lumberworld operations ltd.,,10017 Avenger Way,933,4,VG 71001,,testing_site,2026-05-11T22:18:57.352487+00:00
+5,,1001 wharf street,pastoral developments ltd.,,1001 Wharf Street,931,5,"NA 1001
+[K2, F1]",100861,testing_site,2026-05-11T22:18:57.352487+00:00
+11,,10025 resthaven drive,inken roller c/o richmond property group,,10025 Resthaven Drive,937,6,349,100398,testing_site,2026-05-11T22:18:57.352487+00:00
+8,,1002 mckenzie avenue,starlight/devon,,1002 Mckenzie Avenue,934,7,M 2001,100966,testing_site,2026-05-11T22:18:57.352487+00:00
+9,,1002 pakington,proline,,1002 Pakington,935,8,146,100903,testing_site,2026-05-11T22:18:57.352487+00:00
+10,,1002 wharf street,malahat properties,,1002 Wharf Street,936,9,at reception,,testing_site,2026-05-11T22:18:57.352487+00:00
+12,,10030 resthaven drive,raven property management ltd.,,10030 Resthaven Drive,938,10,SC 03001,100998,testing_site,2026-05-11T22:18:57.352487+00:00
+13,,1004 pemberton road,raul caballero,,1004 Pemberton Road,939,11,PB 4001,100404,testing_site,2026-05-11T22:18:57.352487+00:00
+14,,1005 & 1009 mckenzie avenue,firm management,,1005 & 1009 McKenzie Avenue,940,12,MN 5001,100535,testing_site,2026-05-11T22:18:57.352487+00:00
+15,,1005 broad street,richmond property group,,1005 Broad Street,941,13,K 5001 [K4],100340,testing_site,2026-05-11T22:18:57.352487+00:00
+16,,1005 pakington street,century 21 queenswood,,1005 Pakington Street,942,14,171,100590,testing_site,2026-05-11T22:18:57.352487+00:00
+17,,1005 st. charles street,bross holdings,,1005 St. Charles Street,943,15,HC 5001,100464,testing_site,2026-05-11T22:18:57.352487+00:00
+18,,1006 fort street,colliers,,1006 Fort Street,944,16,ZZ 6001 K3-F1,100619,testing_site,2026-05-11T22:18:57.352487+00:00
+19,,1006 tolmie avenue,century 21 queenswood,,1006 Tolmie Avenue,945,17,163,100251,testing_site,2026-05-11T22:18:57.352487+00:00
+20,,1007 esquimalt road,starlight properties,,1007 Esquimalt Road,946,18,LT 7001,100595,testing_site,2026-05-11T22:18:57.352487+00:00
+22,,1010 mckenzie avenue,starlight/devon,,1010 Mckenzie Avenue,948,19,M 101,100836,testing_site,2026-05-11T22:18:57.352487+00:00
+23,,1012 collinson street,hutton,,1012 Collinson Street,949,20,M 2101 K3,100792,testing_site,2026-05-11T22:18:57.352487+00:00
+24,,1013 vancouver street,devon properties,,1013 Vancouver Street,950,21,183,100959,testing_site,2026-05-11T22:18:57.352487+00:00
+26,,10159 third street,realstar management,,10159 Third Street,952,22,93,100807,testing_site,2026-05-11T22:18:57.352487+00:00
+25,,1015 kings road,darioush diba,,1015 Kings Road,951,23,KQ 5101,100272,testing_site,2026-05-11T22:18:57.352487+00:00
+27,,1017 queens avenue,starlight/devon,,1017 Queens Avenue,953,24,111,100242,testing_site,2026-05-11T22:18:57.352487+00:00
+28,,1019 mcclure street,strata plan vis 308,,1019 McClure Street,954,25,CL 9101,100450,testing_site,2026-05-11T22:18:57.352487+00:00
+29,,1019 rockland avenue,proline,,1019 Rockland Avenue,955,26,ST 9101 K2,100558,testing_site,2026-05-11T22:18:57.352487+00:00
+21,,101 ontario street,proline property management,,101 Ontario Street,947,27,TO 101,100210,testing_site,2026-05-11T22:18:57.352487+00:00
+30,,1020 park boulevard,pemberton holmes,,1020 Park Boulevard,956,28,92,100728,testing_site,2026-05-11T22:18:57.352487+00:00
+31,,1020 pembroke street,brown bros.,,1020 Pembroke Street,957,29,RT 0201 K2,100397,testing_site,2026-05-11T22:18:57.352487+00:00
+32,,1024 fairfield road,firm management,,1024 Fairfield Road,958,30,WT 4201 K3,100782,testing_site,2026-05-11T22:18:57.352487+00:00
+33,,1025 johnson street,devon properties,,1025 Johnson Street,959,31,JD 5201 K5-F2,100923,testing_site,2026-05-11T22:18:57.352487+00:00
+34,,1026 johnson street,firm management,,1026 Johnson Street,960,32,WS 6201 K4-F1,,testing_site,2026-05-11T22:18:57.352487+00:00
+35,,1030 pendergast street,starlight/devon,,1030 Pendergast Street,961,33,GT 0301,100580,testing_site,2026-05-11T22:18:57.352487+00:00
+36,,1031 burdett avenue,hutton,,1031 Burdett Avenue,962,34,BA 1301 K2,,testing_site,2026-05-11T22:18:57.352487+00:00
+37,,1032 north park,pacific quorum $55,,1032 North Park,963,35,435,100547,testing_site,2026-05-11T22:18:57.352487+00:00
+38,,1035 belmont avenue,belmont properties,,1035 Belmont Avenue,964,37,445,100083,testing_site,2026-05-11T22:18:57.352487+00:00
+39,,1035 north park / 1720 cook street,first service residential,,1035 North Park / 1720 Cook Street,965,38,TH 5301,100909,testing_site,2026-05-11T22:18:57.352487+00:00
+35,,1035 pendergast street,starlight/devon,,1035 Pendergast Street,966,39,GT 0301,100580,testing_site,2026-05-11T22:18:57.352487+00:00
+41,,1036 stellys cross road,aleutian property management ltd,,1036 Stellys Cross Road,967,40,424,100565,testing_site,2026-05-11T22:18:57.352487+00:00
+41,,1040 stellys cross road,aleutian property management ltd,,1040 Stellys Cross Road,969,42,424,100565,testing_site,2026-05-11T22:18:57.352487+00:00
+44,,1041 fairfield road,pemberton holmes,,1041 Fairfield Road,970,43,68,100206,testing_site,2026-05-11T22:18:57.352487+00:00
+45,,1041 richardson road,capital west,,1041 Richardson Road,971,44,RR 1401,100149,testing_site,2026-05-11T22:18:57.352487+00:00
+47,,10459 resthaven drive,proline,,10459 Resthaven Drive,973,45,392,100335,testing_site,2026-05-11T22:18:57.352487+00:00
+46,,1045 mcclure street,brown bros.,,1045 McClure Street,972,46,332,100543,testing_site,2026-05-11T22:18:57.352487+00:00
+47,,10461 resthaven drive,proline,,10461 Resthaven Drive,974,47,392,100335,testing_site,2026-05-11T22:18:57.352487+00:00
+49,,1049 southgate street,devon properties,,1049 Southgate Street,975,48,186,100822,testing_site,2026-05-11T22:18:57.352487+00:00
+42,,104 dallas road,strata #1374 the dolphins,,104 Dallas Road,968,49,SP 401 K1-F1,100373,testing_site,2026-05-11T22:18:57.352487+00:00
+51,,1050 park boulevard,hutton,,1050 Park Boulevard,977,50,P 0501 K2,100168,testing_site,2026-05-11T22:18:57.352487+00:00

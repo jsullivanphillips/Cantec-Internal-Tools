@@ -95,6 +95,8 @@ _STREET_TOKEN_CANON: dict[str, str] = {
     "court": "court",
     "crt": "court",
     "ct": "court",
+    "close": "close",
+    "cl": "close",
     "place": "place",
     "pl": "place",
     "crescent": "crescent",
@@ -112,7 +114,6 @@ _STREET_TOKEN_CANON: dict[str, str] = {
     "pkwy": "parkway",
     "square": "square",
     "sq": "square",
-    "close": "close",
     "gate": "gate",
     "green": "green",
     "grove": "grove",
@@ -158,14 +159,30 @@ _OMITTABLE_STREET_SUFFIXES = frozenset(
         "highway",
         "square",
         "close",
+        "way",
+        "cross",
     }
 )
+
+# Single trailing token after a street-type suffix (``Mills Rd W`` → West).
+_TRAILING_STREET_DIR_SUFFIXES = frozenset({"n", "s", "e", "w", "ne", "nw", "se", "sw"})
+
+# ``9911a`` civic unit letter on the house number (sheet) vs bare digits in DB.
+_CIVIC_LETTER_SUFFIX_RE = re.compile(r"^(\d{1,7})([a-z])$")
+
+# Rare known misspellings in library addresses (token-level, casefolded).
+_STREET_NAME_TYPO_CORRECTIONS: dict[str, str] = {
+    "mcdonlad": "mcdonald",
+}
 
 # Consecutive data rows with ``#`` but empty site column → treat as end of sheet (Excel padding).
 _TRAILING_EMPTY_ADDRESS_ROWS = 10
 
 # ``1125 Douglas / (702 Fort)`` → primary ``1125 Douglas``; ``709 (-715) Yates`` → ``709-715 Yates``.
 _PAREN_UNIT_RANGE_RE = re.compile(r"\(\s*-?(\d+)\s*\)")
+
+# Second line of site block: ``Building B`` (no ``Name:`` prefix) — common on multi-building sites.
+_STANDALONE_BUILDING_LINE_RE = re.compile(r"^building\s+.+$", re.IGNORECASE)
 
 # Spelled-out street ordinals (``Third``) ↔ abbreviated civic forms (``3rd``) after casefold + punctuation split.
 _NUMERIC_ORDINAL_TOKEN_RE = re.compile(r"^(\d+)(st|nd|rd|th)$")
@@ -290,7 +307,49 @@ def _preprocess_sheet_street_for_match(line: str) -> str:
     if not s:
         return ""
     s = _PAREN_UNIT_RANGE_RE.sub(r"-\1", s)
+    s = _normalize_space(s)
+    s = _apply_street_phrase_aliases(s)
     return _normalize_space(s)
+
+
+def _apply_street_phrase_aliases(line: str) -> str:
+    """Expand civic phrases so sheet vs library spellings share one canonical key.
+
+    - ``Pat Bay`` ↔ ``Patricia Bay`` (local usage).
+    - ``Keating X Road`` ↔ ``Keating Cross Road`` (``X`` = cross).
+    """
+    t = line
+    t = re.sub(r"(?i)\bpat\s+bay\b", "Patricia Bay", t)
+
+    def _x_road_to_cross(m: re.Match[str]) -> str:
+        name = m.group(1)
+        return f"{name} Cross Road"
+
+    t = re.sub(r"(?i)\b(\w+)\s+x\s+road\b", _x_road_to_cross, t)
+    return t
+
+
+def _strip_trailing_cardinal_after_street_type(parts: list[str]) -> list[str]:
+    """Drop a trailing ``N``/``S``/``E``/``W`` (or intercardinal) after a known street-type token."""
+    if len(parts) < 3:
+        return parts
+    if parts[-1] not in _TRAILING_STREET_DIR_SUFFIXES:
+        return parts
+    if parts[-2] not in _OMITTABLE_STREET_SUFFIXES:
+        return parts
+    return parts[:-1]
+
+
+def _normalize_civic_number_token(parts: list[str]) -> list[str]:
+    """``9911a`` → ``9911`` so sheet civic suffixes align with bare DB numbers."""
+    if not parts:
+        return parts
+    m = _CIVIC_LETTER_SUFFIX_RE.match(parts[0])
+    if not m:
+        return parts
+    out = list(parts)
+    out[0] = m.group(1)
+    return out
 
 
 def canonical_street_address_key(raw: str | None) -> str:
@@ -312,7 +371,10 @@ def canonical_street_address_key(raw: str | None) -> str:
     for p in parts:
         p = p.strip(".")
         p = _canonical_street_ordinal_token(p)
+        p = _STREET_NAME_TYPO_CORRECTIONS.get(p, p)
         out.append(_STREET_TOKEN_CANON.get(p, p))
+    out = _normalize_civic_number_token(out)
+    out = _strip_trailing_cardinal_after_street_type(out)
     return " ".join(out)
 
 
@@ -356,6 +418,31 @@ def lookup_locations_for_sheet_street(
 
 def _normalize_company(value: str | None) -> str:
     return _normalize_space(value).casefold()
+
+
+def _pmc_extension_prefix_match(shorter: str, longer: str) -> bool:
+    """True when ``longer`` is ``shorter`` plus a delimiter suffix (e.g. colliers vs colliers - mall)."""
+    if not shorter:
+        return not longer
+    if not longer.startswith(shorter):
+        return False
+    if len(longer) == len(shorter):
+        return True
+    rest = longer[len(shorter) :]
+    return bool(rest) and rest[0] in " \t-–—:|"
+
+
+def _pmc_sheet_matches_db(sheet_cf: str, db_cf: str) -> bool:
+    """Loose PMC match when exact equality failed: DB name extends the sheet (e.g. ``colliers`` → ``colliers - mall``).
+
+    Only the sheet-as-prefix-of-DB direction is allowed so a short library label is
+    never widened to unrelated longer sheet names.
+    """
+    if sheet_cf == db_cf:
+        return True
+    if not sheet_cf or not db_cf:
+        return False
+    return _pmc_extension_prefix_match(sheet_cf, db_cf)
 
 
 def _normalize_building(value: str | None) -> str:
@@ -403,7 +490,12 @@ def _parse_month_year(month_cell: str | None, year_cell: str | None) -> date | N
 
 
 def parse_address_block(text: str | None) -> tuple[str, str | None, str | None]:
-    """Street line + optional ``Name:`` building + optional ``Management:`` company."""
+    """Street line + optional ``Name:`` building + optional ``Management:`` company.
+
+    Also treats a standalone second line like ``Building B`` (no ``Name:`` prefix)
+    as the building name when ``Name:`` did not set one — matches paperwork that
+    puts the civic address on the first line and ``Building …`` on the next.
+    """
     raw = (text or "").replace("\r\n", "\n").replace("\r", "\n")
     lines = [ln.strip() for ln in raw.split("\n") if ln.strip()]
     if not lines:
@@ -422,6 +514,8 @@ def parse_address_block(text: str | None) -> tuple[str, str | None, str | None]:
             building = ln.split(":", 1)[1].strip() or None
         elif low.startswith("management:"):
             company = ln.split(":", 1)[1].strip() or None
+        elif building is None and _STANDALONE_BUILDING_LINE_RE.match(ln):
+            building = _normalize_space(ln) or None
     return street, building, company
 
 
@@ -611,6 +705,15 @@ def resolve_monthly_location_by_sheet_identity(
         if loc.property_management_company_normalized
         == property_management_company_normalized
     ]
+    if len(by_pmc) == 0 and property_management_company_normalized:
+        by_pmc = [
+            loc
+            for loc in at_address
+            if _pmc_sheet_matches_db(
+                property_management_company_normalized,
+                loc.property_management_company_normalized or "",
+            )
+        ]
     if len(by_pmc) == 1:
         return by_pmc[0], None, ""
 
