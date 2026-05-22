@@ -4460,8 +4460,7 @@ body {
   background: var(--pw-skipped);
 }
 
-.pw-mock-header--annual,
-.pw-mock-header--pending {
+.pw-mock-header--annual {
   background: var(--pw-annual);
 }
 

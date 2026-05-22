@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState, type FormEvent, type KeyboardEvent } 
 import { Alert, Button, Card, Form, ListGroup, Spinner } from 'react-bootstrap'
 import { useNavigate } from 'react-router-dom'
 import { apiJson, isAbortError } from '../lib/apiClient'
+import { monthFirstIsoPacificToday } from '../features/monthlyRoutes/monthlyRoutesShared'
+import { PORTAL_WORKSHEET_DEMO_ROUTE_ID } from '../features/monthlyRoutes/portalWorksheetDemo'
 
 type PortalRoute = {
   id: number
@@ -133,6 +135,11 @@ export default function TechnicianPortalStartPage() {
     },
     [nav],
   )
+
+  const openDemoWorksheet = useCallback(() => {
+    const month = monthFirstIsoPacificToday()
+    nav(`/tech/route/${PORTAL_WORKSHEET_DEMO_ROUTE_ID}/worksheet/${month}`)
+  }, [nav])
 
   const pickSuggestion = useCallback(
     (route: PortalRoute) => {
@@ -286,6 +293,31 @@ export default function TechnicianPortalStartPage() {
       </Card>
 
       <div className="fw-semibold mb-2">Today’s runs</div>
+
+      <Card
+        as="button"
+        type="button"
+        className="text-start shadow-sm border border-info border-2 mb-3 tw-portal-route-card"
+        onClick={openDemoWorksheet}
+      >
+        <Card.Body className="d-flex align-items-center justify-content-between gap-3 py-3">
+          <div className="d-flex align-items-center gap-3">
+            <div
+              className="rounded-3 bg-info text-white fw-semibold d-flex align-items-center justify-content-center"
+              style={{ width: '3.25rem', height: '3.25rem', fontSize: '1.1rem' }}
+            >
+              R99
+            </div>
+            <div>
+              <div className="fw-semibold">UI demo (sample route)</div>
+              <div className="small text-muted">
+                5 sample stops · preview the new worksheet — nothing is saved
+              </div>
+            </div>
+          </div>
+          <i className="bi bi-chevron-right text-muted" aria-hidden />
+        </Card.Body>
+      </Card>
 
       {loading ? (
         <div className="d-flex align-items-center gap-2 text-muted py-3 mb-2">

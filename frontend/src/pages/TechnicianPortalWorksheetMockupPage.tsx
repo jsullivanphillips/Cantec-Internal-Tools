@@ -178,7 +178,7 @@ function headerBandClass(status: StopStatus, isAnnual: boolean): string {
   if (status === 'skipped') return 'pw-mock-header--skipped'
   if (status === 'in_progress') return 'pw-mock-header--progress'
   if (isAnnual) return 'pw-mock-header--annual'
-  return 'pw-mock-header--pending'
+  return ''
 }
 
 function FieldRow({ label, value, multiline }: { label: string; value: string; multiline?: boolean }) {

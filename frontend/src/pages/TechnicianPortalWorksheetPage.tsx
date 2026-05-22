@@ -7,7 +7,9 @@ import {
   worksheetStopSkipIsAnnual,
   type TechnicianWorksheetStop,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
+import { isPortalWorksheetDemoRoute } from '../features/monthlyRoutes/portalWorksheetDemo'
 import { usePortalWorksheet } from '../features/monthlyRoutes/usePortalWorksheet'
+import { usePortalWorksheetDemo } from '../features/monthlyRoutes/usePortalWorksheetDemo'
 import PortalWorksheetSkeleton from './PortalWorksheetSkeleton'
 
 type StopDisplayStatus = 'pending' | 'in_progress' | 'tested' | 'skipped'
@@ -50,7 +52,7 @@ function headerBandClass(stop: TechnicianWorksheetStop): string {
   if (status === 'skipped') return 'pw-mock-header--skipped'
   if (status === 'in_progress') return 'pw-mock-header--progress'
   if (isAnnualMonth(stop)) return 'pw-mock-header--annual'
-  return 'pw-mock-header--pending'
+  return ''
 }
 
 function skipReasonDisplay(stop: TechnicianWorksheetStop): string | null {
@@ -87,9 +89,12 @@ function syncBadgeLabel(state: string, refreshing: boolean): string {
 
 export default function TechnicianPortalWorksheetPage() {
   const { routeId, monthIso } = useParams<{ routeId: string; monthIso: string }>()
-  const idNum = routeId ? parseInt(routeId, 10) : NaN
+  const isDemo = isPortalWorksheetDemoRoute(routeId)
+  const idNum = routeId && !isDemo ? parseInt(routeId, 10) : NaN
   const monthQuery = (monthIso || '').trim()
 
+  const liveWorksheet = usePortalWorksheet(idNum, monthQuery)
+  const demoWorksheet = usePortalWorksheetDemo(monthQuery)
   const {
     payload,
     stops,
@@ -115,7 +120,7 @@ export default function TechnicianPortalWorksheetPage() {
     canEditStops,
     setInteractiveBusy,
     hhmmNow,
-  } = usePortalWorksheet(idNum, monthQuery)
+  } = isDemo ? demoWorksheet : liveWorksheet
 
   const [activeId, setActiveId] = useState<number | null>(null)
   const [navExpanded, setNavExpanded] = useState(false)
@@ -303,10 +308,18 @@ export default function TechnicianPortalWorksheetPage() {
               {monthHeading} run · {progress.total} stops
             </div>
           </div>
-          <Badge bg={syncBadgeVariant(detailRefreshing ? 'primary' : syncState)} className="pw-mock-sync">
-            {syncBadgeLabel(syncState, detailRefreshing)}
+          <Badge
+            bg={isDemo ? 'info' : syncBadgeVariant(detailRefreshing ? 'primary' : syncState)}
+            className="pw-mock-sync"
+          >
+            {isDemo ? 'Demo' : syncBadgeLabel(syncState, detailRefreshing)}
           </Badge>
         </div>
+        {isDemo ? (
+          <Alert variant="info" className="py-1 px-2 mb-0 small">
+            Sample data only — changes are not saved. For showing the new worksheet UI to coworkers.
+          </Alert>
+        ) : null}
         {syncMessage ? (
           <Alert variant="warning" className="py-1 px-2 mb-0 small">
             {syncMessage}

@@ -1,0 +1,177 @@
+/**
+ * Hardcoded portal worksheet payload for coworker UI demos (no API).
+ * Open from /tech/start → “UI demo (sample route)” or /tech/route/demo/worksheet/:monthIso.
+ */
+import type {
+  TechnicianWorksheetPayload,
+  TechnicianWorksheetStop,
+} from './monthlyRoutesShared'
+
+export const PORTAL_WORKSHEET_DEMO_ROUTE_ID = 'demo'
+
+export function isPortalWorksheetDemoRoute(routeId: string | undefined): boolean {
+  return (routeId || '').trim().toLowerCase() === PORTAL_WORKSHEET_DEMO_ROUTE_ID
+}
+
+function demoStops(monthIso: string): TechnicianWorksheetStop[] {
+  const base = {
+    month_date: monthIso,
+    history_month_row_id: 0,
+    route_stop_order: null,
+    session_route_stop_order: null,
+    version_updated_at: null,
+  }
+  return [
+    {
+      ...base,
+      testing_site_id: 1001,
+      location_id: 501,
+      stop_number: 1,
+      display_address: '1045 Pandora Ave',
+      building_name: 'Parkade Level P2',
+      property_management_company: 'Coast Property Mgmt',
+      label: 'FACP — East stair',
+      ring: 'R-12',
+      key_number: 'KEY-4421',
+      annual_month: null,
+      door_code: '4821#',
+      panel: 'Simplex 4100ES',
+      panel_location: 'Electrical room, P2 east',
+      monitoring_company: 'Paladin Security',
+      monitoring_notes: 'Acct #88421 · Signals: Fire, Trouble',
+      testing_procedures:
+        '1. Notify monitoring\n2. Test 10% devices per floor\n3. Reset and verify panel clear',
+      inspection_tech_notes: 'Last month: one smoke low battery in stair 3.',
+      time_in: null,
+      time_out: null,
+      result_status: null,
+      skip_reason: null,
+    },
+    {
+      ...base,
+      testing_site_id: 1002,
+      location_id: 502,
+      stop_number: 2,
+      display_address: '1045 Pandora Ave',
+      building_name: 'Tower A',
+      property_management_company: 'Coast Property Mgmt',
+      label: 'FACP — Roof mechanical',
+      ring: 'R-12B',
+      key_number: 'KEY-4421',
+      annual_month: 'May',
+      door_code: null,
+      panel: 'PACPRO P24A',
+      panel_location: 'Roof penthouse, north wall',
+      monitoring_company: 'Paladin Security',
+      monitoring_notes: null,
+      testing_procedures:
+        'Annual: full device test per NFPA 72. Document all out-of-service devices on back of sheet.',
+      inspection_tech_notes: '',
+      time_in: null,
+      time_out: null,
+      result_status: null,
+      skip_reason: null,
+    },
+    {
+      ...base,
+      testing_site_id: 1003,
+      location_id: 503,
+      stop_number: 3,
+      display_address: '2200 Douglas St — Units 4-9',
+      building_name: null,
+      property_management_company: 'Quadra Properties',
+      label: null,
+      ring: 'R-3',
+      key_number: 'KEY-1188',
+      annual_month: null,
+      door_code: 'Front desk',
+      panel: 'Fire-Lite MS-5UD',
+      panel_location: 'Main floor lobby closet',
+      monitoring_company: 'Securitas',
+      monitoring_notes: 'Call ahead — front desk holds keys after 6pm',
+      testing_procedures: 'Monthly: horns/strobes + 2 smokes per floor.',
+      inspection_tech_notes: '',
+      time_in: null,
+      time_out: null,
+      result_status: null,
+      skip_reason: null,
+    },
+    {
+      ...base,
+      testing_site_id: 1004,
+      location_id: 504,
+      stop_number: 4,
+      display_address: '891 Johnson St',
+      building_name: 'Parkade',
+      property_management_company: null,
+      label: 'FACP only',
+      ring: 'R-8',
+      key_number: 'KEY-9002',
+      annual_month: null,
+      door_code: null,
+      panel: 'Simplex 4010',
+      panel_location: 'P1 ramp entrance',
+      monitoring_company: '—',
+      monitoring_notes: null,
+      testing_procedures: 'Skip annual devices. Visual panel check only.',
+      inspection_tech_notes: 'Gate arm broken — use side pedestrian door.',
+      time_in: null,
+      time_out: null,
+      result_status: null,
+      skip_reason: null,
+    },
+    {
+      ...base,
+      testing_site_id: 1005,
+      location_id: 505,
+      stop_number: 5,
+      display_address: '1450 Government St',
+      building_name: 'Annex',
+      property_management_company: 'BC Housing',
+      label: null,
+      ring: 'R-1',
+      key_number: 'KEY-2200',
+      annual_month: null,
+      door_code: '2510',
+      panel: 'Edwards EST3',
+      panel_location: 'Basement B1, room 12',
+      monitoring_company: 'ADT Commercial',
+      monitoring_notes: null,
+      testing_procedures: 'Standard monthly test. Elevator recall test with on-site staff.',
+      inspection_tech_notes: '',
+      time_in: null,
+      time_out: null,
+      result_status: null,
+      skip_reason: null,
+    },
+  ]
+}
+
+export function buildPortalWorksheetDemoPayload(monthIso: string): TechnicianWorksheetPayload {
+  const started = new Date()
+  started.setMinutes(started.getMinutes() - 45)
+  return {
+    route: {
+      id: 0,
+      route_number: 99,
+      display_name: 'UI demo',
+      weekday_iso: 0,
+      week_occurrence: 1,
+      label: 'R99 · 1st Monday',
+    },
+    month_date: monthIso,
+    run: {
+      id: 99001,
+      monthly_route_id: 0,
+      month_date: monthIso,
+      status: 'open',
+      opened_at: started.toISOString(),
+      started_at: started.toISOString(),
+      completed_at: null,
+      source: 'technician_app',
+      is_historical: false,
+    },
+    rows: [],
+    stops: demoStops(monthIso),
+  }
+}
