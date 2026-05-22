@@ -3478,7 +3478,9 @@ body {
   background: #fff;
   border-radius: 0;
   margin: 0;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  border-bottom: 1px solid #c7ccd1;
+  /* Shadow is excluded from offsetHeight; a drop shadow reads as a gap above the body grid. */
+  box-shadow: none !important;
 }
 
 .technician-worksheet-page .tw-worksheet-back-btn {
@@ -3578,6 +3580,7 @@ body {
   margin-top: 0.25rem;
   border-top: 1px solid #d7dde3;
   background: #f8f9fa;
+  margin-bottom: 0;
 }
 
 .technician-worksheet-page .technician-worksheet-column-header-table {
@@ -3615,6 +3618,20 @@ body {
 .technician-worksheet-page .technician-worksheet-table {
   border-left: 1px solid #c7ccd1;
   border-top: 1px solid #c7ccd1;
+}
+
+/* Split header lives in the fixed topbar; body table should meet it with no seam. */
+.technician-worksheet-page .technician-worksheet-grid-card {
+  margin-top: 0;
+  border-top: none;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  box-shadow: none !important;
+}
+
+.technician-worksheet-page .technician-worksheet-table--body-only {
+  border-top: none;
+  margin-top: 0;
 }
 
 .technician-worksheet-page .technician-worksheet-table tbody tr.tw-row-annual > td {

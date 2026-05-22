@@ -108,7 +108,7 @@ export default function AppLayout() {
         </Offcanvas>
 
         <main
-          className={`app-main flex-grow-1 min-w-0 overflow-auto${isMonthlyRoutesMapRoute ? ' app-main--monthly-map' : ''}${isWorksheetRoute ? ' app-main--flush-x' : ''}`}
+          className={`app-main flex-grow-1 min-w-0 overflow-auto${isMonthlyRoutesMapRoute ? ' app-main--monthly-map' : ''}${isWorksheetRoute ? ' app-main--flush' : ''}`}
         >
           <Suspense
             fallback={

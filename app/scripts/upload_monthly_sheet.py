@@ -88,28 +88,33 @@ def _parse_price(value: str | None) -> Decimal | None:
         return None
 
 
+# Month/year tokens from master sheet headers (``Jan-26``) or Excel exports (``26-Jan``).
+_MONTH_YEAR_TOKEN_FORMATS = ("%b-%y", "%B-%y", "%y-%b", "%y-%B")
+
+
+def _parse_month_year_token(text: str) -> date | None:
+    """Parse ``Mon-YY`` or ``YY-Mon`` (abbreviated or full month name) to first-of-month."""
+    for fmt in _MONTH_YEAR_TOKEN_FORMATS:
+        try:
+            parsed = datetime.strptime(text, fmt)
+            return date(parsed.year, parsed.month, 1)
+        except ValueError:
+            continue
+    return None
+
+
 def _parse_start_up_date(value: str | None) -> date | None:
     text = _normalize_space(value)
     if not text or text == "-":
         return None
-    for fmt in ("%b-%y", "%B-%y"):
-        try:
-            parsed = datetime.strptime(text, fmt)
-            return date(parsed.year, parsed.month, 1)
-        except ValueError:
-            continue
-    return None
+    return _parse_month_year_token(text)
 
 
 def _parse_month_header(header: str) -> date | None:
     text = _normalize_space(header)
-    for fmt in ("%b-%y", "%B-%y"):
-        try:
-            parsed = datetime.strptime(text, fmt)
-            return date(parsed.year, parsed.month, 1)
-        except ValueError:
-            continue
-    return None
+    if not text:
+        return None
+    return _parse_month_year_token(text)
 
 
 def _clean_barcode(value: str | None) -> str | None:
@@ -648,13 +653,13 @@ def run_upload(
     conflicts: list[RowConflict] = []
 
     for row_number, row in enumerate(rows, start=2):
+        if not _normalize_address(row.get("ADDRESS")):
+            continue
         key = (
             _normalize_address(row.get("ADDRESS")),
             _normalize_company(row.get("PROPERTY MANAGEMENT COMPANY")),
             _normalize_building(row.get("NOTES")),
         )
-        if not key:
-            continue
         if key in deduped:
             conflicts.append(
                 RowConflict(

@@ -147,6 +147,29 @@ def _build_route_counts(locations: list[MonthlyRouteLocation]) -> dict[str, int]
     return counts
 
 
+def _route_counts_for_location_query(location_query) -> dict[str, int]:
+    """Aggregate ``test_day`` counts in SQL (same filters as ``location_query``, no row load)."""
+    rows = (
+        location_query.order_by(None)
+        .with_entities(
+            MonthlyRouteLocation.test_day,
+            func.count(MonthlyRouteLocation.id),
+        )
+        .filter(
+            MonthlyRouteLocation.test_day.isnot(None),
+            MonthlyRouteLocation.test_day != "",
+        )
+        .group_by(MonthlyRouteLocation.test_day)
+        .all()
+    )
+    counts: dict[str, int] = {}
+    for test_day, n in rows:
+        route = (test_day or "").strip()
+        if route:
+            counts[route] = int(n)
+    return counts
+
+
 def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     r = 6371.0
     d_lat = math.radians(lat2 - lat1)
@@ -561,7 +584,16 @@ def _ensure_worksheet_rows_for_route_month(
 
     Returns the ``MonthlyRouteRun`` for ``(route_id, month_first)`` so callers can
     surface run metadata in their payload.
+
+    Non-current Pacific months never create runs or roster rows here; only the current
+    month (or explicit portal ``POST …/runs``) materializes placeholders.
     """
+    if _is_non_current_pacific_month(month_first):
+        return MonthlyRouteRun.query.filter_by(
+            monthly_route_id=route_id,
+            month_date=month_first,
+        ).one_or_none()
+
     if create_run_if_missing:
         run = _get_or_create_run(route_id, month_first)
     else:
@@ -707,6 +739,7 @@ def _is_latest_run_for_location(location_id: int, month_first: date) -> bool:
     latest = (
         db.session.query(func.max(MonthlyRouteTestHistory.month_date))
         .filter(MonthlyRouteTestHistory.location_id == location_id)
+        .execution_options(autoflush=False)
         .scalar()
     )
     return latest is None or month_first >= latest
@@ -788,18 +821,13 @@ def _worksheet_history_address_sort_key(
     return f"location {int(hist.location_id)}".casefold()
 
 
-def _session_stop_sheet_notes_from_history_and_location(
+def _session_stop_sheet_notes_from_history(
     row: MonthlyRouteTestHistory,
-    loc: MonthlyRouteLocation | None,
 ) -> tuple[str | None, str | None]:
-    """Prefer month-specific history columns; fall back to current location for rows imported before those existed."""
-    tp = (row.testing_procedures or "").strip() or None
-    tn = (row.inspection_tech_notes or "").strip() or None
-    if tp is None and loc is not None:
-        tp = (loc.testing_procedures or "").strip() or None
-    if tn is None and loc is not None:
-        tn = (loc.inspection_tech_notes or "").strip() or None
-    return tp, tn
+    """Run-month procedures / tech notes from the history row only (no library bleed)."""
+    from app.monthly.history_sheet_notes import sheet_notes_from_history_row
+
+    return sheet_notes_from_history_row(row)
 
 
 def _worksheet_preview_row_from_location(
@@ -814,8 +842,9 @@ def _worksheet_preview_row_from_location(
     library_order = (
         int(loc.route_stop_order) if loc.route_stop_order is not None else None
     )
-    tp = (loc.testing_procedures or "").strip() or None
-    tn = (loc.inspection_tech_notes or "").strip() or None
+    from app.monthly.history_sheet_notes import latest_run_notes_for_location
+
+    tp, tn = latest_run_notes_for_location(int(loc.id))
     return {
         "location_id": int(loc.id),
         "history_row_id": 0,
@@ -925,6 +954,11 @@ def _current_pacific_month_first() -> date:
     return date(now_pacific.year, now_pacific.month, 1)
 
 
+def _is_non_current_pacific_month(month_first: date) -> bool:
+    """True when ``month_first`` is not the Pacific calendar current month (past or future)."""
+    return month_first != _current_pacific_month_first()
+
+
 def _run_explicitly_completed(run: MonthlyRouteRun) -> bool:
     """True when the run was marked finished (blocks replacing the month via CSV import)."""
     if run.completed_at is not None:
@@ -971,25 +1005,14 @@ def _serialize_run(run: MonthlyRouteRun | None) -> dict[str, object] | None:
     }
 
 
-def _serialize_technician_worksheet_payload(
+def _worksheet_payload_from_attributed_rows(
+    mr: MonthlyRoute,
     route_id: int,
     month_first: date,
-    *,
-    portal_lazy_run: bool = False,
-) -> dict[str, object] | None:
-    mr = _get_monthly_route(route_id)
-    if mr is None:
-        return None
-    run = _ensure_worksheet_rows_for_route_month(
-        route_id,
-        month_first,
-        create_run_if_missing=not portal_lazy_run,
-    )
-    if run is None:
-        if portal_lazy_run:
-            return _portal_worksheet_preview_payload(mr, route_id, month_first)
-        return None
-    rows = _testing_history_rows_attributed_to_route_month(route_id, month_first)
+    run: MonthlyRouteRun | None,
+    rows: list[MonthlyRouteTestHistory],
+) -> dict[str, object]:
+    """Build worksheet JSON from attributed history only (no roster materialization)."""
     location_count = MonthlyRouteLocation.query.filter_by(monthly_route_id=route_id).count()
     run_block = _serialize_run(run)
     if not rows:
@@ -1023,6 +1046,45 @@ def _serialize_technician_worksheet_payload(
         "run": run_block,
         "rows": out_rows,
     }
+
+
+def _serialize_technician_worksheet_payload(
+    route_id: int,
+    month_first: date,
+    *,
+    portal_lazy_run: bool = False,
+) -> dict[str, object] | None:
+    mr = _get_monthly_route(route_id)
+    if mr is None:
+        return None
+
+    if _is_non_current_pacific_month(month_first):
+        run = MonthlyRouteRun.query.filter_by(
+            monthly_route_id=route_id,
+            month_date=month_first,
+        ).one_or_none()
+        rows = _testing_history_rows_attributed_to_route_month(route_id, month_first)
+        if run is None and not rows:
+            location_count = MonthlyRouteLocation.query.filter_by(monthly_route_id=route_id).count()
+            return {
+                "route": _serialize_monthly_route_entity(mr, location_count=location_count),
+                "month_date": month_first.isoformat(),
+                "run": None,
+                "rows": [],
+            }
+        return _worksheet_payload_from_attributed_rows(mr, route_id, month_first, run, rows)
+
+    run = _ensure_worksheet_rows_for_route_month(
+        route_id,
+        month_first,
+        create_run_if_missing=not portal_lazy_run,
+    )
+    if run is None:
+        if portal_lazy_run:
+            return _portal_worksheet_preview_payload(mr, route_id, month_first)
+        return None
+    rows = _testing_history_rows_attributed_to_route_month(route_id, month_first)
+    return _worksheet_payload_from_attributed_rows(mr, route_id, month_first, run, rows)
 
 
 def _parse_iso_dt(value: object) -> datetime | None:
@@ -1117,7 +1179,7 @@ def _serialize_testing_session_payload(route_id: int, month_first: date) -> dict
             sort_tier = 2
             sort_ord = 10**9
 
-        tp, tn = _session_stop_sheet_notes_from_history_and_location(row, loc)
+        tp, tn = _session_stop_sheet_notes_from_history(row)
         stops_raw.append(
             {
                 "location_id": lid,
@@ -1212,19 +1274,34 @@ def _sync_route_stop_order_after_fk_change(
         loc.route_stop_order = int(mx) + 1
 
 
+def _serialize_month_cell(
+    row: MonthlyRouteTestHistory,
+    *,
+    list_view: bool,
+) -> dict[str, object]:
+    cell: dict[str, object] = {
+        "result_status": row.result_status,
+        "skip_reason": row.skip_reason,
+    }
+    if not list_view:
+        cell["test_monthly_route"] = _serialize_monthly_route_entity(row.test_monthly_route)
+    return cell
+
+
 def _serialize_location_row(
     loc: MonthlyRouteLocation,
     months_payload: dict[str, dict[str, object]],
+    *,
+    list_view: bool = False,
 ) -> dict[str, object]:
     mr = loc.monthly_route
     lk = loc.linked_key
-    return {
+    payload: dict[str, object] = {
         "id": loc.id,
         "address": loc.address,
         "display_address": loc.display_address,
         "property_management_company": loc.property_management_company,
         "building": loc.building,
-        "notes": loc.notes,
         "barcode": loc.barcode,
         "price_per_month": float(loc.price_per_month) if loc.price_per_month is not None else None,
         "area": loc.area,
@@ -1243,6 +1320,18 @@ def _serialize_location_row(
         "monthly_route": _serialize_monthly_route_entity(mr),
         "months": months_payload,
     }
+    if list_view:
+        return payload
+
+    from app.monthly.history_sheet_notes import apply_latest_run_notes_to_location_payload
+
+    payload["notes"] = loc.notes
+    payload["ring_detail"] = loc.ring_detail
+    payload["facp_detail"] = loc.facp_detail
+    payload["testing_procedures"] = loc.testing_procedures
+    payload["inspection_tech_notes"] = loc.inspection_tech_notes
+    apply_latest_run_notes_to_location_payload(payload, int(loc.id))
+    return payload
 
 
 def _serialize_geocode_candidate(feature: dict[str, object]) -> dict[str, object] | None:
@@ -1268,7 +1357,9 @@ def _serialize_geocode_candidate(feature: dict[str, object]) -> dict[str, object
 
 
 @monthly_routes_bp.get("/api/monthly_routes/library")
-def monthly_routes_library():
+def monthly_routes_library(*, list_view: bool | None = None):
+    if list_view is None:
+        list_view = (request.args.get("view") or "").strip().lower() == "list"
     q = (request.args.get("q") or "").strip().casefold()
     route = (request.args.get("route") or "").strip()
     skipped_any = (request.args.get("skipped_any") or "").strip().lower() == "true"
@@ -1322,8 +1413,6 @@ def monthly_routes_library():
     else:
         ordered_location_query = location_query.order_by(MonthlyRouteLocation.address.asc())
 
-    count_scope_locations: list[MonthlyRouteLocation]
-
     special_library_filters = skipped_any or annual_tested_conflict
 
     if special_library_filters:
@@ -1363,7 +1452,6 @@ def monthly_routes_library():
 
         matching_ids = set.intersection(*id_sets) if id_sets else set(candidate_ids)
         filtered_locations = [loc for loc in candidate_locations if loc.id in matching_ids]
-        count_scope_locations = filtered_locations
         total_locations = len(filtered_locations)
         if unpaginated:
             locations = filtered_locations
@@ -1379,18 +1467,20 @@ def monthly_routes_library():
     else:
         if unpaginated:
             locations = ordered_location_query.all()
-            count_scope_locations = locations
             total_locations = len(locations)
             page = 1
             total_pages = 1
         else:
-            count_scope_locations = ordered_location_query.all()
             total_locations = ordered_location_query.count()
             total_pages = max((total_locations + page_size - 1) // page_size, 1)
             if page > total_pages:
                 page = total_pages
             locations = ordered_location_query.offset((page - 1) * page_size).limit(page_size).all()
-    route_counts = _build_route_counts(count_scope_locations)
+
+    if special_library_filters:
+        route_counts = _build_route_counts(filtered_locations)
+    else:
+        route_counts = _route_counts_for_location_query(location_query)
     monthly_routes_meta, _ = _meta_monthly_routes_bundle()
 
     location_ids = [l.id for l in locations]
@@ -1423,9 +1513,9 @@ def monthly_routes_library():
             }
         )
 
-    hist_query = MonthlyRouteTestHistory.query.options(
-        joinedload(MonthlyRouteTestHistory.test_monthly_route)
-    ).filter(MonthlyRouteTestHistory.location_id.in_(location_ids))
+    hist_query = MonthlyRouteTestHistory.query.filter(MonthlyRouteTestHistory.location_id.in_(location_ids))
+    if not list_view:
+        hist_query = hist_query.options(joinedload(MonthlyRouteTestHistory.test_monthly_route))
     if range_conditions:
         hist_query = hist_query.filter(and_(*range_conditions))
     history_rows = hist_query.all()
@@ -1441,15 +1531,16 @@ def monthly_routes_library():
         months = sorted({r.month_date for r in history_rows})
     by_location: dict[int, dict[str, dict[str, object]]] = {}
     for row in history_rows:
-        by_location.setdefault(row.location_id, {})[row.month_date.isoformat()] = {
-            "result_status": row.result_status,
-            "skip_reason": row.skip_reason,
-            "test_monthly_route": _serialize_monthly_route_entity(row.test_monthly_route),
-        }
+        by_location.setdefault(row.location_id, {})[row.month_date.isoformat()] = _serialize_month_cell(
+            row,
+            list_view=list_view,
+        )
 
     rows_payload = []
     for loc in locations:
-        rows_payload.append(_serialize_location_row(loc, by_location.get(loc.id, {})))
+        rows_payload.append(
+            _serialize_location_row(loc, by_location.get(loc.id, {}), list_view=list_view)
+        )
 
     route_options_query = (
         MonthlyRouteLocation.query.with_entities(MonthlyRouteLocation.test_day)
@@ -1735,10 +1826,11 @@ def patch_monthly_route_worksheet_row(route_id: int, location_id: int):
     if not isinstance(changes, dict) or not changes:
         return jsonify({"error": "changes object is required"}), 400
 
-    row = MonthlyRouteTestHistory.query.filter_by(
-        location_id=location_id,
-        month_date=month_first,
-    ).one_or_none()
+    row = (
+        db.session.query(MonthlyRouteTestHistory)
+        .filter_by(location_id=location_id, month_date=month_first)
+        .one_or_none()
+    )
     if row is None:
         return jsonify({"error": "Worksheet row not found for location/month"}), 404
     if row.test_monthly_route_id is not None and int(row.test_monthly_route_id) != int(route_id):
@@ -1895,6 +1987,12 @@ def patch_monthly_route_worksheet_row(route_id: int, location_id: int):
                 continue
             if getattr(loc, attr) != new_val:
                 setattr(loc, attr, new_val)
+        from sqlalchemy import inspect as sa_inspect
+
+        if sa_inspect(db.engine).has_table("monthly_site"):
+            from app.monthly.monthly_sites_sync import refresh_primary_testing_site_from_legacy
+
+            refresh_primary_testing_site_from_legacy(loc)
 
     # Enforce invariant after merged state updates.
     if (row.result_status or "").strip().lower() == "skipped" and not _normalize_ws_text(row.skip_reason):

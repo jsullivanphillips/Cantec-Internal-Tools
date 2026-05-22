@@ -985,8 +985,11 @@ def run_route_inspection_csv_import(
         loc.ring_detail = ring_detail
         loc.keys = keys_text
         loc.facp_detail = facp_detail
-        loc.testing_procedures = testing_procedures
-        loc.inspection_tech_notes = tech_notes
+        from app.monthly.history_sheet_notes import is_latest_history_month_for_location
+
+        if is_latest_history_month_for_location(int(loc.id), month_date):
+            loc.testing_procedures = testing_procedures
+            loc.inspection_tech_notes = tech_notes
         loc.updated_at = now
 
         if _is_monitoring_none(monitoring_cell):

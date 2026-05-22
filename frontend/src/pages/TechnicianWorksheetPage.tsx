@@ -207,21 +207,33 @@ function worksheetGridIsTouchLikePointer(pointerType: string): boolean {
   return pointerType === 'touch' || pointerType === 'pen'
 }
 
+function worksheetRowIsAnnualSkip(row: TechnicianWorksheetRow, monthDate: string): boolean {
+  const rs = (row.result_status || '').trim().toLowerCase()
+  if (rs !== 'skipped') return isAnnualForMonth(row.annual_month, monthDate)
+  return sheetSkipReasonIsAnnual(row.skip_reason) || isAnnualForMonth(row.annual_month, monthDate)
+}
+
+function worksheetRowStatusClass(row: TechnicianWorksheetRow, monthDate: string): string | undefined {
+  const rs = (row.result_status || '').trim().toLowerCase()
+  if (rs === 'skipped') {
+    return worksheetRowIsAnnualSkip(row, monthDate) ? 'tw-row-annual' : 'tw-row-skipped'
+  }
+  if (isAnnualForMonth(row.annual_month, monthDate)) return 'tw-row-annual'
+  return undefined
+}
+
 function worksheetAddressCellStatusClass(
   row: TechnicianWorksheetRow,
   monthDate: string,
-  isHistorical: boolean,
 ): string | undefined {
   const rs = (row.result_status || '').trim().toLowerCase()
-  const annualMatch = isAnnualForMonth(row.annual_month, monthDate)
   if (rs === 'tested') return 'tw-address-cell-tested'
   if (rs === 'skipped') {
-    // Active run: any explicit technician skip should look "skipped" (yellow),
-    // even when reason is annual. Historical runs keep annual-vs-other tinting.
-    if (!isHistorical) return 'tw-address-cell-skipped-other'
-    return sheetSkipReasonIsAnnual(row.skip_reason) ? 'tw-address-cell-annual' : 'tw-address-cell-skipped-other'
+    return worksheetRowIsAnnualSkip(row, monthDate)
+      ? 'tw-address-cell-annual'
+      : 'tw-address-cell-skipped-other'
   }
-  if (annualMatch) return 'tw-address-cell-annual'
+  if (isAnnualForMonth(row.annual_month, monthDate)) return 'tw-address-cell-annual'
   return undefined
 }
 
@@ -1259,7 +1271,16 @@ export default function TechnicianWorksheetPage() {
     )
   }
 
-  const worksheetFrozenNoRun = payload !== null && payload.run == null
+  const isNonCurrentMonth =
+    payload != null && monthOk && payload.month_date !== monthFirstIsoPacificToday()
+  const isEmptyHistorical =
+    isNonCurrentMonth && payload!.run == null && (payload!.rows?.length ?? 0) === 0
+  const isCurrentMonthPreview =
+    payload != null && payload.run == null && payload.month_date === monthFirstIsoPacificToday()
+  const isHistoricalView =
+    payload?.run?.is_historical === true ||
+    (isNonCurrentMonth && (payload?.rows?.length ?? 0) > 0)
+  const worksheetFrozenNoRun = isCurrentMonthPreview || isHistoricalView
   const officeLocksOutcomeColumn =
     !isPortalMode && worksheetRunFieldActive(payload?.run ?? undefined)
   const officeRunActivityPhase =
@@ -1313,10 +1334,14 @@ export default function TechnicianWorksheetPage() {
                 <div>
                   <div className="fw-semibold">{payload.route.label}</div>
                   <div className="small text-muted">
-                    {worksheetFrozenNoRun ? (
+                    {isEmptyHistorical ? (
+                      <>{formatMonthHeading(payload.month_date)} — no worksheet recorded</>
+                    ) : isCurrentMonthPreview ? (
                       <>
                         {formatMonthHeading(payload.month_date)} — preview (run not started)
                       </>
+                    ) : isHistoricalView ? (
+                      <>{formatMonthHeading(payload.month_date)} — historical</>
                     ) : (
                       <>{formatMonthHeading(payload.month_date)} run</>
                     )}
@@ -1497,27 +1522,29 @@ export default function TechnicianWorksheetPage() {
             </div>
             {syncMessage ? <div className="small text-danger mt-1 px-3">{syncMessage}</div> : null}
           </div>
-          <div
-            ref={headerScrollRef}
-            className="technician-worksheet-column-header-wrap technician-worksheet-column-header-wrap--topbar"
-            onScroll={() => syncWorksheetHorizontalScroll('header')}
-          >
-            <Table size="sm" className="mb-0 align-middle technician-worksheet-column-header-table">
-              <WorksheetTableColGroup />
-              <thead className="table-light">
-                <tr>
-                  <th className="tw-col-order">#</th>
-                  <th className="tw-col-address">Address</th>
-                  <th className="tw-col-stacked-ark">Annual / Ring / Key #</th>
-                  <th className="tw-col-facp">FACP</th>
-                  <th className="tw-col-monitoring">Monitoring</th>
-                  <th className="tw-col-procedures">Testing Procedures</th>
-                  <th className="tw-col-notes">Tech Comments & Notes</th>
-                  <th className="tw-col-action">{isPortalMode ? 'Action' : 'Result'}</th>
-                </tr>
-              </thead>
-            </Table>
-          </div>
+          {!isEmptyHistorical ? (
+            <div
+              ref={headerScrollRef}
+              className="technician-worksheet-column-header-wrap technician-worksheet-column-header-wrap--topbar"
+              onScroll={() => syncWorksheetHorizontalScroll('header')}
+            >
+              <Table size="sm" className="mb-0 align-middle technician-worksheet-column-header-table">
+                <WorksheetTableColGroup />
+                <thead className="table-light">
+                  <tr>
+                    <th className="tw-col-order">#</th>
+                    <th className="tw-col-address">Address</th>
+                    <th className="tw-col-stacked-ark">Annual / Ring / Key #</th>
+                    <th className="tw-col-facp">FACP</th>
+                    <th className="tw-col-monitoring">Monitoring</th>
+                    <th className="tw-col-procedures">Testing Procedures</th>
+                    <th className="tw-col-notes">Tech Comments & Notes</th>
+                    <th className="tw-col-action">{isPortalMode ? 'Action' : 'Result'}</th>
+                  </tr>
+                </thead>
+              </Table>
+            </div>
+          ) : null}
         </div>
       ) : null}
       <div
@@ -1539,41 +1566,39 @@ export default function TechnicianWorksheetPage() {
       {error ? <Alert variant="danger">{error}</Alert> : null}
       {payload ? (
         <>
-          <Card className="shadow-sm">
+          {isEmptyHistorical ? (
+            <Alert variant="secondary" className="mx-3">
+              No worksheet recorded for this month on this route.
+            </Alert>
+          ) : null}
+          <Card className={`technician-worksheet-grid-card shadow-sm${isEmptyHistorical ? ' d-none' : ''}`}>
             <Card.Body className="p-0">
               <div
                 ref={tableScrollRef}
                 className="technician-worksheet-table-wrap"
                 onScroll={() => syncWorksheetHorizontalScroll('table')}
               >
-                <Table size="sm" className="mb-0 align-middle technician-worksheet-table">
+                <Table
+                  size="sm"
+                  className="mb-0 align-middle technician-worksheet-table technician-worksheet-table--body-only"
+                >
                   <WorksheetTableColGroup />
                   <tbody>
                     {payload.rows.map((row, index) => (
                       <tr
                         role="row"
                         key={`${row.location_id}-${row.month_date}`}
-                        className={(() => {
-                          const rs = (row.result_status || '').trim().toLowerCase()
-                          const annualMatch = isAnnualForMonth(row.annual_month, payload.month_date)
-                          const isHistorical = payload.run?.is_historical === true
-                          if (rs === 'skipped') {
-                            if (isHistorical && sheetSkipReasonIsAnnual(row.skip_reason)) return 'tw-row-annual'
-                            return 'tw-row-skipped'
-                          }
-                          return annualMatch ? 'tw-row-annual' : undefined
-                        })()}
+                        className={worksheetRowStatusClass(row, payload.month_date)}
                       >
                         {(() => {
                           const annualKey = `annual_month:${row.location_id}`
                           const ringKey = `ring:${row.location_id}`
                           const keyNumberKey = `key_number:${row.location_id}`
-                          const isHistorical = payload.run?.is_historical === true
+                          const isHistorical = isHistoricalView
                           const outcomeColumnReadOnly = isHistorical || officeLocksOutcomeColumn
                           const addressStatusClass = worksheetAddressCellStatusClass(
                             row,
                             payload.month_date,
-                            isHistorical,
                           )
                           const displayTimeIn = (row.time_in || '').trim()
                           const displayTimeOut = (row.time_out || '').trim()

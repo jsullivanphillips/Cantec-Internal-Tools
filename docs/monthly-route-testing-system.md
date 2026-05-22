@@ -1,0 +1,316 @@
+# Monthly Route Testing System — Reference
+
+> **Purpose of this document:** Single reference for how Schedule Assist models, schedules, and records monthly fire-alarm bell testing. Last researched: May 2026.
+
+---
+
+## 1. Business context
+
+Schedule Assist supports Cantec’s **monthly fire-alarm bell testing** operation. The domain mirrors legacy Excel workflows:
+
+| Concept | Meaning |
+|--------|---------|
+| **Route** | Calendar slot for a run (e.g. route **7** = first **Wednesday** of the month) |
+| **Location / site** | Real property: address + PMC + building, assigned to a route with stop order |
+| **Run** | One route’s execution in a calendar month — the “run file” technicians complete |
+| **Worksheet row** | Per-site outcome for that month: tested, skipped, times, FACP/ring/key snapshots, monitoring notes |
+| **TEST DAY** | Excel token (e.g. `W1-R7`) encoding weekday, week-in-month, and route number |
+| **Keys** | Barcode/keycode cells linked to canonical `keys` table |
+
+**Users:**
+
+- **Field technicians** — PIN-gated portal at `/tech` (no staff login). See `README.md` → Technician portal.
+- **Office staff** — React SPA: library, route detail, map, specialists, worksheet management.
+
+**External integration:** ServiceTrade — route-level pseudo-locations for clock-ins/specialists; site-level building locations when maintained.
+
+---
+
+## 2. Mental model
+
+```
+Excel TEST DAY + master sheet
+        ↓
+MonthlyRoute (calendar shell) ←── MonthlyRouteLocation (site library)
+        ↓                                    ↓
+MonthlyRouteRun (per month)          MonthlyRouteTestHistory (worksheet cell)
+        ↓                                    ↓
+Technician portal / staff worksheet APIs
+
+V2 (in progress):
+MonthlyRouteLocation ──1:1── MonthlySite ──1:N── MonthlyTestingSite (multi-stop, canonical keys)
+MonthlyKeyBridge — survives location wipes
+```
+
+**Critical invariant:** `MonthlyRouteLocation.monthly_route_id` is the **current** route assignment. `MonthlyRouteTestHistory.test_monthly_route_id` is **historical truth** for that month (survives reassignment).
+
+---
+
+## 3. Data model
+
+### 3.1 Legacy stack (production worksheet path)
+
+| Model | Table | Role |
+|--------|--------|------|
+| `MonthlyRoute` | `monthly_route` | Route shell: `route_number`, `weekday_iso`, `week_occurrence`, optional ST route pseudo-location |
+| `MonthlyRouteLocation` | `monthly_route_location` | Site library; unique normalized address/PMC/building; `test_day`, route FK, stop order, keys, inspection/monitoring fields |
+| `MonthlyRouteRun` | `monthly_route_run` | One run per `(monthly_route_id, month_date)`; opened/started/completed timestamps, `status`, `source` |
+| `MonthlyRouteTestHistory` | `monthly_route_test_history` | **One row per `(location_id, month_date)`** — worksheet grain; run-scoped snapshots |
+| `MonthlyRouteWorksheetAuditEvent` | `monthly_route_worksheet_audit_event` | Append-only field audit for worksheet PATCH |
+| `MonthlyRouteLocationInspectionRevision` | `monthly_route_location_inspection_revision` | Append-only inspection-field audit |
+| `MonthlyRouteComment` / `MonthlyRouteLocationComment` | comment tables | Staff notes on routes / locations |
+| `MonthlyRouteSpecialistMonth` | `monthly_route_specialist_month` | Per-route per-month top techs from ST jobs |
+| `MonthlyRouteSnapshot` | `monthly_route_snapshot` | Cached specialist stats keyed by ST **route** location id |
+| `MonitoringCompany` / `MonitoringCompanyProposal` | monitoring tables | Vendor directory + tech proposals |
+
+ORM definitions: `app/db_models.py` (search `class Monthly`).
+
+### 3.2 V2 dual schema (library / multi-stop / billing)
+
+| Model | Table | Role |
+|--------|--------|------|
+| `MonthlySite` | `monthly_site` | Billing anchor; **1:1** with legacy location via `legacy_monthly_route_location_id` |
+| `MonthlyTestingSite` | `monthly_testing_site` | Physical testing stop (`sort_order`, label, price, FACP/procedures/notes, **canonical `key_id`**) |
+| `MonthlyTestingSiteMonth` | `monthly_testing_site_month` | Parallel to `MonthlyRouteTestHistory` at testing-site grain — **table exists; not used in app code** |
+| `MonthlyKeyBridge` | `monthly_key_bridge` | Archive of key↔site links before wipes; **no FK** to wiped location rows; **RESTRICT** FK to `keys` |
+
+### 3.3 Keys
+
+| Model | Role |
+|--------|------|
+| `Key` | Canonical keycodes + barcodes |
+| Legacy `MonthlyRouteLocation.key_id` | Still used by worksheet |
+| V2 `MonthlyTestingSite.key_id` | Canonical target after migration `z2` |
+
+---
+
+## 4. TEST DAY parsing
+
+**Module:** `app/monthly/test_day.py`
+
+- Format: `{weekday}{occurrence}-R{route}` e.g. `W1-R7`, `TH2-R15`
+- Weekday: longest-prefix match (`TH` = Thursday, not Tuesday)
+- `weekday_iso`: `datetime.weekday()` (Monday=0 … Sunday=6)
+- **Cancelled:** `-` (or unicode dashes) → not a route token; clears route FK via `route_sync`
+- **Sync:** `app/monthly/route_sync.py` → `sync_monthly_route_fk_for_location` finds/creates `MonthlyRoute` by `route_number`
+
+---
+
+## 5. API surface
+
+Blueprints in `app/routes/__init__.py`: `monthly_routes_bp`, `monthly_sites_bp`, `monthly_specialist_bp`, `technician_portal_bp`.
+
+### 5.1 `monthly_routes` — `app/routes/monthly_routes.py`
+
+Primary API for library, routes, worksheet, CSV import, comments.
+
+| Area | Key endpoints |
+|------|----------------|
+| Library | `GET/POST/PATCH/DELETE /api/monthly_routes/library[...]` — filters: `q`, `route`, `skipped_any`, `annual_tested_conflict`, month range |
+| Routes | `GET /api/monthly_routes/routes`, `GET .../routes/<id>` |
+| Worksheet | `GET .../worksheet`, `GET .../worksheet/stream` (SSE), `PATCH .../worksheet/rows/<location_id>`, `POST .../worksheet/reset_run` |
+| Runs | `POST .../runs/import_csv`, `POST .../runs/complete`, `POST .../runs/reopen` |
+| Other | `PUT .../location_order`, comments, geocode, `GET .../testing_session` |
+
+Location create/update also runs: `sync_monthly_route_fk_for_location`, `sync_key_fk_for_location`, v2 `sync_testing_sites_from_legacy`, `push_legacy_keys_to_primary_testing_site`.
+
+### 5.2 `monthly_sites` — `app/routes/monthly_sites.py` (v2 wrapper)
+
+Delegates most mutations to `monthly_routes`, then augments with v2:
+
+| Endpoint | Notes |
+|----------|--------|
+| `GET /api/monthly_sites/library` | Lightweight list: slim month cells, batched v2 key rollup (no sync-on-read); detail GET includes `testing_sites[]` |
+| `PATCH /api/monthly_sites/testing_sites/<id>` | Edit stop; dual-writes keys to legacy |
+| `POST .../library/<id>/testing_sites` | Add stop |
+| `DELETE .../testing_sites/<id>` | Delete stop (not last) |
+
+**Frontend split:** Library/map pages use **`/api/monthly_sites/...`**; route detail/worksheet use **`/api/monthly_routes/...`**.
+
+### 5.3 `technician_portal` — `app/routes/technician_portal.py`
+
+| Endpoint | Purpose |
+|----------|---------|
+| `POST /api/technician_portal/auth` | PIN gate (`TECHNICIAN_PORTAL_PIN`) |
+| `GET /api/technician_portal/routes_today` | Routes matching today’s weekday/occurrence |
+| `POST /api/technician_portal/routes/<id>/runs` | Start run + materialize worksheet rows |
+| `POST .../runs/complete`, `.../runs/reopen` | Portal run lifecycle |
+
+Auth exemptions: `app/api_auth_gate.py` — portal + regex-matched worksheet paths when `tech_portal_unlocked` session flag is set.
+
+### 5.4 `monthly_specialist` — `app/routes/monthly_specialists.py`
+
+- `GET /api/monthly_specialists` — cached `MonthlyRouteSnapshot` list
+- SPA page at `/monthly_specialist`
+
+---
+
+## 6. Sync and import flows
+
+### 6.1 Legacy ↔ v2 — `app/monthly/monthly_sites_sync.py`
+
+| Function | Behavior |
+|----------|----------|
+| `ensure_monthly_site_for_location` | Idempotent `MonthlySite` |
+| `sync_testing_sites_from_legacy` | Primary testing stop (`sort_order` 0) from legacy fields |
+| `refresh_primary_testing_site_from_legacy` | Overwrite primary stop (sheet upload) |
+| `push_testing_site_keys_to_legacy` / `push_legacy_keys_to_primary_testing_site` | **Dual-write** keys |
+| `rollup_price_per_month` | Sum testing-site prices for library display |
+
+### 6.2 Keys — `app/monthly/key_resolve.py`, `app/monthly/monthly_keys_keycode.py`
+
+Normalize `KEYS` text → match `keys.keycode` or unique barcode → set `key_id`.
+
+### 6.3 Sheet import
+
+| Path | Module |
+|------|--------|
+| Route inspection CSV | `app/monthly/route_inspection_csv_import.py` → `POST .../runs/import_csv` |
+| Master sheet bulk | `app/scripts/upload_monthly_sheet.py` |
+
+Import flow:
+
+```
+Excel/CSV
+  → match/create MonthlyRouteLocation
+  → get_or_create MonthlyRouteRun (app/monthly/runs.py)
+  → upsert MonthlyRouteTestHistory per location/month
+  → refresh_primary_testing_site_from_legacy (v2)
+```
+
+### 6.4 Run lifecycle — `app/monthly/runs.py`
+
+`get_or_create_monthly_route_run` — shared by worksheet and CSV import. `started_at` set only when explicitly requested (portal start).
+
+---
+
+## 7. Migrations (v2 chain)
+
+| Revision | File | Change |
+|----------|------|--------|
+| `z1b2c3d4e5f6` | `migrations/versions/z1b2c3d4e5f6_add_monthly_site_v2_tables.py` | `monthly_site`, `monthly_testing_site`, `monthly_testing_site_month` |
+| `z2b2c3d4e5f7` | `migrations/versions/z2b2c3d4e5f7_monthly_testing_site_key_fk.py` | Key columns + FK on testing sites; SQL backfill from legacy |
+| `z3c4d5e6f8a0` | `migrations/versions/z3c4d5e6f8a0_monthly_key_bridge.py` | `monthly_key_bridge` archive table |
+
+Many earlier migrations scaffolded routes, runs, history, inspection fields, coordinates, comments, specialists — see `migrations/versions/*monthly*`.
+
+---
+
+## 8. Maintenance scripts
+
+| Script | Purpose |
+|--------|---------|
+| `app/scripts/backfill_monthly_v2_sites.py` | Scaffold `MonthlySite` + primary `MonthlyTestingSite` (`--execute`) |
+| `app/scripts/backfill_monthly_key_bridge.py` | Populate `monthly_key_bridge`; optional CSV (`--execute`, `--csv`) |
+| `app/scripts/wipe_monthly_locations_data.py` | Delete locations, history, runs, v2, comments, snapshots; **keep** `monthly_route` shells and `monthly_key_bridge` |
+| `app/scripts/upload_monthly_sheet.py` | Bulk master sheet → library + history + v2 refresh |
+| `app/scripts/backfill_monthly_route_entities.py` | Route entities from TEST DAY classification |
+| `app/scripts/backfill_monthly_location_key_id.py` | Key FK backfill on locations |
+| `app/scripts/backfill_monthly_route_coordinates.py` | Geocode backfill |
+| `app/scripts/audit_keys_multiple_monthly_routes.py` | Audit keys spanning multiple routes |
+
+**Safe wipe order:** `backfill_monthly_key_bridge --execute` → then `wipe_monthly_locations_data --execute`.
+
+---
+
+## 9. Frontend
+
+| File | Role |
+|------|------|
+| `frontend/src/pages/MonthlyRoutesPage.tsx` | Library (v2 API) |
+| `frontend/src/pages/MonthlyRouteDetailPage.tsx` | Route detail + worksheet |
+| `frontend/src/pages/MonthlyRoutesMapPage.tsx` | Map view |
+| `frontend/src/pages/MonthlyLocationDetailPage.tsx` | Location detail |
+| `frontend/src/pages/TechnicianWorksheetPage.tsx` | Field worksheet + SSE |
+| `frontend/src/features/monthlyRoutes/monthlyRoutesShared.ts` | Shared types/helpers |
+| `frontend/src/features/monthlyRoutes/worksheetOfflineStore.ts` | Offline worksheet support |
+
+Technician flow: `/tech` → `/tech/start` → `/tech/route/:routeId/worksheet/:monthIso`.
+
+---
+
+## 10. Test coverage
+
+| Test file | Validates |
+|-----------|-----------|
+| `tests/test_monthly_worksheet_api.py` | Worksheet GET/PATCH, audit, reset, run complete/lock, portal lazy vs staff auto-run, SSE, hybrid `tech_portal=1` |
+| `tests/test_monthly_sites_v2.py` | v2 sync, dual-write keys, testing-site CRUD API |
+| `tests/test_monthly_key_bridge_wipe.py` | Bridge backfill; wipe keeps routes; post-wipe API smoke |
+| `tests/test_monthly_route_sync.py` | TEST DAY → route FK |
+| `tests/test_monthly_test_day.py` | Parser edge cases, cancelled `-` |
+| `tests/test_monthly_key_resolve.py` | Barcode/keycode resolution |
+| `tests/test_monthly_keys_keycode.py` | Keycode normalization |
+| `tests/test_route_run_csv_import.py` | CSV import API |
+
+Tests often use minimal SQLite table subsets with explicit BIGINT id assignment.
+
+---
+
+## 11. Technician field run (current month)
+
+```
+/tech PIN → session[tech_portal_unlocked]
+  → GET /api/technician_portal/routes_today
+  → POST /api/technician_portal/routes/:id/runs
+       → MonthlyRouteRun (started_at set)
+       → materialize MonthlyRouteTestHistory rows
+  → GET /api/monthly_routes/routes/:id/worksheet?month=...&tech_portal=1
+  → PATCH .../worksheet/rows/:location_id
+       → history + audit; mirror to location if latest run
+  → POST portal .../runs/complete
+```
+
+### Historical worksheet fidelity (non-current months)
+
+- **Pacific current month only:** `GET .../worksheet` may auto-create a `MonthlyRouteRun` and placeholder history rows for the route’s **current** roster (`_ensure_worksheet_rows_for_route_month`).
+- **Past or future months:** GET is **read-only**. No run or history is created from today’s roster. Response uses `_testing_history_rows_attributed_to_route_month` only (stamped `test_monthly_route_id` wins; legacy NULL-stamp rows count only for sites still on the route).
+- **Empty non-current month:** If there is no run and no attributed history → `{ run: null, rows: [] }` (no phantom worksheet).
+- **Portal preview** (current roster before Start Run) applies only to the **current** Pacific month; non-current months never use `_portal_worksheet_preview_payload`.
+
+### Testing procedures and tech notes (run-scoped vs library)
+
+- **Worksheet / session stop APIs** read `testing_procedures` and `inspection_tech_notes` from the **history row for that month** only (`app/monthly/history_sheet_notes.py` — no bleed from library “current”).
+- **Library location GET** (`/api/monthly_routes/library/<id>`, monthly sites augment) overlays the **latest** history month’s procedures/notes for display (not stale `MonthlyRouteLocation` columns alone).
+- **Route CSV import** updates legacy location procedures/notes only when the import month is the latest history month for that site (`is_latest_history_month_for_location`).
+- **Worksheet PATCH** mirrors procedure/note edits onto `MonthlyRouteLocation` (and primary v2 testing site when present) only when the patched month is the latest run for that location; older months stay on the history row only.
+- Helper module: `app/monthly/history_sheet_notes.py`.
+
+---
+
+## 12. Known gaps and active work
+
+1. **`MonthlyTestingSiteMonth` unused** — Worksheet remains **one row per location**, not per testing site. Multi-panel sites are modeled in the library only.
+
+2. **Dual schema cutover incomplete** — Comments in `monthly_sites.py`: “dual schema until cutover completes.” Legacy owns location-level worksheet fields; v2 owns testing-site fields and rollup pricing.
+
+3. **Portal identity** — No per-tech identity in v1 portal; audit uses `source='technician_app'`.
+
+4. **Documentation** — This file is the architecture reference; `README.md` only documents the technician portal env var.
+
+5. **In-flight changes (git)** — Modified: `monthly_sites_sync.py`, `monthly_sites.py`, `monthly_sites` routes, v2 migrations, backfill/wipe scripts, v2/bridge tests.
+
+---
+
+## 13. File index (quick lookup)
+
+| Path | Description |
+|------|-------------|
+| `app/db_models.py` | All monthly ORM models |
+| `app/routes/monthly_routes.py` | Main API |
+| `app/routes/monthly_sites.py` | V2 API wrapper |
+| `app/routes/technician_portal.py` | PIN portal |
+| `app/routes/monthly_specialists.py` | Specialist snapshots |
+| `app/monthly/monthly_sites_sync.py` | V2 scaffold + dual-write |
+| `app/monthly/route_sync.py` | TEST DAY → route FK |
+| `app/monthly/test_day.py` | TEST DAY parser |
+| `app/monthly/key_resolve.py` | Key FK resolution |
+| `app/monthly/route_inspection_csv_import.py` | CSV importer |
+| `app/monthly/history_sheet_notes.py` | Latest-run vs history-only sheet notes |
+| `app/monthly/runs.py` | Run get-or-create |
+| `app/api_auth_gate.py` | Portal auth exemptions |
+
+---
+
+## 14. Summary one-liner
+
+**Route-scheduled monthly fire-alarm testing ledger:** Excel routes → Postgres routes; sites in a library; each month technicians fill **run-scoped history rows** per **location** while the office manages the library and imports sheets. **V2** adds multi-stop sites and canonical keys on testing sites, with **`monthly_key_bridge`** protecting key associations across wipes — but the **worksheet engine is still legacy location × month**.

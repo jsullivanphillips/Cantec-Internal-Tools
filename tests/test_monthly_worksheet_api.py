@@ -790,8 +790,12 @@ def test_worksheet_run_not_historical_for_open_current_month(worksheet_client):
     assert body["run"]["is_historical"] is False
 
 
-def test_staff_worksheet_auto_creates_run_when_missing(worksheet_client):
-    """Staff GET worksheet materializes ``MonthlyRouteRun`` even when none existed."""
+def test_staff_worksheet_auto_creates_run_when_missing(worksheet_client, monkeypatch):
+    """Staff GET worksheet materializes ``MonthlyRouteRun`` for the Pacific current month only."""
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 7, 1))
+
     client, app = worksheet_client
     with app.app_context():
         route = MonthlyRoute(id=96, route_number=96, weekday_iso=0, week_occurrence=1)
@@ -815,6 +819,157 @@ def test_staff_worksheet_auto_creates_run_when_missing(worksheet_client):
     body = res.get_json()
     assert body["run"] is not None
     assert len(body["rows"]) == 1
+
+
+def test_past_month_no_records_returns_empty(worksheet_client, monkeypatch):
+    """Non-current month with no run/history returns empty worksheet without DB writes."""
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
+
+    client, app = worksheet_client
+    with app.app_context():
+        route = MonthlyRoute(id=10, route_number=10, weekday_iso=0, week_occurrence=1)
+        loc = MonthlyRouteLocation(
+            id=1001,
+            address="10 Past Empty St",
+            address_normalized="10 past empty st",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
+            building=None,
+            building_normalized="",
+            status_normalized="active",
+            status_raw="Active",
+            monthly_route_id=10,
+        )
+        db.session.add_all([route, loc])
+        db.session.commit()
+
+    res = client.get("/api/monthly_routes/routes/10/worksheet?month=2026-03-01")
+    assert res.status_code == 200
+    body = res.get_json()
+    assert body["run"] is None
+    assert body["rows"] == []
+
+    with app.app_context():
+        assert MonthlyRouteRun.query.filter_by(monthly_route_id=10, month_date=date(2026, 3, 1)).count() == 0
+        assert MonthlyRouteTestHistory.query.filter_by(month_date=date(2026, 3, 1)).count() == 0
+
+
+def test_past_month_shows_stamped_row_after_site_moved(worksheet_client, monkeypatch):
+    """Attributed history remains visible on the old route after reassignment."""
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
+
+    client, app = worksheet_client
+    march = date(2026, 3, 1)
+    with app.app_context():
+        route_a = MonthlyRoute(id=20, route_number=20, weekday_iso=0, week_occurrence=1)
+        route_b = MonthlyRoute(id=21, route_number=21, weekday_iso=1, week_occurrence=1)
+        loc = MonthlyRouteLocation(
+            id=2001,
+            address="20 Moved Site St",
+            address_normalized="20 moved site st",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
+            building=None,
+            building_normalized="",
+            status_normalized="active",
+            status_raw="Active",
+            monthly_route_id=21,
+        )
+        run = MonthlyRouteRun(
+            id=20001,
+            monthly_route_id=20,
+            month_date=march,
+            status="completed",
+            source="technician_app",
+        )
+        hist = MonthlyRouteTestHistory(
+            id=30001,
+            location_id=2001,
+            month_date=march,
+            result_status="tested",
+            test_monthly_route_id=20,
+            run_id=20001,
+        )
+        db.session.add_all([route_a, route_b, loc, run, hist])
+        db.session.commit()
+
+    res = client.get("/api/monthly_routes/routes/20/worksheet?month=2026-03-01")
+    assert res.status_code == 200
+    body = res.get_json()
+    assert len(body["rows"]) == 1
+    assert body["rows"][0]["location_id"] == 2001
+    assert body["rows"][0]["result_status"] == "tested"
+
+
+def test_past_month_does_not_show_site_added_later(worksheet_client, monkeypatch):
+    """March worksheet must not materialize a location added to the route after March."""
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
+
+    client, app = worksheet_client
+    march = date(2026, 3, 1)
+    with app.app_context():
+        route = MonthlyRoute(id=30, route_number=30, weekday_iso=0, week_occurrence=1)
+        loc_a = MonthlyRouteLocation(
+            id=3001,
+            address="30A March Only St",
+            address_normalized="30a march only st",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
+            building=None,
+            building_normalized="",
+            status_normalized="active",
+            status_raw="Active",
+            monthly_route_id=30,
+        )
+        loc_b = MonthlyRouteLocation(
+            id=3002,
+            address="30B Added Later St",
+            address_normalized="30b added later st",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
+            building=None,
+            building_normalized="",
+            status_normalized="active",
+            status_raw="Active",
+            monthly_route_id=30,
+        )
+        run = MonthlyRouteRun(
+            id=30001,
+            monthly_route_id=30,
+            month_date=march,
+            status="completed",
+            source="technician_app",
+        )
+        hist_a = MonthlyRouteTestHistory(
+            id=40001,
+            location_id=3001,
+            month_date=march,
+            result_status="tested",
+            test_monthly_route_id=30,
+            run_id=30001,
+        )
+        db.session.add_all([route, loc_a, loc_b, run, hist_a])
+        db.session.commit()
+
+    res = client.get("/api/monthly_routes/routes/30/worksheet?month=2026-03-01")
+    assert res.status_code == 200
+    body = res.get_json()
+    loc_ids = {r["location_id"] for r in body["rows"]}
+    assert loc_ids == {3001}
+
+    with app.app_context():
+        assert (
+            MonthlyRouteTestHistory.query.filter_by(
+                location_id=3002, month_date=march
+            ).count()
+            == 0
+        )
 
 
 def test_portal_worksheet_preview_without_monthly_route_run(portal_only_client, monkeypatch):
