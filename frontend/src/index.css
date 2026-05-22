@@ -4214,11 +4214,9 @@ body {
 .pw-mock-sidenav {
   flex: 0 0 auto;
   align-self: stretch;
-  display: flex;
-  flex-direction: column;
+  display: grid;
   min-height: 0;
   max-height: 100%;
-  height: 100%;
   background: #f4f6f8;
   border-right: 1px solid #d7dde3;
   transition: width 0.22s ease;
@@ -4237,11 +4235,13 @@ body {
 
 .pw-mock-sidenav--collapsed {
   width: 3.35rem;
+  grid-template-rows: minmax(0, 1fr) auto;
 }
 
 .pw-mock-sidenav--expanded {
   width: min(42vw, 17.5rem);
   max-width: 17.5rem;
+  grid-template-rows: auto minmax(0, 1fr) auto;
 }
 
 .pw-mock-sidenav-head {
@@ -4265,7 +4265,6 @@ body {
 }
 
 .pw-mock-sidenav-list {
-  flex: 1 1 0;
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
@@ -4274,7 +4273,12 @@ body {
   padding: 0.35rem 0;
 }
 
+.pw-mock-sidenav--expanded .pw-mock-sidenav-list {
+  grid-row: 2;
+}
+
 .pw-mock-sidenav--collapsed .pw-mock-sidenav-list {
+  grid-row: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -4395,15 +4399,16 @@ body {
 }
 
 .pw-mock-sidenav-toggle {
-  flex-shrink: 0;
-  margin-top: auto;
+  grid-row: -1;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 0.35rem;
   width: 100%;
+  height: 2.75rem;
   min-height: 2.75rem;
-  padding: 0.5rem 0.35rem;
+  max-height: 2.75rem;
+  padding: 0 0.35rem;
   border: 0;
   border-top: 1px solid #e2e6ea;
   background: #eef1f5;
@@ -4414,6 +4419,7 @@ body {
   letter-spacing: 0.05em;
   cursor: pointer;
   z-index: 1;
+  flex-shrink: 0;
 }
 
 .pw-mock-sidenav--collapsed .pw-mock-sidenav-toggle {
@@ -4549,10 +4555,41 @@ body {
   word-break: break-word;
 }
 
+.pw-mock-field-row--editable {
+  cursor: text;
+}
+
+.pw-mock-field-row--editable:focus-visible {
+  outline: 2px solid var(--pw-selected-border);
+  outline-offset: -2px;
+}
+
+.pw-mock-field-row--editing .pw-mock-field-value {
+  padding: 0.25rem 0.35rem;
+}
+
+.pw-mock-field-input {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0.2rem 0.25rem;
+  border: 0;
+  border-radius: 0;
+  background: #fff;
+  font-size: 0.85rem;
+  line-height: 1.35;
+  color: inherit;
+  resize: vertical;
+}
+
+.pw-mock-field-input:focus {
+  outline: none;
+}
+
 .pw-mock-dock {
   flex-shrink: 0;
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 0.35rem;
   padding: 0.5rem 0.65rem calc(0.5rem + env(safe-area-inset-bottom, 0px));
   background: #fff;

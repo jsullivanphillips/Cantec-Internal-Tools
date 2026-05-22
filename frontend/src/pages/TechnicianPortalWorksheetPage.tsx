@@ -10,7 +10,8 @@ import {
 import { isPortalWorksheetDemoRoute } from '../features/monthlyRoutes/portalWorksheetDemo'
 import { usePortalWorksheet } from '../features/monthlyRoutes/usePortalWorksheet'
 import { usePortalWorksheetDemo } from '../features/monthlyRoutes/usePortalWorksheetDemo'
-import PortalStopFieldsEditModal from '../features/monthlyRoutes/PortalStopFieldsEditModal'
+import PortalEditableFieldRow from '../features/monthlyRoutes/PortalEditableFieldRow'
+import type { WorksheetStopChangeSet } from '../features/monthlyRoutes/worksheetOfflineStore'
 import PortalWorksheetSkeleton from './PortalWorksheetSkeleton'
 
 type StopDisplayStatus = 'pending' | 'in_progress' | 'tested' | 'skipped'
@@ -126,10 +127,8 @@ export default function TechnicianPortalWorksheetPage() {
   const [activeId, setActiveId] = useState<number | null>(null)
   const [navExpanded, setNavExpanded] = useState(false)
   const [skipModalOpen, setSkipModalOpen] = useState(false)
-  const [noteModalOpen, setNoteModalOpen] = useState(false)
-  const [editFieldsModalOpen, setEditFieldsModalOpen] = useState(false)
   const [skipDraft, setSkipDraft] = useState('')
-  const [noteDraft, setNoteDraft] = useState('')
+  const [editingField, setEditingField] = useState<string | null>(null)
 
   useEffect(() => {
     if (!stops.length) {
@@ -154,8 +153,12 @@ export default function TechnicianPortalWorksheetPage() {
   }, [stops])
 
   useEffect(() => {
-    setInteractiveBusy(skipModalOpen || noteModalOpen || editFieldsModalOpen)
-  }, [skipModalOpen, noteModalOpen, editFieldsModalOpen, setInteractiveBusy])
+    setEditingField(null)
+  }, [active?.testing_site_id])
+
+  useEffect(() => {
+    setInteractiveBusy(skipModalOpen || editingField != null)
+  }, [skipModalOpen, editingField, setInteractiveBusy])
 
   const applyStopPatch = useCallback(
     (patch: Parameters<typeof queueStopChanges>[1]) => {
@@ -201,16 +204,17 @@ export default function TechnicianPortalWorksheetPage() {
     setSkipDraft('')
   }
 
-  const openNoteModal = () => {
-    if (!active) return
-    setNoteDraft(active.inspection_tech_notes ?? '')
-    setNoteModalOpen(true)
-  }
+  const saveField = useCallback(
+    (field: keyof WorksheetStopChangeSet) => (text: string) => {
+      applyStopPatch({ [field]: text.length > 0 ? text : null })
+    },
+    [applyStopPatch],
+  )
 
-  const applyNote = () => {
-    applyStopPatch({ inspection_tech_notes: noteDraft.trim() })
-    setNoteModalOpen(false)
-    setNoteDraft('')
+  const fieldEditProps = {
+    readOnly: readOnlyWorksheet,
+    editingField,
+    onEditingFieldChange: setEditingField,
   }
 
   const renderNavStop = (stop: TechnicianWorksheetStop) => {
@@ -453,35 +457,99 @@ export default function TechnicianPortalWorksheetPage() {
 
                   <div className="pw-mock-fields">
                     <div className="pw-mock-field-group">
+                      <div className="pw-mock-field-group-title">Site</div>
+                      <PortalEditableFieldRow
+                        fieldKey="property_management_company"
+                        label="Property management"
+                        value={active.property_management_company ?? ''}
+                        onSave={saveField('property_management_company')}
+                        {...fieldEditProps}
+                      />
+                      <PortalEditableFieldRow
+                        fieldKey="building_name"
+                        label="Building"
+                        value={active.building_name ?? ''}
+                        onSave={saveField('building_name')}
+                        {...fieldEditProps}
+                      />
+                    </div>
+                    <div className="pw-mock-field-group">
                       <div className="pw-mock-field-group-title">Access</div>
-                      <FieldRow label="Ring" value={active.ring ?? ''} />
-                      <FieldRow label="Key #" value={active.key_number ?? ''} />
-                      <FieldRow label="Door code" value={active.door_code ?? '—'} />
-                      <FieldRow label="Annual" value={active.annual_month ?? '—'} />
+                      <PortalEditableFieldRow
+                        fieldKey="ring"
+                        label="Ring"
+                        value={active.ring ?? ''}
+                        onSave={saveField('ring')}
+                        {...fieldEditProps}
+                      />
+                      <PortalEditableFieldRow
+                        fieldKey="key_number"
+                        label="Key #"
+                        value={active.key_number ?? ''}
+                        onSave={saveField('key_number')}
+                        {...fieldEditProps}
+                      />
+                      <PortalEditableFieldRow
+                        fieldKey="door_code"
+                        label="Door code"
+                        value={active.door_code ?? ''}
+                        onSave={saveField('door_code')}
+                        {...fieldEditProps}
+                      />
+                      <PortalEditableFieldRow
+                        fieldKey="annual_month"
+                        label="Annual"
+                        value={active.annual_month ?? ''}
+                        onSave={saveField('annual_month')}
+                        {...fieldEditProps}
+                      />
                     </div>
                     <div className="pw-mock-field-group">
                       <div className="pw-mock-field-group-title">Panel</div>
-                      <FieldRow label="Panel (make / model)" value={active.panel ?? ''} />
-                      <FieldRow label="Panel location" value={active.panel_location ?? ''} />
+                      <PortalEditableFieldRow
+                        fieldKey="panel"
+                        label="Panel (make / model)"
+                        value={active.panel ?? ''}
+                        onSave={saveField('panel')}
+                        {...fieldEditProps}
+                      />
+                      <PortalEditableFieldRow
+                        fieldKey="panel_location"
+                        label="Panel location"
+                        value={active.panel_location ?? ''}
+                        onSave={saveField('panel_location')}
+                        {...fieldEditProps}
+                      />
                     </div>
                     <div className="pw-mock-field-group">
                       <div className="pw-mock-field-group-title">Monitoring</div>
                       <FieldRow label="Company" value={active.monitoring_company ?? ''} />
-                      {active.monitoring_notes ? (
-                        <FieldRow label="Notes" value={active.monitoring_notes} multiline />
-                      ) : null}
+                      <PortalEditableFieldRow
+                        fieldKey="monitoring_notes"
+                        label="Notes"
+                        value={active.monitoring_notes ?? ''}
+                        multiline
+                        onSave={saveField('monitoring_notes')}
+                        {...fieldEditProps}
+                      />
                     </div>
                     <div className="pw-mock-field-group">
                       <div className="pw-mock-field-group-title">Test sheet</div>
-                      <FieldRow
+                      <PortalEditableFieldRow
+                        fieldKey="testing_procedures"
                         label="Testing procedures"
                         value={active.testing_procedures ?? ''}
                         multiline
+                        onSave={saveField('testing_procedures')}
+                        {...fieldEditProps}
                       />
-                      <FieldRow
+                      <PortalEditableFieldRow
+                        fieldKey="inspection_tech_notes"
                         label="Tech comments & notes"
                         value={active.inspection_tech_notes ?? ''}
                         multiline
+                        onSave={saveField('inspection_tech_notes')}
+                        {...fieldEditProps}
                       />
                     </div>
                   </div>
@@ -523,22 +591,6 @@ export default function TechnicianPortalWorksheetPage() {
                   >
                     Deficiency
                   </Button>
-                  <Button
-                    variant="outline-secondary"
-                    className="pw-mock-dock-btn"
-                    disabled={readOnlyWorksheet}
-                    onClick={() => setEditFieldsModalOpen(true)}
-                  >
-                    Edit
-                  </Button>
-                  <Button
-                    variant="outline-secondary"
-                    className="pw-mock-dock-btn"
-                    disabled={readOnlyWorksheet}
-                    onClick={openNoteModal}
-                  >
-                    Note
-                  </Button>
                 </footer>
               </>
             )}
@@ -574,38 +626,6 @@ export default function TechnicianPortalWorksheetPage() {
             </Modal.Footer>
           </Modal>
 
-          <PortalStopFieldsEditModal
-            show={editFieldsModalOpen}
-            stop={active}
-            onHide={() => setEditFieldsModalOpen(false)}
-            onSave={(patch) => applyStopPatch(patch)}
-          />
-
-          <Modal show={noteModalOpen} onHide={() => setNoteModalOpen(false)} centered>
-            <Modal.Header closeButton>
-              <Modal.Title>Tech comments &amp; notes</Modal.Title>
-            </Modal.Header>
-            <Modal.Body>
-              <p className="small text-muted mb-2">
-                Edit the note for this stop. Saving replaces the existing text.
-              </p>
-              <textarea
-                className="form-control"
-                rows={6}
-                placeholder="Comments for this month’s visit…"
-                value={noteDraft}
-                onChange={(e) => setNoteDraft(e.target.value)}
-              />
-            </Modal.Body>
-            <Modal.Footer>
-              <Button variant="secondary" onClick={() => setNoteModalOpen(false)}>
-                Cancel
-              </Button>
-              <Button variant="primary" onClick={applyNote}>
-                Save note
-              </Button>
-            </Modal.Footer>
-          </Modal>
         </>
       ) : null}
     </div>
