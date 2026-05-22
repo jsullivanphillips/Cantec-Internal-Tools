@@ -88,6 +88,8 @@
 
 /* Portal worksheet / mockup: fill space below topbar (no gap at bottom) */
 .app-main.app-main--portal-worksheet {
+  flex: 1 1 0;
+  height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -95,10 +97,12 @@
 }
 
 .app-main.app-main--portal-worksheet > * {
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-height: 0;
+  max-height: 100%;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 /* Full-bleed Mapbox outlet for Monthly Route Map tools page */
@@ -4135,7 +4139,7 @@ body {
   --pw-pending: #f8f9fa;
   --pw-clocked-in: #93c5fd;
   --pw-selected-border: #2563eb;
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-height: 0;
   max-height: 100%;
   height: 100%;
@@ -4213,7 +4217,8 @@ body {
 .pw-mock-sidenav {
   flex: 0 0 auto;
   align-self: stretch;
-  display: grid;
+  display: flex;
+  flex-direction: column;
   min-height: 0;
   max-height: 100%;
   height: 100%;
@@ -4224,9 +4229,10 @@ body {
 }
 
 .pw-mock-shell {
-  flex: 1;
+  flex: 1 1 0;
   min-width: 0;
   min-height: 0;
+  max-height: 100%;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -4235,17 +4241,15 @@ body {
 
 .pw-mock-sidenav--collapsed {
   width: 3.35rem;
-  grid-template-rows: minmax(0, 1fr) auto;
 }
 
 .pw-mock-sidenav--expanded {
   width: min(42vw, 17.5rem);
   max-width: 17.5rem;
-  grid-template-rows: auto minmax(0, 1fr) auto;
 }
 
 .pw-mock-sidenav-head {
-  grid-row: 1;
+  flex-shrink: 0;
   padding: 0.65rem 0.75rem 0.5rem;
   border-bottom: 1px solid #e2e6ea;
 }
@@ -4265,6 +4269,7 @@ body {
 }
 
 .pw-mock-sidenav-list {
+  flex: 1 1 0;
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
@@ -4279,7 +4284,6 @@ body {
   align-items: center;
   gap: 0.2rem;
   padding: 0.4rem 0.25rem;
-  grid-row: 1;
 }
 
 .pw-mock-nav-stop {
@@ -4394,19 +4398,9 @@ body {
   margin-right: 0.25rem;
 }
 
-.pw-mock-sidenav--expanded .pw-mock-sidenav-list {
-  grid-row: 2;
-}
-
-.pw-mock-sidenav--expanded .pw-mock-sidenav-toggle {
-  grid-row: 3;
-}
-
-.pw-mock-sidenav--collapsed .pw-mock-sidenav-toggle {
-  grid-row: 2;
-}
-
 .pw-mock-sidenav-toggle {
+  flex-shrink: 0;
+  margin-top: auto;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -4440,14 +4434,16 @@ body {
 }
 
 .pw-mock-detail {
-  flex: 1;
+  flex: 1 1 0;
   min-width: 0;
   min-height: 0;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .pw-mock-header {
+  flex-shrink: 0;
   padding: 0.75rem 1rem;
   border-bottom: 2px solid #c7ccd1;
 }
@@ -4505,6 +4501,12 @@ body {
 }
 
 .pw-mock-fields {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   background: #fff;
 }
 
@@ -4559,6 +4561,8 @@ body {
   padding: 0.5rem 0.65rem calc(0.5rem + env(safe-area-inset-bottom, 0px));
   background: #fff;
   border-top: 1px solid #c7ccd1;
+  box-shadow: 0 -2px 8px rgba(15, 23, 42, 0.06);
+  z-index: 2;
 }
 
 .pw-mock-dock-btn {
