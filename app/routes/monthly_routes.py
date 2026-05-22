@@ -2383,10 +2383,32 @@ def patch_monthly_route_worksheet_stop(route_id: int, testing_site_id: int):
             )
             next_audit_id += 1
 
+    snapshot_patch_keys = set(STOP_PATCH_FIELD_MAP.keys()) - {
+        "result_status",
+        "skip_reason",
+        "time_in",
+        "time_out",
+    }
+    snapshot_changed = changed_any and bool(snapshot_patch_keys.intersection(changes_eff))
+
     if changed_any:
         db.session.commit()
     else:
         db.session.rollback()
+
+    if (
+        snapshot_changed
+        and is_primary_stop(ts, loc)
+        and _is_latest_run_for_location(int(loc.id), month_first)
+    ):
+        from app.monthly.monthly_sites_sync import (
+            mirror_mtsm_snapshot_to_primary_master,
+            push_primary_testing_site_display_to_legacy,
+        )
+
+        mirror_mtsm_snapshot_to_primary_master(ts, mtsm)
+        push_primary_testing_site_display_to_legacy(loc, ts)
+        db.session.commit()
 
     db.session.refresh(mtsm)
     db.session.refresh(ts)

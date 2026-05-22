@@ -159,25 +159,14 @@ def _augment_library_location_row_detail(row: dict[str, object], loc: MonthlyRou
     row["monthly_site_id"] = int(ms.id)
     row["rollup_price_per_month"] = float(rollup) if rollup is not None else None
 
-    from app.monthly.history_sheet_notes import latest_run_notes_for_location
-
-    tp_latest, tn_latest = latest_run_notes_for_location(int(loc.id))
-    row["testing_sites"] = []
-    for idx, ts in enumerate(sites_sorted):
-        site_payload = _serialize_testing_site(ts)
-        if idx == 0:
-            site_payload["testing_procedures"] = tp_latest
-            site_payload["inspection_tech_notes"] = tn_latest
-        row["testing_sites"].append(site_payload)
+    row["testing_sites"] = [_serialize_testing_site(ts) for ts in sites_sorted]
 
     primary = sites_sorted[0]
     row["key_id"] = primary.key_id
     row["keys"] = primary.keys
     row["key"] = _serialize_linked_key(primary.linked_key)
-
-    from app.monthly.history_sheet_notes import apply_latest_run_notes_to_location_payload
-
-    apply_latest_run_notes_to_location_payload(row, int(loc.id))
+    row["testing_procedures"] = primary.testing_procedures
+    row["inspection_tech_notes"] = primary.inspection_tech_notes
     return row
 
 

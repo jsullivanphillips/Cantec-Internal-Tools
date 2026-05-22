@@ -176,6 +176,27 @@ def load_site_by_legacy_location_id(location_id: int) -> MonthlySite | None:
     )
 
 
+def mirror_mtsm_snapshot_to_primary_master(
+    ts: MonthlyTestingSite,
+    mtsm: MonthlyTestingSiteMonth,
+) -> None:
+    """Copy a run-month snapshot onto the primary ``MonthlyTestingSite`` (newest edition)."""
+    if int(ts.sort_order) != 0:
+        return
+    ts.annual_month = mtsm.annual_month
+    ts.property_management_company = mtsm.property_management_company
+    ts.building_name = mtsm.building_name
+    ts.panel_location = mtsm.panel_location
+    ts.door_code = mtsm.door_code
+    ts.ring_detail = mtsm.ring
+    ts.keys = mtsm.key_number
+    panel = (mtsm.panel or mtsm.facp or "").strip() or None
+    ts.panel = panel
+    ts.facp_detail = panel
+    ts.testing_procedures = mtsm.testing_procedures
+    ts.inspection_tech_notes = mtsm.inspection_tech_notes
+
+
 def push_primary_testing_site_display_to_legacy(loc: MonthlyRouteLocation, ts: MonthlyTestingSite) -> None:
     """Copy primary-stop display fields onto legacy ``loc`` (library sheet / detail parity)."""
     if int(ts.sort_order) != 0:

@@ -80,25 +80,39 @@ export default function TechnicianPortalLayout() {
       <main
         className={`app-main flex-grow-1 min-w-0${isWorksheetScreen ? ' app-main--flush app-main--portal-worksheet' : ' overflow-auto'}`}
       >
-        <Suspense
-          fallback={
-            <div className="d-flex justify-content-center align-items-center py-5">
-              <div className="spinner-border text-primary" role="status">
-                <span className="visually-hidden">Loading…</span>
+        <div className={isWorksheetScreen ? 'portal-worksheet-outlet' : undefined}>
+          <Suspense
+            fallback={
+              <div
+                className={
+                  isWorksheetScreen
+                    ? 'portal-worksheet-mockup d-flex justify-content-center align-items-center'
+                    : 'd-flex justify-content-center align-items-center py-5'
+                }
+              >
+                <div className="spinner-border text-primary" role="status">
+                  <span className="visually-hidden">Loading…</span>
+                </div>
               </div>
-            </div>
-          }
-        >
-          {unlocked === null && !isLockScreen ? (
-            <div className="d-flex justify-content-center align-items-center py-5">
-              <div className="spinner-border text-primary" role="status">
-                <span className="visually-hidden">Checking session…</span>
+            }
+          >
+            {unlocked === null && !isLockScreen ? (
+              <div
+                className={
+                  isWorksheetScreen
+                    ? 'portal-worksheet-mockup d-flex justify-content-center align-items-center'
+                    : 'd-flex justify-content-center align-items-center py-5'
+                }
+              >
+                <div className="spinner-border text-primary" role="status">
+                  <span className="visually-hidden">Checking session…</span>
+                </div>
               </div>
-            </div>
-          ) : (
-            <Outlet />
-          )}
-        </Suspense>
+            ) : (
+              <Outlet />
+            )}
+          </Suspense>
+        </div>
       </main>
     </div>
   )

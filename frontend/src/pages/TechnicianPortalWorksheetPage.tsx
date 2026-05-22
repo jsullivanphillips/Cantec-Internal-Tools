@@ -10,6 +10,7 @@ import {
 import { isPortalWorksheetDemoRoute } from '../features/monthlyRoutes/portalWorksheetDemo'
 import { usePortalWorksheet } from '../features/monthlyRoutes/usePortalWorksheet'
 import { usePortalWorksheetDemo } from '../features/monthlyRoutes/usePortalWorksheetDemo'
+import PortalStopFieldsEditModal from '../features/monthlyRoutes/PortalStopFieldsEditModal'
 import PortalWorksheetSkeleton from './PortalWorksheetSkeleton'
 
 type StopDisplayStatus = 'pending' | 'in_progress' | 'tested' | 'skipped'
@@ -126,6 +127,7 @@ export default function TechnicianPortalWorksheetPage() {
   const [navExpanded, setNavExpanded] = useState(false)
   const [skipModalOpen, setSkipModalOpen] = useState(false)
   const [noteModalOpen, setNoteModalOpen] = useState(false)
+  const [editFieldsModalOpen, setEditFieldsModalOpen] = useState(false)
   const [skipDraft, setSkipDraft] = useState('')
   const [noteDraft, setNoteDraft] = useState('')
 
@@ -152,8 +154,8 @@ export default function TechnicianPortalWorksheetPage() {
   }, [stops])
 
   useEffect(() => {
-    setInteractiveBusy(skipModalOpen || noteModalOpen)
-  }, [skipModalOpen, noteModalOpen, setInteractiveBusy])
+    setInteractiveBusy(skipModalOpen || noteModalOpen || editFieldsModalOpen)
+  }, [skipModalOpen, noteModalOpen, editFieldsModalOpen, setInteractiveBusy])
 
   const applyStopPatch = useCallback(
     (patch: Parameters<typeof queueStopChanges>[1]) => {
@@ -267,12 +269,14 @@ export default function TechnicianPortalWorksheetPage() {
 
   if (!monthOk) {
     return (
-      <Alert variant="warning" className="m-3">
-        Invalid worksheet month in URL.
-        <Link to="/tech/start" className="ms-2">
-          Back to portal
-        </Link>
-      </Alert>
+      <div className="portal-worksheet-mockup p-3">
+        <Alert variant="warning" className="mb-0">
+          Invalid worksheet month in URL.
+          <Link to="/tech/start" className="ms-2">
+            Back to portal
+          </Link>
+        </Alert>
+      </div>
     )
   }
 
@@ -282,12 +286,14 @@ export default function TechnicianPortalWorksheetPage() {
 
   if (error && !payload) {
     return (
-      <Alert variant="danger" className="m-3">
-        {error}
-        <Link to="/tech/start" className="ms-2">
-          Back to portal
-        </Link>
-      </Alert>
+      <div className="portal-worksheet-mockup p-3">
+        <Alert variant="danger" className="mb-0">
+          {error}
+          <Link to="/tech/start" className="ms-2">
+            Back to portal
+          </Link>
+        </Alert>
+      </div>
     )
   }
 
@@ -521,6 +527,14 @@ export default function TechnicianPortalWorksheetPage() {
                     variant="outline-secondary"
                     className="pw-mock-dock-btn"
                     disabled={readOnlyWorksheet}
+                    onClick={() => setEditFieldsModalOpen(true)}
+                  >
+                    Edit
+                  </Button>
+                  <Button
+                    variant="outline-secondary"
+                    className="pw-mock-dock-btn"
+                    disabled={readOnlyWorksheet}
                     onClick={openNoteModal}
                   >
                     Note
@@ -559,6 +573,13 @@ export default function TechnicianPortalWorksheetPage() {
               </Button>
             </Modal.Footer>
           </Modal>
+
+          <PortalStopFieldsEditModal
+            show={editFieldsModalOpen}
+            stop={active}
+            onHide={() => setEditFieldsModalOpen(false)}
+            onSave={(patch) => applyStopPatch(patch)}
+          />
 
           <Modal show={noteModalOpen} onHide={() => setNoteModalOpen(false)} centered>
             <Modal.Header closeButton>

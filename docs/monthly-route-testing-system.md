@@ -224,7 +224,8 @@ Many earlier migrations scaffolded routes, runs, history, inspection fields, coo
 | `frontend/src/pages/TechnicianWorksheetPage.tsx` | Office/staff worksheet table + SSE |
 | `frontend/src/pages/TechnicianPortalWorksheetPage.tsx` | Portal worksheet (one stop at a time, v2 `stops[]`) |
 | `frontend/src/features/monthlyRoutes/usePortalWorksheet.ts` | Portal load/sync/SSE/run lifecycle hook |
-| `app/monthly/worksheet_stops.py` | Materialize/serialize/PATCH helpers for portal stops; portal reads overlay **v2 master** panel/location from ``MonthlyTestingSite`` (run-month rows keep outcomes only) |
+| `app/monthly/worksheet_stops.py` | Materialize/serialize/PATCH helpers for portal stops; **run-month snapshots** on read; new months seed from **office master** (+ prior-month fallback); latest-month PATCH mirrors to master |
+| `app/monthly/site_field_template.py` | Master template + prior-month merge for seeding new ``MonthlyTestingSiteMonth`` rows |
 | `frontend/src/features/monthlyRoutes/monthlyRoutesShared.ts` | Shared types/helpers |
 | `frontend/src/features/monthlyRoutes/worksheetOfflineStore.ts` | Offline worksheet support |
 
@@ -276,14 +277,14 @@ Tests often use minimal SQLite table subsets with explicit BIGINT id assignment.
 - **Empty non-current month:** If there is no run and no attributed history → `{ run: null, rows: [] }` (no phantom worksheet).
 - **Portal preview** (current roster before Start Run) applies only to the **current** Pacific month; non-current months never use `_portal_worksheet_preview_payload`.
 
-### Testing procedures and tech notes (run-scoped vs library)
+### Run-month snapshots vs library “newest edition”
 
-- **Office worksheet `rows[]`** and **portal `stops[]`** read `testing_procedures` and `inspection_tech_notes` from the **run month** (`MonthlyTestingSiteMonth`, or `MonthlyRouteTestHistory` when no MTSM row). Portal serialize overlays **panel/access** from v2 master only — not sheet notes (`_worksheet_display_from_master` in `worksheet_stops.py`).
-- **Library / history helpers** (`app/monthly/history_sheet_notes.py`) keep “current” library display on the **latest** run month only — no bleed from older months.
-- **Library location GET** (`/api/monthly_routes/library/<id>`, monthly sites augment) overlays the **latest** history month’s procedures/notes for display (not stale `MonthlyRouteLocation` columns alone).
-- **Route CSV import** updates legacy location procedures/notes only when the import month is the latest history month for that site (`is_latest_history_month_for_location`).
-- **Worksheet PATCH** mirrors procedure/note edits onto `MonthlyRouteLocation` (and primary v2 testing site when present) only when the patched month is the latest run for that location; older months stay on the history row only.
-- Helper module: `app/monthly/history_sheet_notes.py`.
+- **Portal `stops[]` and office `rows[]` (historical month):** All site fields for that visit come from the **run month** (`MonthlyTestingSiteMonth`, or `MonthlyRouteTestHistory` when no MTSM row). Older months are not overwritten when a later month or the library master changes.
+- **New run materialize:** `seed_stop_month_fields` copies display fields from **office master** (`MonthlyTestingSite` / `master_template_fields`), with gaps filled from the **most recent prior** `MonthlyTestingSiteMonth`. Outcomes (tested/skipped/times) start empty.
+- **Library location display:** Primary `MonthlyTestingSite` master row is the **newest edition** (office edits + mirror from the latest run month when techs PATCH snapshot fields).
+- **Portal stop PATCH (latest month only):** Snapshot field edits on the current/latest run mirror to primary master + legacy location via `mirror_mtsm_snapshot_to_primary_master` (`monthly_sites_sync.py`). Older months never mirror.
+- **Office testing-site PATCH:** Updates master directly; the next run seeds from that master.
+- **Route CSV import:** Still uses `is_latest_history_month_for_location` for whether legacy location columns update (`history_sheet_notes.py`).
 
 ### Per-testing-site display fields (2026-05)
 

@@ -13,6 +13,7 @@
 
 .app-shell {
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 .app-topbar {
@@ -86,20 +87,18 @@
   padding: 0;
 }
 
-/* Portal worksheet / mockup: fill space below topbar (no gap at bottom) */
+/* Portal worksheet: fill space below topbar (avoid height:0 — breaks iOS Safari) */
 .app-main.app-main--portal-worksheet {
-  flex: 1 1 0;
-  height: 0;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  min-height: 0;
 }
 
-.app-main.app-main--portal-worksheet > * {
-  flex: 1 1 0;
+.portal-worksheet-outlet {
+  flex: 1 1 auto;
   min-height: 0;
-  max-height: 100%;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -4139,10 +4138,8 @@ body {
   --pw-pending: #f8f9fa;
   --pw-clocked-in: #93c5fd;
   --pw-selected-border: #2563eb;
-  flex: 1 1 0;
+  flex: 1 1 auto;
   min-height: 0;
-  max-height: 100%;
-  height: 100%;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -4207,7 +4204,7 @@ body {
 }
 
 .pw-mock-body {
-  flex: 1 1 0;
+  flex: 1 1 auto;
   min-height: 0;
   display: flex;
   align-items: stretch;
@@ -4229,10 +4226,9 @@ body {
 }
 
 .pw-mock-shell {
-  flex: 1 1 0;
+  flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
-  max-height: 100%;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -4556,7 +4552,7 @@ body {
 .pw-mock-dock {
   flex-shrink: 0;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 0.35rem;
   padding: 0.5rem 0.65rem calc(0.5rem + env(safe-area-inset-bottom, 0px));
   background: #fff;
@@ -4660,11 +4656,6 @@ body {
 
   .pw-mock-dock {
     grid-template-columns: repeat(3, 1fr);
-  }
-
-  .pw-mock-dock-btn:nth-child(4),
-  .pw-mock-dock-btn:nth-child(5) {
-    grid-column: span 1;
   }
 }
 

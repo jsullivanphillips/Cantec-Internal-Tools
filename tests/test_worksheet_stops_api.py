@@ -224,12 +224,12 @@ def test_patch_skip_then_clock_in_clears_skip(stops_client, monkeypatch):
     assert stop["time_in"] == "10:15"
 
 
-def test_worksheet_stop_display_uses_v2_master_panel_fields(stops_client, monkeypatch):
-    """Stale ``MonthlyTestingSiteMonth`` snapshots must not hide updated library panel fields."""
+def test_worksheet_stop_display_uses_run_month_panel_not_library_master(stops_client, monkeypatch):
+    """Historical run months keep their snapshot even when library master panel changes."""
     from app.monthly.worksheet_stops import serialize_worksheet_stop
     from app.routes import monthly_routes as mr_mod
 
-    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 6, 1))
 
     client, app = stops_client
     with app.app_context():
@@ -240,39 +240,46 @@ def test_worksheet_stop_display_uses_v2_master_panel_fields(stops_client, monkey
         ts.panel = "PACPRO P24A"
         ts.facp_detail = "PACPRO P24A"
         ts.panel_location = "Basement electrical room"
-        loc.facp_detail = "PANEL: PACPRO P24A\nLOCATION: Basement electrical room"
-        mtsm = MonthlyTestingSiteMonth(
-            id=91001,
-            monthly_testing_site_id=ts_id,
-            month_date=date(2026, 5, 1),
-            test_monthly_route_id=route_id,
-            panel="PANEL: PACPRO P24A\nLOCATION: Basement electrical room",
-            facp="PANEL: PACPRO P24A\nLOCATION: Basement electrical room",
-            panel_location=None,
-            result_status="tested",
-            sheet_time_in_raw="8:00",
-            sheet_time_out_raw="8:30",
+        db.session.add(
+            MonthlyRouteRun(
+                id=7002,
+                monthly_route_id=route_id,
+                month_date=date(2026, 4, 1),
+                status="completed",
+                source="csv_import",
+            )
         )
-        db.session.add(mtsm)
+        db.session.add(
+            MonthlyTestingSiteMonth(
+                id=91001,
+                monthly_testing_site_id=ts_id,
+                month_date=date(2026, 4, 1),
+                test_monthly_route_id=route_id,
+                panel="Simplex 4100ES",
+                facp="Simplex 4100ES",
+                panel_location="Electrical room",
+                result_status="tested",
+            )
+        )
         db.session.commit()
 
         stop = serialize_worksheet_stop(
             ts,
             loc,
-            mtsm,
+            db.session.get(MonthlyTestingSiteMonth, 91001),
             route_id=route_id,
-            month_first=date(2026, 5, 1),
+            month_first=date(2026, 4, 1),
             stop_number=1,
         )
-        assert stop["panel"] == "PACPRO P24A"
-        assert stop["panel_location"] == "Basement electrical room"
+        assert stop["panel"] == "Simplex 4100ES"
+        assert stop["panel_location"] == "Electrical room"
 
-    res = client.get("/api/monthly_routes/routes/1/worksheet?month=2026-05-01&tech_portal=1")
+    res = client.get("/api/monthly_routes/routes/1/worksheet?month=2026-04-01&tech_portal=1")
     assert res.status_code == 200
     stops = res.get_json().get("stops") or []
     primary = next(s for s in stops if int(s["testing_site_id"]) == ts_id)
-    assert primary["panel"] == "PACPRO P24A"
-    assert primary["panel_location"] == "Basement electrical room"
+    assert primary["panel"] == "Simplex 4100ES"
+    assert primary["panel_location"] == "Electrical room"
 
 
 def test_worksheet_stop_display_uses_run_month_notes_not_library_master(stops_client, monkeypatch):

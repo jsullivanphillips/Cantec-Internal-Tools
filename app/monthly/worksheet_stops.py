@@ -24,6 +24,10 @@ from app.monthly.monthly_sites_sync import (
     sync_testing_sites_from_legacy,
 )
 from app.monthly.sheet_visit_times import looks_like_sheet_clock
+from app.monthly.site_field_template import (
+    master_template_fields,
+    merge_template_with_prior_fallback,
+)
 from app.monthly.testing_site_fields import SNAPSHOT_STRING_FIELDS, SNAPSHOT_TEXT_FIELDS
 
 if TYPE_CHECKING:
@@ -51,55 +55,35 @@ _MTSM_OUTCOME_KEYS = (
     "monitoring_notes",
 )
 
-# Run-scoped sheet text: preserved when refreshing display fields from master.
-_MTSM_SHEET_NOTE_KEYS = ("testing_procedures", "inspection_tech_notes")
+_MTSM_SNAPSHOT_DISPLAY_KEYS = (
+    "annual_month",
+    "property_management_company",
+    "building_name",
+    "panel_location",
+    "door_code",
+    "ring",
+    "key_number",
+    "panel",
+    "facp",
+    "testing_procedures",
+    "inspection_tech_notes",
+)
 
 
-def _master_display_seed_fields(
-    ts: MonthlyTestingSite,
-    loc: MonthlyRouteLocation,
-) -> dict[str, object]:
-    """Run-month snapshot columns copied from v2 ``MonthlyTestingSite`` master (library truth)."""
-    pmc = _normalize_text(ts.property_management_company) or _normalize_text(
-        loc.property_management_company
-    )
-    panel = _panel_from_testing_site(ts)
+def _cleared_outcome_fields() -> dict[str, object]:
     return {
-        "annual_month": ts.annual_month or loc.annual_month,
-        "property_management_company": pmc,
-        "building_name": _normalize_text(ts.building_name) or _normalize_text(loc.building),
-        "panel_location": ts.panel_location,
-        "door_code": ts.door_code,
-        "ring": _normalize_text(ts.ring_detail) or _normalize_text(loc.ring_detail),
-        "key_number": _normalize_text(ts.keys) or _normalize_text(loc.keys),
-        "panel": panel,
-        "facp": panel,
-        "testing_procedures": ts.testing_procedures or loc.testing_procedures,
-        "inspection_tech_notes": ts.inspection_tech_notes or loc.inspection_tech_notes,
+        "monitoring_notes": None,
+        "session_route_stop_order": None,
+        "result_status": None,
+        "skip_reason": None,
+        "sheet_time_in_raw": None,
+        "sheet_time_out_raw": None,
+        "source_value_raw": None,
     }
 
 
-def _worksheet_display_from_master(
-    ts: MonthlyTestingSite,
-    loc: MonthlyRouteLocation,
-) -> dict[str, object]:
-    """Portal worksheet display fields from v2 testing-site master (library truth).
-
-    Panel / access / identity fields only. ``testing_procedures`` and
-    ``inspection_tech_notes`` are run-scoped on ``MonthlyTestingSiteMonth`` (or
-    history overlay) and must not be overwritten here so historical months stay faithful.
-    """
-    seed = _master_display_seed_fields(ts, loc)
-    return {
-        "annual_month": seed["annual_month"],
-        "property_management_company": seed["property_management_company"],
-        "building_name": seed["building_name"],
-        "panel_location": seed["panel_location"],
-        "door_code": seed["door_code"],
-        "ring": seed["ring"],
-        "key_number": seed["key_number"],
-        "panel": seed["panel"],
-    }
+def _snapshot_fields_from_mtsm(mtsm: MonthlyTestingSiteMonth) -> dict[str, object]:
+    return {key: getattr(mtsm, key) for key in _MTSM_SNAPSHOT_DISPLAY_KEYS}
 
 
 def _next_sqlite_bigint_id(model) -> int | None:
@@ -163,43 +147,15 @@ def seed_stop_month_fields(
 ) -> dict[str, object]:
     """Build insert/update payload for ``MonthlyTestingSiteMonth``."""
     if existing_row is not None:
-        base = _master_display_seed_fields(ts, loc)
+        base = _snapshot_fields_from_mtsm(existing_row)
         for key in _MTSM_OUTCOME_KEYS:
-            base[key] = getattr(existing_row, key)
-        for key in _MTSM_SHEET_NOTE_KEYS:
             base[key] = getattr(existing_row, key)
         if base.get("monitoring_notes") is None and location_hist is not None:
             base["monitoring_notes"] = _normalize_text(location_hist.monitoring_notes)
-    elif prior is not None:
-        base = {
-            "annual_month": prior.annual_month,
-            "property_management_company": prior.property_management_company,
-            "building_name": prior.building_name,
-            "panel_location": prior.panel_location,
-            "door_code": prior.door_code,
-            "ring": prior.ring,
-            "key_number": prior.key_number,
-            "panel": prior.panel,
-            "facp": prior.facp,
-            "testing_procedures": prior.testing_procedures,
-            "inspection_tech_notes": prior.inspection_tech_notes,
-            "monitoring_notes": prior.monitoring_notes,
-            "session_route_stop_order": prior.session_route_stop_order,
-            "result_status": prior.result_status,
-            "skip_reason": prior.skip_reason,
-            "sheet_time_in_raw": prior.sheet_time_in_raw,
-            "sheet_time_out_raw": prior.sheet_time_out_raw,
-            "source_value_raw": prior.source_value_raw,
-        }
     else:
-        base = _master_display_seed_fields(ts, loc)
-        base["monitoring_notes"] = None
-        base["session_route_stop_order"] = None
-        base["result_status"] = None
-        base["skip_reason"] = None
-        base["sheet_time_in_raw"] = None
-        base["sheet_time_out_raw"] = None
-        base["source_value_raw"] = None
+        template = master_template_fields(ts, loc)
+        base = merge_template_with_prior_fallback(template, prior)
+        base.update(_cleared_outcome_fields())
 
     if existing_row is None and primary and location_hist is not None:
         base["result_status"] = location_hist.result_status
@@ -405,11 +361,6 @@ def _overlay_history_on_stop(
         ),
         "version_updated_at": hist.updated_at.isoformat() if hist.updated_at else None,
     }
-    master = _worksheet_display_from_master(ts, loc)
-    if master.get("panel"):
-        merged["panel"] = master["panel"]
-    if master.get("panel_location"):
-        merged["panel_location"] = master["panel_location"]
     return merged
 
 
@@ -478,28 +429,29 @@ def serialize_worksheet_stop(
         sess_order = mtsm.session_route_stop_order
         version = mtsm.updated_at.isoformat() if mtsm.updated_at else None
         row_id = int(mtsm.id)
-    else:
-        panel = _panel_from_testing_site(ts)
-        ring = _normalize_text(ts.ring_detail) or _normalize_text(loc.ring_detail)
-        key_number = _normalize_text(ts.keys) or _normalize_text(loc.keys)
-        annual_month = ts.annual_month or loc.annual_month
-        procedures = ts.testing_procedures or loc.testing_procedures
-        tech_notes = ts.inspection_tech_notes or loc.inspection_tech_notes
-
-    pmc = None
-    if mtsm is not None:
         pmc = _normalize_text(mtsm.property_management_company)
-    if not pmc:
-        pmc = _normalize_text(ts.property_management_company) or _normalize_text(loc.property_management_company)
-
-    building = None
-    if mtsm is not None:
         building = _normalize_text(mtsm.building_name)
-    if not building:
-        building = _normalize_text(ts.building_name) or _normalize_text(loc.building)
-
-    panel_loc = mtsm.panel_location if mtsm is not None else ts.panel_location
-    door = mtsm.door_code if mtsm is not None else ts.door_code
+        panel_loc = mtsm.panel_location
+        door = mtsm.door_code
+    else:
+        preview = master_template_fields(ts, loc)
+        panel = _normalize_text(preview.get("panel"))
+        ring = preview.get("ring")
+        key_number = preview.get("key_number")
+        annual_month = preview.get("annual_month")
+        procedures = preview.get("testing_procedures")
+        tech_notes = preview.get("inspection_tech_notes")
+        pmc = _normalize_text(preview.get("property_management_company"))
+        building = _normalize_text(preview.get("building_name"))
+        panel_loc = preview.get("panel_location")
+        door = preview.get("door_code")
+        result_status = None
+        skip_reason = None
+        time_in = None
+        time_out = None
+        sess_order = None
+        version = None
+        row_id = 0
 
     library_order = int(loc.route_stop_order) if loc.route_stop_order is not None else None
 
@@ -531,7 +483,6 @@ def serialize_worksheet_stop(
         "stop_number": stop_number,
         "version_updated_at": version,
     }
-    stop.update(_worksheet_display_from_master(ts, loc))
     return stop
 
 
