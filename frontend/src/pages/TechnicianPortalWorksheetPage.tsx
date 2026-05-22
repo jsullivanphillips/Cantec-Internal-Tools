@@ -540,7 +540,7 @@ export default function TechnicianPortalWorksheetPage() {
                       />
                     </div>
                     <div className="pw-mock-field-group">
-                      <div className="pw-mock-field-group-title">Test sheet</div>
+                      <div className="pw-mock-field-group-title">Comments</div>
                       <PortalEditableFieldRow
                         fieldKey="testing_procedures"
                         label="Testing procedures"
@@ -551,10 +551,18 @@ export default function TechnicianPortalWorksheetPage() {
                       />
                       <PortalEditableFieldRow
                         fieldKey="inspection_tech_notes"
-                        label="Tech comments & notes"
+                        label="Location comments"
                         value={active.inspection_tech_notes ?? ''}
                         multiline
                         onSave={saveField('inspection_tech_notes')}
+                        {...fieldEditProps}
+                      />
+                      <PortalEditableFieldRow
+                        fieldKey="run_comments"
+                        label="Run comments"
+                        value={active.run_comments ?? ''}
+                        multiline
+                        onSave={saveField('run_comments')}
                         {...fieldEditProps}
                       />
                     </div>

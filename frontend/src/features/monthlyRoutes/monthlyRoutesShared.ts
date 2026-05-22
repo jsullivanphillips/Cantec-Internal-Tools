@@ -326,6 +326,8 @@ export type TechnicianWorksheetStop = {
   skip_reason: string | null
   testing_procedures: string | null
   inspection_tech_notes: string | null
+  /** This-run-only notes; not carried to the next month. */
+  run_comments: string | null
   time_in: string | null
   time_out: string | null
   route_stop_order: number | null

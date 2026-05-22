@@ -103,7 +103,7 @@ export default function TestingSiteFieldsSection({
             <dd className="col-sm-9 text-break" style={{ whiteSpace: 'pre-wrap' }}>
               {site.testing_procedures?.trim() || '—'}
             </dd>
-            <dt className="col-sm-3 text-muted">Tech notes</dt>
+            <dt className="col-sm-3 text-muted">Location comments</dt>
             <dd className="col-sm-9 text-break" style={{ whiteSpace: 'pre-wrap' }}>
               {site.inspection_tech_notes?.trim() || '—'}
             </dd>
@@ -279,7 +279,7 @@ export default function TestingSiteFieldsSection({
           />
         </Form.Group>
         <Form.Group>
-          <Form.Label className="small mb-1">Inspection tech notes</Form.Label>
+          <Form.Label className="small mb-1">Location comments</Form.Label>
           <Form.Control
             style={INPUT_STYLE}
             as="textarea"

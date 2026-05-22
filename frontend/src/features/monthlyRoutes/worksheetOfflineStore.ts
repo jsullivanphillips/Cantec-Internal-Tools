@@ -39,6 +39,7 @@ export type WorksheetStopChangeSet = Partial<
     | 'skip_reason'
     | 'testing_procedures'
     | 'inspection_tech_notes'
+    | 'run_comments'
     | 'time_in'
     | 'time_out'
   >

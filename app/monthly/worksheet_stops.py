@@ -66,6 +66,7 @@ _MTSM_SNAPSHOT_DISPLAY_KEYS = (
     "facp",
     "testing_procedures",
     "inspection_tech_notes",
+    "run_comments",
     "monitoring_company_name",
     "monitoring_notes",
 )
@@ -161,6 +162,7 @@ def seed_stop_month_fields(
         template = master_template_fields(ts, loc)
         base = merge_template_with_prior_fallback(template, prior)
         base.update(_cleared_outcome_fields())
+        base["run_comments"] = None
 
     if existing_row is None and primary and location_hist is not None:
         base["result_status"] = location_hist.result_status
@@ -412,6 +414,7 @@ def serialize_worksheet_stop(
     annual_month = None
     procedures = None
     tech_notes = None
+    run_comments = None
     result_status = None
     skip_reason = None
     time_in = None
@@ -427,6 +430,7 @@ def serialize_worksheet_stop(
         annual_month = mtsm.annual_month
         procedures = mtsm.testing_procedures
         tech_notes = mtsm.inspection_tech_notes
+        run_comments = mtsm.run_comments
         result_status = mtsm.result_status
         skip_reason = mtsm.skip_reason
         time_in = mtsm.sheet_time_in_raw
@@ -446,6 +450,7 @@ def serialize_worksheet_stop(
         annual_month = preview.get("annual_month")
         procedures = preview.get("testing_procedures")
         tech_notes = preview.get("inspection_tech_notes")
+        run_comments = None
         pmc = _normalize_text(preview.get("property_management_company"))
         building = _normalize_text(preview.get("building_name"))
         panel_loc = preview.get("panel_location")
@@ -481,6 +486,7 @@ def serialize_worksheet_stop(
         "skip_reason": skip_reason,
         "testing_procedures": procedures,
         "inspection_tech_notes": tech_notes,
+        "run_comments": run_comments,
         "time_in": time_in,
         "time_out": time_out,
         "route_stop_order": library_order,
@@ -843,12 +849,15 @@ def reset_worksheet_stops_for_route_month(route_id: int, month_first: date) -> t
             or _normalize_text(mtsm.sheet_time_in_raw) is not None
             or _normalize_text(mtsm.sheet_time_out_raw) is not None
         )
-        if not has_outcome:
+        has_run_comments = _normalize_text(mtsm.run_comments) is not None
+        if not has_outcome and not has_run_comments:
             continue
-        mtsm.result_status = None
-        mtsm.skip_reason = None
-        mtsm.sheet_time_in_raw = None
-        mtsm.sheet_time_out_raw = None
+        mtsm.run_comments = None
+        if has_outcome:
+            mtsm.result_status = None
+            mtsm.skip_reason = None
+            mtsm.sheet_time_in_raw = None
+            mtsm.sheet_time_out_raw = None
         cleared += 1
     return cleared, preserved
 
@@ -868,6 +877,7 @@ STOP_PATCH_FIELD_MAP: dict[str, str] = {
     "skip_reason": "skip_reason",
     "testing_procedures": "testing_procedures",
     "inspection_tech_notes": "inspection_tech_notes",
+    "run_comments": "run_comments",
     "time_in": "sheet_time_in_raw",
     "time_out": "sheet_time_out_raw",
     "annual_month": "annual_month",

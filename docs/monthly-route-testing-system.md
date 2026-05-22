@@ -280,7 +280,7 @@ Tests often use minimal SQLite table subsets with explicit BIGINT id assignment.
 ### Run-month snapshots vs library “newest edition”
 
 - **Portal `stops[]` and office `rows[]` (historical month):** All site fields for that visit come from the **run month** (`MonthlyTestingSiteMonth`, or `MonthlyRouteTestHistory` when no MTSM row). Older months are not overwritten when a later month or the library master changes.
-- **New run materialize:** `seed_stop_month_fields` copies display fields from **office master** (`MonthlyTestingSite` / `master_template_fields`), with gaps filled from the **most recent prior** `MonthlyTestingSiteMonth`. Outcomes (tested/skipped/times) start empty.
+- **New run materialize:** `seed_stop_month_fields` copies display fields from **office master** (`MonthlyTestingSite` / `master_template_fields`), with gaps filled from the **most recent prior** `MonthlyTestingSiteMonth`. Outcomes (tested/skipped/times) start empty. **`run_comments` always starts empty** for a new month (never copied from prior month or master).
 - **Library location display:** Primary `MonthlyTestingSite` master row is the **newest edition** (office edits + mirror from the latest run month when techs PATCH snapshot fields).
 - **Portal stop PATCH (latest month only):** Snapshot field edits on the current/latest run mirror to primary master + legacy location via `mirror_mtsm_snapshot_to_primary_master` (`monthly_sites_sync.py`). Older months never mirror.
 - **Office testing-site PATCH:** Updates master directly; the next run seeds from that master.
@@ -303,6 +303,16 @@ Master data lives on **`MonthlyTestingSite`** (migration `z4a5b6c7d8e9`):
 | Monitoring company | `monitoring_company_id` → `monitoring_company` |
 
 Run-month copies: **`MonthlyTestingSiteMonth`** (`panel`, `panel_location`, `door_code`, `building_name`, `property_management_company`, `testing_procedures`, `inspection_tech_notes`, plus existing ring/key/annual/monitoring_notes).
+
+### Comments (portal worksheet — 2026-05)
+
+| UI label | Column | Propagation |
+|----------|--------|-------------|
+| Testing procedures | `testing_procedures` | Master seed + prior-month gap fill; mirrors to library on latest-month PATCH |
+| Location comments | `inspection_tech_notes` | Same as testing procedures (persistent site notes) |
+| Run comments | `run_comments` (MTSM only) | Empty on new month; **not** prior-filled, **not** mirrored to master; cleared on **Reset run** |
+
+API field names stay `inspection_tech_notes` and `run_comments` for CSV/import compatibility.
 
 - API: `PATCH /api/monthly_sites/testing_sites/<id>` accepts the fields above (`ring` / `key` accepted as aliases for `ring_detail` / `keys`).
 - Backfill: `python -m app.scripts.backfill_testing_site_display_fields`

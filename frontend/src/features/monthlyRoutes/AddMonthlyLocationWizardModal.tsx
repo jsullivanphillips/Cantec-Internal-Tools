@@ -448,7 +448,7 @@ export default function AddMonthlyLocationWizardModal({
                     />
                   </Form.Group>
                   <Form.Group>
-                    <Form.Label className="small mb-1">Tech notes (optional)</Form.Label>
+                    <Form.Label className="small mb-1">Location comments (optional)</Form.Label>
                     <Form.Control
                       size="sm"
                       as="textarea"

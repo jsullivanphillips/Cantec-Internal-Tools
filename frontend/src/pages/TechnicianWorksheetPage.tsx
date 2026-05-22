@@ -161,7 +161,7 @@ const WORKSHEET_GRID_COLUMN_LABELS: Record<WorksheetGridColumn, string> = {
   facp: 'FACP',
   monitoring: 'Monitoring',
   testing_procedures: 'Testing Procedures',
-  inspection_tech_notes: 'Tech Comments & Notes',
+  inspection_tech_notes: 'Location comments',
 }
 
 function worksheetGridCellValue(row: TechnicianWorksheetRow, column: WorksheetGridColumn): string {
@@ -1572,7 +1572,7 @@ export default function TechnicianWorksheetPage() {
                     <th className="tw-col-facp">FACP</th>
                     <th className="tw-col-monitoring">Monitoring</th>
                     <th className="tw-col-procedures">Testing Procedures</th>
-                    <th className="tw-col-notes">Tech Comments & Notes</th>
+                    <th className="tw-col-notes">Location comments</th>
                     <th className="tw-col-action">{isPortalMode ? 'Action' : 'Result'}</th>
                   </tr>
                 </thead>

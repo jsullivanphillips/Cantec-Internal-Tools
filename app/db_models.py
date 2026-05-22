@@ -1110,6 +1110,8 @@ class MonthlyTestingSiteMonth(db.Model):
     annual_month = db.Column(db.String(32), nullable=True)
     testing_procedures = db.Column(db.Text, nullable=True)
     inspection_tech_notes = db.Column(db.Text, nullable=True)
+    #: This-run-only notes (portal); never seeded from prior month or mirrored to library master.
+    run_comments = db.Column(db.Text, nullable=True)
     sheet_time_in_raw = db.Column(db.String(64), nullable=True)
     sheet_time_out_raw = db.Column(db.String(64), nullable=True)
     #: Run-month monitoring company label (free text; may differ from library FK).

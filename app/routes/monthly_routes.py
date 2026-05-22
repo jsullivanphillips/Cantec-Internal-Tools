@@ -2302,6 +2302,12 @@ def patch_monthly_route_worksheet_stop(route_id: int, testing_site_id: int):
     client_mutated_at = _parse_iso_dt(payload.get("client_mutated_at"))
     next_audit_id = _next_worksheet_audit_event_id()
 
+    audit_old_values: dict[str, object] = {
+        field_name: getattr(mtsm, STOP_PATCH_FIELD_MAP[field_name])
+        for field_name in changes_eff
+        if field_name in STOP_PATCH_FIELD_MAP
+    }
+
     changed_any = False
     for field_name, attr_name in STOP_PATCH_FIELD_MAP.items():
         if field_name not in changes_eff:
@@ -2350,9 +2356,13 @@ def patch_monthly_route_worksheet_stop(route_id: int, testing_site_id: int):
         for field_name in changes_eff:
             if field_name not in STOP_PATCH_FIELD_MAP:
                 continue
-            hist_attr = audit_field_map.get(field_name, STOP_PATCH_FIELD_MAP[field_name])
-            old_val = getattr(hist, hist_attr)
-            new_val = getattr(mtsm, STOP_PATCH_FIELD_MAP[field_name])
+            if field_name == "run_comments":
+                old_val = audit_old_values.get("run_comments")
+                new_val = mtsm.run_comments
+            else:
+                hist_attr = audit_field_map.get(field_name, STOP_PATCH_FIELD_MAP[field_name])
+                old_val = getattr(hist, hist_attr)
+                new_val = getattr(mtsm, STOP_PATCH_FIELD_MAP[field_name])
             if field_name == "panel":
                 old_val = hist.facp
                 new_val = _normalize_ws_text(mtsm.panel) or _normalize_ws_text(mtsm.facp)
@@ -2391,6 +2401,7 @@ def patch_monthly_route_worksheet_stop(route_id: int, testing_site_id: int):
         "skip_reason",
         "time_in",
         "time_out",
+        "run_comments",
     }
     snapshot_changed = changed_any and bool(snapshot_patch_keys.intersection(changes_eff))
 

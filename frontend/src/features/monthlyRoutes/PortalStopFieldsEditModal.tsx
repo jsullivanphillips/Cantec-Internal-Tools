@@ -15,6 +15,7 @@ export type PortalStopFieldsDraft = {
   monitoring_notes: string
   testing_procedures: string
   inspection_tech_notes: string
+  run_comments: string
 }
 
 function draftFromStop(stop: TechnicianWorksheetStop): PortalStopFieldsDraft {
@@ -30,6 +31,7 @@ function draftFromStop(stop: TechnicianWorksheetStop): PortalStopFieldsDraft {
     monitoring_notes: stop.monitoring_notes ?? '',
     testing_procedures: stop.testing_procedures ?? '',
     inspection_tech_notes: stop.inspection_tech_notes ?? '',
+    run_comments: stop.run_comments ?? '',
   }
 }
 
@@ -47,6 +49,7 @@ function draftToPatch(draft: PortalStopFieldsDraft): WorksheetStopChangeSet {
     monitoring_notes: trim(draft.monitoring_notes) || null,
     testing_procedures: trim(draft.testing_procedures) || null,
     inspection_tech_notes: trim(draft.inspection_tech_notes) || null,
+    run_comments: trim(draft.run_comments) || null,
   }
 }
 
@@ -198,7 +201,7 @@ export default function PortalStopFieldsEditModal({
           </div>
           <div className="col-12">
             <Form.Group>
-              <Form.Label className="small">Tech comments &amp; notes</Form.Label>
+              <Form.Label className="small">Location comments</Form.Label>
               <Form.Control
                 as="textarea"
                 rows={4}
@@ -206,6 +209,19 @@ export default function PortalStopFieldsEditModal({
                 onChange={(e) => update({ inspection_tech_notes: e.target.value })}
                 disabled={!stop}
               />
+            </Form.Group>
+          </div>
+          <div className="col-12">
+            <Form.Group>
+              <Form.Label className="small">Run comments</Form.Label>
+              <Form.Control
+                as="textarea"
+                rows={3}
+                value={draft.run_comments}
+                onChange={(e) => update({ run_comments: e.target.value })}
+                disabled={!stop}
+              />
+              <Form.Text className="text-muted">This month only; not carried to the next month.</Form.Text>
             </Form.Group>
           </div>
         </div>

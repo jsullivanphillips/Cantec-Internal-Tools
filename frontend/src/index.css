@@ -4518,6 +4518,7 @@ body {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   background: #fff;
+  padding-bottom: 1.25rem;
 }
 
 .pw-mock-field-group {

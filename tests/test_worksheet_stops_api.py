@@ -349,3 +349,150 @@ def test_worksheet_stop_display_uses_run_month_notes_not_library_master(stops_cl
     primary = next(s for s in stops if int(s["testing_site_id"]) == ts_id)
     assert primary["testing_procedures"] == "April procedures"
     assert primary["inspection_tech_notes"] == "April notes"
+
+
+def test_run_comments_not_copied_to_new_month(stops_client, monkeypatch):
+    """Prior-month ``run_comments`` must not seed into a newly materialized month."""
+    from app.monthly.worksheet_stops import ensure_worksheet_stops_for_route_month
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 6, 1))
+
+    client, app = stops_client
+    with app.app_context():
+        route_id, ts_id, _ = _seed_route_with_two_stops()
+        db.session.add(
+            MonthlyTestingSiteMonth(
+                id=92001,
+                monthly_testing_site_id=ts_id,
+                month_date=date(2026, 5, 1),
+                test_monthly_route_id=route_id,
+                run_comments="Found bad battery",
+                inspection_tech_notes="May location note",
+            )
+        )
+        run_june = MonthlyRouteRun(
+            id=5010,
+            monthly_route_id=route_id,
+            month_date=date(2026, 6, 1),
+            started_at=datetime(2026, 6, 2, 8, 0, tzinfo=PACIFIC_TZ),
+            status="open",
+            source="technician_app",
+        )
+        db.session.add(run_june)
+        db.session.commit()
+        ensure_worksheet_stops_for_route_month(route_id, date(2026, 6, 1), run_june)
+        db.session.commit()
+
+        may = MonthlyTestingSiteMonth.query.filter_by(
+            monthly_testing_site_id=ts_id,
+            month_date=date(2026, 5, 1),
+        ).one()
+        june = MonthlyTestingSiteMonth.query.filter_by(
+            monthly_testing_site_id=ts_id,
+            month_date=date(2026, 6, 1),
+        ).one()
+        assert may.run_comments == "Found bad battery"
+        assert june.run_comments is None
+
+    res = client.get("/api/monthly_routes/routes/1/worksheet?month=2026-06-01&tech_portal=1")
+    assert res.status_code == 200
+    stop = next(
+        s for s in res.get_json().get("stops") or [] if int(s["testing_site_id"]) == ts_id
+    )
+    assert stop["run_comments"] is None
+
+
+def test_patch_run_comments_does_not_mirror_to_library_master(stops_client, monkeypatch):
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
+
+    client, app = stops_client
+    with app.app_context():
+        _seed_route_with_two_stops()
+        ts_id = int(MonthlyTestingSite.query.order_by(MonthlyTestingSite.id.asc()).first().id)
+        ts = db.session.get(MonthlyTestingSite, ts_id)
+        assert ts is not None
+        ts.inspection_tech_notes = "Library location notes"
+        ts.testing_procedures = "Library procedures"
+        run = MonthlyRouteRun(
+            id=5011,
+            monthly_route_id=1,
+            month_date=date(2026, 5, 1),
+            started_at=datetime(2026, 5, 2, 8, 0, tzinfo=PACIFIC_TZ),
+            status="open",
+            source="technician_app",
+        )
+        db.session.add(run)
+        db.session.commit()
+        from app.monthly.worksheet_stops import ensure_worksheet_stops_for_route_month
+
+        ensure_worksheet_stops_for_route_month(1, date(2026, 5, 1), run)
+        db.session.commit()
+
+    qs = "month=2026-05-01&tech_portal=1"
+    res = client.patch(
+        f"/api/monthly_routes/routes/1/worksheet/stops/{ts_id}?{qs}",
+        json={"changes": {"run_comments": "Replaced pull station today"}},
+    )
+    assert res.status_code == 200
+    assert res.get_json()["stop"]["run_comments"] == "Replaced pull station today"
+
+    with app.app_context():
+        ts = db.session.get(MonthlyTestingSite, ts_id)
+        assert ts is not None
+        assert ts.inspection_tech_notes == "Library location notes"
+        assert ts.testing_procedures == "Library procedures"
+
+
+def test_reset_run_clears_run_comments(stops_client, monkeypatch):
+    from app.monthly.worksheet_stops import ensure_worksheet_stops_for_route_month
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
+
+    client, app = stops_client
+    with app.app_context():
+        route_id, ts_id, ts_second = _seed_route_with_two_stops()
+        run = MonthlyRouteRun(
+            id=5012,
+            monthly_route_id=route_id,
+            month_date=date(2026, 5, 1),
+            started_at=datetime(2026, 5, 2, 8, 0, tzinfo=PACIFIC_TZ),
+            status="open",
+            source="technician_app",
+        )
+        db.session.add(run)
+        db.session.commit()
+        ensure_worksheet_stops_for_route_month(route_id, date(2026, 5, 1), run)
+        db.session.commit()
+
+        mtsm_a = MonthlyTestingSiteMonth.query.filter_by(
+            monthly_testing_site_id=ts_id,
+            month_date=date(2026, 5, 1),
+        ).one()
+        mtsm_b = MonthlyTestingSiteMonth.query.filter_by(
+            monthly_testing_site_id=ts_second,
+            month_date=date(2026, 5, 1),
+        ).one()
+        mtsm_a.run_comments = "Notes only on A"
+        mtsm_b.run_comments = "Notes on B"
+        mtsm_b.sheet_time_in_raw = "09:00"
+        db.session.commit()
+
+    res = client.post("/api/monthly_routes/routes/1/worksheet/reset_run?month=2026-05-01", json={})
+    assert res.status_code == 200
+
+    with app.app_context():
+        mtsm_a = MonthlyTestingSiteMonth.query.filter_by(
+            monthly_testing_site_id=ts_id,
+            month_date=date(2026, 5, 1),
+        ).one()
+        mtsm_b = MonthlyTestingSiteMonth.query.filter_by(
+            monthly_testing_site_id=ts_second,
+            month_date=date(2026, 5, 1),
+        ).one()
+        assert mtsm_a.run_comments is None
+        assert mtsm_b.run_comments is None
+        assert mtsm_b.sheet_time_in_raw is None
