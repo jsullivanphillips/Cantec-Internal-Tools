@@ -51,6 +51,9 @@ _MTSM_OUTCOME_KEYS = (
     "monitoring_notes",
 )
 
+# Run-scoped sheet text: preserved when refreshing display fields from master.
+_MTSM_SHEET_NOTE_KEYS = ("testing_procedures", "inspection_tech_notes")
+
 
 def _master_display_seed_fields(
     ts: MonthlyTestingSite,
@@ -80,7 +83,12 @@ def _worksheet_display_from_master(
     ts: MonthlyTestingSite,
     loc: MonthlyRouteLocation,
 ) -> dict[str, object]:
-    """Portal worksheet API display fields from v2 testing-site master."""
+    """Portal worksheet display fields from v2 testing-site master (library truth).
+
+    Panel / access / identity fields only. ``testing_procedures`` and
+    ``inspection_tech_notes`` are run-scoped on ``MonthlyTestingSiteMonth`` (or
+    history overlay) and must not be overwritten here so historical months stay faithful.
+    """
     seed = _master_display_seed_fields(ts, loc)
     return {
         "annual_month": seed["annual_month"],
@@ -91,8 +99,6 @@ def _worksheet_display_from_master(
         "ring": seed["ring"],
         "key_number": seed["key_number"],
         "panel": seed["panel"],
-        "testing_procedures": seed["testing_procedures"],
-        "inspection_tech_notes": seed["inspection_tech_notes"],
     }
 
 
@@ -159,6 +165,8 @@ def seed_stop_month_fields(
     if existing_row is not None:
         base = _master_display_seed_fields(ts, loc)
         for key in _MTSM_OUTCOME_KEYS:
+            base[key] = getattr(existing_row, key)
+        for key in _MTSM_SHEET_NOTE_KEYS:
             base[key] = getattr(existing_row, key)
         if base.get("monitoring_notes") is None and location_hist is not None:
             base["monitoring_notes"] = _normalize_text(location_hist.monitoring_notes)

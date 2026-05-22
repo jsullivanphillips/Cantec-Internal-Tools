@@ -273,3 +273,72 @@ def test_worksheet_stop_display_uses_v2_master_panel_fields(stops_client, monkey
     primary = next(s for s in stops if int(s["testing_site_id"]) == ts_id)
     assert primary["panel"] == "PACPRO P24A"
     assert primary["panel_location"] == "Basement electrical room"
+
+
+def test_worksheet_stop_display_uses_run_month_notes_not_library_master(stops_client, monkeypatch):
+    """``MonthlyTestingSiteMonth`` sheet notes must not be replaced by library master on read."""
+    from app.monthly.worksheet_stops import serialize_worksheet_stop
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 6, 1))
+
+    client, app = stops_client
+    with app.app_context():
+        route_id, ts_id, _ = _seed_route_with_two_stops()
+        loc = db.session.get(MonthlyRouteLocation, 101)
+        ts = db.session.get(MonthlyTestingSite, ts_id)
+        assert loc is not None and ts is not None
+        ts.testing_procedures = "Library procedures"
+        ts.inspection_tech_notes = "Library notes"
+        loc.testing_procedures = "Library procedures"
+        loc.inspection_tech_notes = "Library notes"
+
+        db.session.add(
+            MonthlyRouteRun(
+                id=7001,
+                monthly_route_id=route_id,
+                month_date=date(2026, 4, 1),
+                status="completed",
+                source="csv_import",
+            )
+        )
+        db.session.add(
+            MonthlyTestingSiteMonth(
+                id=91010,
+                monthly_testing_site_id=ts_id,
+                month_date=date(2026, 4, 1),
+                test_monthly_route_id=route_id,
+                testing_procedures="April procedures",
+                inspection_tech_notes="April notes",
+                result_status="tested",
+            )
+        )
+        db.session.add(
+            MonthlyTestingSiteMonth(
+                id=91011,
+                monthly_testing_site_id=ts_id,
+                month_date=date(2026, 5, 1),
+                test_monthly_route_id=route_id,
+                testing_procedures="May procedures",
+                inspection_tech_notes="May notes",
+            )
+        )
+        db.session.commit()
+
+        april = serialize_worksheet_stop(
+            ts,
+            loc,
+            db.session.get(MonthlyTestingSiteMonth, 91010),
+            route_id=route_id,
+            month_first=date(2026, 4, 1),
+            stop_number=1,
+        )
+        assert april["testing_procedures"] == "April procedures"
+        assert april["inspection_tech_notes"] == "April notes"
+
+    res = client.get("/api/monthly_routes/routes/1/worksheet?month=2026-04-01&tech_portal=1")
+    assert res.status_code == 200
+    stops = res.get_json().get("stops") or []
+    primary = next(s for s in stops if int(s["testing_site_id"]) == ts_id)
+    assert primary["testing_procedures"] == "April procedures"
+    assert primary["inspection_tech_notes"] == "April notes"

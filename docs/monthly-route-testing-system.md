@@ -278,7 +278,8 @@ Tests often use minimal SQLite table subsets with explicit BIGINT id assignment.
 
 ### Testing procedures and tech notes (run-scoped vs library)
 
-- **Worksheet / session stop APIs** read `testing_procedures` and `inspection_tech_notes` from the **history row for that month** only (`app/monthly/history_sheet_notes.py` — no bleed from library “current”).
+- **Office worksheet `rows[]`** and **portal `stops[]`** read `testing_procedures` and `inspection_tech_notes` from the **run month** (`MonthlyTestingSiteMonth`, or `MonthlyRouteTestHistory` when no MTSM row). Portal serialize overlays **panel/access** from v2 master only — not sheet notes (`_worksheet_display_from_master` in `worksheet_stops.py`).
+- **Library / history helpers** (`app/monthly/history_sheet_notes.py`) keep “current” library display on the **latest** run month only — no bleed from older months.
 - **Library location GET** (`/api/monthly_routes/library/<id>`, monthly sites augment) overlays the **latest** history month’s procedures/notes for display (not stale `MonthlyRouteLocation` columns alone).
 - **Route CSV import** updates legacy location procedures/notes only when the import month is the latest history month for that site (`is_latest_history_month_for_location`).
 - **Worksheet PATCH** mirrors procedure/note edits onto `MonthlyRouteLocation` (and primary v2 testing site when present) only when the patched month is the latest run for that location; older months stay on the history row only.
@@ -300,7 +301,7 @@ Master data lives on **`MonthlyTestingSite`** (migration `z4a5b6c7d8e9`):
 | Door code (if any) | `door_code` |
 | Monitoring company | `monitoring_company_id` → `monitoring_company` |
 
-Run-month copies: **`MonthlyTestingSiteMonth`** (`panel`, `panel_location`, `door_code`, `building_name`, `property_management_company`, plus existing ring/key/annual/monitoring_notes).
+Run-month copies: **`MonthlyTestingSiteMonth`** (`panel`, `panel_location`, `door_code`, `building_name`, `property_management_company`, `testing_procedures`, `inspection_tech_notes`, plus existing ring/key/annual/monitoring_notes).
 
 - API: `PATCH /api/monthly_sites/testing_sites/<id>` accepts the fields above (`ring` / `key` accepted as aliases for `ring_detail` / `keys`).
 - Backfill: `python -m app.scripts.backfill_testing_site_display_fields`
