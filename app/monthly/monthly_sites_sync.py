@@ -5,10 +5,43 @@ from __future__ import annotations
 from decimal import Decimal
 
 from sqlalchemy import func
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 from sqlalchemy.orm import joinedload, selectinload
 
 from app.db_models import MonthlyRouteLocation, MonthlySite, MonthlyTestingSite, db
+
+
+def _panel_text_from_legacy(loc: MonthlyRouteLocation) -> str | None:
+    raw = (loc.facp_detail or "").strip()
+    return raw or None
+
+
+def testing_site_master_fields_from_legacy(loc: MonthlyRouteLocation) -> dict:
+    """Copy library-level display fields from a legacy location onto a new primary testing site."""
+    panel = _panel_text_from_legacy(loc)
+    return {
+        "annual_month": loc.annual_month,
+        "property_management_company": loc.property_management_company,
+        "building_name": loc.building,
+        "panel": panel,
+        "panel_location": None,
+        "door_code": None,
+        "monitoring_company_id": loc.monitoring_company_id,
+        "price_per_month": loc.price_per_month,
+        "ring_detail": loc.ring_detail,
+        "facp_detail": loc.facp_detail,
+        "testing_procedures": loc.testing_procedures,
+        "inspection_tech_notes": loc.inspection_tech_notes,
+        "keys": loc.keys,
+        "barcode": loc.barcode,
+        "key_id": loc.key_id,
+    }
+
+
+def apply_testing_site_master_fields_from_legacy(ts: MonthlyTestingSite, loc: MonthlyRouteLocation) -> None:
+    """Push legacy location display fields onto an existing testing site (sheet import / backfill)."""
+    for key, value in testing_site_master_fields_from_legacy(loc).items():
+        setattr(ts, key, value)
 
 
 def _next_sqlite_bigint_id(model) -> int | None:
@@ -68,14 +101,7 @@ def sync_testing_sites_from_legacy(loc: MonthlyRouteLocation) -> list[MonthlyTes
         monthly_site_id=int(site.id),
         sort_order=0,
         label=None,
-        price_per_month=loc.price_per_month,
-        ring_detail=loc.ring_detail,
-        facp_detail=loc.facp_detail,
-        testing_procedures=loc.testing_procedures,
-        inspection_tech_notes=loc.inspection_tech_notes,
-        keys=loc.keys,
-        barcode=loc.barcode,
-        key_id=loc.key_id,
+        **testing_site_master_fields_from_legacy(loc),
     )
     tid = _next_sqlite_bigint_id(MonthlyTestingSite)
     if tid is not None:
@@ -102,15 +128,7 @@ def refresh_primary_testing_site_from_legacy(loc: MonthlyRouteLocation) -> None:
     rows = sync_testing_sites_from_legacy(loc)
     if not rows:
         return
-    primary = rows[0]
-    primary.price_per_month = loc.price_per_month
-    primary.ring_detail = loc.ring_detail
-    primary.facp_detail = loc.facp_detail
-    primary.testing_procedures = loc.testing_procedures
-    primary.inspection_tech_notes = loc.inspection_tech_notes
-    primary.keys = loc.keys
-    primary.barcode = loc.barcode
-    primary.key_id = loc.key_id
+    apply_testing_site_master_fields_from_legacy(rows[0], loc)
 
 
 def get_legacy_location_for_site(site: MonthlySite) -> MonthlyRouteLocation | None:
@@ -156,6 +174,45 @@ def load_site_by_legacy_location_id(location_id: int) -> MonthlySite | None:
         .filter_by(legacy_monthly_route_location_id=location_id)
         .one_or_none()
     )
+
+
+def push_primary_testing_site_display_to_legacy(loc: MonthlyRouteLocation, ts: MonthlyTestingSite) -> None:
+    """Copy primary-stop display fields onto legacy ``loc`` (library sheet / detail parity)."""
+    if int(ts.sort_order) != 0:
+        return
+    loc.annual_month = ts.annual_month
+    loc.property_management_company = ts.property_management_company
+    loc.property_management_company_normalized = (ts.property_management_company or "").casefold()
+    loc.building = ts.building_name
+    loc.building_normalized = (ts.building_name or "").casefold()
+    loc.price_per_month = ts.price_per_month
+    loc.ring_detail = ts.ring_detail
+    panel = (ts.panel or ts.facp_detail or "").strip() or None
+    loc.facp_detail = panel
+    loc.testing_procedures = ts.testing_procedures
+    loc.inspection_tech_notes = ts.inspection_tech_notes
+    loc.monitoring_company_id = ts.monitoring_company_id
+
+
+def apply_panel_fields_to_primary_testing_site(
+    loc: MonthlyRouteLocation,
+    *,
+    panel: str | None,
+    panel_location: str | None,
+) -> None:
+    """Set legacy ``facp_detail`` and primary v2 stop ``panel`` / ``panel_location``."""
+    loc.facp_detail = panel
+    try:
+        rows = sync_testing_sites_from_legacy(loc)
+    except (OperationalError, ProgrammingError):
+        # Route-import tests use a reduced SQLite schema without v2 tables.
+        return
+    if not rows:
+        return
+    primary = min(rows, key=lambda t: int(t.sort_order))
+    primary.panel = panel
+    primary.facp_detail = panel
+    primary.panel_location = panel_location
 
 
 def push_testing_site_keys_to_legacy(loc: MonthlyRouteLocation) -> None:

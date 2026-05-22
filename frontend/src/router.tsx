@@ -27,6 +27,7 @@ const QuotationToolPage = lazy(() => import('./pages/QuotationToolPage'))
 const TechnicianPortalLockPage = lazy(() => import('./pages/TechnicianPortalLockPage'))
 const TechnicianPortalStartPage = lazy(() => import('./pages/TechnicianPortalStartPage'))
 const TechnicianPortalRoutePage = lazy(() => import('./pages/TechnicianPortalRoutePage'))
+const TechnicianPortalWorksheetPage = lazy(() => import('./pages/TechnicianPortalWorksheetPage'))
 
 /** Old session-ledger URLs forward to the worksheet. */
 function RedirectMonthlySessionToWorksheet() {
@@ -63,7 +64,8 @@ export const router = createBrowserRouter([
       { index: true, element: <TechnicianPortalLockPage /> },
       { path: 'start', element: <TechnicianPortalStartPage /> },
       { path: 'route/:routeId', element: <TechnicianPortalRoutePage /> },
-      { path: 'route/:routeId/worksheet/:monthIso', element: <TechnicianWorksheetPage /> },
+      { path: 'route/:routeId/worksheet/:monthIso', element: <TechnicianPortalWorksheetPage /> },
+      { path: 'worksheet-mockup', element: <Navigate to="/tech/start" replace /> },
     ],
   },
   {

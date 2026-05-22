@@ -1,4 +1,8 @@
-import type { TechnicianWorksheetPayload, TechnicianWorksheetRow } from './monthlyRoutesShared'
+import type {
+  TechnicianWorksheetPayload,
+  TechnicianWorksheetRow,
+  TechnicianWorksheetStop,
+} from './monthlyRoutesShared'
 
 export type WorksheetChangeSet = Partial<
   Pick<
@@ -17,16 +21,39 @@ export type WorksheetChangeSet = Partial<
   >
 >
 
+/** Portal v2 stop PATCH fields (maps to ``MonthlyTestingSiteMonth``). */
+export type WorksheetStopChangeSet = Partial<
+  Pick<
+    TechnicianWorksheetStop,
+    | 'annual_month'
+    | 'ring'
+    | 'key_number'
+    | 'panel'
+    | 'panel_location'
+    | 'door_code'
+    | 'monitoring_notes'
+    | 'result_status'
+    | 'skip_reason'
+    | 'testing_procedures'
+    | 'inspection_tech_notes'
+    | 'time_in'
+    | 'time_out'
+  >
+>
+
 export type WorksheetQueueItem = {
   id: string
   routeId: number
-  locationId: number
+  /** Legacy staff worksheet row PATCH. */
+  locationId?: number
+  /** Portal v2 stop PATCH. */
+  testingSiteId?: number
   monthIso: string
   expectedUpdatedAt: string | null
   clientMutatedAt: string
   /** When true, PATCH includes ``tech_portal=1`` (technician worksheet); omit on legacy queued items. */
   techPortal?: boolean
-  changes: WorksheetChangeSet
+  changes: WorksheetChangeSet | WorksheetStopChangeSet
   attempts: number
   nextAttemptAt: number
 }

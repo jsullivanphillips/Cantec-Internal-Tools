@@ -4,12 +4,15 @@ import { Accordion, Alert, Badge, Button, Card, Col, Form, Row, Spinner, Table }
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import MonthlyLibraryCommentsPanel from '../features/monthlyRoutes/MonthlyLibraryCommentsPanel'
 import MonthlyLocationLibraryModal from '../features/monthlyRoutes/MonthlyLocationLibraryModal'
+import TestingSiteFieldsSection from '../features/monthlyRoutes/TestingSiteFieldsSection'
 import {
   isMonthlyTestingHistoryEditable,
+  libraryDisplayPricePerMonth,
   libraryRouteDisplay,
   monthlyRouteOccurrenceDateUtc,
   nextUntestedMonthIso,
   parseYearMonth,
+  sortedTestingSites,
   toMonthKey,
   type LibraryLocation,
   type LibraryPayload,
@@ -391,10 +394,13 @@ export default function MonthlyLocationDetailPage() {
   const routeDetailId = location.monthly_route?.id ?? location.monthly_route_id ?? null
   const lat = location.latitude ?? undefined
   const lng = location.longitude ?? undefined
+  const testingSites = sortedTestingSites(location)
+  const primaryStop = testingSites[0]
+  const buildingLabel =
+    primaryStop?.building_name?.trim() || location.building?.trim() || ''
   const title =
-    location.building?.trim() != null && location.building.trim() !== ''
-      ? `${location.address} (${location.building})`
-      : location.address
+    buildingLabel !== '' ? `${location.address} (${buildingLabel})` : location.address
+  const displayPrice = libraryDisplayPricePerMonth(location)
 
   const testingHistoryGridYear =
     testingHistoryYears.length === 0
@@ -461,7 +467,12 @@ export default function MonthlyLocationDetailPage() {
             </Col>
             <Col md={6} lg={3}>
               <div className="text-muted small text-uppercase fw-semibold mb-1">Monthly price</div>
-              <div className="fw-semibold">{formatPriceCad(location.price_per_month)}</div>
+              <div className="fw-semibold">{formatPriceCad(displayPrice)}</div>
+              {testingSites.length > 1 ? (
+                <div className="text-muted small mt-1">
+                  Rollup of {testingSites.length} testing locations
+                </div>
+              ) : null}
               <div className="text-muted small mt-2 text-uppercase fw-semibold mb-1">Status</div>
               <Badge bg={statusBadgeVariant(location.status_normalized)} className="text-capitalize">
                 {(location.status_raw || location.status_normalized || '').replace(/_/g, ' ') || '—'}
@@ -469,17 +480,41 @@ export default function MonthlyLocationDetailPage() {
             </Col>
             <Col md={6} lg={3}>
               <div className="text-muted small text-uppercase fw-semibold mb-1">Property management</div>
-              <div className="text-break">{location.property_management_company || '—'}</div>
+              <div className="text-break">
+                {primaryStop?.property_management_company?.trim() ||
+                  location.property_management_company ||
+                  '—'}
+              </div>
               <div className="text-muted small mt-2 text-uppercase fw-semibold mb-1">Key</div>
-              {location.key ? (
-                <Link to={`/keys/${location.key.id}`} className="fw-semibold text-decoration-none">
-                  {location.key.keycode}
+              {primaryStop?.key || location.key ? (
+                <Link
+                  to={`/keys/${(primaryStop?.key ?? location.key)!.id}`}
+                  className="fw-semibold text-decoration-none"
+                >
+                  {(primaryStop?.key ?? location.key)!.keycode}
                 </Link>
               ) : (
-                <span>{location.keys?.trim() || '—'}</span>
+                <span>{primaryStop?.keys?.trim() || location.keys?.trim() || '—'}</span>
               )}
             </Col>
           </Row>
+
+          {testingSites.length > 0 ? (
+            <div className="mt-4 pt-3 border-top">
+              <div className="text-muted small text-uppercase fw-semibold mb-2">
+                Testing locations ({testingSites.length})
+              </div>
+              {testingSites.map((site, index) => (
+                <TestingSiteFieldsSection
+                  key={site.id}
+                  mode="view"
+                  site={site}
+                  index={index}
+                  total={testingSites.length}
+                />
+              ))}
+            </div>
+          ) : null}
 
           {location.notes?.trim() ? (
             <div className="mt-4 pt-3 border-top">

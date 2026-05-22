@@ -985,7 +985,7 @@ class MonthlySite(db.Model):
 
 
 class MonthlyTestingSite(db.Model):
-    """V2 physical testing stop (one worksheet row); owns price, FACP, procedures, notes, and ``key_id``."""
+    """V2 physical testing stop; owns per-stop display fields, pricing, procedures, and ``key_id``."""
 
     __tablename__ = "monthly_testing_site"
     __table_args__ = (
@@ -996,6 +996,7 @@ class MonthlyTestingSite(db.Model):
         ),
         db.Index("ix_monthly_testing_site_monthly_site_id", "monthly_site_id"),
         db.Index("ix_monthly_testing_site_key_id", "key_id"),
+        db.Index("ix_monthly_testing_site_monitoring_company_id", "monitoring_company_id"),
     )
 
     id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
@@ -1008,7 +1009,14 @@ class MonthlyTestingSite(db.Model):
     label = db.Column(db.String(255), nullable=True)
     price_per_month = db.Column(db.Numeric(10, 2), nullable=True)
     ring_detail = db.Column(db.Text, nullable=True)
+    #: Fire alarm control panel (legacy column name ``facp_detail`` retained for imports).
     facp_detail = db.Column(db.Text, nullable=True)
+    panel = db.Column(db.Text, nullable=True)
+    panel_location = db.Column(db.String(255), nullable=True)
+    door_code = db.Column(db.String(255), nullable=True)
+    annual_month = db.Column(db.String(32), nullable=True)
+    property_management_company = db.Column(db.String(255), nullable=True)
+    building_name = db.Column(db.String(255), nullable=True)
     testing_procedures = db.Column(db.Text, nullable=True)
     inspection_tech_notes = db.Column(db.Text, nullable=True)
 
@@ -1019,6 +1027,11 @@ class MonthlyTestingSite(db.Model):
     )
     keys = db.Column(db.Text, nullable=True)
     barcode = db.Column(db.String(64), nullable=True)
+    monitoring_company_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monitoring_company.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
     created_at = db.Column(
         db.DateTime(timezone=True),
@@ -1037,6 +1050,10 @@ class MonthlyTestingSite(db.Model):
         "Key",
         back_populates="monthly_testing_sites",
         foreign_keys=[key_id],
+    )
+    monitoring_company = db.relationship(
+        "MonitoringCompany",
+        foreign_keys=[monitoring_company_id],
     )
     month_rows = db.relationship(
         "MonthlyTestingSiteMonth",
@@ -1083,6 +1100,11 @@ class MonthlyTestingSiteMonth(db.Model):
     skip_reason = db.Column(db.String(255), nullable=True)
     source_value_raw = db.Column(db.String(255), nullable=True)
     facp = db.Column(db.Text, nullable=True)
+    panel = db.Column(db.Text, nullable=True)
+    panel_location = db.Column(db.String(255), nullable=True)
+    door_code = db.Column(db.String(255), nullable=True)
+    property_management_company = db.Column(db.String(255), nullable=True)
+    building_name = db.Column(db.String(255), nullable=True)
     ring = db.Column(db.String(255), nullable=True)
     key_number = db.Column(db.String(255), nullable=True)
     annual_month = db.Column(db.String(32), nullable=True)

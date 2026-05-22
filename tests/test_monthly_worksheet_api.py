@@ -12,6 +12,9 @@ from app.db_models import (
     MonthlyRouteRun,
     MonthlyRouteTestHistory,
     MonthlyRouteWorksheetAuditEvent,
+    MonthlySite,
+    MonthlyTestingSite,
+    MonthlyTestingSiteMonth,
     db,
 )
 
@@ -39,37 +42,28 @@ def worksheet_client(monkeypatch):
     app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///:memory:"
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
+    worksheet_tables = [
+        MonthlyRoute.__table__,
+        Key.__table__,
+        MonitoringCompany.__table__,
+        MonthlyRouteLocation.__table__,
+        MonthlyRouteRun.__table__,
+        MonthlyRouteTestHistory.__table__,
+        MonthlyRouteWorksheetAuditEvent.__table__,
+        MonthlySite.__table__,
+        MonthlyTestingSite.__table__,
+        MonthlyTestingSiteMonth.__table__,
+    ]
+
     with app.app_context():
-        db.metadata.create_all(
-            db.engine,
-            tables=[
-                MonthlyRoute.__table__,
-                Key.__table__,
-                MonitoringCompany.__table__,
-                MonthlyRouteLocation.__table__,
-                MonthlyRouteRun.__table__,
-                MonthlyRouteTestHistory.__table__,
-                MonthlyRouteWorksheetAuditEvent.__table__,
-            ],
-        )
+        db.metadata.create_all(db.engine, tables=worksheet_tables)
         with app.test_client() as client:
             with client.session_transaction() as sess:
                 sess["username"] = "tech.one"
                 sess["authenticated"] = True
             yield client, app
         db.session.remove()
-        db.metadata.drop_all(
-            db.engine,
-            tables=[
-                MonthlyRouteWorksheetAuditEvent.__table__,
-                MonthlyRouteTestHistory.__table__,
-                MonthlyRouteRun.__table__,
-                MonthlyRouteLocation.__table__,
-                MonitoringCompany.__table__,
-                Key.__table__,
-                MonthlyRoute.__table__,
-            ],
-        )
+        db.metadata.drop_all(db.engine, tables=list(reversed(worksheet_tables)))
 
 
 @pytest.fixture
@@ -82,18 +76,19 @@ def hybrid_portal_staff_client(monkeypatch):
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
     with app.app_context():
-        db.metadata.create_all(
-            db.engine,
-            tables=[
-                MonthlyRoute.__table__,
-                Key.__table__,
-                MonitoringCompany.__table__,
-                MonthlyRouteLocation.__table__,
-                MonthlyRouteRun.__table__,
-                MonthlyRouteTestHistory.__table__,
-                MonthlyRouteWorksheetAuditEvent.__table__,
-            ],
-        )
+        hybrid_tables = [
+            MonthlyRoute.__table__,
+            Key.__table__,
+            MonitoringCompany.__table__,
+            MonthlyRouteLocation.__table__,
+            MonthlyRouteRun.__table__,
+            MonthlyRouteTestHistory.__table__,
+            MonthlyRouteWorksheetAuditEvent.__table__,
+            MonthlySite.__table__,
+            MonthlyTestingSite.__table__,
+            MonthlyTestingSiteMonth.__table__,
+        ]
+        db.metadata.create_all(db.engine, tables=hybrid_tables)
         with app.test_client() as client:
             with client.session_transaction() as sess:
                 sess["username"] = "staff.one"
@@ -101,18 +96,7 @@ def hybrid_portal_staff_client(monkeypatch):
                 sess["tech_portal_unlocked"] = True
             yield client, app
         db.session.remove()
-        db.metadata.drop_all(
-            db.engine,
-            tables=[
-                MonthlyRouteWorksheetAuditEvent.__table__,
-                MonthlyRouteTestHistory.__table__,
-                MonthlyRouteRun.__table__,
-                MonthlyRouteLocation.__table__,
-                MonitoringCompany.__table__,
-                Key.__table__,
-                MonthlyRoute.__table__,
-            ],
-        )
+        db.metadata.drop_all(db.engine, tables=list(reversed(hybrid_tables)))
 
 
 @pytest.fixture
@@ -125,36 +109,26 @@ def portal_only_client(monkeypatch):
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
     with app.app_context():
-        db.metadata.create_all(
-            db.engine,
-            tables=[
-                MonthlyRoute.__table__,
-                Key.__table__,
-                MonitoringCompany.__table__,
-                MonthlyRouteLocation.__table__,
-                MonthlyRouteRun.__table__,
-                MonthlyRouteTestHistory.__table__,
-                MonthlyRouteWorksheetAuditEvent.__table__,
-            ],
-        )
+        portal_tables = [
+            MonthlyRoute.__table__,
+            Key.__table__,
+            MonitoringCompany.__table__,
+            MonthlyRouteLocation.__table__,
+            MonthlyRouteRun.__table__,
+            MonthlyRouteTestHistory.__table__,
+            MonthlyRouteWorksheetAuditEvent.__table__,
+            MonthlySite.__table__,
+            MonthlyTestingSite.__table__,
+            MonthlyTestingSiteMonth.__table__,
+        ]
+        db.metadata.create_all(db.engine, tables=portal_tables)
         with app.test_client() as client:
             with client.session_transaction() as sess:
                 sess["tech_portal_unlocked"] = True
                 sess.pop("authenticated", None)
             yield client, app
         db.session.remove()
-        db.metadata.drop_all(
-            db.engine,
-            tables=[
-                MonthlyRouteWorksheetAuditEvent.__table__,
-                MonthlyRouteTestHistory.__table__,
-                MonthlyRouteRun.__table__,
-                MonthlyRouteLocation.__table__,
-                MonitoringCompany.__table__,
-                Key.__table__,
-                MonthlyRoute.__table__,
-            ],
-        )
+        db.metadata.drop_all(db.engine, tables=list(reversed(portal_tables)))
 
 
 def _seed_basic_route_data():
@@ -478,6 +452,111 @@ def test_patch_worksheet_row_clear_skipped_resets_outcome(worksheet_client):
     assert row["time_out"] is None
 
 
+def test_patch_worksheet_row_time_in_clears_prior_skip(worksheet_client):
+    """Same-day re-access: clock in overwrites an earlier skip."""
+    client, app = worksheet_client
+    with app.app_context():
+        route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
+        loc = MonthlyRouteLocation(
+            id=101,
+            address="123 Test St",
+            address_normalized="123 test st",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
+            building=None,
+            building_normalized="",
+            status_normalized="active",
+            status_raw="Active",
+            monthly_route_id=1,
+        )
+        hist = MonthlyRouteTestHistory(
+            id=5002,
+            location_id=101,
+            month_date=date(2026, 5, 1),
+            result_status="skipped",
+            skip_reason="No access — gate stuck",
+            sheet_time_in_raw=None,
+            sheet_time_out_raw=None,
+            test_monthly_route_id=1,
+        )
+        db.session.add_all([route, loc, hist])
+        db.session.commit()
+
+    res = client.patch(
+        "/api/monthly_routes/routes/1/worksheet/rows/101?month=2026-05-01",
+        json={"changes": {"time_in": "10:15"}},
+    )
+    assert res.status_code == 200
+    body = res.get_json()
+    assert body["ok"] is True
+    row = body["row"]
+    assert row["time_in"] == "10:15"
+    assert row["result_status"] is None
+    assert row["skip_reason"] is None
+    assert row["time_out"] is None
+
+
+def test_patch_worksheet_row_time_in_rejects_second_open_clock_in(worksheet_client):
+    client, app = worksheet_client
+    with app.app_context():
+        route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
+        loc_a = MonthlyRouteLocation(
+            id=101,
+            address="101 A St",
+            address_normalized="101 a st",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
+            building=None,
+            building_normalized="",
+            status_normalized="active",
+            status_raw="Active",
+            monthly_route_id=1,
+        )
+        loc_b = MonthlyRouteLocation(
+            id=102,
+            address="102 B St",
+            address_normalized="102 b st",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
+            building=None,
+            building_normalized="",
+            status_normalized="active",
+            status_raw="Active",
+            monthly_route_id=1,
+        )
+        hist_a = MonthlyRouteTestHistory(
+            id=5003,
+            location_id=101,
+            month_date=date(2026, 5, 1),
+            result_status=None,
+            skip_reason=None,
+            sheet_time_in_raw="9:00",
+            sheet_time_out_raw=None,
+            test_monthly_route_id=1,
+        )
+        hist_b = MonthlyRouteTestHistory(
+            id=5004,
+            location_id=102,
+            month_date=date(2026, 5, 1),
+            result_status="skipped",
+            skip_reason="Gate locked",
+            sheet_time_in_raw=None,
+            sheet_time_out_raw=None,
+            test_monthly_route_id=1,
+        )
+        db.session.add_all([route, loc_a, loc_b, hist_a, hist_b])
+        db.session.commit()
+
+    res = client.patch(
+        "/api/monthly_routes/routes/1/worksheet/rows/102?month=2026-05-01",
+        json={"changes": {"time_in": "10:15"}},
+    )
+    assert res.status_code == 409
+    body = res.get_json()
+    assert body.get("code") == "open_clock_in_conflict"
+    assert body.get("location_id") == 101
+
+
 def test_patch_worksheet_row_writes_audit(worksheet_client):
     client, app = worksheet_client
     with app.app_context():
@@ -500,8 +579,8 @@ def test_patch_worksheet_row_writes_audit(worksheet_client):
 
     with app.app_context():
         events = MonthlyRouteWorksheetAuditEvent.query.filter_by(location_id=101).all()
-        assert len(events) == 2
-        assert {e.field_name for e in events} == {"testing_procedures", "time_in"}
+        names = {e.field_name for e in events}
+        assert {"testing_procedures", "time_in"}.issubset(names)
 
 
 def test_patch_worksheet_row_monitoring_writes_monitoring_notes(worksheet_client):

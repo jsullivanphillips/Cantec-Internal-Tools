@@ -287,6 +287,7 @@ def portal_start_current_month_run(route_id: int):
     """Materialize (idempotently) the Pacific current-month run and worksheet rows."""
     if not session.get(SESSION_FLAG):
         return jsonify({"error": "Portal locked", "code": "portal_locked"}), 401
+    from app.monthly.worksheet_stops import ensure_worksheet_stops_for_route_month
     from app.routes.monthly_routes import (
         _current_pacific_month_first,
         _ensure_worksheet_rows_for_route_month,
@@ -303,6 +304,7 @@ def portal_start_current_month_run(route_id: int):
         create_run_if_missing=True,
     )
     assert run is not None
+    ensure_worksheet_stops_for_route_month(route_id, month_first, run)
     now = datetime.now(PACIFIC_TZ)
     if run.started_at is None:
         run.started_at = now

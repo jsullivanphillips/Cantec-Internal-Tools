@@ -78,7 +78,7 @@ export default function TechnicianPortalLayout() {
       </header>
 
       <main
-        className={`app-main flex-grow-1 min-w-0 overflow-auto${isWorksheetScreen ? ' app-main--flush' : ''}`}
+        className={`app-main flex-grow-1 min-w-0${isWorksheetScreen ? ' app-main--flush app-main--portal-worksheet' : ' overflow-auto'}`}
       >
         <Suspense
           fallback={

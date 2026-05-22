@@ -30,6 +30,12 @@ export type LinkedKeySummary = {
   barcode: number | null
 }
 
+/** Canonical monitoring company on a testing site (``monitoring_company_id`` FK). */
+export type MonitoringCompanySummary = {
+  id: number
+  name: string | null
+}
+
 /** V2 testing stop (``MonthlyTestingSite``); one worksheet row / billing line item. */
 export type TestingSiteSummary = {
   id: number
@@ -37,14 +43,26 @@ export type TestingSiteSummary = {
   sort_order: number
   label: string | null
   price_per_month: number | null
+  /** Ring detail (API also exposes ``ring`` alias). */
   ring_detail: string | null
-  facp_detail: string | null
-  testing_procedures: string | null
-  inspection_tech_notes: string | null
+  ring?: string | null
+  /** Spreadsheet / legacy key text. */
   keys: string | null
   barcode: string | null
   key_id?: number | null
   key?: LinkedKeySummary | null
+  annual_month: string | null
+  property_management_company: string | null
+  building_name: string | null
+  panel: string | null
+  panel_location: string | null
+  door_code: string | null
+  /** Legacy import column; prefer ``panel`` for new data. */
+  facp_detail: string | null
+  monitoring_company_id?: number | null
+  monitoring_company?: MonitoringCompanySummary | null
+  testing_procedures: string | null
+  inspection_tech_notes: string | null
 }
 
 export type LibraryLocation = {
@@ -286,12 +304,44 @@ export function worksheetOfficeRunActivity(run: TechnicianWorksheetRun | null | 
   return 'inactive'
 }
 
+/** V2 portal worksheet stop (``MonthlyTestingSiteMonth`` grain). */
+export type TechnicianWorksheetStop = {
+  testing_site_id: number
+  location_id: number
+  history_month_row_id: number
+  month_date: string
+  display_address: string
+  building_name: string | null
+  property_management_company: string | null
+  label: string | null
+  panel: string | null
+  panel_location: string | null
+  door_code: string | null
+  ring: string | null
+  key_number: string | null
+  annual_month: string | null
+  monitoring_company: string | null
+  monitoring_notes: string | null
+  result_status: string | null
+  skip_reason: string | null
+  testing_procedures: string | null
+  inspection_tech_notes: string | null
+  time_in: string | null
+  time_out: string | null
+  route_stop_order: number | null
+  session_route_stop_order: number | null
+  stop_number: number
+  version_updated_at: string | null
+}
+
 export type TechnicianWorksheetPayload = {
   route: MonthlyRouteSummary
   month_date: string
   /** ``null`` for routes with no locations; otherwise the run header for ``month_date``. */
   run: TechnicianWorksheetRun | null
   rows: TechnicianWorksheetRow[]
+  /** Portal worksheet (``tech_portal=1``): one stop per testing site. */
+  stops?: TechnicianWorksheetStop[]
 }
 
 export type TechnicianWorksheetAuditEvent = {
@@ -524,6 +574,126 @@ export function testingSitePayloadFromDraft(draft: TestingSiteDraft): Record<str
   return payload
 }
 
+/** Full month names for annual-month ``<select>`` options (``en-US``, UTC). */
+export const ANNUAL_MONTH_SELECT_OPTIONS = Array.from({ length: 12 }).map((_, idx) =>
+  new Intl.DateTimeFormat('en-US', {
+    month: 'long',
+    timeZone: 'UTC',
+  }).format(new Date(Date.UTC(2000, idx, 1)))
+)
+
+/**
+ * Map spreadsheet / legacy values (``Jan``, ``MAY``, ``5``, etc.) to a select option value.
+ * Returns ``''`` when unset; returns the original trimmed string when no month matches.
+ */
+export function normalizeAnnualMonthForSelect(raw: string | null | undefined): string {
+  const trimmed = (raw || '').trim()
+  if (!trimmed) return ''
+
+  const lower = trimmed.toLowerCase()
+  for (let idx = 0; idx < 12; idx += 1) {
+    const full = ANNUAL_MONTH_SELECT_OPTIONS[idx]
+    const short = new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      timeZone: 'UTC',
+    }).format(new Date(Date.UTC(2000, idx, 1)))
+    if (lower === full.toLowerCase() || lower === short.toLowerCase()) {
+      return full
+    }
+  }
+
+  const num = parseInt(trimmed, 10)
+  if (!Number.isNaN(num) && num >= 1 && num <= 12) {
+    return ANNUAL_MONTH_SELECT_OPTIONS[num - 1]
+  }
+
+  return trimmed
+}
+
+/** Edit form for an existing v2 testing stop (location detail / library modal). */
+export type TestingSiteEditForm = {
+  id: number
+  sort_order: number
+  label: string
+  keys: string
+  barcode: string
+  price_per_month: string
+  ring_detail: string
+  facp_detail: string
+  panel_location: string
+  door_code: string
+  building_name: string
+  property_management_company: string
+  annual_month: string
+  monitoring_company_id: string
+  testing_procedures: string
+  inspection_tech_notes: string
+}
+
+export function buildTestingSiteEditForm(
+  ts: TestingSiteSummary,
+  loc?: LibraryLocation | null
+): TestingSiteEditForm {
+  const annualRaw =
+    ts.annual_month?.trim() ||
+    (ts.sort_order === 0 ? loc?.annual_month?.trim() : undefined) ||
+    ''
+  return {
+    id: ts.id,
+    sort_order: ts.sort_order,
+    label: ts.label ?? '',
+    keys: ts.keys ?? '',
+    barcode: ts.barcode ?? '',
+    price_per_month: ts.price_per_month != null ? String(ts.price_per_month) : '',
+    ring_detail: (ts.ring_detail ?? ts.ring ?? '').trim(),
+    facp_detail: (ts.panel ?? ts.facp_detail ?? '').trim(),
+    panel_location: ts.panel_location ?? '',
+    door_code: ts.door_code ?? '',
+    building_name: ts.building_name ?? '',
+    property_management_company: ts.property_management_company ?? '',
+    annual_month: normalizeAnnualMonthForSelect(annualRaw),
+    monitoring_company_id:
+      ts.monitoring_company_id != null ? String(ts.monitoring_company_id) : '',
+    testing_procedures: ts.testing_procedures ?? '',
+    inspection_tech_notes: ts.inspection_tech_notes ?? '',
+  }
+}
+
+export function testingSitePayloadFromEditForm(form: TestingSiteEditForm): Record<string, unknown> {
+  const mcidRaw = form.monitoring_company_id.trim()
+  let monitoring_company_id: number | null = null
+  if (mcidRaw) {
+    const parsed = parseInt(mcidRaw, 10)
+    if (!Number.isNaN(parsed)) monitoring_company_id = parsed
+  }
+  return {
+    label: form.label.trim() || null,
+    keys: form.keys.trim() || null,
+    barcode: form.barcode.trim() || null,
+    price_per_month: form.price_per_month.trim() || null,
+    ring_detail: form.ring_detail.trim() || null,
+    facp_detail: form.facp_detail.trim() || null,
+    panel_location: form.panel_location.trim() || null,
+    door_code: form.door_code.trim() || null,
+    building_name: form.building_name.trim() || null,
+    property_management_company: form.property_management_company.trim() || null,
+    annual_month: form.annual_month.trim() || null,
+    monitoring_company_id,
+    testing_procedures: form.testing_procedures.trim() || null,
+    inspection_tech_notes: form.inspection_tech_notes.trim() || null,
+  }
+}
+
+export function sortedTestingSites(loc: LibraryLocation): TestingSiteSummary[] {
+  const sites = loc.testing_sites ?? []
+  return [...sites].sort((a, b) => a.sort_order - b.sort_order)
+}
+
+export function libraryDisplayPricePerMonth(loc: LibraryLocation): number | null {
+  if (loc.rollup_price_per_month != null) return loc.rollup_price_per_month
+  return loc.price_per_month
+}
+
 export const STATUS_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'active', label: 'Active' },
   { value: 'cancelled', label: 'Cancelled' },
@@ -642,3 +812,45 @@ export function normalizeMapCoordinates(
   if (lng >= -90 && lng <= 90 && lat >= -180 && lat <= 180) return { lat: lng, lng: lat }
   return null
 }
+
+const EXPLICIT_TIME_VALUE_RE = /^\d{1,2}:\d{1,2}(:\d{1,2})?(\s*[ap]\.?m\.?)?$/i
+
+export function looksLikeExplicitTimeValue(raw: string | null | undefined): boolean {
+  const s = (raw ?? '').trim()
+  if (!s) return false
+  return EXPLICIT_TIME_VALUE_RE.test(s)
+}
+
+/** Whether a portal stop has any recorded outcome (tested, skipped, or visit times). */
+export function stopsHaveRecordedOutcomes(stops: TechnicianWorksheetStop[]): boolean {
+  return stops.some((stop) => {
+    const rs = (stop.result_status || '').trim().toLowerCase()
+    if (rs === 'tested' || rs === 'skipped') return true
+    if ((stop.time_in || '').trim()) return true
+    if ((stop.time_out || '').trim()) return true
+    return false
+  })
+}
+
+/** Skipped for annual / annual_booked (matches office ``sheetSkipReasonIsAnnual``). */
+export function worksheetStopSkipIsAnnual(stop: TechnicianWorksheetStop): boolean {
+  if ((stop.result_status || '').trim().toLowerCase() !== 'skipped') return false
+  const reason = (stop.skip_reason || '').trim().toLowerCase()
+  if (reason === 'annual' || reason === 'annual_booked') return true
+  const tin = (stop.time_in || '').trim().toLowerCase()
+  return tin.includes('annual')
+}
+
+/** Open visit on a portal stop: clock time in, no time out, not tested/skipped. */
+export function worksheetStopIsOpenClockIn(stop: TechnicianWorksheetStop): boolean {
+  const rs = (stop.result_status || '').trim().toLowerCase()
+  if (rs === 'tested' || rs === 'skipped') return false
+  const tin = (stop.time_in || '').trim()
+  const tout = (stop.time_out || '').trim()
+  if (!tin || tout) return false
+  return looksLikeExplicitTimeValue(tin)
+}
+
+/** Shown when the technician tries to clock in while another stop is still open. */
+export const WORKSHEET_CLOCK_IN_BLOCKED_MESSAGE =
+  "Can't clock in while already clocked into another site."

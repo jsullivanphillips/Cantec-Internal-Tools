@@ -102,8 +102,10 @@ export default function TechnicianPortalRoutePage() {
   }, [load])
 
   const openWorksheetForMonth = useCallback(
-    (monthFirstIso: string) => {
-      nav(`/tech/route/${idNum}/worksheet/${encodeURIComponent(monthFirstIso)}`)
+    (monthFirstIso: string, fromPriorRun = false) => {
+      nav(`/tech/route/${idNum}/worksheet/${encodeURIComponent(monthFirstIso)}`, {
+        state: fromPriorRun ? { fromPriorRun: true } : undefined,
+      })
     },
     [idNum, nav],
   )
@@ -183,7 +185,7 @@ export default function TechnicianPortalRoutePage() {
                   as="button"
                   type="button"
                   className="text-start shadow-sm border-0 tw-portal-route-card"
-                  onClick={() => openWorksheetForMonth(run.month_date)}
+                  onClick={() => openWorksheetForMonth(run.month_date, true)}
                 >
                   <Card.Body className="d-flex align-items-center justify-content-between gap-3 py-3">
                     <div>

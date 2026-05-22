@@ -875,6 +875,8 @@ def _portal_worksheet_preview_payload(
     month_first: date,
 ) -> dict[str, object]:
     """Portal worksheet view before ``POST …/runs`` — same row shape, ``run``: null, no DB writes."""
+    from app.monthly.worksheet_stops import portal_worksheet_preview_stops
+
     locs = (
         MonthlyRouteLocation.query.options(joinedload(MonthlyRouteLocation.monitoring_company))
         .filter(MonthlyRouteLocation.monthly_route_id == route_id)
@@ -893,6 +895,7 @@ def _portal_worksheet_preview_payload(
         "month_date": month_first.isoformat(),
         "run": None,
         "rows": rows,
+        "stops": portal_worksheet_preview_stops(route_id, month_first),
     }
 
 
@@ -1016,12 +1019,16 @@ def _worksheet_payload_from_attributed_rows(
     location_count = MonthlyRouteLocation.query.filter_by(monthly_route_id=route_id).count()
     run_block = _serialize_run(run)
     if not rows:
-        return {
-            "route": _serialize_monthly_route_entity(mr, location_count=location_count),
-            "month_date": month_first.isoformat(),
-            "run": run_block,
-            "rows": [],
-        }
+        return _attach_worksheet_stops(
+            {
+                "route": _serialize_monthly_route_entity(mr, location_count=location_count),
+                "month_date": month_first.isoformat(),
+                "run": run_block,
+                "rows": [],
+            },
+            route_id,
+            month_first,
+        )
     loc_by_id = {
         loc.id: loc
         for loc in MonthlyRouteLocation.query.options(joinedload(MonthlyRouteLocation.monitoring_company))
@@ -1040,12 +1047,16 @@ def _worksheet_payload_from_attributed_rows(
         _worksheet_row_from_history(r, loc_by_id.get(int(r.location_id)), route_id=route_id)
         for r in rows_sorted
     ]
-    return {
-        "route": _serialize_monthly_route_entity(mr, location_count=location_count),
-        "month_date": month_first.isoformat(),
-        "run": run_block,
-        "rows": out_rows,
-    }
+    return _attach_worksheet_stops(
+        {
+            "route": _serialize_monthly_route_entity(mr, location_count=location_count),
+            "month_date": month_first.isoformat(),
+            "run": run_block,
+            "rows": out_rows,
+        },
+        route_id,
+        month_first,
+    )
 
 
 def _serialize_technician_worksheet_payload(
@@ -1066,12 +1077,16 @@ def _serialize_technician_worksheet_payload(
         rows = _testing_history_rows_attributed_to_route_month(route_id, month_first)
         if run is None and not rows:
             location_count = MonthlyRouteLocation.query.filter_by(monthly_route_id=route_id).count()
-            return {
-                "route": _serialize_monthly_route_entity(mr, location_count=location_count),
-                "month_date": month_first.isoformat(),
-                "run": None,
-                "rows": [],
-            }
+            return _attach_worksheet_stops(
+                {
+                    "route": _serialize_monthly_route_entity(mr, location_count=location_count),
+                    "month_date": month_first.isoformat(),
+                    "run": None,
+                    "rows": [],
+                },
+                route_id,
+                month_first,
+            )
         return _worksheet_payload_from_attributed_rows(mr, route_id, month_first, run, rows)
 
     run = _ensure_worksheet_rows_for_route_month(
@@ -1104,6 +1119,51 @@ def _normalize_ws_text(value: object) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _worksheet_row_open_clock_in(hist: MonthlyRouteTestHistory) -> bool:
+    """Technician has Time In set, no Time Out, and outcome is not tested/skipped."""
+    from app.monthly.sheet_visit_times import looks_like_sheet_clock
+
+    rs = (hist.result_status or "").strip().lower()
+    if rs in ("tested", "skipped"):
+        return False
+    tin = _normalize_ws_text(hist.sheet_time_in_raw)
+    tout = _normalize_ws_text(hist.sheet_time_out_raw)
+    if not tin or tout:
+        return False
+    return looks_like_sheet_clock(tin)
+
+
+def _patch_will_start_open_clock_in(
+    row: MonthlyRouteTestHistory,
+    changes_eff: dict[str, object],
+) -> bool:
+    """True when this patch starts (or moves) an open clock-in on ``row``."""
+    from app.monthly.sheet_visit_times import looks_like_sheet_clock
+
+    if "time_in" not in changes_eff:
+        return False
+    tin = _normalize_ws_text(changes_eff.get("time_in"))
+    if not tin or not looks_like_sheet_clock(tin):
+        return False
+    if _worksheet_row_open_clock_in(row):
+        return False
+    tout = (
+        _normalize_ws_text(changes_eff.get("time_out"))
+        if "time_out" in changes_eff
+        else _normalize_ws_text(row.sheet_time_out_raw)
+    )
+    if tout:
+        return False
+    rs = (
+        _normalize_ws_text(changes_eff.get("result_status"))
+        if "result_status" in changes_eff
+        else _normalize_ws_text(row.result_status)
+    )
+    if (rs or "").lower() == "skipped":
+        return False
+    return True
 
 
 def _next_worksheet_audit_event_id() -> int:
@@ -1700,6 +1760,44 @@ def get_monthly_route_testing_session(route_id: int):
     return jsonify(payload)
 
 
+def _worksheet_payload_includes_stops() -> bool:
+    """Portal worksheet clients receive ``stops[]`` (v2 testing-site grain)."""
+    if _portal_worksheet_lazy_request():
+        return True
+    return (request.args.get("tech_portal") or "").strip() == "1"
+
+
+def _attach_worksheet_stops(
+    payload: dict[str, object],
+    route_id: int,
+    month_first: date,
+) -> dict[str, object]:
+    if not _worksheet_payload_includes_stops():
+        return payload
+    from app.monthly.worksheet_stops import (
+        ensure_worksheet_stops_for_route_month,
+        portal_worksheet_preview_stops,
+        worksheet_stops_for_route_month,
+        worksheet_stops_from_attributed_history,
+    )
+
+    run = payload.get("run")
+    if run is None:
+        payload["stops"] = portal_worksheet_preview_stops(route_id, month_first)
+    else:
+        run_orm = MonthlyRouteRun.query.filter_by(
+            monthly_route_id=route_id,
+            month_date=month_first,
+        ).one_or_none()
+        if run_orm is not None:
+            ensure_worksheet_stops_for_route_month(route_id, month_first, run_orm)
+        stops = worksheet_stops_for_route_month(route_id, month_first)
+        if not stops and (payload.get("rows") or []):
+            stops = worksheet_stops_from_attributed_history(route_id, month_first)
+        payload["stops"] = stops
+    return payload
+
+
 def _portal_worksheet_lazy_request() -> bool:
     """Use lazy run semantics for worksheet GET/SSE (no auto ``MonthlyRouteRun``).
 
@@ -1767,38 +1865,57 @@ def stream_monthly_route_worksheet(route_id: int):
     def generate():
         last_sent: str | None = None
         yield "retry: 15000\n\n"
+        # Release the connection acquired by route-level queries; this request stays open for SSE.
+        db.session.remove()
         try:
             while True:
-                # Long-lived SSE: roll back the implicit read transaction and expire ORM state so
-                # each poll sees DB commits from other requests/workers (SQLAlchemy identity map +
-                # repeatable-read snapshots otherwise hide worksheet PATCH updates indefinitely).
-                db.session.rollback()
-                db.session.expire_all()
-                if _portal_worksheet_lazy_request():
-                    existing_run = MonthlyRouteRun.query.filter_by(
-                        monthly_route_id=route_id,
-                        month_date=month_first,
-                    ).one_or_none()
-                    if existing_run is None:
-                        token = _WORKSHEET_SSE_PORTAL_PREVIEW_TOKEN
+                try:
+                    # Long-lived SSE: roll back the implicit read transaction and expire ORM state so
+                    # each poll sees DB commits from other requests/workers (SQLAlchemy identity map +
+                    # repeatable-read snapshots otherwise hide worksheet PATCH updates indefinitely).
+                    db.session.rollback()
+                    db.session.expire_all()
+                    if _worksheet_payload_includes_stops():
+                        from app.monthly.worksheet_stops import worksheet_stops_revision_token
+
+                        existing_run = MonthlyRouteRun.query.filter_by(
+                            monthly_route_id=route_id,
+                            month_date=month_first,
+                        ).one_or_none()
+                        if existing_run is None and _portal_worksheet_lazy_request():
+                            token = _WORKSHEET_SSE_PORTAL_PREVIEW_TOKEN
+                        else:
+                            token = worksheet_stops_revision_token(route_id, month_first)
+                    elif _portal_worksheet_lazy_request():
+                        existing_run = MonthlyRouteRun.query.filter_by(
+                            monthly_route_id=route_id,
+                            month_date=month_first,
+                        ).one_or_none()
+                        if existing_run is None:
+                            token = _WORKSHEET_SSE_PORTAL_PREVIEW_TOKEN
+                        else:
+                            token = _worksheet_attributed_revision_token(route_id, month_first)
                     else:
                         token = _worksheet_attributed_revision_token(route_id, month_first)
-                else:
-                    token = _worksheet_attributed_revision_token(route_id, month_first)
-                if token is None:
-                    yield f"event: worksheet_error\ndata: {json.dumps({'error': 'Route not found'})}\n\n"
-                    break
-                if token != last_sent:
-                    if last_sent is not None:
-                        payload_out = {
-                            "revision": token,
-                            "route_id": route_id,
-                            "month_date": month_first.isoformat(),
-                        }
-                        yield f"data: {json.dumps(payload_out)}\n\n"
-                    last_sent = token
+                    if token is None:
+                        yield f"event: worksheet_error\ndata: {json.dumps({'error': 'Route not found'})}\n\n"
+                        break
+                    if token != last_sent:
+                        if last_sent is not None:
+                            payload_out = {
+                                "revision": token,
+                                "route_id": route_id,
+                                "month_date": month_first.isoformat(),
+                            }
+                            yield f"data: {json.dumps(payload_out)}\n\n"
+                        last_sent = token
+                finally:
+                    # Return connection to the pool between polls; otherwise each open worksheet tab
+                    # holds one pool slot until the client disconnects (QueuePool timeout on other APIs).
+                    db.session.remove()
                 time.sleep(poll_sec)
         except GeneratorExit:
+            db.session.remove()
             return
 
     return Response(
@@ -1930,6 +2047,17 @@ def patch_monthly_route_worksheet_row(route_id: int, location_id: int):
         changes_eff["time_in"] = None
         changes_eff["time_out"] = None
 
+    # Clocking in after a skip (same-day re-access) clears the skip unless this
+    # patch explicitly sets result_status to skipped again.
+    if "time_in" in changes_eff and _normalize_ws_text(changes_eff.get("time_in")) is not None:
+        if _normalize_ws_text(changes_eff.get("result_status")) != "skipped":
+            if "result_status" not in changes:
+                changes_eff["result_status"] = None
+            if "skip_reason" not in changes:
+                changes_eff["skip_reason"] = None
+            if "time_out" not in changes:
+                changes_eff["time_out"] = None
+
     if "result_status" in changes_eff:
         rs = _normalize_ws_text(changes_eff.get("result_status"))
         if rs is not None and rs not in {"tested", "skipped"}:
@@ -1938,6 +2066,30 @@ def patch_monthly_route_worksheet_row(route_id: int, location_id: int):
         merged_skip = _normalize_ws_text(changes_eff.get("skip_reason"))
         if merged_skip is None and row.skip_reason is None:
             return jsonify({"error": "skip_reason is required when result_status is skipped"}), 400
+
+    if _patch_will_start_open_clock_in(row, changes_eff):
+        other_rows = (
+            db.session.query(MonthlyRouteTestHistory)
+            .join(
+                MonthlyRouteLocation,
+                MonthlyRouteLocation.id == MonthlyRouteTestHistory.location_id,
+            )
+            .filter(
+                MonthlyRouteLocation.monthly_route_id == route_id,
+                MonthlyRouteTestHistory.month_date == month_first,
+                MonthlyRouteTestHistory.location_id != location_id,
+            )
+            .all()
+        )
+        for other in other_rows:
+            if _worksheet_row_open_clock_in(other):
+                return jsonify(
+                    {
+                        "error": "Clock out of the current stop before clocking in elsewhere.",
+                        "code": "open_clock_in_conflict",
+                        "location_id": other.location_id,
+                    }
+                ), 409
 
     actor_username = _session_username_clean()
     actor_name = actor_username
@@ -2010,6 +2162,247 @@ def patch_monthly_route_worksheet_row(route_id: int, location_id: int):
     db.session.refresh(row)
     db.session.refresh(loc)
     return jsonify({"ok": True, "row": _worksheet_row_from_history(row, loc, route_id=route_id)})
+
+
+@monthly_routes_bp.patch(
+    "/api/monthly_routes/routes/<int:route_id>/worksheet/stops/<int:testing_site_id>"
+)
+def patch_monthly_route_worksheet_stop(route_id: int, testing_site_id: int):
+    """PATCH v2 portal worksheet stop (``MonthlyTestingSiteMonth``)."""
+    from app.monthly.worksheet_stops import (
+        STOP_PATCH_FIELD_MAP,
+        find_open_clock_in_stop_on_route,
+        is_primary_stop,
+        load_stop_for_patch,
+        patch_will_start_open_clock_in,
+        serialize_worksheet_stop,
+        sync_primary_history_from_stop,
+        worksheet_stops_for_route_month,
+    )
+
+    month_raw = (request.args.get("month") or "").strip()
+    month_dt = _parse_month(month_raw)
+    if month_dt is None:
+        return jsonify({"error": "Invalid or missing month query param (use YYYY-MM-DD, first of month)"}), 400
+    month_first = date(month_dt.year, month_dt.month, 1)
+    payload = request.get_json(silent=True) or {}
+    if not isinstance(payload, dict):
+        return jsonify({"error": "JSON object payload required"}), 400
+    changes = payload.get("changes")
+    if not isinstance(changes, dict) or not changes:
+        return jsonify({"error": "changes object is required"}), 400
+
+    mtsm, ts, loc = load_stop_for_patch(route_id, testing_site_id, month_first)
+    if ts is None or loc is None:
+        return jsonify({"error": "Testing site not found"}), 404
+    if mtsm is None:
+        return jsonify({"error": "Worksheet stop not found for testing site/month"}), 404
+    if mtsm.test_monthly_route_id is not None and int(mtsm.test_monthly_route_id) != int(route_id):
+        return jsonify({"error": "Worksheet stop does not belong to this route"}), 404
+
+    run_for_month = MonthlyRouteRun.query.filter_by(
+        monthly_route_id=route_id,
+        month_date=month_first,
+    ).one_or_none()
+    if run_for_month is not None and _run_explicitly_completed(run_for_month):
+        outcome_fields = {"result_status", "skip_reason"}
+        if outcome_fields.intersection(changes.keys()):
+            return jsonify(
+                {
+                    "error": "This run is completed; reopen it before changing tested/skipped outcomes.",
+                    "code": "run_completed_outcome_locked",
+                }
+            ), 409
+
+    outcome_fields_mut = {"result_status", "skip_reason"}
+    staff_browser_outcome_lock = (
+        session.get("authenticated")
+        and outcome_fields_mut.intersection(changes.keys())
+        and (request.args.get("tech_portal") or "").strip() != "1"
+    )
+    if (
+        run_for_month is not None
+        and _run_field_active(run_for_month)
+        and staff_browser_outcome_lock
+    ):
+        return jsonify(
+            {
+                "error": "Technicians are actively logging this run; office cannot change tested/skipped outcomes until the run completes or is reset.",
+                "code": "run_active_office_outcome_locked",
+            }
+        ), 409
+
+    client_mutation_id = _normalize_ws_text(payload.get("client_mutation_id"))
+    if client_mutation_id:
+        existing_mutation = MonthlyRouteWorksheetAuditEvent.query.filter_by(
+            client_mutation_id=client_mutation_id
+        ).first()
+        if existing_mutation is not None:
+            stop_payload = serialize_worksheet_stop(
+                ts,
+                loc,
+                mtsm,
+                route_id=route_id,
+                month_first=month_first,
+                stop_number=0,
+            )
+            for idx, s in enumerate(worksheet_stops_for_route_month(route_id, month_first), start=1):
+                if int(s["testing_site_id"]) == int(testing_site_id):
+                    stop_payload["stop_number"] = idx
+                    break
+            return jsonify({"ok": True, "deduped": True, "stop": stop_payload})
+
+    known_fields = set(STOP_PATCH_FIELD_MAP.keys())
+    unknown = [k for k in changes.keys() if k not in known_fields]
+    if unknown:
+        return jsonify({"error": f"Unsupported worksheet fields: {', '.join(sorted(unknown))}"}), 400
+
+    changes_eff: dict[str, object] = dict(changes)
+    if "result_status" in changes_eff and _normalize_ws_text(changes_eff.get("result_status")) is None:
+        changes_eff["skip_reason"] = None
+        changes_eff["time_in"] = None
+        changes_eff["time_out"] = None
+
+    if "time_in" in changes_eff and _normalize_ws_text(changes_eff.get("time_in")) is not None:
+        if _normalize_ws_text(changes_eff.get("result_status")) != "skipped":
+            if "result_status" not in changes:
+                changes_eff["result_status"] = None
+            if "skip_reason" not in changes:
+                changes_eff["skip_reason"] = None
+            if "time_out" not in changes:
+                changes_eff["time_out"] = None
+
+    if "result_status" in changes_eff:
+        rs = _normalize_ws_text(changes_eff.get("result_status"))
+        if rs is not None and rs not in {"tested", "skipped"}:
+            return jsonify({"error": "result_status must be tested, skipped, or null"}), 400
+    if _normalize_ws_text(changes_eff.get("result_status")) == "skipped":
+        merged_skip = _normalize_ws_text(changes_eff.get("skip_reason"))
+        if merged_skip is None and mtsm.skip_reason is None:
+            return jsonify({"error": "skip_reason is required when result_status is skipped"}), 400
+
+    if patch_will_start_open_clock_in(mtsm, changes_eff):
+        conflict = find_open_clock_in_stop_on_route(
+            route_id,
+            month_first,
+            exclude_testing_site_id=testing_site_id,
+        )
+        if conflict is not None:
+            return jsonify(
+                {
+                    "error": "Clock out of the current stop before clocking in elsewhere.",
+                    "code": "open_clock_in_conflict",
+                    "testing_site_id": int(conflict.monthly_testing_site_id),
+                }
+            ), 409
+
+    actor_username = _session_username_clean()
+    actor_name = actor_username
+    source = _normalize_ws_text(payload.get("source")) or "technician_app"
+    client_mutated_at = _parse_iso_dt(payload.get("client_mutated_at"))
+    next_audit_id = _next_worksheet_audit_event_id()
+
+    changed_any = False
+    for field_name, attr_name in STOP_PATCH_FIELD_MAP.items():
+        if field_name not in changes_eff:
+            continue
+        old_val = getattr(mtsm, attr_name)
+        new_val = _normalize_ws_text(changes_eff.get(field_name))
+        if field_name == "panel" and new_val is not None:
+            mtsm.panel = new_val
+            mtsm.facp = new_val
+            if old_val != new_val:
+                changed_any = True
+            continue
+        if old_val == new_val:
+            continue
+        setattr(mtsm, attr_name, new_val)
+        changed_any = True
+
+    if (mtsm.result_status or "").strip().lower() == "skipped" and not _normalize_ws_text(mtsm.skip_reason):
+        db.session.rollback()
+        return jsonify({"error": "skip_reason is required when result_status is skipped"}), 400
+
+    if (mtsm.result_status or "").strip().lower() != "skipped":
+        mtsm.skip_reason = None
+
+    hist: MonthlyRouteTestHistory | None = None
+    if is_primary_stop(ts, loc):
+        hist = sync_primary_history_from_stop(mtsm, loc, route_id, month_first)
+
+    audit_field_map = {
+        "result_status": "result_status",
+        "skip_reason": "skip_reason",
+        "testing_procedures": "testing_procedures",
+        "inspection_tech_notes": "inspection_tech_notes",
+        "time_in": "sheet_time_in_raw",
+        "time_out": "sheet_time_out_raw",
+        "annual_month": "annual_month",
+        "ring": "ring",
+        "key_number": "key_number",
+        "panel": "facp",
+        "facp": "facp",
+        "monitoring_notes": "monitoring_notes",
+    }
+
+    if changed_any and hist is not None:
+        for field_name in changes_eff:
+            if field_name not in STOP_PATCH_FIELD_MAP:
+                continue
+            hist_attr = audit_field_map.get(field_name, STOP_PATCH_FIELD_MAP[field_name])
+            old_val = getattr(hist, hist_attr)
+            new_val = getattr(mtsm, STOP_PATCH_FIELD_MAP[field_name])
+            if field_name == "panel":
+                old_val = hist.facp
+                new_val = _normalize_ws_text(mtsm.panel) or _normalize_ws_text(mtsm.facp)
+            if field_name == "monitoring_notes":
+                new_val = mtsm.monitoring_notes
+            audit_name = "time_in" if field_name == "time_in" else (
+                "time_out" if field_name == "time_out" else (
+                    "facp" if field_name == "panel" else field_name
+                )
+            )
+            if old_val == new_val:
+                continue
+            db.session.add(
+                MonthlyRouteWorksheetAuditEvent(
+                    id=next_audit_id,
+                    monthly_route_id=route_id,
+                    location_id=int(loc.id),
+                    history_row_id=int(hist.id),
+                    month_date=month_first,
+                    field_name=audit_name,
+                    old_value=old_val,
+                    new_value=new_val,
+                    source=source,
+                    changed_by_username=actor_username,
+                    changed_by_name=actor_name,
+                    client_mutation_id=client_mutation_id if len(changes_eff) == 1 else None,
+                    changed_at_client=client_mutated_at,
+                )
+            )
+            next_audit_id += 1
+
+    if changed_any:
+        db.session.commit()
+    else:
+        db.session.rollback()
+
+    db.session.refresh(mtsm)
+    db.session.refresh(ts)
+    stop_payload = serialize_worksheet_stop(
+        ts,
+        loc,
+        mtsm,
+        route_id=route_id,
+        month_first=month_first,
+        stop_number=0,
+    )
+    for idx, s in enumerate(worksheet_stops_for_route_month(route_id, month_first), start=1):
+        if int(s["testing_site_id"]) == int(testing_site_id):
+            stop_payload["stop_number"] = idx
+            break
+    return jsonify({"ok": True, "stop": stop_payload})
 
 
 @monthly_routes_bp.post("/api/monthly_routes/routes/<int:route_id>/worksheet/reset_run")
@@ -2118,6 +2511,10 @@ def post_monthly_route_worksheet_reset_run(route_id: int):
     if run is not None:
         run.started_at = None
 
+    from app.monthly.worksheet_stops import reset_worksheet_stops_for_route_month
+
+    cleared_stops, preserved_annual_stops = reset_worksheet_stops_for_route_month(route_id, month_first)
+
     db.session.commit()
 
     payload_out = _serialize_technician_worksheet_payload(
@@ -2133,6 +2530,8 @@ def post_monthly_route_worksheet_reset_run(route_id: int):
             "ok": True,
             "cleared_rows": cleared,
             "preserved_annual_skip_rows": preserved_annual,
+            "cleared_stops": cleared_stops,
+            "preserved_annual_skip_stops": preserved_annual_stops,
             "worksheet": payload_out,
         }
     )

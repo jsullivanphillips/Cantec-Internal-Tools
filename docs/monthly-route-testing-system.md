@@ -70,8 +70,8 @@ ORM definitions: `app/db_models.py` (search `class Monthly`).
 | Model | Table | Role |
 |--------|--------|------|
 | `MonthlySite` | `monthly_site` | Billing anchor; **1:1** with legacy location via `legacy_monthly_route_location_id` |
-| `MonthlyTestingSite` | `monthly_testing_site` | Physical testing stop (`sort_order`, label, price, FACP/procedures/notes, **canonical `key_id`**) |
-| `MonthlyTestingSiteMonth` | `monthly_testing_site_month` | Parallel to `MonthlyRouteTestHistory` at testing-site grain — **table exists; not used in app code** |
+| `MonthlyTestingSite` | `monthly_testing_site` | Per-stop master fields: ring, key (`keys`/`key_id`), annual month, PMC, building name, panel + panel location, door code, monitoring company FK, procedures/notes, price |
+| `MonthlyTestingSiteMonth` | `monthly_testing_site_month` | Run-scoped snapshots of the same display fields (plus time in/out, result) — **table extended; worksheet still uses location history until portal UI cutover** |
 | `MonthlyKeyBridge` | `monthly_key_bridge` | Archive of key↔site links before wipes; **no FK** to wiped location rows; **RESTRICT** FK to `keys` |
 
 ### 3.3 Keys
@@ -108,7 +108,7 @@ Primary API for library, routes, worksheet, CSV import, comments.
 |------|----------------|
 | Library | `GET/POST/PATCH/DELETE /api/monthly_routes/library[...]` — filters: `q`, `route`, `skipped_any`, `annual_tested_conflict`, month range |
 | Routes | `GET /api/monthly_routes/routes`, `GET .../routes/<id>` |
-| Worksheet | `GET .../worksheet`, `GET .../worksheet/stream` (SSE), `PATCH .../worksheet/rows/<location_id>`, `POST .../worksheet/reset_run` |
+| Worksheet | `GET .../worksheet`, `GET .../worksheet/stream` (SSE), `PATCH .../worksheet/rows/<location_id>`, `PATCH .../worksheet/stops/<testing_site_id>` (portal v2), `POST .../worksheet/reset_run` |
 | Runs | `POST .../runs/import_csv`, `POST .../runs/complete`, `POST .../runs/reopen` |
 | Other | `PUT .../location_order`, comments, geocode, `GET .../testing_session` |
 
@@ -133,7 +133,7 @@ Delegates most mutations to `monthly_routes`, then augments with v2:
 |----------|---------|
 | `POST /api/technician_portal/auth` | PIN gate (`TECHNICIAN_PORTAL_PIN`) |
 | `GET /api/technician_portal/routes_today` | Routes matching today’s weekday/occurrence |
-| `POST /api/technician_portal/routes/<id>/runs` | Start run + materialize worksheet rows |
+| `POST /api/technician_portal/routes/<id>/runs` | Start run + materialize history rows and v2 stop months |
 | `POST .../runs/complete`, `.../runs/reopen` | Portal run lifecycle |
 
 Auth exemptions: `app/api_auth_gate.py` — portal + regex-matched worksheet paths when `tech_portal_unlocked` session flag is set.
@@ -221,7 +221,10 @@ Many earlier migrations scaffolded routes, runs, history, inspection fields, coo
 | `frontend/src/pages/MonthlyRouteDetailPage.tsx` | Route detail + worksheet |
 | `frontend/src/pages/MonthlyRoutesMapPage.tsx` | Map view |
 | `frontend/src/pages/MonthlyLocationDetailPage.tsx` | Location detail |
-| `frontend/src/pages/TechnicianWorksheetPage.tsx` | Field worksheet + SSE |
+| `frontend/src/pages/TechnicianWorksheetPage.tsx` | Office/staff worksheet table + SSE |
+| `frontend/src/pages/TechnicianPortalWorksheetPage.tsx` | Portal worksheet (one stop at a time, v2 `stops[]`) |
+| `frontend/src/features/monthlyRoutes/usePortalWorksheet.ts` | Portal load/sync/SSE/run lifecycle hook |
+| `app/monthly/worksheet_stops.py` | Materialize/serialize/PATCH helpers for portal stops; portal reads overlay **v2 master** panel/location from ``MonthlyTestingSite`` (run-month rows keep outcomes only) |
 | `frontend/src/features/monthlyRoutes/monthlyRoutesShared.ts` | Shared types/helpers |
 | `frontend/src/features/monthlyRoutes/worksheetOfflineStore.ts` | Offline worksheet support |
 
@@ -234,6 +237,7 @@ Technician flow: `/tech` → `/tech/start` → `/tech/route/:routeId/worksheet/:
 | Test file | Validates |
 |-----------|-----------|
 | `tests/test_monthly_worksheet_api.py` | Worksheet GET/PATCH, audit, reset, run complete/lock, portal lazy vs staff auto-run, SSE, hybrid `tech_portal=1` |
+| `tests/test_worksheet_stops_api.py` | Portal `stops[]`, materialize on start run, PATCH stop, clock-in conflict, skip→clock-in |
 | `tests/test_monthly_sites_v2.py` | v2 sync, dual-write keys, testing-site CRUD API |
 | `tests/test_monthly_key_bridge_wipe.py` | Bridge backfill; wipe keeps routes; post-wipe API smoke |
 | `tests/test_monthly_route_sync.py` | TEST DAY → route FK |
@@ -253,12 +257,17 @@ Tests often use minimal SQLite table subsets with explicit BIGINT id assignment.
   → GET /api/technician_portal/routes_today
   → POST /api/technician_portal/routes/:id/runs
        → MonthlyRouteRun (started_at set)
-       → materialize MonthlyRouteTestHistory rows
+       → materialize MonthlyRouteTestHistory rows + MonthlyTestingSiteMonth stops
   → GET /api/monthly_routes/routes/:id/worksheet?month=...&tech_portal=1
-  → PATCH .../worksheet/rows/:location_id
-       → history + audit; mirror to location if latest run
+       → ``stops[]`` (v2 testing-site grain); ``rows[]`` still returned for compatibility
+  → PATCH .../worksheet/stops/:testing_site_id
+       → MonthlyTestingSiteMonth + dual-write primary location history (audit FK)
   → POST portal .../runs/complete
 ```
+
+**Portal vs office worksheet:** Field technicians use `TechnicianPortalWorksheetPage` at `/tech/route/:routeId/worksheet/:monthIso` (stop-by-stop UI). Office staff keep `TechnicianWorksheetPage` (location-grain table) until a later office cutover.
+
+**Dual-write (transition):** Primary testing site PATCH outcomes sync to `MonthlyRouteTestHistory` for that location so worksheet audit events keep `history_row_id` and office `rows[]` stay roughly aligned for single-panel sites.
 
 ### Historical worksheet fidelity (non-current months)
 
@@ -275,13 +284,42 @@ Tests often use minimal SQLite table subsets with explicit BIGINT id assignment.
 - **Worksheet PATCH** mirrors procedure/note edits onto `MonthlyRouteLocation` (and primary v2 testing site when present) only when the patched month is the latest run for that location; older months stay on the history row only.
 - Helper module: `app/monthly/history_sheet_notes.py`.
 
+### Per-testing-site display fields (2026-05)
+
+Master data lives on **`MonthlyTestingSite`** (migration `z4a5b6c7d8e9`):
+
+| Label | Column(s) |
+|-------|-----------|
+| Ring | `ring_detail` |
+| Key | `keys`, `key_id`, `barcode` |
+| Annual | `annual_month` |
+| Property management company | `property_management_company` |
+| Building name (if any) | `building_name` |
+| Panel | `panel` (legacy `facp_detail` kept in sync) |
+| Panel location | `panel_location` |
+| Door code (if any) | `door_code` |
+| Monitoring company | `monitoring_company_id` → `monitoring_company` |
+
+Run-month copies: **`MonthlyTestingSiteMonth`** (`panel`, `panel_location`, `door_code`, `building_name`, `property_management_company`, plus existing ring/key/annual/monitoring_notes).
+
+- API: `PATCH /api/monthly_sites/testing_sites/<id>` accepts the fields above (`ring` / `key` accepted as aliases for `ring_detail` / `keys`).
+- Backfill: `python -m app.scripts.backfill_testing_site_display_fields`
+- Field map for future CSV: `app/monthly/testing_site_fields.py`
+
+Backfill portal stop months from attributed history:
+
+- `python -m app.scripts.backfill_worksheet_stop_months`
+- `python -m app.scripts.backfill_worksheet_stop_months --execute`
+
+**Planned next:** office worksheet on `stops[]`; route CSV column mapping into `MonthlyTestingSiteMonth` fields; audit FK on `monthly_testing_site_month_id` (drop dual-write).
+
 ---
 
 ## 12. Known gaps and active work
 
-1. **`MonthlyTestingSiteMonth` unused** — Worksheet remains **one row per location**, not per testing site. Multi-panel sites are modeled in the library only.
+1. **Worksheet grain** — Portal field worksheet uses **one stop per testing site** (`MonthlyTestingSiteMonth`). Office worksheet still **one row per location** (`MonthlyRouteTestHistory`).
 
-2. **Dual schema cutover incomplete** — Comments in `monthly_sites.py`: “dual schema until cutover completes.” Legacy owns location-level worksheet fields; v2 owns testing-site fields and rollup pricing.
+2. **Dual schema cutover incomplete** — Legacy `MonthlyRouteLocation` still owns library billing fields (address, status, route assignment, spreadsheet notes). V2 `MonthlyTestingSite` owns per-stop display fields (ring, keys, panel, procedures, price). **Location detail + edit modal** (`MonthlyLocationDetailPage`, `MonthlyLocationLibraryModal`) read/write v2 stops via `GET/PATCH /api/monthly_sites/testing_sites/:id`; primary stop edits dual-write back to legacy for sheet parity.
 
 3. **Portal identity** — No per-tech identity in v1 portal; audit uses `source='technician_app'`.
 
@@ -300,7 +338,14 @@ Tests often use minimal SQLite table subsets with explicit BIGINT id assignment.
 | `app/routes/monthly_sites.py` | V2 API wrapper |
 | `app/routes/technician_portal.py` | PIN portal |
 | `app/routes/monthly_specialists.py` | Specialist snapshots |
-| `app/monthly/monthly_sites_sync.py` | V2 scaffold + dual-write |
+| `app/monthly/monthly_sites_sync.py` | V2 scaffold + dual-write (`sync_testing_sites_from_legacy`, `push_primary_testing_site_display_to_legacy`) |
+| `frontend/src/pages/MonthlyLocationDetailPage.tsx` | Library location detail (v2 testing stops section) |
+| `frontend/src/features/monthlyRoutes/MonthlyLocationLibraryModal.tsx` | Edit billing + v2 testing stops |
+| `frontend/src/features/monthlyRoutes/TestingSiteFieldsSection.tsx` | Shared view/edit fields for a testing stop |
+| `app/monthly/testing_site_fields.py` | Canonical field names for API/CSV |
+| `app/scripts/backfill_testing_site_display_fields.py` | Backfill testing sites from legacy locations |
+| `app/scripts/backfill_worksheet_stop_months.py` | Backfill `MonthlyTestingSiteMonth` from attributed history |
+| `migrations/versions/z4a5b6c7d8e9_testing_site_display_fields.py` | Per-stop display columns |
 | `app/monthly/route_sync.py` | TEST DAY → route FK |
 | `app/monthly/test_day.py` | TEST DAY parser |
 | `app/monthly/key_resolve.py` | Key FK resolution |
@@ -313,4 +358,4 @@ Tests often use minimal SQLite table subsets with explicit BIGINT id assignment.
 
 ## 14. Summary one-liner
 
-**Route-scheduled monthly fire-alarm testing ledger:** Excel routes → Postgres routes; sites in a library; each month technicians fill **run-scoped history rows** per **location** while the office manages the library and imports sheets. **V2** adds multi-stop sites and canonical keys on testing sites, with **`monthly_key_bridge`** protecting key associations across wipes — but the **worksheet engine is still legacy location × month**.
+**Route-scheduled monthly fire-alarm testing ledger:** Excel routes → Postgres routes; sites in a library; each month technicians fill **run-scoped history rows** per **location** (office) and **stop months** per **testing site** (portal). **V2** adds multi-stop sites and canonical keys on testing sites, with **`monthly_key_bridge`** protecting key associations across wipes.

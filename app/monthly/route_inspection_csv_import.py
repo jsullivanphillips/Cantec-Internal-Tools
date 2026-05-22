@@ -6,7 +6,7 @@ Parses the per-route, per-month "MONTHLY BELL TESTING" sheet (preamble with
 header). Auto-detects route number and month from the preamble, matches each
 row to a ``MonthlyRouteLocation`` via canonical street + PMC + building, and
 upserts a per-stop ``MonthlyRouteTestHistory`` row scoped to the resolved
-``MonthlyRouteRun``. Snapshot fields (``facp``, ``ring``, ``key_number``,
+``MonthlyRouteRun``. Snapshot fields (``facp`` panel type, ``ring``, ``key_number``,
 ``annual_month``, ``testing_procedures``, ``inspection_tech_notes``) are
 written onto the history row so the run keeps a faithful copy of what was
 true at the time, even when the library "current" later changes. Sheet tails
@@ -41,6 +41,7 @@ from app.db_models import (
     MonthlyRouteTestHistory,
     db,
 )
+from app.monthly.monthly_sites_sync import apply_panel_fields_to_primary_testing_site
 from app.monthly.sheet_visit_times import analyze_sheet_time_cells
 
 LOG = logging.getLogger("route_inspection_csv_import")
@@ -459,6 +460,65 @@ def _clean_multiline(value: str | None) -> str | None:
         return None
     text = value.replace("\r\n", "\n").replace("\r", "\n").strip()
     return text or None
+
+
+_PANEL_LINE_RE = re.compile(r"^PANEL:\s*", re.IGNORECASE)
+_LOCATION_LINE_RE = re.compile(r"^LOCATION:\s*", re.IGNORECASE)
+_PANEL_LOCATION_MAX_LEN = 255
+
+
+def parse_facp_panel_fields(raw: str | None) -> tuple[str | None, str | None]:
+    """Split sheet ``FACP`` cell into panel type (``PANEL:``) and ``LOCATION:`` lines.
+
+    Technician route CSVs (e.g. ``R1 - 1st Monday - Pac Pro 1.csv``) use::
+
+        PANEL: PACPRO P24A
+        LOCATION: Basement North East Electrical Room in laundry room.
+
+    When neither prefix is present, the whole cell is treated as panel text (legacy sheets).
+    """
+    text = _clean_multiline(raw)
+    if not text:
+        return None, None
+
+    lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
+    if not lines:
+        return None, None
+
+    has_panel = any(_PANEL_LINE_RE.match(ln) for ln in lines)
+    has_location = any(_LOCATION_LINE_RE.match(ln) for ln in lines)
+    if not has_panel and not has_location:
+        return text, None
+
+    panel_parts: list[str] = []
+    location_parts: list[str] = []
+    section: str | None = None
+
+    for line in lines:
+        if _PANEL_LINE_RE.match(line):
+            section = "panel"
+            rest = _PANEL_LINE_RE.sub("", line, count=1).strip()
+            if rest:
+                panel_parts.append(rest)
+            continue
+        if _LOCATION_LINE_RE.match(line):
+            section = "location"
+            rest = _LOCATION_LINE_RE.sub("", line, count=1).strip()
+            if rest:
+                location_parts.append(rest)
+            continue
+        if section == "panel":
+            panel_parts.append(line)
+        elif section == "location":
+            location_parts.append(line)
+        else:
+            panel_parts.append(line)
+
+    panel = _clean_multiline("\n".join(panel_parts)) if panel_parts else None
+    location = _clean_multiline("\n".join(location_parts)) if location_parts else None
+    if location and len(location) > _PANEL_LOCATION_MAX_LEN:
+        location = location[:_PANEL_LOCATION_MAX_LEN].rstrip()
+    return panel, location
 
 
 _ROUTE_NUMBER_RE = re.compile(r"route\s+(\d+)", re.IGNORECASE)
@@ -970,7 +1030,8 @@ def run_route_inspection_csv_import(
         annual = _clean_text(_row_get_alias(row, _ANNUAL_OR_MONTH_ALIASES))
         ring_detail = _clean_multiline(_row_get_alias(row, _RING_OR_ACCESS_ALIASES))
         keys_text = _clean_multiline(_row_get_alias(row, _KEY_ALIASES))
-        facp_detail = _clean_multiline(_row_get_alias(row, _FACP_ALIASES))
+        facp_cell = _row_get_alias(row, _FACP_ALIASES)
+        panel_text, panel_location_text = parse_facp_panel_fields(facp_cell)
         monitoring_cell = _row_get_alias(row, _MONITORING_ALIASES)
         monitoring_notes = _clean_multiline(monitoring_cell)
         testing_procedures = _clean_multiline(
@@ -984,8 +1045,13 @@ def run_route_inspection_csv_import(
         loc.annual_month = annual
         loc.ring_detail = ring_detail
         loc.keys = keys_text
-        loc.facp_detail = facp_detail
         from app.monthly.history_sheet_notes import is_latest_history_month_for_location
+
+        apply_panel_fields_to_primary_testing_site(
+            loc,
+            panel=panel_text,
+            panel_location=panel_location_text,
+        )
 
         if is_latest_history_month_for_location(int(loc.id), month_date):
             loc.testing_procedures = testing_procedures
@@ -1051,7 +1117,7 @@ def run_route_inspection_csv_import(
             sheet_time_out_raw=upsert_time_out,
             test_monthly_route_id=int(route.id),
             session_route_stop_order=stop_order,
-            facp=facp_detail,
+            facp=panel_text,
             ring=ring_detail,
             key_number=keys_text,
             annual_month=annual,

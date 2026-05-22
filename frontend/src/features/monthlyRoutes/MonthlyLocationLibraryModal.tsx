@@ -4,20 +4,21 @@ import { Link } from 'react-router-dom'
 import { Button, Form, Modal } from 'react-bootstrap'
 import { apiJson } from '../../lib/apiClient'
 import RouteLibraryLink from './RouteLibraryLink'
+import TestingSiteFieldsSection from './TestingSiteFieldsSection'
 import {
+  ANNUAL_MONTH_SELECT_OPTIONS,
   STATUS_OPTIONS,
+  buildTestingSiteEditForm,
   libraryKeycodeDisplay,
+  normalizeAnnualMonthForSelect,
+  sortedTestingSites,
+  testingSitePayloadFromEditForm,
   type LibraryLocation,
+  type MonthlyLocationDetailPayload,
+  type TestingSiteEditForm,
 } from './monthlyRoutesShared'
 
 const LIBRARY_DETAIL_MODAL_TITLE_ID = 'library-detail-modal-title'
-
-const MONTH_NAME_OPTIONS = Array.from({ length: 12 }).map((_, idx) =>
-  new Intl.DateTimeFormat('en-US', {
-    month: 'long',
-    timeZone: 'UTC',
-  }).format(new Date(Date.UTC(2000, idx, 1)))
-)
 
 const ROUTES_MODAL_SHELL_STYLE: CSSProperties = {
   borderRadius: '1.6rem',
@@ -143,7 +144,7 @@ function buildEditForm(loc: LibraryLocation): LocationEditForm {
     status_raw: normalizeStatusOption(loc.status_raw || loc.status_normalized || ''),
     keys: loc.keys || '',
     test_day: loc.test_day || '',
-    annual_month: loc.annual_month || '',
+    annual_month: normalizeAnnualMonthForSelect(loc.annual_month),
   }
 }
 
@@ -188,6 +189,7 @@ export default function MonthlyLocationLibraryModal({
   const [workingLoc, setWorkingLoc] = useState<LibraryLocation | null>(location)
   const [isEditMode, setIsEditMode] = useState(false)
   const [editForm, setEditForm] = useState<LocationEditForm | null>(null)
+  const [testingSiteForms, setTestingSiteForms] = useState<TestingSiteEditForm[]>([])
   const [saveError, setSaveError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
@@ -203,6 +205,7 @@ export default function MonthlyLocationLibraryModal({
     if (!location) {
       setIsEditMode(false)
       setEditForm(null)
+      setTestingSiteForms([])
       hadLocationPropRef.current = false
       return
     }
@@ -214,9 +217,13 @@ export default function MonthlyLocationLibraryModal({
       if (openInEditMode) {
         setIsEditMode(true)
         setEditForm(buildEditForm(location))
+        setTestingSiteForms(
+          sortedTestingSites(location).map((site) => buildTestingSiteEditForm(site, location))
+        )
       } else {
         setIsEditMode(false)
         setEditForm(null)
+        setTestingSiteForms([])
       }
     }
   }, [location, openInEditMode])
@@ -225,9 +232,13 @@ export default function MonthlyLocationLibraryModal({
 
   const loc = workingLoc
 
+  const testingSites = sortedTestingSites(loc)
+  const usesV2Stops = testingSites.length > 0
+
   function closeModal() {
     setIsEditMode(false)
     setEditForm(null)
+    setTestingSiteForms([])
     setSaveError(null)
     setIsSaving(false)
     onHide()
@@ -235,8 +246,15 @@ export default function MonthlyLocationLibraryModal({
 
   function beginEdit() {
     setEditForm(buildEditForm(loc))
+    setTestingSiteForms(testingSites.map((site) => buildTestingSiteEditForm(site, loc)))
     setIsEditMode(true)
     setSaveError(null)
+  }
+
+  function updateTestingSiteForm(siteId: number, patch: Partial<TestingSiteEditForm>) {
+    setTestingSiteForms((prev) =>
+      prev.map((row) => (row.id === siteId ? { ...row, ...patch } : row))
+    )
   }
 
   function updateEditField(field: keyof LocationEditForm, value: string) {
@@ -248,29 +266,44 @@ export default function MonthlyLocationLibraryModal({
     setIsSaving(true)
     setSaveError(null)
     try {
-      const response = await apiJson<{ location: LibraryLocation }>(
-        `/api/monthly_sites/library/${loc.id}`,
-        {
+      const locationBody: Record<string, unknown> = {
+        address: editForm.address,
+        notes: editForm.notes,
+        area: editForm.area,
+        start_up_date: editForm.start_up_date || null,
+        status_raw: editForm.status_raw,
+        test_day: editForm.test_day,
+      }
+      if (!usesV2Stops) {
+        Object.assign(locationBody, {
+          property_management_company: editForm.property_management_company,
+          building: editForm.building,
+          price_per_month: editForm.price_per_month.trim() ? editForm.price_per_month.trim() : null,
+          keys: editForm.keys,
+          annual_month: editForm.annual_month,
+        })
+      }
+
+      await apiJson<{ location: LibraryLocation }>(`/api/monthly_sites/library/${loc.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(locationBody),
+      })
+
+      for (const tsForm of testingSiteForms) {
+        await apiJson(`/api/monthly_sites/testing_sites/${tsForm.id}`, {
           method: 'PATCH',
-          body: JSON.stringify({
-            address: editForm.address,
-            property_management_company: editForm.property_management_company,
-            building: editForm.building,
-            notes: editForm.notes,
-            price_per_month: editForm.price_per_month.trim() ? editForm.price_per_month.trim() : null,
-            area: editForm.area,
-            start_up_date: editForm.start_up_date || null,
-            status_raw: editForm.status_raw,
-            keys: editForm.keys,
-            test_day: editForm.test_day,
-            annual_month: editForm.annual_month,
-          }),
-        }
+          body: JSON.stringify(testingSitePayloadFromEditForm(tsForm)),
+        })
+      }
+
+      const detail = await apiJson<MonthlyLocationDetailPayload>(
+        `/api/monthly_sites/library/${loc.id}`
       )
-      setWorkingLoc(response.location)
+      setWorkingLoc(detail.location)
       setIsEditMode(false)
       setEditForm(null)
-      onSaved(response.location)
+      setTestingSiteForms([])
+      onSaved(detail.location)
     } catch (err) {
       if (typeof err === 'object' && err && 'error' in err) {
         setSaveError(String((err as { error: unknown }).error))
@@ -315,13 +348,17 @@ export default function MonthlyLocationLibraryModal({
     <Modal
       show
       onHide={closeModal}
-      size="lg"
+      size="xl"
       centered
+      dialogClassName="monthly-library-location-modal"
       aria-labelledby={LIBRARY_DETAIL_MODAL_TITLE_ID}
-      contentClassName="border-0 shadow bg-transparent"
+      contentClassName="border-0 shadow bg-transparent monthly-library-location-modal__content"
       style={ROUTES_MODAL_CONTENT_STYLE}
     >
-      <div style={ROUTES_MODAL_SHELL_STYLE}>
+      <div
+        className="monthly-library-location-modal__shell"
+        style={ROUTES_MODAL_SHELL_STYLE}
+      >
         <Modal.Header style={ROUTES_MODAL_HEADER_STYLE}>
           <Modal.Title id={LIBRARY_DETAIL_MODAL_TITLE_ID} className="text-break flex-grow-1 pe-3">
             <span className="d-block" style={ROUTES_MODAL_TITLE_STYLE}>
@@ -360,10 +397,14 @@ export default function MonthlyLocationLibraryModal({
             </button>
           </div>
         </Modal.Header>
-        <Modal.Body className="small" style={ROUTES_MODAL_BODY_STYLE}>
+        <Modal.Body
+          className="small monthly-library-location-modal__body"
+          style={ROUTES_MODAL_BODY_STYLE}
+        >
           {saveError ? <div className="alert alert-danger py-2">{saveError}</div> : null}
           {isEditMode && editForm ? (
             <div className="d-flex flex-column gap-2 mb-3">
+              <div className="small fw-semibold text-uppercase text-muted">Billing location</div>
               <Form.Group>
                 <Form.Label className="small mb-1">Address</Form.Label>
                 <Form.Control
@@ -373,24 +414,30 @@ export default function MonthlyLocationLibraryModal({
                   onChange={(e) => updateEditField('address', e.target.value)}
                 />
               </Form.Group>
-              <Form.Group>
-                <Form.Label className="small mb-1">Property Management</Form.Label>
-                <Form.Control
-                  style={ROUTES_MODAL_INPUT_STYLE}
-                  size="sm"
-                  value={editForm.property_management_company}
-                  onChange={(e) => updateEditField('property_management_company', e.target.value)}
-                />
-              </Form.Group>
-              <Form.Group>
-                <Form.Label className="small mb-1">Building</Form.Label>
-                <Form.Control
-                  style={ROUTES_MODAL_INPUT_STYLE}
-                  size="sm"
-                  value={editForm.building}
-                  onChange={(e) => updateEditField('building', e.target.value)}
-                />
-              </Form.Group>
+              {!usesV2Stops ? (
+                <>
+                  <Form.Group>
+                    <Form.Label className="small mb-1">Property Management</Form.Label>
+                    <Form.Control
+                      style={ROUTES_MODAL_INPUT_STYLE}
+                      size="sm"
+                      value={editForm.property_management_company}
+                      onChange={(e) =>
+                        updateEditField('property_management_company', e.target.value)
+                      }
+                    />
+                  </Form.Group>
+                  <Form.Group>
+                    <Form.Label className="small mb-1">Building</Form.Label>
+                    <Form.Control
+                      style={ROUTES_MODAL_INPUT_STYLE}
+                      size="sm"
+                      value={editForm.building}
+                      onChange={(e) => updateEditField('building', e.target.value)}
+                    />
+                  </Form.Group>
+                </>
+              ) : null}
               <Form.Group>
                 <Form.Label className="small mb-1">Notes</Form.Label>
                 <Form.Control
@@ -402,30 +449,26 @@ export default function MonthlyLocationLibraryModal({
                   onChange={(e) => updateEditField('notes', e.target.value)}
                 />
               </Form.Group>
-              <div className="row g-2">
-                <div className="col-sm-6">
-                  <Form.Group>
-                    <Form.Label className="small mb-1">Price/mo</Form.Label>
-                    <Form.Control
-                      style={ROUTES_MODAL_INPUT_STYLE}
-                      size="sm"
-                      value={editForm.price_per_month}
-                      onChange={(e) => updateEditField('price_per_month', e.target.value)}
-                    />
-                  </Form.Group>
-                </div>
-                <div className="col-sm-6">
-                  <Form.Group>
-                    <Form.Label className="small mb-1">Area</Form.Label>
-                    <Form.Control
-                      style={ROUTES_MODAL_INPUT_STYLE}
-                      size="sm"
-                      value={editForm.area}
-                      onChange={(e) => updateEditField('area', e.target.value)}
-                    />
-                  </Form.Group>
-                </div>
-              </div>
+              <Form.Group>
+                <Form.Label className="small mb-1">Area</Form.Label>
+                <Form.Control
+                  style={ROUTES_MODAL_INPUT_STYLE}
+                  size="sm"
+                  value={editForm.area}
+                  onChange={(e) => updateEditField('area', e.target.value)}
+                />
+              </Form.Group>
+              {!usesV2Stops ? (
+                <Form.Group>
+                  <Form.Label className="small mb-1">Price/mo</Form.Label>
+                  <Form.Control
+                    style={ROUTES_MODAL_INPUT_STYLE}
+                    size="sm"
+                    value={editForm.price_per_month}
+                    onChange={(e) => updateEditField('price_per_month', e.target.value)}
+                  />
+                </Form.Group>
+              ) : null}
               <div className="row g-2">
                 <div className="col-sm-6">
                   <Form.Group>
@@ -458,8 +501,27 @@ export default function MonthlyLocationLibraryModal({
                   </Form.Group>
                 </div>
               </div>
-              <div className="row g-2">
-                <div className="col-sm-4">
+              <Form.Group>
+                <Form.Label className="small mb-1">Route</Form.Label>
+                <Form.Select
+                  style={ROUTES_MODAL_INPUT_STYLE}
+                  size="sm"
+                  value={editForm.test_day}
+                  onChange={(e) => updateEditField('test_day', e.target.value)}
+                >
+                  <option value="">—</option>
+                  {routeOptions.map((route) => (
+                    <option key={route} value={route}>
+                      {route}
+                    </option>
+                  ))}
+                  {!routeOptions.includes(editForm.test_day) && editForm.test_day ? (
+                    <option value={editForm.test_day}>{editForm.test_day}</option>
+                  ) : null}
+                </Form.Select>
+              </Form.Group>
+              {!usesV2Stops ? (
+                <>
                   <Form.Group>
                     <Form.Label className="small mb-1">Keys</Form.Label>
                     <Form.Control
@@ -469,29 +531,6 @@ export default function MonthlyLocationLibraryModal({
                       onChange={(e) => updateEditField('keys', e.target.value)}
                     />
                   </Form.Group>
-                </div>
-                <div className="col-sm-4">
-                  <Form.Group>
-                    <Form.Label className="small mb-1">Route</Form.Label>
-                    <Form.Select
-                      style={ROUTES_MODAL_INPUT_STYLE}
-                      size="sm"
-                      value={editForm.test_day}
-                      onChange={(e) => updateEditField('test_day', e.target.value)}
-                    >
-                      <option value="">—</option>
-                      {routeOptions.map((route) => (
-                        <option key={route} value={route}>
-                          {route}
-                        </option>
-                      ))}
-                      {!routeOptions.includes(editForm.test_day) && editForm.test_day ? (
-                        <option value={editForm.test_day}>{editForm.test_day}</option>
-                      ) : null}
-                    </Form.Select>
-                  </Form.Group>
-                </div>
-                <div className="col-sm-4">
                   <Form.Group>
                     <Form.Label className="small mb-1">Annual</Form.Label>
                     <Form.Select
@@ -501,24 +540,58 @@ export default function MonthlyLocationLibraryModal({
                       onChange={(e) => updateEditField('annual_month', e.target.value)}
                     >
                       <option value="">—</option>
-                      {MONTH_NAME_OPTIONS.map((monthName) => (
+                      {editForm.annual_month &&
+                      !ANNUAL_MONTH_SELECT_OPTIONS.includes(editForm.annual_month) ? (
+                        <option value={editForm.annual_month}>{editForm.annual_month}</option>
+                      ) : null}
+                      {ANNUAL_MONTH_SELECT_OPTIONS.map((monthName) => (
                         <option key={monthName} value={monthName}>
                           {monthName}
                         </option>
                       ))}
                     </Form.Select>
                   </Form.Group>
-                </div>
-              </div>
+                </>
+              ) : null}
+              {usesV2Stops ? (
+                <>
+                  <div className="small fw-semibold text-uppercase text-muted mt-2">
+                    Testing locations ({testingSiteForms.length})
+                  </div>
+                  {testingSites.map((site, index) => {
+                    const form = testingSiteForms.find((f) => f.id === site.id)
+                    return (
+                      <TestingSiteFieldsSection
+                        key={site.id}
+                        mode="edit"
+                        site={site}
+                        index={index}
+                        total={testingSites.length}
+                        form={form}
+                        onFormChange={(patch) => updateTestingSiteForm(site.id, patch)}
+                      />
+                    )
+                  })}
+                </>
+              ) : null}
             </div>
           ) : (
-            <dl className="row mb-4 gy-2">
+            <>
+            <dl className="row mb-3 gy-2">
+              {!usesV2Stops ? (
+                <>
               <dt className="col-sm-3 text-muted">Building</dt>
               <dd className="col-sm-9">{loc.building || '—'}</dd>
+                </>
+              ) : null}
               <dt className="col-sm-3 text-muted">Notes</dt>
               <dd className="col-sm-9 text-break">{loc.notes || '—'}</dd>
+              {!usesV2Stops ? (
+                <>
               <dt className="col-sm-3 text-muted">Price/mo</dt>
               <dd className="col-sm-9">{price}</dd>
+                </>
+              ) : null}
               <dt className="col-sm-3 text-muted">Area</dt>
               <dd className="col-sm-9">{loc.area || '—'}</dd>
               <dt className="col-sm-3 text-muted">Start up</dt>
@@ -535,6 +608,8 @@ export default function MonthlyLocationLibraryModal({
                   <dd className="col-sm-9">{loc.barcode}</dd>
                 </>
               ) : null}
+              {!usesV2Stops ? (
+                <>
               <dt className="col-sm-3 text-muted">Key</dt>
               <dd className="col-sm-9">
                 {loc.key ? (
@@ -549,13 +624,32 @@ export default function MonthlyLocationLibraryModal({
                   <dd className="col-sm-9 text-break small text-muted">{loc.keys || '—'}</dd>
                 </>
               ) : null}
+              <dt className="col-sm-3 text-muted">Annual</dt>
+              <dd className="col-sm-9">{loc.annual_month || '—'}</dd>
+                </>
+              ) : null}
               <dt className="col-sm-3 text-muted">Route</dt>
               <dd className="col-sm-9">
                 <RouteLibraryLink loc={loc} />
               </dd>
-              <dt className="col-sm-3 text-muted">Annual</dt>
-              <dd className="col-sm-9">{loc.annual_month || '—'}</dd>
             </dl>
+            {usesV2Stops ? (
+              <>
+                <div className="small fw-semibold text-uppercase text-muted mb-2">
+                  Testing locations ({testingSites.length})
+                </div>
+                {testingSites.map((site, index) => (
+                  <TestingSiteFieldsSection
+                    key={site.id}
+                    mode="view"
+                    site={site}
+                    index={index}
+                    total={testingSites.length}
+                  />
+                ))}
+              </>
+            ) : null}
+            </>
           )}
         </Modal.Body>
         {isEditMode ? (

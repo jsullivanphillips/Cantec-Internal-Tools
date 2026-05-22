@@ -602,6 +602,36 @@ def _build_csv_r15_multiline_site_sheet() -> bytes:
     return buf.getvalue().encode("utf-8")
 
 
+@pytest.mark.parametrize(
+    "facp_cell,expected_panel,expected_location",
+    [
+        (
+            "PANEL: PACPRO P24A\nLOCATION: Basement North East Electrical Room in laundry room.",
+            "PACPRO P24A",
+            "Basement North East Electrical Room in laundry room.",
+        ),
+        (
+            "PANEL:  Bell Battery System. \nLOCATION: Lower level west hallway, on wall. ",
+            "Bell Battery System.",
+            "Lower level west hallway, on wall.",
+        ),
+        (
+            "PANEL: PAC PRO 906D\nLOCATION: in basement electrical room; from main floor turn left, at bottom of stairs",
+            "PAC PRO 906D",
+            "in basement electrical room; from main floor turn left, at bottom of stairs",
+        ),
+        ("PANEL: EDWARDS 6500\nLOCATION: Electrical room", "EDWARDS 6500", "Electrical room"),
+        ("EDWARDS 6632", "EDWARDS 6632", None),
+    ],
+)
+def test_parse_facp_panel_fields(facp_cell, expected_panel, expected_location):
+    from app.monthly.route_inspection_csv_import import parse_facp_panel_fields
+
+    panel, location = parse_facp_panel_fields(facp_cell)
+    assert panel == expected_panel
+    assert location == expected_location
+
+
 def test_import_r15_style_headers_multiline_snapshots(import_client):
     """Technician sheets that use ``Site Details`` / ``Month`` / un-suffixed times still import."""
     client, app = import_client
@@ -615,7 +645,7 @@ def test_import_r15_style_headers_multiline_snapshots(import_client):
         h = MonthlyRouteTestHistory.query.filter_by(
             location_id=loc_id, month_date=date(2026, 12, 1)
         ).one()
-        assert "EDWARDS 6500" in (h.facp or "")
+        assert h.facp == "EDWARDS 6500"
         assert "Bullet" in (h.monitoring_notes or "")
         assert h.ring == "w/ Parking Attendant"
         assert h.annual_month == "December"
@@ -624,3 +654,29 @@ def test_import_r15_style_headers_multiline_snapshots(import_client):
         assert h.sheet_time_in_raw == "7:08"
         assert h.sheet_time_out_raw == "7:21"
         assert h.result_status == "tested"
+
+
+def test_import_r15_panel_fields_on_v2_testing_site(import_client):
+    """``PANEL:`` / ``LOCATION:`` in the FACP column map to v2 ``panel`` + ``panel_location``."""
+    from app.db_models import MonthlySite, MonthlyTestingSite
+
+    client, app = import_client
+    with app.app_context():
+        db.metadata.create_all(
+            db.engine,
+            tables=[MonthlySite.__table__, MonthlyTestingSite.__table__],
+        )
+        route_id, loc_id = _seed_route15_one_stop()
+
+    res = _post_csv(client, route_id, _build_csv_r15_multiline_site_sheet())
+    assert res.status_code == 200, res.get_data(as_text=True)
+
+    with app.app_context():
+        loc = db.session.get(MonthlyRouteLocation, loc_id)
+        assert loc is not None
+        assert loc.facp_detail == "EDWARDS 6500"
+        site = MonthlySite.query.filter_by(legacy_monthly_route_location_id=loc_id).one()
+        ts = MonthlyTestingSite.query.filter_by(monthly_site_id=int(site.id)).one()
+        assert ts.panel == "EDWARDS 6500"
+        assert ts.facp_detail == "EDWARDS 6500"
+        assert ts.panel_location == "Electrical room"

@@ -24,6 +24,7 @@ import {
   type TechnicianWorksheetAuditEvent,
   type TechnicianWorksheetPayload,
   type TechnicianWorksheetRow,
+  WORKSHEET_CLOCK_IN_BLOCKED_MESSAGE,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
 import {
   backoffMs,
@@ -95,6 +96,16 @@ function shouldShowWorksheetTimeOutRow(displayTimeIn: string, displayTimeOut: st
   const tin = displayTimeIn.trim()
   if (!tin) return true
   return looksLikeExplicitTimeValue(displayTimeIn)
+}
+
+/** Open visit: explicit Time In, no Time Out, not tested/skipped. */
+function worksheetRowIsOpenClockIn(row: TechnicianWorksheetRow): boolean {
+  const rs = (row.result_status || '').trim().toLowerCase()
+  if (rs === 'tested' || rs === 'skipped') return false
+  const tin = (row.time_in || '').trim()
+  const tout = (row.time_out || '').trim()
+  if (!tin || tout) return false
+  return looksLikeExplicitTimeValue(tin)
 }
 
 /** Skip reason line already shows the same note as a non-clock ``time_in`` cell (avoid "ANNUAL…" twice). */
@@ -326,6 +337,29 @@ export default function TechnicianWorksheetPage() {
       return next
     })
   }, [])
+
+  const openClockInRow = useMemo(() => {
+    if (!payload?.rows?.length) return null
+    return payload.rows.find(worksheetRowIsOpenClockIn) ?? null
+  }, [payload?.rows])
+
+  const timeInBlockedForRow = useCallback(
+    (row: TechnicianWorksheetRow): boolean =>
+      openClockInRow != null && openClockInRow.location_id !== row.location_id,
+    [openClockInRow],
+  )
+
+  const openTimeInModal = useCallback(
+    (row: TechnicianWorksheetRow) => {
+      if (timeInBlockedForRow(row)) {
+        window.alert(WORKSHEET_CLOCK_IN_BLOCKED_MESSAGE)
+        return
+      }
+      setTimeInModalRow(row)
+      setTimeInDraft((row.time_in || '').trim() || hhmmNow())
+    },
+    [timeInBlockedForRow],
+  )
 
   const load = useCallback(
     async (signal?: AbortSignal) => {
@@ -1784,6 +1818,13 @@ export default function TechnicianWorksheetPage() {
                                     ) : null}
                                     <Button
                                       size="sm"
+                                      variant="success"
+                                      onClick={() => openTimeInModal(row)}
+                                    >
+                                      Time In
+                                    </Button>
+                                    <Button
+                                      size="sm"
                                       variant="outline-secondary"
                                       onClick={() => {
                                         setAnnualTestAnywayRows((prev) => {
@@ -1840,10 +1881,7 @@ export default function TechnicianWorksheetPage() {
                                             <Button
                                               size="sm"
                                               variant="success"
-                                              onClick={() => {
-                                                setTimeInModalRow(row)
-                                                setTimeInDraft(displayTimeIn || hhmmNow())
-                                              }}
+                                              onClick={() => openTimeInModal(row)}
                                             >
                                               Time In
                                             </Button>
@@ -2035,7 +2073,16 @@ export default function TechnicianWorksheetPage() {
             variant="success"
             onClick={() => {
               if (!timeInModalRow) return
-              queueRowChanges(timeInModalRow, { time_in: timeInDraft })
+              if (timeInBlockedForRow(timeInModalRow)) {
+                window.alert(WORKSHEET_CLOCK_IN_BLOCKED_MESSAGE)
+                return
+              }
+              queueRowChanges(timeInModalRow, {
+                time_in: timeInDraft,
+                time_out: null,
+                result_status: null,
+                skip_reason: null,
+              })
               setTimeInModalRow(null)
             }}
           >
