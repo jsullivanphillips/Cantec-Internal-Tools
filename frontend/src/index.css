@@ -87,9 +87,18 @@
   padding: 0;
 }
 
-/* Portal worksheet: fill space below topbar (avoid height:0 — breaks iOS Safari) */
+/* Portal worksheet: lock shell to visible viewport (min-vh alone overflows on iOS/iPad) */
+.app-shell.app-shell--portal-worksheet {
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100vh;
+  max-height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .app-main.app-main--portal-worksheet {
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-height: 0;
   overflow: hidden;
   display: flex;
@@ -97,7 +106,7 @@
 }
 
 .portal-worksheet-outlet {
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -4138,7 +4147,7 @@ body {
   --pw-pending: #f8f9fa;
   --pw-clocked-in: #93c5fd;
   --pw-selected-border: #2563eb;
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -4204,7 +4213,7 @@ body {
 }
 
 .pw-mock-body {
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-height: 0;
   display: flex;
   align-items: stretch;
@@ -4224,11 +4233,11 @@ body {
 }
 
 .pw-mock-shell {
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-width: 0;
   min-height: 0;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
   overflow: hidden;
   background: #eef1f5;
 }
@@ -4436,7 +4445,6 @@ body {
 }
 
 .pw-mock-detail {
-  flex: 1 1 0;
   min-width: 0;
   min-height: 0;
   display: flex;
@@ -4591,7 +4599,8 @@ body {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 0.35rem;
-  padding: 0.5rem 0.65rem calc(0.5rem + env(safe-area-inset-bottom, 0px));
+  padding: 0.5rem 0.65rem;
+  padding-bottom: max(0.85rem, constant(safe-area-inset-bottom), env(safe-area-inset-bottom, 0px));
   background: #fff;
   border-top: 1px solid #c7ccd1;
   box-shadow: 0 -2px 8px rgba(15, 23, 42, 0.06);

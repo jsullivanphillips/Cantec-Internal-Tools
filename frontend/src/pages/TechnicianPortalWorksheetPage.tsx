@@ -523,7 +523,13 @@ export default function TechnicianPortalWorksheetPage() {
                     </div>
                     <div className="pw-mock-field-group">
                       <div className="pw-mock-field-group-title">Monitoring</div>
-                      <FieldRow label="Company" value={active.monitoring_company ?? ''} />
+                      <PortalEditableFieldRow
+                        fieldKey="monitoring_company"
+                        label="Company"
+                        value={active.monitoring_company ?? ''}
+                        onSave={saveField('monitoring_company')}
+                        {...fieldEditProps}
+                      />
                       <PortalEditableFieldRow
                         fieldKey="monitoring_notes"
                         label="Notes"

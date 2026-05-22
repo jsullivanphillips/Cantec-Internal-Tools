@@ -1112,6 +1112,8 @@ class MonthlyTestingSiteMonth(db.Model):
     inspection_tech_notes = db.Column(db.Text, nullable=True)
     sheet_time_in_raw = db.Column(db.String(64), nullable=True)
     sheet_time_out_raw = db.Column(db.String(64), nullable=True)
+    #: Run-month monitoring company label (free text; may differ from library FK).
+    monitoring_company_name = db.Column(db.String(255), nullable=True)
     monitoring_notes = db.Column(db.Text, nullable=True)
 
     created_at = db.Column(

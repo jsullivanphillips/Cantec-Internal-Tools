@@ -23,6 +23,17 @@ def _panel_from_testing_site(ts: MonthlyTestingSite) -> str | None:
     return _normalize_text(ts.panel) or _normalize_text(ts.facp_detail)
 
 
+def _master_monitoring_company_name(
+    ts: MonthlyTestingSite,
+    loc: MonthlyRouteLocation,
+) -> str | None:
+    if ts.monitoring_company is not None:
+        return _normalize_text(ts.monitoring_company.name)
+    if loc.monitoring_company is not None:
+        return _normalize_text(loc.monitoring_company.name)
+    return None
+
+
 def master_template_fields(
     ts: MonthlyTestingSite,
     loc: MonthlyRouteLocation,
@@ -44,6 +55,8 @@ def master_template_fields(
         "facp": panel,
         "testing_procedures": ts.testing_procedures or loc.testing_procedures,
         "inspection_tech_notes": ts.inspection_tech_notes or loc.inspection_tech_notes,
+        "monitoring_company_name": _master_monitoring_company_name(ts, loc),
+        "monitoring_notes": None,
     }
 
 
@@ -68,7 +81,12 @@ def merge_template_with_prior_fallback(
     if prior is None:
         return dict(template)
     merged = dict(template)
-    for key in (*SNAPSHOT_STRING_FIELDS, *SNAPSHOT_TEXT_FIELDS):
+    for key in (
+        *SNAPSHOT_STRING_FIELDS,
+        *SNAPSHOT_TEXT_FIELDS,
+        "monitoring_company_name",
+        "monitoring_notes",
+    ):
         if key in ("panel", "facp"):
             continue
         if _normalize_text(merged.get(key)) is not None:

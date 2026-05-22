@@ -52,7 +52,6 @@ _MTSM_OUTCOME_KEYS = (
     "sheet_time_out_raw",
     "source_value_raw",
     "session_route_stop_order",
-    "monitoring_notes",
 )
 
 _MTSM_SNAPSHOT_DISPLAY_KEYS = (
@@ -67,6 +66,8 @@ _MTSM_SNAPSHOT_DISPLAY_KEYS = (
     "facp",
     "testing_procedures",
     "inspection_tech_notes",
+    "monitoring_company_name",
+    "monitoring_notes",
 )
 
 
@@ -122,15 +123,19 @@ def _monitoring_labels(
     ts: MonthlyTestingSite,
     loc: MonthlyRouteLocation | None,
 ) -> tuple[str | None, str | None]:
-    notes = _normalize_text(mtsm.monitoring_notes if mtsm is not None else None)
-    company: str | None = None
-    if ts.monitoring_company is not None:
-        company = _normalize_text(ts.monitoring_company.name)
-    elif loc is not None and loc.monitoring_company is not None:
-        company = _normalize_text(loc.monitoring_company.name)
-    if notes and not company:
-        return notes, None
-    return company, notes
+    if mtsm is not None:
+        return (
+            _normalize_text(mtsm.monitoring_company_name),
+            _normalize_text(mtsm.monitoring_notes),
+        )
+    from app.monthly.site_field_template import _master_monitoring_company_name
+
+    if loc is None:
+        company = (
+            _normalize_text(ts.monitoring_company.name) if ts.monitoring_company is not None else None
+        )
+        return company, None
+    return _master_monitoring_company_name(ts, loc), None
 
 
 def seed_stop_month_fields(
@@ -875,4 +880,5 @@ STOP_PATCH_FIELD_MAP: dict[str, str] = {
     "property_management_company": "property_management_company",
     "building_name": "building_name",
     "monitoring_notes": "monitoring_notes",
+    "monitoring_company": "monitoring_company_name",
 }

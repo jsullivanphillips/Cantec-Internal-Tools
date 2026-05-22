@@ -8,7 +8,13 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 from sqlalchemy.orm import joinedload, selectinload
 
-from app.db_models import MonthlyRouteLocation, MonthlySite, MonthlyTestingSite, db
+from app.db_models import (
+    MonitoringCompany,
+    MonthlyRouteLocation,
+    MonthlySite,
+    MonthlyTestingSite,
+    db,
+)
 
 
 def _panel_text_from_legacy(loc: MonthlyRouteLocation) -> str | None:
@@ -195,6 +201,19 @@ def mirror_mtsm_snapshot_to_primary_master(
     ts.facp_detail = panel
     ts.testing_procedures = mtsm.testing_procedures
     ts.inspection_tech_notes = mtsm.inspection_tech_notes
+    company_name = (mtsm.monitoring_company_name or "").strip() or None
+    if company_name:
+        folded = company_name.casefold()
+        mc = MonitoringCompany.query.filter(
+            db.func.lower(MonitoringCompany.name) == folded
+        ).first()
+        if mc is None:
+            for row in MonitoringCompany.query.limit(500).all():
+                if (row.name or "").strip().casefold() == folded:
+                    mc = row
+                    break
+        if mc is not None:
+            ts.monitoring_company_id = int(mc.id)
 
 
 def push_primary_testing_site_display_to_legacy(loc: MonthlyRouteLocation, ts: MonthlyTestingSite) -> None:

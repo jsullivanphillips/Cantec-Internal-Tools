@@ -33,6 +33,7 @@ export type WorksheetStopChangeSet = Partial<
     | 'door_code'
     | 'property_management_company'
     | 'building_name'
+    | 'monitoring_company'
     | 'monitoring_notes'
     | 'result_status'
     | 'skip_reason'

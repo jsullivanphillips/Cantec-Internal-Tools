@@ -2343,6 +2343,7 @@ def patch_monthly_route_worksheet_stop(route_id: int, testing_site_id: int):
         "panel": "facp",
         "facp": "facp",
         "monitoring_notes": "monitoring_notes",
+        "monitoring_company": "monitoring_company_name",
     }
 
     if changed_any and hist is not None:
@@ -2357,6 +2358,8 @@ def patch_monthly_route_worksheet_stop(route_id: int, testing_site_id: int):
                 new_val = _normalize_ws_text(mtsm.panel) or _normalize_ws_text(mtsm.facp)
             if field_name == "monitoring_notes":
                 new_val = mtsm.monitoring_notes
+            if field_name == "monitoring_company":
+                new_val = mtsm.monitoring_company_name
             audit_name = "time_in" if field_name == "time_in" else (
                 "time_out" if field_name == "time_out" else (
                     "facp" if field_name == "panel" else field_name

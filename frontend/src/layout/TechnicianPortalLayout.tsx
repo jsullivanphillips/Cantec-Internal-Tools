@@ -55,7 +55,9 @@ export default function TechnicianPortalLayout() {
   }, [nav])
 
   return (
-    <div className="app-shell d-flex flex-column min-vh-100 app-canvas">
+    <div
+      className={`app-shell d-flex flex-column min-vh-100 app-canvas${isWorksheetScreen ? ' app-shell--portal-worksheet' : ''}`}
+    >
       <header className="app-topbar d-flex align-items-center justify-content-between px-3 px-lg-4 border-bottom bg-white">
         <div className="d-flex align-items-center gap-3 min-w-0">
           {!logoFailed ? (
