@@ -14,6 +14,7 @@ from app.db_models import (
     MonthlyRouteLocation,
     MonthlySite,
     MonthlyTestingSite,
+    MonthlyTestingSiteMonth,
     db,
 )
 from app.monthly.key_resolve import sync_key_fk_for_testing_site
@@ -75,7 +76,27 @@ def _effective_panel(ts: MonthlyTestingSite) -> str | None:
     return raw or None
 
 
+def _latest_run_comment_for_testing_site(testing_site_id: int) -> tuple[str | None, str | None]:
+    row = (
+        MonthlyTestingSiteMonth.query.filter(
+            MonthlyTestingSiteMonth.monthly_testing_site_id == testing_site_id,
+            MonthlyTestingSiteMonth.run_comments.isnot(None),
+            func.trim(MonthlyTestingSiteMonth.run_comments) != "",
+        )
+        .order_by(
+            MonthlyTestingSiteMonth.month_date.desc(),
+            MonthlyTestingSiteMonth.updated_at.desc(),
+            MonthlyTestingSiteMonth.id.desc(),
+        )
+        .first()
+    )
+    if row is None:
+        return None, None
+    return (row.run_comments or "").strip() or None, row.month_date.isoformat()
+
+
 def _serialize_testing_site(ts: MonthlyTestingSite) -> dict[str, object]:
+    latest_run_comment, latest_run_comment_month = _latest_run_comment_for_testing_site(int(ts.id))
     return {
         "id": int(ts.id),
         "monthly_site_id": int(ts.monthly_site_id),
@@ -100,6 +121,8 @@ def _serialize_testing_site(ts: MonthlyTestingSite) -> dict[str, object]:
         "monitoring_notes": ts.monitoring_notes,
         "testing_procedures": ts.testing_procedures,
         "inspection_tech_notes": ts.inspection_tech_notes,
+        "latest_run_comment": latest_run_comment,
+        "latest_run_comment_month": latest_run_comment_month,
     }
 
 

@@ -68,6 +68,8 @@ export type TestingSiteSummary = {
   monitoring_notes: string | null
   testing_procedures: string | null
   inspection_tech_notes: string | null
+  latest_run_comment?: string | null
+  latest_run_comment_month?: string | null
 }
 
 export type LibraryLocation = {
@@ -357,17 +359,6 @@ export type TechnicianWorksheetPayload = {
   rows: TechnicianWorksheetRow[]
   /** Portal worksheet (``tech_portal=1``): one stop per testing site. */
   stops?: TechnicianWorksheetStop[]
-}
-
-export type TechnicianWorksheetAuditEvent = {
-  id: number
-  field_name: string
-  old_value: unknown
-  new_value: unknown
-  source: string
-  changed_by_username: string | null
-  changed_by_name: string | null
-  changed_at: string | null
 }
 
 export function monthlyCommentAuthorsMatch(session: string | null, author: string | null): boolean {

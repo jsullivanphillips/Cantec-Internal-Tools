@@ -20,10 +20,9 @@ import {
   parseYearMonth,
   worksheetOfficeRunActivity,
   worksheetRunExplicitlyCompleted,
-  worksheetRunFieldActive,
-  type TechnicianWorksheetAuditEvent,
   type TechnicianWorksheetPayload,
   type TechnicianWorksheetRow,
+  type TechnicianWorksheetStop,
   WORKSHEET_CLOCK_IN_BLOCKED_MESSAGE,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
 import {
@@ -248,6 +247,68 @@ function worksheetAddressCellStatusClass(
   return undefined
 }
 
+function worksheetStopIsAnnualSkip(stop: TechnicianWorksheetStop, monthDate: string): boolean {
+  const rs = (stop.result_status || '').trim().toLowerCase()
+  if (rs !== 'skipped') return isAnnualForMonth(stop.annual_month, monthDate)
+  return sheetSkipReasonIsAnnual(stop.skip_reason) || isAnnualForMonth(stop.annual_month, monthDate)
+}
+
+type OfficeStopStatus = 'tested' | 'skipped' | 'annual' | 'pending'
+
+type OfficeStopGroup = {
+  locationId: number
+  displayAddress: string
+  buildingName: string | null
+  propertyManagementCompany: string | null
+  stops: TechnicianWorksheetStop[]
+}
+
+function officeStopStatus(stop: TechnicianWorksheetStop, monthDate: string): OfficeStopStatus {
+  const rs = (stop.result_status || '').trim().toLowerCase()
+  if (rs === 'tested') return 'tested'
+  if (rs === 'skipped') return worksheetStopIsAnnualSkip(stop, monthDate) ? 'annual' : 'skipped'
+  if (isAnnualForMonth(stop.annual_month, monthDate)) return 'annual'
+  return 'pending'
+}
+
+function officeStopStatusLabel(status: OfficeStopStatus): string {
+  if (status === 'tested') return 'Tested'
+  if (status === 'skipped') return 'Skipped'
+  if (status === 'annual') return 'Annual'
+  return 'Pending'
+}
+
+function worksheetReadOnlyDisplay(value: string | null | undefined): string {
+  return (value ?? '').trim() || '—'
+}
+
+function officeFirstDisplayValue(...values: Array<string | null | undefined>): string | null {
+  for (const value of values) {
+    const text = (value ?? '').trim()
+    if (text) return text
+  }
+  return null
+}
+
+function OfficeCompactField({
+  label,
+  value,
+  wide,
+}: {
+  label: string
+  value: string | null | undefined
+  wide?: boolean
+}) {
+  const displayValue = worksheetReadOnlyDisplay(value)
+  const empty = displayValue === '—'
+  return (
+    <div className={`tw-office-compact-field${wide ? ' tw-office-compact-field--wide' : ''}${empty ? ' tw-office-compact-field--empty' : ''}`}>
+      <span className="tw-office-compact-label">{label}</span>
+      <span className="tw-office-compact-value">{displayValue}</span>
+    </div>
+  )
+}
+
 function WorksheetTableColGroup() {
   return (
     <colgroup>
@@ -267,6 +328,7 @@ export default function TechnicianWorksheetPage() {
   const { routeId, monthIso } = useParams<{ routeId: string; monthIso: string }>()
   /** Route-driven detection (works with Router ``basename``); ``pathname.startsWith('/tech/')`` misses subpath deploys. */
   const isPortalMode = useMatch({ path: '/tech/route/:routeId/worksheet/:monthIso', end: true }) != null
+  const isOfficeReadOnly = !isPortalMode
   const idNum = routeId ? parseInt(routeId, 10) : NaN
   const monthQuery = (monthIso || '').trim()
   const monthOk = MONTH_FIRST_RE.test(monthQuery) && parseYearMonth(monthQuery) != null
@@ -279,8 +341,6 @@ export default function TechnicianWorksheetPage() {
   const [resetRunModalOpen, setResetRunModalOpen] = useState(false)
   const [resetRunBusy, setResetRunBusy] = useState(false)
   const [syncState, setSyncState] = useState<SyncState>('synced')
-  const [auditForRow, setAuditForRow] = useState<TechnicianWorksheetRow | null>(null)
-  const [auditEvents, setAuditEvents] = useState<TechnicianWorksheetAuditEvent[]>([])
   const [syncMessage, setSyncMessage] = useState<string | null>(null)
   const [activeEditorKey, setActiveEditorKey] = useState<string | null>(null)
   const [timeInModalRow, setTimeInModalRow] = useState<TechnicianWorksheetRow | null>(null)
@@ -351,6 +411,7 @@ export default function TechnicianWorksheetPage() {
 
   const openTimeInModal = useCallback(
     (row: TechnicianWorksheetRow) => {
+      if (isOfficeReadOnly) return
       if (timeInBlockedForRow(row)) {
         window.alert(WORKSHEET_CLOCK_IN_BLOCKED_MESSAGE)
         return
@@ -358,7 +419,7 @@ export default function TechnicianWorksheetPage() {
       setTimeInModalRow(row)
       setTimeInDraft((row.time_in || '').trim() || hhmmNow())
     },
-    [timeInBlockedForRow],
+    [isOfficeReadOnly, timeInBlockedForRow],
   )
 
   const load = useCallback(
@@ -377,6 +438,7 @@ export default function TechnicianWorksheetPage() {
       try {
         const qs = new URLSearchParams({ month: monthQuery })
         if (isPortalMode) qs.set('tech_portal', '1')
+        else qs.set('include_stops', '1')
         const data = await apiJson<TechnicianWorksheetPayload>(
           `/api/monthly_routes/routes/${idNum}/worksheet?${qs.toString()}`,
           { signal }
@@ -453,26 +515,8 @@ export default function TechnicianWorksheetPage() {
     }
   }, [isPortalMode, idNum, monthOk, monthQuery, payload?.run, load])
 
-  const onStaffCompleteRun = useCallback(async () => {
-    if (isPortalMode || Number.isNaN(idNum) || !monthOk || payload?.run == null) return
-    if (worksheetRunExplicitlyCompleted(payload.run)) return
-    setRunLifecycleBusy(true)
-    try {
-      await apiJson(`/api/monthly_routes/routes/${idNum}/runs/complete`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ month_date: monthQuery }),
-      })
-      await load()
-    } catch {
-      window.alert('Could not mark run complete.')
-    } finally {
-      setRunLifecycleBusy(false)
-    }
-  }, [isPortalMode, idNum, monthOk, monthQuery, payload?.run, load])
-
   const onConfirmResetRun = useCallback(async () => {
-    if (Number.isNaN(idNum) || !monthOk) return
+    if (!isPortalMode || Number.isNaN(idNum) || !monthOk) return
     setResetRunBusy(true)
     try {
       const qs = new URLSearchParams({ month: monthQuery })
@@ -501,24 +545,6 @@ export default function TechnicianWorksheetPage() {
       setResetRunBusy(false)
     }
   }, [idNum, monthOk, monthQuery, isPortalMode])
-
-  const onStaffReopenRun = useCallback(async () => {
-    if (isPortalMode || Number.isNaN(idNum) || !monthOk || payload?.run == null) return
-    if (!worksheetRunExplicitlyCompleted(payload.run)) return
-    setRunLifecycleBusy(true)
-    try {
-      await apiJson(`/api/monthly_routes/routes/${idNum}/runs/reopen`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ month_date: monthQuery }),
-      })
-      await load()
-    } catch {
-      window.alert('Could not reopen run.')
-    } finally {
-      setRunLifecycleBusy(false)
-    }
-  }, [isPortalMode, idNum, monthOk, monthQuery, payload?.run, load])
 
   const loadRef = useRef(load)
   useEffect(() => {
@@ -682,6 +708,7 @@ export default function TechnicianWorksheetPage() {
       if (!navigator.onLine || document.visibilityState !== 'visible') return
       const qs = new URLSearchParams({ month: monthQuery })
       if (isPortalMode) qs.set('tech_portal', '1')
+      else qs.set('include_stops', '1')
       const url = `/api/monthly_routes/routes/${idNum}/worksheet/stream?${qs.toString()}`
       try {
         es = new EventSource(url)
@@ -775,9 +802,61 @@ export default function TechnicianWorksheetPage() {
     return loadSyncQueue().filter((q) => q.routeId === idNum && q.monthIso === monthQuery).length
   }, [idNum, monthQuery, payload, syncState])
 
+  const officeWorksheetStops = useMemo(
+    () => (isOfficeReadOnly ? (payload?.stops ?? []) : []),
+    [isOfficeReadOnly, payload?.stops],
+  )
+
+  const officeStopGroups = useMemo<OfficeStopGroup[]>(() => {
+    const groupsByLocation = new Map<number, OfficeStopGroup>()
+    const orderedStops = [...officeWorksheetStops].sort((a, b) => {
+      const aNum = Number.isFinite(a.stop_number) ? a.stop_number : Number.MAX_SAFE_INTEGER
+      const bNum = Number.isFinite(b.stop_number) ? b.stop_number : Number.MAX_SAFE_INTEGER
+      return aNum - bNum || a.location_id - b.location_id || a.testing_site_id - b.testing_site_id
+    })
+    for (const stop of orderedStops) {
+      const existing = groupsByLocation.get(stop.location_id)
+      if (existing) {
+        existing.buildingName = officeFirstDisplayValue(existing.buildingName, stop.building_name)
+        existing.propertyManagementCompany = officeFirstDisplayValue(
+          existing.propertyManagementCompany,
+          stop.property_management_company,
+        )
+        existing.stops.push(stop)
+        continue
+      }
+      groupsByLocation.set(stop.location_id, {
+        locationId: stop.location_id,
+        displayAddress: stop.display_address,
+        buildingName: officeFirstDisplayValue(stop.building_name),
+        propertyManagementCompany: officeFirstDisplayValue(stop.property_management_company),
+        stops: [stop],
+      })
+    }
+    return Array.from(groupsByLocation.values())
+  }, [officeWorksheetStops])
+
+  const showOfficeDashboard = isOfficeReadOnly && officeStopGroups.length > 0
+
+  const officeStopProgress = useMemo(() => {
+    const total = officeWorksheetStops.length
+    let tested = 0
+    let skipped = 0
+    let annual = 0
+    for (const stop of officeWorksheetStops) {
+      const status = (stop.result_status || '').trim().toLowerCase()
+      if (status === 'tested') tested += 1
+      if (status === 'skipped') skipped += 1
+      if (isAnnualForMonth(stop.annual_month, payload?.month_date ?? monthQuery) || worksheetStopIsAnnualSkip(stop, payload?.month_date ?? monthQuery)) {
+        annual += 1
+      }
+    }
+    return { tested, skipped, annual, open: Math.max(total - tested - skipped, 0), total }
+  }, [officeWorksheetStops, payload?.month_date, monthQuery])
+
   const onFieldChange = useCallback(
     (row: TechnicianWorksheetRow, field: keyof WorksheetChangeSet, value: string) => {
-      if (!payload || payload.run === null) return
+      if (isOfficeReadOnly || !payload || payload.run === null) return
       const normalized = value.trim() ? value : null
       const patch = { [field]: normalized } as WorksheetChangeSet
       updateLocalRow(row.location_id, patch)
@@ -792,7 +871,7 @@ export default function TechnicianWorksheetPage() {
       })
       setSyncState('saved_offline')
     },
-    [idNum, monthQuery, payload, updateLocalRow, isPortalMode]
+    [idNum, monthQuery, payload, updateLocalRow, isPortalMode, isOfficeReadOnly]
   )
 
   const commitWorksheetGridEdit = useCallback(() => {
@@ -817,7 +896,7 @@ export default function TechnicianWorksheetPage() {
 
   const openWorksheetGridEditorState = useCallback(
     (locationId: number, column: WorksheetGridColumn, opts?: { initialDraft?: string }) => {
-      if (!payload || payload.run === null) return false
+      if (isOfficeReadOnly || !payload || payload.run === null) return false
       const row = payload.rows.find((r) => r.location_id === locationId)
       if (!row) return false
       const committed = worksheetGridCellValue(row, column)
@@ -830,7 +909,7 @@ export default function TechnicianWorksheetPage() {
       setWorksheetGridEditing(true)
       return true
     },
-    [payload]
+    [payload, isOfficeReadOnly]
   )
 
   const focusWorksheetFloatingEditorAtEnd = useCallback(() => {
@@ -964,7 +1043,7 @@ export default function TechnicianWorksheetPage() {
 
   const onWorksheetGridCellKeyDown = useCallback(
     (row: TechnicianWorksheetRow, column: WorksheetGridColumn) => (e: ReactKeyboardEvent<HTMLElement>) => {
-      if (!payload || payload.run === null) return
+      if (isOfficeReadOnly || !payload || payload.run === null) return
       if (worksheetGridEditing) return
       const sel = { locationId: row.location_id, column }
       if (e.key === 'Enter') {
@@ -1023,7 +1102,7 @@ export default function TechnicianWorksheetPage() {
         beginWorksheetGridEdit(row.location_id, column, { initialDraft: e.key })
       }
     },
-    [payload, worksheetGridEditing, beginWorksheetGridEdit, worksheetGridTabNext, worksheetGridMoveSelection]
+    [payload, worksheetGridEditing, beginWorksheetGridEdit, worksheetGridTabNext, worksheetGridMoveSelection, isOfficeReadOnly]
   )
 
   const onWorksheetFloatingEditorKeyDown = useCallback(
@@ -1062,7 +1141,7 @@ export default function TechnicianWorksheetPage() {
 
   const activateEditorAndFocus = useCallback(
     (key: string, el: HTMLInputElement) => {
-      if (!payload || payload.run === null) return
+      if (isOfficeReadOnly || !payload || payload.run === null) return
       if (activeEditorKey !== key) setActiveEditorKey(key)
       const focusEditor = () => {
         try {
@@ -1092,12 +1171,12 @@ export default function TechnicianWorksheetPage() {
         focusEditor()
       }, 0)
     },
-    [activeEditorKey, payload]
+    [activeEditorKey, payload, isOfficeReadOnly]
   )
 
   const queueRowChanges = useCallback(
     (row: TechnicianWorksheetRow, patch: WorksheetChangeSet) => {
-      if (!payload || payload.run === null) return
+      if (isOfficeReadOnly || !payload || payload.run === null) return
       updateLocalRow(row.location_id, patch)
       enqueueWorksheetChange({
         routeId: idNum,
@@ -1110,25 +1189,13 @@ export default function TechnicianWorksheetPage() {
       })
       setSyncState('saved_offline')
     },
-    [idNum, monthQuery, payload, updateLocalRow, isPortalMode]
+    [idNum, monthQuery, payload, updateLocalRow, isPortalMode, isOfficeReadOnly]
   )
 
   const dismissSkipReasonModal = useCallback(() => {
     pendingTimeOutForSkipModalRef.current = null
     setSkipReasonModalRow(null)
   }, [])
-
-  const loadAudit = useCallback(
-    async (row: TechnicianWorksheetRow) => {
-      const qs = new URLSearchParams({ month: monthQuery })
-      const data = await apiJson<{ events: TechnicianWorksheetAuditEvent[] }>(
-        `/api/monthly_routes/routes/${idNum}/worksheet/rows/${row.location_id}/audit?${qs.toString()}`
-      )
-      setAuditForRow(row)
-      setAuditEvents(data.events || [])
-    },
-    [idNum, monthQuery]
-  )
 
   const syncWorksheetHorizontalScroll = useCallback((source: 'header' | 'table') => {
     const headerEl = headerScrollRef.current
@@ -1152,13 +1219,13 @@ export default function TechnicianWorksheetPage() {
       column === 'monitoring'
         ? renderMonitoringSheetCellView(valueDisplay)
         : valueDisplay || '\u00a0'
-    if (!payload || payload.run === null) {
+    if (isOfficeReadOnly || !payload || payload.run === null) {
       return (
         <td
           className={`${tdClass} tw-worksheet-grid-td`}
           tabIndex={-1}
           role="gridcell"
-          aria-label={`${WORKSHEET_GRID_COLUMN_LABELS[column]} (preview), ${row.display_address}`}
+          aria-label={`${WORKSHEET_GRID_COLUMN_LABELS[column]}${payload?.run == null ? ' (preview)' : ''}, ${row.display_address}`}
         >
           <div className="tw-worksheet-cell-surface tw-worksheet-cell-surface--excel-shell">
             <div className="tw-worksheet-cell-flow">
@@ -1305,6 +1372,268 @@ export default function TechnicianWorksheetPage() {
     )
   }
 
+  function renderOfficeStatusPill(status: OfficeStopStatus) {
+    return (
+      <span className={`tw-office-status-pill tw-office-status-pill--${status}`}>
+        {officeStopStatusLabel(status)}
+      </span>
+    )
+  }
+
+  function renderOfficeStopColGroup() {
+    return (
+      <colgroup>
+        <col className="tw-office-col-stop" />
+        <col className="tw-office-col-address" />
+        <col className="tw-office-col-result" />
+        <col className="tw-office-col-access" />
+        <col className="tw-office-col-panel" />
+        <col className="tw-office-col-monitoring" />
+        <col className="tw-office-col-procedures" />
+        <col className="tw-office-col-location-comments" />
+        <col className="tw-office-col-run-comments" />
+      </colgroup>
+    )
+  }
+
+  function renderOfficeTableHeaderStrip() {
+    return (
+      <div
+        ref={headerScrollRef}
+        className="tw-office-header-scroll"
+        onScroll={() => syncWorksheetHorizontalScroll('header')}
+      >
+        <Table size="sm" className="mb-0 tw-office-stop-table tw-office-header-table" aria-label="Worksheet stop columns">
+          {renderOfficeStopColGroup()}
+          <thead>
+            <tr>
+              <th className="tw-office-sticky tw-office-sticky-order">#</th>
+              <th className="tw-office-sticky tw-office-sticky-address">Address</th>
+              <th className="tw-office-sticky tw-office-sticky-result">Result</th>
+              <th>Access</th>
+              <th>Panel</th>
+              <th>Monitoring</th>
+              <th>Testing procedures</th>
+              <th>Location comments</th>
+              <th>Run comments</th>
+            </tr>
+          </thead>
+        </Table>
+      </div>
+    )
+  }
+
+  function renderOfficeSummaryCard() {
+    const startedLabel = formatRunStartedAt(payload?.run?.started_at ?? null)
+    const completedLabel = formatRunStartedAt(payload?.run?.completed_at ?? null)
+    const runActivityLabel =
+      officeRunActivityPhase === 'active'
+        ? 'Field run active'
+        : completedLabel
+          ? `Completed ${completedLabel}`
+          : officeRunActivityPhase === 'completed'
+            ? 'Completed'
+            : 'Not completed'
+    return (
+      <section className="tw-office-summary-card" aria-label="Worksheet summary">
+        <div className="tw-office-summary-main">
+          <div>
+            <div className="tw-office-summary-eyebrow">Office worksheet</div>
+            <h2 className="tw-office-summary-title">{payload?.route.label}</h2>
+            <div className="tw-office-summary-meta">
+              {payload ? formatMonthHeading(payload.month_date) : monthQuery}
+              {startedLabel ? <span>Field run started {startedLabel}</span> : null}
+              {completedLabel ? <span>Run completed {completedLabel}</span> : null}
+            </div>
+          </div>
+          <div className="tw-office-summary-metrics" aria-label="Stop counts">
+            <div className="tw-office-summary-metric">
+              <strong>{officeStopProgress.tested}</strong>
+              <span>Tested</span>
+            </div>
+            <div className="tw-office-summary-metric">
+              <strong>{officeStopProgress.skipped}</strong>
+              <span>Skipped</span>
+            </div>
+            <div className="tw-office-summary-metric">
+              <strong>{officeStopProgress.annual}</strong>
+              <span>Annual</span>
+            </div>
+            <div className="tw-office-summary-metric">
+              <strong>{officeStopProgress.open}</strong>
+              <span>Open</span>
+            </div>
+            <div className="tw-office-summary-metric tw-office-summary-metric--total">
+              <strong>{officeStopProgress.total}</strong>
+              <span>Total stops</span>
+            </div>
+          </div>
+          {officeRunActivityPhase ? (
+            <Badge
+              bg={officeRunActivityPhase === 'active' ? 'primary' : 'secondary'}
+              className="tw-office-summary-badge"
+            >
+              {runActivityLabel}
+            </Badge>
+          ) : null}
+        </div>
+        {renderOfficeTableHeaderStrip()}
+      </section>
+    )
+  }
+
+  function renderOfficeCompactFieldList(
+    fields: Array<{ label: string; value: string | null | undefined; wide?: boolean }>,
+  ) {
+    return (
+      <div className="tw-office-compact-field-list">
+        {fields.map((field) => (
+          <OfficeCompactField
+            key={field.label}
+            label={field.label}
+            value={field.value}
+            wide={field.wide}
+          />
+        ))}
+      </div>
+    )
+  }
+
+  function renderOfficeStopTableRow(group: OfficeStopGroup, stop: TechnicianWorksheetStop, indexInGroup: number) {
+    if (!payload) return null
+    const status = officeStopStatus(stop, payload.month_date)
+    const skipReasonDisplayBlock = worksheetSkipReasonDisplayBlock(stop.skip_reason)
+    const displayTimeIn = (stop.time_in || '').trim()
+    const displayTimeOut = (stop.time_out || '').trim()
+    const showWorksheetTimeInLine =
+      displayTimeIn.length > 0 &&
+      !worksheetSkipReasonDuplicatesTimeInNote(
+        skipReasonDisplayBlock,
+        stop.result_status,
+        displayTimeIn,
+      )
+    const showWorksheetTimeOutLine =
+      displayTimeOut.length > 0 && shouldShowWorksheetTimeOutRow(displayTimeIn, displayTimeOut)
+    const stopLabel = (stop.label || '').trim() || 'Primary testing location'
+    const isFirstInGroup = indexInGroup === 0
+    const timeSummaryParts = [
+      showWorksheetTimeInLine ? worksheetTimeInOutDisplayLine('in', displayTimeIn) : null,
+      showWorksheetTimeOutLine ? worksheetTimeInOutDisplayLine('out', displayTimeOut) : null,
+    ].filter((part): part is string => part != null)
+    const resultDetailLines = [
+      skipReasonDisplayBlock != null && status !== 'pending' ? skipReasonDisplayBlock : null,
+      timeSummaryParts.length > 0 ? timeSummaryParts.join(' · ') : null,
+    ].filter((part): part is string => part != null)
+    if (resultDetailLines.length === 0) resultDetailLines.push('No times recorded')
+    return (
+      <tr
+        key={`office-stop-row:${stop.testing_site_id}-${stop.month_date}`}
+        className={`tw-office-table-row tw-office-table-row--${status}${isFirstInGroup ? '' : ' tw-office-table-row--continuation'}`}
+      >
+        <td className="tw-office-sticky tw-office-sticky-order tabular-nums">
+          {stop.stop_number}
+        </td>
+        <td className="tw-office-sticky tw-office-sticky-address">
+          {isFirstInGroup ? (
+            <div className="tw-office-address-cell">
+              <Link to={`/monthlies/locations/${group.locationId}`} className="tw-office-location-link">
+                {group.displayAddress}
+              </Link>
+              <div className="tw-office-address-meta">
+                <span>{worksheetReadOnlyDisplay(group.buildingName)}</span>
+                <span>{worksheetReadOnlyDisplay(group.propertyManagementCompany)}</span>
+              </div>
+              {group.stops.length > 1 ? (
+                <div className="tw-office-address-count">
+                  {group.stops.length} testing sites
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <div className="tw-office-address-continuation">same address</div>
+          )}
+          <div className="tw-office-site-cell">
+            <div className="tw-office-site-label">{stopLabel}</div>
+            {group.stops.length > 1 ? (
+              <div className="tw-office-site-subline">
+                Site {indexInGroup + 1} of {group.stops.length}
+              </div>
+            ) : null}
+          </div>
+        </td>
+        <td className="tw-office-sticky tw-office-sticky-result">
+          <div className="tw-office-result-cell">
+            {renderOfficeStatusPill(status)}
+            {resultDetailLines.map((line, index) => (
+              <div key={`${index}:${line}`} className="tw-office-result-detail">
+                {line}
+              </div>
+            ))}
+          </div>
+        </td>
+        <td className="tw-office-detail-cell tw-office-access-cell">
+          {renderOfficeCompactFieldList([
+            { label: 'Ring', value: stop.ring },
+            { label: 'Key #', value: stop.key_number },
+            { label: 'Door code', value: stop.door_code },
+            { label: 'Annual', value: stop.annual_month },
+          ])}
+        </td>
+        <td className="tw-office-detail-cell">
+          {renderOfficeCompactFieldList([
+            { label: 'Panel', value: stop.panel },
+            { label: 'Panel location', value: stop.panel_location },
+          ])}
+        </td>
+        <td className="tw-office-detail-cell">
+          {renderOfficeCompactFieldList([
+            { label: 'Company', value: stop.monitoring_company },
+            { label: 'Notes', value: stop.monitoring_notes, wide: true },
+          ])}
+        </td>
+        <td className="tw-office-detail-cell tw-office-long-text">
+          {worksheetReadOnlyDisplay(stop.testing_procedures)}
+        </td>
+        <td className="tw-office-detail-cell tw-office-long-text">
+          {worksheetReadOnlyDisplay(stop.inspection_tech_notes)}
+        </td>
+        <td className="tw-office-detail-cell tw-office-long-text">
+          {worksheetReadOnlyDisplay(stop.run_comments)}
+        </td>
+      </tr>
+    )
+  }
+
+  function renderOfficeStopTable() {
+    return (
+      <div className="tw-office-table-card">
+        <div
+          ref={tableScrollRef}
+          className="tw-office-table-wrap"
+          onScroll={() => syncWorksheetHorizontalScroll('table')}
+        >
+          <Table size="sm" className="mb-0 tw-office-stop-table">
+            {renderOfficeStopColGroup()}
+            <tbody>
+              {officeStopGroups.flatMap((group) =>
+                group.stops.map((stop, index) => renderOfficeStopTableRow(group, stop, index)),
+              )}
+            </tbody>
+          </Table>
+        </div>
+      </div>
+    )
+  }
+
+  function renderOfficeDashboard() {
+    return (
+      <div className="tw-office-dashboard">
+        {renderOfficeSummaryCard()}
+        {renderOfficeStopTable()}
+      </div>
+    )
+  }
+
   const isNonCurrentMonth =
     payload != null && monthOk && payload.month_date !== monthFirstIsoPacificToday()
   const isEmptyHistorical =
@@ -1315,8 +1644,6 @@ export default function TechnicianWorksheetPage() {
     payload?.run?.is_historical === true ||
     (isNonCurrentMonth && (payload?.rows?.length ?? 0) > 0)
   const worksheetFrozenNoRun = isCurrentMonthPreview || isHistoricalView
-  const officeLocksOutcomeColumn =
-    !isPortalMode && worksheetRunFieldActive(payload?.run ?? undefined)
   const officeRunActivityPhase =
     payload?.run != null ? worksheetOfficeRunActivity(payload.run) : null
 
@@ -1329,6 +1656,7 @@ export default function TechnicianWorksheetPage() {
     (payload.run == null || payload.run.started_at == null)
 
   const showResetRun =
+    isPortalMode &&
     payload !== null &&
     payload.run != null &&
     payload.run.is_historical !== true &&
@@ -1412,6 +1740,13 @@ export default function TechnicianWorksheetPage() {
                             ? 'Completed'
                             : 'Field run not active'}
                       </Badge>
+                    </div>
+                  ) : null}
+                  {!isPortalMode && officeStopProgress.total > 0 ? (
+                    <div className="small text-muted mt-1">
+                      {officeStopProgress.tested} tested · {officeStopProgress.skipped} skipped ·{' '}
+                      {officeStopProgress.annual} annual · {officeStopProgress.open} open ·{' '}
+                      {officeStopProgress.total} stops
                     </div>
                   ) : null}
                 </div>
@@ -1516,47 +1851,12 @@ export default function TechnicianWorksheetPage() {
                     )}
                   </Button>
                 ) : null}
-                {!isPortalMode && payload !== null && payload.run != null ? (
-                  worksheetRunExplicitlyCompleted(payload.run) ? (
-                    <Button
-                      size="sm"
-                      variant="outline-warning"
-                      disabled={runLifecycleBusy}
-                      onClick={() => void onStaffReopenRun()}
-                    >
-                      {runLifecycleBusy ? (
-                        <>
-                          <Spinner animation="border" size="sm" className="me-1" aria-hidden />
-                          Reopening…
-                        </>
-                      ) : (
-                        'Reopen run'
-                      )}
-                    </Button>
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant="outline-primary"
-                      disabled={runLifecycleBusy}
-                      onClick={() => void onStaffCompleteRun()}
-                    >
-                      {runLifecycleBusy ? (
-                        <>
-                          <Spinner animation="border" size="sm" className="me-1" aria-hidden />
-                          Saving…
-                        </>
-                      ) : (
-                        'Mark run complete'
-                      )}
-                    </Button>
-                  )
-                ) : null}
                 {queueLength > 0 ? <span className="small text-muted">{queueLength} queued</span> : null}
               </div>
             </div>
             {syncMessage ? <div className="small text-danger mt-1 px-3">{syncMessage}</div> : null}
           </div>
-          {!isEmptyHistorical ? (
+          {!isEmptyHistorical && !showOfficeDashboard ? (
             <div
               ref={headerScrollRef}
               className="technician-worksheet-column-header-wrap technician-worksheet-column-header-wrap--topbar"
@@ -1567,12 +1867,20 @@ export default function TechnicianWorksheetPage() {
                 <thead className="table-light">
                   <tr>
                     <th className="tw-col-order">#</th>
-                    <th className="tw-col-address">Address</th>
-                    <th className="tw-col-stacked-ark">Annual / Ring / Key #</th>
-                    <th className="tw-col-facp">FACP</th>
+                    <th className="tw-col-address">
+                      {isOfficeReadOnly && officeWorksheetStops.length > 0 ? 'Address / Site' : 'Address'}
+                    </th>
+                    <th className="tw-col-stacked-ark">
+                      {isOfficeReadOnly && officeWorksheetStops.length > 0 ? 'Access' : 'Annual / Ring / Key #'}
+                    </th>
+                    <th className="tw-col-facp">
+                      {isOfficeReadOnly && officeWorksheetStops.length > 0 ? 'Panel' : 'FACP'}
+                    </th>
                     <th className="tw-col-monitoring">Monitoring</th>
                     <th className="tw-col-procedures">Testing Procedures</th>
-                    <th className="tw-col-notes">Location comments</th>
+                    <th className="tw-col-notes">
+                      {isOfficeReadOnly && officeWorksheetStops.length > 0 ? 'Comments' : 'Location comments'}
+                    </th>
                     <th className="tw-col-action">{isPortalMode ? 'Action' : 'Result'}</th>
                   </tr>
                 </thead>
@@ -1586,7 +1894,7 @@ export default function TechnicianWorksheetPage() {
         style={
           ({
             paddingTop: topbarHeight > 0 ? topbarHeight : 0,
-            paddingBottom: '1rem',
+            paddingBottom: showOfficeDashboard ? 0 : '1rem',
             ['--tw-worksheet-topbar-h' as string]: `${topbarHeight}px`,
           } as CSSProperties)
         }
@@ -1605,6 +1913,7 @@ export default function TechnicianWorksheetPage() {
               No worksheet recorded for this month on this route.
             </Alert>
           ) : null}
+          {showOfficeDashboard ? renderOfficeDashboard() : (
           <Card className={`technician-worksheet-grid-card shadow-sm${isEmptyHistorical ? ' d-none' : ''}`}>
             <Card.Body className="p-0">
               <div
@@ -1629,7 +1938,7 @@ export default function TechnicianWorksheetPage() {
                           const ringKey = `ring:${row.location_id}`
                           const keyNumberKey = `key_number:${row.location_id}`
                           const isHistorical = isHistoricalView
-                          const outcomeColumnReadOnly = isHistorical || officeLocksOutcomeColumn
+                          const outcomeColumnReadOnly = isHistorical || isOfficeReadOnly
                           const addressStatusClass = worksheetAddressCellStatusClass(
                             row,
                             payload.month_date,
@@ -1639,17 +1948,9 @@ export default function TechnicianWorksheetPage() {
                           const hasTimeIn = displayTimeIn.length > 0
                           const hasTimeOut = displayTimeOut.length > 0
                           const annualMatch = isAnnualForMonth(row.annual_month, payload.month_date)
-                          /** Icons for tested/skipped when the Result column is non-interactive (historical or active field run on office view). */
+                          /** Icons for tested/skipped when the Result column is non-interactive. */
                           const showHistoricalStatusIcons = outcomeColumnReadOnly
                           const worksheetResultKey = (row.result_status || '').trim().toLowerCase()
-                          const worksheetHasTestedOrSkipped =
-                            worksheetResultKey === 'tested' || worksheetResultKey === 'skipped'
-                          const showHistoricalOfficeResultButtons =
-                            isHistorical &&
-                            !isPortalMode &&
-                            !worksheetHasTestedOrSkipped &&
-                            !worksheetRunExplicitlyCompleted(payload.run) &&
-                            !worksheetRunFieldActive(payload.run)
                           const skipReasonDisplayBlock = worksheetSkipReasonDisplayBlock(row.skip_reason)
                           const showWorksheetTimeInLine =
                             hasTimeIn &&
@@ -1661,6 +1962,7 @@ export default function TechnicianWorksheetPage() {
                           const showWorksheetTimeOutLine = hasTimeOut && shouldShowWorksheetTimeOutRow(displayTimeIn, displayTimeOut)
                           const showAnnualPromptBeforeTesting =
                             !worksheetFrozenNoRun &&
+                            !isOfficeReadOnly &&
                             !isHistorical &&
                             !hasTimeIn &&
                             annualMatch &&
@@ -1676,7 +1978,7 @@ export default function TechnicianWorksheetPage() {
                             >
                               {row.display_address}
                             </Link>
-                            <div className="small text-muted">{'building name'}</div>
+                            <div className="small text-muted">{worksheetReadOnlyDisplay(row.building)}</div>
                             <div className="small text-muted">{row.property_management_company || '—'}</div>
                           </div>
                         </td>
@@ -1687,10 +1989,10 @@ export default function TechnicianWorksheetPage() {
                               key={`ring:${row.location_id}:${row.month_date}:${row.ring ?? ''}`}
                               className={`form-control form-control-sm ${isEditorActive(ringKey) ? '' : 'tw-readonly-field'}`}
                               defaultValue={row.ring ?? ''}
-                              readOnly={worksheetFrozenNoRun || !isEditorActive(ringKey)}
+                              readOnly={isOfficeReadOnly || worksheetFrozenNoRun || !isEditorActive(ringKey)}
                               autoFocus={isEditorActive(ringKey)}
                               onClick={
-                                worksheetFrozenNoRun ? undefined : (e) => activateEditorAndFocus(ringKey, e.currentTarget)
+                                isOfficeReadOnly || worksheetFrozenNoRun ? undefined : (e) => activateEditorAndFocus(ringKey, e.currentTarget)
                               }
                               onBlur={(e) => {
                                 onFieldChange(row, 'ring', e.target.value)
@@ -1702,10 +2004,10 @@ export default function TechnicianWorksheetPage() {
                               key={`key:${row.location_id}:${row.month_date}:${row.key_number ?? ''}`}
                               className={`form-control form-control-sm ${isEditorActive(keyNumberKey) ? '' : 'tw-readonly-field'}`}
                               defaultValue={row.key_number ?? ''}
-                              readOnly={worksheetFrozenNoRun || !isEditorActive(keyNumberKey)}
+                              readOnly={isOfficeReadOnly || worksheetFrozenNoRun || !isEditorActive(keyNumberKey)}
                               autoFocus={isEditorActive(keyNumberKey)}
                               onClick={
-                                worksheetFrozenNoRun
+                                isOfficeReadOnly || worksheetFrozenNoRun
                                   ? undefined
                                   : (e) => activateEditorAndFocus(keyNumberKey, e.currentTarget)
                               }
@@ -1719,10 +2021,10 @@ export default function TechnicianWorksheetPage() {
                               key={`annual:${row.location_id}:${row.month_date}:${row.annual_month ?? ''}`}
                               className={`form-control form-control-sm ${isEditorActive(annualKey) ? '' : 'tw-readonly-field'}`}
                               defaultValue={row.annual_month ?? ''}
-                              readOnly={worksheetFrozenNoRun || !isEditorActive(annualKey)}
+                              readOnly={isOfficeReadOnly || worksheetFrozenNoRun || !isEditorActive(annualKey)}
                               autoFocus={isEditorActive(annualKey)}
                               onClick={
-                                worksheetFrozenNoRun
+                                isOfficeReadOnly || worksheetFrozenNoRun
                                   ? undefined
                                   : (e) => activateEditorAndFocus(annualKey, e.currentTarget)
                               }
@@ -1770,29 +2072,6 @@ export default function TechnicianWorksheetPage() {
                                     {skipReasonDisplayBlock != null ? (
                                       <div className="small text-muted text-break text-center">{skipReasonDisplayBlock}</div>
                                     ) : null}
-                                  </>
-                                ) : showHistoricalOfficeResultButtons ? (
-                                  <>
-                                    <Button
-                                      size="sm"
-                                      variant="success"
-                                      onClick={() => {
-                                        queueRowChanges(row, { result_status: 'tested', skip_reason: null })
-                                      }}
-                                    >
-                                      Set as tested
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="warning"
-                                      onClick={() => {
-                                        pendingTimeOutForSkipModalRef.current = null
-                                        setSkipReasonModalRow(row)
-                                        setSkipReasonDraft(row.skip_reason || '')
-                                      }}
-                                    >
-                                      Set as skipped
-                                    </Button>
                                   </>
                                 ) : (
                                   <div className="small text-muted">—</div>
@@ -1960,11 +2239,6 @@ export default function TechnicianWorksheetPage() {
                                 )}
                               </>
                             )}
-                            {!worksheetFrozenNoRun ? (
-                              <Button variant="link" size="sm" className="px-0 tw-audit-link" onClick={() => void loadAudit(row)}>
-                                Audit
-                              </Button>
-                            ) : null}
                           </div>
                         </td>
                             </>
@@ -1977,10 +2251,11 @@ export default function TechnicianWorksheetPage() {
               </div>
             </Card.Body>
           </Card>
+          )}
         </>
       ) : null}
       <Modal
-        show={resetRunModalOpen}
+        show={isPortalMode && resetRunModalOpen}
         onHide={() => {
           if (!resetRunBusy) setResetRunModalOpen(false)
         }}
@@ -2019,42 +2294,7 @@ export default function TechnicianWorksheetPage() {
           </Button>
         </Modal.Footer>
       </Modal>
-      <Modal show={auditForRow != null} onHide={() => setAuditForRow(null)} size="lg" centered>
-        <Modal.Header closeButton>
-          <Modal.Title className="h6 mb-0">{auditForRow?.display_address} · Audit</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          {auditEvents.length === 0 ? (
-            <div className="text-muted small">No audit events yet.</div>
-          ) : (
-            <Table size="sm" bordered responsive>
-              <thead>
-                <tr>
-                  <th>When</th>
-                  <th>Field</th>
-                  <th>From</th>
-                  <th>To</th>
-                  <th>Who</th>
-                  <th>Source</th>
-                </tr>
-              </thead>
-              <tbody>
-                {auditEvents.map((ev) => (
-                  <tr key={ev.id}>
-                    <td className="small text-nowrap">{ev.changed_at ? new Date(ev.changed_at).toLocaleString() : '—'}</td>
-                    <td className="small">{ev.field_name}</td>
-                    <td className="small text-break">{String(ev.old_value ?? '—')}</td>
-                    <td className="small text-break">{String(ev.new_value ?? '—')}</td>
-                    <td className="small">{ev.changed_by_name || ev.changed_by_username || '—'}</td>
-                    <td className="small">{ev.source}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </Table>
-          )}
-        </Modal.Body>
-      </Modal>
-      <Modal show={timeInModalRow != null} onHide={() => setTimeInModalRow(null)} centered>
+      <Modal show={isPortalMode && timeInModalRow != null} onHide={() => setTimeInModalRow(null)} centered>
         <Modal.Header closeButton>
           <Modal.Title className="h6 mb-0">Time In</Modal.Title>
         </Modal.Header>
@@ -2090,7 +2330,7 @@ export default function TechnicianWorksheetPage() {
           </Button>
         </Modal.Footer>
       </Modal>
-      <Modal show={timeOutModalRow != null} onHide={() => setTimeOutModalRow(null)} centered>
+      <Modal show={isPortalMode && timeOutModalRow != null} onHide={() => setTimeOutModalRow(null)} centered>
         <Modal.Header closeButton>
           <Modal.Title className="h6 mb-0">Time Out</Modal.Title>
         </Modal.Header>
@@ -2128,7 +2368,7 @@ export default function TechnicianWorksheetPage() {
           </Button>
         </Modal.Footer>
       </Modal>
-      <Modal show={skipReasonModalRow != null} onHide={dismissSkipReasonModal} centered>
+      <Modal show={isPortalMode && skipReasonModalRow != null} onHide={dismissSkipReasonModal} centered>
         <Modal.Header closeButton>
           <Modal.Title className="h6 mb-0">Skip Reason</Modal.Title>
         </Modal.Header>

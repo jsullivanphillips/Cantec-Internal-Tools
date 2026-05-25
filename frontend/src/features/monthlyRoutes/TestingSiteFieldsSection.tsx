@@ -43,6 +43,8 @@ type SummaryChip = {
   tone?: 'success' | 'info' | 'muted'
 }
 
+const COMMENT_PREVIEW_LINES = 3
+
 function stopTitle(
   site: TestingSiteSummary,
   index: number,
@@ -57,6 +59,17 @@ function stopTitle(
 
 function formatPrice(value: number | null | undefined): string {
   return value != null ? `$${value.toFixed(2)}` : '—'
+}
+
+function formatRunCommentMonth(value?: string | null): string | null {
+  const raw = value?.trim()
+  if (!raw) return null
+  const [year, month] = raw.split('-').map((part) => Number.parseInt(part, 10))
+  if (!year || !month) return raw
+  return new Date(year, month - 1, 1).toLocaleString(undefined, {
+    month: 'long',
+    year: 'numeric',
+  })
 }
 
 function panelDisplay(site: TestingSiteSummary): string {
@@ -163,6 +176,87 @@ function TestingSiteCardShell({
   )
 }
 
+function CollapsibleCommentPreview({
+  text,
+  emptyText = '—',
+}: {
+  text?: string | null
+  emptyText?: string
+}) {
+  const contentRef = useRef<HTMLDivElement>(null)
+  const [expanded, setExpanded] = useState(false)
+  const [canToggle, setCanToggle] = useState(false)
+  const value = text?.trim() || ''
+
+  useEffect(() => {
+    const el = contentRef.current
+    if (!el || !value) {
+      setCanToggle(false)
+      setExpanded(false)
+      return
+    }
+
+    const measure = () => {
+      const lineHeight = Number.parseFloat(window.getComputedStyle(el).lineHeight || '0')
+      const maxHeight = (lineHeight || 18) * COMMENT_PREVIEW_LINES
+      setCanToggle(el.scrollHeight > maxHeight + 1)
+    }
+
+    measure()
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [value])
+
+  if (!value) return <>{emptyText}</>
+
+  return (
+    <div
+      className={`monthly-testing-site-comment-preview${
+        expanded ? ' monthly-testing-site-comment-preview--expanded' : ''
+      }${canToggle ? ' monthly-testing-site-comment-preview--toggleable' : ''}`}
+    >
+      <div ref={contentRef} className="monthly-testing-site-comment-preview-text">
+        {value}
+      </div>
+      {canToggle ? (
+        <button
+          type="button"
+          className="monthly-testing-site-comment-preview-toggle"
+          onClick={(e) => {
+            e.stopPropagation()
+            setExpanded((current) => !current)
+          }}
+        >
+          {expanded ? 'View less' : 'View more'}
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
+function LatestRunCommentBlock({
+  comment,
+  month,
+}: {
+  comment?: string | null
+  month?: string | null
+}) {
+  const monthLabel = formatRunCommentMonth(month)
+  return (
+    <div className="monthly-testing-site-latest-run-comment monthly-testing-site-latest-run-comment--section">
+      <div className="monthly-testing-site-latest-run-comment-label">
+        <span>Latest run comment</span>
+        {monthLabel ? (
+          <span className="monthly-testing-site-latest-run-comment-month">{monthLabel}</span>
+        ) : null}
+      </div>
+      <div className="monthly-testing-site-latest-run-comment-text">
+        <CollapsibleCommentPreview text={comment} emptyText="No run comment yet." />
+      </div>
+    </div>
+  )
+}
+
 function TestingSiteViewFields({
   site,
   total,
@@ -218,11 +312,22 @@ function TestingSiteViewFields({
       </dd>
       <dt className="col-sm-3 text-muted">Testing procedures</dt>
       <dd className="col-sm-9 text-break" style={{ whiteSpace: 'pre-wrap' }}>
-        {site.testing_procedures?.trim() || '—'}
+        <CollapsibleCommentPreview text={site.testing_procedures} />
       </dd>
       <dt className="col-sm-3 text-muted">Location comments</dt>
       <dd className="col-sm-9 text-break" style={{ whiteSpace: 'pre-wrap' }}>
-        {site.inspection_tech_notes?.trim() || '—'}
+        <CollapsibleCommentPreview text={site.inspection_tech_notes} />
+      </dd>
+      <dt className="col-sm-3 text-muted">
+        Latest run comment
+        {formatRunCommentMonth(site.latest_run_comment_month) ? (
+          <span className="d-block small fw-normal">
+            {formatRunCommentMonth(site.latest_run_comment_month)}
+          </span>
+        ) : null}
+      </dt>
+      <dd className="col-sm-9 text-break" style={{ whiteSpace: 'pre-wrap' }}>
+        <CollapsibleCommentPreview text={site.latest_run_comment} emptyText="No run comment yet." />
       </dd>
     </dl>
   )
@@ -238,6 +343,7 @@ function InlineTestingSiteFieldRow({
   inputMode,
   selectOptions,
   helperText,
+  collapsiblePreview,
   onSave,
 }: {
   fieldKey: EditableTestingSiteField
@@ -249,6 +355,7 @@ function InlineTestingSiteFieldRow({
   inputMode?: 'decimal' | 'numeric'
   selectOptions?: InlineFieldOption[]
   helperText?: ReactNode
+  collapsiblePreview?: boolean
   onSave: (fieldKey: EditableTestingSiteField, value: string) => Promise<void> | void
 }) {
   const inputId = useId()
@@ -304,7 +411,9 @@ function InlineTestingSiteFieldRow({
       <div
         className={`monthly-testing-site-field-row monthly-testing-site-field-row--editable${
           multiline ? ' monthly-testing-site-field-row--multiline' : ''
-        }${fullWidth ? ' monthly-testing-site-field-row--full' : ''}`}
+        }${fullWidth ? ' monthly-testing-site-field-row--full' : ''}${
+          collapsiblePreview ? ' monthly-testing-site-field-row--collapsible-preview' : ''
+        }`}
         role="button"
         tabIndex={0}
         onClick={(e) => {
@@ -592,17 +701,23 @@ function TestingSiteInlineFields({
           fieldKey="testing_procedures"
           label="Testing procedures"
           value={form.testing_procedures}
-          displayValue={site.testing_procedures?.trim() || '—'}
+          displayValue={<CollapsibleCommentPreview text={site.testing_procedures} />}
           multiline
+          collapsiblePreview
           onSave={saveField}
         />
         <InlineTestingSiteFieldRow
           fieldKey="inspection_tech_notes"
           label="Location comments"
           value={form.inspection_tech_notes}
-          displayValue={site.inspection_tech_notes?.trim() || '—'}
+          displayValue={<CollapsibleCommentPreview text={site.inspection_tech_notes} />}
           multiline
+          collapsiblePreview
           onSave={saveField}
+        />
+        <LatestRunCommentBlock
+          comment={site.latest_run_comment}
+          month={site.latest_run_comment_month}
         />
       </InlineTestingSiteSection>
     </div>
@@ -803,6 +918,7 @@ function TestingSiteEditFormFields({
           onChange={(e) => onFormChange({ inspection_tech_notes: e.target.value })}
         />
       </Form.Group>
+      <LatestRunCommentBlock comment={site.latest_run_comment} month={site.latest_run_comment_month} />
     </div>
   )
 }

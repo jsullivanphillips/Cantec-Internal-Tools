@@ -1796,7 +1796,9 @@ def get_monthly_route_testing_session(route_id: int):
 
 
 def _worksheet_payload_includes_stops() -> bool:
-    """Portal worksheet clients receive ``stops[]`` (v2 testing-site grain)."""
+    """Clients can request ``stops[]`` for the v2 testing-site grain."""
+    if (request.args.get("include_stops") or "").strip() == "1":
+        return True
     if _portal_worksheet_lazy_request():
         return True
     return (request.args.get("tech_portal") or "").strip() == "1"

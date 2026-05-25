@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import itertools
+from datetime import date
 
 import pytest
 from sqlalchemy import select
@@ -217,6 +218,44 @@ def test_route_location_list_item_includes_ordered_testing_sites(v2_tables):
         payload = _serialize_route_location_list_item(loc)
         assert [row["label"] for row in payload["testing_sites"]] == ["Main panel", "Second panel"]
         assert [row["sort_order"] for row in payload["testing_sites"]] == [0, 1]
+
+
+def test_testing_site_payload_includes_latest_run_comment(v2_tables):
+    with v2_tables.app_context():
+        lid = _seed_route_and_location()
+        loc = db.session.get(MonthlyRouteLocation, lid)
+        from app.monthly.monthly_sites_sync import sync_testing_sites_from_legacy
+        from app.routes.monthly_sites import _serialize_testing_site
+
+        testing_site = sync_testing_sites_from_legacy(loc)[0]
+        db.session.flush()
+        db.session.add_all(
+            [
+                MonthlyTestingSiteMonth(
+                    id=1,
+                    monthly_testing_site_id=int(testing_site.id),
+                    month_date=date(2026, 1, 1),
+                    run_comments="Older note",
+                ),
+                MonthlyTestingSiteMonth(
+                    id=2,
+                    monthly_testing_site_id=int(testing_site.id),
+                    month_date=date(2026, 2, 1),
+                    run_comments="  ",
+                ),
+                MonthlyTestingSiteMonth(
+                    id=3,
+                    monthly_testing_site_id=int(testing_site.id),
+                    month_date=date(2026, 3, 1),
+                    run_comments="Latest note",
+                ),
+            ]
+        )
+        db.session.commit()
+
+        payload = _serialize_testing_site(testing_site)
+        assert payload["latest_run_comment"] == "Latest note"
+        assert payload["latest_run_comment_month"] == "2026-03-01"
 
 
 def test_reorder_testing_sites_updates_sort_order(v2_tables):
