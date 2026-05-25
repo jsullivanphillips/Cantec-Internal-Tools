@@ -99,6 +99,10 @@ export default function TestingSiteFieldsSection({
                   ? `Company #${site.monitoring_company_id}`
                   : '—')}
             </dd>
+            <dt className="col-sm-3 text-muted">Monitoring notes</dt>
+            <dd className="col-sm-9 text-break" style={{ whiteSpace: 'pre-wrap' }}>
+              {site.monitoring_notes?.trim() || '—'}
+            </dd>
             <dt className="col-sm-3 text-muted">Testing procedures</dt>
             <dd className="col-sm-9 text-break" style={{ whiteSpace: 'pre-wrap' }}>
               {site.testing_procedures?.trim() || '—'}
@@ -266,6 +270,17 @@ export default function TestingSiteFieldsSection({
           {site.monitoring_company?.name ? (
             <Form.Text className="text-muted">Current: {site.monitoring_company.name}</Form.Text>
           ) : null}
+        </Form.Group>
+        <Form.Group>
+          <Form.Label className="small mb-1">Monitoring notes</Form.Label>
+          <Form.Control
+            style={INPUT_STYLE}
+            as="textarea"
+            rows={2}
+            size="sm"
+            value={form.monitoring_notes}
+            onChange={(e) => onFormChange({ monitoring_notes: e.target.value })}
+          />
         </Form.Group>
         <Form.Group>
           <Form.Label className="small mb-1">Testing procedures</Form.Label>

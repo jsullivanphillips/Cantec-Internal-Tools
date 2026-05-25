@@ -281,8 +281,8 @@ Tests often use minimal SQLite table subsets with explicit BIGINT id assignment.
 
 - **Portal `stops[]` and office `rows[]` (historical month):** All site fields for that visit come from the **run month** (`MonthlyTestingSiteMonth`, or `MonthlyRouteTestHistory` when no MTSM row). Older months are not overwritten when a later month or the library master changes.
 - **New run materialize:** `seed_stop_month_fields` copies display fields from **office master** (`MonthlyTestingSite` / `master_template_fields`), with gaps filled from the **most recent prior** `MonthlyTestingSiteMonth`. Outcomes (tested/skipped/times) start empty. **`run_comments` always starts empty** for a new month (never copied from prior month or master).
-- **Library location display:** Primary `MonthlyTestingSite` master row is the **newest edition** (office edits + mirror from the latest run month when techs PATCH snapshot fields).
-- **Portal stop PATCH (latest month only):** Snapshot field edits on the current/latest run mirror to primary master + legacy location via `mirror_mtsm_snapshot_to_primary_master` (`monthly_sites_sync.py`). Older months never mirror.
+- **Library location display:** Each `MonthlyTestingSite` master row is the **newest edition** for that testing stop (office edits + mirror from the latest run month when techs PATCH snapshot fields). Primary testing-site values also dual-write to the legacy route location for sheet/detail parity.
+- **Portal stop PATCH (latest month only):** Snapshot field edits on the current/latest run mirror to that stop's `MonthlyTestingSite` master via `mirror_mtsm_snapshot_to_primary_master` (`monthly_sites_sync.py`). Primary stops also mirror to the legacy location. Older months never mirror.
 - **Office testing-site PATCH:** Updates master directly; the next run seeds from that master.
 - **Route CSV import:** Still uses `is_latest_history_month_for_location` for whether legacy location columns update (`history_sheet_notes.py`).
 
@@ -301,8 +301,9 @@ Master data lives on **`MonthlyTestingSite`** (migration `z4a5b6c7d8e9`):
 | Panel location | `panel_location` |
 | Door code (if any) | `door_code` |
 | Monitoring company | `monitoring_company_id` → `monitoring_company` |
+| Monitoring notes | `monitoring_notes` |
 
-Run-month copies: **`MonthlyTestingSiteMonth`** (`panel`, `panel_location`, `door_code`, `building_name`, `property_management_company`, `testing_procedures`, `inspection_tech_notes`, plus existing ring/key/annual/monitoring_notes).
+Run-month copies: **`MonthlyTestingSiteMonth`** (`panel`, `panel_location`, `door_code`, `building_name`, `property_management_company`, `testing_procedures`, `inspection_tech_notes`, `monitoring_notes`, plus existing ring/key/annual).
 
 ### Comments (portal worksheet — 2026-05)
 

@@ -24,6 +24,7 @@ LIBRARY_TEXT_FIELDS = (
     "facp_detail",  # legacy alias; prefer ``panel`` for new writes
     "testing_procedures",
     "inspection_tech_notes",
+    "monitoring_notes",
 )
 
 # Run-month snapshot (``MonthlyTestingSiteMonth``)

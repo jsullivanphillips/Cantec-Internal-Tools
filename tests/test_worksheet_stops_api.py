@@ -446,6 +446,107 @@ def test_patch_run_comments_does_not_mirror_to_library_master(stops_client, monk
         assert ts.testing_procedures == "Library procedures"
 
 
+def test_patch_monitoring_notes_mirrors_to_testing_site_master(stops_client, monkeypatch):
+    from app.monthly.worksheet_stops import ensure_worksheet_stops_for_route_month
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
+
+    client, app = stops_client
+    with app.app_context():
+        route_id, ts_id, _ = _seed_route_with_two_stops()
+        run = MonthlyRouteRun(
+            id=5013,
+            monthly_route_id=route_id,
+            month_date=date(2026, 5, 1),
+            started_at=datetime(2026, 5, 2, 8, 0, tzinfo=PACIFIC_TZ),
+            status="open",
+            source="technician_app",
+        )
+        db.session.add(run)
+        db.session.commit()
+        ensure_worksheet_stops_for_route_month(route_id, date(2026, 5, 1), run)
+        db.session.commit()
+
+    qs = "month=2026-05-01&tech_portal=1"
+    res = client.patch(
+        f"/api/monthly_routes/routes/1/worksheet/stops/{ts_id}?{qs}",
+        json={"changes": {"monitoring_notes": "Acct 123 - fire and trouble only"}},
+    )
+    assert res.status_code == 200
+
+    with app.app_context():
+        ts = db.session.get(MonthlyTestingSite, ts_id)
+        assert ts is not None
+        assert ts.monitoring_notes == "Acct 123 - fire and trouble only"
+
+
+def test_secondary_testing_site_patch_persists_to_next_run(stops_client, monkeypatch):
+    from app.monthly.worksheet_stops import ensure_worksheet_stops_for_route_month
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
+
+    client, app = stops_client
+    with app.app_context():
+        route_id, _, ts_second = _seed_route_with_two_stops()
+        ts = db.session.get(MonthlyTestingSite, ts_second)
+        assert ts is not None
+        ts.panel = "Old secondary panel"
+        ts.facp_detail = "Old secondary panel"
+        ts.monitoring_notes = "Old secondary monitoring"
+        run = MonthlyRouteRun(
+            id=5014,
+            monthly_route_id=route_id,
+            month_date=date(2026, 5, 1),
+            started_at=datetime(2026, 5, 2, 8, 0, tzinfo=PACIFIC_TZ),
+            status="open",
+            source="technician_app",
+        )
+        db.session.add(run)
+        db.session.commit()
+        ensure_worksheet_stops_for_route_month(route_id, date(2026, 5, 1), run)
+        db.session.commit()
+
+    qs = "month=2026-05-01&tech_portal=1"
+    res = client.patch(
+        f"/api/monthly_routes/routes/1/worksheet/stops/{ts_second}?{qs}",
+        json={
+            "changes": {
+                "panel": "New secondary panel",
+                "monitoring_notes": "New secondary monitoring",
+            }
+        },
+    )
+    assert res.status_code == 200
+
+    with app.app_context():
+        ts = db.session.get(MonthlyTestingSite, ts_second)
+        assert ts is not None
+        assert ts.panel == "New secondary panel"
+        assert ts.monitoring_notes == "New secondary monitoring"
+
+        run_june = MonthlyRouteRun(
+            id=5015,
+            monthly_route_id=route_id,
+            month_date=date(2026, 6, 1),
+            started_at=datetime(2026, 6, 2, 8, 0, tzinfo=PACIFIC_TZ),
+            status="open",
+            source="technician_app",
+        )
+        db.session.add(run_june)
+        db.session.commit()
+        ensure_worksheet_stops_for_route_month(route_id, date(2026, 6, 1), run_june)
+        db.session.commit()
+
+        june = MonthlyTestingSiteMonth.query.filter_by(
+            monthly_testing_site_id=ts_second,
+            month_date=date(2026, 6, 1),
+        ).one()
+        assert june.panel == "New secondary panel"
+        assert june.monitoring_notes == "New secondary monitoring"
+
+
 def test_reset_run_clears_run_comments(stops_client, monkeypatch):
     from app.monthly.worksheet_stops import ensure_worksheet_stops_for_route_month
     from app.routes import monthly_routes as mr_mod

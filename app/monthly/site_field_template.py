@@ -56,7 +56,7 @@ def master_template_fields(
         "testing_procedures": ts.testing_procedures or loc.testing_procedures,
         "inspection_tech_notes": ts.inspection_tech_notes or loc.inspection_tech_notes,
         "monitoring_company_name": _master_monitoring_company_name(ts, loc),
-        "monitoring_notes": None,
+        "monitoring_notes": ts.monitoring_notes,
     }
 
 

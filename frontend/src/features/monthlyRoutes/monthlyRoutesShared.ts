@@ -61,6 +61,7 @@ export type TestingSiteSummary = {
   facp_detail: string | null
   monitoring_company_id?: number | null
   monitoring_company?: MonitoringCompanySummary | null
+  monitoring_notes: string | null
   testing_procedures: string | null
   inspection_tech_notes: string | null
 }
@@ -628,6 +629,7 @@ export type TestingSiteEditForm = {
   property_management_company: string
   annual_month: string
   monitoring_company_id: string
+  monitoring_notes: string
   testing_procedures: string
   inspection_tech_notes: string
 }
@@ -656,6 +658,7 @@ export function buildTestingSiteEditForm(
     annual_month: normalizeAnnualMonthForSelect(annualRaw),
     monitoring_company_id:
       ts.monitoring_company_id != null ? String(ts.monitoring_company_id) : '',
+    monitoring_notes: ts.monitoring_notes ?? '',
     testing_procedures: ts.testing_procedures ?? '',
     inspection_tech_notes: ts.inspection_tech_notes ?? '',
   }
@@ -681,6 +684,7 @@ export function testingSitePayloadFromEditForm(form: TestingSiteEditForm): Recor
     property_management_company: form.property_management_company.trim() || null,
     annual_month: form.annual_month.trim() || null,
     monitoring_company_id,
+    monitoring_notes: form.monitoring_notes.trim() || null,
     testing_procedures: form.testing_procedures.trim() || null,
     inspection_tech_notes: form.inspection_tech_notes.trim() || null,
   }

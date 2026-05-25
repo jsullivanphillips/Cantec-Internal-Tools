@@ -41,6 +41,11 @@ export default function PortalEditableFieldRow({
     onEditingFieldChange(null)
   }
 
+  const cancel = () => {
+    setDraft(value)
+    onEditingFieldChange(null)
+  }
+
   const startEdit = () => {
     if (readOnly) return
     setDraft(value)
@@ -88,7 +93,16 @@ export default function PortalEditableFieldRow({
             rows={4}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.preventDefault()
+                cancel()
+              }
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault()
+                commit()
+              }
+            }}
           />
         ) : (
           <input
@@ -98,15 +112,30 @@ export default function PortalEditableFieldRow({
             className="pw-mock-field-input"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            onBlur={commit}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault()
                 commit()
               }
+              if (e.key === 'Escape') {
+                e.preventDefault()
+                cancel()
+              }
             }}
           />
         )}
+        <div className="pw-mock-field-edit-actions">
+          <button type="button" className="pw-mock-field-edit-btn" onClick={cancel}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="pw-mock-field-edit-btn pw-mock-field-edit-btn--primary"
+            onClick={commit}
+          >
+            Save
+          </button>
+        </div>
       </div>
     </div>
   )

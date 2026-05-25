@@ -97,6 +97,7 @@ def _serialize_testing_site(ts: MonthlyTestingSite) -> dict[str, object]:
         "facp_detail": ts.facp_detail,
         "monitoring_company_id": ts.monitoring_company_id,
         "monitoring_company": _serialize_monitoring_company(ts.monitoring_company),
+        "monitoring_notes": ts.monitoring_notes,
         "testing_procedures": ts.testing_procedures,
         "inspection_tech_notes": ts.inspection_tech_notes,
     }
@@ -352,6 +353,9 @@ def _apply_testing_site_payload(ts: MonthlyTestingSite, payload: dict) -> tuple[
     if "inspection_tech_notes" in payload:
         v = payload.get("inspection_tech_notes")
         ts.inspection_tech_notes = (str(v).strip() or None) if v is not None else None
+    if "monitoring_notes" in payload:
+        v = payload.get("monitoring_notes")
+        ts.monitoring_notes = (str(v).strip() or None) if v is not None else None
     if "keys" in payload or "key" in payload:
         raw = payload.get("keys", payload.get("key"))
         ts.keys = (str(raw).strip() or None) if raw is not None else None

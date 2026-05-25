@@ -16,6 +16,8 @@ import PortalWorksheetSkeleton from './PortalWorksheetSkeleton'
 
 type StopDisplayStatus = 'pending' | 'in_progress' | 'tested' | 'skipped'
 
+const NAV_EXPAND_TRANSITION_MS = 220
+
 function stopDisplayStatus(stop: TechnicianWorksheetStop): StopDisplayStatus {
   const rs = (stop.result_status || '').trim().toLowerCase()
   if (rs === 'tested') return 'tested'
@@ -63,6 +65,15 @@ function skipReasonDisplay(stop: TechnicianWorksheetStop): string | null {
   const low = reason.toLowerCase()
   if (low === 'annual_booked' || low === 'sheet_value') return null
   return reason
+}
+
+function headerPanelDisplay(stop: TechnicianWorksheetStop): string | null {
+  const makeModel = (stop.panel || '').trim()
+  const location = (stop.panel_location || '').trim()
+  if (makeModel && location) return `${makeModel} - ${location}`
+  if (makeModel) return makeModel
+  if (location) return location
+  return (stop.label || '').trim() || null
 }
 
 function syncBadgeVariant(state: string): string {
@@ -117,6 +128,7 @@ export default function TechnicianPortalWorksheetPage() {
 
   const [activeId, setActiveId] = useState<number | null>(null)
   const [navExpanded, setNavExpanded] = useState(false)
+  const [navItemsExpanded, setNavItemsExpanded] = useState(false)
   const [skipModalOpen, setSkipModalOpen] = useState(false)
   const [skipDraft, setSkipDraft] = useState('')
   const [editingField, setEditingField] = useState<string | null>(null)
@@ -139,8 +151,9 @@ export default function TechnicianPortalWorksheetPage() {
   const progress = useMemo(() => {
     const tested = stops.filter((s) => stopDisplayStatus(s) === 'tested').length
     const skipped = stops.filter((s) => stopDisplayStatus(s) === 'skipped').length
+    const annual = stops.filter((s) => isAnnualMonth(s) || worksheetStopSkipIsAnnual(s)).length
     const open = stops.length - tested - skipped
-    return { tested, skipped, open, total: stops.length }
+    return { tested, skipped, annual, open, total: stops.length }
   }, [stops])
 
   useEffect(() => {
@@ -208,6 +221,17 @@ export default function TechnicianPortalWorksheetPage() {
     onEditingFieldChange: setEditingField,
   }
 
+  useEffect(() => {
+    if (!navExpanded) {
+      setNavItemsExpanded(false)
+      return undefined
+    }
+    const timer = window.setTimeout(() => {
+      setNavItemsExpanded(true)
+    }, NAV_EXPAND_TRANSITION_MS)
+    return () => window.clearTimeout(timer)
+  }, [navExpanded])
+
   const renderNavStop = (stop: TechnicianWorksheetStop) => {
     const isActive = stop.testing_site_id === activeId
     const statusClass = navStopStatusClass(stop)
@@ -219,7 +243,7 @@ export default function TechnicianPortalWorksheetPage() {
     const key = (stop.key_number || '—').trim()
     const monitoring = (stop.monitoring_company || '—').trim()
 
-    if (!navExpanded) {
+    if (!navItemsExpanded) {
       return (
         <button
           key={stop.testing_site_id}
@@ -295,6 +319,7 @@ export default function TechnicianPortalWorksheetPage() {
   const routeLabel = payload?.route.label || `Route ${payload?.route.route_number ?? routeId}`
   const activeStatus = active ? stopDisplayStatus(active) : 'pending'
   const activeSkipLabel = active ? skipReasonDisplay(active) : null
+  const activePanelDisplay = active ? headerPanelDisplay(active) : null
 
   return (
     <div className="portal-worksheet-mockup">
@@ -328,7 +353,8 @@ export default function TechnicianPortalWorksheetPage() {
         ) : null}
         <div className="pw-mock-chrome-meta">
           <span>
-            {progress.tested} tested · {progress.skipped} skipped · {progress.open} open
+            {progress.tested} tested · {progress.skipped} skipped · {progress.annual} annual ·{' '}
+            {progress.open} open
           </span>
           {showStartRun ? (
             <Button
@@ -385,13 +411,19 @@ export default function TechnicianPortalWorksheetPage() {
           <aside
             className={`pw-mock-sidenav${navExpanded ? ' pw-mock-sidenav--expanded' : ' pw-mock-sidenav--collapsed'}`}
           >
-            {navExpanded ? (
+            {navItemsExpanded ? (
               <div className="pw-mock-sidenav-head">
-                <div className="pw-mock-sidenav-title">Route</div>
+                <div className="pw-mock-sidenav-title">{routeLabel}</div>
                 <div className="pw-mock-sidenav-sub">{progress.total} stops</div>
               </div>
             ) : null}
-            <div className="pw-mock-sidenav-list">{stops.map((s) => renderNavStop(s))}</div>
+            <div
+              className={`pw-mock-sidenav-list${
+                navItemsExpanded ? ' pw-mock-sidenav-list--expanded' : ' pw-mock-sidenav-list--collapsed'
+              }`}
+            >
+              {stops.map((s) => renderNavStop(s))}
+            </div>
             <button
               type="button"
               className="pw-mock-sidenav-toggle"
@@ -402,7 +434,7 @@ export default function TechnicianPortalWorksheetPage() {
                 className={`bi ${navExpanded ? 'bi-chevron-double-left' : 'bi-chevron-double-right'}`}
                 aria-hidden
               />
-              {navExpanded ? <span className="pw-mock-sidenav-toggle-label">Collapse menu</span> : null}
+              {navItemsExpanded ? <span className="pw-mock-sidenav-toggle-label">Collapse menu</span> : null}
             </button>
           </aside>
 
@@ -413,11 +445,16 @@ export default function TechnicianPortalWorksheetPage() {
               <>
                 <section className="pw-mock-detail">
                   <div className={`pw-mock-header ${headerBandClass(active)}`}>
-                    <div className="pw-mock-header-stop">
-                      Stop #{active.stop_number}
-                      {isAnnualMonth(active) || worksheetStopSkipIsAnnual(active) ? (
-                        <span className="pw-mock-annual-pill">Annual month</span>
-                      ) : null}
+                    <div className="pw-mock-header-top">
+                      <div className="pw-mock-header-stop">
+                        Stop #{active.stop_number}
+                        {isAnnualMonth(active) || worksheetStopSkipIsAnnual(active) ? (
+                          <span className="pw-mock-annual-pill">Annual month</span>
+                        ) : null}
+                      </div>
+                      <span className={`pw-mock-status-pill pw-mock-status-pill--${activeStatus}`}>
+                        {statusLabel(activeStatus, active)}
+                      </span>
                     </div>
                     <h1 className="pw-mock-header-address">{active.display_address}</h1>
                     {active.building_name ? (
@@ -426,8 +463,8 @@ export default function TechnicianPortalWorksheetPage() {
                     {active.property_management_company ? (
                       <div className="pw-mock-header-line text-muted">{active.property_management_company}</div>
                     ) : null}
-                    {active.label ? (
-                      <div className="pw-mock-header-line fw-semibold">{active.label}</div>
+                    {activePanelDisplay ? (
+                      <div className="pw-mock-header-line fw-semibold">{activePanelDisplay}</div>
                     ) : null}
                     {(active.time_in || active.time_out) && (
                       <div className="pw-mock-header-times">
@@ -466,34 +503,36 @@ export default function TechnicianPortalWorksheetPage() {
                     </div>
                     <div className="pw-mock-field-group">
                       <div className="pw-mock-field-group-title">Access</div>
-                      <PortalEditableFieldRow
-                        fieldKey="ring"
-                        label="Ring"
-                        value={active.ring ?? ''}
-                        onSave={saveField('ring')}
-                        {...fieldEditProps}
-                      />
-                      <PortalEditableFieldRow
-                        fieldKey="key_number"
-                        label="Key #"
-                        value={active.key_number ?? ''}
-                        onSave={saveField('key_number')}
-                        {...fieldEditProps}
-                      />
-                      <PortalEditableFieldRow
-                        fieldKey="door_code"
-                        label="Door code"
-                        value={active.door_code ?? ''}
-                        onSave={saveField('door_code')}
-                        {...fieldEditProps}
-                      />
-                      <PortalEditableFieldRow
-                        fieldKey="annual_month"
-                        label="Annual"
-                        value={active.annual_month ?? ''}
-                        onSave={saveField('annual_month')}
-                        {...fieldEditProps}
-                      />
+                      <div className="pw-mock-access-row">
+                        <PortalEditableFieldRow
+                          fieldKey="ring"
+                          label="Ring"
+                          value={active.ring ?? ''}
+                          onSave={saveField('ring')}
+                          {...fieldEditProps}
+                        />
+                        <PortalEditableFieldRow
+                          fieldKey="key_number"
+                          label="Key #"
+                          value={active.key_number ?? ''}
+                          onSave={saveField('key_number')}
+                          {...fieldEditProps}
+                        />
+                        <PortalEditableFieldRow
+                          fieldKey="door_code"
+                          label="Door code"
+                          value={active.door_code ?? ''}
+                          onSave={saveField('door_code')}
+                          {...fieldEditProps}
+                        />
+                        <PortalEditableFieldRow
+                          fieldKey="annual_month"
+                          label="Annual"
+                          value={active.annual_month ?? ''}
+                          onSave={saveField('annual_month')}
+                          {...fieldEditProps}
+                        />
+                      </div>
                     </div>
                     <div className="pw-mock-field-group">
                       <div className="pw-mock-field-group-title">Panel</div>
@@ -561,22 +600,25 @@ export default function TechnicianPortalWorksheetPage() {
                 </section>
 
                 <footer className="pw-mock-dock">
-                  <Button
-                    variant="primary"
-                    className="pw-mock-dock-btn"
-                    disabled={readOnlyWorksheet || activeStatus === 'tested' || !!active.time_in}
-                    onClick={clockIn}
-                  >
-                    Clock in
-                  </Button>
-                  <Button
-                    variant="primary"
-                    className="pw-mock-dock-btn"
-                    disabled={readOnlyWorksheet || !active.time_in || !!active.time_out}
-                    onClick={clockOut}
-                  >
-                    Clock out
-                  </Button>
+                  {active.time_in && !active.time_out ? (
+                    <Button
+                      variant="primary"
+                      className="pw-mock-dock-btn"
+                      disabled={readOnlyWorksheet}
+                      onClick={clockOut}
+                    >
+                      Clock out
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="primary"
+                      className="pw-mock-dock-btn"
+                      disabled={readOnlyWorksheet || activeStatus === 'tested' || !!active.time_in}
+                      onClick={clockIn}
+                    >
+                      Clock in
+                    </Button>
+                  )}
                   <Button
                     variant="outline-warning"
                     className="pw-mock-dock-btn"

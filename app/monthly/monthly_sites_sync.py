@@ -186,9 +186,7 @@ def mirror_mtsm_snapshot_to_primary_master(
     ts: MonthlyTestingSite,
     mtsm: MonthlyTestingSiteMonth,
 ) -> None:
-    """Copy a run-month snapshot onto the primary ``MonthlyTestingSite`` (newest edition)."""
-    if int(ts.sort_order) != 0:
-        return
+    """Copy a run-month snapshot onto this ``MonthlyTestingSite`` (newest edition)."""
     ts.annual_month = mtsm.annual_month
     ts.property_management_company = mtsm.property_management_company
     ts.building_name = mtsm.building_name
@@ -201,6 +199,7 @@ def mirror_mtsm_snapshot_to_primary_master(
     ts.facp_detail = panel
     ts.testing_procedures = mtsm.testing_procedures
     ts.inspection_tech_notes = mtsm.inspection_tech_notes
+    ts.monitoring_notes = mtsm.monitoring_notes
     company_name = (mtsm.monitoring_company_name or "").strip() or None
     if company_name:
         folded = company_name.casefold()

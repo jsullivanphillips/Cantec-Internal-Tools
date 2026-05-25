@@ -74,7 +74,6 @@ _MTSM_SNAPSHOT_DISPLAY_KEYS = (
 
 def _cleared_outcome_fields() -> dict[str, object]:
     return {
-        "monitoring_notes": None,
         "session_route_stop_order": None,
         "result_status": None,
         "skip_reason": None,

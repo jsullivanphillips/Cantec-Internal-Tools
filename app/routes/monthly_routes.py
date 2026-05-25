@@ -2412,7 +2412,6 @@ def patch_monthly_route_worksheet_stop(route_id: int, testing_site_id: int):
 
     if (
         snapshot_changed
-        and is_primary_stop(ts, loc)
         and _is_latest_run_for_location(int(loc.id), month_first)
     ):
         from app.monthly.monthly_sites_sync import (
@@ -2421,7 +2420,8 @@ def patch_monthly_route_worksheet_stop(route_id: int, testing_site_id: int):
         )
 
         mirror_mtsm_snapshot_to_primary_master(ts, mtsm)
-        push_primary_testing_site_display_to_legacy(loc, ts)
+        if is_primary_stop(ts, loc):
+            push_primary_testing_site_display_to_legacy(loc, ts)
         db.session.commit()
 
     db.session.refresh(mtsm)

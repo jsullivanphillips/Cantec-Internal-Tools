@@ -1032,6 +1032,7 @@ class MonthlyTestingSite(db.Model):
         db.ForeignKey("monitoring_company.id", ondelete="SET NULL"),
         nullable=True,
     )
+    monitoring_notes = db.Column(db.Text, nullable=True)
 
     created_at = db.Column(
         db.DateTime(timezone=True),
