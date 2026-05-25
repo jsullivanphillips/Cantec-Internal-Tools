@@ -44,6 +44,30 @@ export default function TechnicianPortalLayout() {
     }
   }, [unlocked, isLockScreen, nav])
 
+  useEffect(() => {
+    if (!isWorksheetScreen) {
+      document.documentElement.style.removeProperty('--portal-worksheet-visual-height')
+      return undefined
+    }
+
+    const updateWorksheetViewportHeight = () => {
+      const viewportHeight = window.visualViewport?.height ?? window.innerHeight
+      document.documentElement.style.setProperty('--portal-worksheet-visual-height', `${viewportHeight}px`)
+    }
+
+    updateWorksheetViewportHeight()
+    window.addEventListener('resize', updateWorksheetViewportHeight)
+    window.visualViewport?.addEventListener('resize', updateWorksheetViewportHeight)
+    window.visualViewport?.addEventListener('scroll', updateWorksheetViewportHeight)
+
+    return () => {
+      window.removeEventListener('resize', updateWorksheetViewportHeight)
+      window.visualViewport?.removeEventListener('resize', updateWorksheetViewportHeight)
+      window.visualViewport?.removeEventListener('scroll', updateWorksheetViewportHeight)
+      document.documentElement.style.removeProperty('--portal-worksheet-visual-height')
+    }
+  }, [isWorksheetScreen])
+
   const lock = useCallback(async () => {
     try {
       await apiFetch('/api/technician_portal/logout', { method: 'POST' })

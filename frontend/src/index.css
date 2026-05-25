@@ -90,10 +90,14 @@
 /* Portal worksheet: lock shell to visible viewport (min-vh alone overflows on iOS/iPad) */
 .app-shell.app-shell--portal-worksheet {
   height: 100vh;
+  height: 100svh;
   height: 100dvh;
+  height: var(--portal-worksheet-visual-height, 100dvh);
   max-height: 100vh;
+  max-height: 100svh;
   max-height: 100dvh;
-  min-height: 0;
+  max-height: var(--portal-worksheet-visual-height, 100dvh);
+  min-height: 0 !important;
   overflow: hidden;
 }
 
