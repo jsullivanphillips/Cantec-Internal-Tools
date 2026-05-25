@@ -24,6 +24,7 @@ from app.db_models import (
     MonthlyRouteSpecialistMonth,
     MonthlyRouteTestHistory,
     MonthlyRouteWorksheetAuditEvent,
+    MonthlySite,
     db,
 )
 from app.monthly.key_resolve import sync_key_fk_for_location
@@ -318,18 +319,33 @@ def _serialize_linked_key(key: Key | None) -> dict[str, object] | None:
 
 
 def _months_payload_for_location(location_id: int) -> dict[str, dict[str, object]]:
+    current_route_id = (
+        db.session.query(MonthlyRouteLocation.monthly_route_id)
+        .filter(MonthlyRouteLocation.id == location_id)
+        .scalar()
+    )
     history_rows = (
-        MonthlyRouteTestHistory.query.options(joinedload(MonthlyRouteTestHistory.test_monthly_route))
+        MonthlyRouteTestHistory.query.options(
+            joinedload(MonthlyRouteTestHistory.test_monthly_route),
+            joinedload(MonthlyRouteTestHistory.run),
+        )
         .filter_by(location_id=location_id)
         .order_by(MonthlyRouteTestHistory.month_date.asc())
         .all()
     )
     out: dict[str, dict[str, object]] = {}
     for row in history_rows:
+        worksheet_route_id = row.test_monthly_route_id
+        if worksheet_route_id is None and row.run is not None:
+            worksheet_route_id = row.run.monthly_route_id
+        if worksheet_route_id is None:
+            worksheet_route_id = current_route_id
         out[row.month_date.isoformat()] = {
             "result_status": row.result_status,
             "skip_reason": row.skip_reason,
             "test_monthly_route": _serialize_monthly_route_entity(row.test_monthly_route),
+            "worksheet_route_id": int(worksheet_route_id) if worksheet_route_id is not None else None,
+            "run_id": int(row.run_id) if row.run_id is not None else None,
         }
     return out
 
@@ -1298,6 +1314,13 @@ def _serialize_testing_session_payload(route_id: int, month_first: date) -> dict
 
 def _serialize_route_location_list_item(loc: MonthlyRouteLocation) -> dict[str, object]:
     """Lightweight row for route detail / reorder (no per-month grid)."""
+    monthly_site = loc.monthly_site
+    testing_sites = []
+    if monthly_site is not None:
+        testing_sites = sorted(
+            monthly_site.testing_sites,
+            key=lambda ts: (int(ts.sort_order), int(ts.id)),
+        )
     return {
         "id": loc.id,
         "address": loc.address,
@@ -1307,6 +1330,15 @@ def _serialize_route_location_list_item(loc: MonthlyRouteLocation) -> dict[str, 
         "annual_month": loc.annual_month,
         "route_stop_order": loc.route_stop_order,
         "monthly_route_id": loc.monthly_route_id,
+        "testing_sites": [
+            {
+                "id": int(ts.id),
+                "sort_order": int(ts.sort_order),
+                "label": ts.label,
+                "annual_month": ts.annual_month,
+            }
+            for ts in testing_sites
+        ],
     }
 
 
@@ -1724,7 +1756,10 @@ def get_monthly_route_detail(route_id: int):
     }
 
     route_locations = (
-        MonthlyRouteLocation.query.filter_by(monthly_route_id=route_id)
+        MonthlyRouteLocation.query.options(
+            joinedload(MonthlyRouteLocation.monthly_site).selectinload(MonthlySite.testing_sites)
+        )
+        .filter_by(monthly_route_id=route_id)
         .order_by(
             MonthlyRouteLocation.route_stop_order.asc().nulls_last(),
             MonthlyRouteLocation.address.asc(),
@@ -2863,7 +2898,10 @@ def put_monthly_route_location_order(route_id: int):
     db.session.commit()
 
     route_locations = (
-        MonthlyRouteLocation.query.filter_by(monthly_route_id=route_id)
+        MonthlyRouteLocation.query.options(
+            joinedload(MonthlyRouteLocation.monthly_site).selectinload(MonthlySite.testing_sites)
+        )
+        .filter_by(monthly_route_id=route_id)
         .order_by(
             MonthlyRouteLocation.route_stop_order.asc().nulls_last(),
             MonthlyRouteLocation.address.asc(),

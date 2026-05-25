@@ -32,6 +32,7 @@ import {
   type MonthlyRouteSummary,
   type MonthlySpecialistTechRow,
   type RouteLocationListItem,
+  type RouteLocationTestingSiteListItem,
   type RouteTestingSkippedSite,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
 import { apiJson, apiPostFormData, isAbortError } from '../lib/apiClient'
@@ -185,13 +186,42 @@ function siteStatusBadgeVariant(status: string): string {
   }
 }
 
+function testingSitesForRouteLocation(loc: RouteLocationListItem): RouteLocationTestingSiteListItem[] {
+  const sites = [...(loc.testing_sites ?? [])].sort((a, b) => a.sort_order - b.sort_order)
+  if (sites.length > 0) return sites
+  return [
+    {
+      id: -loc.id,
+      sort_order: 0,
+      label: null,
+      annual_month: loc.annual_month ?? null,
+    },
+  ]
+}
+
+function routeLocationStopCount(loc: RouteLocationListItem): number {
+  return Math.max(1, testingSitesForRouteLocation(loc).length)
+}
+
+function routeTestingSiteTitle(
+  site: RouteLocationTestingSiteListItem,
+  index: number,
+  total: number,
+  locLabel: string
+): string {
+  const label = site.label?.trim()
+  if (label) return label
+  if (total === 1) return locLabel
+  return `Testing site ${index + 1}`
+}
+
 function SortableRouteSiteRow({
   loc,
-  index,
+  stopStart,
   orderSaving,
 }: {
   loc: RouteLocationListItem
-  index: number
+  stopStart: number
   orderSaving: boolean
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -205,42 +235,70 @@ function SortableRouteSiteRow({
   }
   const line1 = (loc.display_address || loc.address || '').trim() || `Location ${loc.id}`
   const blockLine = (loc.building || '').trim()
+  const testingSites = testingSitesForRouteLocation(loc)
 
   return (
-    <tr ref={setNodeRef} style={style}>
-      <td className="text-center px-1 align-middle">
-        <button
-          type="button"
-          className="btn btn-link p-0 text-muted monthly-route-site-drag-handle"
-          style={{ cursor: orderSaving ? 'not-allowed' : 'grab' }}
-          disabled={orderSaving}
-          aria-label={`Drag to reorder: ${line1}`}
-          {...attributes}
-          {...listeners}
-        >
-          <i className="bi bi-grip-vertical fs-5" aria-hidden />
-        </button>
-      </td>
-      <td className="text-center tabular-nums fw-semibold">{index + 1}</td>
-      <td>
-        <Link className="link-primary text-break fw-semibold" to={`/monthlies/locations/${loc.id}`}>
-          {line1}
-        </Link>
-        {blockLine ? <div className="small text-muted text-break">{blockLine}</div> : null}
-      </td>
-      <td className="small text-nowrap">
-        {loc.annual_month?.trim() ? (
-          <span className="text-body">{loc.annual_month.trim()}</span>
-        ) : (
-          <span className="text-muted">—</span>
-        )}
-      </td>
-      <td>
-        <Badge bg={siteStatusBadgeVariant(loc.status_normalized)} className="text-capitalize">
-          {(loc.status_normalized || '').replace(/_/g, ' ') || '—'}
-        </Badge>
-      </td>
-    </tr>
+    <>
+      {testingSites.map((site, siteIndex) => {
+        const isPrimaryRow = siteIndex === 0
+        const siteTitle = routeTestingSiteTitle(site, siteIndex, testingSites.length, line1)
+        const annual = site.annual_month?.trim() || loc.annual_month?.trim() || ''
+
+        return (
+          <tr
+            key={`${loc.id}:${site.id}`}
+            ref={isPrimaryRow ? setNodeRef : undefined}
+            style={isPrimaryRow ? style : undefined}
+            className={isPrimaryRow ? undefined : 'monthly-route-site-secondary-row'}
+          >
+            <td className="text-center px-1 align-middle">
+              {isPrimaryRow ? (
+                <button
+                  type="button"
+                  className="btn btn-link p-0 text-muted monthly-route-site-drag-handle"
+                  style={{ cursor: orderSaving ? 'not-allowed' : 'grab' }}
+                  disabled={orderSaving}
+                  aria-label={`Drag to reorder: ${line1}`}
+                  {...attributes}
+                  {...listeners}
+                >
+                  <i className="bi bi-grip-vertical fs-5" aria-hidden />
+                </button>
+              ) : null}
+            </td>
+            <td className="text-center tabular-nums fw-semibold">{stopStart + siteIndex}</td>
+            <td>
+              {isPrimaryRow ? (
+                <>
+                  <Link className="link-primary text-break fw-semibold" to={`/monthlies/locations/${loc.id}`}>
+                    {line1}
+                  </Link>
+                  {blockLine ? <div className="small text-muted text-break">{blockLine}</div> : null}
+                  {testingSites.length > 1 || site.label?.trim() ? (
+                    <div className="small text-muted text-break">{siteTitle}</div>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  <div className="fw-semibold text-break">{siteTitle}</div>
+                  <Link className="small text-muted text-decoration-none text-break" to={`/monthlies/locations/${loc.id}`}>
+                    {line1}
+                  </Link>
+                </>
+              )}
+            </td>
+            <td className="small text-nowrap">
+              {annual ? <span className="text-body">{annual}</span> : <span className="text-muted">—</span>}
+            </td>
+            <td>
+              <Badge bg={siteStatusBadgeVariant(loc.status_normalized)} className="text-capitalize">
+                {(loc.status_normalized || '').replace(/_/g, ' ') || '—'}
+              </Badge>
+            </td>
+          </tr>
+        )
+      })}
+    </>
   )
 }
 
@@ -593,6 +651,16 @@ export default function MonthlyRouteDetailPage() {
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
+
+  const routeStopStartByLocationId = useMemo(() => {
+    const out = new Map<number, number>()
+    let nextStop = 1
+    for (const loc of orderedSites) {
+      out.set(loc.id, nextStop)
+      nextStop += routeLocationStopCount(loc)
+    }
+    return out
+  }, [orderedSites])
 
   const handleSitesDragEnd = useCallback(
     (event: DragEndEvent) => {
@@ -1167,7 +1235,7 @@ export default function MonthlyRouteDetailPage() {
                           <th style={{ width: '4rem' }} className="text-center">
                             Stop
                           </th>
-                          <th>Address</th>
+                          <th>Location / testing site</th>
                           <th style={{ width: '6.5rem' }} className="text-nowrap">
                             Annual
                           </th>
@@ -1183,7 +1251,7 @@ export default function MonthlyRouteDetailPage() {
                             <SortableRouteSiteRow
                               key={loc.id}
                               loc={loc}
-                              index={index}
+                              stopStart={routeStopStartByLocationId.get(loc.id) ?? index + 1}
                               orderSaving={orderSaving}
                             />
                           ))}

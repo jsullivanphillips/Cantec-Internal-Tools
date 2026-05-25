@@ -9,6 +9,7 @@ from app.db_models import (
     MonitoringCompany,
     MonthlyRoute,
     MonthlyRouteLocation,
+    MonthlyRouteLocationComment,
     MonthlyRouteRun,
     MonthlyRouteTestHistory,
     MonthlyRouteWorksheetAuditEvent,
@@ -47,6 +48,7 @@ def worksheet_client(monkeypatch):
         Key.__table__,
         MonitoringCompany.__table__,
         MonthlyRouteLocation.__table__,
+        MonthlyRouteLocationComment.__table__,
         MonthlyRouteRun.__table__,
         MonthlyRouteTestHistory.__table__,
         MonthlyRouteWorksheetAuditEvent.__table__,
@@ -169,6 +171,48 @@ def test_get_worksheet_returns_rows(worksheet_client):
     assert body["route"]["id"] == 1
     assert len(body["rows"]) == 1
     assert body["rows"][0]["display_address"] == "123 Test St"
+
+
+def test_monthly_location_history_cell_includes_worksheet_link_route(worksheet_client):
+    client, app = worksheet_client
+    with app.app_context():
+        historical_route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
+        current_route = MonthlyRoute(id=2, route_number=3, weekday_iso=1, week_occurrence=2)
+        loc = MonthlyRouteLocation(
+            id=101,
+            address="123 Test St",
+            address_normalized="123 test st",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
+            building=None,
+            building_normalized="",
+            status_normalized="active",
+            status_raw="Active",
+            monthly_route_id=2,
+            annual_month="May",
+        )
+        run = MonthlyRouteRun(
+            id=7001,
+            monthly_route_id=1,
+            month_date=date(2026, 4, 1),
+        )
+        hist = MonthlyRouteTestHistory(
+            id=5001,
+            location_id=101,
+            month_date=date(2026, 4, 1),
+            result_status="tested",
+            test_monthly_route_id=1,
+            run_id=7001,
+        )
+        db.session.add_all([historical_route, current_route, loc, run, hist])
+        db.session.commit()
+
+    res = client.get("/api/monthly_sites/library/101")
+    assert res.status_code == 200
+    cell = res.get_json()["location"]["months"]["2026-04-01"]
+    assert cell["worksheet_route_id"] == 1
+    assert cell["run_id"] == 7001
+    assert cell["test_monthly_route"]["id"] == 1
 
 
 def test_worksheet_reset_run_clears_non_annual_preserves_annual(worksheet_client):

@@ -102,7 +102,6 @@ def _weekly_stats_bucket_for_run(now: datetime) -> tuple[datetime, datetime]:
     Vancouver Mon→Mon bucket that the snapshot counts should be stored under.
 
     Uses the week containing (now - 1 day) in local time so that:
-      - A run on Sunday still maps to the in-progress week (Mon..Sun).
       - A run just after Monday 00:00 maps to the week that ended at that
         Monday, not the new week (fixes stats written under the next period_*).
     """
@@ -111,18 +110,28 @@ def _weekly_stats_bucket_for_run(now: datetime) -> tuple[datetime, datetime]:
     return _week_window_local(now - timedelta(days=1))
 
 
-def run_weekly_scheduling_snapshot(job_type: str = DEFAULT_WEEKLY_JOB_TYPE):
-    now = datetime.now(timezone.utc)
-    week_start, week_end = _weekly_stats_bucket_for_run(now)
+def _weekly_snapshot_period_is_complete(now: datetime) -> bool:
+    """
+    Weekly snapshots are only reliable after the week has ended, and only on
+    that local period-end date. This prevents partial Tue-Sun rows from being
+    inserted and then protected by the "already recorded" guard.
+    """
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    _, week_end = _weekly_stats_bucket_for_run(now)
+    now_local = now.astimezone(LOCAL_TZ)
+    return week_end <= now_local < week_end + timedelta(days=1)
 
-    # -------- 1) Load baseline --------
+
+def _load_baseline_by_id() -> dict[int, BaselineState]:
     baseline_rows = db.session.query(JobsSchedulingState).all()
-    baseline_by_id = {
+    return {
         r.job_id: BaselineState(job_id=r.job_id, scheduled_date=r.scheduled_date)
         for r in baseline_rows
     }
 
-    # -------- 2) Fetch live from ServiceTrade --------
+
+def _fetch_live_jobs_normalized(job_type: str, now: datetime) -> list[dict]:
     tomorrow = now + timedelta(days=1)
 
     scheduled_jobs = fetch_all_jobs_paginated({
@@ -146,13 +155,22 @@ def run_weekly_scheduling_snapshot(job_type: str = DEFAULT_WEEKLY_JOB_TYPE):
         if j.get("id") and j["id"] not in jobs_by_id:
             jobs_by_id[j["id"]] = j
 
-    all_jobs = list(jobs_by_id.values())
-
-    live_jobs_normalized = [
+    return [
         {"id": j["id"], "scheduled_date": _parse_scheduled_date(j)}
-        for j in all_jobs
+        for j in jobs_by_id.values()
         if j.get("id")
     ]
+
+
+def run_weekly_scheduling_snapshot(job_type: str = DEFAULT_WEEKLY_JOB_TYPE):
+    now = datetime.now(timezone.utc)
+    week_start, week_end = _weekly_stats_bucket_for_run(now)
+
+    # -------- 1) Load baseline --------
+    baseline_by_id = _load_baseline_by_id()
+
+    # -------- 2) Fetch live from ServiceTrade --------
+    live_jobs_normalized = _fetch_live_jobs_normalized(job_type, now)
 
     # -------- Bootstrap (first run) --------
     # If baseline is empty, don't record stats (or you’ll count everything).
@@ -221,17 +239,70 @@ def run_weekly_scheduling_snapshot(job_type: str = DEFAULT_WEEKLY_JOB_TYPE):
         f"scheduled={scheduled_count}, rescheduled={rescheduled_count}, live_jobs={len(live_jobs_normalized)}"
     )
 
-def weekly_stats_already_recorded(now: datetime, job_type: str) -> bool:
+def get_weekly_stats_row_for_run(now: datetime, job_type: str) -> WeeklySchedulingStats | None:
     week_start, week_end = _weekly_stats_bucket_for_run(now)
 
     return (
-        db.session.query(WeeklySchedulingStats.id)
+        db.session.query(WeeklySchedulingStats)
         .filter(WeeklySchedulingStats.period_start == week_start)
         .filter(WeeklySchedulingStats.period_end == week_end)
         .filter(WeeklySchedulingStats.job_type == job_type)
         .first()
-        is not None
     )
+
+
+def weekly_stats_already_recorded(now: datetime, job_type: str) -> bool:
+    return get_weekly_stats_row_for_run(now, job_type) is not None
+
+
+def _generated_before_period_end(row: WeeklySchedulingStats) -> bool:
+    if row.generated_at is None:
+        return False
+    generated_at = row.generated_at
+    period_end = row.period_end
+    if generated_at.tzinfo is None:
+        generated_at = generated_at.replace(tzinfo=timezone.utc)
+    if period_end.tzinfo is None:
+        period_end = period_end.replace(tzinfo=timezone.utc)
+    return generated_at.astimezone(timezone.utc) < period_end.astimezone(timezone.utc)
+
+
+def print_baseline_to_now_diff(job_type: str = DEFAULT_WEEKLY_JOB_TYPE) -> dict:
+    now = datetime.now(timezone.utc)
+    week_start, week_end = _weekly_stats_bucket_for_run(now)
+    baseline_by_id = _load_baseline_by_id()
+    live_jobs_normalized = _fetch_live_jobs_normalized(job_type, now)
+    scheduled_delta, rescheduled_delta = compute_scheduling_diffs(
+        baseline_by_id=baseline_by_id,
+        live_jobs=live_jobs_normalized,
+    )
+
+    existing_row = get_weekly_stats_row_for_run(now, job_type)
+    existing_scheduled = int(existing_row.scheduled_count or 0) if existing_row else None
+    existing_rescheduled = int(existing_row.rescheduled_count or 0) if existing_row else None
+
+    return {
+        "generated_at": now.isoformat(),
+        "job_type": job_type,
+        "period_start": week_start.isoformat(),
+        "period_end": week_end.isoformat(),
+        "baseline_rows": len(baseline_by_id),
+        "live_rows": len(live_jobs_normalized),
+        "scheduled_delta_since_baseline": int(scheduled_delta or 0),
+        "rescheduled_delta_since_baseline": int(rescheduled_delta or 0),
+        "existing_weekly_row": {
+            "found": existing_row is not None,
+            "scheduled_count": existing_scheduled,
+            "rescheduled_count": existing_rescheduled,
+            "generated_at": existing_row.generated_at.isoformat() if existing_row and existing_row.generated_at else None,
+            "generated_before_period_end": _generated_before_period_end(existing_row) if existing_row else None,
+        },
+        "candidate_totals_if_added_to_existing_row": {
+            "scheduled_count": existing_scheduled + int(scheduled_delta or 0) if existing_scheduled is not None else None,
+            "rescheduled_count": existing_rescheduled + int(rescheduled_delta or 0) if existing_rescheduled is not None else None,
+        },
+        "writes_database": False,
+    }
 
 
 def _default_backup_name() -> str:
@@ -477,6 +548,10 @@ def set_week_counts(*, week_start: datetime, scheduled_count: int | None = None,
 def main():
     parser = argparse.ArgumentParser(description="Update weekly scheduling stats and baseline.")
     parser.add_argument("--job-type", default=DEFAULT_WEEKLY_JOB_TYPE)
+    parser.add_argument("--force", action="store_true",
+                        help="Allow a manual run outside the local period-end date. Existing rows are still not overwritten.")
+    parser.add_argument("--print-diff", action="store_true",
+                        help="Print baseline-to-now diff and candidate totals without writing to the database.")
     parser.add_argument("--repair-week-buckets", action="store_true")
     parser.add_argument("--shift-week-start", default=None,
                         help="Shift the weekly stats row for this week start back by one week.")
@@ -540,15 +615,36 @@ def main():
             raise SystemExit("Missing PROCESSING_USERNAME/PROCESSING_PASSWORD environment vars.")
         authenticate(username, password)
 
-        if now.astimezone(LOCAL_TZ).weekday() != 6:  # Sunday in Vancouver
-            log.info("Not the preferred weekly run day (Sunday), but running guard-based check.")
+        if args.print_diff:
+            result = print_baseline_to_now_diff(job_type=job_type)
+            print(json.dumps(result, default=str, indent=2))
+            return
 
-        if weekly_stats_already_recorded(now, job_type):
+        if not args.force and not _weekly_snapshot_period_is_complete(now):
+            week_start, week_end = _weekly_stats_bucket_for_run(now)
             log.info(
-                "Weekly scheduling stats already recorded for this week. Exiting."
+                "Weekly scheduling stats not ready: target bucket is %s → %s; "
+                "run on the local period-end date or pass --force for a manual check.",
+                week_start.isoformat(),
+                week_end.isoformat(),
             )
             return
-        
+
+        existing_row = get_weekly_stats_row_for_run(now, job_type)
+        if existing_row is not None:
+            if _generated_before_period_end(existing_row):
+                log.warning(
+                    "Weekly scheduling stats row already exists but generated_at (%s) "
+                    "is before period_end (%s). This may be a partial early snapshot; "
+                    "leaving it unchanged because the weekly baseline may already have moved.",
+                    existing_row.generated_at.isoformat() if existing_row.generated_at else None,
+                    existing_row.period_end.isoformat() if existing_row.period_end else None,
+                )
+            else:
+                log.info(
+                    "Weekly scheduling stats already recorded for this week. Exiting."
+                )
+            return
 
         run_weekly_scheduling_snapshot(job_type=job_type)
 

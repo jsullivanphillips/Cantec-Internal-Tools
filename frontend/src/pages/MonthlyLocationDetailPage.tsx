@@ -1,21 +1,41 @@
-import type { ReactElement, ReactNode } from 'react'
+import {
+  closestCenter,
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import type { CSSProperties, ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Accordion, Alert, Badge, Button, Card, Col, Form, Row, Spinner, Table } from 'react-bootstrap'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Accordion, Alert, Badge, Button, Form, Modal, Spinner } from 'react-bootstrap'
+import { Link, useParams } from 'react-router-dom'
 import MonthlyLibraryCommentsPanel from '../features/monthlyRoutes/MonthlyLibraryCommentsPanel'
-import MonthlyLocationLibraryModal from '../features/monthlyRoutes/MonthlyLocationLibraryModal'
 import TestingSiteFieldsSection from '../features/monthlyRoutes/TestingSiteFieldsSection'
 import {
+  STATUS_OPTIONS,
   isMonthlyTestingHistoryEditable,
   libraryDisplayPricePerMonth,
   libraryRouteDisplay,
   monthlyRouteOccurrenceDateUtc,
   nextUntestedMonthIso,
+  normalizeAnnualMonthForSelect,
   parseYearMonth,
   sortedTestingSites,
+  testingSitePayloadFromEditForm,
   toMonthKey,
+  type TestingSiteEditForm,
+  type TestingSiteSummary,
   type LibraryLocation,
-  type LibraryPayload,
   type MonthCell,
   type MonthlyLocationComment,
   type MonthlyLocationDetailPayload,
@@ -54,6 +74,15 @@ function monthNameFromKey(monthKey: string): string {
   }).format(new Date(Date.UTC(ym.year, ym.month - 1, 1)))
 }
 
+function monthShortNameFromKey(monthKey: string): string {
+  const ym = parseYearMonth(monthKey)
+  if (!ym) return monthKey
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    timeZone: 'UTC',
+  }).format(new Date(Date.UTC(ym.year, ym.month - 1, 1)))
+}
+
 function isAnnualMonth(monthKey: string, annualMonth: string | null | undefined): boolean {
   const annual = (annualMonth || '').trim().toLowerCase()
   if (!annual) return false
@@ -75,10 +104,6 @@ function statusBadgeVariant(status: string): string {
     default:
       return 'secondary'
   }
-}
-
-function streetViewUrl(lat: number, lng: number): string {
-  return `https://www.google.com/maps?layer=c&cbll=${lat},${lng}`
 }
 
 /** Years that have at least one history row, plus the calendar year of the next scheduled test (if any). */
@@ -181,16 +206,115 @@ function testingHistoryRouteContextLine(cell: MonthCell | undefined): ReactNode 
   )
 }
 
+function locationStatusLabel(location: LibraryLocation): string {
+  return (location.status_raw || location.status_normalized || '').replace(/_/g, ' ') || '—'
+}
+
+function normalizeStatusForSelect(value: string | null | undefined): string {
+  const normalized = (value || '').trim().toLowerCase().replace(/\s+/g, '_')
+  return STATUS_OPTIONS.some((option) => option.value === normalized) ? normalized : ''
+}
+
+function detailText(value: string | null | undefined): string {
+  return value?.trim() || '—'
+}
+
+function DetailMetricCard({
+  label,
+  value,
+  tone,
+}: {
+  label: string
+  value: ReactNode
+  tone?: 'success' | 'warning' | 'info'
+}) {
+  return (
+    <div className={`monthly-location-metric-card${tone ? ` monthly-location-metric-card--${tone}` : ''}`}>
+      <div className="monthly-location-metric-label">{label}</div>
+      <div className="monthly-location-metric-value">{value}</div>
+    </div>
+  )
+}
+
+function SortableTestingSiteCard({
+  site,
+  index,
+  total,
+  location,
+  defaultExpanded,
+  orderSaving,
+  deleting,
+  onInlineSave,
+  onDelete,
+}: {
+  site: TestingSiteSummary
+  index: number
+  total: number
+  location: LibraryLocation
+  defaultExpanded: boolean
+  orderSaving: boolean
+  deleting: boolean
+  onInlineSave: (form: TestingSiteEditForm) => Promise<void> | void
+  onDelete: (site: TestingSiteSummary) => Promise<void> | void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: site.id,
+    disabled: orderSaving || total <= 1,
+  })
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.72 : undefined,
+  }
+  const label = site.label?.trim() || `Testing location ${index + 1}`
+
+  return (
+    <div ref={setNodeRef} style={style} className="monthly-location-testing-site-sortable">
+      {total > 1 ? (
+        <button
+          type="button"
+          className="monthly-location-testing-site-drag-handle"
+          disabled={orderSaving}
+          aria-label={`Drag to reorder ${label}`}
+          {...attributes}
+          {...listeners}
+        >
+          <i className="bi bi-grip-vertical" aria-hidden />
+          <span>Drag to reorder</span>
+        </button>
+      ) : null}
+      <TestingSiteFieldsSection
+        mode="inline"
+        site={site}
+        index={index}
+        total={total}
+        location={location}
+        collapsible
+        defaultExpanded={defaultExpanded}
+        onInlineSave={onInlineSave}
+        onDelete={onDelete}
+        deleting={deleting}
+      />
+    </div>
+  )
+}
+
 export default function MonthlyLocationDetailPage() {
   const { locationId } = useParams<{ locationId: string }>()
-  const navigate = useNavigate()
   const [location, setLocation] = useState<LibraryLocation | null>(null)
   const [comments, setComments] = useState<MonthlyLocationComment[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [routeOptions, setRouteOptions] = useState<string[]>([])
-  const [showEditModal, setShowEditModal] = useState(false)
+  const [showStatusModal, setShowStatusModal] = useState(false)
+  const [statusDraft, setStatusDraft] = useState('')
+  const [statusSaving, setStatusSaving] = useState(false)
+  const [statusSaveError, setStatusSaveError] = useState<string | null>(null)
   const [sessionUsername, setSessionUsername] = useState<string | null>(null)
+  const [addingTestingSite, setAddingTestingSite] = useState(false)
+  const [addTestingSiteError, setAddTestingSiteError] = useState<string | null>(null)
+  const [lastAddedTestingSiteId, setLastAddedTestingSiteId] = useState<number | null>(null)
+  const [deletingTestingSiteId, setDeletingTestingSiteId] = useState<number | null>(null)
+  const [testingSiteOrderSaving, setTestingSiteOrderSaving] = useState(false)
   /** Selected calendar year for testing-history grid; ``null`` means “use default year” until user picks one. */
   const [historyViewYear, setHistoryViewYear] = useState<number | null>(null)
   const [historyEdit, setHistoryEdit] = useState<HistoryEdit | null>(null)
@@ -231,20 +355,6 @@ export default function MonthlyLocationDetailPage() {
 
   useEffect(() => {
     let active = true
-    apiJson<LibraryPayload>('/api/monthly_sites/library?page=1&page_size=1')
-      .then((data) => {
-        if (active) setRouteOptions(data.meta?.routes ?? [])
-      })
-      .catch(() => {
-        if (active) setRouteOptions([])
-      })
-    return () => {
-      active = false
-    }
-  }, [])
-
-  useEffect(() => {
-    let active = true
     apiJson<{ username?: string | null }>('/api/auth/me')
       .then((d) => {
         if (active) setSessionUsername(typeof d.username === 'string' ? d.username : null)
@@ -269,6 +379,8 @@ export default function MonthlyLocationDetailPage() {
 
   useEffect(() => {
     setHistoryViewYear(null)
+    setLastAddedTestingSiteId(null)
+    setAddTestingSiteError(null)
   }, [locationId])
 
   const effectiveTestingHistoryYear = useMemo(() => {
@@ -353,6 +465,239 @@ export default function MonthlyLocationDetailPage() {
     }
   }, [location, historyEdit, cancelHistoryEdit])
 
+  const saveTestingSiteForm = useCallback(
+    async (form: TestingSiteEditForm) => {
+      const res = await apiJson<{ testing_site: TestingSiteSummary }>(
+        `/api/monthly_sites/testing_sites/${form.id}`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify(testingSitePayloadFromEditForm(form)),
+        }
+      )
+
+      setLocation((prev) => {
+        if (!prev) return prev
+        const nextSites = sortedTestingSites(prev).map((site) =>
+          site.id === res.testing_site.id ? res.testing_site : site
+        )
+        const pricedSites = nextSites.filter((site) => site.price_per_month != null)
+        const rollup =
+          pricedSites.length > 0
+            ? pricedSites.reduce((sum, site) => sum + (site.price_per_month ?? 0), 0)
+            : null
+
+        return {
+          ...prev,
+          monthly_site_id: res.testing_site.monthly_site_id,
+          testing_sites: nextSites,
+          rollup_price_per_month: rollup,
+        }
+      })
+    },
+    []
+  )
+
+  const testingSiteOrderSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  )
+
+  const persistTestingSiteOrder = useCallback(
+    async (nextSites: TestingSiteSummary[]) => {
+      if (!location) return
+      setTestingSiteOrderSaving(true)
+      setAddTestingSiteError(null)
+      try {
+        const res = await apiJson<{ testing_sites: TestingSiteSummary[] }>(
+          `/api/monthly_sites/library/${location.id}/testing_sites/order`,
+          {
+            method: 'PUT',
+            body: JSON.stringify({ ordered_testing_site_ids: nextSites.map((site) => site.id) }),
+          }
+        )
+
+        setLocation((prev) => {
+          if (!prev) return prev
+          const ordered = sortedTestingSites({
+            ...prev,
+            testing_sites: res.testing_sites ?? nextSites,
+          })
+          const pricedSites = ordered.filter((site) => site.price_per_month != null)
+          const rollup =
+            pricedSites.length > 0
+              ? pricedSites.reduce((sum, site) => sum + (site.price_per_month ?? 0), 0)
+              : null
+
+          return {
+            ...prev,
+            testing_sites: ordered,
+            rollup_price_per_month: rollup,
+          }
+        })
+      } catch {
+        setAddTestingSiteError('Unable to save testing site order.')
+        void load()
+      } finally {
+        setTestingSiteOrderSaving(false)
+      }
+    },
+    [load, location]
+  )
+
+  const handleTestingSiteDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      if (!location || testingSiteOrderSaving) return
+      const { active, over } = event
+      if (!over || active.id === over.id) return
+      const activeId = Number(active.id)
+      const overId = Number(over.id)
+      if (!Number.isFinite(activeId) || !Number.isFinite(overId)) return
+
+      const currentSites = sortedTestingSites(location)
+      const oldIndex = currentSites.findIndex((site) => site.id === activeId)
+      const newIndex = currentSites.findIndex((site) => site.id === overId)
+      if (oldIndex < 0 || newIndex < 0) return
+
+      const nextSites = arrayMove(currentSites, oldIndex, newIndex).map((site, index) => ({
+        ...site,
+        sort_order: index,
+      }))
+      setLocation((prev) => (prev ? { ...prev, testing_sites: nextSites } : prev))
+      void persistTestingSiteOrder(nextSites)
+    },
+    [location, persistTestingSiteOrder, testingSiteOrderSaving]
+  )
+
+  const addTestingSite = useCallback(async () => {
+    if (!location) return
+
+    const nextLabel = `Testing location ${sortedTestingSites(location).length + 1}`
+    setAddingTestingSite(true)
+    setAddTestingSiteError(null)
+    try {
+      const res = await apiJson<{ testing_site: TestingSiteSummary }>(
+        `/api/monthly_sites/library/${location.id}/testing_sites`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ label: nextLabel }),
+        }
+      )
+
+      setLocation((prev) => {
+        if (!prev) return prev
+        const nextSites = sortedTestingSites({
+          ...prev,
+          testing_sites: [...(prev.testing_sites ?? []), res.testing_site],
+        })
+        const pricedSites = nextSites.filter((site) => site.price_per_month != null)
+        const rollup =
+          pricedSites.length > 0
+            ? pricedSites.reduce((sum, site) => sum + (site.price_per_month ?? 0), 0)
+            : null
+
+        return {
+          ...prev,
+          monthly_site_id: res.testing_site.monthly_site_id,
+          testing_sites: nextSites,
+          rollup_price_per_month: rollup,
+        }
+      })
+      setLastAddedTestingSiteId(res.testing_site.id)
+    } catch (e) {
+      const msg =
+        typeof e === 'object' && e && 'error' in e ? String((e as { error: unknown }).error) : null
+      setAddTestingSiteError(msg || 'Unable to add testing site.')
+    } finally {
+      setAddingTestingSite(false)
+    }
+  }, [location])
+
+  const deleteTestingSite = useCallback(async (site: TestingSiteSummary) => {
+    if (!location) return
+    const currentSites = sortedTestingSites(location)
+    if (currentSites.length <= 1) return
+
+    const siteIndex = currentSites.findIndex((existing) => existing.id === site.id)
+    const label = site.label?.trim() || `testing location ${siteIndex >= 0 ? siteIndex + 1 : ''}`.trim()
+    const confirmed = window.confirm(`Remove ${label}? This cannot be undone.`)
+    if (!confirmed) return
+
+    setDeletingTestingSiteId(site.id)
+    setAddTestingSiteError(null)
+    try {
+      await apiJson<void>(`/api/monthly_sites/testing_sites/${site.id}`, {
+        method: 'DELETE',
+      })
+
+      setLocation((prev) => {
+        if (!prev) return prev
+        const nextSites = sortedTestingSites({
+          ...prev,
+          testing_sites: (prev.testing_sites ?? []).filter((existing) => existing.id !== site.id),
+        })
+        const pricedSites = nextSites.filter((existing) => existing.price_per_month != null)
+        const rollup =
+          pricedSites.length > 0
+            ? pricedSites.reduce((sum, existing) => sum + (existing.price_per_month ?? 0), 0)
+            : null
+
+        return {
+          ...prev,
+          testing_sites: nextSites,
+          rollup_price_per_month: rollup,
+        }
+      })
+      if (lastAddedTestingSiteId === site.id) {
+        setLastAddedTestingSiteId(null)
+      }
+    } catch (e) {
+      const msg =
+        typeof e === 'object' && e && 'error' in e ? String((e as { error: unknown }).error) : null
+      setAddTestingSiteError(msg || 'Unable to remove testing site.')
+    } finally {
+      setDeletingTestingSiteId(null)
+    }
+  }, [lastAddedTestingSiteId, location])
+
+  const openStatusModal = useCallback(() => {
+    if (!location) return
+    setStatusDraft(
+      normalizeStatusForSelect(location.status_raw) ||
+        normalizeStatusForSelect(location.status_normalized)
+    )
+    setStatusSaveError(null)
+    setShowStatusModal(true)
+  }, [location])
+
+  const closeStatusModal = useCallback(() => {
+    if (statusSaving) return
+    setShowStatusModal(false)
+    setStatusSaveError(null)
+  }, [statusSaving])
+
+  const saveStatusEdit = useCallback(async () => {
+    if (!location) return
+    setStatusSaving(true)
+    setStatusSaveError(null)
+    try {
+      const res = await apiJson<{ location: LibraryLocation }>(
+        `/api/monthly_sites/library/${location.id}`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({ status_raw: statusDraft || null }),
+        }
+      )
+      setLocation(res.location)
+      setShowStatusModal(false)
+    } catch (e) {
+      const msg =
+        typeof e === 'object' && e && 'error' in e ? String((e as { error: unknown }).error) : null
+      setStatusSaveError(msg || 'Unable to save status.')
+    } finally {
+      setStatusSaving(false)
+    }
+  }, [location, statusDraft])
+
   useEffect(() => {
     if (!historyEdit || historySaving) return
     const onKey = (e: globalThis.KeyboardEvent) => {
@@ -392,8 +737,6 @@ export default function MonthlyLocationDetailPage() {
 
   const routeLabel = libraryRouteDisplay(location)
   const routeDetailId = location.monthly_route?.id ?? location.monthly_route_id ?? null
-  const lat = location.latitude ?? undefined
-  const lng = location.longitude ?? undefined
   const testingSites = sortedTestingSites(location)
   const primaryStop = testingSites[0]
   const buildingLabel =
@@ -401,6 +744,43 @@ export default function MonthlyLocationDetailPage() {
   const title =
     buildingLabel !== '' ? `${location.address} (${buildingLabel})` : location.address
   const displayPrice = libraryDisplayPricePerMonth(location)
+  const statusLabel = locationStatusLabel(location)
+  const keyRecord = primaryStop?.key ?? location.key
+  const keyText = primaryStop?.keys?.trim() || location.keys?.trim() || ''
+  const keyValue =
+    keyRecord != null ? (
+      <Link to={`/keys/${keyRecord.id}`} className="fw-semibold text-decoration-none">
+        {keyRecord.keycode}
+      </Link>
+    ) : (
+      keyText || '—'
+    )
+  const routeValue =
+    routeDetailId != null && routeLabel !== '—' ? (
+      <Link to={`/monthlies/routes/${routeDetailId}`} className="fw-semibold text-decoration-none">
+        {routeLabel}
+      </Link>
+    ) : (
+      <span className="fw-semibold">{routeLabel}</span>
+    )
+  const propertyManagementLabel =
+    primaryStop?.property_management_company?.trim() ||
+    location.property_management_company?.trim() ||
+    '—'
+  const annualMonthValues = Array.from(
+    new Set(
+      [
+        ...testingSites.map((site) => site.annual_month),
+        location.annual_month,
+      ]
+        .map((value) => {
+          const trimmed = value?.trim() || ''
+          return trimmed ? normalizeAnnualMonthForSelect(trimmed) || trimmed : ''
+        })
+        .filter(Boolean)
+    )
+  )
+  const annualValue = annualMonthValues.length > 0 ? annualMonthValues.join(', ') : '—'
 
   const testingHistoryGridYear =
     testingHistoryYears.length === 0
@@ -412,215 +792,217 @@ export default function MonthlyLocationDetailPage() {
   const historyYearNavLocked = historySaving || historyEdit != null
 
   return (
-    <div className="monthly-location-detail-page pt-0 pb-4 px-3 px-lg-4 mt-n3">
-      <div className="mb-3">
-        <Link to="/monthlies/locations" className="text-decoration-none">
+    <div className="monthly-location-detail-page">
+      <div className="monthly-location-detail-container">
+        <Link to="/monthlies/locations" className="monthly-location-back-link">
           ← Monthly Locations library
         </Link>
-      </div>
 
-      <Card className="monthly-location-detail-surface monthly-location-detail-hero mb-2">
-        <Card.Body className="p-4">
-          <div className="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-4">
-            <div className="min-w-0 flex-grow-1">
-              <div className="text-muted small text-uppercase fw-semibold mb-1">Location</div>
-              <h1 className="processing-page-title mb-0">{title}</h1>
-            </div>
-            <Button
-              type="button"
-              variant="outline-primary"
-              size="sm"
-              className="d-inline-flex align-items-center gap-2 flex-shrink-0 align-self-start fw-semibold"
-              onClick={() => setShowEditModal(true)}
-            >
-              <i className="bi bi-pencil-square" aria-hidden />
-              Edit location
-            </Button>
+        <section className="monthly-location-detail-hero monthly-location-detail-surface">
+          <div className="monthly-location-detail-hero-main">
+            <div className="monthly-location-detail-eyebrow">Monthly location</div>
+            <h1 className="monthly-location-detail-title">{title}</h1>
+            <div className="monthly-location-detail-subtitle">{propertyManagementLabel}</div>
           </div>
+          <Button
+            type="button"
+            variant="outline-primary"
+            size="sm"
+            className="monthly-location-detail-action"
+            onClick={openStatusModal}
+          >
+            <i className="bi bi-sliders" aria-hidden />
+            Edit status
+          </Button>
+        </section>
 
-          <Row className="g-4">
-            <Col md={6} lg={3}>
-              <div className="text-muted small text-uppercase fw-semibold mb-1">Location</div>
-              <div className="text-break">{location.display_address || location.address}</div>
-              {lat != null && lng != null ? (
-                <a
-                  href={streetViewUrl(lat, lng)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="d-inline-block mt-2 small"
-                >
-                  Google Street View
-                </a>
-              ) : null}
-            </Col>
-            <Col md={6} lg={3}>
-              <div className="text-muted small text-uppercase fw-semibold mb-1">Route</div>
-              {routeDetailId != null && routeLabel !== '—' ? (
-                <Link to={`/monthlies/routes/${routeDetailId}`} className="fw-semibold text-decoration-none">
-                  {routeLabel}
-                </Link>
-              ) : (
-                <span className="fw-semibold">{routeLabel}</span>
-              )}
-              <div className="text-muted small mt-2 text-uppercase fw-semibold mb-1">Testing day</div>
-              <div>{location.test_day?.trim() || '—'}</div>
-            </Col>
-            <Col md={6} lg={3}>
-              <div className="text-muted small text-uppercase fw-semibold mb-1">Monthly price</div>
-              <div className="fw-semibold">{formatPriceCad(displayPrice)}</div>
-              {testingSites.length > 1 ? (
-                <div className="text-muted small mt-1">
-                  Rollup of {testingSites.length} testing locations
-                </div>
-              ) : null}
-              <div className="text-muted small mt-2 text-uppercase fw-semibold mb-1">Status</div>
+        <div className="monthly-location-metric-grid" aria-label="Location summary">
+          <DetailMetricCard
+            label="Status"
+            value={
               <Badge bg={statusBadgeVariant(location.status_normalized)} className="text-capitalize">
-                {(location.status_raw || location.status_normalized || '').replace(/_/g, ' ') || '—'}
+                {statusLabel}
               </Badge>
-            </Col>
-            <Col md={6} lg={3}>
-              <div className="text-muted small text-uppercase fw-semibold mb-1">Property management</div>
-              <div className="text-break">
-                {primaryStop?.property_management_company?.trim() ||
-                  location.property_management_company ||
-                  '—'}
-              </div>
-              <div className="text-muted small mt-2 text-uppercase fw-semibold mb-1">Key</div>
-              {primaryStop?.key || location.key ? (
-                <Link
-                  to={`/keys/${(primaryStop?.key ?? location.key)!.id}`}
-                  className="fw-semibold text-decoration-none"
-                >
-                  {(primaryStop?.key ?? location.key)!.keycode}
-                </Link>
-              ) : (
-                <span>{primaryStop?.keys?.trim() || location.keys?.trim() || '—'}</span>
-              )}
-            </Col>
-          </Row>
+            }
+          />
+          <DetailMetricCard label="Route" value={routeValue} />
+          <DetailMetricCard label="Key" value={keyValue} />
+          <DetailMetricCard
+            label="Annual"
+            value={annualValue}
+            tone="info"
+          />
+          <DetailMetricCard
+            label="Monthly Price"
+            value={formatPriceCad(displayPrice)}
+            tone="success"
+          />
+          <DetailMetricCard
+            label="Start up date"
+            value={detailText(location.start_up_date)}
+          />
+        </div>
 
+        <Modal show={showStatusModal} onHide={closeStatusModal} centered size="sm">
+          <Modal.Header closeButton={!statusSaving}>
+            <Modal.Title>Edit status</Modal.Title>
+          </Modal.Header>
+          <Modal.Body>
+            {statusSaveError ? (
+              <Alert variant="danger" className="py-2 small">
+                {statusSaveError}
+              </Alert>
+            ) : null}
+            <Form.Group>
+              <Form.Label>Status</Form.Label>
+              <Form.Select
+                value={statusDraft}
+                disabled={statusSaving}
+                onChange={(e) => setStatusDraft(e.target.value)}
+              >
+                <option value="">No status</option>
+                {STATUS_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </Form.Select>
+            </Form.Group>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button type="button" variant="outline-secondary" disabled={statusSaving} onClick={closeStatusModal}>
+              Cancel
+            </Button>
+            <Button type="button" variant="primary" disabled={statusSaving} onClick={() => void saveStatusEdit()}>
+              {statusSaving ? 'Saving…' : 'Save status'}
+            </Button>
+          </Modal.Footer>
+        </Modal>
+
+        <section className="monthly-location-detail-panel monthly-location-testing-locations-panel">
+          <div className="monthly-location-section-header">
+            <div>
+              <h2 className="monthly-location-section-title">Testing locations</h2>
+            </div>
+            <span className="monthly-location-section-count">{testingSites.length}</span>
+          </div>
           {testingSites.length > 0 ? (
-            <div className="mt-4 pt-3 border-top">
-              <div className="text-muted small text-uppercase fw-semibold mb-2">
-                Testing locations ({testingSites.length})
-              </div>
-              {testingSites.map((site, index) => (
-                <TestingSiteFieldsSection
-                  key={site.id}
-                  mode="view"
-                  site={site}
-                  index={index}
-                  total={testingSites.length}
-                />
-              ))}
-            </div>
-          ) : null}
-
-          {location.notes?.trim() ? (
-            <div className="mt-4 pt-3 border-top">
-              <div className="text-muted small text-uppercase fw-semibold mb-1">Notes (spreadsheet)</div>
-              <div className="text-break small" style={{ whiteSpace: 'pre-wrap' }}>
-                {location.notes}
-              </div>
-            </div>
-          ) : null}
-        </Card.Body>
-      </Card>
-
-      <MonthlyLocationLibraryModal
-        location={showEditModal ? location : null}
-        routeOptions={routeOptions}
-        openInEditMode
-        onHide={() => setShowEditModal(false)}
-        onSaved={(loc) => {
-          setLocation(loc)
-        }}
-        onDeleted={() => navigate('/monthlies/locations')}
-      />
-
-      <Accordion
-        defaultActiveKey={['history', 'comments']}
-        alwaysOpen
-        className="monthly-location-detail-accordion d-flex flex-column gap-2"
-      >
-        <Accordion.Item
-          eventKey="history"
-          className="monthly-location-testing-history-card monthly-location-detail-surface shadow-sm bg-white"
-        >
-          <Accordion.Header className="monthly-location-testing-history-card-header py-3">
-            <span className="fw-semibold">Testing history</span>
-          </Accordion.Header>
-          <Accordion.Body className="monthly-location-testing-history-body">
-            {testingHistoryYears.length === 0 ? (
-              <div className="text-muted small">No monthly test outcomes recorded yet.</div>
-            ) : (
-              <div className="monthly-location-testing-history-table-wrap">
-                <div className="d-flex flex-wrap align-items-center gap-2 justify-content-start mb-3">
-                  <Button
-                    type="button"
-                    variant="outline-secondary"
-                    size="sm"
-                    className="monthly-location-testing-history-year-nav-btn"
-                    disabled={historyYearNavLocked || testingHistoryYearIndex <= 0}
-                    onClick={() => {
-                      if (testingHistoryYearIndex > 0) {
-                        setHistoryViewYear(testingHistoryYears[testingHistoryYearIndex - 1])
-                      }
-                    }}
-                  >
-                    Previous year
-                  </Button>
-                  <span
-                    className="fw-semibold px-1 tabular-nums"
-                    aria-live="polite"
-                    aria-label={`Testing history year ${testingHistoryGridYear ?? ''}`}
-                  >
-                    {testingHistoryGridYear}
-                  </span>
-                  <Button
-                    type="button"
-                    variant="outline-secondary"
-                    size="sm"
-                    className="monthly-location-testing-history-year-nav-btn"
-                    disabled={
-                      historyYearNavLocked ||
-                      testingHistoryYearIndex < 0 ||
-                      testingHistoryYearIndex >= testingHistoryYears.length - 1
-                    }
-                    onClick={() => {
-                      if (
-                        testingHistoryYearIndex >= 0 &&
-                        testingHistoryYearIndex < testingHistoryYears.length - 1
-                      ) {
-                        setHistoryViewYear(testingHistoryYears[testingHistoryYearIndex + 1])
-                      }
-                    }}
-                  >
-                    Next year
-                  </Button>
+            <DndContext
+              sensors={testingSiteOrderSensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleTestingSiteDragEnd}
+            >
+              <SortableContext
+                items={testingSites.map((site) => site.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                <div className="monthly-location-testing-site-list">
+                  {testingSites.map((site, index) => (
+                    <SortableTestingSiteCard
+                      key={site.id}
+                      site={site}
+                      index={index}
+                      total={testingSites.length}
+                      location={location}
+                      defaultExpanded={index === 0 || site.id === lastAddedTestingSiteId}
+                      orderSaving={testingSiteOrderSaving}
+                      onInlineSave={saveTestingSiteForm}
+                      onDelete={deleteTestingSite}
+                      deleting={deletingTestingSiteId === site.id}
+                    />
+                  ))}
                 </div>
-                {historySaveError ? (
-                  <Alert variant="danger" className="py-2 small mb-2">
-                    {historySaveError}
-                  </Alert>
-                ) : null}
-                <Table
-                  responsive
-                  size="sm"
-                  bordered
-                  className="mb-0 small monthly-location-testing-history-grid-table"
-                >
-                  <colgroup>
-                    <col className="monthly-history-col-month" />
-                    <col className="monthly-history-col-result" />
-                  </colgroup>
-                  <thead>
-                    <tr>
-                      <th>Month</th>
-                      <th>Result</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+              </SortableContext>
+            </DndContext>
+          ) : (
+            <div className="monthly-location-empty-state">No testing locations have been added.</div>
+          )}
+          {addTestingSiteError ? (
+            <Alert variant="danger" className="py-2 small mt-3 mb-0">
+              {addTestingSiteError}
+            </Alert>
+          ) : null}
+          <Button
+            type="button"
+            variant="outline-primary"
+            className="monthly-location-add-testing-site-btn"
+            disabled={addingTestingSite || testingSiteOrderSaving}
+            onClick={() => void addTestingSite()}
+          >
+            {addingTestingSite ? 'Adding…' : '+ Add testing site'}
+          </Button>
+        </section>
+
+        <Accordion defaultActiveKey="history" className="monthly-location-detail-accordion">
+          <Accordion.Item
+            eventKey="history"
+            className="monthly-location-testing-history-card monthly-location-detail-surface"
+          >
+            <Accordion.Header className="monthly-location-testing-history-card-header">
+              <span className="monthly-location-history-header">
+                <span>Testing history</span>
+                <span>{testingHistoryGridYear ?? 'No history'}</span>
+              </span>
+            </Accordion.Header>
+            <Accordion.Body className="monthly-location-testing-history-body">
+              {testingHistoryYears.length === 0 ? (
+                <div className="monthly-location-empty-state">No monthly test outcomes recorded yet.</div>
+              ) : (
+                <div className="monthly-location-testing-history-compact-wrap">
+                  <div className="monthly-location-testing-history-toolbar">
+                    <Button
+                      type="button"
+                      variant="outline-secondary"
+                      size="sm"
+                      className="monthly-location-testing-history-year-nav-btn"
+                      disabled={historyYearNavLocked || testingHistoryYearIndex <= 0}
+                      onClick={() => {
+                        if (testingHistoryYearIndex > 0) {
+                          setHistoryViewYear(testingHistoryYears[testingHistoryYearIndex - 1])
+                        }
+                      }}
+                    >
+                      Previous year
+                    </Button>
+                    <span
+                      className="fw-semibold px-1 tabular-nums"
+                      aria-live="polite"
+                      aria-label={`Testing history year ${testingHistoryGridYear ?? ''}`}
+                    >
+                      {testingHistoryGridYear}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="outline-secondary"
+                      size="sm"
+                      className="monthly-location-testing-history-year-nav-btn"
+                      disabled={
+                        historyYearNavLocked ||
+                        testingHistoryYearIndex < 0 ||
+                        testingHistoryYearIndex >= testingHistoryYears.length - 1
+                      }
+                      onClick={() => {
+                        if (
+                          testingHistoryYearIndex >= 0 &&
+                          testingHistoryYearIndex < testingHistoryYears.length - 1
+                        ) {
+                          setHistoryViewYear(testingHistoryYears[testingHistoryYearIndex + 1])
+                        }
+                      }}
+                    >
+                      Next year
+                    </Button>
+                  </div>
+                  {historySaveError ? (
+                    <Alert variant="danger" className="py-2 small mb-2">
+                      {historySaveError}
+                    </Alert>
+                  ) : null}
+                  <div
+                    className="monthly-location-testing-history-grid"
+                    role="list"
+                    aria-label={`Testing history months for ${testingHistoryGridYear ?? ''}`}
+                  >
                     {testingHistoryGridYear != null
                       ? monthIsoKeysForCalendarYear(testingHistoryGridYear).map((monthIso) => {
                           const cell = location.months[monthIso]
@@ -632,248 +1014,220 @@ export default function MonthlyLocationDetailPage() {
                             historyEdit?.kind === 'result' && historyEdit.monthIso === monthIso
                           const editingSkip =
                             historyEdit?.kind === 'skip_reason' && historyEdit.monthIso === monthIso
-
-                          const monthTd = (
-                            <td>
-                              {isNextSlot ? (
-                                <div className="text-muted small text-uppercase fw-semibold mb-1">
-                                  Next test
-                                </div>
-                              ) : null}
-                              <div>{formatMonthHeading(monthIso)}</div>
-                              {testDayLabel ? (
-                                <div className="text-muted small">{testDayLabel}</div>
-                              ) : null}
-                            </td>
-                          )
-
-                          const rowClass =
-                            isNextSlot && !cell
-                              ? 'monthly-location-testing-history-next-row table-light'
-                              : !cell && !isNextSlot
-                                ? 'text-muted'
-                                : undefined
-
                           const canEditSkip =
                             canEditMonth &&
                             cell != null &&
                             normalizeHistoryResultStatus(cell.result_status) === 'skipped'
+                          const resultClass = testingHistoryResultCellClass(
+                            cell,
+                            {
+                              editing: editingResult || editingSkip,
+                              editValue:
+                                editingResult && historyEdit?.kind === 'result'
+                                  ? historyEdit.value
+                                  : editingSkip
+                                    ? 'skipped'
+                                    : undefined,
+                            },
+                            isAnnualMonthRow
+                          )
+                          const worksheetRouteId =
+                            typeof cell?.worksheet_route_id === 'number' ? cell.worksheet_route_id : null
+                          const cardClass = [
+                            'monthly-location-testing-history-month-card',
+                            resultClass,
+                            isNextSlot && !cell
+                              ? 'monthly-location-testing-history-month-card--next'
+                              : null,
+                            !cell && !isNextSlot
+                              ? 'monthly-location-testing-history-month-card--empty'
+                              : null,
+                          ]
+                            .filter(Boolean)
+                            .join(' ')
+                          const statusLabel = testingHistoryResultMainLabel(
+                            cell,
+                            isNextSlot,
+                            isAnnualMonthRow
+                          )
 
-                          let resultTd: ReactElement
-                          if (editingSkip && historyEdit?.kind === 'skip_reason') {
-                            resultTd = (
-                              <td
-                                className={[
-                                  testingHistoryResultCellClass(
-                                    cell,
-                                    { editing: true, editValue: 'skipped' },
-                                    isAnnualMonthRow
-                                  ),
-                                ]
-                                  .filter(Boolean)
-                                  .join(' ')}
-                              >
-                                <Form.Control
-                                  size="sm"
-                                  type="text"
-                                  className="mb-2"
-                                  placeholder="Reason (optional)"
-                                  value={historyEdit.value}
-                                  disabled={historySaving}
-                                  onChange={(e) =>
-                                    setHistoryEdit({ ...historyEdit, value: e.target.value })
-                                  }
-                                  aria-label="Skip reason"
-                                />
-                                <div className="d-flex flex-wrap gap-2">
-                                  <Button
-                                    type="button"
-                                    variant="primary"
-                                    size="sm"
-                                    disabled={historySaving}
-                                    onClick={() => void saveHistorySkipEdit()}
-                                  >
-                                    {historySaving ? 'Saving…' : 'Save'}
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    variant="outline-secondary"
-                                    size="sm"
-                                    disabled={historySaving}
-                                    onClick={cancelHistoryEdit}
-                                  >
-                                    Cancel
-                                  </Button>
-                                </div>
-                              </td>
-                            )
-                          } else if (editingResult && historyEdit?.kind === 'result') {
-                            resultTd = (
-                              <td
-                                className={[
-                                  'text-capitalize',
-                                  testingHistoryResultCellClass(
-                                    cell,
-                                    {
-                                      editing: true,
-                                      editValue: historyEdit.value,
-                                    },
-                                    isAnnualMonthRow
-                                  ),
-                                ]
-                                  .filter(Boolean)
-                                  .join(' ')}
-                              >
-                                <Form.Select
-                                  size="sm"
-                                  className="mb-2"
-                                  value={historyEdit.value}
-                                  disabled={historySaving}
-                                  onChange={(e) =>
-                                    setHistoryEdit({
-                                      ...historyEdit,
-                                      value: e.target.value === 'skipped' ? 'skipped' : 'tested',
-                                    })
-                                  }
-                                  aria-label="Test result"
+                          return (
+                            <div key={monthIso} className={cardClass} role="listitem">
+                              <div className="monthly-location-testing-history-month-topline">
+                                <div
+                                  className="monthly-location-testing-history-month-name"
+                                  title={formatMonthHeading(monthIso)}
                                 >
-                                  <option value="tested">Tested</option>
-                                  <option value="skipped">Skipped</option>
-                                </Form.Select>
-                                <div className="d-flex flex-wrap gap-2">
-                                  <Button
-                                    type="button"
-                                    variant="primary"
-                                    size="sm"
-                                    disabled={historySaving}
-                                    onClick={() => void saveHistoryResultEdit()}
-                                  >
-                                    {historySaving ? 'Saving…' : 'Save'}
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    variant="outline-secondary"
-                                    size="sm"
-                                    disabled={historySaving}
-                                    onClick={cancelHistoryEdit}
-                                  >
-                                    Cancel
-                                  </Button>
+                                  {monthShortNameFromKey(monthIso)}
                                 </div>
-                              </td>
-                            )
-                          } else if (!canEditMonth) {
-                            resultTd = (
-                              <td
-                                className={
-                                  [
-                                    cell
-                                      ? 'text-capitalize'
-                                      : isAnnualMonthRow
-                                        ? 'fw-semibold'
-                                        : isNextSlot
-                                          ? 'text-muted fst-italic'
-                                          : 'fst-italic',
-                                    testingHistoryResultCellClass(cell, { editing: false }, isAnnualMonthRow),
-                                  ]
-                                    .filter(Boolean)
-                                    .join(' ') || undefined
-                                }
-                              >
-                                {testingHistoryResultMainLabel(cell, isNextSlot, isAnnualMonthRow)}
-                                {testingHistoryRouteContextLine(cell)}
-                              </td>
-                            )
-                          } else {
-                            resultTd = (
-                              <td
-                                className={[
-                                  testingHistoryResultCellClass(cell, { editing: false }, isAnnualMonthRow),
-                                ]
-                                  .filter(Boolean)
-                                  .join(' ')}
-                              >
-                                <div className="d-flex flex-wrap align-items-baseline gap-2">
-                                  <button
-                                    type="button"
-                                    className="btn btn-link btn-sm p-0 text-decoration-none text-body text-start"
-                                    disabled={historySaving}
-                                    onClick={() => {
-                                      if (historySaving) return
-                                      if (
-                                        historyEdit &&
-                                        (historyEdit.monthIso !== monthIso ||
-                                          historyEdit.kind !== 'result')
-                                      ) {
-                                        return
-                                      }
-                                      setHistorySaveError(null)
-                                      setHistoryEdit({
-                                        kind: 'result',
-                                        monthIso,
-                                        value: normalizeHistoryResultStatus(cell?.result_status),
-                                      })
-                                    }}
+                                {worksheetRouteId != null ? (
+                                  <Link
+                                    className="monthly-location-testing-history-worksheet-link"
+                                    to={`/monthlies/routes/${worksheetRouteId}/worksheet/${encodeURIComponent(monthIso)}`}
+                                    title={`Open worksheet for ${formatMonthHeading(monthIso)}`}
                                   >
-                                    {testingHistoryResultMainLabel(cell, isNextSlot, isAnnualMonthRow)}
-                                  </button>
-                                  {canEditSkip && !historyEdit ? (
+                                    Worksheet
+                                  </Link>
+                                ) : null}
+                              </div>
+
+                              {editingSkip && historyEdit?.kind === 'skip_reason' ? (
+                                <div className="monthly-location-testing-history-edit-stack">
+                                  <Form.Control
+                                    size="sm"
+                                    type="text"
+                                    placeholder="Reason (optional)"
+                                    value={historyEdit.value}
+                                    disabled={historySaving}
+                                    onChange={(e) =>
+                                      setHistoryEdit({ ...historyEdit, value: e.target.value })
+                                    }
+                                    aria-label="Skip reason"
+                                  />
+                                  <div className="d-flex flex-wrap gap-2">
+                                    <Button
+                                      type="button"
+                                      variant="primary"
+                                      size="sm"
+                                      disabled={historySaving}
+                                      onClick={() => void saveHistorySkipEdit()}
+                                    >
+                                      {historySaving ? 'Saving…' : 'Save'}
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      variant="outline-secondary"
+                                      size="sm"
+                                      disabled={historySaving}
+                                      onClick={cancelHistoryEdit}
+                                    >
+                                      Cancel
+                                    </Button>
+                                  </div>
+                                </div>
+                              ) : editingResult && historyEdit?.kind === 'result' ? (
+                                <div className="monthly-location-testing-history-edit-stack">
+                                  <Form.Select
+                                    size="sm"
+                                    value={historyEdit.value}
+                                    disabled={historySaving}
+                                    onChange={(e) =>
+                                      setHistoryEdit({
+                                        ...historyEdit,
+                                        value: e.target.value === 'skipped' ? 'skipped' : 'tested',
+                                      })
+                                    }
+                                    aria-label="Test result"
+                                  >
+                                    <option value="tested">Tested</option>
+                                    <option value="skipped">Skipped</option>
+                                  </Form.Select>
+                                  <div className="d-flex flex-wrap gap-2">
+                                    <Button
+                                      type="button"
+                                      variant="primary"
+                                      size="sm"
+                                      disabled={historySaving}
+                                      onClick={() => void saveHistoryResultEdit()}
+                                    >
+                                      {historySaving ? 'Saving…' : 'Save'}
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      variant="outline-secondary"
+                                      size="sm"
+                                      disabled={historySaving}
+                                      onClick={cancelHistoryEdit}
+                                    >
+                                      Cancel
+                                    </Button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <>
+                                  {canEditMonth ? (
                                     <button
                                       type="button"
-                                      className="btn btn-link btn-sm p-0 text-decoration-none"
+                                      className="monthly-location-testing-history-status-chip monthly-location-testing-history-status-chip--button"
                                       disabled={historySaving}
                                       onClick={() => {
                                         if (historySaving) return
+                                        if (
+                                          historyEdit &&
+                                          (historyEdit.monthIso !== monthIso ||
+                                            historyEdit.kind !== 'result')
+                                        ) {
+                                          return
+                                        }
                                         setHistorySaveError(null)
                                         setHistoryEdit({
-                                          kind: 'skip_reason',
+                                          kind: 'result',
                                           monthIso,
-                                          value: cell?.skip_reason ?? '',
+                                          value: normalizeHistoryResultStatus(cell?.result_status),
                                         })
                                       }}
                                     >
-                                      Edit reason
+                                      {statusLabel}
                                     </button>
-                                  ) : null}
-                                </div>
-                                {testingHistoryRouteContextLine(cell)}
-                              </td>
-                            )
-                          }
-
-                          return (
-                            <tr key={monthIso} className={rowClass}>
-                              {monthTd}
-                              {resultTd}
-                            </tr>
+                                  ) : (
+                                    <span className="monthly-location-testing-history-status-chip">
+                                      {statusLabel}
+                                    </span>
+                                  )}
+                                  <div className="monthly-location-testing-history-month-meta">
+                                    {isNextSlot ? (
+                                      <div>
+                                        Next test{testDayLabel ? `: ${testDayLabel}` : ''}
+                                      </div>
+                                    ) : null}
+                                    {testingHistoryRouteContextLine(cell)}
+                                    {canEditSkip && !historyEdit ? (
+                                      <button
+                                        type="button"
+                                        className="btn btn-link btn-sm p-0 text-decoration-none"
+                                        disabled={historySaving}
+                                        onClick={() => {
+                                          if (historySaving) return
+                                          setHistorySaveError(null)
+                                          setHistoryEdit({
+                                            kind: 'skip_reason',
+                                            monthIso,
+                                            value: cell?.skip_reason ?? '',
+                                          })
+                                        }}
+                                      >
+                                        Edit reason
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                </>
+                              )}
+                            </div>
                           )
                         })
                       : null}
-                  </tbody>
-                </Table>
-              </div>
-            )}
-          </Accordion.Body>
-        </Accordion.Item>
+                  </div>
+                </div>
+              )}
+            </Accordion.Body>
+          </Accordion.Item>
+        </Accordion>
 
-        <Accordion.Item
-          eventKey="comments"
-          className="monthly-location-comments-card monthly-location-detail-surface shadow-sm bg-white"
-        >
-          <Accordion.Header className="monthly-location-comments-card-header py-3">
-            <span className="fw-bold text-dark">Comments</span>
-          </Accordion.Header>
-          <Accordion.Body className="monthly-location-comments-body">
-            <MonthlyLibraryCommentsPanel
-              commentsApiPrefix={`/api/monthly_sites/library/${idNum}`}
-              comments={comments}
-              setComments={setComments}
-              sessionUsername={sessionUsername}
-              composerPlaceholder="Write a note for this location…"
-            />
-          </Accordion.Body>
-        </Accordion.Item>
-      </Accordion>
+        <section className="monthly-location-detail-panel monthly-location-comments-panel monthly-location-comments-panel--full">
+          <div className="monthly-location-section-header">
+            <div>
+              <h2 className="monthly-location-section-title">Comments</h2>
+            </div>
+          </div>
+          <MonthlyLibraryCommentsPanel
+            commentsApiPrefix={`/api/monthly_sites/library/${idNum}`}
+            comments={comments}
+            setComments={setComments}
+            sessionUsername={sessionUsername}
+            composerPlaceholder="Write a note for this location…"
+          />
+        </section>
+      </div>
     </div>
   )
 }

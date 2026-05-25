@@ -14,6 +14,7 @@ from app.db_models import (
     MonthlyRouteLocation,
     MonthlySite,
     MonthlyTestingSite,
+    MonthlyTestingSiteMonth,
     db,
 )
 
@@ -36,6 +37,7 @@ def v2_tables(monkeypatch):
                 MonthlyRouteLocation.__table__,
                 MonthlySite.__table__,
                 MonthlyTestingSite.__table__,
+                MonthlyTestingSiteMonth.__table__,
             ],
         )
         yield app
@@ -43,6 +45,7 @@ def v2_tables(monkeypatch):
         db.metadata.drop_all(
             db.engine,
             tables=[
+                MonthlyTestingSiteMonth.__table__,
                 MonthlyTestingSite.__table__,
                 MonthlySite.__table__,
                 MonthlyRouteLocation.__table__,
@@ -163,3 +166,120 @@ def test_post_testing_site_with_payload(v2_tables):
         assert body["testing_site"]["label"] == "Building A panel"
         assert body["testing_site"]["keys"] == "KEY-NEW"
         assert float(body["testing_site"]["price_per_month"]) == 99.50
+
+
+def test_post_testing_site_appends_after_existing_primary(v2_tables):
+    with v2_tables.app_context():
+        lid = _seed_route_and_location()
+        loc = db.session.get(MonthlyRouteLocation, lid)
+        from app.monthly.monthly_sites_sync import sync_testing_sites_from_legacy
+
+        primary = sync_testing_sites_from_legacy(loc)[0]
+        db.session.commit()
+        assert primary.sort_order == 0
+
+        client = v2_tables.test_client()
+        with client.session_transaction() as sess:
+            sess["authenticated"] = True
+            sess["username"] = "pytest"
+
+        resp = client.post(
+            f"/api/monthly_sites/library/{lid}/testing_sites",
+            json={"label": "Second panel"},
+        )
+        assert resp.status_code == 201
+        body = resp.get_json()
+        assert body["testing_site"]["label"] == "Second panel"
+        assert body["testing_site"]["sort_order"] == 1
+
+
+def test_route_location_list_item_includes_ordered_testing_sites(v2_tables):
+    with v2_tables.app_context():
+        lid = _seed_route_and_location()
+        loc = db.session.get(MonthlyRouteLocation, lid)
+        from app.monthly.monthly_sites_sync import sync_testing_sites_from_legacy
+        from app.routes.monthly_routes import _serialize_route_location_list_item
+
+        primary = sync_testing_sites_from_legacy(loc)[0]
+        primary.label = "Main panel"
+        site = MonthlySite.query.filter_by(legacy_monthly_route_location_id=lid).one()
+        db.session.add(
+            MonthlyTestingSite(
+                id=9002,
+                monthly_site_id=int(site.id),
+                sort_order=1,
+                label="Second panel",
+                annual_month="June",
+            )
+        )
+        db.session.commit()
+
+        payload = _serialize_route_location_list_item(loc)
+        assert [row["label"] for row in payload["testing_sites"]] == ["Main panel", "Second panel"]
+        assert [row["sort_order"] for row in payload["testing_sites"]] == [0, 1]
+
+
+def test_reorder_testing_sites_updates_sort_order(v2_tables):
+    with v2_tables.app_context():
+        lid = _seed_route_and_location()
+        loc = db.session.get(MonthlyRouteLocation, lid)
+        from app.monthly.monthly_sites_sync import sync_testing_sites_from_legacy
+
+        primary = sync_testing_sites_from_legacy(loc)[0]
+        db.session.commit()
+
+        client = v2_tables.test_client()
+        with client.session_transaction() as sess:
+            sess["authenticated"] = True
+            sess["username"] = "pytest"
+
+        add_second = client.post(
+            f"/api/monthly_sites/library/{lid}/testing_sites",
+            json={"label": "Second panel"},
+        )
+        add_third = client.post(
+            f"/api/monthly_sites/library/{lid}/testing_sites",
+            json={"label": "Third panel"},
+        )
+        assert add_second.status_code == 201
+        assert add_third.status_code == 201
+        second_id = int(add_second.get_json()["testing_site"]["id"])
+        third_id = int(add_third.get_json()["testing_site"]["id"])
+
+        resp = client.put(
+            f"/api/monthly_sites/library/{lid}/testing_sites/order",
+            json={"ordered_testing_site_ids": [third_id, int(primary.id), second_id]},
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert [row["id"] for row in body["testing_sites"]] == [third_id, int(primary.id), second_id]
+        assert [row["sort_order"] for row in body["testing_sites"]] == [0, 1, 2]
+
+
+def test_delete_testing_site_requires_sibling(v2_tables):
+    with v2_tables.app_context():
+        lid = _seed_route_and_location()
+        loc = db.session.get(MonthlyRouteLocation, lid)
+        from app.monthly.monthly_sites_sync import sync_testing_sites_from_legacy
+
+        primary = sync_testing_sites_from_legacy(loc)[0]
+        db.session.commit()
+
+        client = v2_tables.test_client()
+        with client.session_transaction() as sess:
+            sess["authenticated"] = True
+            sess["username"] = "pytest"
+
+        only_resp = client.delete(f"/api/monthly_sites/testing_sites/{int(primary.id)}")
+        assert only_resp.status_code == 400
+
+        add_resp = client.post(
+            f"/api/monthly_sites/library/{lid}/testing_sites",
+            json={"label": "Second panel"},
+        )
+        assert add_resp.status_code == 201
+        second_id = int(add_resp.get_json()["testing_site"]["id"])
+
+        delete_resp = client.delete(f"/api/monthly_sites/testing_sites/{second_id}")
+        assert delete_resp.status_code == 204
+        assert db.session.get(MonthlyTestingSite, second_id) is None

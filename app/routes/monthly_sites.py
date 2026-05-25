@@ -438,7 +438,7 @@ def monthly_sites_add_testing_site(location_id: int):
         .filter(MonthlyTestingSite.monthly_site_id == int(site.id))
         .scalar()
     )
-    next_order = int(max_so or -1) + 1
+    next_order = int(max_so if max_so is not None else -1) + 1
     ts_kw = dict(
         monthly_site_id=int(site.id),
         sort_order=next_order,
@@ -462,6 +462,51 @@ def monthly_sites_add_testing_site(location_id: int):
     db.session.commit()
     db.session.refresh(ts)
     return jsonify({"testing_site": _serialize_testing_site(ts)}), 201
+
+
+@monthly_sites_bp.put("/api/monthly_sites/library/<int:location_id>/testing_sites/order")
+def monthly_sites_reorder_testing_sites(location_id: int):
+    payload = request.get_json(silent=True) or {}
+    if not isinstance(payload, dict):
+        return jsonify({"error": "JSON object payload required"}), 400
+
+    raw_ids = payload.get("ordered_testing_site_ids")
+    if not isinstance(raw_ids, list):
+        return jsonify({"error": "ordered_testing_site_ids must be a list"}), 400
+    try:
+        ordered_ids = [int(v) for v in raw_ids]
+    except (TypeError, ValueError):
+        return jsonify({"error": "ordered_testing_site_ids must contain integers"}), 400
+
+    loc = db.session.get(MonthlyRouteLocation, location_id)
+    if loc is None:
+        return jsonify({"error": "Location not found"}), 404
+    site = ensure_monthly_site_for_location(loc)
+    rows = (
+        MonthlyTestingSite.query.filter_by(monthly_site_id=int(site.id))
+        .order_by(MonthlyTestingSite.sort_order.asc(), MonthlyTestingSite.id.asc())
+        .all()
+    )
+    existing_ids = {int(row.id) for row in rows}
+    if len(ordered_ids) != len(existing_ids) or set(ordered_ids) != existing_ids:
+        return jsonify(
+            {
+                "error": "ordered_testing_site_ids must list each testing site for this location exactly once",
+            }
+        ), 400
+
+    by_id = {int(row.id): row for row in rows}
+    offset = len(rows)
+    for idx, testing_site_id in enumerate(ordered_ids):
+        by_id[testing_site_id].sort_order = offset + idx
+    db.session.flush()
+
+    for idx, testing_site_id in enumerate(ordered_ids):
+        by_id[testing_site_id].sort_order = idx
+
+    db.session.commit()
+    ordered_rows = [by_id[testing_site_id] for testing_site_id in ordered_ids]
+    return jsonify({"testing_sites": [_serialize_testing_site(row) for row in ordered_rows]})
 
 
 @monthly_sites_bp.delete("/api/monthly_sites/testing_sites/<int:testing_site_id>")

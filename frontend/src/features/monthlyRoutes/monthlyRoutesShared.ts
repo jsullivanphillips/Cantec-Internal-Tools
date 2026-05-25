@@ -5,6 +5,10 @@ export type MonthCell = {
   skip_reason: string | null
   /** Monthly route when this month cell was saved (CSV / sheet capture); not necessarily ``monthly_route`` today. */
   test_monthly_route?: MonthlyRouteSummary | null
+  /** Staff worksheet route id for this historical month, when it can be resolved. */
+  worksheet_route_id?: number | null
+  /** Run file id linked to this month cell, when present. */
+  run_id?: number | null
 }
 
 /** Canonical monthly route entity (``MonthlyRoute``); aligns with ``monthly_route_id``. */
@@ -102,6 +106,13 @@ export type LibraryLocation = {
 }
 
 /** Row from ``GET/PUT .../routes/:id`` locations list (no month grid). */
+export type RouteLocationTestingSiteListItem = {
+  id: number
+  sort_order: number
+  label: string | null
+  annual_month?: string | null
+}
+
 export type RouteLocationListItem = {
   id: number
   address: string
@@ -111,6 +122,7 @@ export type RouteLocationListItem = {
   annual_month?: string | null
   route_stop_order: number | null
   monthly_route_id?: number | null
+  testing_sites?: RouteLocationTestingSiteListItem[]
 }
 
 /** Comment row from ``GET /api/monthly_routes/library/:id`` (newest first); comments remain on legacy routes. */

@@ -112,6 +112,7 @@ def test_get_worksheet_includes_stops_preview(stops_client, monkeypatch):
     assert body.get("run") is None
     stops = body.get("stops") or []
     assert len(stops) == 2
+    assert [s["stop_number"] for s in stops] == [1, 2]
     assert stops[0]["display_address"] == "123 Test St"
     assert stops[0]["history_month_row_id"] == 0
 
@@ -133,6 +134,7 @@ def test_portal_start_materializes_stops(stops_client, monkeypatch):
     assert body["run"]["started_at"] is not None
     stops = body["stops"]
     assert len(stops) == 2
+    assert [s["stop_number"] for s in stops] == [1, 2]
     by_id = {int(s["testing_site_id"]): s for s in stops}
     assert by_id[ts_primary]["history_month_row_id"] > 0
     assert by_id[ts_second]["history_month_row_id"] > 0
