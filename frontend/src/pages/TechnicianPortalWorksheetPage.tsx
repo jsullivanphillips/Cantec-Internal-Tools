@@ -65,15 +65,6 @@ function skipReasonDisplay(stop: TechnicianWorksheetStop): string | null {
   return reason
 }
 
-function FieldRow({ label, value, multiline }: { label: string; value: string; multiline?: boolean }) {
-  return (
-    <div className={`pw-mock-field-row${multiline ? ' pw-mock-field-row--multiline' : ''}`}>
-      <div className="pw-mock-field-label">{label}</div>
-      <div className="pw-mock-field-value">{value || '—'}</div>
-    </div>
-  )
-}
-
 function syncBadgeVariant(state: string): string {
   if (state === 'synced') return 'success'
   if (state === 'syncing') return 'primary'
