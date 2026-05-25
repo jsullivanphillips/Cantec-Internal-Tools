@@ -50,20 +50,39 @@ export default function TechnicianPortalLayout() {
       return undefined
     }
 
-    const updateWorksheetViewportHeight = () => {
+    const worksheetHasTextFocus = () => {
+      const activeElement = document.activeElement
+      if (!(activeElement instanceof HTMLElement)) return false
+      if (!activeElement.closest('.portal-worksheet-outlet')) return false
+      return activeElement.matches('input, textarea, select') || activeElement.isContentEditable
+    }
+
+    const updateWorksheetViewportHeight = (force = false) => {
+      if (!force && worksheetHasTextFocus()) return
       const viewportHeight = window.visualViewport?.height ?? window.innerHeight
       document.documentElement.style.setProperty('--portal-worksheet-visual-height', `${viewportHeight}px`)
     }
 
-    updateWorksheetViewportHeight()
-    window.addEventListener('resize', updateWorksheetViewportHeight)
-    window.visualViewport?.addEventListener('resize', updateWorksheetViewportHeight)
-    window.visualViewport?.addEventListener('scroll', updateWorksheetViewportHeight)
+    let deferredUpdate = 0
+    const scheduleForcedUpdate = () => {
+      window.clearTimeout(deferredUpdate)
+      deferredUpdate = window.setTimeout(() => updateWorksheetViewportHeight(true), 120)
+    }
+
+    const handleViewportResize = () => updateWorksheetViewportHeight()
+
+    updateWorksheetViewportHeight(true)
+    window.addEventListener('resize', handleViewportResize)
+    window.addEventListener('focusout', scheduleForcedUpdate, true)
+    window.addEventListener('orientationchange', scheduleForcedUpdate)
+    window.visualViewport?.addEventListener('resize', handleViewportResize)
 
     return () => {
-      window.removeEventListener('resize', updateWorksheetViewportHeight)
-      window.visualViewport?.removeEventListener('resize', updateWorksheetViewportHeight)
-      window.visualViewport?.removeEventListener('scroll', updateWorksheetViewportHeight)
+      window.clearTimeout(deferredUpdate)
+      window.removeEventListener('resize', handleViewportResize)
+      window.removeEventListener('focusout', scheduleForcedUpdate, true)
+      window.removeEventListener('orientationchange', scheduleForcedUpdate)
+      window.visualViewport?.removeEventListener('resize', handleViewportResize)
       document.documentElement.style.removeProperty('--portal-worksheet-visual-height')
     }
   }, [isWorksheetScreen])

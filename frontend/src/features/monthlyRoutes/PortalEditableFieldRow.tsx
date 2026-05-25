@@ -23,6 +23,7 @@ export default function PortalEditableFieldRow({
 }: PortalEditableFieldRowProps) {
   const inputId = useId()
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null)
+  const rowRef = useRef<HTMLDivElement>(null)
   const [draft, setDraft] = useState(value)
   const editing = !readOnly && editingField === fieldKey
   const display = value.trim() || '—'
@@ -32,7 +33,42 @@ export default function PortalEditableFieldRow({
   }, [value, editing])
 
   useEffect(() => {
-    if (editing) inputRef.current?.focus()
+    if (!editing) return undefined
+
+    const input = inputRef.current
+    try {
+      input?.focus({ preventScroll: true })
+    } catch {
+      input?.focus()
+    }
+
+    const scrollFieldIntoView = () => {
+      const row = rowRef.current
+      const scroller = row?.closest<HTMLElement>('.pw-mock-fields')
+      if (!row || !scroller) return
+
+      const rowRect = row.getBoundingClientRect()
+      const scrollerRect = scroller.getBoundingClientRect()
+      const visualViewport = window.visualViewport
+      const viewportTop = visualViewport?.offsetTop ?? 0
+      const viewportBottom = viewportTop + (visualViewport?.height ?? window.innerHeight)
+      const visibleTop = Math.max(scrollerRect.top, viewportTop) + 16
+      const visibleBottom = Math.min(scrollerRect.bottom, viewportBottom) - 16
+
+      if (rowRect.top < visibleTop) {
+        scroller.scrollTop -= visibleTop - rowRect.top
+      } else if (rowRect.bottom > visibleBottom) {
+        scroller.scrollTop += rowRect.bottom - visibleBottom
+      }
+    }
+
+    const firstScroll = window.setTimeout(scrollFieldIntoView, 80)
+    const keyboardScroll = window.setTimeout(scrollFieldIntoView, 320)
+
+    return () => {
+      window.clearTimeout(firstScroll)
+      window.clearTimeout(keyboardScroll)
+    }
   }, [editing])
 
   const commit = () => {
@@ -77,6 +113,7 @@ export default function PortalEditableFieldRow({
 
   return (
     <div
+      ref={rowRef}
       className={`pw-mock-field-row pw-mock-field-row--editing${
         multiline ? ' pw-mock-field-row--multiline' : ''
       }`}
