@@ -216,6 +216,15 @@ export default function TechnicianPortalWorksheetPage() {
     setSkipDraft('')
   }
 
+  const resetStopOutcome = () => {
+    applyStopPatch({
+      result_status: null,
+      skip_reason: null,
+      time_in: null,
+      time_out: null,
+    })
+  }
+
   const saveField = useCallback(
     (field: keyof WorksheetStopChangeSet) => (text: string) => {
       applyStopPatch({ [field]: text.length > 0 ? text : null })
@@ -336,6 +345,14 @@ export default function TechnicianPortalWorksheetPage() {
   const activeMonitoringDisplay = active ? headerMonitoringDisplay(active) : 'No Monitoring'
   const activeFieldEditActions =
     editingField && fieldEditActions?.fieldKey === editingField ? fieldEditActions : null
+  const activeOutcomeComplete = activeStatus === 'tested' || activeStatus === 'skipped'
+  const dockClassName = [
+    'pw-mock-dock',
+    activeOutcomeComplete ? 'pw-mock-dock--completed' : '',
+    activeFieldEditActions ? 'pw-mock-dock--field-editing' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
 
   return (
     <div className="portal-worksheet-mockup">
@@ -613,8 +630,17 @@ export default function TechnicianPortalWorksheetPage() {
                   </div>
                 </section>
 
-                <footer className={`pw-mock-dock${activeFieldEditActions ? ' pw-mock-dock--field-editing' : ''}`}>
-                  {active.time_in && !active.time_out ? (
+                <footer className={dockClassName}>
+                  {activeOutcomeComplete ? (
+                    <Button
+                      variant="outline-secondary"
+                      className="pw-mock-dock-btn pw-mock-dock-normal-btn"
+                      disabled={readOnlyWorksheet}
+                      onClick={resetStopOutcome}
+                    >
+                      Reset
+                    </Button>
+                  ) : active.time_in && !active.time_out ? (
                     <Button
                       variant="primary"
                       className="pw-mock-dock-btn pw-mock-dock-normal-btn"
@@ -627,23 +653,25 @@ export default function TechnicianPortalWorksheetPage() {
                     <Button
                       variant="primary"
                       className="pw-mock-dock-btn pw-mock-dock-normal-btn"
-                      disabled={readOnlyWorksheet || activeStatus === 'tested' || !!active.time_in}
+                      disabled={readOnlyWorksheet || !!active.time_in}
                       onClick={clockIn}
                     >
                       Clock in
                     </Button>
                   )}
-                  <Button
-                    variant="outline-warning"
-                    className="pw-mock-dock-btn pw-mock-dock-normal-btn"
-                    disabled={readOnlyWorksheet || activeStatus === 'tested'}
-                    onClick={() => {
-                      setSkipDraft(active.skip_reason ?? '')
-                      setSkipModalOpen(true)
-                    }}
-                  >
-                    Skip
-                  </Button>
+                  {!activeOutcomeComplete ? (
+                    <Button
+                      variant="outline-warning"
+                      className="pw-mock-dock-btn pw-mock-dock-normal-btn"
+                      disabled={readOnlyWorksheet}
+                      onClick={() => {
+                        setSkipDraft(active.skip_reason ?? '')
+                        setSkipModalOpen(true)
+                      }}
+                    >
+                      Skip
+                    </Button>
+                  ) : null}
                   <Button
                     variant="outline-danger"
                     className="pw-mock-dock-btn pw-mock-dock-normal-btn"

@@ -18,6 +18,7 @@ from typing import Any, Iterator
 
 import requests
 from dotenv import load_dotenv
+from tqdm import tqdm
 
 SERVICE_TRADE_API_BASE = "https://api.servicetrade.com/api"
 SERVICE_TRADE_JOB_LINK_BASE = "https://app.servicetrade.com/jobs"
@@ -171,14 +172,20 @@ def find_matching_jobs(tech_a: str, tech_b: str, page_size: int) -> list[dict[st
     results: list[dict[str, Any]] = []
     scanned = 0
 
-    for job in iter_completed_inspection_jobs(page_size):
-        scanned += 1
-        if scanned % page_size == 0:
-            print(f"Scanned {scanned} completed inspection jobs...", file=sys.stderr)
-        if job_has_technician_pair(job, tech_a, tech_b):
-            results.append(job_to_result(job))
+    with tqdm(
+        desc="Scanning completed inspection jobs",
+        unit="job",
+        file=sys.stderr,
+        dynamic_ncols=True,
+    ) as progress:
+        for job in iter_completed_inspection_jobs(page_size):
+            scanned += 1
+            progress.update(1)
+            if job_has_technician_pair(job, tech_a, tech_b):
+                results.append(job_to_result(job))
 
-    print(f"Scanned {scanned} completed inspection jobs total.", file=sys.stderr)
+        progress.set_postfix(scanned=scanned, matched=len(results))
+
     return results
 
 
