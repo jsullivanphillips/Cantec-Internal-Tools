@@ -6264,6 +6264,30 @@ body {
   box-shadow: none;
 }
 
+.pw-mock-dock-edit-btn {
+  display: none;
+}
+
+@media (max-width: 991.98px), (hover: none) and (pointer: coarse) {
+  .pw-mock-field-row--editing .pw-mock-field-edit-actions {
+    display: none;
+  }
+
+  .pw-mock-dock.pw-mock-dock--field-editing {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pw-mock-dock.pw-mock-dock--field-editing .pw-mock-dock-normal-btn {
+    display: none;
+  }
+
+  .pw-mock-dock.pw-mock-dock--field-editing .pw-mock-dock-edit-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
 /* Portal worksheet loading skeleton */
 .pw-skeleton-nav-pill {
   width: 2.25rem;

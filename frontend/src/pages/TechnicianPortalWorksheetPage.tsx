@@ -10,7 +10,7 @@ import {
 import { isPortalWorksheetDemoRoute } from '../features/monthlyRoutes/portalWorksheetDemo'
 import { usePortalWorksheet } from '../features/monthlyRoutes/usePortalWorksheet'
 import { usePortalWorksheetDemo } from '../features/monthlyRoutes/usePortalWorksheetDemo'
-import PortalEditableFieldRow from '../features/monthlyRoutes/PortalEditableFieldRow'
+import PortalEditableFieldRow, { type PortalFieldEditActions } from '../features/monthlyRoutes/PortalEditableFieldRow'
 import type { WorksheetStopChangeSet } from '../features/monthlyRoutes/worksheetOfflineStore'
 import PortalWorksheetSkeleton from './PortalWorksheetSkeleton'
 
@@ -132,6 +132,7 @@ export default function TechnicianPortalWorksheetPage() {
   const [skipModalOpen, setSkipModalOpen] = useState(false)
   const [skipDraft, setSkipDraft] = useState('')
   const [editingField, setEditingField] = useState<string | null>(null)
+  const [fieldEditActions, setFieldEditActions] = useState<PortalFieldEditActions | null>(null)
 
   useEffect(() => {
     if (!stops.length) {
@@ -158,6 +159,7 @@ export default function TechnicianPortalWorksheetPage() {
 
   useEffect(() => {
     setEditingField(null)
+    setFieldEditActions(null)
   }, [active?.testing_site_id])
 
   useEffect(() => {
@@ -215,10 +217,15 @@ export default function TechnicianPortalWorksheetPage() {
     [applyStopPatch],
   )
 
+  const handleFieldEditActionsChange = useCallback((actions: PortalFieldEditActions | null) => {
+    setFieldEditActions(actions)
+  }, [])
+
   const fieldEditProps = {
     readOnly: readOnlyWorksheet,
     editingField,
     onEditingFieldChange: setEditingField,
+    onEditActionsChange: handleFieldEditActionsChange,
   }
 
   useEffect(() => {
@@ -320,6 +327,8 @@ export default function TechnicianPortalWorksheetPage() {
   const activeStatus = active ? stopDisplayStatus(active) : 'pending'
   const activeSkipLabel = active ? skipReasonDisplay(active) : null
   const activePanelDisplay = active ? headerPanelDisplay(active) : null
+  const activeFieldEditActions =
+    editingField && fieldEditActions?.fieldKey === editingField ? fieldEditActions : null
 
   return (
     <div className="portal-worksheet-mockup">
@@ -599,11 +608,11 @@ export default function TechnicianPortalWorksheetPage() {
                   </div>
                 </section>
 
-                <footer className="pw-mock-dock">
+                <footer className={`pw-mock-dock${activeFieldEditActions ? ' pw-mock-dock--field-editing' : ''}`}>
                   {active.time_in && !active.time_out ? (
                     <Button
                       variant="primary"
-                      className="pw-mock-dock-btn"
+                      className="pw-mock-dock-btn pw-mock-dock-normal-btn"
                       disabled={readOnlyWorksheet}
                       onClick={clockOut}
                     >
@@ -612,7 +621,7 @@ export default function TechnicianPortalWorksheetPage() {
                   ) : (
                     <Button
                       variant="primary"
-                      className="pw-mock-dock-btn"
+                      className="pw-mock-dock-btn pw-mock-dock-normal-btn"
                       disabled={readOnlyWorksheet || activeStatus === 'tested' || !!active.time_in}
                       onClick={clockIn}
                     >
@@ -621,7 +630,7 @@ export default function TechnicianPortalWorksheetPage() {
                   )}
                   <Button
                     variant="outline-warning"
-                    className="pw-mock-dock-btn"
+                    className="pw-mock-dock-btn pw-mock-dock-normal-btn"
                     disabled={readOnlyWorksheet || activeStatus === 'tested'}
                     onClick={() => {
                       setSkipDraft(active.skip_reason ?? '')
@@ -632,12 +641,30 @@ export default function TechnicianPortalWorksheetPage() {
                   </Button>
                   <Button
                     variant="outline-danger"
-                    className="pw-mock-dock-btn"
+                    className="pw-mock-dock-btn pw-mock-dock-normal-btn"
                     disabled={readOnlyWorksheet}
                     onClick={() => window.alert('Deficiency tracking is not available yet.')}
                   >
                     Deficiency
                   </Button>
+                  {activeFieldEditActions ? (
+                    <>
+                      <Button
+                        variant="outline-secondary"
+                        className="pw-mock-dock-btn pw-mock-dock-edit-btn"
+                        onClick={activeFieldEditActions.cancel}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        variant="primary"
+                        className="pw-mock-dock-btn pw-mock-dock-edit-btn"
+                        onClick={activeFieldEditActions.save}
+                      >
+                        Save
+                      </Button>
+                    </>
+                  ) : null}
                 </footer>
               </>
             )}

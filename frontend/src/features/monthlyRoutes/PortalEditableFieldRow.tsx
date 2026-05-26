@@ -1,4 +1,10 @@
-import { useEffect, useId, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useId, useRef, useState, type RefObject } from 'react'
+
+export type PortalFieldEditActions = {
+  fieldKey: string
+  cancel: () => void
+  save: () => void
+}
 
 type PortalEditableFieldRowProps = {
   fieldKey: string
@@ -9,6 +15,7 @@ type PortalEditableFieldRowProps = {
   editingField: string | null
   onEditingFieldChange: (key: string | null) => void
   onSave: (next: string) => void
+  onEditActionsChange?: (actions: PortalFieldEditActions | null) => void
 }
 
 export default function PortalEditableFieldRow({
@@ -20,6 +27,7 @@ export default function PortalEditableFieldRow({
   editingField,
   onEditingFieldChange,
   onSave,
+  onEditActionsChange,
 }: PortalEditableFieldRowProps) {
   const inputId = useId()
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null)
@@ -71,16 +79,22 @@ export default function PortalEditableFieldRow({
     }
   }, [editing])
 
-  const commit = () => {
+  const commit = useCallback(() => {
     const next = draft.trim()
     if (next !== value.trim()) onSave(next)
     onEditingFieldChange(null)
-  }
+  }, [draft, onEditingFieldChange, onSave, value])
 
-  const cancel = () => {
+  const cancel = useCallback(() => {
     setDraft(value)
     onEditingFieldChange(null)
-  }
+  }, [onEditingFieldChange, value])
+
+  useEffect(() => {
+    if (!editing || !onEditActionsChange) return undefined
+    onEditActionsChange({ fieldKey, cancel, save: commit })
+    return () => onEditActionsChange(null)
+  }, [cancel, commit, editing, fieldKey, onEditActionsChange])
 
   const startEdit = () => {
     if (readOnly) return
