@@ -599,9 +599,66 @@ class MonthlyRoute(db.Model):
         cascade="all, delete-orphan",
         lazy="dynamic",
     )
+    calculated_paths = db.relationship(
+        "MonthlyRouteCalculatedPath",
+        back_populates="monthly_route",
+        cascade="all, delete-orphan",
+        lazy="dynamic",
+    )
 
     def __repr__(self):
         return f"<MonthlyRoute R{self.route_number}>"
+
+
+class MonthlyRouteCalculatedPath(db.Model):
+    """Cached current Mapbox Directions geometry for a monthly route's ordered stops."""
+
+    __tablename__ = "monthly_route_calculated_path"
+    __table_args__ = (
+        db.UniqueConstraint(
+            "monthly_route_id",
+            "profile",
+            name="uq_monthly_route_calculated_path_route_profile",
+        ),
+        db.Index(
+            "ix_monthly_route_calculated_path_route_profile",
+            "monthly_route_id",
+            "profile",
+        ),
+    )
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    monthly_route_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monthly_route.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    profile = db.Column(db.String(32), nullable=False, server_default="driving")
+    provider = db.Column(db.String(32), nullable=False, server_default="mapbox")
+    stop_signature = db.Column(db.String(64), nullable=False)
+    geometry_geojson = db.Column(db.JSON, nullable=False)
+    distance_meters = db.Column(db.Float, nullable=True)
+    duration_seconds = db.Column(db.Float, nullable=True)
+    waypoint_count = db.Column(db.Integer, nullable=False)
+    provider_response_summary = db.Column(db.JSON, nullable=True)
+    calculated_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        nullable=False,
+    )
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        nullable=False,
+    )
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        onupdate=db.func.now(),
+        nullable=False,
+    )
+
+    monthly_route = db.relationship("MonthlyRoute", back_populates="calculated_paths")
 
 
 class MonthlyRouteRun(db.Model):

@@ -1,5 +1,6 @@
 import { lazy } from 'react'
 import { createBrowserRouter, Navigate, useParams } from 'react-router-dom'
+import AppRouteErrorPage from './components/AppRouteErrorPage'
 import { monthFirstIsoPacificToday } from './features/monthlyRoutes/monthlyRoutesShared'
 import { PORTAL_WORKSHEET_DEMO_ROUTE_ID } from './features/monthlyRoutes/portalWorksheetDemo'
 import AppLayout from './layout/AppLayout'
@@ -55,15 +56,17 @@ function RedirectMonthlySessionToWorksheet() {
 }
 
 export const router = createBrowserRouter([
-  { path: '/login', element: <LoginPage /> },
+  { path: '/login', element: <LoginPage />, errorElement: <AppRouteErrorPage /> },
   {
     path: '/keys/metrics',
     element: <AppLayout />,
+    errorElement: <AppRouteErrorPage />,
     children: [{ index: true, element: <KeyMetricsPage /> }],
   },
   {
     path: '/keys',
     element: <KeysPublicLayout />,
+    errorElement: <AppRouteErrorPage />,
     children: [
       { index: true, element: <KeysHomePage /> },
       { path: 'by-barcode/:barcode', element: <KeyByBarcodePage /> },
@@ -73,6 +76,7 @@ export const router = createBrowserRouter([
   {
     path: '/tech',
     element: <TechnicianPortalLayout />,
+    errorElement: <AppRouteErrorPage />,
     children: [
       { index: true, element: <TechnicianPortalLockPage /> },
       { path: 'start', element: <TechnicianPortalStartPage /> },
@@ -84,6 +88,7 @@ export const router = createBrowserRouter([
   {
     path: '/',
     element: <AppLayout />,
+    errorElement: <AppRouteErrorPage />,
     children: [
       { index: true, element: <Navigate to="/home" replace /> },
       { path: 'home', element: <HomePage /> },

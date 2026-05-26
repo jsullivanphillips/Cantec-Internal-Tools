@@ -87,6 +87,31 @@
   padding: 0;
 }
 
+.app-route-error__card {
+  width: min(100%, 46rem);
+}
+
+.app-route-error__icon {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 999px;
+  color: var(--brand-navy);
+  background: rgba(var(--brand-navy-rgb), 0.08);
+  font-size: 1.35rem;
+}
+
+.app-route-error__details {
+  border-top: 1px solid #e7eaf0;
+  padding-top: 1rem;
+}
+
+.app-route-error__details pre {
+  max-height: 12rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  color: #475569;
+}
+
 html.portal-worksheet-root-lock,
 body.portal-worksheet-body-lock {
   width: 100%;
@@ -182,7 +207,8 @@ body.portal-worksheet-body-lock {
 }
 
 /* Monthly location detail — PC-first enterprise detail workspace */
-.monthly-location-detail-page {
+.monthly-location-detail-page,
+.monthly-route-detail-page {
   --ml-page: #f3f6fb;
   --ml-card: #ffffff;
   --ml-card-soft: #f8fafc;
@@ -210,7 +236,8 @@ body.portal-worksheet-body-lock {
   color: var(--ml-text);
 }
 
-.monthly-location-detail-container {
+.monthly-location-detail-container,
+.monthly-route-detail-container {
   width: min(100%, 1480px);
   margin: 0 auto;
   padding-top: 0.25rem;
@@ -1163,12 +1190,14 @@ body.portal-worksheet-body-lock {
 }
 
 @media (max-width: 767.98px) {
-  .monthly-location-detail-page {
+  .monthly-location-detail-page,
+  .monthly-route-detail-page {
     padding-left: 0.75rem;
     padding-right: 0.75rem;
   }
 
-  .monthly-location-detail-hero {
+  .monthly-location-detail-hero,
+  .monthly-route-detail-hero {
     flex-direction: column;
   }
 
@@ -3050,108 +3079,572 @@ body.portal-worksheet-body-lock {
   border-left: 4px solid #f58220;
 }
 
-/* Monthly route detail — hero panel (identity + stats) */
-.monthly-route-detail-page .monthly-route-detail-hero.monthly-location-detail-surface {
-  background: linear-gradient(135deg, #f8fafc 0%, #ffffff 55%);
+/* Monthly route detail — compact enterprise detail workspace */
+.monthly-route-detail-page {
+  background:
+    radial-gradient(circle at top left, rgba(var(--brand-orange-rgb), 0.11), transparent 30rem),
+    linear-gradient(180deg, #f6f8fc 0%, var(--ml-page) 34rem);
+}
+
+.monthly-route-detail-hero.monthly-location-detail-surface {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.2rem 1.35rem;
   border-left: 4px solid var(--brand-orange) !important;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+  background:
+    linear-gradient(135deg, rgba(255, 247, 237, 0.72) 0%, rgba(255, 255, 255, 0.96) 42%),
+    #fff;
 }
 
-.monthly-route-detail-page .monthly-route-detail-hero .processing-page-title {
-  color: var(--brand-navy);
-  font-size: clamp(1.35rem, 2.5vw, 1.85rem);
-  font-weight: 700;
-  line-height: 1.15;
-}
-
-@media (min-width: 768px) {
-  .monthly-route-detail-page .monthly-route-detail-hero__specialists-col {
-    border-left: 1px solid #e7eaf0;
-    padding-left: 1.5rem;
-  }
-}
-
-/* Monthly route detail — Performance accordion */
-.monthly-route-detail-page .monthly-route-detail-performance.monthly-location-testing-history-card {
-  border-top: 3px solid rgba(var(--brand-orange-rgb), 0.35);
-}
-
-.monthly-route-detail-page .monthly-route-detail-performance__revenue-card {
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 0.75rem;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-}
-
-.monthly-route-detail-page .monthly-route-detail-performance__revenue-card .monthly-route-detail-performance__intro {
-  background: transparent;
-  border: none;
-  padding: 0;
-}
-
-.monthly-route-detail-page .monthly-route-detail-performance__revenue-card-title {
-  letter-spacing: 0.04em;
-  color: #64748b !important;
-}
-
-.monthly-route-detail-page .monthly-route-detail-performance__intro {
-  background: #f8fafc;
-  border: 1px solid #eef1f5;
-  border-radius: 0.65rem;
-  padding: 0.85rem 1rem;
-}
-
-.monthly-route-detail-page .monthly-route-detail-performance__year-nav {
-  background: #f3f5f9;
-  border: 1px solid #e7eaf0;
-  border-radius: 0.65rem;
-  padding: 0.5rem 0.65rem;
-}
-
-.monthly-route-detail-page .monthly-route-detail-performance__chart {
+.monthly-route-detail-hero__copy {
   min-width: 0;
 }
 
-.monthly-route-detail-page .monthly-route-detail-performance__chart-surface {
-  background: linear-gradient(180deg, #fafcff 0%, #f5f7fb 100%);
-  border: 1px solid #e7eaf0;
-  border-radius: 0.65rem;
-  padding: 0.75rem 0.75rem 0.5rem;
-  max-width: 100%;
+.monthly-route-detail-hero__meta,
+.monthly-route-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
 }
 
-.monthly-route-detail-page .monthly-route-detail-performance__chart-area {
-  height: 260px;
-  max-width: 100%;
-  position: relative;
+.monthly-route-detail-hero__meta {
+  margin-top: 0.65rem;
 }
 
-.monthly-route-detail-page .monthly-route-detail-performance__empty {
-  min-height: 8rem;
-  border: 2px dashed #c5cdd8;
-  border-radius: 0.5rem;
-  background: linear-gradient(180deg, #fafbfd 0%, #f0f3f8 100%);
-  padding: 1rem;
+.monthly-route-detail-actions {
+  justify-content: flex-end;
+  flex: 0 0 auto;
+}
+
+.monthly-route-pill.badge {
+  border: 1px solid var(--ml-border);
+  border-radius: 999px;
+  padding: 0.38rem 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+.monthly-route-pill--muted.badge {
+  background: #475569 !important;
+}
+
+.monthly-route-service-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--ml-muted-strong);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.monthly-route-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.85rem;
+  margin-top: 0.85rem;
+}
+
+.monthly-route-metric-card {
+  min-width: 0;
+  padding: 0.85rem 0.9rem;
+  border: 1px solid var(--ml-border);
+  border-radius: var(--ml-radius-md);
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: var(--ml-shadow-soft);
+}
+
+.monthly-route-metric-card--success {
+  border-color: rgba(22, 128, 61, 0.24);
+  background: linear-gradient(180deg, #fff, var(--ml-success-soft));
+}
+
+.monthly-route-metric-card--info {
+  border-color: rgba(3, 105, 161, 0.24);
+  background: linear-gradient(180deg, #fff, var(--ml-info-soft));
+}
+
+.monthly-route-metric-card--warning {
+  border-color: rgba(217, 119, 6, 0.28);
+  background: linear-gradient(180deg, #fff, #fff7ed);
+}
+
+.monthly-route-metric-meta {
+  margin-top: 0.32rem;
+  overflow: hidden;
+  color: var(--ml-muted);
+  font-size: 0.76rem;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.monthly-route-detail-accordion {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.monthly-route-detail-section {
+  overflow: hidden;
+  border: 1px solid var(--ml-border) !important;
+  border-radius: var(--ml-radius-lg) !important;
+  box-shadow: var(--ml-shadow-card);
+}
+
+.monthly-route-detail-page .monthly-route-detail-section .accordion-button {
+  padding: 0.75rem 0.9rem;
+}
+
+.monthly-route-section-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  min-width: 0;
+}
+
+.monthly-route-section-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.7rem;
+  background: var(--ml-primary-soft);
+  color: var(--ml-primary);
+}
+
+.monthly-route-section-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.monthly-route-section-title {
+  color: var(--ml-text);
+  font-size: 0.96rem;
+  font-weight: 800;
+  line-height: 1.15;
+}
+
+.monthly-route-section-subtitle {
+  overflow: hidden;
+  color: var(--ml-muted);
+  font-size: 0.78rem;
+  font-weight: 650;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.monthly-route-section-badge {
+  max-width: 10rem;
+  overflow: hidden;
+  padding: 0.26rem 0.56rem;
+  border-radius: 999px;
+  background: var(--ml-card-soft);
+  color: var(--ml-muted-strong);
+  font-size: 0.74rem;
+  font-weight: 800;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.monthly-route-year-toolbar {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.65rem;
+  padding: 0.35rem;
+  border: 1px solid var(--ml-border-soft);
+  border-radius: 999px;
+  background: var(--ml-card-soft);
+}
+
+.monthly-route-year-toolbar__button.btn {
+  min-width: 5.5rem;
+  border-radius: 999px;
+  font-weight: 750;
+}
+
+.monthly-route-year-toolbar__year {
+  min-width: 4.25rem;
+  color: var(--ml-text);
+  font-size: 0.9rem;
+  font-weight: 800;
   text-align: center;
 }
 
-.monthly-route-detail-page .monthly-route-detail-performance__footnote {
-  border-top: 1px solid #eef1f5;
-  padding-top: 0.85rem;
+.monthly-route-detail-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.75rem;
+  margin-bottom: 0.65rem;
+  color: var(--ml-muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.monthly-route-detail-note span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.monthly-route-detail-note span + span::before {
+  content: "";
+  width: 0.35rem;
+  height: 0.35rem;
+  border-radius: 999px;
+  background: #cbd5e1;
+}
+
+.monthly-route-detail-table-shell {
+  overflow-x: auto;
+  border: 1px solid var(--ml-border-soft);
+  border-radius: var(--ml-radius-md);
+  background: #fff;
+}
+
+.monthly-route-detail-table {
+  min-width: 760px;
+  border-color: var(--ml-border-soft);
+}
+
+.monthly-route-detail-table > :not(caption) > * > * {
+  padding: 0.58rem 0.65rem;
+  border-bottom-color: var(--ml-border-soft);
+}
+
+.monthly-route-detail-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  border-bottom: 1px solid var(--ml-border);
+  background: #f8fafc;
+  color: var(--ml-muted-strong);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.monthly-route-detail-table tbody tr:hover > * {
+  background-color: #fbfdff;
+}
+
+.monthly-route-detail-table a {
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.monthly-route-detail-table a:hover {
+  text-decoration: underline;
+}
+
+.monthly-route-detail-runs-table td:first-child {
+  font-weight: 650;
+}
+
+.monthly-route-sites-table .monthly-route-site-drag-handle {
+  color: var(--ml-muted);
+}
+
+.monthly-route-sites-table .monthly-route-site-drag-handle:not(:disabled):hover {
+  color: var(--brand-orange);
+}
+
+.monthly-route-sites-table tbody td:nth-child(2) {
+  color: var(--ml-text);
+  font-weight: 800;
+}
+
+.monthly-route-site-secondary-row td {
+  background: #f9fbff;
+}
+
+.monthly-route-site-secondary-row td:nth-child(3) {
+  padding-left: 1.65rem;
+}
+
+.monthly-route-detail-performance.monthly-route-detail-section {
+  border-top: 3px solid rgba(var(--brand-orange-rgb), 0.38) !important;
+}
+
+.monthly-route-detail-performance__revenue-card {
+  border: 1px solid var(--ml-border-soft);
+  border-radius: var(--ml-radius-md);
+  background: #fff;
+  box-shadow: none;
+}
+
+.monthly-route-detail-performance__summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.8rem;
+}
+
+.monthly-route-detail-performance__revenue-card-title {
+  color: var(--ml-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.monthly-route-detail-performance__intro {
+  margin-top: 0.2rem;
+  color: var(--ml-muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.monthly-route-detail-performance__stat {
+  min-width: 11rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid rgba(22, 128, 61, 0.2);
+  border-radius: 0.8rem;
+  background: var(--ml-success-soft);
+  text-align: right;
+}
+
+.monthly-route-detail-performance__stat span {
+  display: block;
+  color: var(--ml-muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.monthly-route-detail-performance__stat strong {
+  display: block;
+  margin-top: 0.22rem;
+  color: var(--ml-success);
+  font-size: 1.05rem;
+}
+
+.monthly-route-detail-performance__chart {
+  min-width: 0;
+}
+
+.monthly-route-detail-performance__chart-surface {
+  max-width: 100%;
+  padding: 0.75rem 0.75rem 0.5rem;
+  border: 1px solid var(--ml-border-soft);
+  border-radius: 0.85rem;
+  background: linear-gradient(180deg, #fbfdff 0%, #f6f8fc 100%);
+}
+
+.monthly-route-detail-performance__chart-area {
+  position: relative;
+  max-width: 100%;
+  height: 260px;
+}
+
+.monthly-route-detail-performance__empty,
+.monthly-route-detail-callout {
+  border: 1px dashed #cbd5e1;
+  border-radius: 0.75rem;
+  background: #f8fafc;
+  color: var(--ml-muted);
+  font-size: 0.84rem;
+  font-weight: 650;
+  text-align: center;
+}
+
+.monthly-route-detail-performance__empty {
+  min-height: 8rem;
+  padding: 1rem;
+}
+
+.monthly-route-detail-callout {
+  padding: 0.7rem 0.8rem;
+}
+
+.monthly-route-map-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.monthly-route-map-card__toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.85rem;
+}
+
+.monthly-route-map-card__stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.55rem;
+  flex: 1 1 auto;
+}
+
+.monthly-route-map-card__stats span {
+  min-width: 0;
+  padding: 0.62rem 0.72rem;
+  border: 1px solid var(--ml-border-soft);
+  border-radius: 0.75rem;
+  background: var(--ml-card-soft);
+  color: var(--ml-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.monthly-route-map-card__stats strong {
+  display: block;
+  overflow: hidden;
+  color: var(--ml-text);
+  font-size: 0.98rem;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.monthly-route-map-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 0 0 auto;
+}
+
+.monthly-route-map-card__canvas {
+  min-height: 22rem;
+  overflow: hidden;
+  border: 1px solid var(--ml-border-soft);
+  border-radius: var(--ml-radius-md);
+  background: #e8eef5;
+}
+
+.monthly-route-map-card__empty {
+  border: 1px dashed #cbd5e1;
+  border-radius: var(--ml-radius-md);
+  background: var(--ml-card-soft);
+  color: var(--ml-muted);
+  font-size: 0.86rem;
+  font-weight: 650;
+  padding: 1rem;
+}
+
+.monthly-route-map-card__notice.alert {
+  margin-bottom: 0;
+  border: 1px solid var(--ml-border-soft);
+  background: #fff;
+  color: var(--ml-muted-strong);
+  font-size: 0.84rem;
+}
+
+.monthly-route-map-card__footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.85rem;
+  color: var(--ml-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.monthly-route-map-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.55rem;
+  height: 1.55rem;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  background: var(--brand-orange);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.28);
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 850;
 }
 
 .monthly-route-detail-page table tbody td.monthly-route-detail-skip-cell-interactive {
   cursor: pointer;
-  transition: background-color 0.12s ease;
+  transition: background-color 0.12s ease, color 0.12s ease;
 }
 
 .monthly-route-detail-page table tbody td.monthly-route-detail-skip-cell-interactive:hover {
-  background-color: rgba(13, 110, 253, 0.09);
+  background-color: rgba(37, 99, 235, 0.08);
+  color: var(--ml-primary);
 }
 
 .monthly-route-detail-page table tbody td.monthly-route-detail-skip-cell-interactive:focus-visible {
-  outline: 2px solid rgba(13, 110, 253, 0.45);
+  outline: 2px solid rgba(37, 99, 235, 0.45);
   outline-offset: -2px;
+}
+
+@media (max-width: 1199.98px) {
+  .monthly-route-metric-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 767.98px) {
+  .monthly-route-detail-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .monthly-route-detail-actions .monthly-location-detail-action {
+    flex: 1 1 10rem;
+    justify-content: center;
+  }
+
+  .monthly-route-metric-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .monthly-route-section-header {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .monthly-route-section-badge {
+    grid-column: 2;
+    justify-self: flex-start;
+  }
+
+  .monthly-route-section-subtitle,
+  .monthly-route-metric-meta {
+    white-space: normal;
+  }
+
+  .monthly-route-detail-performance__summary {
+    flex-direction: column;
+  }
+
+  .monthly-route-detail-performance__stat {
+    width: 100%;
+    text-align: left;
+  }
+
+  .monthly-route-map-card__toolbar {
+    flex-direction: column;
+  }
+
+  .monthly-route-map-card__stats {
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .monthly-route-map-card__actions {
+    width: 100%;
+    justify-content: space-between;
+  }
 }
 
 .scheduling-page__title {

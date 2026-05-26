@@ -122,9 +122,44 @@ export type RouteLocationListItem = {
   building?: string | null
   status_normalized: string
   annual_month?: string | null
+  latitude?: number | null
+  longitude?: number | null
   route_stop_order: number | null
   monthly_route_id?: number | null
   testing_sites?: RouteLocationTestingSiteListItem[]
+}
+
+export type MonthlyRouteCalculatedPathStop = {
+  id: number
+  label: string
+  address: string | null
+  display_address: string | null
+  building: string | null
+  latitude: number | null
+  longitude: number | null
+  route_stop_order: number | null
+  has_coordinates: boolean
+}
+
+export type MonthlyRouteCalculatedPathPayload = {
+  route: MonthlyRouteSummary
+  profile: string
+  provider: string
+  status:
+    | 'ok'
+    | 'not_enough_coordinates'
+    | 'mapbox_token_missing'
+    | 'mapbox_error'
+  cache_status: 'hit' | 'miss' | 'refreshed' | 'not_applicable'
+  stop_signature: string
+  stops: MonthlyRouteCalculatedPathStop[]
+  missing_coordinate_stops: MonthlyRouteCalculatedPathStop[]
+  waypoint_count: number
+  geometry: { type: 'LineString'; coordinates: [number, number][] } | null
+  distance_meters: number | null
+  duration_seconds: number | null
+  calculated_at: string | null
+  error?: string
 }
 
 /** Comment row from ``GET /api/monthly_routes/library/:id`` (newest first); comments remain on legacy routes. */

@@ -38,6 +38,10 @@ from app.monthly.route_inspection_csv_import import (
 )
 from app.monthly.route_sync import sync_monthly_route_fk_for_location
 from app.monthly.runs import get_or_create_monthly_route_run
+from app.monthly.mapbox_routes import (
+    calculated_path_payload,
+    invalidate_monthly_route_path,
+)
 monthly_routes_bp = Blueprint("monthly_routes", __name__)
 # Max rows from ``monthly_route_specialist_month`` returned on route detail (align with script default lookback).
 _ROUTE_DETAIL_SPECIALIST_MONTHS_LIMIT = int(os.getenv("MONTHLY_ROUTE_DETAIL_SPECIALIST_MONTHS", "24"))
@@ -1328,6 +1332,8 @@ def _serialize_route_location_list_item(loc: MonthlyRouteLocation) -> dict[str, 
         "building": loc.building,
         "status_normalized": loc.status_normalized,
         "annual_month": loc.annual_month,
+        "latitude": float(loc.latitude) if loc.latitude is not None else None,
+        "longitude": float(loc.longitude) if loc.longitude is not None else None,
         "route_stop_order": loc.route_stop_order,
         "monthly_route_id": loc.monthly_route_id,
         "testing_sites": [
@@ -1792,6 +1798,19 @@ def get_monthly_route_testing_session(route_id: int):
     payload = _serialize_testing_session_payload(route_id, month_first)
     if payload is None:
         return jsonify({"error": "Route not found"}), 404
+    return jsonify(payload)
+
+
+@monthly_routes_bp.get("/api/monthly_routes/routes/<int:route_id>/calculated_path")
+def get_monthly_route_calculated_path(route_id: int):
+    mr = _get_monthly_route(route_id)
+    if mr is None:
+        return jsonify({"error": "Route not found"}), 404
+
+    refresh = (request.args.get("refresh") or "").strip().lower() in {"1", "true", "yes"}
+    location_count = MonthlyRouteLocation.query.filter_by(monthly_route_id=route_id).count()
+    payload = calculated_path_payload(route_id, refresh=refresh)
+    payload["route"] = _serialize_monthly_route_entity(mr, location_count=location_count)
     return jsonify(payload)
 
 
@@ -2897,6 +2916,7 @@ def put_monthly_route_location_order(route_id: int):
             return jsonify({"error": "Invalid location for this route"}), 400
         loc.route_stop_order = idx
 
+    invalidate_monthly_route_path(route_id)
     db.session.commit()
 
     route_locations = (
@@ -3149,6 +3169,7 @@ def create_monthly_route_location():
             sync_key_fk_for_location(loc)
         sync_testing_sites_from_legacy(loc)
         push_legacy_keys_to_primary_testing_site(loc)
+        invalidate_monthly_route_path(loc.monthly_route_id)
         db.session.commit()
     except ValueError as exc:
         db.session.rollback()
@@ -3222,6 +3243,8 @@ def update_monthly_route_location(location_id: int):
             loc.test_day = _clean_text(payload.get("test_day"))
             sync_monthly_route_fk_for_location(loc)
             _sync_route_stop_order_after_fk_change(loc, prev_mr_id)
+            invalidate_monthly_route_path(prev_mr_id)
+            invalidate_monthly_route_path(loc.monthly_route_id)
         if "annual_month" in payload:
             loc.annual_month = _clean_text(payload.get("annual_month"))
 
@@ -3358,6 +3381,7 @@ def update_monthly_route_placement(location_id: int):
     loc.display_address = display_address
     loc.latitude = lat
     loc.longitude = lng
+    invalidate_monthly_route_path(loc.monthly_route_id)
     db.session.commit()
 
     months_by_location = _months_payload_for_location(location_id)
@@ -3383,6 +3407,8 @@ def assign_monthly_route_location(location_id: int):
     try:
         sync_monthly_route_fk_for_location(loc)
         _sync_route_stop_order_after_fk_change(loc, prev_mr_id)
+        invalidate_monthly_route_path(prev_mr_id)
+        invalidate_monthly_route_path(loc.monthly_route_id)
         db.session.commit()
     except ValueError as exc:
         db.session.rollback()
@@ -3399,6 +3425,7 @@ def delete_monthly_route_location(location_id: int):
     loc = _get_monthly_location(location_id)
     if loc is None:
         return jsonify({"error": "Location not found"}), 404
+    invalidate_monthly_route_path(loc.monthly_route_id)
     db.session.delete(loc)
     db.session.commit()
     return ("", 204)
