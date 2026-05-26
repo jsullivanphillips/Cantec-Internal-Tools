@@ -76,6 +76,12 @@ function headerPanelDisplay(stop: TechnicianWorksheetStop): string | null {
   return (stop.label || '').trim() || null
 }
 
+function headerMonitoringDisplay(stop: TechnicianWorksheetStop): string {
+  const monitoring = (stop.monitoring_company || '').trim()
+  if (!monitoring || monitoring === '—') return 'No Monitoring'
+  return `MONITORING: ${monitoring}`
+}
+
 function syncBadgeVariant(state: string): string {
   if (state === 'synced') return 'success'
   if (state === 'syncing') return 'primary'
@@ -327,6 +333,7 @@ export default function TechnicianPortalWorksheetPage() {
   const activeStatus = active ? stopDisplayStatus(active) : 'pending'
   const activeSkipLabel = active ? skipReasonDisplay(active) : null
   const activePanelDisplay = active ? headerPanelDisplay(active) : null
+  const activeMonitoringDisplay = active ? headerMonitoringDisplay(active) : 'No Monitoring'
   const activeFieldEditActions =
     editingField && fieldEditActions?.fieldKey === editingField ? fieldEditActions : null
 
@@ -469,9 +476,7 @@ export default function TechnicianPortalWorksheetPage() {
                     {active.building_name ? (
                       <div className="pw-mock-header-line">{active.building_name}</div>
                     ) : null}
-                    {active.property_management_company ? (
-                      <div className="pw-mock-header-line text-muted">{active.property_management_company}</div>
-                    ) : null}
+                    <div className="pw-mock-header-line text-muted">{activeMonitoringDisplay}</div>
                     {activePanelDisplay ? (
                       <div className="pw-mock-header-line fw-semibold">{activePanelDisplay}</div>
                     ) : null}

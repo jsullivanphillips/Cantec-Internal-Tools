@@ -45,10 +45,18 @@ export default function TechnicianPortalLayout() {
   }, [unlocked, isLockScreen, nav])
 
   useEffect(() => {
+    const root = document.documentElement
+    const body = document.body
+
     if (!isWorksheetScreen) {
-      document.documentElement.style.removeProperty('--portal-worksheet-visual-height')
+      root.classList.remove('portal-worksheet-root-lock')
+      body.classList.remove('portal-worksheet-body-lock')
+      root.style.removeProperty('--portal-worksheet-visual-height')
       return undefined
     }
+
+    root.classList.add('portal-worksheet-root-lock')
+    body.classList.add('portal-worksheet-body-lock')
 
     const worksheetHasTextFocus = () => {
       const activeElement = document.activeElement
@@ -83,7 +91,9 @@ export default function TechnicianPortalLayout() {
       window.removeEventListener('focusout', scheduleForcedUpdate, true)
       window.removeEventListener('orientationchange', scheduleForcedUpdate)
       window.visualViewport?.removeEventListener('resize', handleViewportResize)
-      document.documentElement.style.removeProperty('--portal-worksheet-visual-height')
+      root.classList.remove('portal-worksheet-root-lock')
+      body.classList.remove('portal-worksheet-body-lock')
+      root.style.removeProperty('--portal-worksheet-visual-height')
     }
   }, [isWorksheetScreen])
 

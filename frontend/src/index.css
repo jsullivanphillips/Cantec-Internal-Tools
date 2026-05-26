@@ -87,6 +87,26 @@
   padding: 0;
 }
 
+html.portal-worksheet-root-lock,
+body.portal-worksheet-body-lock {
+  width: 100%;
+  height: 100vh;
+  height: 100svh;
+  height: 100dvh;
+  height: var(--portal-worksheet-visual-height, 100dvh);
+  max-height: 100vh;
+  max-height: 100svh;
+  max-height: 100dvh;
+  max-height: var(--portal-worksheet-visual-height, 100dvh);
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body.portal-worksheet-body-lock {
+  position: fixed;
+  inset: 0;
+}
+
 /* Portal worksheet: lock shell to visible viewport (min-vh alone overflows on iOS/iPad) */
 .app-shell.app-shell--portal-worksheet {
   height: 100vh;
