@@ -201,7 +201,8 @@ export function auditChangeForLongTextField(
   fieldChangesByLocation?: Map<number, OfficeFieldChange[]>,
 ): OfficeFieldChange | undefined {
   const changes = fieldChangesForLocation(locationId, fieldChangesByLocation)
-  return changes.find((c) => AUDIT_FIELD_TO_LONG_TEXT_KEY[c.field_name] === stopKey)
+  const matches = changes.filter((c) => AUDIT_FIELD_TO_LONG_TEXT_KEY[c.field_name] === stopKey)
+  return matches[0]
 }
 
 export function renderFieldChangeInline(change: OfficeFieldChange): string {

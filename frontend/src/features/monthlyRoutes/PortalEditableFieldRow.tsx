@@ -1,4 +1,8 @@
-import { useCallback, useEffect, useId, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type RefObject } from 'react'
+import {
+  ANNUAL_MONTH_SELECT_OPTIONS,
+  normalizeAnnualMonthForSelect,
+} from './monthlyRoutesShared'
 
 export type PortalFieldEditActions = {
   fieldKey: string
@@ -16,6 +20,8 @@ type PortalEditableFieldRowProps = {
   onEditingFieldChange: (key: string | null) => void
   onSave: (next: string) => void
   onEditActionsChange?: (actions: PortalFieldEditActions | null) => void
+  /** When true, edit with a month-of-year dropdown instead of free text. */
+  monthSelect?: boolean
 }
 
 export default function PortalEditableFieldRow({
@@ -28,17 +34,28 @@ export default function PortalEditableFieldRow({
   onEditingFieldChange,
   onSave,
   onEditActionsChange,
+  monthSelect = false,
 }: PortalEditableFieldRowProps) {
   const inputId = useId()
-  const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null)
+  const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(null)
   const rowRef = useRef<HTMLDivElement>(null)
-  const [draft, setDraft] = useState(value)
+  const normalizedValue = monthSelect ? normalizeAnnualMonthForSelect(value) : value.trim()
+  const [draft, setDraft] = useState(normalizedValue)
   const editing = !readOnly && editingField === fieldKey
-  const display = value.trim() || '—'
+  const display = monthSelect ? normalizedValue || '—' : value.trim() || '—'
+
+  const monthSelectChoices = useMemo(() => {
+    if (!monthSelect) return []
+    const legacy =
+      normalizedValue && !ANNUAL_MONTH_SELECT_OPTIONS.includes(normalizedValue)
+        ? [normalizedValue]
+        : []
+    return ['', ...legacy, ...ANNUAL_MONTH_SELECT_OPTIONS]
+  }, [monthSelect, normalizedValue])
 
   useEffect(() => {
-    if (!editing) setDraft(value)
-  }, [value, editing])
+    if (!editing) setDraft(monthSelect ? normalizeAnnualMonthForSelect(value) : value)
+  }, [value, editing, monthSelect])
 
   useEffect(() => {
     if (!editing) return undefined
@@ -81,14 +98,15 @@ export default function PortalEditableFieldRow({
 
   const commit = useCallback(() => {
     const next = draft.trim()
-    if (next !== value.trim()) onSave(next)
+    const committed = monthSelect ? normalizeAnnualMonthForSelect(value) : value.trim()
+    if (next !== committed) onSave(next)
     onEditingFieldChange(null)
-  }, [draft, onEditingFieldChange, onSave, value])
+  }, [draft, monthSelect, onEditingFieldChange, onSave, value])
 
   const cancel = useCallback(() => {
-    setDraft(value)
+    setDraft(monthSelect ? normalizeAnnualMonthForSelect(value) : value)
     onEditingFieldChange(null)
-  }, [onEditingFieldChange, value])
+  }, [monthSelect, onEditingFieldChange, value])
 
   const commitRef = useRef(commit)
   const cancelRef = useRef(cancel)
@@ -107,7 +125,7 @@ export default function PortalEditableFieldRow({
 
   const startEdit = () => {
     if (readOnly) return
-    setDraft(value)
+    setDraft(monthSelect ? normalizeAnnualMonthForSelect(value) : value)
     onEditingFieldChange(fieldKey)
   }
 
@@ -164,6 +182,30 @@ export default function PortalEditableFieldRow({
               }
             }}
           />
+        ) : monthSelect ? (
+          <select
+            ref={inputRef as RefObject<HTMLSelectElement>}
+            id={inputId}
+            className="pw-mock-field-input pw-mock-field-select"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                commit()
+              }
+              if (e.key === 'Escape') {
+                e.preventDefault()
+                cancel()
+              }
+            }}
+          >
+            {monthSelectChoices.map((monthName) => (
+              <option key={monthName || '__empty'} value={monthName}>
+                {monthName || '—'}
+              </option>
+            ))}
+          </select>
         ) : (
           <input
             ref={inputRef as RefObject<HTMLInputElement>}

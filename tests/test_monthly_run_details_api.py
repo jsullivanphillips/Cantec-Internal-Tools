@@ -256,6 +256,59 @@ def test_run_details_field_changes_omits_reset_run_audit(run_details_client):
     assert res.get_json()["field_changes_by_location"] == []
 
 
+def test_run_details_field_changes_lists_all_distinct_fields_per_location(run_details_client):
+    client, app = run_details_client
+    with app.app_context():
+        _, _, hist, _ = _seed_basic_route_data()
+        db.session.add(
+            MonthlyRouteWorksheetAuditEvent(
+                id=10,
+                monthly_route_id=1,
+                location_id=101,
+                history_row_id=int(hist.id),
+                month_date=date(2026, 5, 1),
+                field_name="ring",
+                old_value="A",
+                new_value="B",
+                source="technician_app",
+            )
+        )
+        db.session.add(
+            MonthlyRouteWorksheetAuditEvent(
+                id=11,
+                monthly_route_id=1,
+                location_id=101,
+                history_row_id=int(hist.id),
+                month_date=date(2026, 5, 1),
+                field_name="door_code",
+                old_value="1",
+                new_value="2",
+                source="technician_app",
+            )
+        )
+        db.session.add(
+            MonthlyRouteWorksheetAuditEvent(
+                id=12,
+                monthly_route_id=1,
+                location_id=101,
+                history_row_id=int(hist.id),
+                month_date=date(2026, 5, 1),
+                field_name="annual_month",
+                old_value="May",
+                new_value="June",
+                source="technician_app",
+            )
+        )
+        db.session.commit()
+
+    res = client.get("/api/monthly_routes/routes/1/run_details?month=2026-05-01")
+    assert res.status_code == 200
+    by_loc = res.get_json()["field_changes_by_location"]
+    assert len(by_loc) == 1
+    names = {c["field_name"] for c in by_loc[0]["changes"]}
+    assert names == {"ring", "door_code", "annual_month"}
+
+
 def test_run_details_field_changes_groups_two_locations(run_details_client):
     client, app = run_details_client
     with app.app_context():

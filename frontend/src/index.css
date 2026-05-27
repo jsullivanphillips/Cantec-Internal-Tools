@@ -7178,6 +7178,11 @@ body {
   outline: none;
 }
 
+.pw-mock-field-select {
+  appearance: auto;
+  cursor: pointer;
+}
+
 .pw-mock-field-edit-actions {
   display: flex;
   justify-content: flex-start;

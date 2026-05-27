@@ -1891,6 +1891,40 @@ def _location_address_building_label(
     return addr or b or fallback
 
 
+# Aliased audit ``field_name`` values collapsed for run-details display (oldest old, newest new).
+_WORKSHEET_AUDIT_FIELD_CANONICAL: dict[str, str] = {
+    "facp": "facp",
+    "panel": "facp",
+    "monitoring": "monitoring_notes",
+    "monitoring_notes": "monitoring_notes",
+}
+
+
+def _collapse_worksheet_audit_changes_for_display(
+    changes: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """One entry per logical field for office run-details highlighting."""
+    if not changes:
+        return []
+    ordered = sorted(
+        changes,
+        key=lambda c: c.get("changed_at") or datetime.min.replace(tzinfo=PACIFIC_TZ),
+    )
+    merged: dict[str, dict[str, object]] = {}
+    for change in ordered:
+        raw_name = str(change["field_name"])
+        key = _WORKSHEET_AUDIT_FIELD_CANONICAL.get(raw_name, raw_name)
+        if key not in merged:
+            merged[key] = {
+                "field_name": raw_name,
+                "old_value": change["old_value"],
+                "new_value": change["new_value"],
+            }
+        else:
+            merged[key]["new_value"] = change["new_value"]
+    return list(merged.values())
+
+
 def _serialize_monthly_run_details_payload(
     route_id: int, month_first: date
 ) -> dict[str, object] | None:
@@ -1970,6 +2004,7 @@ def _serialize_monthly_run_details_payload(
             key=lambda c: c["changed_at"] or datetime.min.replace(tzinfo=PACIFIC_TZ),
             reverse=True,
         )
+        changes_display = _collapse_worksheet_audit_changes_for_display(changes_sorted)
         field_changes_by_location.append(
             {
                 "location_id": lid,
@@ -1981,7 +2016,7 @@ def _serialize_monthly_run_details_payload(
                         "old_value": c["old_value"],
                         "new_value": c["new_value"],
                     }
-                    for c in changes_sorted
+                    for c in changes_display
                 ],
             }
         )
@@ -2658,36 +2693,52 @@ def patch_monthly_route_worksheet_stop(route_id: int, testing_site_id: int):
     hist: MonthlyRouteTestHistory | None = None
     if is_primary_stop(ts, loc):
         hist = sync_primary_history_from_stop(mtsm, loc, route_id, month_first)
+    else:
+        hist = (
+            MonthlyRouteTestHistory.query.filter_by(
+                location_id=int(loc.id),
+                month_date=month_first,
+            )
+            .one_or_none()
+        )
 
     if changed_any and hist is not None:
         for field_name in changes_eff:
             if field_name not in STOP_PATCH_FIELD_MAP:
+                continue
+            if field_name == "facp" and "panel" in changes_eff:
                 continue
             mtsm_attr = STOP_PATCH_FIELD_MAP[field_name]
             if field_name == "run_comments":
                 old_val = audit_old_values.get("run_comments")
                 new_val = mtsm.run_comments
                 audit_name = "run_comments"
-            elif field_name in STOP_PATCH_HISTORY_AUDIT_ATTR:
-                hist_attr = STOP_PATCH_HISTORY_AUDIT_ATTR[field_name]
-                old_val = getattr(hist, hist_attr)
+            elif field_name == "panel":
+                old_val = audit_old_values.get("panel")
+                if old_val is None:
+                    old_val = audit_old_values.get("facp")
+                new_val = _normalize_ws_text(mtsm.panel) or _normalize_ws_text(mtsm.facp)
+                audit_name = "facp"
+            elif field_name == "monitoring_notes":
+                old_val = audit_old_values.get("monitoring_notes")
+                new_val = mtsm.monitoring_notes
+                audit_name = "monitoring_notes"
+            elif field_name == "monitoring_company":
+                old_val = audit_old_values.get("monitoring_company")
+                new_val = mtsm.monitoring_company_name
+                audit_name = "monitoring_company"
+            elif field_name == "time_in":
+                old_val = audit_old_values.get("time_in")
                 new_val = getattr(mtsm, mtsm_attr)
-                audit_name = "time_in" if field_name == "time_in" else (
-                    "time_out" if field_name == "time_out" else (
-                        "facp" if field_name == "panel" else field_name
-                    )
-                )
+                audit_name = "time_in"
+            elif field_name == "time_out":
+                old_val = audit_old_values.get("time_out")
+                new_val = getattr(mtsm, mtsm_attr)
+                audit_name = "time_out"
             else:
                 old_val = audit_old_values.get(field_name)
                 new_val = getattr(mtsm, mtsm_attr)
-                audit_name = field_name
-            if field_name == "panel":
-                old_val = hist.facp if field_name in STOP_PATCH_HISTORY_AUDIT_ATTR else audit_old_values.get("panel")
-                new_val = _normalize_ws_text(mtsm.panel) or _normalize_ws_text(mtsm.facp)
-            if field_name == "monitoring_notes":
-                new_val = mtsm.monitoring_notes
-            if field_name == "monitoring_company":
-                new_val = mtsm.monitoring_company_name
+                audit_name = "facp" if field_name == "facp" else field_name
             if old_val == new_val:
                 continue
             db.session.add(

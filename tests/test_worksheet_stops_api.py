@@ -815,3 +815,64 @@ def test_reset_run_clears_run_comments(stops_client, monkeypatch):
         assert mtsm_a.run_comments is None
         assert mtsm_b.run_comments is None
         assert mtsm_b.sheet_time_in_raw is None
+
+
+def test_stop_patch_writes_audit_for_each_property_field(stops_client, monkeypatch):
+    """Each patched property field gets its own audit row (pre-sync snapshot as old_value)."""
+    from app.monthly.worksheet_stops import ensure_worksheet_stops_for_route_month
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
+
+    client, app = stops_client
+    with app.app_context():
+        route_id, ts_id, _ = _seed_route_with_two_stops()
+        loc = db.session.get(MonthlyRouteLocation, 101)
+        assert loc is not None
+        loc.annual_month = "May"
+        run = MonthlyRouteRun(
+            id=5099,
+            monthly_route_id=route_id,
+            month_date=date(2026, 5, 1),
+            started_at=datetime(2026, 5, 2, 8, 0, tzinfo=PACIFIC_TZ),
+            status="open",
+            source="technician_app",
+        )
+        db.session.add(run)
+        db.session.commit()
+        ensure_worksheet_stops_for_route_month(route_id, date(2026, 5, 1), run)
+        mtsm = MonthlyTestingSiteMonth.query.filter_by(
+            monthly_testing_site_id=ts_id,
+            month_date=date(2026, 5, 1),
+        ).one()
+        mtsm.ring = "RING-OLD"
+        mtsm.door_code = "1111"
+        mtsm.annual_month = "May"
+        db.session.commit()
+
+    qs = "month=2026-05-01&tech_portal=1"
+    res = client.patch(
+        f"/api/monthly_routes/routes/1/worksheet/stops/{ts_id}?{qs}",
+        json={
+            "changes": {
+                "ring": "RING-NEW",
+                "door_code": "2222",
+                "annual_month": "June",
+            },
+        },
+    )
+    assert res.status_code == 200
+
+    with app.app_context():
+        events = (
+            MonthlyRouteWorksheetAuditEvent.query.filter_by(location_id=101)
+            .order_by(MonthlyRouteWorksheetAuditEvent.id.asc())
+            .all()
+        )
+        by_field = {e.field_name: e for e in events}
+        assert by_field["ring"].old_value == "RING-OLD"
+        assert by_field["ring"].new_value == "RING-NEW"
+        assert by_field["door_code"].old_value == "1111"
+        assert by_field["door_code"].new_value == "2222"
+        assert by_field["annual_month"].old_value == "May"
+        assert by_field["annual_month"].new_value == "June"

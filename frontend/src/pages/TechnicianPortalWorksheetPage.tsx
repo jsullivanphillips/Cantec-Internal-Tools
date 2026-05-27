@@ -552,6 +552,7 @@ export default function TechnicianPortalWorksheetPage() {
                           fieldKey="annual_month"
                           label="Annual"
                           value={active.annual_month ?? ''}
+                          monthSelect
                           onSave={saveField('annual_month')}
                           {...fieldEditProps}
                         />
