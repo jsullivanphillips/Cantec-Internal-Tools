@@ -1,8 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type RefObject } from 'react'
-import {
-  ANNUAL_MONTH_SELECT_OPTIONS,
-  normalizeAnnualMonthForSelect,
-} from './monthlyRoutesShared'
+import { annualMonthSelectChoiceValues, normalizeAnnualMonthForSelect } from './monthlyRoutesShared'
 
 export type PortalFieldEditActions = {
   fieldKey: string
@@ -46,12 +43,8 @@ export default function PortalEditableFieldRow({
 
   const monthSelectChoices = useMemo(() => {
     if (!monthSelect) return []
-    const legacy =
-      normalizedValue && !ANNUAL_MONTH_SELECT_OPTIONS.includes(normalizedValue)
-        ? [normalizedValue]
-        : []
-    return ['', ...legacy, ...ANNUAL_MONTH_SELECT_OPTIONS]
-  }, [monthSelect, normalizedValue])
+    return annualMonthSelectChoiceValues(value)
+  }, [monthSelect, value])
 
   useEffect(() => {
     if (!editing) setDraft(monthSelect ? normalizeAnnualMonthForSelect(value) : value)

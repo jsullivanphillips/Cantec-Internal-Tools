@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Button, Form, Modal } from 'react-bootstrap'
-import type { TechnicianWorksheetStop } from './monthlyRoutesShared'
+import {
+  annualMonthDropdownOptions,
+  normalizeAnnualMonthForSelect,
+  type TechnicianWorksheetStop,
+} from './monthlyRoutesShared'
 import type { WorksheetStopChangeSet } from './worksheetOfflineStore'
 
 export type PortalStopFieldsDraft = {
@@ -23,7 +27,7 @@ function draftFromStop(stop: TechnicianWorksheetStop): PortalStopFieldsDraft {
     ring: stop.ring ?? '',
     key_number: stop.key_number ?? '',
     door_code: stop.door_code ?? '',
-    annual_month: stop.annual_month ?? '',
+    annual_month: normalizeAnnualMonthForSelect(stop.annual_month),
     panel: stop.panel ?? '',
     panel_location: stop.panel_location ?? '',
     property_management_company: stop.property_management_company ?? '',
@@ -128,11 +132,17 @@ export default function PortalStopFieldsEditModal({
           <div className="col-md-6">
             <Form.Group>
               <Form.Label className="small">Annual month</Form.Label>
-              <Form.Control
+              <Form.Select
                 value={draft.annual_month}
                 onChange={(e) => update({ annual_month: e.target.value })}
                 disabled={!stop}
-              />
+              >
+                {annualMonthDropdownOptions(draft.annual_month).map((opt) => (
+                  <option key={opt.value || '__empty'} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </Form.Select>
             </Form.Group>
           </div>
           <div className="col-12">

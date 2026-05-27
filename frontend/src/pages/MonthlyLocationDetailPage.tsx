@@ -85,7 +85,7 @@ function monthShortNameFromKey(monthKey: string): string {
 
 function isAnnualMonth(monthKey: string, annualMonth: string | null | undefined): boolean {
   const annual = (annualMonth || '').trim().toLowerCase()
-  if (!annual) return false
+  if (!annual || annual === 'to') return false
   const full = monthNameFromKey(monthKey).toLowerCase()
   const short = full.slice(0, 3)
   return annual === full || annual === short

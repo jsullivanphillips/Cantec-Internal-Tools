@@ -1,4 +1,8 @@
-import { parseYearMonth, type TechnicianWorksheetStop } from './monthlyRoutesShared'
+import {
+  isAnnualMonthNotAtSite,
+  parseYearMonth,
+  type TechnicianWorksheetStop,
+} from './monthlyRoutesShared'
 
 export type OfficeStopStatus = 'tested' | 'skipped' | 'annual' | 'pending'
 
@@ -43,6 +47,7 @@ export function officeFirstDisplayValue(...values: Array<string | null | undefin
 }
 
 function isAnnualForMonth(annualMonth: string | null | undefined, monthIso: string): boolean {
+  if (isAnnualMonthNotAtSite(annualMonth)) return false
   const raw = (annualMonth || '').trim().toLowerCase()
   if (!raw) return false
   const ym = parseYearMonth(monthIso)

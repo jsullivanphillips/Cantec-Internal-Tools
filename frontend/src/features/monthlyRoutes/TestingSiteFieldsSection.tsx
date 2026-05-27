@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode,
 import { Accordion, Alert, Button, Card, Form } from 'react-bootstrap'
 import { Link } from 'react-router-dom'
 import {
-  ANNUAL_MONTH_SELECT_OPTIONS,
+  annualMonthDropdownOptions,
   buildTestingSiteEditForm,
   normalizeAnnualMonthForSelect,
   type LibraryLocation,
@@ -569,13 +569,7 @@ function TestingSiteInlineFields({
   onInlineSave: (form: TestingSiteEditForm) => Promise<void> | void
 }) {
   const form = buildTestingSiteEditForm(site, location)
-  const annualOptions = [
-    { value: '', label: '—' },
-    ...(form.annual_month && !ANNUAL_MONTH_SELECT_OPTIONS.includes(form.annual_month)
-      ? [{ value: form.annual_month, label: form.annual_month }]
-      : []),
-    ...ANNUAL_MONTH_SELECT_OPTIONS.map((monthName) => ({ value: monthName, label: monthName })),
-  ]
+  const annualOptions = annualMonthDropdownOptions(form.annual_month)
 
   const saveField = (fieldKey: EditableTestingSiteField, value: string) =>
     onInlineSave({ ...form, [fieldKey]: value })
@@ -770,13 +764,9 @@ function TestingSiteEditFormFields({
               value={form.annual_month}
               onChange={(e) => onFormChange({ annual_month: e.target.value })}
             >
-              <option value="">—</option>
-              {form.annual_month && !ANNUAL_MONTH_SELECT_OPTIONS.includes(form.annual_month) ? (
-                <option value={form.annual_month}>{form.annual_month}</option>
-              ) : null}
-              {ANNUAL_MONTH_SELECT_OPTIONS.map((monthName) => (
-                <option key={monthName} value={monthName}>
-                  {monthName}
+              {annualMonthDropdownOptions(form.annual_month).map((opt) => (
+                <option key={opt.value || '__empty'} value={opt.value}>
+                  {opt.label}
                 </option>
               ))}
             </Form.Select>

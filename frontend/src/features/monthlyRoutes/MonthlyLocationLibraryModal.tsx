@@ -6,7 +6,7 @@ import { apiJson } from '../../lib/apiClient'
 import RouteLibraryLink from './RouteLibraryLink'
 import TestingSiteFieldsSection from './TestingSiteFieldsSection'
 import {
-  ANNUAL_MONTH_SELECT_OPTIONS,
+  annualMonthDropdownOptions,
   STATUS_OPTIONS,
   buildTestingSiteEditForm,
   libraryKeycodeDisplay,
@@ -539,14 +539,9 @@ export default function MonthlyLocationLibraryModal({
                       value={editForm.annual_month}
                       onChange={(e) => updateEditField('annual_month', e.target.value)}
                     >
-                      <option value="">—</option>
-                      {editForm.annual_month &&
-                      !ANNUAL_MONTH_SELECT_OPTIONS.includes(editForm.annual_month) ? (
-                        <option value={editForm.annual_month}>{editForm.annual_month}</option>
-                      ) : null}
-                      {ANNUAL_MONTH_SELECT_OPTIONS.map((monthName) => (
-                        <option key={monthName} value={monthName}>
-                          {monthName}
+                      {annualMonthDropdownOptions(editForm.annual_month).map((opt) => (
+                        <option key={opt.value || '__empty'} value={opt.value}>
+                          {opt.label}
                         </option>
                       ))}
                     </Form.Select>

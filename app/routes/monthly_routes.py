@@ -108,7 +108,7 @@ def _normalize_status(value: str | None) -> tuple[str, str | None]:
 
 def _is_annual_month(month_date: date, annual_month: str | None) -> bool:
     annual = (annual_month or "").strip().lower()
-    if not annual:
+    if not annual or annual == "to":
         return False
     full = month_date.strftime("%B").lower()
     short = month_date.strftime("%b").lower()

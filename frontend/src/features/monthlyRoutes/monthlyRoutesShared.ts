@@ -674,6 +674,9 @@ export function testingSitePayloadFromDraft(draft: TestingSiteDraft): Record<str
   return payload
 }
 
+/** No annual inspection at this site (not a calendar month). */
+export const ANNUAL_MONTH_NOT_AT_SITE = 'TO'
+
 /** Full month names for annual-month ``<select>`` options (``en-US``, UTC). */
 export const ANNUAL_MONTH_SELECT_OPTIONS = Array.from({ length: 12 }).map((_, idx) =>
   new Intl.DateTimeFormat('en-US', {
@@ -682,13 +685,47 @@ export const ANNUAL_MONTH_SELECT_OPTIONS = Array.from({ length: 12 }).map((_, id
   }).format(new Date(Date.UTC(2000, idx, 1)))
 )
 
+/** Calendar months plus ``TO`` for annual dropdowns. */
+export const ANNUAL_MONTH_DROPDOWN_VALUES: readonly string[] = [
+  ANNUAL_MONTH_NOT_AT_SITE,
+  ...ANNUAL_MONTH_SELECT_OPTIONS,
+]
+
+export function isAnnualMonthNotAtSite(annualMonth: string | null | undefined): boolean {
+  return (annualMonth || '').trim().toUpperCase() === ANNUAL_MONTH_NOT_AT_SITE
+}
+
+export function isKnownAnnualMonthDropdownValue(value: string): boolean {
+  return (ANNUAL_MONTH_DROPDOWN_VALUES as readonly string[]).includes(value)
+}
+
+/** Values for ``<select>`` (blank, legacy unknown, then TO + months). */
+export function annualMonthSelectChoiceValues(currentValue?: string | null): string[] {
+  const normalized = normalizeAnnualMonthForSelect(currentValue)
+  const legacy =
+    normalized && !isKnownAnnualMonthDropdownValue(normalized) ? [normalized] : []
+  return ['', ...legacy, ...ANNUAL_MONTH_DROPDOWN_VALUES]
+}
+
+export function annualMonthDropdownOptions(
+  currentValue?: string | null,
+): Array<{ value: string; label: string }> {
+  return annualMonthSelectChoiceValues(currentValue).map((value) => ({
+    value,
+    label: value === '' ? '—' : value,
+  }))
+}
+
 /**
- * Map spreadsheet / legacy values (``Jan``, ``MAY``, ``5``, etc.) to a select option value.
+ * Map spreadsheet / legacy values (``Jan``, ``MAY``, ``5``, ``TO``, etc.) to a select option value.
  * Returns ``''`` when unset; returns the original trimmed string when no month matches.
  */
 export function normalizeAnnualMonthForSelect(raw: string | null | undefined): string {
   const trimmed = (raw || '').trim()
   if (!trimmed) return ''
+  if (trimmed.toUpperCase() === ANNUAL_MONTH_NOT_AT_SITE) {
+    return ANNUAL_MONTH_NOT_AT_SITE
+  }
 
   const lower = trimmed.toLowerCase()
   for (let idx = 0; idx < 12; idx += 1) {
@@ -818,6 +855,7 @@ export type YearMonth = { year: number; month: number }
 
 /** True when ``annualMonth`` (e.g. "May") is the calendar month of ``monthFirstIso`` (``YYYY-MM-01``). */
 export function isAnnualForMonth(annualMonth: string | null | undefined, monthFirstIso: string): boolean {
+  if (isAnnualMonthNotAtSite(annualMonth)) return false
   const raw = (annualMonth || '').trim().toLowerCase()
   if (!raw) return false
   const ym = parseYearMonth(monthFirstIso)

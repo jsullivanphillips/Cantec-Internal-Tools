@@ -28,7 +28,6 @@ import {
   worksheetOfficeRunActivity,
   type TechnicianWorksheetPayload,
   type TechnicianWorksheetRow,
-  type TechnicianWorksheetStop,
   WORKSHEET_CLOCK_IN_BLOCKED_MESSAGE,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
 import {
@@ -129,7 +128,7 @@ function worksheetSkipReasonDuplicatesTimeInNote(
 
 function isAnnualForMonth(annualMonth: string | null | undefined, monthIso: string): boolean {
   const raw = (annualMonth || '').trim().toLowerCase()
-  if (!raw) return false
+  if (!raw || raw === 'to') return false
   const ym = parseYearMonth(monthIso)
   if (!ym) return false
   const monthFull = new Intl.DateTimeFormat('en-CA', { month: 'long', timeZone: 'UTC' })
