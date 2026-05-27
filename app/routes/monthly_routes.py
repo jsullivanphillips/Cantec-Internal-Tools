@@ -2318,15 +2318,8 @@ def patch_monthly_route_worksheet_row(route_id: int, location_id: int):
         return jsonify({"error": f"Unsupported worksheet fields: {', '.join(sorted(unknown))}"}), 400
 
     changes_eff: dict[str, object] = dict(changes)
-    # Clearing outcome returns the row to the worksheet default (not tested / not skipped yet).
-    if "result_status" in changes_eff and _normalize_ws_text(changes_eff.get("result_status")) is None:
-        changes_eff["skip_reason"] = None
-        changes_eff["time_in"] = None
-        changes_eff["time_out"] = None
-
-    # Clocking in after a skip (same-day re-access) clears the skip unless this
-    # patch explicitly sets result_status to skipped again.
-    if "time_in" in changes_eff and _normalize_ws_text(changes_eff.get("time_in")) is not None:
+    clocking_in = "time_in" in changes_eff and _normalize_ws_text(changes_eff.get("time_in")) is not None
+    if clocking_in:
         if _normalize_ws_text(changes_eff.get("result_status")) != "skipped":
             if "result_status" not in changes:
                 changes_eff["result_status"] = None
@@ -2334,6 +2327,10 @@ def patch_monthly_route_worksheet_row(route_id: int, location_id: int):
                 changes_eff["skip_reason"] = None
             if "time_out" not in changes:
                 changes_eff["time_out"] = None
+    elif "result_status" in changes_eff and _normalize_ws_text(changes_eff.get("result_status")) is None:
+        changes_eff["skip_reason"] = None
+        changes_eff["time_in"] = None
+        changes_eff["time_out"] = None
 
     if "result_status" in changes_eff:
         rs = _normalize_ws_text(changes_eff.get("result_status"))
@@ -2448,6 +2445,7 @@ def patch_monthly_route_worksheet_stop(route_id: int, testing_site_id: int):
     """PATCH v2 portal worksheet stop (``MonthlyTestingSiteMonth``)."""
     from app.monthly.worksheet_stops import (
         STOP_PATCH_FIELD_MAP,
+        ensure_worksheet_stops_for_route_month,
         find_open_clock_in_stop_on_route,
         is_primary_stop,
         load_stop_for_patch,
@@ -2469,18 +2467,22 @@ def patch_monthly_route_worksheet_stop(route_id: int, testing_site_id: int):
     if not isinstance(changes, dict) or not changes:
         return jsonify({"error": "changes object is required"}), 400
 
-    mtsm, ts, loc = load_stop_for_patch(route_id, testing_site_id, month_first)
-    if ts is None or loc is None:
-        return jsonify({"error": "Testing site not found"}), 404
-    if mtsm is None:
-        return jsonify({"error": "Worksheet stop not found for testing site/month"}), 404
-    if mtsm.test_monthly_route_id is not None and int(mtsm.test_monthly_route_id) != int(route_id):
-        return jsonify({"error": "Worksheet stop does not belong to this route"}), 404
-
     run_for_month = MonthlyRouteRun.query.filter_by(
         monthly_route_id=route_id,
         month_date=month_first,
     ).one_or_none()
+
+    mtsm, ts, loc = load_stop_for_patch(route_id, testing_site_id, month_first)
+    if ts is None or loc is None:
+        return jsonify({"error": "Testing site not found"}), 404
+    if mtsm is None and run_for_month is not None and _tech_portal_patch_request():
+        ensure_worksheet_stops_for_route_month(route_id, month_first, run_for_month)
+        db.session.flush()
+        mtsm, ts, loc = load_stop_for_patch(route_id, testing_site_id, month_first)
+    if mtsm is None:
+        return jsonify({"error": "Worksheet stop not found for testing site/month"}), 404
+    if mtsm.test_monthly_route_id is not None and int(mtsm.test_monthly_route_id) != int(route_id):
+        return jsonify({"error": "Worksheet stop does not belong to this route"}), 404
     portal_completed_block = _reject_patch_if_portal_run_completed(run_for_month)
     if portal_completed_block is not None:
         return portal_completed_block
@@ -2539,12 +2541,8 @@ def patch_monthly_route_worksheet_stop(route_id: int, testing_site_id: int):
         return jsonify({"error": f"Unsupported worksheet fields: {', '.join(sorted(unknown))}"}), 400
 
     changes_eff: dict[str, object] = dict(changes)
-    if "result_status" in changes_eff and _normalize_ws_text(changes_eff.get("result_status")) is None:
-        changes_eff["skip_reason"] = None
-        changes_eff["time_in"] = None
-        changes_eff["time_out"] = None
-
-    if "time_in" in changes_eff and _normalize_ws_text(changes_eff.get("time_in")) is not None:
+    clocking_in = "time_in" in changes_eff and _normalize_ws_text(changes_eff.get("time_in")) is not None
+    if clocking_in:
         if _normalize_ws_text(changes_eff.get("result_status")) != "skipped":
             if "result_status" not in changes:
                 changes_eff["result_status"] = None
@@ -2552,6 +2550,10 @@ def patch_monthly_route_worksheet_stop(route_id: int, testing_site_id: int):
                 changes_eff["skip_reason"] = None
             if "time_out" not in changes:
                 changes_eff["time_out"] = None
+    elif "result_status" in changes_eff and _normalize_ws_text(changes_eff.get("result_status")) is None:
+        changes_eff["skip_reason"] = None
+        changes_eff["time_in"] = None
+        changes_eff["time_out"] = None
 
     if "result_status" in changes_eff:
         rs = _normalize_ws_text(changes_eff.get("result_status"))

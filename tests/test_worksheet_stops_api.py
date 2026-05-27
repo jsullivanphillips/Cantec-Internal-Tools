@@ -361,6 +361,47 @@ def test_patch_skip_then_clock_in_clears_skip(stops_client, monkeypatch):
     assert stop["time_in"] == "10:15"
 
 
+def test_patch_clock_in_with_explicit_null_result_status(stops_client, monkeypatch):
+    """Portal clock-in sends null result_status; server must not wipe time_in."""
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
+
+    client, app = stops_client
+    with app.app_context():
+        _seed_route_with_two_stops()
+        ts_id = int(MonthlyTestingSite.query.order_by(MonthlyTestingSite.id.asc()).first().id)
+        run = MonthlyRouteRun(
+            id=5003,
+            monthly_route_id=1,
+            month_date=date(2026, 5, 1),
+            started_at=datetime(2026, 5, 2, 8, 0, tzinfo=PACIFIC_TZ),
+            status="open",
+            source="technician_app",
+        )
+        db.session.add(run)
+        db.session.commit()
+        from app.monthly.worksheet_stops import ensure_worksheet_stops_for_route_month
+
+        ensure_worksheet_stops_for_route_month(1, date(2026, 5, 1), run)
+        db.session.commit()
+
+    qs = "month=2026-05-01&tech_portal=1"
+    res = client.patch(
+        f"/api/monthly_routes/routes/1/worksheet/stops/{ts_id}?{qs}",
+        json={
+            "changes": {
+                "time_in": "08:30",
+                "time_out": None,
+                "result_status": None,
+                "skip_reason": None,
+            }
+        },
+    )
+    assert res.status_code == 200
+    assert res.get_json()["stop"]["time_in"] == "08:30"
+
+
 def test_worksheet_stop_display_uses_run_month_panel_not_library_master(stops_client, monkeypatch):
     """Historical run months keep their snapshot even when library master panel changes."""
     from app.monthly.worksheet_stops import serialize_worksheet_stop

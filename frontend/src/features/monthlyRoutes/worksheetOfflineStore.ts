@@ -134,3 +134,40 @@ export function backoffMs(attempts: number): number {
   const max = 60_000
   return Math.min(max, base * 2 ** Math.max(attempts - 1, 0))
 }
+
+export function hasPendingSyncForRouteMonth(routeId: number, monthIso: string): boolean {
+  return loadSyncQueue().some(
+    (item) =>
+      item.routeId === routeId &&
+      item.monthIso === monthIso &&
+      item.testingSiteId != null,
+  )
+}
+
+/** Overlay unsynced portal stop edits so SSE/GET refresh does not wipe optimistic clock-ins. */
+export function mergePendingChangesIntoPayload(
+  payload: TechnicianWorksheetPayload,
+  routeId: number,
+  monthIso: string,
+): TechnicianWorksheetPayload {
+  const queue = loadSyncQueue().filter(
+    (item) =>
+      item.routeId === routeId &&
+      item.monthIso === monthIso &&
+      item.testingSiteId != null,
+  )
+  if (!queue.length || !payload.stops?.length) return payload
+
+  const pendingBySite = new Map<number, WorksheetStopChangeSet>()
+  for (const item of queue) {
+    const siteId = item.testingSiteId
+    if (siteId == null) continue
+    pendingBySite.set(siteId, { ...pendingBySite.get(siteId), ...(item.changes as WorksheetStopChangeSet) })
+  }
+
+  const stops = payload.stops.map((stop) => {
+    const patch = pendingBySite.get(stop.testing_site_id)
+    return patch ? { ...stop, ...patch } : stop
+  })
+  return { ...payload, stops }
+}

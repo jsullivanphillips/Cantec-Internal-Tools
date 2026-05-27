@@ -139,6 +139,11 @@ export default function TechnicianPortalWorksheetPage() {
   const idNum = routeId && !isDemo ? parseInt(routeId, 10) : NaN
   const monthQuery = (monthIso || '').trim()
 
+  const routeBackPath = useMemo(() => {
+    if (isDemo || Number.isNaN(idNum)) return '/tech/start'
+    return `/tech/route/${idNum}`
+  }, [isDemo, idNum])
+
   const liveWorksheet = usePortalWorksheet(idNum, monthQuery)
   const demoWorksheet = usePortalWorksheetDemo(monthQuery)
   const {
@@ -224,8 +229,6 @@ export default function TechnicianPortalWorksheetPage() {
     applyStopPatch({
       time_in: hhmmNow(),
       time_out: null,
-      result_status: null,
-      skip_reason: null,
     })
   }
 
@@ -348,8 +351,8 @@ export default function TechnicianPortalWorksheetPage() {
       <div className="portal-worksheet-mockup p-3">
         <Alert variant="warning" className="mb-0">
           Invalid worksheet month in URL.
-          <Link to="/tech/start" className="ms-2">
-            Back to portal
+          <Link to={routeBackPath} className="ms-2">
+            Back to route
           </Link>
         </Alert>
       </div>
@@ -365,8 +368,8 @@ export default function TechnicianPortalWorksheetPage() {
       <div className="portal-worksheet-mockup p-3">
         <Alert variant="danger" className="mb-0">
           {error}
-          <Link to="/tech/start" className="ms-2">
-            Back to portal
+          <Link to={routeBackPath} className="ms-2">
+            Back to route
           </Link>
         </Alert>
       </div>
@@ -394,7 +397,7 @@ export default function TechnicianPortalWorksheetPage() {
     <div className="portal-worksheet-mockup">
       <header className="pw-mock-chrome">
         <div className="pw-mock-chrome-top">
-          <Link to="/tech/start" className="btn btn-link text-primary p-0 pw-mock-back" aria-label="Back">
+          <Link to={routeBackPath} className="btn btn-link text-primary p-0 pw-mock-back" aria-label="Back to route">
             <i className="bi bi-arrow-left-circle-fill" aria-hidden />
           </Link>
           <div className="pw-mock-chrome-titles">

@@ -12,8 +12,10 @@ import {
 import {
   backoffMs,
   enqueueWorksheetChange,
+  hasPendingSyncForRouteMonth,
   loadSyncQueue,
   loadWorksheetCache,
+  mergePendingChangesIntoPayload,
   saveSyncQueue,
   saveWorksheetCache,
   type WorksheetStopChangeSet,
@@ -110,8 +112,9 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
           { signal },
         )
         if (signal?.aborted) return
-        setPayload(data)
-        saveWorksheetCache(data)
+        const merged = mergePendingChangesIntoPayload(data, routeId, monthIso)
+        setPayload(merged)
+        saveWorksheetCache(merged)
         setSyncState('synced')
         setHasLoadedOnce(true)
         hasLoadedOnceRef.current = true
@@ -298,9 +301,12 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
       worksheetDeferredRemoteFetchRef.current = true
       return
     }
+    if (hasPendingSyncForRouteMonth(routeId, monthIso)) {
+      return
+    }
     worksheetDeferredRemoteFetchRef.current = false
     void loadRef.current()
-  }, [])
+  }, [routeId, monthIso])
 
   const setInteractiveBusy = useCallback((busy: boolean) => {
     worksheetInteractiveBusyRef.current = busy

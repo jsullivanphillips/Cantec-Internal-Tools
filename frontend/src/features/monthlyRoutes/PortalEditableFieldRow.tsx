@@ -90,11 +90,20 @@ export default function PortalEditableFieldRow({
     onEditingFieldChange(null)
   }, [onEditingFieldChange, value])
 
+  const commitRef = useRef(commit)
+  const cancelRef = useRef(cancel)
+  commitRef.current = commit
+  cancelRef.current = cancel
+
   useEffect(() => {
     if (!editing || !onEditActionsChange) return undefined
-    onEditActionsChange({ fieldKey, cancel, save: commit })
+    onEditActionsChange({
+      fieldKey,
+      cancel: () => cancelRef.current(),
+      save: () => commitRef.current(),
+    })
     return () => onEditActionsChange(null)
-  }, [cancel, commit, editing, fieldKey, onEditActionsChange])
+  }, [editing, fieldKey, onEditActionsChange])
 
   const startEdit = () => {
     if (readOnly) return
