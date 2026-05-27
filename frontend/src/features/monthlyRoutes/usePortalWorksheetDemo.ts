@@ -146,7 +146,6 @@ export function usePortalWorksheetDemo(monthIso: string) {
     stops,
     loading: false,
     initialLoading: false,
-    detailRefreshing: false,
     hasLoadedOnce: true,
     error: null,
     monthOk,

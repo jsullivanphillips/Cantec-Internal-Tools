@@ -16,6 +16,7 @@ import {
   loadSyncQueue,
   loadWorksheetCache,
   mergePendingChangesIntoPayload,
+  mergeServerWorksheetPayload,
   saveSyncQueue,
   saveWorksheetCache,
   type WorksheetStopChangeSet,
@@ -53,7 +54,6 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
 
   const [payload, setPayload] = useState<TechnicianWorksheetPayload | null>(null)
   const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [portalStartingRun, setPortalStartingRun] = useState(false)
@@ -64,6 +64,7 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
   const worksheetDeferredRemoteFetchRef = useRef(false)
   const worksheetInteractiveBusyRef = useRef(false)
   const hasLoadedOnceRef = useRef(false)
+  const suppressRemoteRefreshUntilRef = useRef(0)
 
   const stops = useMemo(() => payload?.stops ?? [], [payload?.stops])
 
@@ -90,8 +91,8 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
     [openClockInStop],
   )
 
-  const load = useCallback(
-    async (signal?: AbortSignal) => {
+  const fetchWorksheet = useCallback(
+    async (signal?: AbortSignal, mode: 'initial' | 'background' = 'initial') => {
       if (Number.isNaN(routeId) || !monthOk) {
         setLoading(false)
         return
@@ -101,10 +102,9 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
         setPayload(cached)
         setSyncState(navigator.onLine ? 'synced' : 'saved_offline')
       }
-      if (hasLoadedOnceRef.current) {
-        setRefreshing(true)
+      if (mode === 'initial') {
+        setError(null)
       }
-      setError(null)
       try {
         const qs = new URLSearchParams({ month: monthIso, tech_portal: '1' })
         const data = await apiJson<TechnicianWorksheetPayload>(
@@ -113,8 +113,16 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
         )
         if (signal?.aborted) return
         const merged = mergePendingChangesIntoPayload(data, routeId, monthIso)
-        setPayload(merged)
-        saveWorksheetCache(merged)
+        if (mode === 'background' && hasLoadedOnceRef.current) {
+          setPayload((prev) => {
+            const next = prev ? mergeServerWorksheetPayload(prev, merged) : merged
+            saveWorksheetCache(next)
+            return next
+          })
+        } else {
+          setPayload(merged)
+          saveWorksheetCache(merged)
+        }
         setSyncState('synced')
         setHasLoadedOnce(true)
         hasLoadedOnceRef.current = true
@@ -131,24 +139,33 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
           window.location.href = authFailureRedirectPath()
           return
         }
-        if (!cached) {
+        if (mode === 'initial' && !cached) {
           setError('Unable to load worksheet.')
           setSyncState('saved_offline')
         }
       } finally {
-        if (!signal?.aborted) {
+        if (!signal?.aborted && mode === 'initial') {
           setLoading(false)
-          setRefreshing(false)
         }
       }
     },
     [routeId, monthOk, monthIso],
   )
 
-  const loadRef = useRef(load)
+  const load = useCallback((signal?: AbortSignal) => fetchWorksheet(signal, 'initial'), [fetchWorksheet])
+
+  const refreshInBackground = useCallback(
+    (signal?: AbortSignal) => {
+      if (!hasLoadedOnceRef.current) return
+      void fetchWorksheet(signal, 'background')
+    },
+    [fetchWorksheet],
+  )
+
+  const refreshInBackgroundRef = useRef(refreshInBackground)
   useEffect(() => {
-    loadRef.current = load
-  }, [load])
+    refreshInBackgroundRef.current = refreshInBackground
+  }, [refreshInBackground])
 
   const queueStopChanges = useCallback(
     (stop: TechnicianWorksheetStop, changes: WorksheetStopChangeSet) => {
@@ -207,6 +224,7 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
           saveWorksheetCache(next)
           return next
         })
+        suppressRemoteRefreshUntilRef.current = Date.now() + 2500
         nextQueue = nextQueue.filter((q) => q.id !== item.id)
       } catch (e) {
         const maybeErr = e as { error?: unknown; conflict?: { message?: string } }
@@ -308,6 +326,9 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
   }, [routeId, monthOk, monthIso, payload?.run, load])
 
   const applyRemoteWorksheetRefresh = useCallback(() => {
+    if (Date.now() < suppressRemoteRefreshUntilRef.current) {
+      return
+    }
     if (worksheetInteractiveBusyRef.current) {
       worksheetDeferredRemoteFetchRef.current = true
       return
@@ -316,14 +337,14 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
       return
     }
     worksheetDeferredRemoteFetchRef.current = false
-    void loadRef.current()
+    refreshInBackgroundRef.current()
   }, [routeId, monthIso])
 
   const setInteractiveBusy = useCallback((busy: boolean) => {
     worksheetInteractiveBusyRef.current = busy
     if (!busy && worksheetDeferredRemoteFetchRef.current) {
       worksheetDeferredRemoteFetchRef.current = false
-      void loadRef.current()
+      refreshInBackgroundRef.current()
     }
   }, [])
 
@@ -334,7 +355,7 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
     setPayload(null)
     setError(null)
     setLoading(true)
-    setRefreshing(false)
+    suppressRemoteRefreshUntilRef.current = 0
   }, [routeId, monthIso])
 
   useEffect(() => {
@@ -446,14 +467,12 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
   const readOnlyWorksheet = showStopWorkspace && !canEditStops
   /** True until the first successful fetch for this route/month (avoids stale prior-month UI). */
   const initialLoading = loading && !hasLoadedOnce
-  const detailRefreshing = hasLoadedOnce && payload != null && refreshing
 
   return {
     payload,
     stops,
     loading,
     initialLoading,
-    detailRefreshing,
     hasLoadedOnce,
     error,
     monthOk,

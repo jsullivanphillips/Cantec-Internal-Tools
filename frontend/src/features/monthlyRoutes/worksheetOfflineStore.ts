@@ -171,3 +171,26 @@ export function mergePendingChangesIntoPayload(
   })
   return { ...payload, stops }
 }
+
+/** Merge a background worksheet fetch into existing UI state without replacing the stop list order. */
+export function mergeServerWorksheetPayload(
+  prev: TechnicianWorksheetPayload,
+  server: TechnicianWorksheetPayload,
+): TechnicianWorksheetPayload {
+  const serverStops = server.stops ?? []
+  const serverById = new Map(serverStops.map((s) => [s.testing_site_id, s]))
+  const prevIds = new Set((prev.stops ?? []).map((s) => s.testing_site_id))
+
+  const stops: TechnicianWorksheetStop[] = []
+  for (const s of prev.stops ?? []) {
+    const remote = serverById.get(s.testing_site_id)
+    stops.push(remote ?? s)
+  }
+  for (const s of serverStops) {
+    if (!prevIds.has(s.testing_site_id)) {
+      stops.push(s)
+    }
+  }
+
+  return { ...server, stops }
+}

@@ -125,8 +125,7 @@ function syncBadgeVariant(state: string): string {
   return 'warning'
 }
 
-function syncBadgeLabel(state: string, refreshing: boolean): string {
-  if (refreshing) return 'Loading…'
+function syncBadgeLabel(state: string): string {
   if (state === 'synced') return 'Synced'
   if (state === 'syncing') return 'Syncing…'
   if (state === 'conflict') return 'Conflict'
@@ -158,7 +157,6 @@ export default function TechnicianPortalWorksheetPage() {
     clockInBlockedForStop,
     queueStopChanges,
     initialLoading,
-    detailRefreshing,
     showStopWorkspace,
     readOnlyWorksheet,
     canEditStops,
@@ -407,10 +405,10 @@ export default function TechnicianPortalWorksheetPage() {
             </div>
           </div>
           <Badge
-            bg={isDemo ? 'info' : syncBadgeVariant(detailRefreshing ? 'primary' : syncState)}
+            bg={isDemo ? 'info' : syncBadgeVariant(syncState)}
             className="pw-mock-sync"
           >
-            {isDemo ? 'Demo' : syncBadgeLabel(syncState, detailRefreshing)}
+            {isDemo ? 'Demo' : syncBadgeLabel(syncState)}
           </Badge>
         </div>
         {isDemo ? (
@@ -434,7 +432,7 @@ export default function TechnicianPortalWorksheetPage() {
         </div>
       </header>
 
-      {payload?.run && !showStopWorkspace && !initialLoading && !detailRefreshing ? (
+      {payload?.run && !showStopWorkspace && !initialLoading ? (
         <div className="px-3 py-4 text-center text-muted">
           No stops found for this run month.
         </div>
@@ -473,10 +471,6 @@ export default function TechnicianPortalWorksheetPage() {
           </aside>
 
           <div className="pw-mock-shell">
-            {detailRefreshing ? (
-              <PortalWorksheetSkeleton detailOnly />
-            ) : (
-              <>
                 <section className="pw-mock-detail">
                   <div className={`pw-mock-header ${headerBandClass(active, runMonthIso)}`}>
                     <div className="pw-mock-header-top">
@@ -697,8 +691,6 @@ export default function TechnicianPortalWorksheetPage() {
                     </>
                   ) : null}
                 </footer>
-              </>
-            )}
           </div>
         </div>
       ) : null}
