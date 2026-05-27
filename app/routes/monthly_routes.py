@@ -3010,6 +3010,11 @@ def import_route_run_csv(route_id: int):
         db.session.rollback()
         return jsonify({"error": f"CSV parse error: {e}"}), 400
 
+    from app.monthly.worksheet_stops import ensure_worksheet_stops_for_route_month
+
+    ensure_worksheet_stops_for_route_month(int(route.id), month_first, run)
+    db.session.commit()
+
     return jsonify(
         {
             "ok": True,

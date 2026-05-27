@@ -313,6 +313,69 @@ def portal_start_current_month_run(route_id: int):
     return jsonify({"run": _serialize_run(run)})
 
 
+@technician_portal_bp.post("/routes/<int:route_id>/regenerate_paperwork")
+def portal_regenerate_current_month_paperwork(route_id: int):
+    """Refresh current-month stop paperwork from office master and prior run data.
+
+    Does not clear tested/skipped outcomes, clock times, or run comments. Blocked when
+    the current-month run is completed (office must reopen first).
+    """
+    if not session.get(SESSION_FLAG):
+        return jsonify({"error": "Portal locked", "code": "portal_locked"}), 401
+    from app.monthly.worksheet_stops import refresh_worksheet_stops_for_route_month
+    from app.routes.monthly_routes import (
+        _current_pacific_month_first,
+        _ensure_worksheet_rows_for_route_month,
+        _run_explicitly_completed,
+        _serialize_run,
+    )
+
+    mr = MonthlyRoute.query.filter_by(id=route_id).one_or_none()
+    if mr is None:
+        return jsonify({"error": "Route not found", "code": "not_found"}), 404
+
+    month_first = _current_pacific_month_first()
+    existing_run = MonthlyRouteRun.query.filter_by(
+        monthly_route_id=route_id,
+        month_date=month_first,
+    ).one_or_none()
+    if existing_run is not None and _run_explicitly_completed(existing_run):
+        return (
+            jsonify(
+                {
+                    "error": (
+                        "This month's run is completed. Ask the office to reopen it "
+                        "before refreshing paperwork."
+                    ),
+                    "code": "run_completed",
+                }
+            ),
+            409,
+        )
+
+    run = _ensure_worksheet_rows_for_route_month(
+        route_id,
+        month_first,
+        create_run_if_missing=True,
+    )
+    assert run is not None
+    stops_created, stops_refreshed = refresh_worksheet_stops_for_route_month(
+        route_id,
+        month_first,
+        run,
+    )
+    db.session.commit()
+    return jsonify(
+        {
+            "ok": True,
+            "month_date": month_first.isoformat(),
+            "run": _serialize_run(run),
+            "stops_created": stops_created,
+            "stops_refreshed": stops_refreshed,
+        }
+    )
+
+
 @technician_portal_bp.post("/routes/<int:route_id>/runs/complete")
 def portal_complete_run_for_month(route_id: int):
     """Deprecated: only office staff may complete a run (``POST /api/monthly_routes/.../runs/complete``)."""

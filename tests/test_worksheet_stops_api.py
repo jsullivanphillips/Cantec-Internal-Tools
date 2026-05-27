@@ -143,6 +143,141 @@ def test_portal_start_materializes_stops(stops_client, monkeypatch):
         assert MonthlyTestingSiteMonth.query.filter_by(month_date=date(2026, 5, 1)).count() == 2
 
 
+def test_may_stops_carry_testing_procedures_from_april_history(stops_client, monkeypatch):
+    """April CSV/history procedures must appear on a new May portal run without April MTSM rows."""
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
+
+    client, app = stops_client
+    with app.app_context():
+        route_id, ts_primary, _ = _seed_route_with_two_stops()
+        db.session.add(
+            MonthlyRouteRun(
+                id=7101,
+                monthly_route_id=route_id,
+                month_date=date(2026, 4, 1),
+                status="completed",
+                source="csv_import",
+            )
+        )
+        db.session.add(
+            MonthlyRouteTestHistory(
+                id=8101,
+                location_id=101,
+                month_date=date(2026, 4, 1),
+                result_status="tested",
+                testing_procedures="Test FACP and pull stations",
+                inspection_tech_notes="Use rear entrance",
+                test_monthly_route_id=route_id,
+                run_id=7101,
+            )
+        )
+        db.session.add(
+            MonthlyRouteTestHistory(
+                id=8102,
+                location_id=101,
+                month_date=date(2026, 5, 1),
+                result_status=None,
+                test_monthly_route_id=route_id,
+            )
+        )
+        db.session.commit()
+
+    post = client.post("/api/technician_portal/routes/1/runs")
+    assert post.status_code == 200
+
+    res = client.get("/api/monthly_routes/routes/1/worksheet?month=2026-05-01&tech_portal=1")
+    assert res.status_code == 200
+    stops = res.get_json().get("stops") or []
+    primary = next(s for s in stops if int(s["testing_site_id"]) == ts_primary)
+    assert primary["testing_procedures"] == "Test FACP and pull stations"
+    assert primary["inspection_tech_notes"] == "Use rear entrance"
+
+
+def test_portal_regenerate_paperwork_refreshes_stale_procedures(stops_client, monkeypatch):
+    """Regenerate updates snapshot fields but keeps clock-in progress."""
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
+
+    client, app = stops_client
+    with app.app_context():
+        route_id, ts_primary, _ = _seed_route_with_two_stops()
+        ts = db.session.get(MonthlyTestingSite, ts_primary)
+        loc = db.session.get(MonthlyRouteLocation, 101)
+        assert ts is not None and loc is not None
+        ts.testing_procedures = None
+        loc.testing_procedures = None
+        db.session.add(
+            MonthlyRouteRun(
+                id=7201,
+                monthly_route_id=route_id,
+                month_date=date(2026, 5, 1),
+                started_at=datetime(2026, 5, 2, 8, 0, tzinfo=PACIFIC_TZ),
+                status="open",
+                source="technician_app",
+            )
+        )
+        db.session.add(
+            MonthlyRouteTestHistory(
+                id=8201,
+                location_id=101,
+                month_date=date(2026, 4, 1),
+                testing_procedures="April CSV procedures",
+                test_monthly_route_id=route_id,
+            )
+        )
+        db.session.add(
+            MonthlyTestingSiteMonth(
+                id=93001,
+                monthly_testing_site_id=ts_primary,
+                month_date=date(2026, 5, 1),
+                test_monthly_route_id=route_id,
+                run_id=7201,
+                testing_procedures="Stale May procedures",
+                sheet_time_in_raw="08:15",
+            )
+        )
+        db.session.commit()
+
+    regen = client.post("/api/technician_portal/routes/1/regenerate_paperwork")
+    assert regen.status_code == 200
+    assert regen.get_json()["stops_refreshed"] >= 1
+
+    res = client.get("/api/monthly_routes/routes/1/worksheet?month=2026-05-01&tech_portal=1")
+    stop = next(
+        s for s in res.get_json().get("stops") or [] if int(s["testing_site_id"]) == ts_primary
+    )
+    assert stop["testing_procedures"] == "April CSV procedures"
+    assert stop["time_in"] == "08:15"
+
+
+def test_portal_regenerate_paperwork_blocked_when_completed(stops_client, monkeypatch):
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
+
+    client, app = stops_client
+    with app.app_context():
+        _seed_route_with_two_stops()
+        db.session.add(
+            MonthlyRouteRun(
+                id=7202,
+                monthly_route_id=1,
+                month_date=date(2026, 5, 1),
+                status="completed",
+                completed_at=datetime(2026, 5, 28, 17, 0, tzinfo=PACIFIC_TZ),
+                source="office_manual",
+            )
+        )
+        db.session.commit()
+
+    regen = client.post("/api/technician_portal/routes/1/regenerate_paperwork")
+    assert regen.status_code == 409
+    assert regen.get_json().get("code") == "run_completed"
+
+
 def test_patch_stop_clock_in_conflict(stops_client, monkeypatch):
     from app.routes import monthly_routes as mr_mod
 

@@ -138,6 +138,46 @@ def _monitoring_labels(
     return _master_monitoring_company_name(ts, loc), None
 
 
+_HISTORY_SNAPSHOT_TO_MTSM: tuple[tuple[str, str], ...] = (
+    ("annual_month", "annual_month"),
+    ("ring", "ring"),
+    ("key_number", "key_number"),
+    ("testing_procedures", "testing_procedures"),
+    ("inspection_tech_notes", "inspection_tech_notes"),
+    ("monitoring_notes", "monitoring_notes"),
+)
+
+
+def _prior_history_for_location(
+    location_id: int,
+    month_first: date,
+) -> MonthlyRouteTestHistory | None:
+    return (
+        db.session.query(MonthlyRouteTestHistory)
+        .filter(
+            MonthlyRouteTestHistory.location_id == int(location_id),
+            MonthlyRouteTestHistory.month_date < month_first,
+        )
+        .order_by(MonthlyRouteTestHistory.month_date.desc())
+        .first()
+    )
+
+
+def _fill_snapshot_gaps_from_history(
+    base: dict[str, object],
+    hist: MonthlyRouteTestHistory,
+) -> None:
+    """Fill empty stop-month snapshot fields from a ``MonthlyRouteTestHistory`` row."""
+    for mtsm_key, hist_key in _HISTORY_SNAPSHOT_TO_MTSM:
+        if _normalize_text(base.get(mtsm_key)) is not None:
+            continue
+        base[mtsm_key] = getattr(hist, hist_key, None)
+    if _normalize_text(base.get("panel")) is None:
+        panel = _normalize_text(hist.facp)
+        base["panel"] = panel
+        base["facp"] = panel
+
+
 def seed_stop_month_fields(
     ts: MonthlyTestingSite,
     loc: MonthlyRouteLocation,
@@ -162,6 +202,10 @@ def seed_stop_month_fields(
         base = merge_template_with_prior_fallback(template, prior)
         base.update(_cleared_outcome_fields())
         base["run_comments"] = None
+        if primary:
+            hist_seed = location_hist or _prior_history_for_location(int(loc.id), month_first)
+            if hist_seed is not None:
+                _fill_snapshot_gaps_from_history(base, hist_seed)
 
     if existing_row is None and primary and location_hist is not None:
         base["result_status"] = location_hist.result_status
@@ -316,6 +360,112 @@ def ensure_worksheet_stops_for_route_month(
                         continue
                     setattr(row, key, val)
     db.session.flush()
+
+
+def _mtsm_has_field_progress(mtsm: MonthlyTestingSiteMonth) -> bool:
+    rs = (mtsm.result_status or "").strip().lower()
+    if rs in ("tested", "skipped"):
+        return True
+    if _normalize_text(mtsm.sheet_time_in_raw) or _normalize_text(mtsm.sheet_time_out_raw):
+        return True
+    return _normalize_text(mtsm.run_comments) is not None
+
+
+def refresh_worksheet_stops_for_route_month(
+    route_id: int,
+    month_first: date,
+    run: MonthlyRouteRun,
+) -> tuple[int, int]:
+    """Re-seed stop-month snapshot paperwork from master + prior run data.
+
+    Preserves tested/skipped outcomes, clock times, and run comments on each stop.
+    Returns ``(stops_created, stops_refreshed)``.
+    """
+    locs = _route_locations(route_id)
+    if not locs:
+        return 0, 0
+    loc_ids = [int(loc.id) for loc in locs]
+    hist_by_loc = _history_for_locations(loc_ids, month_first)
+    run_id = int(run.id)
+
+    all_ts_ids: list[int] = []
+    loc_ts: dict[int, list[MonthlyTestingSite]] = {}
+    for loc in locs:
+        site = ensure_monthly_site_for_location(loc)
+        ts_rows = sync_testing_sites_from_legacy(loc)
+        if not ts_rows:
+            ts_rows = (
+                MonthlyTestingSite.query.filter_by(monthly_site_id=int(site.id))
+                .order_by(MonthlyTestingSite.sort_order.asc(), MonthlyTestingSite.id.asc())
+                .all()
+            )
+        loc_ts[int(loc.id)] = ts_rows
+        all_ts_ids.extend(int(t.id) for t in ts_rows)
+
+    prior_by_ts = _prior_mtsm_by_testing_site(all_ts_ids, month_first)
+    existing = {
+        int(r.monthly_testing_site_id): r
+        for r in db.session.query(MonthlyTestingSiteMonth)
+        .filter(
+            MonthlyTestingSiteMonth.month_date == month_first,
+            MonthlyTestingSiteMonth.monthly_testing_site_id.in_(all_ts_ids),
+        )
+        .all()
+    } if all_ts_ids else {}
+
+    created = 0
+    refreshed = 0
+    for loc in locs:
+        ts_list = loc_ts.get(int(loc.id), [])
+        if not ts_list:
+            continue
+        primary = primary_testing_site(ts_list)
+        loc_hist = hist_by_loc.get(int(loc.id))
+        for ts in ts_list:
+            ts_id = int(ts.id)
+            is_primary = primary is not None and int(primary.id) == ts_id
+            prior = prior_by_ts.get(ts_id)
+            row = existing.get(ts_id)
+            fresh = seed_stop_month_fields(
+                ts,
+                loc,
+                prior,
+                route_id=route_id,
+                run_id=run_id,
+                month_first=month_first,
+                primary=is_primary,
+                location_hist=loc_hist if is_primary else None,
+                existing_row=None,
+            )
+            if row is None:
+                fields = dict(fresh)
+                fields["monthly_testing_site_id"] = ts_id
+                nid = _next_sqlite_bigint_id(MonthlyTestingSiteMonth)
+                if nid is not None:
+                    fields["id"] = nid
+                try:
+                    with db.session.begin_nested():
+                        db.session.add(MonthlyTestingSiteMonth(**fields))
+                    created += 1
+                    continue
+                except IntegrityError:
+                    row = (
+                        MonthlyTestingSiteMonth.query.filter_by(
+                            monthly_testing_site_id=ts_id,
+                            month_date=month_first,
+                        ).one_or_none()
+                    )
+            if row is None:
+                continue
+            for key in _MTSM_SNAPSHOT_DISPLAY_KEYS:
+                setattr(row, key, fresh.get(key))
+            if not _mtsm_has_field_progress(row):
+                row.session_route_stop_order = fresh.get("session_route_stop_order")
+            row.run_id = run_id
+            row.test_monthly_route_id = route_id
+            refreshed += 1
+    db.session.flush()
+    return created, refreshed
 
 
 def _stop_sort_key(

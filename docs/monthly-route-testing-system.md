@@ -286,11 +286,12 @@ Tests often use minimal SQLite table subsets with explicit BIGINT id assignment.
 ### Run-month snapshots vs library “newest edition”
 
 - **Portal `stops[]` and office `rows[]` (historical month):** All site fields for that visit come from the **run month** (`MonthlyTestingSiteMonth`, or `MonthlyRouteTestHistory` when no MTSM row). Older months are not overwritten when a later month or the library master changes.
-- **New run materialize:** `seed_stop_month_fields` copies display fields from **office master** (`MonthlyTestingSite` / `master_template_fields`), with gaps filled from the **most recent prior** `MonthlyTestingSiteMonth`. Outcomes (tested/skipped/times) start empty. **`run_comments` always starts empty** for a new month (never copied from prior month or master).
+- **New run materialize:** `seed_stop_month_fields` copies display fields from **office master** (`MonthlyTestingSite` / `master_template_fields`), with gaps filled from the **most recent prior** `MonthlyTestingSiteMonth`, then from the **current or prior** `MonthlyRouteTestHistory` row (so an April CSV import carries procedures into May even when no April portal stop rows exist). Outcomes (tested/skipped/times) start empty. **`run_comments` always starts empty** for a new month (never copied from prior month or master).
+- **Portal refresh paperwork:** `POST /api/technician_portal/routes/<id>/regenerate_paperwork` re-runs that seeding for the **Pacific current month** when the run is not completed (route hub button). Snapshot fields are overwritten from latest office/prior-run data; times, outcomes, and run comments are preserved. **`POST …/worksheet/reset_run`** still clears field progress only (does not refresh procedures from history).
 - **Library location display:** Each `MonthlyTestingSite` master row is the **newest edition** for that testing stop (office edits + mirror from the latest run month when techs PATCH snapshot fields). Primary testing-site values also dual-write to the legacy route location for sheet/detail parity.
 - **Portal stop PATCH (latest month only):** Snapshot field edits on the current/latest run mirror to that stop's `MonthlyTestingSite` master via `mirror_mtsm_snapshot_to_primary_master` (`monthly_sites_sync.py`). Primary stops also mirror to the legacy location. Older months never mirror.
 - **Office testing-site PATCH:** Updates master directly; the next run seeds from that master.
-- **Route CSV import:** Still uses `is_latest_history_month_for_location` for whether legacy location columns update (`history_sheet_notes.py`).
+- **Route CSV import:** Writes snapshot fields to `MonthlyRouteTestHistory` and materializes `MonthlyTestingSiteMonth` stop rows for that month. Legacy location library columns still use `is_latest_history_month_for_location` (`history_sheet_notes.py`).
 
 ### Per-testing-site display fields (2026-05)
 

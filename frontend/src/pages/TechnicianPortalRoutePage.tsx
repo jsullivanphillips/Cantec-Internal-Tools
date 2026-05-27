@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Alert, Button, Card, Spinner } from 'react-bootstrap'
+import { Alert, Button, Card, Modal, Spinner } from 'react-bootstrap'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   parseYearMonth,
+  worksheetRunExplicitlyCompleted,
   type TechnicianWorksheetRun,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
 import { apiJson } from '../lib/apiClient'
@@ -67,6 +68,10 @@ export default function TechnicianPortalRoutePage() {
   const [data, setData] = useState<PortalRouteSummaryResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false)
+  const [regenerating, setRegenerating] = useState(false)
+  const [regenerateError, setRegenerateError] = useState<string | null>(null)
+  const [regenerateNotice, setRegenerateNotice] = useState<string | null>(null)
   const load = useCallback(async () => {
     if (Number.isNaN(idNum)) {
       setLoading(false)
@@ -110,7 +115,42 @@ export default function TechnicianPortalRoutePage() {
     [idNum, nav],
   )
 
+  const regeneratePaperwork = useCallback(async () => {
+    if (Number.isNaN(idNum)) return
+    setRegenerateError(null)
+    setRegenerateNotice(null)
+    setRegenerating(true)
+    try {
+      const body = await apiJson<{
+        ok: boolean
+        stops_created: number
+        stops_refreshed: number
+      }>(`/api/technician_portal/routes/${idNum}/regenerate_paperwork`, { method: 'POST' })
+      const total = (body.stops_created ?? 0) + (body.stops_refreshed ?? 0)
+      setRegenerateNotice(
+        total > 0
+          ? `Paperwork refreshed for ${total} ${total === 1 ? 'stop' : 'stops'}. Open the worksheet to review.`
+          : 'Paperwork is up to date.',
+      )
+      setShowRegenerateConfirm(false)
+      await load()
+    } catch (e) {
+      const maybe = e as { code?: string; message?: string }
+      if (maybe?.code === 'run_completed') {
+        setRegenerateError('This month’s run is completed. Ask the office to reopen it first.')
+      } else if (maybe?.code === 'portal_locked') {
+        nav('/tech', { replace: true })
+      } else {
+        setRegenerateError('Could not refresh paperwork. Try again.')
+      }
+    } finally {
+      setRegenerating(false)
+    }
+  }, [idNum, load, nav])
+
   const monthLabel = data ? formatMonthHeading(data.current_month_first) : ''
+  const canRegeneratePaperwork =
+    data != null && !worksheetRunExplicitlyCompleted(data.current_month_run)
 
   return (
     <div className="container py-4" style={{ maxWidth: '40rem' }}>
@@ -136,6 +176,17 @@ export default function TechnicianPortalRoutePage() {
             </div>
           </div>
 
+          {regenerateNotice ? (
+            <Alert variant="success" className="mb-3" onClose={() => setRegenerateNotice(null)} dismissible>
+              {regenerateNotice}
+            </Alert>
+          ) : null}
+          {regenerateError ? (
+            <Alert variant="danger" className="mb-3" onClose={() => setRegenerateError(null)} dismissible>
+              {regenerateError}
+            </Alert>
+          ) : null}
+
           {data.current_month_run == null ? (
             <Card className="shadow-sm border-primary mb-4">
               <Card.Body className="py-4">
@@ -153,6 +204,17 @@ export default function TechnicianPortalRoutePage() {
                 >
                   Open worksheet for {monthLabel}
                 </Button>
+                {canRegeneratePaperwork ? (
+                  <Button
+                    variant="outline-secondary"
+                    className="w-100 mt-2"
+                    type="button"
+                    disabled={regenerating}
+                    onClick={() => setShowRegenerateConfirm(true)}
+                  >
+                    Refresh paperwork from office data
+                  </Button>
+                ) : null}
               </Card.Body>
             </Card>
           ) : (
@@ -170,9 +232,50 @@ export default function TechnicianPortalRoutePage() {
                   <div>Open run for {monthLabel}</div>
                   <div className="small fw-normal opacity-75">{formatRunSubtitle(data.current_month_run)}</div>
                 </Button>
+                {canRegeneratePaperwork ? (
+                  <Button
+                    variant="outline-secondary"
+                    className="w-100 mt-2"
+                    type="button"
+                    disabled={regenerating}
+                    onClick={() => setShowRegenerateConfirm(true)}
+                  >
+                    Refresh paperwork from office data
+                  </Button>
+                ) : null}
               </Card.Body>
             </Card>
           )}
+
+          <Modal show={showRegenerateConfirm} onHide={() => setShowRegenerateConfirm(false)} centered>
+            <Modal.Header closeButton>
+              <Modal.Title>Refresh paperwork?</Modal.Title>
+            </Modal.Header>
+            <Modal.Body>
+              <p className="mb-2">
+                This reloads testing procedures, tech notes, panel info, and other sheet fields for {monthLabel} from
+                the latest office and prior-run data.
+              </p>
+              <p className="mb-0 text-muted small">
+                Times, tested/skipped results, and run comments you already entered are kept. To clear field progress,
+                use <strong>Reset run</strong> on the worksheet.
+              </p>
+            </Modal.Body>
+            <Modal.Footer>
+              <Button variant="secondary" type="button" onClick={() => setShowRegenerateConfirm(false)}>
+                Cancel
+              </Button>
+              <Button variant="primary" type="button" disabled={regenerating} onClick={() => void regeneratePaperwork()}>
+                {regenerating ? (
+                  <>
+                    <Spinner animation="border" size="sm" className="me-2" /> Refreshing…
+                  </>
+                ) : (
+                  'Refresh paperwork'
+                )}
+              </Button>
+            </Modal.Footer>
+          </Modal>
 
           <div className="fw-semibold mb-2">Previous runs</div>
           {data.prior_runs.length === 0 ? (
