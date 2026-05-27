@@ -210,6 +210,24 @@ export function auditChangeForLongTextField(
   return matches[0]
 }
 
+const LONG_TEXT_FIELD_DISPLAY_LABEL: Record<string, string> = {
+  testing_procedures: 'Testing procedures',
+  inspection_tech_notes: 'Location comments',
+  run_comments: 'Job comment',
+}
+
+/** Human-readable label for an audit ``field_name`` (run-details change summary). */
+export function auditFieldDisplayLabel(fieldName: string): string {
+  const compact = AUDIT_FIELD_TO_COMPACT_LABEL[fieldName]
+  if (compact) return compact
+  const longKey = AUDIT_FIELD_TO_LONG_TEXT_KEY[fieldName]
+  if (longKey) {
+    const label = LONG_TEXT_FIELD_DISPLAY_LABEL[longKey]
+    if (label) return label
+  }
+  return fieldName.replace(/_/g, ' ')
+}
+
 export function renderFieldChangeInline(change: OfficeFieldChange): string {
   return `${formatOfficeAuditValue(change.old_value)} → ${formatOfficeAuditValue(change.new_value)}`
 }

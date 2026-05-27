@@ -275,15 +275,16 @@ def test_worksheet_reset_run_clears_non_annual_preserves_annual(worksheet_client
     assert res.status_code == 200, res.get_data(as_text=True)
     body = res.get_json()
     assert body["ok"] is True
-    assert body["cleared_rows"] == 1
-    assert body["preserved_annual_skip_rows"] == 1
+    assert body["cleared_rows"] == 2
+    assert body["preserved_annual_skip_rows"] == 0
     assert body["worksheet"]["run"] is not None
     assert body["worksheet"]["run"]["started_at"] is None
     rows_by_loc = {int(r["location_id"]): r for r in body["worksheet"]["rows"]}
     assert rows_by_loc[101]["time_in"] is None
     assert rows_by_loc[101]["time_out"] is None
-    assert rows_by_loc[102]["result_status"] == "skipped"
-    assert (rows_by_loc[102]["skip_reason"] or "").strip().lower() == "annual"
+    assert rows_by_loc[101]["result_status"] is None
+    assert rows_by_loc[102]["result_status"] is None
+    assert rows_by_loc[102]["skip_reason"] is None
 
     with app.app_context():
         r1 = db.session.get(MonthlyRouteTestHistory, 8001)
@@ -293,11 +294,62 @@ def test_worksheet_reset_run_clears_non_annual_preserves_annual(worksheet_client
         assert r1.sheet_time_out_raw is None
         r2 = db.session.get(MonthlyRouteTestHistory, 8002)
         assert r2 is not None
-        assert r2.result_status == "skipped"
-        assert (r2.skip_reason or "").strip().lower() == "annual"
+        assert r2.result_status is None
+        assert (r2.skip_reason or "").strip() == ""
         run_after = db.session.get(MonthlyRouteRun, 9001)
         assert run_after is not None
         assert run_after.started_at is None
+
+
+def test_worksheet_reset_run_clears_master_sheet_legacy_history(worksheet_client):
+    """Master-sheet rows use NULL ``test_monthly_route_id``; reset must clear them for KPIs."""
+    client, app = worksheet_client
+    with app.app_context():
+        route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
+        loc = MonthlyRouteLocation(
+            id=101,
+            address="123 Test St",
+            address_normalized="123 test st",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
+            building=None,
+            building_normalized="",
+            status_normalized="active",
+            status_raw="Active",
+            monthly_route_id=1,
+        )
+        run = MonthlyRouteRun(
+            id=9001,
+            monthly_route_id=1,
+            month_date=date(2026, 5, 1),
+            started_at=datetime(2026, 5, 2, 10, 0, 0, tzinfo=PACIFIC_TZ),
+            status="open",
+            source="technician_app",
+        )
+        hist = MonthlyRouteTestHistory(
+            id=8001,
+            location_id=101,
+            month_date=date(2026, 5, 1),
+            result_status="tested",
+            source_value_raw="Y",
+            test_monthly_route_id=None,
+        )
+        db.session.add_all([route, loc, run, hist])
+        db.session.commit()
+
+    res = client.post("/api/monthly_routes/routes/1/worksheet/reset_run?month=2026-05-01", json={})
+    assert res.status_code == 200, res.get_data(as_text=True)
+    assert res.get_json()["cleared_rows"] == 1
+
+    with app.app_context():
+        row = db.session.get(MonthlyRouteTestHistory, 8001)
+        assert row is not None
+        assert row.result_status is None
+        assert row.source_value_raw is None
+
+    details = client.get("/api/monthly_routes/routes/1/run_details?month=2026-05-01")
+    assert details.status_code == 200
+    assert details.get_json()["counts"]["sites_tested_count"] == 0
 
 
 def test_worksheet_reset_run_rejects_completed(worksheet_client):

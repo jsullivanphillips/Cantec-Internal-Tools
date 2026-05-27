@@ -139,6 +139,39 @@ def test_get_run_details_counts_and_run_header(run_details_client):
     assert any(int(s["location_id"]) == 102 for s in notable)
 
 
+def test_run_details_counts_ignore_cleared_history_rows(run_details_client):
+    """Rows with NULL ``result_status`` after reset must not inflate tested KPIs."""
+    client, app = run_details_client
+    with app.app_context():
+        _seed_basic_route_data()
+        cleared = db.session.get(MonthlyRouteTestHistory, 5001)
+        assert cleared is not None
+        cleared.result_status = None
+        cleared.source_value_raw = None
+        db.session.commit()
+
+    res = client.get("/api/monthly_routes/routes/1/run_details?month=2026-05-01")
+    assert res.status_code == 200
+    assert res.get_json()["counts"]["sites_tested_count"] == 0
+
+
+def test_run_details_review_includes_tested_stop_without_property_edits(run_details_client):
+    """Tested stops with no audit edits appear in run review (minimal card on UI)."""
+    client, app = run_details_client
+    with app.app_context():
+        _seed_basic_route_data()
+        hist = db.session.get(MonthlyRouteTestHistory, 5001)
+        assert hist is not None
+        assert (hist.result_status or "").strip().lower() == "tested"
+
+    res = client.get("/api/monthly_routes/routes/1/run_details?month=2026-05-01")
+    assert res.status_code == 200
+    notable = res.get_json()["notable_stops"]
+    assert len(notable) == 1
+    assert notable[0]["location_id"] == 101
+    assert (notable[0].get("result_status") or "").strip().lower() == "tested"
+
+
 def test_run_details_notable_stops_includes_run_comments_only(run_details_client, monkeypatch):
     from app.routes import monthly_routes as mr_mod
 
@@ -225,7 +258,10 @@ def test_run_details_field_changes_omits_test_workflow_only(run_details_client):
     res = client.get("/api/monthly_routes/routes/1/run_details?month=2026-05-01")
     assert res.status_code == 200
     assert res.get_json()["field_changes_by_location"] == []
-    assert res.get_json()["notable_stops"] == []
+    notable = res.get_json()["notable_stops"]
+    assert len(notable) == 1
+    assert notable[0]["location_id"] == 101
+    assert (notable[0].get("result_status") or "").strip().lower() == "tested"
 
 
 def test_run_details_field_changes_omits_reset_run_audit(run_details_client):

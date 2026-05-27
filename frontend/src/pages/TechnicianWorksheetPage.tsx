@@ -1886,15 +1886,13 @@ export default function TechnicianWorksheetPage() {
         </Modal.Header>
         <Modal.Body>
           <p className="mb-2">
-            This clears all <strong>Time In</strong> / <strong>Time Out</strong> values,{' '}
-            <strong>run comments</strong>, and <strong>skipped</strong> outcomes that are{' '}
-            <em>not</em> annual skips. Tested outcomes are cleared too. The{' '}
-            <strong>field run started</strong> timestamp is cleared.
+            This clears everything recorded during this run for this month: tested/skipped outcomes,{' '}
+            <strong>Time In</strong> / <strong>Time Out</strong>, run comments, and any field edits
+            (panel, annual month, door codes, etc.). Worksheet rows are restored from the library
+            master. The <strong>field run started</strong> timestamp is cleared.
           </p>
           <p className="mb-0 small text-muted">
-            Sites skipped as <code className="text-muted">annual</code> or{' '}
-            <code className="text-muted">annual_booked</code> are left unchanged. FACP, monitoring,
-            procedures, and notes are not cleared.
+            Use this when you need a clean restart. Completed jobs must be reopened first.
           </p>
         </Modal.Body>
         <Modal.Footer>

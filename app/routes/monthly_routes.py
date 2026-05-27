@@ -450,6 +450,18 @@ def _history_row_is_preserved_annual_skip(row: MonthlyRouteTestHistory) -> bool:
     return _sheet_skip_reason_is_annual(row.skip_reason)
 
 
+def _history_row_outcome_bucket(row: MonthlyRouteTestHistory) -> str | None:
+    """Classify a sheet-history row for KPI counts; ``None`` = cleared / no outcome."""
+    status = (row.result_status or "").strip().lower()
+    if status == "skipped":
+        if _sheet_skip_reason_is_annual(row.skip_reason):
+            return "skipped_annual"
+        return "skipped_non_annual"
+    if status == "tested":
+        return "tested"
+    return None
+
+
 def _skip_site_base(loc: MonthlyRouteLocation | None, location_id: int) -> dict:
     """``id`` + display label for skipped-site lists on route detail."""
     if loc is None:
@@ -515,18 +527,19 @@ def _route_testing_by_month(route_id: int) -> dict[str, dict]:
     for row in history_rows:
         key = row.month_date.isoformat()
         entry = by_month.setdefault(key, _fresh_month())
-        status = (row.result_status or "").strip().lower()
-        if status == "skipped":
+        bucket = _history_row_outcome_bucket(row)
+        if bucket == "skipped_annual":
             lid = int(row.location_id)
             base = _skip_site_base(loc_by_id.get(lid), lid)
-            if _sheet_skip_reason_is_annual(row.skip_reason):
-                entry["skipped_annual_count"] += 1
-                entry["skipped_annual_sites"].append(base)
-            else:
-                reason = (row.skip_reason or "").strip()
-                entry["skipped_non_annual_count"] += 1
-                entry["skipped_non_annual_sites"].append({**base, "skip_reason": reason or None})
-        elif status == "tested":
+            entry["skipped_annual_count"] += 1
+            entry["skipped_annual_sites"].append(base)
+        elif bucket == "skipped_non_annual":
+            lid = int(row.location_id)
+            base = _skip_site_base(loc_by_id.get(lid), lid)
+            reason = (row.skip_reason or "").strip()
+            entry["skipped_non_annual_count"] += 1
+            entry["skipped_non_annual_sites"].append({**base, "skip_reason": reason or None})
+        elif bucket == "tested":
             entry["sites_tested_count"] += 1
             lid = int(row.location_id)
             loc = loc_by_id.get(lid)
@@ -534,8 +547,6 @@ def _route_testing_by_month(route_id: int) -> dict[str, dict]:
                 entry["tested_revenue_total"] += float(loc.price_per_month)
             else:
                 entry["tested_sites_missing_price_count"] += 1
-        else:
-            entry["sites_tested_count"] += 1
 
     for entry in by_month.values():
         na = entry["skipped_non_annual_sites"]
@@ -1292,15 +1303,12 @@ def _serialize_testing_session_payload(route_id: int, month_first: date) -> dict
         )
         ro = int(loc.route_stop_order) if still and loc.route_stop_order is not None else None
         sess = row.session_route_stop_order
-        status = (row.result_status or "").strip().lower()
-        if status == "skipped":
-            if _sheet_skip_reason_is_annual(row.skip_reason):
-                skipped_ann_ct += 1
-            else:
-                skipped_na_ct += 1
-        elif status == "tested":
-            tested_ct += 1
-        else:
+        bucket = _history_row_outcome_bucket(row)
+        if bucket == "skipped_annual":
+            skipped_ann_ct += 1
+        elif bucket == "skipped_non_annual":
+            skipped_na_ct += 1
+        elif bucket == "tested":
             tested_ct += 1
 
         if sess is not None:
@@ -1858,15 +1866,12 @@ def _run_details_counts_for_month(route_id: int, month_first: date) -> dict[str,
         "skipped_annual_count": 0,
     }
     for row in _attributed_history_for_route_month(route_id, month_first):
-        status = (row.result_status or "").strip().lower()
-        if status == "skipped":
-            if _sheet_skip_reason_is_annual(row.skip_reason):
-                counts["skipped_annual_count"] += 1
-            else:
-                counts["skipped_non_annual_count"] += 1
-        elif status == "tested":
-            counts["sites_tested_count"] += 1
-        else:
+        bucket = _history_row_outcome_bucket(row)
+        if bucket == "skipped_annual":
+            counts["skipped_annual_count"] += 1
+        elif bucket == "skipped_non_annual":
+            counts["skipped_non_annual_count"] += 1
+        elif bucket == "tested":
             counts["sites_tested_count"] += 1
     return counts
 
@@ -2807,10 +2812,11 @@ def patch_monthly_route_worksheet_stop(route_id: int, testing_site_id: int):
 
 @monthly_routes_bp.post("/api/monthly_routes/routes/<int:route_id>/worksheet/reset_run")
 def post_monthly_route_worksheet_reset_run(route_id: int):
-    """Clear worksheet outcomes (times / non-annual skips / tested) for one route-month.
+    """Clear all run-scoped worksheet data for one route-month.
 
-    Rows skipped as annual (``annual`` / ``annual_booked``) are left unchanged.
-    Clears ``MonthlyRouteRun.started_at`` so the field run shows as not started (portal Start Run).
+    Removes audit history, testing outcomes, run comments, and field edits made during the run;
+    re-seeds stop-month rows from library master. Clears ``MonthlyRouteRun.started_at`` so the
+    portal shows Start Run again.
     """
     month_raw = (request.args.get("month") or "").strip()
     month_dt = _parse_month(month_raw)
@@ -2851,69 +2857,12 @@ def post_monthly_route_worksheet_reset_run(route_id: int):
             409,
         )
 
-    rows = _testing_history_rows_attributed_to_route_month(route_id, month_first)
-    actor_username = _session_username_clean()
-    body = request.get_json(silent=True)
-    if not isinstance(body, dict):
-        body = {}
-    source = _normalize_ws_text(body.get("source")) or "technician_app"
-
-    next_audit_id = _next_worksheet_audit_event_id()
-    cleared = 0
-    preserved_annual = 0
-
-    for hist in rows:
-        if _history_row_is_preserved_annual_skip(hist):
-            preserved_annual += 1
-            continue
-        has_outcome = (
-            hist.result_status is not None
-            or _normalize_ws_text(hist.sheet_time_in_raw) is not None
-            or _normalize_ws_text(hist.sheet_time_out_raw) is not None
-        )
-        if not has_outcome:
-            continue
-
-        old_snapshot = {
-            "result_status": hist.result_status,
-            "skip_reason": hist.skip_reason,
-            "time_in": hist.sheet_time_in_raw,
-            "time_out": hist.sheet_time_out_raw,
-            "source_value_raw": hist.source_value_raw,
-        }
-
-        hist.result_status = None
-        hist.skip_reason = None
-        hist.sheet_time_in_raw = None
-        hist.sheet_time_out_raw = None
-        hist.source_value_raw = None
-
-        db.session.add(
-            MonthlyRouteWorksheetAuditEvent(
-                id=next_audit_id,
-                monthly_route_id=route_id,
-                location_id=int(hist.location_id),
-                history_row_id=int(hist.id),
-                month_date=month_first,
-                field_name="reset_run",
-                old_value=old_snapshot,
-                new_value=None,
-                source=source,
-                changed_by_username=actor_username,
-                changed_by_name=actor_username,
-                client_mutation_id=None,
-                changed_at_client=None,
-            )
-        )
-        next_audit_id += 1
-        cleared += 1
-
     if run is not None:
         run.started_at = None
 
-    from app.monthly.worksheet_stops import reset_worksheet_stops_for_route_month
+    from app.monthly.worksheet_stops import reset_worksheet_run_for_route_month
 
-    cleared_stops, preserved_annual_stops = reset_worksheet_stops_for_route_month(route_id, month_first)
+    reset_stats = reset_worksheet_run_for_route_month(route_id, month_first, run)
 
     db.session.commit()
 
@@ -2928,10 +2877,12 @@ def post_monthly_route_worksheet_reset_run(route_id: int):
     return jsonify(
         {
             "ok": True,
-            "cleared_rows": cleared,
-            "preserved_annual_skip_rows": preserved_annual,
-            "cleared_stops": cleared_stops,
-            "preserved_annual_skip_stops": preserved_annual_stops,
+            "cleared_rows": reset_stats["cleared_history_rows"],
+            "preserved_annual_skip_rows": 0,
+            "cleared_stops": reset_stats["reseeded_stops"],
+            "preserved_annual_skip_stops": 0,
+            "deleted_audit_events": reset_stats["deleted_audit_events"],
+            "mirrored_library_locations": reset_stats["mirrored_library_locations"],
             "worksheet": payload_out,
         }
     )

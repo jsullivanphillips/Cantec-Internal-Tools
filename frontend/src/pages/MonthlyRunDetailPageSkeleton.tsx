@@ -59,7 +59,8 @@ export default function MonthlyRunDetailPageSkeleton() {
 
         <section className="monthly-location-detail-surface monthly-run-detail-notable-accordion-skeleton p-3">
           <SkeletonBar width="9rem" height={16} className="mb-3" />
-          <SkeletonBar width="100%" height={180} className="rounded" />
+          <SkeletonBar width="100%" height={88} className="rounded mb-2" />
+          <SkeletonBar width="100%" height={88} className="rounded" />
         </section>
       </div>
     </div>

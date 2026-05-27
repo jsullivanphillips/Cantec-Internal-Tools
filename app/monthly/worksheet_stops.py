@@ -14,6 +14,7 @@ from app.db_models import (
     MonthlyRouteLocation,
     MonthlyRouteRun,
     MonthlyRouteTestHistory,
+    MonthlyRouteWorksheetAuditEvent,
     MonthlySite,
     MonthlyTestingSite,
     MonthlyTestingSiteMonth,
@@ -21,6 +22,8 @@ from app.db_models import (
 )
 from app.monthly.monthly_sites_sync import (
     ensure_monthly_site_for_location,
+    mirror_mtsm_snapshot_to_primary_master,
+    push_primary_testing_site_display_to_legacy,
     sync_testing_sites_from_legacy,
 )
 from app.monthly.sheet_visit_times import looks_like_sheet_clock
@@ -899,21 +902,17 @@ def notable_worksheet_stops_for_run_details(
     month_first: date,
     property_change_location_ids: set[int],
 ) -> list[dict[str, object]]:
-    """Worksheet stops for run-details: skipped, property audit edits, or non-empty job comments."""
-    if (
-        not property_change_location_ids
-        and not _route_month_has_skipped_stops(route_id, month_first)
-        and not _route_month_has_run_comments(route_id, month_first)
-    ):
-        return []
-
+    """Worksheet stops for office run review: updates, skips, comments, and tested (no edits)."""
     all_stops = worksheet_stops_for_route_month(route_id, month_first)
     filtered: list[dict[str, object]] = []
     for stop in all_stops:
         lid = int(stop["location_id"])
         rs = (str(stop.get("result_status") or "")).strip().lower()
         has_run_comments = _normalize_text(stop.get("run_comments")) is not None
-        if lid in property_change_location_ids or rs == "skipped" or has_run_comments:
+        has_updates = (
+            lid in property_change_location_ids or rs == "skipped" or has_run_comments
+        )
+        if has_updates or rs == "tested":
             filtered.append(dict(stop))
 
     return filtered
@@ -1079,44 +1078,207 @@ def sync_primary_history_from_stop(
     return hist
 
 
-def _mtsm_is_preserved_annual_skip(mtsm: MonthlyTestingSiteMonth) -> bool:
-    if (mtsm.result_status or "").strip().lower() != "skipped":
-        return False
-    sr = (mtsm.skip_reason or "").strip().lower()
-    return sr in ("annual", "annual_booked")
+_HISTORY_RUN_RESET_ATTRS = (
+    "result_status",
+    "skip_reason",
+    "source_value_raw",
+    "sheet_time_in_raw",
+    "sheet_time_out_raw",
+    "session_route_stop_order",
+    "facp",
+    "ring",
+    "key_number",
+    "annual_month",
+    "testing_procedures",
+    "inspection_tech_notes",
+    "monitoring_notes",
+)
+
+_FRESH_STOP_MONTH_SKIP_KEYS = frozenset({"month_date", "monthly_testing_site_id"})
 
 
-def reset_worksheet_stops_for_route_month(route_id: int, month_first: date) -> tuple[int, int]:
-    """Clear portal stop outcomes for a route-month (preserves annual skips)."""
-    cleared = 0
-    preserved = 0
-    rows = (
-        MonthlyTestingSiteMonth.query.filter(
+def _history_row_has_run_scoped_data(hist: MonthlyRouteTestHistory) -> bool:
+    for attr in _HISTORY_RUN_RESET_ATTRS:
+        val = getattr(hist, attr, None)
+        if val is None:
+            continue
+        if isinstance(val, str) and not val.strip():
+            continue
+        return True
+    return False
+
+
+def _clear_history_run_scoped_fields(hist: MonthlyRouteTestHistory) -> None:
+    for attr in _HISTORY_RUN_RESET_ATTRS:
+        setattr(hist, attr, None)
+
+
+def _apply_fresh_stop_month_fields(
+    row: MonthlyTestingSiteMonth,
+    fresh: dict[str, object],
+    *,
+    route_id: int,
+    run_id: int | None,
+) -> None:
+    for key, val in fresh.items():
+        if key in _FRESH_STOP_MONTH_SKIP_KEYS:
+            continue
+        setattr(row, key, val)
+    row.test_monthly_route_id = route_id
+    row.run_id = run_id
+
+
+def _is_latest_run_for_location(location_id: int, month_first: date) -> bool:
+    latest = (
+        db.session.query(func.max(MonthlyRouteTestHistory.month_date))
+        .filter(MonthlyRouteTestHistory.location_id == location_id)
+        .execution_options(autoflush=False)
+        .scalar()
+    )
+    return latest is None or month_first >= latest
+
+
+def _reseed_stop_month_rows_from_master(
+    route_id: int,
+    month_first: date,
+    run: MonthlyRouteRun | None,
+) -> int:
+    """Replace run-month stop rows with master template + prior-month fallback (no run progress)."""
+    locs = _route_locations(route_id)
+    if not locs:
+        return 0
+    loc_ids = [int(loc.id) for loc in locs]
+    hist_by_loc = _history_for_locations(loc_ids, month_first)
+    run_id = int(run.id) if run is not None else None
+
+    all_ts_ids: list[int] = []
+    loc_ts: dict[int, list[MonthlyTestingSite]] = {}
+    for loc in locs:
+        site = ensure_monthly_site_for_location(loc)
+        ts_rows = sync_testing_sites_from_legacy(loc)
+        if not ts_rows:
+            ts_rows = (
+                MonthlyTestingSite.query.filter_by(monthly_site_id=int(site.id))
+                .order_by(MonthlyTestingSite.sort_order.asc(), MonthlyTestingSite.id.asc())
+                .all()
+            )
+        loc_ts[int(loc.id)] = ts_rows
+        all_ts_ids.extend(int(t.id) for t in ts_rows)
+
+    prior_by_ts = _prior_mtsm_by_testing_site(all_ts_ids, month_first)
+    existing = {
+        int(r.monthly_testing_site_id): r
+        for r in db.session.query(MonthlyTestingSiteMonth)
+        .filter(
             MonthlyTestingSiteMonth.month_date == month_first,
-            MonthlyTestingSiteMonth.test_monthly_route_id == route_id,
+            MonthlyTestingSiteMonth.monthly_testing_site_id.in_(all_ts_ids),
         )
         .all()
+    } if all_ts_ids else {}
+
+    reseeded = 0
+    for loc in locs:
+        ts_list = loc_ts.get(int(loc.id), [])
+        if not ts_list:
+            continue
+        primary = primary_testing_site(ts_list)
+        loc_hist = hist_by_loc.get(int(loc.id))
+        for ts in ts_list:
+            ts_id = int(ts.id)
+            is_primary = primary is not None and int(primary.id) == ts_id
+            prior = prior_by_ts.get(ts_id)
+            row = existing.get(ts_id)
+            fresh = seed_stop_month_fields(
+                ts,
+                loc,
+                prior,
+                route_id=route_id,
+                run_id=run_id,
+                month_first=month_first,
+                primary=is_primary,
+                location_hist=loc_hist if is_primary else None,
+                existing_row=None,
+            )
+            if row is None:
+                fields = dict(fresh)
+                fields["monthly_testing_site_id"] = ts_id
+                nid = _next_sqlite_bigint_id(MonthlyTestingSiteMonth)
+                if nid is not None:
+                    fields["id"] = nid
+                try:
+                    with db.session.begin_nested():
+                        db.session.add(MonthlyTestingSiteMonth(**fields))
+                    reseeded += 1
+                    continue
+                except IntegrityError:
+                    row = (
+                        MonthlyTestingSiteMonth.query.filter_by(
+                            monthly_testing_site_id=ts_id,
+                            month_date=month_first,
+                        ).one_or_none()
+                    )
+            if row is None:
+                continue
+            _apply_fresh_stop_month_fields(row, fresh, route_id=route_id, run_id=run_id)
+            reseeded += 1
+            if is_primary:
+                sync_primary_history_from_stop(row, loc, route_id, month_first)
+    db.session.flush()
+    return reseeded
+
+
+def reset_worksheet_run_for_route_month(
+    route_id: int,
+    month_first: date,
+    run: MonthlyRouteRun | None,
+) -> dict[str, int]:
+    """Clear all run-scoped worksheet progress and property edits for one route-month.
+
+    Deletes worksheet audit events, clears attributed history, re-seeds stop-month rows from
+    library master, and mirrors primary stops to library when this is the latest run month.
+    """
+    deleted_audits = (
+        MonthlyRouteWorksheetAuditEvent.query.filter_by(
+            monthly_route_id=route_id,
+            month_date=month_first,
+        ).delete(synchronize_session=False)
     )
-    for mtsm in rows:
-        if _mtsm_is_preserved_annual_skip(mtsm):
-            preserved += 1
+
+    cleared_history = 0
+    for hist in _attributed_history_for_route_month(route_id, month_first):
+        if _history_row_has_run_scoped_data(hist):
+            cleared_history += 1
+        _clear_history_run_scoped_fields(hist)
+
+    reseeded_stops = _reseed_stop_month_rows_from_master(route_id, month_first, run)
+
+    mirrored = 0
+    for loc in _route_locations(route_id):
+        if not _is_latest_run_for_location(int(loc.id), month_first):
             continue
-        has_outcome = (
-            mtsm.result_status is not None
-            or _normalize_text(mtsm.sheet_time_in_raw) is not None
-            or _normalize_text(mtsm.sheet_time_out_raw) is not None
+        ts_list = _testing_sites_for_location(loc)
+        primary = primary_testing_site(ts_list)
+        if primary is None:
+            continue
+        mtsm = (
+            MonthlyTestingSiteMonth.query.filter_by(
+                monthly_testing_site_id=int(primary.id),
+                month_date=month_first,
+            )
+            .one_or_none()
         )
-        has_run_comments = _normalize_text(mtsm.run_comments) is not None
-        if not has_outcome and not has_run_comments:
+        if mtsm is None:
             continue
-        mtsm.run_comments = None
-        if has_outcome:
-            mtsm.result_status = None
-            mtsm.skip_reason = None
-            mtsm.sheet_time_in_raw = None
-            mtsm.sheet_time_out_raw = None
-        cleared += 1
-    return cleared, preserved
+        mirror_mtsm_snapshot_to_primary_master(primary, mtsm)
+        push_primary_testing_site_display_to_legacy(loc, primary)
+        mirrored += 1
+
+    return {
+        "deleted_audit_events": int(deleted_audits or 0),
+        "cleared_history_rows": cleared_history,
+        "reseeded_stops": reseeded_stops,
+        "mirrored_library_locations": mirrored,
+    }
 
 
 def is_primary_stop(ts: MonthlyTestingSite, loc: MonthlyRouteLocation) -> bool:

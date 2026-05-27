@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Accordion, Alert, Badge, Button, Modal, Spinner } from 'react-bootstrap'
 import { Link, useParams } from 'react-router-dom'
-import OfficeWorksheetReadOnlyTable from '../features/monthlyRoutes/OfficeWorksheetReadOnlyTable'
+import RunDetailsSiteChangesList from '../features/monthlyRoutes/RunDetailsSiteChangesList'
 import type { OfficeFieldChange } from '../features/monthlyRoutes/officeWorksheetTableShared'
 import {
   parseYearMonth,
@@ -223,8 +223,8 @@ export default function MonthlyRunDetailPage() {
     )
   }
 
-  const { route, counts, specialists_month, notable_stops, run } = payload
-  const notableStopCount = notable_stops.length
+  const { route, counts, specialists_month, notable_stops: reviewStops, run } = payload
+  const reviewStopCount = reviewStops.length
   const monthHeading = formatMonthHeading(payload.month_date)
   const completedByLabel = completedByTechniciansPillLabel(
     specialists_month?.top_technicians ?? [],
@@ -371,29 +371,21 @@ export default function MonthlyRunDetailPage() {
         >
           <Accordion.Item eventKey="notable-worksheet" className="monthly-location-detail-surface border-0">
             <Accordion.Header>
-              <span className="monthly-run-detail-notable-accordion__title">Sites with updates</span>
+              <span className="monthly-run-detail-notable-accordion__title">Run review</span>
               <span className="monthly-run-detail-notable-accordion__meta text-muted small ms-2">
-                {notableStopCount === 1 ? '1 stop' : `${notableStopCount} stops`}
+                {reviewStopCount === 1 ? '1 stop' : `${reviewStopCount} stops`}
               </span>
             </Accordion.Header>
-            <Accordion.Body className="p-0 pt-2">
-              {notableStopCount > 0 ? (
-                <div className="technician-worksheet-page monthly-run-detail-notable-worksheet">
-                  <div className="tw-office-dashboard tw-office-dashboard--embedded">
-                    <OfficeWorksheetReadOnlyTable
-                      stops={notable_stops}
-                      monthDate={payload.month_date}
-                      fieldChangesByLocation={fieldChangesByLocation}
-                      layout="embedded"
-                      neutralStopNumbers
-                      highlightUpdatedCells
-                      hideEmptyChangeColumns
-                    />
-                  </div>
-                </div>
+            <Accordion.Body className="p-3 pt-2">
+              {reviewStopCount > 0 ? (
+                <RunDetailsSiteChangesList
+                  stops={reviewStops}
+                  monthDate={payload.month_date}
+                  fieldChangesByLocation={fieldChangesByLocation}
+                />
               ) : (
-                <p className="monthly-run-detail-empty mb-0 px-3 pb-3">
-                  No skipped stops or property updates for this run.
+                <p className="monthly-run-detail-empty mb-0">
+                  No tested stops or updates recorded for this run yet.
                 </p>
               )}
             </Accordion.Body>
@@ -413,8 +405,9 @@ export default function MonthlyRunDetailPage() {
         </Modal.Header>
         <Modal.Body>
           <p className="mb-2">
-            This clears tested/skipped outcomes, time in/out, and run comments for this month.
-            Annual skips are preserved. Site notes and panel details are not cleared.
+            This clears everything recorded during this run for this month: tested/skipped outcomes,
+            times, run comments, field edits (panel, annual month, access codes, etc.), and the
+            sites-with-updates change log. Worksheet rows are restored from the library master.
           </p>
           <p className="mb-0 small text-muted">
             If the job was marked complete, use <strong>Reopen job</strong> first.
