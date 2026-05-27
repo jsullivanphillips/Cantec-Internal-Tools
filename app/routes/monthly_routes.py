@@ -1849,19 +1849,26 @@ def get_monthly_route_detail(route_id: int):
 
 
 def _run_details_counts_for_month(route_id: int, month_first: date) -> dict[str, int]:
-    """Outcome counts for one sheet month (same rules as ``testing_by_month``)."""
-    cell = _route_testing_by_month(route_id).get(month_first.isoformat())
-    if cell is None:
-        return {
-            "sites_tested_count": 0,
-            "skipped_non_annual_count": 0,
-            "skipped_annual_count": 0,
-        }
-    return {
-        "sites_tested_count": int(cell["sites_tested_count"]),
-        "skipped_non_annual_count": int(cell["skipped_non_annual_count"]),
-        "skipped_annual_count": int(cell["skipped_annual_count"]),
+    """Outcome counts for one sheet month (same rules as ``testing_by_month`` for that month)."""
+    from app.monthly.worksheet_stops import _attributed_history_for_route_month
+
+    counts = {
+        "sites_tested_count": 0,
+        "skipped_non_annual_count": 0,
+        "skipped_annual_count": 0,
     }
+    for row in _attributed_history_for_route_month(route_id, month_first):
+        status = (row.result_status or "").strip().lower()
+        if status == "skipped":
+            if _sheet_skip_reason_is_annual(row.skip_reason):
+                counts["skipped_annual_count"] += 1
+            else:
+                counts["skipped_non_annual_count"] += 1
+        elif status == "tested":
+            counts["sites_tested_count"] += 1
+        else:
+            counts["sites_tested_count"] += 1
+    return counts
 
 
 def _location_display_label(loc: MonthlyRouteLocation | None, location_id: int) -> str:
@@ -1871,11 +1878,27 @@ def _location_display_label(loc: MonthlyRouteLocation | None, location_id: int) 
     return s or f"Location {location_id}"
 
 
+def _location_address_building_label(
+    display_address: str,
+    building: str | None,
+    *,
+    fallback: str,
+) -> str:
+    addr = display_address.strip()
+    b = (building or "").strip()
+    if addr and b:
+        return f"{addr} · {b}"
+    return addr or b or fallback
+
+
 def _serialize_monthly_run_details_payload(
     route_id: int, month_first: date
 ) -> dict[str, object] | None:
     """Office run summary: header, counts, ST technicians, run comments, field audit."""
-    from app.monthly.worksheet_stops import worksheet_stops_for_route_month
+    from app.monthly.worksheet_stops import (
+        RUN_DETAILS_EXCLUDED_AUDIT_FIELDS,
+        notable_worksheet_stops_for_run_details,
+    )
 
     mr = _get_monthly_route(route_id)
     if mr is None:
@@ -1903,61 +1926,77 @@ def _serialize_monthly_run_details_payload(
                 "last_updated_at": spec_row.last_updated_at.isoformat() if spec_row.last_updated_at else None,
             }
 
-    run_comments_out: list[dict[str, object]] = []
-    for stop in worksheet_stops_for_route_month(route_id, month_first):
-        raw = stop.get("run_comments")
-        text = (str(raw).strip() if raw is not None else "")
-        if not text:
-            continue
-        building = stop.get("building_name")
-        run_comments_out.append(
-            {
-                "testing_site_id": int(stop["testing_site_id"]),
-                "location_id": int(stop["location_id"]),
-                "display_address": str(stop.get("display_address") or ""),
-                "building": (str(building).strip() or None) if building is not None else None,
-                "run_comments": text,
-            }
-        )
-    run_comments_out.sort(
-        key=lambda row: (
-            str(row["display_address"]).casefold(),
-            int(row["location_id"]),
-            int(row["testing_site_id"]),
-        )
-    )
-
     audit_rows = (
         MonthlyRouteWorksheetAuditEvent.query.filter_by(
             monthly_route_id=route_id,
             month_date=month_first,
         )
+        .filter(MonthlyRouteWorksheetAuditEvent.field_name.notin_(RUN_DETAILS_EXCLUDED_AUDIT_FIELDS))
         .order_by(MonthlyRouteWorksheetAuditEvent.changed_at.desc())
         .all()
     )
-    loc_ids = {int(e.location_id) for e in audit_rows}
+    audit_loc_ids = {int(e.location_id) for e in audit_rows}
     loc_by_id = {
         loc.id: loc
-        for loc in MonthlyRouteLocation.query.filter(MonthlyRouteLocation.id.in_(loc_ids)).all()
-    } if loc_ids else {}
+        for loc in MonthlyRouteLocation.query.filter(
+            MonthlyRouteLocation.id.in_(audit_loc_ids)
+        ).all()
+    } if audit_loc_ids else {}
 
-    field_changes: list[dict[str, object]] = []
+    changes_by_location: dict[int, list[dict[str, object]]] = {}
     for event in audit_rows:
         lid = int(event.location_id)
-        field_changes.append(
+        changes_by_location.setdefault(lid, []).append(
             {
-                "id": int(event.id),
-                "location_id": lid,
-                "location_label": _location_display_label(loc_by_id.get(lid), lid),
                 "field_name": event.field_name,
                 "old_value": event.old_value,
                 "new_value": event.new_value,
-                "source": event.source,
-                "changed_by_username": event.changed_by_username,
-                "changed_by_name": event.changed_by_name,
-                "changed_at": event.changed_at.isoformat() if event.changed_at else None,
+                "changed_at": event.changed_at,
             }
         )
+
+    field_changes_by_location: list[dict[str, object]] = []
+    for lid, changes in changes_by_location.items():
+        loc = loc_by_id.get(lid)
+        addr = _location_display_label(loc, lid)
+        building = (loc.building or "").strip() or None if loc is not None else None
+        location_label = _location_address_building_label(
+            addr,
+            building,
+            fallback=f"Location {lid}",
+        )
+        changes_sorted = sorted(
+            changes,
+            key=lambda c: c["changed_at"] or datetime.min.replace(tzinfo=PACIFIC_TZ),
+            reverse=True,
+        )
+        field_changes_by_location.append(
+            {
+                "location_id": lid,
+                "location_label": location_label,
+                "building": building,
+                "changes": [
+                    {
+                        "field_name": c["field_name"],
+                        "old_value": c["old_value"],
+                        "new_value": c["new_value"],
+                    }
+                    for c in changes_sorted
+                ],
+            }
+        )
+    field_changes_by_location.sort(
+        key=lambda row: (
+            str(row["location_label"]).casefold(),
+            int(row["location_id"]),
+        )
+    )
+
+    notable_stops = notable_worksheet_stops_for_run_details(
+        route_id,
+        month_first,
+        audit_loc_ids,
+    )
 
     return {
         "route": _serialize_monthly_route_entity(mr, location_count=location_count),
@@ -1965,8 +2004,8 @@ def _serialize_monthly_run_details_payload(
         "run": _serialize_run(run),
         "counts": _run_details_counts_for_month(route_id, month_first),
         "specialists_month": specialists_month,
-        "run_comments": run_comments_out,
-        "field_changes": field_changes,
+        "notable_stops": notable_stops,
+        "field_changes_by_location": field_changes_by_location,
     }
 
 

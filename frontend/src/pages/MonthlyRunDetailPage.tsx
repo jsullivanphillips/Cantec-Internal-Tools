@@ -1,42 +1,22 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Badge, Button, Modal, Spinner, Table } from 'react-bootstrap'
+import { Accordion, Alert, Badge, Button, Modal, Spinner } from 'react-bootstrap'
 import { Link, useParams } from 'react-router-dom'
+import OfficeWorksheetReadOnlyTable from '../features/monthlyRoutes/OfficeWorksheetReadOnlyTable'
+import type { OfficeFieldChange } from '../features/monthlyRoutes/officeWorksheetTableShared'
 import {
   parseYearMonth,
   runOfficeStatusPillLabel,
   worksheetOfficeRunActivity,
   worksheetRunExplicitlyCompleted,
-  type MonthlyRunDetailFieldChange,
   type MonthlyRunDetailPayload,
   type MonthlySpecialistTechRow,
   type TechnicianWorksheetRun,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
 import { clearWorksheetCache } from '../features/monthlyRoutes/worksheetOfflineStore'
 import { apiJson, isAbortError } from '../lib/apiClient'
+import MonthlyRunDetailPageSkeleton from './MonthlyRunDetailPageSkeleton'
 
 const MONTH_FIRST_RE = /^\d{4}-\d{2}-01$/
-
-const WORKSHEET_FIELD_LABELS: Record<string, string> = {
-  result_status: 'Result',
-  skip_reason: 'Skip reason',
-  testing_procedures: 'Testing procedures',
-  inspection_tech_notes: 'Tech notes',
-  time_in: 'Time in',
-  time_out: 'Time out',
-  annual_month: 'Annual month',
-  ring: 'Ring',
-  key_number: 'Key #',
-  facp: 'FACP',
-  monitoring: 'Monitoring',
-  monitoring_notes: 'Monitoring notes',
-  monitoring_company: 'Monitoring company',
-  run_comments: 'Run comments',
-  panel: 'Panel',
-  panel_location: 'Panel location',
-  door_code: 'Door code',
-  property_management_company: 'Property management',
-  building_name: 'Building',
-}
 
 function formatMonthHeading(monthFirstIso: string): string {
   const ym = parseYearMonth(monthFirstIso)
@@ -68,29 +48,6 @@ function completedByTechniciansPillLabel(techs: MonthlySpecialistTechRow[]): str
   return `Completed by ${names.join(', ')}`
 }
 
-function worksheetFieldLabel(fieldName: string): string {
-  return WORKSHEET_FIELD_LABELS[fieldName] || fieldName.replace(/_/g, ' ')
-}
-
-function formatAuditValue(value: unknown): string {
-  if (value == null) return '—'
-  if (typeof value === 'string') {
-    const s = value.trim()
-    return s || '—'
-  }
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
-  try {
-    return JSON.stringify(value)
-  } catch {
-    return String(value)
-  }
-}
-
-function formatChangedBy(row: MonthlyRunDetailFieldChange): string {
-  const name = (row.changed_by_name || row.changed_by_username || '').trim()
-  return name || '—'
-}
-
 function runActivityVariant(activity: ReturnType<typeof worksheetOfficeRunActivity>): string {
   switch (activity) {
     case 'completed':
@@ -100,13 +57,6 @@ function runActivityVariant(activity: ReturnType<typeof worksheetOfficeRunActivi
     default:
       return 'secondary'
   }
-}
-
-function locationCommentLabel(displayAddress: string, building: string | null): string {
-  const addr = displayAddress.trim()
-  const b = (building || '').trim()
-  if (addr && b) return `${addr} · ${b}`
-  return addr || b || '—'
 }
 
 export default function MonthlyRunDetailPage() {
@@ -239,6 +189,14 @@ export default function MonthlyRunDetailPage() {
     [payload?.run],
   )
 
+  const fieldChangesByLocation = useMemo(() => {
+    const map = new Map<number, OfficeFieldChange[]>()
+    for (const loc of payload?.field_changes_by_location ?? []) {
+      map.set(loc.location_id, loc.changes)
+    }
+    return map
+  }, [payload?.field_changes_by_location])
+
   if (!Number.isFinite(idNum) || !monthOk) {
     return (
       <div className="monthly-route-detail-page">
@@ -251,13 +209,7 @@ export default function MonthlyRunDetailPage() {
   }
 
   if (loading) {
-    return (
-      <div className="d-flex justify-content-center align-items-center py-5">
-        <Spinner animation="border" role="status">
-          <span className="visually-hidden">Loading…</span>
-        </Spinner>
-      </div>
-    )
+    return <MonthlyRunDetailPageSkeleton />
   }
 
   if (error || !payload) {
@@ -271,7 +223,8 @@ export default function MonthlyRunDetailPage() {
     )
   }
 
-  const { route, counts, specialists_month, run_comments, field_changes, run } = payload
+  const { route, counts, specialists_month, notable_stops, run } = payload
+  const notableStopCount = notable_stops.length
   const monthHeading = formatMonthHeading(payload.month_date)
   const completedByLabel = completedByTechniciansPillLabel(
     specialists_month?.top_technicians ?? [],
@@ -412,72 +365,40 @@ export default function MonthlyRunDetailPage() {
           </div>
         </div>
 
-        <section className="monthly-run-detail-section monthly-location-detail-surface">
-          <h2 className="monthly-run-detail-section__title">Run comments</h2>
-          {run_comments.length > 0 ? (
-            <Table size="sm" className="monthly-run-detail-table mb-0" responsive>
-              <thead>
-                <tr>
-                  <th>Location</th>
-                  <th>Comment</th>
-                </tr>
-              </thead>
-              <tbody>
-                {run_comments.map((row) => (
-                  <tr key={`${row.location_id}:${row.testing_site_id}`}>
-                    <td className="monthly-run-detail-table__location">
-                      {locationCommentLabel(row.display_address, row.building)}
-                    </td>
-                    <td>{row.run_comments}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </Table>
-          ) : (
-            <p className="monthly-run-detail-empty mb-0">No run comments recorded for this month.</p>
-          )}
-        </section>
-
-        <section className="monthly-run-detail-section monthly-location-detail-surface">
-          <h2 className="monthly-run-detail-section__title">Field changes</h2>
-          <p className="monthly-run-detail-section__meta small text-muted mb-2">
-            Worksheet edits logged in the audit trail. CSV snapshot imports may not appear here.
-          </p>
-          {field_changes.length > 0 ? (
-            <Table size="sm" className="monthly-run-detail-table mb-0" responsive>
-              <thead>
-                <tr>
-                  <th>When</th>
-                  <th>Location</th>
-                  <th>Field</th>
-                  <th>Change</th>
-                  <th>By</th>
-                </tr>
-              </thead>
-              <tbody>
-                {field_changes.map((row) => (
-                  <tr key={row.id}>
-                    <td className="monthly-run-detail-table__when text-nowrap">
-                      {formatRunTimestamp(row.changed_at) ?? '—'}
-                    </td>
-                    <td className="monthly-run-detail-table__location">{row.location_label}</td>
-                    <td>{worksheetFieldLabel(row.field_name)}</td>
-                    <td className="monthly-run-detail-table__change">
-                      <span className="text-muted">{formatAuditValue(row.old_value)}</span>
-                      <span className="monthly-run-detail-table__arrow" aria-hidden>
-                        →
-                      </span>
-                      <span>{formatAuditValue(row.new_value)}</span>
-                    </td>
-                    <td>{formatChangedBy(row)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </Table>
-          ) : (
-            <p className="monthly-run-detail-empty mb-0">No field changes recorded for this run.</p>
-          )}
-        </section>
+        <Accordion
+          defaultActiveKey="notable-worksheet"
+          className="monthly-run-detail-notable-accordion"
+        >
+          <Accordion.Item eventKey="notable-worksheet" className="monthly-location-detail-surface border-0">
+            <Accordion.Header>
+              <span className="monthly-run-detail-notable-accordion__title">Sites with updates</span>
+              <span className="monthly-run-detail-notable-accordion__meta text-muted small ms-2">
+                {notableStopCount === 1 ? '1 stop' : `${notableStopCount} stops`}
+              </span>
+            </Accordion.Header>
+            <Accordion.Body className="p-0 pt-2">
+              {notableStopCount > 0 ? (
+                <div className="technician-worksheet-page monthly-run-detail-notable-worksheet">
+                  <div className="tw-office-dashboard tw-office-dashboard--embedded">
+                    <OfficeWorksheetReadOnlyTable
+                      stops={notable_stops}
+                      monthDate={payload.month_date}
+                      fieldChangesByLocation={fieldChangesByLocation}
+                      layout="embedded"
+                      neutralStopNumbers
+                      highlightUpdatedCells
+                      hideEmptyChangeColumns
+                    />
+                  </div>
+                </div>
+              ) : (
+                <p className="monthly-run-detail-empty mb-0 px-3 pb-3">
+                  No skipped stops or property updates for this run.
+                </p>
+              )}
+            </Accordion.Body>
+          </Accordion.Item>
+        </Accordion>
       </div>
       <Modal
         show={resetRunModalOpen}

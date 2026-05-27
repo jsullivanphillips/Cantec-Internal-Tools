@@ -3628,10 +3628,194 @@ body.portal-worksheet-body-lock {
   color: var(--ml-muted);
 }
 
+/* Field changes: bordered card table with zebra rows (inspired by office data tables). */
+.monthly-run-detail-table-wrap {
+  overflow: hidden;
+  border: 1px solid var(--ml-border, rgba(15, 23, 42, 0.1));
+  border-radius: 0.5rem;
+  background: var(--ml-surface, #fff);
+}
+
+.monthly-run-detail-table--field-changes {
+  margin-bottom: 0;
+  --bs-table-bg: transparent;
+  --bs-table-striped-bg: var(--ml-surface-muted, rgba(15, 23, 42, 0.035));
+  --bs-table-hover-bg: var(--ml-surface-muted, rgba(15, 23, 42, 0.05));
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.monthly-run-detail-table--field-changes thead th {
+  padding: 0.65rem 1rem;
+  background: var(--ml-surface-muted, rgba(15, 23, 42, 0.04));
+  border-bottom: 1px solid var(--ml-border, rgba(15, 23, 42, 0.1));
+}
+
+.monthly-run-detail-table--field-changes tbody td {
+  padding: 0.7rem 1rem;
+  border-bottom: 1px solid var(--ml-border-subtle, rgba(15, 23, 42, 0.07));
+  vertical-align: middle;
+}
+
+.monthly-run-detail-table--field-changes tbody.monthly-run-detail-table__location-group tr:nth-child(even) td {
+  background-color: var(--bs-table-striped-bg);
+}
+
+.monthly-run-detail-table--field-changes tbody.monthly-run-detail-table__location-group:last-child tr:last-child td {
+  border-bottom: none;
+}
+
+.monthly-run-detail-table--field-changes tbody.monthly-run-detail-table__location-group + tbody.monthly-run-detail-table__location-group tr:first-child td {
+  border-top: 1px solid var(--ml-border, rgba(15, 23, 42, 0.12));
+}
+
+.monthly-run-detail-table--field-changes .monthly-run-detail-table__location {
+  max-width: 16rem;
+  font-weight: 700;
+  color: var(--ml-text);
+  vertical-align: top;
+  padding-top: 0.85rem;
+}
+
+.monthly-run-detail-table--field-changes .monthly-run-detail-table__field {
+  font-weight: 600;
+  color: var(--ml-muted-strong);
+  white-space: nowrap;
+}
+
+.monthly-run-detail-table--field-changes .monthly-run-detail-table__change {
+  max-width: none;
+  color: var(--ml-text);
+}
+
+.monthly-run-detail-change {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.4rem;
+  line-height: 1.45;
+}
+
+.monthly-run-detail-change__old {
+  color: var(--ml-muted-strong);
+}
+
+.monthly-run-detail-change__new {
+  font-weight: 500;
+}
+
+.monthly-run-detail-table--field-changes .monthly-run-detail-table__arrow {
+  flex-shrink: 0;
+  font-size: 0.9em;
+}
+
 .monthly-run-detail-empty {
   font-size: 0.86rem;
   color: var(--ml-muted-strong);
   font-style: italic;
+}
+
+.monthly-run-detail-table-skeleton__head,
+.monthly-run-detail-table-skeleton__row {
+  display: grid;
+  gap: 0.65rem 1rem;
+  align-items: center;
+  padding: 0.35rem 0;
+}
+
+.monthly-run-detail-table-skeleton__head {
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--ml-border, rgba(0, 0, 0, 0.08));
+}
+
+.monthly-run-detail-table-skeleton--cols-2 .monthly-run-detail-table-skeleton__head,
+.monthly-run-detail-table-skeleton--cols-2 .monthly-run-detail-table-skeleton__row {
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.4fr);
+}
+
+.monthly-run-detail-table-skeleton--cols-3 .monthly-run-detail-table-skeleton__head,
+.monthly-run-detail-table-skeleton--cols-3 .monthly-run-detail-table-skeleton__row {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.75fr) minmax(0, 1.25fr);
+}
+
+.monthly-run-detail-table-skeleton__row + .monthly-run-detail-table-skeleton__row {
+  border-top: 1px solid var(--ml-border-subtle, rgba(0, 0, 0, 0.05));
+}
+
+.monthly-run-detail-notable-accordion {
+  margin-bottom: 0.75rem;
+}
+
+.monthly-run-detail-notable-accordion .accordion-collapse,
+.monthly-run-detail-notable-accordion .accordion-body {
+  overflow: visible;
+}
+
+.monthly-run-detail-notable-accordion .accordion-item {
+  border-radius: 0.65rem;
+  overflow: visible;
+}
+
+.monthly-run-detail-notable-accordion__title {
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.monthly-run-detail-notable-worksheet.technician-worksheet-page .tw-office-dashboard--embedded {
+  height: auto;
+  min-height: 0;
+  margin-top: 0;
+  padding: 0;
+  overflow: visible;
+  background: transparent;
+}
+
+.monthly-run-detail-notable-worksheet.technician-worksheet-page .tw-office-table-card--embedded {
+  flex: none;
+  width: 100%;
+  min-width: 0;
+  min-height: auto;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.monthly-run-detail-notable-worksheet.technician-worksheet-page .tw-office-table-wrap {
+  max-height: none;
+  height: auto;
+  overflow: visible;
+}
+
+.technician-worksheet-page .tw-office-field-change {
+  color: var(--ml-text);
+  font-weight: 500;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.technician-worksheet-page .tw-office-compact-field--changed .tw-office-compact-label {
+  color: var(--ml-text);
+  font-weight: 700;
+}
+
+/* Run details notable worksheet: route stop # in neutral grey (not status colors). */
+.monthly-run-detail-notable-worksheet .tw-office-sticky-order--neutral,
+.monthly-run-detail-notable-worksheet .tw-office-table-row--continuation .tw-office-sticky-order--neutral {
+  background: #f1f5f9 !important;
+  color: #64748b !important;
+  box-shadow: 1px 0 0 #e2e8f0;
+}
+
+.monthly-run-detail-notable-worksheet .tw-office-stop-table td.tw-office-cell--updated {
+  background: #fff4e6 !important;
+}
+
+.monthly-run-detail-notable-worksheet .tw-office-cell-updated-value {
+  display: block;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.45;
 }
 
 @media (max-width: 767.98px) {

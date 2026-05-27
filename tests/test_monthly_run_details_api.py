@@ -135,9 +135,11 @@ def test_get_run_details_counts_and_run_header(run_details_client):
     assert body["counts"]["sites_tested_count"] == 1
     assert body["counts"]["skipped_non_annual_count"] == 1
     assert body["counts"]["skipped_annual_count"] == 0
+    notable = body["notable_stops"]
+    assert any(int(s["location_id"]) == 102 for s in notable)
 
 
-def test_get_run_details_run_comments_from_stops(run_details_client, monkeypatch):
+def test_run_details_notable_stops_includes_run_comments_only(run_details_client, monkeypatch):
     from app.routes import monthly_routes as mr_mod
 
     monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 6, 1))
@@ -162,10 +164,12 @@ def test_get_run_details_run_comments_from_stops(run_details_client, monkeypatch
 
     res = client.get("/api/monthly_routes/routes/1/run_details?month=2026-05-01")
     assert res.status_code == 200
-    comments = res.get_json()["run_comments"]
-    assert len(comments) == 1
-    assert comments[0]["run_comments"] == "Found bad battery"
-    assert comments[0]["location_id"] == 101
+    body = res.get_json()
+    assert "run_comments" not in body
+    notable = body["notable_stops"]
+    assert len(notable) == 1
+    assert notable[0]["location_id"] == 101
+    assert notable[0]["run_comments"] == "Found bad battery"
 
 
 def test_get_run_details_field_changes_after_patch(run_details_client):
@@ -186,11 +190,132 @@ def test_get_run_details_field_changes_after_patch(run_details_client):
 
     res = client.get("/api/monthly_routes/routes/1/run_details?month=2026-05-01")
     assert res.status_code == 200
-    changes = res.get_json()["field_changes"]
-    names = {c["field_name"] for c in changes}
-    assert {"testing_procedures", "time_in"}.issubset(names)
-    assert changes[0]["location_label"] == "123 Test St"
-    assert changes[0]["changed_by_username"] == "staff.one"
+    by_loc = res.get_json()["field_changes_by_location"]
+    assert len(by_loc) == 1
+    assert by_loc[0]["location_id"] == 101
+    assert by_loc[0]["location_label"] == "123 Test St"
+    names = {c["field_name"] for c in by_loc[0]["changes"]}
+    assert "testing_procedures" in names
+    assert "time_in" not in names
+    notable = res.get_json()["notable_stops"]
+    assert len(notable) >= 1
+    assert any(s["location_id"] == 101 for s in notable)
+
+
+def test_run_details_field_changes_omits_test_workflow_only(run_details_client):
+    client, app = run_details_client
+    with app.app_context():
+        _, _, hist, _ = _seed_basic_route_data()
+        for idx, field_name in enumerate(("time_in", "time_out", "result_status"), start=1):
+            db.session.add(
+                MonthlyRouteWorksheetAuditEvent(
+                    id=idx,
+                    monthly_route_id=1,
+                    location_id=101,
+                    history_row_id=int(hist.id),
+                    month_date=date(2026, 5, 1),
+                    field_name=field_name,
+                    old_value=None,
+                    new_value="tested" if field_name == "result_status" else "9:00",
+                    source="technician_app",
+                )
+            )
+        db.session.commit()
+
+    res = client.get("/api/monthly_routes/routes/1/run_details?month=2026-05-01")
+    assert res.status_code == 200
+    assert res.get_json()["field_changes_by_location"] == []
+    assert res.get_json()["notable_stops"] == []
+
+
+def test_run_details_field_changes_omits_reset_run_audit(run_details_client):
+    client, app = run_details_client
+    with app.app_context():
+        _, _, hist, _ = _seed_basic_route_data()
+        db.session.add(
+            MonthlyRouteWorksheetAuditEvent(
+                id=1,
+                monthly_route_id=1,
+                location_id=101,
+                history_row_id=int(hist.id),
+                month_date=date(2026, 5, 1),
+                field_name="reset_run",
+                old_value={
+                    "result_status": "tested",
+                    "time_in": "9:00",
+                    "time_out": "10:00",
+                },
+                new_value=None,
+                source="technician_app",
+            )
+        )
+        db.session.commit()
+
+    res = client.get("/api/monthly_routes/routes/1/run_details?month=2026-05-01")
+    assert res.status_code == 200
+    assert res.get_json()["field_changes_by_location"] == []
+
+
+def test_run_details_field_changes_groups_two_locations(run_details_client):
+    client, app = run_details_client
+    with app.app_context():
+        _, _, hist1, _ = _seed_basic_route_data()
+        loc2 = MonthlyRouteLocation(
+            id=102,
+            address="456 Other Ave",
+            address_normalized="456 other ave",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
+            building=None,
+            building_normalized="",
+            status_normalized="active",
+            status_raw="Active",
+            monthly_route_id=1,
+        )
+        hist2 = MonthlyRouteTestHistory(
+            id=5002,
+            location_id=102,
+            month_date=date(2026, 5, 1),
+            result_status="tested",
+            test_monthly_route_id=1,
+        )
+        db.session.add_all([loc2, hist2])
+        db.session.commit()
+        expected1 = hist1.updated_at.isoformat() if hist1.updated_at else None
+        expected2 = hist2.updated_at.isoformat() if hist2.updated_at else None
+
+    assert (
+        client.patch(
+            "/api/monthly_routes/routes/1/worksheet/rows/101?month=2026-05-01",
+            json={
+                "expected_updated_at": expected1,
+                "client_mutation_id": "mut-run-details-loc1",
+                "changes": {"testing_procedures": "PROC A"},
+            },
+        ).status_code
+        == 200
+    )
+    assert (
+        client.patch(
+            "/api/monthly_routes/routes/1/worksheet/rows/102?month=2026-05-01",
+            json={
+                "expected_updated_at": expected2,
+                "client_mutation_id": "mut-run-details-loc2",
+                "changes": {"ring": "RING-9"},
+            },
+        ).status_code
+        == 200
+    )
+
+    res = client.get("/api/monthly_routes/routes/1/run_details?month=2026-05-01")
+    assert res.status_code == 200
+    by_loc = res.get_json()["field_changes_by_location"]
+    assert len(by_loc) == 2
+    by_id = {row["location_id"]: row for row in by_loc}
+    assert by_id[101]["location_label"] == "123 Test St"
+    assert by_id[102]["location_label"] == "456 Other Ave"
+    assert {c["field_name"] for c in by_id[101]["changes"]} == {"testing_procedures"}
+    assert {c["field_name"] for c in by_id[102]["changes"]} == {"ring"}
 
 
 def test_get_run_details_route_not_found(run_details_client):

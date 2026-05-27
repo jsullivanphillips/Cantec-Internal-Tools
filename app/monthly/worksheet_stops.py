@@ -520,6 +520,55 @@ def _overlay_history_on_stop(
     return merged
 
 
+def run_comments_for_route_month(route_id: int, month_first: date) -> list[dict[str, object]]:
+    """Non-empty run comments for office run-details (avoids full stop serialization)."""
+    rows = (
+        MonthlyTestingSiteMonth.query.filter(
+            MonthlyTestingSiteMonth.month_date == month_first,
+            MonthlyTestingSiteMonth.test_monthly_route_id == route_id,
+            MonthlyTestingSiteMonth.run_comments.isnot(None),
+        )
+        .options(
+            joinedload(MonthlyTestingSiteMonth.testing_site)
+            .joinedload(MonthlyTestingSite.monthly_site)
+            .joinedload(MonthlySite.legacy_location),
+        )
+        .all()
+    )
+    out: list[dict[str, object]] = []
+    for mtsm in rows:
+        text = _normalize_text(mtsm.run_comments)
+        if not text:
+            continue
+        ts = mtsm.testing_site
+        if ts is None:
+            continue
+        site = ts.monthly_site
+        if site is None or site.legacy_monthly_route_location_id is None:
+            continue
+        loc = site.legacy_location
+        if loc is None or int(loc.monthly_route_id) != int(route_id):
+            continue
+        building = _normalize_text(mtsm.building_name) or _normalize_text(loc.building)
+        out.append(
+            {
+                "testing_site_id": int(ts.id),
+                "location_id": int(loc.id),
+                "display_address": (loc.display_address or loc.address or "").strip(),
+                "building": building,
+                "run_comments": text,
+            }
+        )
+    out.sort(
+        key=lambda row: (
+            str(row["display_address"]).casefold(),
+            int(row["location_id"]),
+            int(row["testing_site_id"]),
+        )
+    )
+    return out
+
+
 def _attributed_history_for_route_month(
     route_id: int,
     month_first: date,
@@ -811,6 +860,65 @@ def worksheet_stops_for_route_month(
     return out
 
 
+def _route_month_has_run_comments(route_id: int, month_first: date) -> bool:
+    return (
+        db.session.query(MonthlyTestingSiteMonth.id)
+        .filter(
+            MonthlyTestingSiteMonth.month_date == month_first,
+            MonthlyTestingSiteMonth.test_monthly_route_id == route_id,
+            MonthlyTestingSiteMonth.run_comments.isnot(None),
+            func.trim(MonthlyTestingSiteMonth.run_comments) != "",
+        )
+        .limit(1)
+        .first()
+        is not None
+    )
+
+
+def _route_month_has_skipped_stops(route_id: int, month_first: date) -> bool:
+    if (
+        db.session.query(MonthlyTestingSiteMonth.id)
+        .filter(
+            MonthlyTestingSiteMonth.month_date == month_first,
+            MonthlyTestingSiteMonth.test_monthly_route_id == route_id,
+            MonthlyTestingSiteMonth.result_status == "skipped",
+        )
+        .limit(1)
+        .first()
+        is not None
+    ):
+        return True
+    for row in _attributed_history_for_route_month(route_id, month_first):
+        if (row.result_status or "").strip().lower() == "skipped":
+            return True
+    return False
+
+
+def notable_worksheet_stops_for_run_details(
+    route_id: int,
+    month_first: date,
+    property_change_location_ids: set[int],
+) -> list[dict[str, object]]:
+    """Worksheet stops for run-details: skipped, property audit edits, or non-empty job comments."""
+    if (
+        not property_change_location_ids
+        and not _route_month_has_skipped_stops(route_id, month_first)
+        and not _route_month_has_run_comments(route_id, month_first)
+    ):
+        return []
+
+    all_stops = worksheet_stops_for_route_month(route_id, month_first)
+    filtered: list[dict[str, object]] = []
+    for stop in all_stops:
+        lid = int(stop["location_id"])
+        rs = (str(stop.get("result_status") or "")).strip().lower()
+        has_run_comments = _normalize_text(stop.get("run_comments")) is not None
+        if lid in property_change_location_ids or rs == "skipped" or has_run_comments:
+            filtered.append(dict(stop))
+
+    return filtered
+
+
 def worksheet_stops_revision_token(route_id: int, month_first: date) -> str | None:
     """Fingerprint for portal worksheet stop rows (SSE)."""
     max_ts = (
@@ -1059,3 +1167,13 @@ STOP_PATCH_HISTORY_AUDIT_ATTR: dict[str, str] = {
     "facp": "facp",
     "monitoring_notes": "monitoring_notes",
 }
+
+# Office run-details field-changes card: omit test workflow, run comments, and reset-run audit.
+RUN_DETAILS_EXCLUDED_AUDIT_FIELDS = frozenset({
+    "result_status",
+    "skip_reason",
+    "time_in",
+    "time_out",
+    "run_comments",
+    "reset_run",
+})

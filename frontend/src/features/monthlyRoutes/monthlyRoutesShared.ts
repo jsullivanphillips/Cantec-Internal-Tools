@@ -311,25 +311,17 @@ export type RouteTestingSessionPayload = {
 /** GET ``/api/monthly_routes/routes/:id/run_details?month=`` — office run summary. */
 export type MonthlyRunDetailCounts = RouteTestingSessionCounts
 
-export type MonthlyRunDetailComment = {
-  testing_site_id: number
-  location_id: number
-  display_address: string
-  building: string | null
-  run_comments: string
-}
-
-export type MonthlyRunDetailFieldChange = {
-  id: number
-  location_id: number
-  location_label: string
+export type MonthlyRunDetailLocationFieldChange = {
   field_name: string
   old_value: unknown
   new_value: unknown
-  source: string
-  changed_by_username: string | null
-  changed_by_name: string | null
-  changed_at: string | null
+}
+
+export type MonthlyRunDetailLocationFieldChanges = {
+  location_id: number
+  location_label: string
+  building: string | null
+  changes: MonthlyRunDetailLocationFieldChange[]
 }
 
 export type MonthlyRunDetailPayload = {
@@ -338,8 +330,8 @@ export type MonthlyRunDetailPayload = {
   run: TechnicianWorksheetRun | null
   counts: MonthlyRunDetailCounts
   specialists_month: MonthlyRouteSpecialistMonthPayload | null
-  run_comments: MonthlyRunDetailComment[]
-  field_changes: MonthlyRunDetailFieldChange[]
+  notable_stops: TechnicianWorksheetStop[]
+  field_changes_by_location: MonthlyRunDetailLocationFieldChanges[]
 }
 
 export type TechnicianWorksheetRow = {

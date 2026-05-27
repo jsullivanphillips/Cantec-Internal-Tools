@@ -15,6 +15,7 @@ import {
   hasPendingSyncForRouteMonth,
   loadSyncQueue,
   loadWorksheetCache,
+  applyServerStopWithPending,
   mergePendingChangesIntoPayload,
   mergeServerWorksheetPayload,
   saveSyncQueue,
@@ -115,7 +116,7 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
         const merged = mergePendingChangesIntoPayload(data, routeId, monthIso)
         if (mode === 'background' && hasLoadedOnceRef.current) {
           setPayload((prev) => {
-            const next = prev ? mergeServerWorksheetPayload(prev, merged) : merged
+            const next = prev ? mergeServerWorksheetPayload(prev, merged, routeId, monthIso) : merged
             saveWorksheetCache(next)
             return next
           })
@@ -215,17 +216,31 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
             }),
           },
         )
+        const mergedStop = applyServerStopWithPending(
+          res.stop,
+          item.routeId,
+          item.monthIso,
+          item.id,
+        )
         setPayload((prev) => {
           if (!prev?.stops?.length) return prev
           const nextStops = prev.stops.map((s) =>
-            s.testing_site_id === testingSiteId ? res.stop : s,
+            s.testing_site_id === testingSiteId ? mergedStop : s,
           )
           const next = { ...prev, stops: nextStops }
           saveWorksheetCache(next)
           return next
         })
         suppressRemoteRefreshUntilRef.current = Date.now() + 2500
-        nextQueue = nextQueue.filter((q) => q.id !== item.id)
+        nextQueue = nextQueue
+          .filter((q) => q.id !== item.id)
+          .map((q) =>
+            q.routeId === item.routeId &&
+            q.monthIso === item.monthIso &&
+            q.testingSiteId === testingSiteId
+              ? { ...q, expectedUpdatedAt: mergedStop.version_updated_at }
+              : q,
+          )
       } catch (e) {
         const maybeErr = e as { error?: unknown; conflict?: { message?: string } }
         if (maybeErr?.error === 'conflict' || maybeErr?.conflict) {

@@ -144,6 +144,42 @@ export function hasPendingSyncForRouteMonth(routeId: number, monthIso: string): 
   )
 }
 
+/** Unsynced field edits for one stop (optionally skip queue items already applied on the server). */
+export function collectPendingStopChanges(
+  routeId: number,
+  monthIso: string,
+  testingSiteId: number,
+  excludeItemIds?: ReadonlySet<string> | string,
+): WorksheetStopChangeSet {
+  const exclude =
+    typeof excludeItemIds === 'string'
+      ? new Set([excludeItemIds])
+      : excludeItemIds ?? new Set<string>()
+  let patch: WorksheetStopChangeSet = {}
+  for (const item of loadSyncQueue()) {
+    if (
+      item.routeId !== routeId ||
+      item.monthIso !== monthIso ||
+      item.testingSiteId !== testingSiteId
+    ) {
+      continue
+    }
+    if (exclude.has(item.id)) continue
+    patch = { ...patch, ...(item.changes as WorksheetStopChangeSet) }
+  }
+  return patch
+}
+
+export function applyServerStopWithPending(
+  serverStop: TechnicianWorksheetStop,
+  routeId: number,
+  monthIso: string,
+  excludeItemId: string,
+): TechnicianWorksheetStop {
+  const pending = collectPendingStopChanges(routeId, monthIso, serverStop.testing_site_id, excludeItemId)
+  return Object.keys(pending).length > 0 ? { ...serverStop, ...pending } : serverStop
+}
+
 /** Overlay unsynced portal stop edits so SSE/GET refresh does not wipe optimistic clock-ins. */
 export function mergePendingChangesIntoPayload(
   payload: TechnicianWorksheetPayload,
@@ -176,6 +212,8 @@ export function mergePendingChangesIntoPayload(
 export function mergeServerWorksheetPayload(
   prev: TechnicianWorksheetPayload,
   server: TechnicianWorksheetPayload,
+  routeId: number,
+  monthIso: string,
 ): TechnicianWorksheetPayload {
   const serverStops = server.stops ?? []
   const serverById = new Map(serverStops.map((s) => [s.testing_site_id, s]))
@@ -184,7 +222,12 @@ export function mergeServerWorksheetPayload(
   const stops: TechnicianWorksheetStop[] = []
   for (const s of prev.stops ?? []) {
     const remote = serverById.get(s.testing_site_id)
-    stops.push(remote ?? s)
+    if (!remote) {
+      stops.push(s)
+      continue
+    }
+    const pending = collectPendingStopChanges(routeId, monthIso, s.testing_site_id)
+    stops.push(Object.keys(pending).length > 0 ? { ...remote, ...pending } : remote)
   }
   for (const s of serverStops) {
     if (!prevIds.has(s.testing_site_id)) {
