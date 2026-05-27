@@ -1,5 +1,7 @@
 # app/__init__.py
 import os
+from datetime import timedelta
+
 from flask import Flask, abort
 from flask_migrate import Migrate
 from app.config import Config
@@ -55,6 +57,8 @@ def create_app():
         database_url = database_url.replace("postgres://", "postgresql://", 1)
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    # Technician portal PIN sessions use ``session.permanent`` (see ``portal_auth``).
+    app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=16)
     _refuse_debug_against_production_db(app)
     db.init_app(app)
     migrate.init_app(app, db)

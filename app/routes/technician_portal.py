@@ -101,7 +101,9 @@ def portal_auth():
     if not hmac.compare_digest(submitted, configured):
         session.pop(SESSION_FLAG, None)
         return jsonify({"ok": False, "error": "Invalid PIN"}), 401
+    session.permanent = True
     session[SESSION_FLAG] = True
+    session.modified = True
     return jsonify({"ok": True})
 
 

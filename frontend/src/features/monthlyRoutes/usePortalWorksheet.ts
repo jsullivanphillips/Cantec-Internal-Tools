@@ -20,7 +20,7 @@ import {
   saveWorksheetCache,
   type WorksheetStopChangeSet,
 } from './worksheetOfflineStore'
-import { apiJson, isAbortError } from '../../lib/apiClient'
+import { apiJson, authFailureRedirectPath, isAbortError } from '../../lib/apiClient'
 
 const MONTH_FIRST_RE = /^\d{4}-\d{2}-01$/
 
@@ -120,6 +120,17 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
         hasLoadedOnceRef.current = true
       } catch (e) {
         if (isAbortError(e)) return
+        if (e instanceof Error && e.message === 'portal_auth') return
+        if (
+          typeof e === 'object' &&
+          e != null &&
+          'code' in e &&
+          ((e as { code?: string }).code === 'auth_required' ||
+            (e as { code?: string }).code === 'portal_locked')
+        ) {
+          window.location.href = authFailureRedirectPath()
+          return
+        }
         if (!cached) {
           setError('Unable to load worksheet.')
           setSyncState('saved_offline')

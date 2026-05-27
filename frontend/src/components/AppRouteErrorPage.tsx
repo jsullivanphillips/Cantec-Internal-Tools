@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Button, Card } from 'react-bootstrap'
 import { Link, isRouteErrorResponse, useLocation, useRouteError } from 'react-router-dom'
+import { isTechnicianPortalPath } from '../lib/apiClient'
 
 type ErrorCopy = {
   eyebrow: string
@@ -96,7 +97,10 @@ export default function AppRouteErrorPage() {
   const [logoFailed, setLogoFailed] = useState(false)
   const copy = useMemo(() => routeErrorCopy(error), [error])
   const details = useMemo(() => errorDetails(error), [error])
-  const showSignIn = !location.pathname.startsWith('/login')
+  const onTechPortal = isTechnicianPortalPath(location.pathname)
+  const showSignIn = !location.pathname.startsWith('/login') && !onTechPortal
+  const signInPath = onTechPortal ? '/tech' : '/login'
+  const signInLabel = onTechPortal ? 'Technician PIN' : 'Sign in'
 
   return (
     <div className="app-shell app-canvas d-flex flex-column min-vh-100">
@@ -137,8 +141,8 @@ export default function AppRouteErrorPage() {
                     Go to Home
                   </Link>
                   {showSignIn ? (
-                    <Link to="/login" className="btn btn-outline-secondary">
-                      Sign in
+                    <Link to={signInPath} className="btn btn-outline-secondary">
+                      {signInLabel}
                     </Link>
                   ) : null}
                 </div>

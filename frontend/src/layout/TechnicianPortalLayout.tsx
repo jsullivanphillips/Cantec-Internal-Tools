@@ -29,8 +29,15 @@ export default function TechnicianPortalLayout() {
     try {
       const me = await apiJson<PortalMeResponse>('/api/technician_portal/me')
       setUnlocked(!!me.unlocked)
-    } catch {
-      setUnlocked(false)
+    } catch (e) {
+      const code =
+        typeof e === 'object' && e != null && 'code' in e
+          ? String((e as { code?: string }).code)
+          : ''
+      if (code === 'portal_locked' || code === 'auth_required') {
+        setUnlocked(false)
+      }
+      /* Transient/network errors: keep prior unlock state so a blip does not kick techs out. */
     }
   }, [])
 

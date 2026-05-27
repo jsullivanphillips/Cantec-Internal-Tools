@@ -140,7 +140,7 @@ Delegates most mutations to `monthly_routes`, then augments with v2:
 | `POST /api/technician_portal/routes/<id>/runs` | Start run + materialize history rows and v2 stop months |
 | `POST .../runs/complete`, `.../runs/reopen` | Portal run lifecycle |
 
-Auth exemptions: `app/api_auth_gate.py` — portal + regex-matched worksheet paths when `tech_portal_unlocked` session flag is set.
+Auth exemptions: `app/api_auth_gate.py` — all `/api/technician_portal/*` and `/api/monthly_routes/routes/:id/*` when `tech_portal_unlocked` (16h permanent session after PIN). SPA auth failures on `/tech/*` redirect to `/tech`, not staff `/login`.
 
 ### 5.4 `monthly_specialist` — `app/routes/monthly_specialists.py`
 

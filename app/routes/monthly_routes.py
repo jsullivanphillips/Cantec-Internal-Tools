@@ -2445,6 +2445,7 @@ def patch_monthly_route_worksheet_stop(route_id: int, testing_site_id: int):
     """PATCH v2 portal worksheet stop (``MonthlyTestingSiteMonth``)."""
     from app.monthly.worksheet_stops import (
         STOP_PATCH_FIELD_MAP,
+        STOP_PATCH_HISTORY_AUDIT_ATTR,
         ensure_worksheet_stops_for_route_month,
         find_open_clock_in_stop_on_route,
         is_primary_stop,
@@ -2619,45 +2620,35 @@ def patch_monthly_route_worksheet_stop(route_id: int, testing_site_id: int):
     if is_primary_stop(ts, loc):
         hist = sync_primary_history_from_stop(mtsm, loc, route_id, month_first)
 
-    audit_field_map = {
-        "result_status": "result_status",
-        "skip_reason": "skip_reason",
-        "testing_procedures": "testing_procedures",
-        "inspection_tech_notes": "inspection_tech_notes",
-        "time_in": "sheet_time_in_raw",
-        "time_out": "sheet_time_out_raw",
-        "annual_month": "annual_month",
-        "ring": "ring",
-        "key_number": "key_number",
-        "panel": "facp",
-        "facp": "facp",
-        "monitoring_notes": "monitoring_notes",
-        "monitoring_company": "monitoring_company_name",
-    }
-
     if changed_any and hist is not None:
         for field_name in changes_eff:
             if field_name not in STOP_PATCH_FIELD_MAP:
                 continue
+            mtsm_attr = STOP_PATCH_FIELD_MAP[field_name]
             if field_name == "run_comments":
                 old_val = audit_old_values.get("run_comments")
                 new_val = mtsm.run_comments
-            else:
-                hist_attr = audit_field_map.get(field_name, STOP_PATCH_FIELD_MAP[field_name])
+                audit_name = "run_comments"
+            elif field_name in STOP_PATCH_HISTORY_AUDIT_ATTR:
+                hist_attr = STOP_PATCH_HISTORY_AUDIT_ATTR[field_name]
                 old_val = getattr(hist, hist_attr)
-                new_val = getattr(mtsm, STOP_PATCH_FIELD_MAP[field_name])
+                new_val = getattr(mtsm, mtsm_attr)
+                audit_name = "time_in" if field_name == "time_in" else (
+                    "time_out" if field_name == "time_out" else (
+                        "facp" if field_name == "panel" else field_name
+                    )
+                )
+            else:
+                old_val = audit_old_values.get(field_name)
+                new_val = getattr(mtsm, mtsm_attr)
+                audit_name = field_name
             if field_name == "panel":
-                old_val = hist.facp
+                old_val = hist.facp if field_name in STOP_PATCH_HISTORY_AUDIT_ATTR else audit_old_values.get("panel")
                 new_val = _normalize_ws_text(mtsm.panel) or _normalize_ws_text(mtsm.facp)
             if field_name == "monitoring_notes":
                 new_val = mtsm.monitoring_notes
             if field_name == "monitoring_company":
                 new_val = mtsm.monitoring_company_name
-            audit_name = "time_in" if field_name == "time_in" else (
-                "time_out" if field_name == "time_out" else (
-                    "facp" if field_name == "panel" else field_name
-                )
-            )
             if old_val == new_val:
                 continue
             db.session.add(

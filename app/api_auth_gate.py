@@ -15,6 +15,8 @@ from flask import jsonify, request, session
 _PORTAL_WORKSHEET_PATH_RE = re.compile(
     r"^/api/monthly_routes/routes/\d+(?:/worksheet(?:/(?:stream|reset_run|rows/\d+(?:/audit)?|stops/\d+))?)?$"
 )
+# Any route-scoped monthly API the technician portal may call while unlocked (worksheet, runs, etc.).
+_PORTAL_MONTHLY_ROUTE_API_RE = re.compile(r"^/api/monthly_routes/routes/\d+(?:/.*)?$")
 
 
 def register_api_session_auth(app):
@@ -29,9 +31,11 @@ def register_api_session_auth(app):
         return True
 
     def _portal_unlocked_api(path: str) -> bool:
-        """When the technician portal is unlocked in this session, allow worksheet endpoints."""
+        """When the technician portal is unlocked, allow portal + route worksheet APIs."""
         if not session.get("tech_portal_unlocked"):
             return False
+        if _PORTAL_MONTHLY_ROUTE_API_RE.match(path):
+            return True
         return bool(_PORTAL_WORKSHEET_PATH_RE.match(path))
 
     @app.before_request

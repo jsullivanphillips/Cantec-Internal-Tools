@@ -1041,3 +1041,21 @@ STOP_PATCH_FIELD_MAP: dict[str, str] = {
     "monitoring_notes": "monitoring_notes",
     "monitoring_company": "monitoring_company_name",
 }
+
+# Subset of stop PATCH keys mirrored on ``MonthlyRouteTestHistory`` for audit/dual-write.
+# Other snapshot fields (building, door, PMC, panel location, monitoring company name)
+# live on ``MonthlyTestingSiteMonth`` only until history columns are extended.
+STOP_PATCH_HISTORY_AUDIT_ATTR: dict[str, str] = {
+    "result_status": "result_status",
+    "skip_reason": "skip_reason",
+    "testing_procedures": "testing_procedures",
+    "inspection_tech_notes": "inspection_tech_notes",
+    "time_in": "sheet_time_in_raw",
+    "time_out": "sheet_time_out_raw",
+    "annual_month": "annual_month",
+    "ring": "ring",
+    "key_number": "key_number",
+    "panel": "facp",
+    "facp": "facp",
+    "monitoring_notes": "monitoring_notes",
+}

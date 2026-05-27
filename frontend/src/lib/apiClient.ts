@@ -1,5 +1,39 @@
 const base = import.meta.env.VITE_API_BASE_URL ?? ''
 
+/** True when the SPA is on the PIN-gated technician portal (`/tech/*`). */
+export function isTechnicianPortalPath(pathname = window.location.pathname): boolean {
+  return pathname === '/tech' || pathname.startsWith('/tech/')
+}
+
+function staffLoginPath(): string {
+  return `${base}/login`
+}
+
+/** Where to send the browser when staff/portal session auth failed. */
+export function authFailureRedirectPath(pathname = window.location.pathname): string {
+  return isTechnicianPortalPath(pathname) ? `${base}/tech` : staffLoginPath()
+}
+
+function resolveRedirectLocation(locationHeader: string | null): string {
+  const fallback = isTechnicianPortalPath() ? '/tech' : '/login'
+  const loc = (locationHeader || fallback).trim()
+  let target = loc.startsWith('http') ? loc : `${base}${loc.startsWith('/') ? loc : `/${loc}`}`
+
+  if (isTechnicianPortalPath()) {
+    try {
+      const url = new URL(target, window.location.origin)
+      if (url.pathname === '/login' || url.pathname.endsWith('/login')) {
+        return authFailureRedirectPath()
+      }
+    } catch {
+      if (target.includes('/login')) {
+        return authFailureRedirectPath()
+      }
+    }
+  }
+  return target
+}
+
 export function isAbortError(error: unknown): boolean {
   if (error instanceof DOMException) return error.name === 'AbortError'
   if (typeof error === 'object' && error != null && 'name' in error) {
@@ -25,14 +59,13 @@ export async function apiFetch(
   })
 
   if (res.status === 302 || res.status === 301) {
-    const loc = res.headers.get('location') || '/login'
-    window.location.href = loc.startsWith('http') ? loc : `${base}${loc}`
+    window.location.href = resolveRedirectLocation(res.headers.get('location'))
     throw new Error('redirect')
   }
 
   const ct = res.headers.get('content-type') || ''
-  if (!res.ok && ct.includes('text/html')) {
-    window.location.href = `${base}/login`
+  if (!res.ok && ct.includes('text/html') && (res.status === 401 || res.status === 403)) {
+    window.location.href = authFailureRedirectPath()
     throw new Error('auth')
   }
 
@@ -52,6 +85,19 @@ export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
       err = JSON.parse(text)
     } catch {
       /* keep text */
+    }
+    if (
+      res.status === 401 &&
+      isTechnicianPortalPath() &&
+      typeof err === 'object' &&
+      err != null &&
+      'code' in (err as Record<string, unknown>)
+    ) {
+      const code = String((err as { code?: string }).code || '')
+      if (code === 'auth_required' || code === 'portal_locked') {
+        window.location.href = authFailureRedirectPath()
+        throw new Error('portal_auth')
+      }
     }
     throw err
   }

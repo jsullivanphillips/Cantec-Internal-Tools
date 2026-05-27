@@ -41,7 +41,12 @@ def api_login():
 
 @api_auth_bp.route("/logout", methods=["POST"])
 def api_logout():
-    session.clear()
+    """Staff sign-out only — preserve PIN-unlocked technician portal in the same browser session."""
+    portal_unlocked = session.get("tech_portal_unlocked")
+    for key in ("authenticated", "username", "password", "account_timezone"):
+        session.pop(key, None)
+    if portal_unlocked:
+        session["tech_portal_unlocked"] = True
     return jsonify({"ok": True, "redirect": "/login"})
 
 
