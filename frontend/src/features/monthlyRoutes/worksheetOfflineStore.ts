@@ -94,6 +94,10 @@ export function saveWorksheetCache(payload: TechnicianWorksheetPayload): void {
   localStorage.setItem(cacheKey(routeId, monthIso), JSON.stringify(payload))
 }
 
+export function clearWorksheetCache(routeId: number, monthIso: string): void {
+  localStorage.removeItem(cacheKey(routeId, monthIso))
+}
+
 export function markCompletionPending(routeId: number, monthIso: string, value: boolean): void {
   const key = `${COMPLETION_KEY_PREFIX}${routeId}::${monthIso}`
   if (value) localStorage.setItem(key, '1')

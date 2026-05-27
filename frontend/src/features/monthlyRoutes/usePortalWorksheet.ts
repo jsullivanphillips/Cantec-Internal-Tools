@@ -3,7 +3,6 @@ import { useLocation } from 'react-router-dom'
 import {
   monthFirstIsoPacificToday,
   parseYearMonth,
-  stopsHaveRecordedOutcomes,
   worksheetRunExplicitlyCompleted,
   WORKSHEET_CLOCK_IN_BLOCKED_MESSAGE,
   worksheetStopIsOpenClockIn,
@@ -237,12 +236,7 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
   const isHistoricalMonth = Boolean(payload?.run?.is_historical)
   const isCurrentMonth = monthOk && monthIso === monthFirstIsoPacificToday()
   const hasRunFile = payload?.run != null
-  const stopsHaveOutcomes = stopsHaveRecordedOutcomes(stops)
-  const viewingHistoricalRun =
-    fromPriorRun ||
-    !isCurrentMonth ||
-    isHistoricalMonth ||
-    (hasRunFile && !runStarted && stopsHaveOutcomes)
+  const viewingHistoricalRun = fromPriorRun || !isCurrentMonth || isHistoricalMonth
 
   const onPortalStartRun = useCallback(async () => {
     if (Number.isNaN(routeId) || viewingHistoricalRun) return
@@ -428,20 +422,10 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
 
   const showStopWorkspace = stops.length > 0 && hasRunFile
   const canEditStops =
-    showStopWorkspace &&
-    runStarted &&
-    !runCompleted &&
-    !viewingHistoricalRun &&
-    isCurrentMonth
-  const showStartRun =
-    isCurrentMonth &&
-    hasRunFile &&
-    !runStarted &&
-    !runCompleted &&
-    !viewingHistoricalRun
-  const showCompleteRun =
-    isCurrentMonth && hasRunFile && runStarted && !runCompleted && !viewingHistoricalRun
-  const showReopenRun = runCompleted && isCurrentMonth
+    showStopWorkspace && !runCompleted && !viewingHistoricalRun && isCurrentMonth
+  const showStartRun = false
+  const showCompleteRun = false
+  const showReopenRun = false
   const readOnlyWorksheet = showStopWorkspace && !canEditStops
   /** True until the first successful fetch for this route/month (avoids stale prior-month UI). */
   const initialLoading = loading && !hasLoadedOnce

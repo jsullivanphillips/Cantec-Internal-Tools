@@ -315,70 +315,31 @@ def portal_start_current_month_run(route_id: int):
 
 @technician_portal_bp.post("/routes/<int:route_id>/runs/complete")
 def portal_complete_run_for_month(route_id: int):
-    """Mark the worksheet month run completed after field Start Run (idempotent).
-
-    Body JSON must include ``month_date`` (first-of-month ISO) so reopening a prior
-    month's sheet completes that month, not the Pacific calendar current month.
-    """
+    """Deprecated: only office staff may complete a run (``POST /api/monthly_routes/.../runs/complete``)."""
     if not session.get(SESSION_FLAG):
         return jsonify({"error": "Portal locked", "code": "portal_locked"}), 401
-    from app.routes.monthly_routes import _run_explicitly_completed, _serialize_run
-
-    mr = MonthlyRoute.query.filter_by(id=route_id).one_or_none()
-    if mr is None:
-        return jsonify({"error": "Route not found", "code": "not_found"}), 404
-    data = request.get_json(silent=True) or {}
-    month_first = _parse_iso_date(data.get("month_date"))
-    if month_first is None:
-        return jsonify({"error": "month_date required (YYYY-MM-01)", "code": "bad_request"}), 400
-    run = MonthlyRouteRun.query.filter_by(
-        monthly_route_id=route_id, month_date=month_first
-    ).one_or_none()
-    if run is None:
-        return jsonify({"error": "Run not found", "code": "run_not_found"}), 404
-    if run.started_at is None:
-        return (
-            jsonify(
-                {
-                    "error": "Run has not been started yet",
-                    "code": "run_not_started",
-                }
-            ),
-            400,
-        )
-    if _run_explicitly_completed(run):
-        return jsonify({"run": _serialize_run(run)})
-    now = datetime.now(PACIFIC_TZ)
-    run.status = "completed"
-    run.completed_at = now
-    db.session.add(run)
-    db.session.commit()
-    return jsonify({"run": _serialize_run(run)})
+    return (
+        jsonify(
+            {
+                "error": "Completing a run is an office action. Ask the office to mark the job complete.",
+                "code": "portal_complete_forbidden",
+            }
+        ),
+        403,
+    )
 
 
 @technician_portal_bp.post("/routes/<int:route_id>/runs/reopen")
 def portal_reopen_run_for_month(route_id: int):
-    """Clear completion for the worksheet month (same effect as staff reopen)."""
+    """Deprecated: only office staff may reopen a completed run."""
     if not session.get(SESSION_FLAG):
         return jsonify({"error": "Portal locked", "code": "portal_locked"}), 401
-    from app.routes.monthly_routes import _run_explicitly_completed, _serialize_run
-
-    mr = MonthlyRoute.query.filter_by(id=route_id).one_or_none()
-    if mr is None:
-        return jsonify({"error": "Route not found", "code": "not_found"}), 404
-    data = request.get_json(silent=True) or {}
-    month_first = _parse_iso_date(data.get("month_date"))
-    if month_first is None:
-        return jsonify({"error": "month_date required (YYYY-MM-01)", "code": "bad_request"}), 400
-    run = MonthlyRouteRun.query.filter_by(
-        monthly_route_id=route_id, month_date=month_first
-    ).one_or_none()
-    if run is None:
-        return jsonify({"error": "Run not found", "code": "run_not_found"}), 404
-    if not _run_explicitly_completed(run):
-        return jsonify({"run": _serialize_run(run)})
-    run.status = "open"
-    run.completed_at = None
-    db.session.add(run)
-    db.session.commit()
-    return jsonify({"run": _serialize_run(run)})
+    return (
+        jsonify(
+            {
+                "error": "Reopening a completed run is an office action.",
+                "code": "portal_reopen_forbidden",
+            }
+        ),
+        403,
+    )

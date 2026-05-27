@@ -213,7 +213,7 @@ export default function PortalStopFieldsEditModal({
           </div>
           <div className="col-12">
             <Form.Group>
-              <Form.Label className="small">Run comments</Form.Label>
+              <Form.Label className="small">Job comments</Form.Label>
               <Form.Control
                 as="textarea"
                 rows={3}

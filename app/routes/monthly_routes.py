@@ -323,11 +323,6 @@ def _serialize_linked_key(key: Key | None) -> dict[str, object] | None:
 
 
 def _months_payload_for_location(location_id: int) -> dict[str, dict[str, object]]:
-    current_route_id = (
-        db.session.query(MonthlyRouteLocation.monthly_route_id)
-        .filter(MonthlyRouteLocation.id == location_id)
-        .scalar()
-    )
     history_rows = (
         MonthlyRouteTestHistory.query.options(
             joinedload(MonthlyRouteTestHistory.test_monthly_route),
@@ -339,16 +334,18 @@ def _months_payload_for_location(location_id: int) -> dict[str, dict[str, object
     )
     out: dict[str, dict[str, object]] = {}
     for row in history_rows:
-        worksheet_route_id = row.test_monthly_route_id
-        if worksheet_route_id is None and row.run is not None:
-            worksheet_route_id = row.run.monthly_route_id
-        if worksheet_route_id is None:
-            worksheet_route_id = current_route_id
+        # Worksheet / run-details links require a real run file (``run_id``), not master-sheet ledger only.
+        worksheet_route_id: int | None = None
+        if row.run_id is not None:
+            if row.run is not None:
+                worksheet_route_id = int(row.run.monthly_route_id)
+            elif row.test_monthly_route_id is not None:
+                worksheet_route_id = int(row.test_monthly_route_id)
         out[row.month_date.isoformat()] = {
             "result_status": row.result_status,
             "skip_reason": row.skip_reason,
             "test_monthly_route": _serialize_monthly_route_entity(row.test_monthly_route),
-            "worksheet_route_id": int(worksheet_route_id) if worksheet_route_id is not None else None,
+            "worksheet_route_id": worksheet_route_id,
             "run_id": int(row.run_id) if row.run_id is not None else None,
         }
     return out
@@ -547,6 +544,26 @@ def _route_testing_by_month(route_id: int) -> dict[str, dict]:
         ann.sort(key=lambda s: (str(s["label"]).casefold(), int(s["id"])))
 
     return by_month
+
+
+def _runs_by_month_for_route(route_id: int) -> dict[str, dict[str, object]]:
+    """``MonthlyRouteRun`` rows keyed by ``YYYY-MM-01`` (CSV import, portal, or worksheet materialization)."""
+    rows = (
+        MonthlyRouteRun.query.filter_by(monthly_route_id=route_id)
+        .order_by(MonthlyRouteRun.month_date.asc())
+        .all()
+    )
+    out: dict[str, dict[str, object]] = {}
+    for run in rows:
+        out[run.month_date.isoformat()] = {
+            "run_id": int(run.id),
+            "source": run.source,
+            "status": run.status,
+            "opened_at": run.opened_at.isoformat() if run.opened_at else None,
+            "started_at": run.started_at.isoformat() if run.started_at else None,
+            "completed_at": run.completed_at.isoformat() if run.completed_at else None,
+        }
+    return out
 
 
 def _get_or_create_run(route_id: int, month_first: date) -> MonthlyRouteRun:
@@ -995,6 +1012,43 @@ def _run_field_active(run: MonthlyRouteRun) -> bool:
     if _run_explicitly_completed(run):
         return False
     return run.started_at is not None
+
+
+def _tech_portal_worksheet_request() -> bool:
+    """True when the worksheet read is for the field technician portal (not office staff browse)."""
+    if not session.get("tech_portal_unlocked"):
+        return False
+    if session.get("authenticated"):
+        return (request.args.get("tech_portal") or "").strip() == "1"
+    return True
+
+
+def _tech_portal_patch_request() -> bool:
+    return (request.args.get("tech_portal") or "").strip() == "1"
+
+
+def _portal_current_month_materialize_on_read(month_first: date) -> bool:
+    """PIN/portal opening the Pacific current month gets a run file without ``Start Run``."""
+    return _tech_portal_worksheet_request() and month_first == _current_pacific_month_first()
+
+
+def _reject_patch_if_portal_run_completed(
+    run: MonthlyRouteRun | None,
+) -> tuple[object, int] | None:
+    """Block all technician-portal worksheet edits once office has completed the run."""
+    if run is None or not _tech_portal_patch_request():
+        return None
+    if not _run_explicitly_completed(run):
+        return None
+    return (
+        jsonify(
+            {
+                "error": "This run is completed. Ask the office to reopen the job before making changes.",
+                "code": "run_completed_locked",
+            }
+        ),
+        409,
+    )
 
 
 def _serialize_run(run: MonthlyRouteRun | None) -> dict[str, object] | None:
@@ -1703,7 +1757,10 @@ def list_monthly_routes():
             MonthlyRouteLocation.monthly_route_id,
             func.count(MonthlyRouteLocation.id),
         )
-        .filter(MonthlyRouteLocation.monthly_route_id.isnot(None))
+        .filter(
+            MonthlyRouteLocation.monthly_route_id.isnot(None),
+            MonthlyRouteLocation.status_normalized == "active",
+        )
         .group_by(MonthlyRouteLocation.monthly_route_id)
         .all()
     )
@@ -1711,11 +1768,14 @@ def list_monthly_routes():
 
     out: list[dict[str, object]] = []
     for route in route_rows:
+        active_count = count_map.get(int(route.id), 0)
+        if active_count < 1:
+            continue
         out.append(
             {
                 "route": _serialize_monthly_route_entity(
                     route,
-                    location_count=count_map.get(int(route.id), 0),
+                    location_count=active_count,
                 ),
             }
         )
@@ -1737,6 +1797,7 @@ def get_monthly_route_detail(route_id: int):
     )
     comments_payload = [_serialize_monthly_route_comment(r) for r in comment_rows]
     testing_by_month = _route_testing_by_month(route_id)
+    runs_by_month = _runs_by_month_for_route(route_id)
 
     st_rid = mr.service_trade_route_location_id
     specialists_payload: dict[str, object] | None
@@ -1780,10 +1841,161 @@ def get_monthly_route_detail(route_id: int):
             "locations": locations_payload,
             "comments": comments_payload,
             "testing_by_month": testing_by_month,
+            "runs_by_month": runs_by_month,
             "specialists": specialists_payload,
             "specialists_by_month": specialists_by_month,
         }
     )
+
+
+def _run_details_counts_for_month(route_id: int, month_first: date) -> dict[str, int]:
+    """Outcome counts for one sheet month (same rules as ``testing_by_month``)."""
+    cell = _route_testing_by_month(route_id).get(month_first.isoformat())
+    if cell is None:
+        return {
+            "sites_tested_count": 0,
+            "skipped_non_annual_count": 0,
+            "skipped_annual_count": 0,
+        }
+    return {
+        "sites_tested_count": int(cell["sites_tested_count"]),
+        "skipped_non_annual_count": int(cell["skipped_non_annual_count"]),
+        "skipped_annual_count": int(cell["skipped_annual_count"]),
+    }
+
+
+def _location_display_label(loc: MonthlyRouteLocation | None, location_id: int) -> str:
+    if loc is None:
+        return f"Location {location_id}"
+    s = (loc.display_address or loc.address or "").strip()
+    return s or f"Location {location_id}"
+
+
+def _serialize_monthly_run_details_payload(
+    route_id: int, month_first: date
+) -> dict[str, object] | None:
+    """Office run summary: header, counts, ST technicians, run comments, field audit."""
+    from app.monthly.worksheet_stops import worksheet_stops_for_route_month
+
+    mr = _get_monthly_route(route_id)
+    if mr is None:
+        return None
+
+    location_count = MonthlyRouteLocation.query.filter_by(monthly_route_id=route_id).count()
+    run = MonthlyRouteRun.query.filter_by(
+        monthly_route_id=route_id,
+        month_date=month_first,
+    ).one_or_none()
+
+    specialists_month: dict[str, object] | None = None
+    from sqlalchemy import inspect as sa_inspect
+
+    if sa_inspect(db.engine).has_table("monthly_route_specialist_month"):
+        spec_row = MonthlyRouteSpecialistMonth.query.filter_by(
+            monthly_route_id=route_id,
+            month_first=month_first,
+        ).one_or_none()
+        if spec_row is not None:
+            specialists_month = {
+                "top_technicians": spec_row.top_technicians or [],
+                "completed_jobs_attributed": spec_row.completed_jobs_attributed,
+                "route_tested_on": spec_row.route_tested_on.isoformat() if spec_row.route_tested_on else None,
+                "last_updated_at": spec_row.last_updated_at.isoformat() if spec_row.last_updated_at else None,
+            }
+
+    run_comments_out: list[dict[str, object]] = []
+    for stop in worksheet_stops_for_route_month(route_id, month_first):
+        raw = stop.get("run_comments")
+        text = (str(raw).strip() if raw is not None else "")
+        if not text:
+            continue
+        building = stop.get("building_name")
+        run_comments_out.append(
+            {
+                "testing_site_id": int(stop["testing_site_id"]),
+                "location_id": int(stop["location_id"]),
+                "display_address": str(stop.get("display_address") or ""),
+                "building": (str(building).strip() or None) if building is not None else None,
+                "run_comments": text,
+            }
+        )
+    run_comments_out.sort(
+        key=lambda row: (
+            str(row["display_address"]).casefold(),
+            int(row["location_id"]),
+            int(row["testing_site_id"]),
+        )
+    )
+
+    audit_rows = (
+        MonthlyRouteWorksheetAuditEvent.query.filter_by(
+            monthly_route_id=route_id,
+            month_date=month_first,
+        )
+        .order_by(MonthlyRouteWorksheetAuditEvent.changed_at.desc())
+        .all()
+    )
+    loc_ids = {int(e.location_id) for e in audit_rows}
+    loc_by_id = {
+        loc.id: loc
+        for loc in MonthlyRouteLocation.query.filter(MonthlyRouteLocation.id.in_(loc_ids)).all()
+    } if loc_ids else {}
+
+    field_changes: list[dict[str, object]] = []
+    for event in audit_rows:
+        lid = int(event.location_id)
+        field_changes.append(
+            {
+                "id": int(event.id),
+                "location_id": lid,
+                "location_label": _location_display_label(loc_by_id.get(lid), lid),
+                "field_name": event.field_name,
+                "old_value": event.old_value,
+                "new_value": event.new_value,
+                "source": event.source,
+                "changed_by_username": event.changed_by_username,
+                "changed_by_name": event.changed_by_name,
+                "changed_at": event.changed_at.isoformat() if event.changed_at else None,
+            }
+        )
+
+    return {
+        "route": _serialize_monthly_route_entity(mr, location_count=location_count),
+        "month_date": month_first.isoformat(),
+        "run": _serialize_run(run),
+        "counts": _run_details_counts_for_month(route_id, month_first),
+        "specialists_month": specialists_month,
+        "run_comments": run_comments_out,
+        "field_changes": field_changes,
+    }
+
+
+@monthly_routes_bp.get("/api/monthly_routes/routes/<int:route_id>/run_details")
+def get_monthly_route_run_details(route_id: int):
+    """Office run summary for one sheet month (read-only; does not materialize worksheet rows)."""
+    month_raw = (request.args.get("month") or "").strip()
+    month_dt = _parse_month(month_raw)
+    if month_dt is None:
+        return jsonify({"error": "Invalid or missing month query param (use YYYY-MM-DD, first of month)"}), 400
+
+    month_first = date(month_dt.year, month_dt.month, 1)
+    payload = _serialize_monthly_run_details_payload(route_id, month_first)
+    if payload is None:
+        return jsonify({"error": "Route not found"}), 404
+    if payload.get("run") is None:
+        return (
+            jsonify(
+                {
+                    "error": (
+                        "No run file for this route and month. Upload a route CSV or complete "
+                        "a field run before opening run details."
+                    ),
+                    "code": "run_not_found",
+                }
+            ),
+            404,
+        )
+    return jsonify(payload)
 
 
 @monthly_routes_bp.get("/api/monthly_routes/routes/<int:route_id>/testing_session")
@@ -1861,6 +2073,9 @@ def _portal_worksheet_lazy_request() -> bool:
     (``authenticated``), opening ``/tech/`` worksheets must pass ``tech_portal=1`` so those reads do not
     fall through to staff auto-materialization (which would materialize placeholder rows without going
     through the portal preview flow).
+
+    The Pacific **current** month is never lazy for portal reads — the run file is materialized on open
+    so technicians can edit without pressing ``Start Run``.
     """
     if not session.get("tech_portal_unlocked"):
         return False
@@ -1879,6 +2094,8 @@ def get_monthly_route_worksheet(route_id: int):
     if _get_monthly_route(route_id) is None:
         return jsonify({"error": "Route not found"}), 404
     portal_lazy = _portal_worksheet_lazy_request()
+    if _portal_current_month_materialize_on_read(month_first):
+        portal_lazy = False
     payload = _serialize_technician_worksheet_payload(
         route_id, month_first, portal_lazy_run=portal_lazy
     )
@@ -2016,6 +2233,10 @@ def patch_monthly_route_worksheet_row(route_id: int, location_id: int):
         monthly_route_id=route_id,
         month_date=month_first,
     ).one_or_none()
+    portal_completed_block = _reject_patch_if_portal_run_completed(run_for_month)
+    if portal_completed_block is not None:
+        return portal_completed_block
+
     if run_for_month is not None and _run_explicitly_completed(run_for_month):
         outcome_fields = {"result_status", "skip_reason"}
         if outcome_fields.intersection(changes.keys()):
@@ -2260,6 +2481,10 @@ def patch_monthly_route_worksheet_stop(route_id: int, testing_site_id: int):
         monthly_route_id=route_id,
         month_date=month_first,
     ).one_or_none()
+    portal_completed_block = _reject_patch_if_portal_run_completed(run_for_month)
+    if portal_completed_block is not None:
+        return portal_completed_block
+
     if run_for_month is not None and _run_explicitly_completed(run_for_month):
         outcome_fields = {"result_status", "skip_reason"}
         if outcome_fields.intersection(changes.keys()):

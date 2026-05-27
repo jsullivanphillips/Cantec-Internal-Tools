@@ -87,6 +87,10 @@
   padding: 0;
 }
 
+.app-main.app-main--monthly-route-detail {
+  padding: 2rem;
+}
+
 .app-route-error__card {
   width: min(100%, 46rem);
 }
@@ -207,8 +211,7 @@ body.portal-worksheet-body-lock {
 }
 
 /* Monthly location detail — PC-first enterprise detail workspace */
-.monthly-location-detail-page,
-.monthly-route-detail-page {
+.monthly-location-detail-page {
   --ml-page: #f3f6fb;
   --ml-card: #ffffff;
   --ml-card-soft: #f8fafc;
@@ -233,6 +236,32 @@ body.portal-worksheet-body-lock {
   background:
     radial-gradient(circle at top left, rgba(37, 99, 235, 0.08), transparent 34rem),
     var(--ml-page);
+  color: var(--ml-text);
+}
+
+.monthly-route-detail-page {
+  --ml-page: #f3f6fb;
+  --ml-card: #ffffff;
+  --ml-card-soft: #f8fafc;
+  --ml-border: #dbe3ef;
+  --ml-border-soft: #edf2f7;
+  --ml-text: #162033;
+  --ml-muted: #64748b;
+  --ml-muted-strong: #475569;
+  --ml-primary: #2563eb;
+  --ml-primary-soft: #e8f1ff;
+  --ml-success: #16803d;
+  --ml-success-soft: #e8f8ee;
+  --ml-info: #0369a1;
+  --ml-info-soft: #e7f6ff;
+  --ml-radius-lg: 1.25rem;
+  --ml-radius-md: 0.9rem;
+  --ml-shadow-card: 0 14px 36px rgba(15, 23, 42, 0.08);
+  --ml-shadow-soft: 0 6px 18px rgba(15, 23, 42, 0.055);
+  min-height: 100%;
+  margin: 0;
+  padding: 0;
+  background: transparent;
   color: var(--ml-text);
 }
 
@@ -1190,10 +1219,9 @@ body.portal-worksheet-body-lock {
 }
 
 @media (max-width: 767.98px) {
-  .monthly-location-detail-page,
-  .monthly-route-detail-page {
-    padding-left: 0.75rem;
-    padding-right: 0.75rem;
+  .monthly-location-detail-page {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
   }
 
   .monthly-location-detail-hero,
@@ -1360,6 +1388,123 @@ body.portal-worksheet-body-lock {
 
 .monthly-routes-library-table > tbody > tr > td.month-testing-cell .library-table-cell-inner {
   text-align: center;
+}
+
+/* Monthly routes overview (/monthlies/routes) — generic 4-week calendar */
+.monthly-routes-overview-calendar {
+  display: grid;
+  grid-template-columns: 4.5rem repeat(7, minmax(0, 1fr));
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.monthly-routes-overview-calendar__header,
+.monthly-routes-overview-calendar__week-row {
+  display: contents;
+}
+
+.monthly-routes-overview-calendar__corner {
+  min-height: 2rem;
+}
+
+.monthly-routes-overview-calendar__day-header {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--bs-secondary-color);
+  text-align: center;
+  padding: 0.25rem 0;
+}
+
+.monthly-routes-overview-calendar__week-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--bs-secondary-color);
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 0.5rem 0.35rem 0 0;
+  text-align: right;
+}
+
+.monthly-routes-overview-calendar__cell {
+  min-height: 5.5rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.5rem;
+  background: var(--bs-body-bg);
+  padding: 0.35rem;
+}
+
+.monthly-routes-overview-calendar__cell-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-height: 100%;
+}
+
+.monthly-routes-overview-calendar__card {
+  display: block;
+  padding: 0.4rem 0.5rem;
+  border-radius: 0.375rem;
+  border: 1px solid var(--bs-border-color-translucent, rgba(0, 0, 0, 0.08));
+  background: var(--bs-tertiary-bg, #f8f9fa);
+  color: inherit;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.monthly-routes-overview-calendar__card:hover {
+  background: var(--bs-primary-bg-subtle, #e7f1ff);
+  border-color: var(--bs-primary-border-subtle, #b6d4fe);
+  color: inherit;
+}
+
+.monthly-routes-overview-calendar__card-label {
+  line-height: 1.25;
+  font-size: 0.8125rem;
+}
+
+.monthly-routes-overview-calendar__card-meta {
+  margin-top: 0.15rem;
+  line-height: 1.2;
+}
+
+.monthly-routes-overview-calendar__unscheduled-stack .monthly-routes-overview-calendar__card {
+  max-width: 18rem;
+}
+
+@media (max-width: 767.98px) {
+  .monthly-routes-overview-calendar {
+    grid-template-columns: 3rem repeat(7, minmax(0, 1fr));
+    gap: 0.25rem;
+    font-size: 0.7rem;
+  }
+
+  .monthly-routes-overview-calendar__day-header {
+    font-size: 0.65rem;
+  }
+
+  .monthly-routes-overview-calendar__week-label {
+    font-size: 0.65rem;
+    padding-right: 0.15rem;
+  }
+
+  .monthly-routes-overview-calendar__cell {
+    min-height: 4rem;
+    padding: 0.2rem;
+  }
+
+  .monthly-routes-overview-calendar__card {
+    padding: 0.25rem 0.3rem;
+  }
+
+  .monthly-routes-overview-calendar__card-label {
+    font-size: 0.7rem;
+  }
+
+  .monthly-routes-overview-calendar__card-meta {
+    display: none;
+  }
 }
 
 @media (min-width: 992px) {
@@ -3080,26 +3225,34 @@ body.portal-worksheet-body-lock {
 }
 
 /* Monthly route detail — compact enterprise detail workspace */
-.monthly-route-detail-page {
-  background:
-    radial-gradient(circle at top left, rgba(var(--brand-orange-rgb), 0.11), transparent 30rem),
-    linear-gradient(180deg, #f6f8fc 0%, var(--ml-page) 34rem);
+.monthly-route-detail-container {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
 }
 
 .monthly-route-detail-hero.monthly-location-detail-surface {
   display: flex;
-  align-items: flex-start;
+  align-items: stretch;
   justify-content: space-between;
   gap: 1rem;
   padding: 1.2rem 1.35rem;
-  border-left: 4px solid var(--brand-orange) !important;
-  background:
-    linear-gradient(135deg, rgba(255, 247, 237, 0.72) 0%, rgba(255, 255, 255, 0.96) 42%),
-    #fff;
+  background: #fff;
 }
 
 .monthly-route-detail-hero__copy {
   min-width: 0;
+}
+
+.monthly-route-detail-hero__right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.6rem;
+  min-height: 100%;
+  flex: 0 0 auto;
 }
 
 .monthly-route-detail-hero__meta,
@@ -3116,7 +3269,6 @@ body.portal-worksheet-body-lock {
 
 .monthly-route-detail-actions {
   justify-content: flex-end;
-  flex: 0 0 auto;
 }
 
 .monthly-route-pill.badge {
@@ -3131,6 +3283,21 @@ body.portal-worksheet-body-lock {
   background: #475569 !important;
 }
 
+.monthly-route-detail-hero__specialists {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: auto;
+}
+
+.monthly-route-detail-hero__specialists-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--ml-muted-strong);
+}
+
 .monthly-route-service-state {
   display: inline-flex;
   align-items: center;
@@ -3142,7 +3309,7 @@ body.portal-worksheet-body-lock {
 
 .monthly-route-metric-grid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.85rem;
   margin-top: 0.85rem;
 }
@@ -3351,6 +3518,131 @@ body.portal-worksheet-body-lock {
 
 .monthly-route-detail-runs-table td:first-child {
   font-weight: 650;
+}
+
+/* Office run details — compact summary between route detail and worksheet */
+.monthly-run-detail-page {
+  padding: 0 1.35rem 1.5rem;
+}
+
+.monthly-run-detail-breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.85rem;
+}
+
+.monthly-run-detail-breadcrumb__sep {
+  color: var(--ml-muted);
+  font-size: 0.85rem;
+}
+
+.monthly-run-detail-hero__route-ref {
+  font-weight: 600;
+  color: var(--ml-muted-strong);
+  font-size: 0.92em;
+}
+
+.monthly-run-detail-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin: 0.85rem 0 1rem;
+}
+
+.monthly-run-detail-kpi {
+  padding: 0.75rem 0.9rem;
+  text-align: center;
+}
+
+.monthly-run-detail-kpi__value {
+  font-size: 1.45rem;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--ml-text);
+}
+
+.monthly-run-detail-kpi__label {
+  margin-top: 0.2rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--ml-muted-strong);
+}
+
+.monthly-run-detail-section {
+  padding: 0.9rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.monthly-run-detail-section__title {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--ml-text);
+}
+
+.monthly-run-detail-section__meta {
+  margin-top: -0.15rem;
+}
+
+.monthly-run-detail-table {
+  font-size: 0.84rem;
+}
+
+.monthly-run-detail-table thead th {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--ml-muted-strong);
+  border-bottom-width: 1px;
+  padding-top: 0.35rem;
+  padding-bottom: 0.35rem;
+}
+
+.monthly-run-detail-table tbody td {
+  vertical-align: top;
+  padding-top: 0.4rem;
+  padding-bottom: 0.4rem;
+}
+
+.monthly-run-detail-table__location {
+  max-width: 14rem;
+  font-weight: 650;
+}
+
+.monthly-run-detail-table__when {
+  font-size: 0.8rem;
+  color: var(--ml-muted-strong);
+}
+
+.monthly-run-detail-table__change {
+  max-width: 18rem;
+}
+
+.monthly-run-detail-table__arrow {
+  margin: 0 0.35rem;
+  color: var(--ml-muted);
+}
+
+.monthly-run-detail-empty {
+  font-size: 0.86rem;
+  color: var(--ml-muted-strong);
+  font-style: italic;
+}
+
+@media (max-width: 767.98px) {
+  .monthly-run-detail-kpis {
+    grid-template-columns: 1fr;
+  }
+
+  .monthly-run-detail-page {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
 }
 
 .monthly-route-sites-table .monthly-route-site-drag-handle {
@@ -3595,6 +3887,12 @@ body.portal-worksheet-body-lock {
 }
 
 @media (max-width: 767.98px) {
+  .monthly-route-detail-hero__right {
+    width: 100%;
+    align-items: stretch;
+    justify-content: flex-start;
+  }
+
   .monthly-route-detail-actions {
     width: 100%;
     justify-content: stretch;
@@ -3603,6 +3901,10 @@ body.portal-worksheet-body-lock {
   .monthly-route-detail-actions .monthly-location-detail-action {
     flex: 1 1 10rem;
     justify-content: center;
+  }
+
+  .monthly-route-detail-hero__specialists {
+    justify-content: flex-start;
   }
 
   .monthly-route-metric-grid {

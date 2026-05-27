@@ -17,6 +17,7 @@ const PerformanceSummaryPage = lazy(() => import('./pages/PerformanceSummaryPage
 const MonthlyRoutesOverviewPage = lazy(() => import('./pages/MonthlyRoutesOverviewPage'))
 const MonthlyRoutesPage = lazy(() => import('./pages/MonthlyRoutesPage'))
 const MonthlyRouteDetailPage = lazy(() => import('./pages/MonthlyRouteDetailPage'))
+const MonthlyRunDetailPage = lazy(() => import('./pages/MonthlyRunDetailPage'))
 const TechnicianWorksheetPage = lazy(() => import('./pages/TechnicianWorksheetPage'))
 const MonthlyLocationDetailPage = lazy(() => import('./pages/MonthlyLocationDetailPage'))
 const MonthlyRoutesMapPage = lazy(() => import('./pages/MonthlyRoutesMapPage'))
@@ -43,13 +44,13 @@ function RedirectPortalWorksheetMockup() {
   )
 }
 
-/** Old session-ledger URLs forward to the worksheet. */
-function RedirectMonthlySessionToWorksheet() {
+/** Old session-ledger URLs forward to run details. */
+function RedirectMonthlySessionToRunDetails() {
   const { routeId, monthIso } = useParams<{ routeId: string; monthIso: string }>()
   if (!routeId?.trim() || !monthIso?.trim()) return <Navigate to="/monthlies/routes" replace />
   return (
     <Navigate
-      to={`/monthlies/routes/${routeId}/worksheet/${encodeURIComponent(monthIso)}`}
+      to={`/monthlies/routes/${routeId}/runs/${encodeURIComponent(monthIso)}`}
       replace
     />
   )
@@ -100,7 +101,8 @@ export const router = createBrowserRouter([
       { path: 'monthlies/routes', element: <MonthlyRoutesOverviewPage /> },
       { path: 'monthlies/locations', element: <MonthlyRoutesPage /> },
       { path: 'monthlies/routes/:routeId', element: <MonthlyRouteDetailPage /> },
-      { path: 'monthlies/routes/:routeId/sessions/:monthIso', element: <RedirectMonthlySessionToWorksheet /> },
+      { path: 'monthlies/routes/:routeId/sessions/:monthIso', element: <RedirectMonthlySessionToRunDetails /> },
+      { path: 'monthlies/routes/:routeId/runs/:monthIso', element: <MonthlyRunDetailPage /> },
       { path: 'monthlies/routes/:routeId/worksheet/:monthIso', element: <TechnicianWorksheetPage /> },
       { path: 'monthlies/locations/:locationId', element: <MonthlyLocationDetailPage /> },
       { path: 'monthlies/map', element: <MonthlyRoutesMapPage /> },

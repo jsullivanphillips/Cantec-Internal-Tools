@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Alert, Badge, Button, Modal } from 'react-bootstrap'
 import {
   WORKSHEET_CLOCK_IN_BLOCKED_MESSAGE,
+  isAnnualForMonth,
   worksheetStopIsOpenClockIn,
   worksheetStopSkipIsAnnual,
   type TechnicianWorksheetStop,
@@ -17,6 +18,35 @@ import PortalWorksheetSkeleton from './PortalWorksheetSkeleton'
 type StopDisplayStatus = 'pending' | 'in_progress' | 'tested' | 'skipped'
 
 const NAV_EXPAND_TRANSITION_MS = 220
+
+const EXPLICIT_TIME_VALUE_RE = /^\d{1,2}:\d{1,2}(:\d{1,2})?(\s*[ap]\.?m\.?)?$/i
+
+function looksLikeExplicitTimeValue(raw: string | null | undefined): boolean {
+  const s = (raw ?? '').trim()
+  if (!s) return false
+  return EXPLICIT_TIME_VALUE_RE.test(s)
+}
+
+function headerTimesDisplay(stop: TechnicianWorksheetStop): ReactNode | null {
+  const rs = (stop.result_status || '').trim().toLowerCase()
+  if (rs === 'skipped' && worksheetStopSkipIsAnnual(stop)) {
+    return <span>ANNUAL</span>
+  }
+  const tin = (stop.time_in || '').trim()
+  const tout = (stop.time_out || '').trim()
+  if (!tin && !tout) return null
+  if (tin && looksLikeExplicitTimeValue(tin)) {
+    return (
+      <>
+        <span>Time in {tin}</span>
+        {tout && looksLikeExplicitTimeValue(tout) ? <span> · Time out {tout}</span> : null}
+      </>
+    )
+  }
+  if (tin) return <span>{tin}</span>
+  if (tout) return <span>Time out {tout}</span>
+  return null
+}
 
 function stopDisplayStatus(stop: TechnicianWorksheetStop): StopDisplayStatus {
   const rs = (stop.result_status || '').trim().toLowerCase()
@@ -35,28 +65,34 @@ function statusLabel(status: StopDisplayStatus, stop: TechnicianWorksheetStop): 
   return 'Pending'
 }
 
-function isAnnualMonth(stop: TechnicianWorksheetStop): boolean {
-  return (stop.annual_month || '').trim().length > 0
-}
-
-function navStopStatusClass(stop: TechnicianWorksheetStop): string {
+function navStopStatusClass(stop: TechnicianWorksheetStop, runMonthIso: string): string {
   if (worksheetStopIsOpenClockIn(stop)) return 'pw-mock-nav-stop--clocked-in'
   const status = stopDisplayStatus(stop)
   if (status === 'tested') return 'pw-mock-nav-stop--tested'
   if (status === 'skipped' && worksheetStopSkipIsAnnual(stop)) return 'pw-mock-nav-stop--annual'
   if (status === 'skipped') return 'pw-mock-nav-stop--skipped'
-  if (isAnnualMonth(stop)) return 'pw-mock-nav-stop--annual'
+  if (isAnnualForMonth(stop.annual_month, runMonthIso)) return 'pw-mock-nav-stop--annual'
   return ''
 }
 
-function headerBandClass(stop: TechnicianWorksheetStop): string {
+function headerBandClass(stop: TechnicianWorksheetStop, runMonthIso: string): string {
   const status = stopDisplayStatus(stop)
   if (status === 'tested') return 'pw-mock-header--tested'
   if (status === 'skipped' && worksheetStopSkipIsAnnual(stop)) return 'pw-mock-header--annual'
   if (status === 'skipped') return 'pw-mock-header--skipped'
   if (status === 'in_progress') return 'pw-mock-header--progress'
-  if (isAnnualMonth(stop)) return 'pw-mock-header--annual'
+  if (isAnnualForMonth(stop.annual_month, runMonthIso)) return 'pw-mock-header--annual'
   return ''
+}
+
+function showAnnualMonthPill(
+  stop: TechnicianWorksheetStop,
+  runMonthIso: string,
+  status: StopDisplayStatus,
+): boolean {
+  if (status === 'tested') return false
+  if (status === 'skipped') return worksheetStopSkipIsAnnual(stop)
+  return isAnnualForMonth(stop.annual_month, runMonthIso)
 }
 
 function skipReasonDisplay(stop: TechnicianWorksheetStop): string | null {
@@ -111,21 +147,14 @@ export default function TechnicianPortalWorksheetPage() {
     error,
     monthOk,
     monthHeading,
-    portalStartingRun,
-    runLifecycleBusy,
+    runCompleted,
     syncState,
     syncMessage,
     clockInBlockedForStop,
     queueStopChanges,
-    onPortalStartRun,
-    onPortalCompleteRun,
-    onPortalReopenRun,
     initialLoading,
     detailRefreshing,
-    showStartRun,
     showStopWorkspace,
-    showCompleteRun,
-    showReopenRun,
     readOnlyWorksheet,
     canEditStops,
     setInteractiveBusy,
@@ -155,13 +184,19 @@ export default function TechnicianPortalWorksheetPage() {
     [stops, activeId],
   )
 
+  const runMonthIso = payload?.month_date ?? monthQuery
+
   const progress = useMemo(() => {
     const tested = stops.filter((s) => stopDisplayStatus(s) === 'tested').length
     const skipped = stops.filter((s) => stopDisplayStatus(s) === 'skipped').length
-    const annual = stops.filter((s) => isAnnualMonth(s) || worksheetStopSkipIsAnnual(s)).length
+    const annual = stops.filter(
+      (s) =>
+        isAnnualForMonth(s.annual_month, runMonthIso) ||
+        (stopDisplayStatus(s) === 'skipped' && worksheetStopSkipIsAnnual(s)),
+    ).length
     const open = stops.length - tested - skipped
     return { tested, skipped, annual, open, total: stops.length }
-  }, [stops])
+  }, [stops, runMonthIso])
 
   useEffect(() => {
     setEditingField(null)
@@ -256,7 +291,7 @@ export default function TechnicianPortalWorksheetPage() {
 
   const renderNavStop = (stop: TechnicianWorksheetStop) => {
     const isActive = stop.testing_site_id === activeId
-    const statusClass = navStopStatusClass(stop)
+    const statusClass = navStopStatusClass(stop, runMonthIso)
     const clockedIn = worksheetStopIsOpenClockIn(stop)
     const activeClass = isActive ? ' pw-mock-nav-stop--active' : ''
     const statusSuffix = statusClass ? ` ${statusClass}` : ''
@@ -343,6 +378,7 @@ export default function TechnicianPortalWorksheetPage() {
   const activeSkipLabel = active ? skipReasonDisplay(active) : null
   const activePanelDisplay = active ? headerPanelDisplay(active) : null
   const activeMonitoringDisplay = active ? headerMonitoringDisplay(active) : 'No Monitoring'
+  const activeHeaderTimes = active ? headerTimesDisplay(active) : null
   const activeFieldEditActions =
     editingField && fieldEditActions?.fieldKey === editingField ? fieldEditActions : null
   const activeOutcomeComplete = activeStatus === 'tested' || activeStatus === 'skipped'
@@ -389,51 +425,13 @@ export default function TechnicianPortalWorksheetPage() {
             {progress.tested} tested · {progress.skipped} skipped · {progress.annual} annual ·{' '}
             {progress.open} open
           </span>
-          {showStartRun ? (
-            <Button
-              size="sm"
-              variant="success"
-              disabled={portalStartingRun}
-              onClick={() => void onPortalStartRun()}
-            >
-              {portalStartingRun ? (
-                <>
-                  <span className="spinner-border spinner-border-sm me-1" role="status" aria-hidden />
-                  Starting…
-                </>
-              ) : (
-                'Start run'
-              )}
-            </Button>
-          ) : showReopenRun ? (
-            <Button
-              size="sm"
-              variant="outline-secondary"
-              disabled={runLifecycleBusy}
-              onClick={() => void onPortalReopenRun()}
-            >
-              Reopen run
-            </Button>
-          ) : showCompleteRun ? (
-            <Button
-              size="sm"
-              variant="outline-success"
-              disabled={runLifecycleBusy}
-              onClick={() => void onPortalCompleteRun()}
-            >
-              Complete run
-            </Button>
+          {runCompleted ? (
+            <span className="small text-muted">Job completed — contact the office to reopen.</span>
           ) : null}
         </div>
       </header>
 
-      {showStartRun ? (
-        <div className="px-3 py-4 text-center text-muted">
-          Start the run to clock in and record outcomes for each stop.
-        </div>
-      ) : null}
-
-      {payload?.run && !showStopWorkspace && !showStartRun && !initialLoading && !detailRefreshing ? (
+      {payload?.run && !showStopWorkspace && !initialLoading && !detailRefreshing ? (
         <div className="px-3 py-4 text-center text-muted">
           No stops found for this run month.
         </div>
@@ -477,11 +475,11 @@ export default function TechnicianPortalWorksheetPage() {
             ) : (
               <>
                 <section className="pw-mock-detail">
-                  <div className={`pw-mock-header ${headerBandClass(active)}`}>
+                  <div className={`pw-mock-header ${headerBandClass(active, runMonthIso)}`}>
                     <div className="pw-mock-header-top">
                       <div className="pw-mock-header-stop">
                         Stop #{active.stop_number}
-                        {isAnnualMonth(active) || worksheetStopSkipIsAnnual(active) ? (
+                        {showAnnualMonthPill(active, runMonthIso, activeStatus) ? (
                           <span className="pw-mock-annual-pill">Annual month</span>
                         ) : null}
                       </div>
@@ -497,12 +495,9 @@ export default function TechnicianPortalWorksheetPage() {
                     {activePanelDisplay ? (
                       <div className="pw-mock-header-line fw-semibold">{activePanelDisplay}</div>
                     ) : null}
-                    {(active.time_in || active.time_out) && (
-                      <div className="pw-mock-header-times">
-                        {active.time_in ? <span>Time in {active.time_in}</span> : null}
-                        {active.time_out ? <span> · Time out {active.time_out}</span> : null}
-                      </div>
-                    )}
+                    {activeHeaderTimes ? (
+                      <div className="pw-mock-header-times">{activeHeaderTimes}</div>
+                    ) : null}
                     {activeStatus === 'skipped' ? (
                       <div className="pw-mock-header-skip">
                         {activeSkipLabel
@@ -620,7 +615,7 @@ export default function TechnicianPortalWorksheetPage() {
                       />
                       <PortalEditableFieldRow
                         fieldKey="run_comments"
-                        label="Run comments"
+                        label="Job comments"
                         value={active.run_comments ?? ''}
                         multiline
                         onSave={saveField('run_comments')}

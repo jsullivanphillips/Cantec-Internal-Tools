@@ -131,8 +131,8 @@ def test_api_smoke_routes_and_library_after_wipe(bridge_wipe_tables):
             res = client.get("/api/monthly_routes/routes")
             assert res.status_code == 200
             body = res.get_json()
-            assert len(body["routes"]) == 1
-            assert body["routes"][0]["route"]["location_count"] == 0
+            # Overview omits routes with no active locations.
+            assert body["routes"] == []
 
             res2 = client.get("/api/monthly_routes/library?unpaginated=true")
             assert res2.status_code == 200

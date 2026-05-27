@@ -218,12 +218,25 @@ export type MonthlyRouteSpecialistMonthPayload = {
   last_updated_at: string | null
 }
 
+/** ``MonthlyRouteRun`` header for one calendar month (run file exists). Keys ``YYYY-MM-01``. */
+export type RouteRunMonthSummary = {
+  run_id: number
+  source: string
+  status: string
+  opened_at: string | null
+  started_at: string | null
+  completed_at: string | null
+}
+
 export type MonthlyRouteDetailPayload = {
   route: MonthlyRouteSummary
   /** Stops on this route in driving order (from ``route_stop_order``). */
   locations: RouteLocationListItem[]
   comments: MonthlyLocationComment[]
+  /** Sheet ledger counts from ``monthly_route_test_history`` (includes master sheet upload). */
   testing_by_month: Record<string, RouteTestingMonthCell>
+  /** Run files only — CSV import, portal, or worksheet materialization. Keys ``YYYY-MM-01``. */
+  runs_by_month: Record<string, RouteRunMonthSummary>
   /** Present when the route has a ServiceTrade route pseudo-location id; otherwise ``null``. */
   specialists: MonthlyRouteSpecialistsPayload | null
   /** Newest months first; month keys ``YYYY-MM-01``. */
@@ -236,6 +249,27 @@ export type MonthlyRouteOverviewRow = {
 
 export type MonthlyRouteOverviewPayload = {
   routes: MonthlyRouteOverviewRow[]
+}
+
+const ROUTE_CALENDAR_WEEKDAY_HEADERS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const
+
+export const MONTHLY_ROUTE_CALENDAR_WEEKDAY_HEADERS = ROUTE_CALENDAR_WEEKDAY_HEADERS
+
+export const MONTHLY_ROUTE_CALENDAR_WEEK_COUNT = 4
+
+/** Cell key for the generic 4-week overview grid, or ``null`` when out of range. */
+export function routeCalendarCellKey(
+  weekOccurrence: number | null | undefined,
+  weekdayIso: number | null | undefined
+): string | null {
+  if (typeof weekOccurrence !== 'number' || typeof weekdayIso !== 'number') return null
+  if (weekOccurrence < 1 || weekOccurrence > MONTHLY_ROUTE_CALENDAR_WEEK_COUNT) return null
+  if (weekdayIso < 0 || weekdayIso > 6) return null
+  return `${weekOccurrence}-${weekdayIso}`
+}
+
+export function isRoutePlacedOnOverviewCalendar(route: MonthlyRouteSummary): boolean {
+  return routeCalendarCellKey(route.week_occurrence, route.weekday_iso) != null
 }
 
 /** GET ``/api/monthly_routes/routes/:id/testing_session?month=``. */
@@ -272,6 +306,40 @@ export type RouteTestingSessionPayload = {
   month_date: string
   stops: RouteTestingSessionStop[]
   counts: RouteTestingSessionCounts
+}
+
+/** GET ``/api/monthly_routes/routes/:id/run_details?month=`` — office run summary. */
+export type MonthlyRunDetailCounts = RouteTestingSessionCounts
+
+export type MonthlyRunDetailComment = {
+  testing_site_id: number
+  location_id: number
+  display_address: string
+  building: string | null
+  run_comments: string
+}
+
+export type MonthlyRunDetailFieldChange = {
+  id: number
+  location_id: number
+  location_label: string
+  field_name: string
+  old_value: unknown
+  new_value: unknown
+  source: string
+  changed_by_username: string | null
+  changed_by_name: string | null
+  changed_at: string | null
+}
+
+export type MonthlyRunDetailPayload = {
+  route: MonthlyRouteSummary
+  month_date: string
+  run: TechnicianWorksheetRun | null
+  counts: MonthlyRunDetailCounts
+  specialists_month: MonthlyRouteSpecialistMonthPayload | null
+  run_comments: MonthlyRunDetailComment[]
+  field_changes: MonthlyRunDetailFieldChange[]
 }
 
 export type TechnicianWorksheetRow = {
@@ -346,12 +414,11 @@ export function worksheetRunFieldActive(run: TechnicianWorksheetRun | null | und
 
 export type WorksheetOfficeRunActivity = 'completed' | 'active' | 'inactive'
 
-/** Office worksheet header: whether the field session is in progress or editable from the office. */
+/** Office worksheet header: whether the run is open for field edits or finished. */
 export function worksheetOfficeRunActivity(run: TechnicianWorksheetRun | null | undefined): WorksheetOfficeRunActivity {
   if (!run) return 'inactive'
   if (worksheetRunExplicitlyCompleted(run)) return 'completed'
-  if (worksheetRunFieldActive(run)) return 'active'
-  return 'inactive'
+  return 'active'
 }
 
 /** V2 portal worksheet stop (``MonthlyTestingSiteMonth`` grain). */
@@ -757,6 +824,19 @@ export type MapViewportBounds = {
 
 export type YearMonth = { year: number; month: number }
 
+/** True when ``annualMonth`` (e.g. "May") is the calendar month of ``monthFirstIso`` (``YYYY-MM-01``). */
+export function isAnnualForMonth(annualMonth: string | null | undefined, monthFirstIso: string): boolean {
+  const raw = (annualMonth || '').trim().toLowerCase()
+  if (!raw) return false
+  const ym = parseYearMonth(monthFirstIso)
+  if (!ym) return false
+  const monthFull = new Intl.DateTimeFormat('en-CA', { month: 'long', timeZone: 'UTC' })
+    .format(new Date(Date.UTC(ym.year, ym.month - 1, 1)))
+    .toLowerCase()
+  const monthShort = monthFull.slice(0, 3)
+  return raw === monthFull || raw === monthShort
+}
+
 export function parseYearMonth(value: string): YearMonth | null {
   const match = value.match(/^(\d{4})-(\d{2})/)
   if (!match) return null
@@ -801,6 +881,63 @@ export function monthFirstIsoPacificToday(reference: Date = new Date()): string 
     return monthFirstIsoLocalToday(reference)
   }
   return toMonthKey(yi, mi)
+}
+
+/** Pacific calendar date ``YYYY-MM-DD`` for ``reference`` (``America/Vancouver``). */
+export function pacificCalendarDateIso(reference: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: PACIFIC_TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(reference)
+  const y = parts.find((p) => p.type === 'year')?.value
+  const mo = parts.find((p) => p.type === 'month')?.value
+  const d = parts.find((p) => p.type === 'day')?.value
+  if (!y || !mo || !d) return ''
+  return `${y}-${mo}-${d}`
+}
+
+/** Scheduled route test day for ``monthFirstIso`` from ``week_occurrence`` / ``weekday_iso``. */
+export function scheduledRouteTestDayIso(
+  monthFirstIso: string,
+  route: MonthlyRouteSummary | null | undefined,
+): string | null {
+  const occ = monthlyRouteOccurrenceDateUtc(monthFirstIso, route)
+  if (!occ) return null
+  const y = occ.getUTCFullYear()
+  const mo = String(occ.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(occ.getUTCDate()).padStart(2, '0')
+  return `${y}-${mo}-${day}`
+}
+
+export function isPacificTodayRouteScheduledTestDay(
+  monthFirstIso: string,
+  route: MonthlyRouteSummary | null | undefined,
+  reference: Date = new Date(),
+): boolean {
+  const sched = scheduledRouteTestDayIso(monthFirstIso, route)
+  if (!sched) return false
+  return sched === pacificCalendarDateIso(reference)
+}
+
+/** Office run-details / worksheet status pill when the run file is open vs finished. */
+export function runOfficeStatusPillLabel(
+  activity: WorksheetOfficeRunActivity,
+  monthFirstIso: string,
+  route: MonthlyRouteSummary | null | undefined,
+  reference: Date = new Date(),
+): string {
+  switch (activity) {
+    case 'completed':
+      return 'Completed'
+    case 'active':
+      return isPacificTodayRouteScheduledTestDay(monthFirstIso, route, reference)
+        ? 'In progress'
+        : 'Open'
+    default:
+      return 'Not started'
+  }
 }
 
 export function addCalendarMonths(monthFirstIso: string, delta: number): string | null {

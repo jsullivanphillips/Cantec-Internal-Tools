@@ -135,11 +135,10 @@ export function usePortalWorksheetDemo(monthIso: string) {
   const setInteractiveBusy = useCallback(() => {}, [])
 
   const showStopWorkspace = stops.length > 0 && hasRunFile
-  const canEditStops = showStopWorkspace && runStarted && !runCompleted && !viewingHistoricalRun
-  const showStartRun =
-    isCurrentMonth && hasRunFile && !runStarted && !runCompleted && !viewingHistoricalRun
-  const showCompleteRun = isCurrentMonth && hasRunFile && runStarted && !runCompleted
-  const showReopenRun = runCompleted && isCurrentMonth
+  const canEditStops = showStopWorkspace && !runCompleted && !viewingHistoricalRun && isCurrentMonth
+  const showStartRun = false
+  const showCompleteRun = false
+  const showReopenRun = false
   const readOnlyWorksheet = showStopWorkspace && !canEditStops
 
   return {

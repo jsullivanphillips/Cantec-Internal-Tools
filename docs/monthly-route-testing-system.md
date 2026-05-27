@@ -109,7 +109,7 @@ Primary API for library, routes, worksheet, CSV import, comments.
 | Library | `GET/POST/PATCH/DELETE /api/monthly_routes/library[...]` — filters: `q`, `route`, `skipped_any`, `annual_tested_conflict`, month range |
 | Routes | `GET /api/monthly_routes/routes`, `GET .../routes/<id>` |
 | Worksheet | `GET .../worksheet`, `GET .../worksheet/stream` (SSE), `PATCH .../worksheet/rows/<location_id>`, `PATCH .../worksheet/stops/<testing_site_id>` (portal v2), `POST .../worksheet/reset_run` |
-| Runs | `POST .../runs/import_csv`, `POST .../runs/complete`, `POST .../runs/reopen` |
+| Runs | `GET .../run_details?month=` (office run summary), `POST .../runs/import_csv`, `POST .../runs/complete`, `POST .../runs/reopen` |
 | Other | `PUT .../location_order`, comments, geocode, `GET .../testing_session` |
 
 Location create/update also runs: `sync_monthly_route_fk_for_location`, `sync_key_fk_for_location`, v2 `sync_testing_sites_from_legacy`, `push_legacy_keys_to_primary_testing_site`.
@@ -125,7 +125,11 @@ Delegates most mutations to `monthly_routes`, then augments with v2:
 | `POST .../library/<id>/testing_sites` | Add stop |
 | `DELETE .../testing_sites/<id>` | Delete stop (not last) |
 
-**Frontend split:** Library/map pages use **`/api/monthly_sites/...`**; route detail/worksheet use **`/api/monthly_routes/...`**.
+**Frontend split:** Library/map pages use **`/api/monthly_sites/...`**; route detail, run details, and worksheet use **`/api/monthly_routes/...`**.
+
+**Office run navigation:** Route detail → **Run details** (`/monthlies/routes/:routeId/runs/:monthIso`, `GET .../run_details`) → technician worksheet. Run details requires a ``MonthlyRouteRun`` row for that month (CSV import, portal, or worksheet materialization)—master-sheet ledger history alone is not enough. The route detail API exposes ``runs_by_month`` (run files) separately from ``testing_by_month`` (sheet ledger counts from ``monthly_route_test_history``).
+
+**Run lock (office completes the job):** A run is editable in the technician portal until office staff press **Complete job** on the **Run details** page (`POST .../runs/complete` sets `status=completed` and `completed_at`). That sets `is_historical` on the worksheet payload and blocks all portal PATCHes (`run_completed_locked`). **Reopen job** on Run details (`POST .../runs/reopen`) clears completion. Technicians no longer use Start/Complete run in the portal — opening the current month's worksheet materializes the run file automatically.
 
 ### 5.3 `technician_portal` — `app/routes/technician_portal.py`
 
@@ -218,7 +222,8 @@ Many earlier migrations scaffolded routes, runs, history, inspection fields, coo
 | File | Role |
 |------|------|
 | `frontend/src/pages/MonthlyRoutesPage.tsx` | Library (v2 API) |
-| `frontend/src/pages/MonthlyRouteDetailPage.tsx` | Route detail + worksheet |
+| `frontend/src/pages/MonthlyRouteDetailPage.tsx` | Route detail; Runs table links to run details |
+| `frontend/src/pages/MonthlyRunDetailPage.tsx` | Office run summary (counts, ST techs, comments, audit) → worksheet |
 | `frontend/src/pages/MonthlyRoutesMapPage.tsx` | Map view |
 | `frontend/src/pages/MonthlyLocationDetailPage.tsx` | Location detail |
 | `frontend/src/pages/TechnicianWorksheetPage.tsx` | Office/staff worksheet table + SSE |
@@ -238,6 +243,7 @@ Technician flow: `/tech` → `/tech/start` → `/tech/route/:routeId/worksheet/:
 | Test file | Validates |
 |-----------|-----------|
 | `tests/test_monthly_worksheet_api.py` | Worksheet GET/PATCH, audit, reset, run complete/lock, portal lazy vs staff auto-run, SSE, hybrid `tech_portal=1` |
+| `tests/test_monthly_run_details_api.py` | Office `GET .../run_details` counts, run comments, field-change aggregation |
 | `tests/test_worksheet_stops_api.py` | Portal `stops[]`, materialize on start run, PATCH stop, clock-in conflict, skip→clock-in |
 | `tests/test_monthly_sites_v2.py` | v2 sync, dual-write keys, testing-site CRUD API |
 | `tests/test_monthly_key_bridge_wipe.py` | Bridge backfill; wipe keeps routes; post-wipe API smoke |

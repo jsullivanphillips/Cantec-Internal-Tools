@@ -1,0 +1,41 @@
+﻿ADDRESS,PROPERTY MANAGEMENT COMPANY,NOTES,BARCODE #,Price/month,Area,start up date,"STATUS- (ACTIVE, CANCELLED, ON HOLD)",KEYS,TEST DAY,ANNUAL,Jan-26,Feb-26,Mar-26,Apr-26,May-26,Jun-26,Jul-26,Aug-26,Sep-26,Oct-26,Nov-26
+1006 Fort Street,Colliers,,100619,$75.00,"Victoria, BC",Nov-12,ACTIVE,"ZZ 6001
+K3-F1",M1-R2,September,Y,Y,Y,Y,Y,,,,,,
+1019 Rockland Avenue,Proline,,100558,$55.00,"Victoria, BC",Jul-15,ACTIVE,"ST 9101
+K2",M1-R2,April,Y,Y,Y,ANNUAL,Y,,,,,,
+1041 Fairfield Road,Pemberton Holmes,,100206,$50.00,"Victoria, BC",,ACTIVE,68,M1-R2,April,Y,Y,Y,ANNUAL,Y,,,,,,
+1069 Southgate Street,Newport Property Management,,100138,$50.00,"Victoria, BC",,ACTIVE,307,M1-R2,March,Y,Y,Y,Y,ANNUAL,,,,,,
+1122 McKenzie Street,Pemberton Holmes,,100226,$50.00,"Victoria, BC",,ACTIVE,100,M1-R2,March,Y,Y,ANNUAL,Y,Y,,,,,,
+1150 Hilda Street,Devon Properties,,100134,$60.00,"Victoria, BC",Jun-24,ACTIVE,AH 0511,M1-R2,August,Y,Y,Y,Y,Y,,,,,,
+1150 Rockland Avenue,Pemberton Holmes,,100259,$50.00,"Victoria, BC",,ACTIVE,346,M1-R2,September,Y,Y,Y,Y,Y,,,,,,
+1160 Richardson Street,Lee & Sharpe,$52.50 credit - apply to Q2,100364,$50.00,"Victoria, BC",,ACTIVE,164,M1-R2,March,Y,Y,ANNUAL,Y,Y,,,,,,
+1165 Meares Street,Pemberton Holmes (new June 13/24),,100094,$55.00,"Victoria, BC",Jan-15,ACTIVE,"MA 5611
+K2",M1-R2,July,Y,Y,Y,Y,Y,ANNUAL,,,,,
+1249 Rockland Avenue,Sanpra Real Estate Inc.,$52.50 credit - apply to Q2,100359,$50.00,"Victoria, BC",,ACTIVE,137,M1-R2,September,X,Y,Y,Y,Y,,,,,,
+1301 Fort Street,Proline,,100294,$55.00,"Victoria, BC",Feb-15,ACTIVE,"YT 1031
+K1",M1-R2,October,Y,Y,Y,Y,Y,,,,,,
+1325 Franklin Terrace,Newport Property Management,,100605,$50.00,"Victoria, BC",,ACTIVE,173,M1-R2,September,Y,Y,Y,Y,Y,,,,,,
+1410 Fort Street,Devon,,100183,$55.00,"Victoria, BC",Sep-24,ACTIVE,FS 0141,M1-R2,September,Y,Y,Y,Y,Y,,,,,,
+1612 Quadra Street,Yeung's Family Holdings,Apply credit from QB to invoices ,100255,$65.00,"Victoria, BC",,ACTIVE,56,M1-R2,May,Y,Y,Y,Y,Y,ANNUAL,,,,,
+206 Oswego Street,Dorset Realty,,100403,$55.00,"Victoria, BC",Jan-15,ACTIVE,"C 602
+K2",M1-R2,April,Y,Y,Y,ANNUAL,Y,,,,,,
+230 Oswego Street,Dorset Realty,,100258,$55.00,"Victoria, BC",Jan-15,ACTIVE,"D 032
+K2",M1-R2,April,Y,Y,Y,ANNUAL,Y,,,,,,
+2310 Quadra Street,Devon Properties Ltd.,,100408,$65.00,"Victoria, BC",Apr-26,ACTIVE,DQ 132,M1-R2,March,-,-,-,Y,Y,,,,,,
+247-271 Cook Street,Devon properties,Moved to R2 in August 2025 (was R18),100604,$50.00,"Victoria, BC",,ACTIVE,407,M1-R2,March,Y,Y,ANNUAL,Y,Y,,,,,,
+415 Linden Avenue,Gibraltar Management Ltd.,,100589,$55.00,"Victoria, BC",,ACTIVE,"R 514
+K2",M1-R2,November,Y,ANNUAL,X,Y,Y,,,,,,
+423 Superior Street,Brown Brothers Property Management,Change Provider in February 2026 - price increase to $75 (January billed already to previous mgt) - new keys received May 2026,100182,$75.00,"Victoria, BC",,ACTIVE,119,M1-R2,March,Y,X,Y,X,X,,,,,,
+427 Belleville Street,Days Inn Victoria On The Harbour,,-,$75.00,"Victoria, BC",Apr-26,ACTIVE,No keys,M1-R2,March,-,-,-,Y,Y,,,,,,
+465 Niagara Street,Devon Properties,Increase to $65 after January 2026,100065,$65.00,"Victoria, BC",,ACTIVE,120,M1-R2,February,Y,Y,ANNUAL,Y,Y,,,,,,
+516 Quadra Street,Douglas Mgmt Corp. (was Hugh & McKinnon - but same owner),$57.75 credit - apply to Q2,100991,$55.00,"Victoria, BC",Nov-22,ACTIVE,"HA 615
+K3",M1-R2,March,Y,Y,ANNUAL,Y,Y,,,,,,
+520 Rithet Street,Newport Property management,,100413,$50.00,"Victoria, BC",,ACTIVE,403,M1-R2,January,ANNUAL,Y,Y,Y,Y,,,,,,
+620 View Street,Equitex,$65 noted starting April 2025. Previously $50 - Not really sure when it changed,-,$65.00,"Victoria, BC",,ACTIVE,No keys,M1-R2,March,Y,Y,ANNUAL,Y,Y,,,,,,
+635 Battery Street,Newport Property Management,,100533,$50.00,"Victoria, BC",,ACTIVE,343,M1-R2,November,Y,Y,Y,Y,Y,,,,,,
+636 Dallas Road,Devon Properties,,100723,$55.00,"Victoria, BC",Mar-25,ACTIVE,LD 636,M1-R2,April,Y,Y,Y,Y,Y,,,,,,
+640 Dallas Road,Starlight Properties c/o Devon Properties Ltd.,,100969,$65.00,"Victoria, BC",Dec-25,ACTIVE,LD 46,M1-R2,October,Y,Y,Y,Y,Y,,,,,,
+838 Fort Street,Martello Property Services ,$173.25 credit in QB - apply to Q2,100745,$55.00,"Victoria, BC",May-19,ACTIVE,"E 838
+K2-F1",M1-R2,January,X,ANNUAL,Y,Y,Y,,,,,,
+895 Fort Street,Pacific Arbour,Jan 2026 (tw) - we do not service this location annually! ,100176,$65.00,"Victoria, BC",,ACTIVE,71,M1-R2,TO,Y,Y,Y,X,Y,,,,,,
+909 Pendergast Street,Devon Properties,Moved to R2 in August 2025 (was R18),100905,$65.00,"Victoria, BC",Oct-23,ACTIVE,GT 909,M1-R2,September,Y,Y,Y,Y,Y,,,,,,

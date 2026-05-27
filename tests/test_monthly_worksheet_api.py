@@ -1096,7 +1096,7 @@ def test_past_month_does_not_show_site_added_later(worksheet_client, monkeypatch
 
 
 def test_portal_worksheet_preview_without_monthly_route_run(portal_only_client, monkeypatch):
-    """Portal GET returns read-only preview rows when no ``MonthlyRouteRun`` exists yet."""
+    """Portal GET for the current month materializes a run file (no ``Start Run`` required)."""
     from app.routes import monthly_routes as mr_mod
 
     monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
@@ -1123,7 +1123,8 @@ def test_portal_worksheet_preview_without_monthly_route_run(portal_only_client, 
     res = client.get("/api/monthly_routes/routes/1/worksheet?month=2026-05-01")
     assert res.status_code == 200
     body = res.get_json()
-    assert body.get("run") is None
+    assert body.get("run") is not None
+    assert body["run"]["started_at"] is None
     assert len(body.get("rows") or []) == 1
     assert body["rows"][0]["display_address"] == "123 Test St"
 
@@ -1166,7 +1167,7 @@ def test_portal_post_runs_then_get_worksheet(portal_only_client, monkeypatch):
     assert len(body["rows"]) == 1
 
 
-def test_portal_reopen_completed_run(portal_only_client, monkeypatch):
+def test_portal_reopen_completed_run_forbidden(portal_only_client, monkeypatch):
     from app.routes import monthly_routes as mr_mod
 
     monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
@@ -1205,10 +1206,54 @@ def test_portal_reopen_completed_run(portal_only_client, monkeypatch):
         json={"month_date": "2026-05-01"},
         content_type="application/json",
     )
-    assert res.status_code == 200, res.get_data(as_text=True)
-    body = res.get_json()
-    assert body["run"]["status"] == "open"
-    assert body["run"]["completed_at"] is None
+    assert res.status_code == 403
+    assert res.get_json().get("code") == "portal_reopen_forbidden"
+
+
+def test_portal_patch_blocked_when_run_completed(portal_only_client, monkeypatch):
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
+
+    client, app = portal_only_client
+    with app.app_context():
+        route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
+        loc = MonthlyRouteLocation(
+            id=101,
+            address="123 Test St",
+            address_normalized="123 test st",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
+            building=None,
+            building_normalized="",
+            status_normalized="active",
+            status_raw="Active",
+            monthly_route_id=1,
+            annual_month="May",
+        )
+        run = MonthlyRouteRun(
+            id=5002,
+            monthly_route_id=1,
+            month_date=date(2026, 5, 1),
+            status="completed",
+            completed_at=datetime(2026, 5, 2, 12, 0, tzinfo=PACIFIC_TZ),
+            source="technician_app",
+        )
+        hist = MonthlyRouteTestHistory(
+            id=5003,
+            location_id=101,
+            month_date=date(2026, 5, 1),
+            test_monthly_route_id=1,
+        )
+        db.session.add_all([route, loc, run, hist])
+        db.session.commit()
+
+    res = client.patch(
+        "/api/monthly_routes/routes/1/worksheet/rows/101?month=2026-05-01&tech_portal=1",
+        json={"changes": {"facp": "Panel A"}},
+    )
+    assert res.status_code == 409
+    assert res.get_json().get("code") == "run_completed_locked"
 
 
 def test_portal_route_summary(portal_only_client, monkeypatch):

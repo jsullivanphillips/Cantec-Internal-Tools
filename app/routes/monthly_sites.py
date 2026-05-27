@@ -305,6 +305,27 @@ def monthly_sites_assign_route(location_id: int):
     return assign_monthly_route_location(location_id)
 
 
+@monthly_sites_bp.post("/api/monthly_sites/library/<int:location_id>/comments")
+def monthly_sites_create_location_comment(location_id: int):
+    from app.routes.monthly_routes import create_monthly_route_location_comment
+
+    return create_monthly_route_location_comment(location_id)
+
+
+@monthly_sites_bp.patch("/api/monthly_sites/library/<int:location_id>/comments/<int:comment_id>")
+def monthly_sites_update_location_comment(location_id: int, comment_id: int):
+    from app.routes.monthly_routes import update_monthly_route_location_comment
+
+    return update_monthly_route_location_comment(location_id, comment_id)
+
+
+@monthly_sites_bp.delete("/api/monthly_sites/library/<int:location_id>/comments/<int:comment_id>")
+def monthly_sites_delete_location_comment(location_id: int, comment_id: int):
+    from app.routes.monthly_routes import delete_monthly_route_location_comment
+
+    return delete_monthly_route_location_comment(location_id, comment_id)
+
+
 @monthly_sites_bp.get("/api/monthly_sites/geocode_candidates")
 def monthly_sites_geocode():
     from app.routes.monthly_routes import monthly_routes_geocode_candidates

@@ -40,8 +40,6 @@ import {
 import { apiJson, apiPostFormData, isAbortError } from '../lib/apiClient'
 import { formatCurrencyCad } from '../lib/formatCurrencyCad'
 
-const WEEKDAY_FULL = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-
 function englishOrdinal(n: number): string {
   if (11 <= (n % 100) && (n % 100) <= 13) return `${n}th`
   const suffix = { 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] ?? 'th'
@@ -80,16 +78,6 @@ function formatStoredPacificCalendarDate(iso: string | null | undefined): string
   return `${monthYear}, ${weekday} the ${englishOrdinal(d)}`
 }
 
-function routeTestingPatternLabel(route: MonthlyRouteSummary): string | null {
-  const wd =
-    typeof route.weekday_iso === 'number' && route.weekday_iso >= 0 && route.weekday_iso <= 6
-      ? WEEKDAY_FULL[route.weekday_iso]
-      : null
-  const occ = route.week_occurrence
-  if (!wd || typeof occ !== 'number' || occ < 1) return null
-  return `${englishOrdinal(occ)} ${wd}`
-}
-
 function monthIsoKeysForCalendarYear(year: number): string[] {
   return Array.from({ length: 12 }, (_, i) => toMonthKey(year, i + 1))
 }
@@ -116,6 +104,24 @@ function specialistTechLabel(t: MonthlySpecialistTechRow): string {
 
 function specialistTechJobs(t: MonthlySpecialistTechRow): number {
   return typeof t.jobs === 'number' ? t.jobs : 0
+}
+
+function specialistBadgeClass(jobs: number) {
+  if (jobs >= 15) return 'monthly-tech-badge--diamond'
+  if (jobs > 10) return 'monthly-tech-badge--gold'
+  if (jobs > 5) return 'monthly-tech-badge--silver'
+  return 'monthly-tech-badge--bronze'
+}
+
+function specialistBadgeTier(jobs: number) {
+  if (jobs >= 15) return 'Diamond'
+  if (jobs > 10) return 'Gold'
+  if (jobs > 5) return 'Silver'
+  return 'Bronze'
+}
+
+function normalizedTechName(name: string): string {
+  return name.trim().toLowerCase()
 }
 
 function formatSpecialistsForMonth(payload: MonthlyRouteSpecialistMonthPayload | undefined): string {
@@ -518,10 +524,10 @@ function UploadRunFromCsvModal({
             </Button>
             {monthIso ? (
               <Link
-                to={`/monthlies/routes/${routeId}/worksheet/${monthIso}`}
+                to={`/monthlies/routes/${routeId}/runs/${monthIso}`}
                 className="btn btn-primary"
               >
-                Open run worksheet
+                View run details
               </Link>
             ) : null}
           </>
@@ -547,37 +553,13 @@ function UploadRunFromCsvModal({
   )
 }
 
-type RouteMetricTone = 'neutral' | 'success' | 'info' | 'warning'
-
-function RouteMetricCard({
-  label,
-  value,
-  meta,
-  tone = 'neutral',
-}: {
-  label: string
-  value: ReactNode
-  meta?: ReactNode
-  tone?: RouteMetricTone
-}) {
-  return (
-    <div className={`monthly-route-metric-card monthly-route-metric-card--${tone}`}>
-      <div className="monthly-location-metric-label">{label}</div>
-      <div className="monthly-location-metric-value">{value}</div>
-      {meta ? <div className="monthly-route-metric-meta">{meta}</div> : null}
-    </div>
-  )
-}
-
 function RouteSectionHeader({
   icon,
   title,
-  subtitle,
   badge,
 }: {
   icon: string
   title: string
-  subtitle: string
   badge?: ReactNode
 }) {
   return (
@@ -587,7 +569,6 @@ function RouteSectionHeader({
       </span>
       <span className="monthly-route-section-copy">
         <span className="monthly-route-section-title">{title}</span>
-        <span className="monthly-route-section-subtitle">{subtitle}</span>
       </span>
       {badge ? <span className="monthly-route-section-badge">{badge}</span> : null}
     </div>
@@ -646,12 +627,14 @@ export default function MonthlyRouteDetailPage() {
   const [specialists, setSpecialists] = useState<MonthlyRouteSpecialistsPayload | null>(null)
   const [comments, setComments] = useState<MonthlyLocationComment[]>([])
   const [testingByMonth, setTestingByMonth] = useState<MonthlyRouteDetailPayload['testing_by_month']>({})
+  const [runsByMonth, setRunsByMonth] = useState<MonthlyRouteDetailPayload['runs_by_month']>({})
   const [specialistsByMonth, setSpecialistsByMonth] = useState<MonthlyRouteDetailPayload['specialists_by_month']>(
     {}
   )
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [sessionUsername, setSessionUsername] = useState<string | null>(null)
+  const [activeTechNames, setActiveTechNames] = useState<Set<string> | null>(null)
   const [historyViewYear, setHistoryViewYear] = useState<number | null>(null)
   const [skipSitesModal, setSkipSitesModal] = useState<SkipSitesModalState | null>(null)
   const [uploadRunOpen, setUploadRunOpen] = useState(false)
@@ -673,6 +656,7 @@ export default function MonthlyRouteDetailPage() {
         setSpecialists(data.specialists ?? null)
         setComments(data.comments || [])
         setTestingByMonth(data.testing_by_month || {})
+        setRunsByMonth(data.runs_by_month || {})
         setSpecialistsByMonth(data.specialists_by_month || {})
         setOrderedSites(data.locations ?? [])
         setOrderError(null)
@@ -683,6 +667,7 @@ export default function MonthlyRouteDetailPage() {
         setSpecialists(null)
         setComments([])
         setTestingByMonth({})
+        setRunsByMonth({})
         setSpecialistsByMonth({})
         setOrderedSites([])
       } finally {
@@ -706,6 +691,29 @@ export default function MonthlyRouteDetailPage() {
       })
       .catch(() => {
         if (active) setSessionUsername(null)
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    apiJson<Record<string, Array<{ id: number; name: string }>>>('/api/technicians')
+      .then((grouped) => {
+        if (!active) return
+        const next = new Set<string>()
+        for (const group of Object.values(grouped || {})) {
+          for (const tech of group || []) {
+            if (typeof tech?.name === 'string' && tech.name.trim()) {
+              next.add(normalizedTechName(tech.name))
+            }
+          }
+        }
+        setActiveTechNames(next)
+      })
+      .catch(() => {
+        if (active) setActiveTechNames(null)
       })
     return () => {
       active = false
@@ -885,43 +893,23 @@ export default function MonthlyRouteDetailPage() {
     )
   }
 
-  const patternLabel = routeTestingPatternLabel(route)
   const stUrl = route.service_trade_route_location_url
   const routeLocationCount = route.location_count ?? orderedSites.length
   const routeStopTotal = orderedSites.reduce((sum, loc) => sum + routeLocationStopCount(loc), 0)
   const selectedYearMonthKeys =
     effectiveHistoryYear != null ? monthIsoKeysForCalendarYear(effectiveHistoryYear) : []
-  const selectedYearSheetMonths = selectedYearMonthKeys.filter((monthIso) => testingByMonth[monthIso] !== undefined)
-  const selectedYearSitesTested = selectedYearMonthKeys.reduce((sum, monthIso) => {
-    const count = testingByMonth[monthIso]?.sites_tested_count
-    return sum + (typeof count === 'number' ? count : 0)
-  }, 0)
-  const selectedYearSkippedTotal = selectedYearMonthKeys.reduce((sum, monthIso) => {
-    const cell = testingByMonth[monthIso]
-    return (
-      sum +
-      (typeof cell?.skipped_non_annual_count === 'number' ? cell.skipped_non_annual_count : 0) +
-      (typeof cell?.skipped_annual_count === 'number' ? cell.skipped_annual_count : 0)
-    )
-  }, 0)
   const selectedYearRevenue = selectedYearMonthKeys.reduce((sum, monthIso) => {
     const revenue = testingByMonth[monthIso]?.tested_revenue_total
     return sum + (typeof revenue === 'number' && Number.isFinite(revenue) ? revenue : 0)
   }, 0)
-  const selectedYearCompletedRuns = selectedYearMonthKeys.reduce((sum, monthIso) => {
-    return sum + (stRouteTestedForMonth(specialistsByMonth[monthIso]) === true ? 1 : 0)
-  }, 0)
-  const topSpecialist = specialists?.top_technicians[0] ?? null
-  const specialistMetricValue =
-    specialists === null
-      ? 'Not linked'
-      : topSpecialist
-        ? `${specialistTechLabel(topSpecialist)} (${specialistTechJobs(topSpecialist)})`
-        : 'No cached data'
-  const specialistMetricMeta =
-    specialists === null
-      ? 'ServiceTrade route workspace unavailable'
-      : `${specialists.completed_jobs_count} route completions`
+  const heroTopSpecialists = (specialists?.top_technicians ?? [])
+    .filter((t) => specialistTechLabel(t) !== '—')
+    .filter((t) => {
+      if (!activeTechNames) return true
+      return activeTechNames.has(normalizedTechName(specialistTechLabel(t)))
+    })
+    .sort((a, b) => specialistTechJobs(b) - specialistTechJobs(a))
+    .slice(0, 3)
   const routeMapOrderSignature = orderedSites
     .map((loc) => `${loc.id}:${loc.route_stop_order ?? ''}:${loc.latitude ?? ''}:${loc.longitude ?? ''}`)
     .join('|')
@@ -939,85 +927,62 @@ export default function MonthlyRouteDetailPage() {
             <h1 className="monthly-location-detail-title">{route.label}</h1>
             <div className="monthly-route-detail-hero__meta">
               <Badge bg="light" text="dark" className="monthly-route-pill">
-                R{route.route_number}
+                Locations: <span className="tabular-nums">{routeLocationCount}</span>
               </Badge>
-              {patternLabel ? (
-                <Badge bg="secondary" className="monthly-route-pill monthly-route-pill--muted">
-                  {patternLabel}
-                </Badge>
-              ) : null}
-              <span className="monthly-route-service-state">
-                <i className="bi bi-link-45deg" aria-hidden />
-                {stUrl ? 'ServiceTrade linked' : 'ServiceTrade not linked'}
-              </span>
+              <Badge bg="light" text="dark" className="monthly-route-pill">
+                Tested Revenue: {formatCurrencyCad(selectedYearRevenue)}
+                {testedSitesMissingPriceYear > 0 ? (
+                  <span className="small text-muted ms-2">
+                    {testedSitesMissingPriceYear} missing {testedSitesMissingPriceYear === 1 ? 'price' : 'prices'}
+                  </span>
+                ) : null}
+              </Badge>
             </div>
           </div>
-          <div className="monthly-route-detail-actions">
-            <Button
-              variant="outline-secondary"
-              size="sm"
-              className="monthly-location-detail-action"
-              onClick={() => setUploadRunOpen(true)}
-            >
-              <i className="bi bi-upload" aria-hidden />
-              Upload CSV
-            </Button>
-            {stUrl ? (
+          <div className="monthly-route-detail-hero__right">
+            <div className="monthly-route-detail-actions">
               <Button
-                href={stUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                variant="outline-primary"
+                variant="outline-secondary"
                 size="sm"
                 className="monthly-location-detail-action"
+                onClick={() => setUploadRunOpen(true)}
               >
-                <i className="bi bi-box-arrow-up-right" aria-hidden />
-                ServiceTrade
+                <i className="bi bi-upload" aria-hidden />
+                Upload CSV
               </Button>
+              {stUrl ? (
+                <Button
+                  href={stUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  variant="outline-primary"
+                  size="sm"
+                  className="monthly-location-detail-action"
+                >
+                  <i className="bi bi-box-arrow-up-right" aria-hidden />
+                  ServiceTrade
+                </Button>
+              ) : null}
+            </div>
+            {heroTopSpecialists.length > 0 ? (
+              <div className="monthly-route-detail-hero__specialists" aria-label="Top monthly specialists">
+                <span className="monthly-route-detail-hero__specialists-label">Specialists:</span>
+                {heroTopSpecialists.map((tech, index) => (
+                  <Badge
+                    key={`${specialistTechLabel(tech)}:${index}`}
+                    bg="light"
+                    text="dark"
+                    className={`monthly-route-pill monthly-tech-badge ${specialistBadgeClass(specialistTechJobs(tech))}`}
+                    title={`${specialistBadgeTier(specialistTechJobs(tech))} tier`}
+                    aria-label={`${specialistTechLabel(tech)}, ${specialistTechJobs(tech)} completions`}
+                  >
+                    {specialistTechLabel(tech)} ({specialistTechJobs(tech)})
+                  </Badge>
+                ))}
+              </div>
             ) : null}
           </div>
         </section>
-
-        <div className="monthly-route-metric-grid" aria-label="Route summary">
-          <RouteMetricCard
-            label="Locations"
-            value={<span className="tabular-nums">{routeLocationCount}</span>}
-            meta={`${routeStopTotal} worksheet stops`}
-            tone="info"
-          />
-          <RouteMetricCard
-            label="Testing cadence"
-            value={patternLabel ?? 'Not set'}
-            meta={effectiveHistoryYear != null ? `${effectiveHistoryYear} selected` : 'No testing years'}
-          />
-          <RouteMetricCard
-            label="Sheet months"
-            value={<span className="tabular-nums">{selectedYearSheetMonths.length}/12</span>}
-            meta={`${selectedYearSitesTested} tested, ${selectedYearSkippedTotal} skipped`}
-            tone="success"
-          />
-          <RouteMetricCard
-            label="Tested revenue"
-            value={formatCurrencyCad(selectedYearRevenue)}
-            meta={
-              testedSitesMissingPriceYear > 0
-                ? `${testedSitesMissingPriceYear} missing price`
-                : 'All tested prices counted'
-            }
-            tone={testedSitesMissingPriceYear > 0 ? 'warning' : 'success'}
-          />
-          <RouteMetricCard
-            label="ST completions"
-            value={<span className="tabular-nums">{selectedYearCompletedRuns}</span>}
-            meta={stUrl ? 'Months with attributed jobs' : 'Route not linked'}
-          />
-          <RouteMetricCard
-            label="Top specialist"
-            value={specialistMetricValue}
-            meta={specialistMetricMeta}
-            tone={specialists === null ? 'warning' : 'neutral'}
-          />
-        </div>
 
         <Accordion defaultActiveKey={['history']} alwaysOpen className="monthly-location-detail-accordion monthly-route-detail-accordion">
         <Accordion.Item
@@ -1028,7 +993,6 @@ export default function MonthlyRouteDetailPage() {
             <RouteSectionHeader
               icon="bi-map"
               title="Route map"
-              subtitle="Calculated driving route using current stop order"
               badge={`${routeStopTotal} stops`}
             />
           </Accordion.Header>
@@ -1049,7 +1013,6 @@ export default function MonthlyRouteDetailPage() {
             <RouteSectionHeader
               icon="bi-calendar2-check"
               title="Runs"
-              subtitle="Monthly worksheet activity and ServiceTrade specialist signals"
               badge={effectiveHistoryYear != null ? effectiveHistoryYear : 'No data'}
             />
           </Accordion.Header>
@@ -1117,6 +1080,7 @@ export default function MonthlyRouteDetailPage() {
                       ? monthIsoKeysForCalendarYear(effectiveHistoryYear).map((monthIso) => {
                           const cell = testingByMonth[monthIso]
                           const hasSheetHistoryForMonth = cell !== undefined
+                          const hasRunFileForMonth = runsByMonth[monthIso] != null
                           const sitesTested =
                             cell && typeof cell.sites_tested_count === 'number'
                               ? cell.sites_tested_count
@@ -1158,13 +1122,13 @@ export default function MonthlyRouteDetailPage() {
                                 }
                               >
                                 <div>{routeTestLabel ?? formatMonthHeading(monthIso)}</div>
-                                {hasSheetHistoryForMonth && monthIso <= monthFirstIsoPacificToday() ? (
+                                {hasRunFileForMonth && monthIso <= monthFirstIsoPacificToday() ? (
                                   <div>
                                     <Link
                                       className="small"
-                                      to={`/monthlies/routes/${idNum}/worksheet/${encodeURIComponent(monthIso)}`}
+                                      to={`/monthlies/routes/${idNum}/runs/${encodeURIComponent(monthIso)}`}
                                     >
-                                      Technician worksheet
+                                      Run details
                                     </Link>
                                   </div>
                                 ) : null}
@@ -1321,7 +1285,6 @@ export default function MonthlyRouteDetailPage() {
             <RouteSectionHeader
               icon="bi-signpost-split"
               title="Sites on this route"
-              subtitle="Drag rows to maintain the technician worksheet order"
               badge={`${routeStopTotal} stops`}
             />
           </Accordion.Header>
@@ -1393,7 +1356,6 @@ export default function MonthlyRouteDetailPage() {
             <RouteSectionHeader
               icon="bi-bar-chart"
               title="Performance"
-              subtitle="Revenue captured from tested route sites"
               badge={formatCurrencyCad(selectedYearRevenue)}
             />
           </Accordion.Header>
@@ -1465,7 +1427,6 @@ export default function MonthlyRouteDetailPage() {
             <RouteSectionHeader
               icon="bi-chat-left-text"
               title="Comments"
-              subtitle="Internal notes for this monthly route"
               badge={comments.length}
             />
           </Accordion.Header>

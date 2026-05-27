@@ -18,8 +18,8 @@ import { parseMonitoringSheetDisplay } from '../features/monthlyRoutes/monitorin
 import {
   monthFirstIsoPacificToday,
   parseYearMonth,
+  runOfficeStatusPillLabel,
   worksheetOfficeRunActivity,
-  worksheetRunExplicitlyCompleted,
   type TechnicianWorksheetPayload,
   type TechnicianWorksheetRow,
   type TechnicianWorksheetStop,
@@ -27,6 +27,7 @@ import {
 } from '../features/monthlyRoutes/monthlyRoutesShared'
 import {
   backoffMs,
+  clearWorksheetCache,
   enqueueWorksheetChange,
   loadSyncQueue,
   loadWorksheetCache,
@@ -336,8 +337,6 @@ export default function TechnicianWorksheetPage() {
   const [payload, setPayload] = useState<TechnicianWorksheetPayload | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [portalStartingRun, setPortalStartingRun] = useState(false)
-  const [runLifecycleBusy, setRunLifecycleBusy] = useState(false)
   const [resetRunModalOpen, setResetRunModalOpen] = useState(false)
   const [resetRunBusy, setResetRunBusy] = useState(false)
   const [syncState, setSyncState] = useState<SyncState>('synced')
@@ -388,15 +387,18 @@ export default function TechnicianWorksheetPage() {
     worksheetGridEditingRef.current = worksheetGridEditing
   }, [worksheetGridEditing])
 
-  const updateLocalRow = useCallback((locationId: number, patch: WorksheetChangeSet) => {
-    setPayload((prev) => {
-      if (!prev) return prev
-      const rows = prev.rows.map((r) => (r.location_id === locationId ? { ...r, ...patch } : r))
-      const next = { ...prev, rows }
-      saveWorksheetCache(next)
-      return next
-    })
-  }, [])
+  const updateLocalRow = useCallback(
+    (locationId: number, patch: WorksheetChangeSet) => {
+      setPayload((prev) => {
+        if (!prev) return prev
+        const rows = prev.rows.map((r) => (r.location_id === locationId ? { ...r, ...patch } : r))
+        const next = { ...prev, rows }
+        if (isPortalMode) saveWorksheetCache(next)
+        return next
+      })
+    },
+    [isPortalMode],
+  )
 
   const openClockInRow = useMemo(() => {
     if (!payload?.rows?.length) return null
@@ -428,7 +430,7 @@ export default function TechnicianWorksheetPage() {
         setLoading(false)
         return
       }
-      const cached = loadWorksheetCache(idNum, monthQuery)
+      const cached = isPortalMode ? loadWorksheetCache(idNum, monthQuery) : null
       if (cached) {
         setPayload(cached)
         setSyncState(navigator.onLine ? 'synced' : 'saved_offline')
@@ -445,7 +447,8 @@ export default function TechnicianWorksheetPage() {
         )
         if (signal?.aborted) return
         setPayload(data)
-        saveWorksheetCache(data)
+        if (isPortalMode) saveWorksheetCache(data)
+        else clearWorksheetCache(idNum, monthQuery)
         setSyncState('synced')
       } catch (e) {
         if (isAbortError(e)) return
@@ -460,63 +463,8 @@ export default function TechnicianWorksheetPage() {
     [routeId, idNum, monthOk, monthQuery, isPortalMode]
   )
 
-  const onPortalStartRun = useCallback(async () => {
-    if (!isPortalMode || Number.isNaN(idNum)) return
-    if (payload?.run != null && payload.run.started_at != null) return
-    setPortalStartingRun(true)
-    try {
-      await apiJson<{ run: { month_date: string } }>(`/api/technician_portal/routes/${idNum}/runs`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: '{}',
-      })
-      await load()
-    } catch {
-      window.alert('Could not start run. Try again.')
-    } finally {
-      setPortalStartingRun(false)
-    }
-  }, [isPortalMode, idNum, payload?.run, load])
-
-  const onPortalCompleteRun = useCallback(async () => {
-    if (!isPortalMode || Number.isNaN(idNum) || !monthOk) return
-    const run = payload?.run
-    if (!run?.started_at || worksheetRunExplicitlyCompleted(run)) return
-    setRunLifecycleBusy(true)
-    try {
-      await apiJson(`/api/technician_portal/routes/${idNum}/runs/complete`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ month_date: monthQuery }),
-      })
-      await load()
-    } catch {
-      window.alert('Could not complete run. Try again.')
-    } finally {
-      setRunLifecycleBusy(false)
-    }
-  }, [isPortalMode, idNum, monthOk, monthQuery, payload?.run, load])
-
-  const onPortalReopenRun = useCallback(async () => {
-    if (!isPortalMode || Number.isNaN(idNum) || !monthOk || payload?.run == null) return
-    if (!worksheetRunExplicitlyCompleted(payload.run)) return
-    setRunLifecycleBusy(true)
-    try {
-      await apiJson(`/api/technician_portal/routes/${idNum}/runs/reopen`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ month_date: monthQuery }),
-      })
-      await load()
-    } catch {
-      window.alert('Could not reopen run. Try again.')
-    } finally {
-      setRunLifecycleBusy(false)
-    }
-  }, [isPortalMode, idNum, monthOk, monthQuery, payload?.run, load])
-
   const onConfirmResetRun = useCallback(async () => {
-    if (!isPortalMode || Number.isNaN(idNum) || !monthOk) return
+    if (Number.isNaN(idNum) || !monthOk) return
     setResetRunBusy(true)
     try {
       const qs = new URLSearchParams({ month: monthQuery })
@@ -531,7 +479,8 @@ export default function TechnicianWorksheetPage() {
         body: JSON.stringify({ source: 'technician_app' }),
       })
       setPayload(res.worksheet)
-      saveWorksheetCache(res.worksheet)
+      if (isPortalMode) saveWorksheetCache(res.worksheet)
+      else clearWorksheetCache(idNum, monthQuery)
       setAnnualTestAnywayRows(new Set())
       setResetRunModalOpen(false)
       setSyncMessage(null)
@@ -630,7 +579,7 @@ export default function TechnicianWorksheetPage() {
           if (!prev) return prev
           const rows = prev.rows.map((r) => (r.location_id === item.locationId ? res.row : r))
           const next = { ...prev, rows }
-          saveWorksheetCache(next)
+          if (isPortalMode) saveWorksheetCache(next)
           return next
         })
         nextQueue = nextQueue.filter((q) => q.id !== item.id)
@@ -656,7 +605,7 @@ export default function TechnicianWorksheetPage() {
     saveSyncQueue(nextQueue)
     syncingRef.current = false
     setSyncState(nextQueue.length > 0 ? 'saved_offline' : 'synced')
-  }, [idNum, monthOk, monthQuery])
+  }, [idNum, monthOk, monthQuery, isPortalMode])
 
   useEffect(() => {
     const c = new AbortController()
@@ -1415,7 +1364,7 @@ export default function TechnicianWorksheetPage() {
               <th>Monitoring</th>
               <th>Testing procedures</th>
               <th>Location comments</th>
-              <th>Run comments</th>
+              <th>Job comments</th>
             </tr>
           </thead>
         </Table>
@@ -1427,13 +1376,11 @@ export default function TechnicianWorksheetPage() {
     const startedLabel = formatRunStartedAt(payload?.run?.started_at ?? null)
     const completedLabel = formatRunStartedAt(payload?.run?.completed_at ?? null)
     const runActivityLabel =
-      officeRunActivityPhase === 'active'
-        ? 'Field run active'
+      officeRunActivityPhase != null && payload
+        ? runOfficeStatusPillLabel(officeRunActivityPhase, payload.month_date, payload.route)
         : completedLabel
           ? `Completed ${completedLabel}`
-          : officeRunActivityPhase === 'completed'
-            ? 'Completed'
-            : 'Not completed'
+          : 'Not completed'
     return (
       <section className="tw-office-summary-card" aria-label="Worksheet summary">
         <div className="tw-office-summary-main">
@@ -1461,7 +1408,7 @@ export default function TechnicianWorksheetPage() {
             </div>
             <div className="tw-office-summary-metric">
               <strong>{officeStopProgress.open}</strong>
-              <span>Open</span>
+              <span>Pending</span>
             </div>
             <div className="tw-office-summary-metric tw-office-summary-metric--total">
               <strong>{officeStopProgress.total}</strong>
@@ -1470,7 +1417,13 @@ export default function TechnicianWorksheetPage() {
           </div>
           {officeRunActivityPhase ? (
             <Badge
-              bg={officeRunActivityPhase === 'active' ? 'primary' : 'secondary'}
+              bg={
+                officeRunActivityPhase === 'completed'
+                  ? 'success'
+                  : officeRunActivityPhase === 'active'
+                    ? 'primary'
+                    : 'secondary'
+              }
               className="tw-office-summary-badge"
             >
               {runActivityLabel}
@@ -1643,20 +1596,13 @@ export default function TechnicianWorksheetPage() {
   const isHistoricalView =
     payload?.run?.is_historical === true ||
     (isNonCurrentMonth && (payload?.rows?.length ?? 0) > 0)
-  const worksheetFrozenNoRun = isCurrentMonthPreview || isHistoricalView
+  const worksheetFrozenNoRun = isPortalMode
+    ? isHistoricalView
+    : isCurrentMonthPreview || isHistoricalView
   const officeRunActivityPhase =
     payload?.run != null ? worksheetOfficeRunActivity(payload.run) : null
 
-  /** Portal + current Pacific month: show until field run is explicitly started (preview ``run === null`` or materialized but ``started_at`` unset). */
-  const showPortalStartRun =
-    isPortalMode &&
-    payload !== null &&
-    monthOk &&
-    payload.month_date === monthFirstIsoPacificToday() &&
-    (payload.run == null || payload.run.started_at == null)
-
   const showResetRun =
-    isPortalMode &&
     payload !== null &&
     payload.run != null &&
     payload.run.is_historical !== true &&
@@ -1685,7 +1631,9 @@ export default function TechnicianWorksheetPage() {
                         : `/tech/route/${idNum}`
                       : Number.isNaN(idNum)
                         ? '/monthlies/routes'
-                        : `/monthlies/routes/${idNum}`
+                        : monthOk
+                          ? `/monthlies/routes/${idNum}/runs/${encodeURIComponent(monthQuery)}`
+                          : `/monthlies/routes/${idNum}`
                   }
                   className="btn btn-link text-primary p-0 d-inline-flex align-items-center justify-content-center tw-worksheet-back-btn"
                   aria-label="Back"
@@ -1727,25 +1675,33 @@ export default function TechnicianWorksheetPage() {
                   {!isPortalMode && officeRunActivityPhase != null ? (
                     <div className="small mt-1">
                       <Badge
-                        bg={officeRunActivityPhase === 'active' ? 'primary' : 'secondary'}
+                        bg={
+                          officeRunActivityPhase === 'completed'
+                            ? 'success'
+                            : officeRunActivityPhase === 'active'
+                              ? 'primary'
+                              : 'secondary'
+                        }
                         className={
                           officeRunActivityPhase === 'inactive'
                             ? 'fw-normal bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle'
                             : 'fw-normal'
                         }
                       >
-                        {officeRunActivityPhase === 'active'
-                          ? 'Field run active'
-                          : officeRunActivityPhase === 'completed'
-                            ? 'Completed'
-                            : 'Field run not active'}
+                        {payload
+                          ? runOfficeStatusPillLabel(
+                              officeRunActivityPhase,
+                              payload.month_date,
+                              payload.route,
+                            )
+                          : 'No run file'}
                       </Badge>
                     </div>
                   ) : null}
                   {!isPortalMode && officeStopProgress.total > 0 ? (
                     <div className="small text-muted mt-1">
                       {officeStopProgress.tested} tested · {officeStopProgress.skipped} skipped ·{' '}
-                      {officeStopProgress.annual} annual · {officeStopProgress.open} open ·{' '}
+                      {officeStopProgress.annual} annual · {officeStopProgress.open} pending ·{' '}
                       {officeStopProgress.total} stops
                     </div>
                   ) : null}
@@ -1780,8 +1736,6 @@ export default function TechnicianWorksheetPage() {
                     variant="outline-danger"
                     disabled={
                       resetRunBusy ||
-                      portalStartingRun ||
-                      runLifecycleBusy ||
                       worksheetGridEditing ||
                       activeEditorKey != null ||
                       timeInModalRow != null ||
@@ -1791,64 +1745,6 @@ export default function TechnicianWorksheetPage() {
                     onClick={() => setResetRunModalOpen(true)}
                   >
                     Reset run
-                  </Button>
-                ) : null}
-                {showPortalStartRun ? (
-                  <Button
-                    size="sm"
-                    variant="success"
-                    disabled={portalStartingRun}
-                    onClick={() => void onPortalStartRun()}
-                  >
-                    {portalStartingRun ? (
-                      <>
-                        <Spinner animation="border" size="sm" className="me-1" aria-hidden />
-                        Starting…
-                      </>
-                    ) : (
-                      'Start Run'
-                    )}
-                  </Button>
-                ) : null}
-                {isPortalMode &&
-                payload !== null &&
-                payload.run != null &&
-                worksheetRunExplicitlyCompleted(payload.run) ? (
-                  <Button
-                    size="sm"
-                    variant="outline-warning"
-                    disabled={runLifecycleBusy || portalStartingRun}
-                    onClick={() => void onPortalReopenRun()}
-                  >
-                    {runLifecycleBusy ? (
-                      <>
-                        <Spinner animation="border" size="sm" className="me-1" aria-hidden />
-                        Reopening…
-                      </>
-                    ) : (
-                      'Reopen run'
-                    )}
-                  </Button>
-                ) : null}
-                {isPortalMode &&
-                payload !== null &&
-                payload.run != null &&
-                payload.run.started_at != null &&
-                !worksheetRunExplicitlyCompleted(payload.run) ? (
-                  <Button
-                    size="sm"
-                    variant="success"
-                    disabled={runLifecycleBusy || portalStartingRun}
-                    onClick={() => void onPortalCompleteRun()}
-                  >
-                    {runLifecycleBusy ? (
-                      <>
-                        <Spinner animation="border" size="sm" className="me-1" aria-hidden />
-                        Completing…
-                      </>
-                    ) : (
-                      'Complete run'
-                    )}
                   </Button>
                 ) : null}
                 {queueLength > 0 ? <span className="small text-muted">{queueLength} queued</span> : null}
@@ -2255,7 +2151,7 @@ export default function TechnicianWorksheetPage() {
         </>
       ) : null}
       <Modal
-        show={isPortalMode && resetRunModalOpen}
+        show={resetRunModalOpen}
         onHide={() => {
           if (!resetRunBusy) setResetRunModalOpen(false)
         }}
@@ -2267,10 +2163,10 @@ export default function TechnicianWorksheetPage() {
         </Modal.Header>
         <Modal.Body>
           <p className="mb-2">
-            This clears all <strong>Time In</strong> / <strong>Time Out</strong> values and removes{' '}
-            <strong>skipped</strong> outcomes that are <em>not</em> annual skips. The{' '}
-            <strong>field run started</strong> timestamp is cleared so technicians must tap{' '}
-            <strong>Start Run</strong> again before logging times.
+            This clears all <strong>Time In</strong> / <strong>Time Out</strong> values,{' '}
+            <strong>run comments</strong>, and <strong>skipped</strong> outcomes that are{' '}
+            <em>not</em> annual skips. Tested outcomes are cleared too. The{' '}
+            <strong>field run started</strong> timestamp is cleared.
           </p>
           <p className="mb-0 small text-muted">
             Sites skipped as <code className="text-muted">annual</code> or{' '}
