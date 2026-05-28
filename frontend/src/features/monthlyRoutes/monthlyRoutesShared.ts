@@ -309,7 +309,13 @@ export type RouteTestingSessionPayload = {
 }
 
 /** GET ``/api/monthly_routes/routes/:id/run_details?month=`` — office run summary. */
-export type MonthlyRunDetailCounts = RouteTestingSessionCounts
+/** GET ``/api/monthly_routes/routes/:id/run_details?month=`` outcome KPIs (stop-level). */
+export type MonthlyRunDetailCounts = {
+  all_good_count: number
+  passed_with_problems_count: number
+  failed_count: number
+  skipped_count: number
+}
 
 export type MonthlyRunDetailLocationFieldChange = {
   field_name: string
@@ -413,6 +419,9 @@ export function worksheetOfficeRunActivity(run: TechnicianWorksheetRun | null | 
   return 'active'
 }
 
+import type { PortalClockEvent, PortalDeficiencySummary } from './portalWorkflowShared'
+import { portalStopHasOpenClock } from './portalWorkflowShared'
+
 /** V2 portal worksheet stop (``MonthlyTestingSiteMonth`` grain). */
 export type TechnicianWorksheetStop = {
   testing_site_id: number
@@ -433,6 +442,17 @@ export type TechnicianWorksheetStop = {
   monitoring_notes: string | null
   result_status: string | null
   skip_reason: string | null
+  test_outcome?: string | null
+  skip_category?: string | null
+  skip_note?: string | null
+  confirmed_no_deficiencies?: boolean
+  clock_events?: PortalClockEvent[]
+  deficiencies?: PortalDeficiencySummary[]
+  has_run_changes?: boolean
+  billing_status?: string | null
+  is_legacy_outcome?: boolean
+  portal_read_only?: boolean
+  is_legacy_run?: boolean
   testing_procedures: string | null
   inspection_tech_notes: string | null
   /** This-run-only notes; not carried to the next month. */
@@ -1054,6 +1074,9 @@ export function worksheetStopSkipIsAnnual(stop: TechnicianWorksheetStop): boolea
 
 /** Open visit on a portal stop: clock time in, no time out, not tested/skipped. */
 export function worksheetStopIsOpenClockIn(stop: TechnicianWorksheetStop): boolean {
+  if (Array.isArray(stop.clock_events) && stop.clock_events.length > 0) {
+    return portalStopHasOpenClock(stop)
+  }
   const rs = (stop.result_status || '').trim().toLowerCase()
   if (rs === 'tested' || rs === 'skipped') return false
   const tin = (stop.time_in || '').trim()

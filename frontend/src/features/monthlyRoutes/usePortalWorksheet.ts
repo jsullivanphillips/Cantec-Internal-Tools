@@ -5,7 +5,6 @@ import {
   parseYearMonth,
   worksheetRunExplicitlyCompleted,
   WORKSHEET_CLOCK_IN_BLOCKED_MESSAGE,
-  worksheetStopIsOpenClockIn,
   type TechnicianWorksheetPayload,
   type TechnicianWorksheetStop,
 } from './monthlyRoutesShared'
@@ -14,6 +13,7 @@ import {
   enqueueWorksheetChange,
   hasPendingSyncForRouteMonth,
   loadSyncQueue,
+  loadWorkflowSyncQueue,
   loadWorksheetCache,
   applyServerStopWithPending,
   mergePendingChangesIntoPayload,
@@ -23,6 +23,13 @@ import {
   type WorksheetStopChangeSet,
 } from './worksheetOfflineStore'
 import { apiJson, authFailureRedirectPath, isAbortError } from '../../lib/apiClient'
+import { runPortalWorkflowSyncQueue } from './portalWorkflowSync'
+import {
+  projectedClockInBlockedForStop,
+  projectedOpenClockStop,
+  projectStopsWithWorkflowQueue,
+} from './portalRouteProjection'
+import { usePortalWorkflowActions } from './usePortalWorkflowActions'
 
 const MONTH_FIRST_RE = /^\d{4}-\d{2}-01$/
 
@@ -62,6 +69,8 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
   const [syncState, setSyncState] = useState<PortalWorksheetSyncState>('synced')
   const [syncMessage, setSyncMessage] = useState<string | null>(null)
   const syncingRef = useRef(false)
+  const workflowSyncingRef = useRef(false)
+  const triggerWorkflowSyncRef = useRef(() => {})
   const worksheetDeferredRemoteFetchRef = useRef(false)
   const worksheetInteractiveBusyRef = useRef(false)
   const hasLoadedOnceRef = useRef(false)
@@ -81,15 +90,28 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
     })
   }, [])
 
+  const workflowQueueRevision = useMemo(
+    () =>
+      loadWorkflowSyncQueue().filter(
+        (item) => item.routeId === routeId && item.monthIso === monthIso,
+      ).length,
+    [stops, syncState, routeId, monthIso],
+  )
+
+  const projectedStops = useMemo(
+    () => projectStopsWithWorkflowQueue(stops, routeId, monthIso),
+    [stops, routeId, monthIso, workflowQueueRevision],
+  )
+
   const openClockInStop = useMemo(() => {
-    if (!stops.length) return null
-    return stops.find(worksheetStopIsOpenClockIn) ?? null
-  }, [stops])
+    if (!projectedStops.length) return null
+    return projectedOpenClockStop(projectedStops, routeId, monthIso) ?? null
+  }, [projectedStops, routeId, monthIso])
 
   const clockInBlockedForStop = useCallback(
     (stop: TechnicianWorksheetStop): boolean =>
-      openClockInStop != null && openClockInStop.testing_site_id !== stop.testing_site_id,
-    [openClockInStop],
+      projectedClockInBlockedForStop(stop, stops, routeId, monthIso),
+    [stops, routeId, monthIso, workflowQueueRevision],
   )
 
   const fetchWorksheet = useCallback(
@@ -115,6 +137,9 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
         if (signal?.aborted) return
         const merged = mergePendingChangesIntoPayload(data, routeId, monthIso)
         if (mode === 'background' && hasLoadedOnceRef.current) {
+          if (hasPendingSyncForRouteMonth(routeId, monthIso)) {
+            return
+          }
           setPayload((prev) => {
             const next = prev ? mergeServerWorksheetPayload(prev, merged, routeId, monthIso) : merged
             saveWorksheetCache(next)
@@ -124,7 +149,13 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
           setPayload(merged)
           saveWorksheetCache(merged)
         }
-        setSyncState('synced')
+        setSyncState(
+          hasPendingSyncForRouteMonth(routeId, monthIso)
+            ? navigator.onLine
+              ? 'saved_offline'
+              : 'saved_offline'
+            : 'synced',
+        )
         setHasLoadedOnce(true)
         hasLoadedOnceRef.current = true
       } catch (e) {
@@ -270,13 +301,51 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
     }
     saveSyncQueue(nextQueue)
     syncingRef.current = false
-    setSyncState(nextQueue.length > 0 ? 'saved_offline' : 'synced')
+    const workflowPending = loadWorkflowSyncQueue().some(
+      (item) => item.routeId === routeId && item.monthIso === monthIso,
+    )
+    setSyncState(nextQueue.length > 0 || workflowPending ? 'saved_offline' : 'synced')
+    if (!nextQueue.length) {
+      void runWorkflowSyncQueueRef.current()
+    }
   }, [routeId, monthOk, monthIso])
 
   const runSyncQueueRef = useRef(runSyncQueue)
   useEffect(() => {
     runSyncQueueRef.current = runSyncQueue
   }, [runSyncQueue])
+
+  const runWorkflowSyncQueue = useCallback(async () => {
+    if (Number.isNaN(routeId) || !monthOk) return
+    await runPortalWorkflowSyncQueue(
+      {
+        routeId,
+        monthIso,
+        setPayload,
+        setSyncState,
+        suppressRemoteRefreshUntilRef,
+      },
+      workflowSyncingRef,
+    )
+  }, [routeId, monthOk, monthIso])
+
+  const runWorkflowSyncQueueRef = useRef(runWorkflowSyncQueue)
+  useEffect(() => {
+    runWorkflowSyncQueueRef.current = runWorkflowSyncQueue
+  }, [runWorkflowSyncQueue])
+
+  triggerWorkflowSyncRef.current = () => {
+    void runWorkflowSyncQueueRef.current()
+  }
+
+  const workflowActions = usePortalWorkflowActions({
+    routeId,
+    monthIso,
+    setPayload,
+    setSyncState,
+    suppressRemoteRefreshUntilRef,
+    triggerSyncRef: triggerWorkflowSyncRef,
+  })
 
   const runStarted = (payload?.run?.started_at || '').trim().length > 0
   const runCompleted = worksheetRunExplicitlyCompleted(payload?.run)
@@ -382,6 +451,7 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
   useEffect(() => {
     const t = setInterval(() => {
       void runSyncQueue()
+      void runWorkflowSyncQueueRef.current()
     }, 3500)
     return () => clearInterval(t)
   }, [runSyncQueue])
@@ -517,5 +587,6 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
     canEditStops,
     setInteractiveBusy,
     hhmmNow,
+    workflowActions,
   }
 }

@@ -1062,6 +1062,80 @@ def _reject_patch_if_portal_run_completed(
     )
 
 
+def _reject_if_portal_read_only(run: MonthlyRouteRun | None) -> tuple[object, int] | None:
+    from app.monthly.portal_workflow import portal_run_is_read_only
+
+    if run is None or not _tech_portal_patch_request():
+        return None
+    if not portal_run_is_read_only(run):
+        return None
+    return (
+        jsonify(
+            {
+                "error": "This run was imported from a spreadsheet and cannot be edited in the portal.",
+                "code": "portal_read_only",
+            }
+        ),
+        409,
+    )
+
+
+def _portal_workflow_stop_context(route_id: int, testing_site_id: int, month_first: date):
+    """Shared load/lock checks for portal workflow stop endpoints."""
+    from app.monthly.worksheet_stops import (
+        ensure_worksheet_stops_for_route_month,
+        load_stop_for_patch,
+        serialize_worksheet_stop,
+        worksheet_stop_number_for_site,
+    )
+
+    run_for_month = MonthlyRouteRun.query.filter_by(
+        monthly_route_id=route_id,
+        month_date=month_first,
+    ).one_or_none()
+
+    mtsm, ts, loc = load_stop_for_patch(route_id, testing_site_id, month_first)
+    if ts is None or loc is None:
+        return None, (jsonify({"error": "Testing site not found"}), 404)
+    if mtsm is None and run_for_month is not None and _tech_portal_patch_request():
+        ensure_worksheet_stops_for_route_month(route_id, month_first, run_for_month)
+        db.session.flush()
+        mtsm, ts, loc = load_stop_for_patch(route_id, testing_site_id, month_first)
+    if mtsm is None:
+        return None, (jsonify({"error": "Worksheet stop not found for testing site/month"}), 404)
+    if mtsm.test_monthly_route_id is not None and int(mtsm.test_monthly_route_id) != int(route_id):
+        return None, (jsonify({"error": "Worksheet stop does not belong to this route"}), 404)
+
+    for block in (
+        _reject_if_portal_read_only(run_for_month),
+        _reject_patch_if_portal_run_completed(run_for_month),
+    ):
+        if block is not None:
+            return None, block
+
+    def _stop_payload() -> dict[str, object]:
+        stop_num = worksheet_stop_number_for_site(route_id, month_first, testing_site_id)
+        return serialize_worksheet_stop(
+            ts,
+            loc,
+            mtsm,
+            route_id=route_id,
+            month_first=month_first,
+            stop_number=stop_num,
+            run=run_for_month,
+        )
+
+    return {
+        "run": run_for_month,
+        "mtsm": mtsm,
+        "ts": ts,
+        "loc": loc,
+        "route_id": route_id,
+        "month_first": month_first,
+        "stop_payload": _stop_payload,
+    }, None
+
+
 def _serialize_run(run: MonthlyRouteRun | None) -> dict[str, object] | None:
     """Frontend payload for a ``MonthlyRouteRun`` (the "run file" header).
 
@@ -1857,23 +1931,10 @@ def get_monthly_route_detail(route_id: int):
 
 
 def _run_details_counts_for_month(route_id: int, month_first: date) -> dict[str, int]:
-    """Outcome counts for one sheet month (same rules as ``testing_by_month`` for that month)."""
-    from app.monthly.worksheet_stops import _attributed_history_for_route_month
+    """Outcome counts from route worksheet stops (annual month on site, unless tested)."""
+    from app.monthly.worksheet_stops import run_details_counts_for_route_month
 
-    counts = {
-        "sites_tested_count": 0,
-        "skipped_non_annual_count": 0,
-        "skipped_annual_count": 0,
-    }
-    for row in _attributed_history_for_route_month(route_id, month_first):
-        bucket = _history_row_outcome_bucket(row)
-        if bucket == "skipped_annual":
-            counts["skipped_annual_count"] += 1
-        elif bucket == "skipped_non_annual":
-            counts["skipped_non_annual_count"] += 1
-        elif bucket == "tested":
-            counts["sites_tested_count"] += 1
-    return counts
+    return run_details_counts_for_route_month(route_id, month_first)
 
 
 def _location_display_label(loc: MonthlyRouteLocation | None, location_id: int) -> str:
@@ -2075,6 +2136,61 @@ def get_monthly_route_run_details(route_id: int):
             404,
         )
     return jsonify(payload)
+
+
+@monthly_routes_bp.patch(
+    "/api/monthly_routes/routes/<int:route_id>/locations/<int:location_id>/billing_status"
+)
+def patch_monthly_route_location_billing_status(route_id: int, location_id: int):
+    """Office processor: set location-month billing (bill / do_not_bill / unset)."""
+    month_raw = (request.args.get("month") or "").strip()
+    month_dt = _parse_month(month_raw)
+    if month_dt is None:
+        return jsonify({"error": "Invalid or missing month query param (use YYYY-MM-DD, first of month)"}), 400
+
+    month_first = date(month_dt.year, month_dt.month, 1)
+    loc = (
+        db.session.query(MonthlyRouteLocation)
+        .filter(
+            MonthlyRouteLocation.id == location_id,
+            MonthlyRouteLocation.monthly_route_id == route_id,
+        )
+        .one_or_none()
+    )
+    if loc is None:
+        return jsonify({"error": "Location not found on this route"}), 404
+
+    payload = request.get_json(silent=True) or {}
+    billing_raw = payload.get("billing_status")
+    if billing_raw is None:
+        return jsonify({"error": "billing_status is required", "code": "invalid_billing_status"}), 400
+
+    from app.monthly.portal_workflow import set_location_billing_status
+
+    try:
+        hist = set_location_billing_status(
+            location_id,
+            month_first,
+            route_id,
+            billing_status=str(billing_raw),
+        )
+        db.session.commit()
+    except ValueError as exc:
+        db.session.rollback()
+        code = str(exc)
+        if code in ("billing_legacy_locked", "invalid_billing_status"):
+            return jsonify({"error": code.replace("_", " "), "code": code}), 400
+        raise
+
+    status = (hist.billing_status or "").strip().lower()
+    return jsonify(
+        {
+            "ok": True,
+            "location_id": int(location_id),
+            "month_date": month_first.isoformat(),
+            "billing_status": status,
+        }
+    )
 
 
 @monthly_routes_bp.get("/api/monthly_routes/routes/<int:route_id>/testing_session")
@@ -2566,6 +2682,9 @@ def patch_monthly_route_worksheet_stop(route_id: int, testing_site_id: int):
     portal_completed_block = _reject_patch_if_portal_run_completed(run_for_month)
     if portal_completed_block is not None:
         return portal_completed_block
+    portal_read_only_block = _reject_if_portal_read_only(run_for_month)
+    if portal_read_only_block is not None:
+        return portal_read_only_block
 
     if run_for_month is not None and _run_explicitly_completed(run_for_month):
         outcome_fields = {"result_status", "skip_reason"}
@@ -2802,12 +2921,482 @@ def patch_monthly_route_worksheet_stop(route_id: int, testing_site_id: int):
         route_id=route_id,
         month_first=month_first,
         stop_number=0,
+        run=run_for_month,
     )
     for idx, s in enumerate(worksheet_stops_for_route_month(route_id, month_first), start=1):
         if int(s["testing_site_id"]) == int(testing_site_id):
             stop_payload["stop_number"] = idx
             break
     return jsonify({"ok": True, "stop": stop_payload})
+
+
+def _parse_portal_workflow_month() -> tuple[date | None, object]:
+    month_raw = (request.args.get("month") or "").strip()
+    month_dt = _parse_month(month_raw)
+    if month_dt is None:
+        return None, (jsonify({"error": "Invalid or missing month query param (use YYYY-MM-DD, first of month)"}), 400)
+    return date(month_dt.year, month_dt.month, 1), None
+
+
+def _portal_session_tech() -> tuple[str | None, str | None]:
+    tech_id = session.get("portal_tech_id")
+    tech_name = session.get("portal_tech_name")
+    if tech_id is not None:
+        tech_id = str(tech_id).strip() or None
+    if tech_name is not None:
+        tech_name = str(tech_name).strip() or None
+    return tech_id, tech_name
+
+
+@monthly_routes_bp.get(
+    "/api/monthly_routes/routes/<int:route_id>/worksheet/stops/<int:testing_site_id>/clock_events"
+)
+def get_worksheet_stop_clock_events(route_id: int, testing_site_id: int):
+    month_first, err = _parse_portal_workflow_month()
+    if err is not None:
+        return err
+    ctx, err_resp = _portal_workflow_stop_context(route_id, testing_site_id, month_first)
+    if err_resp is not None:
+        return err_resp
+    from app.monthly.portal_workflow import list_clock_events
+
+    return jsonify({"clock_events": list_clock_events(ctx["mtsm"])})
+
+
+@monthly_routes_bp.post(
+    "/api/monthly_routes/routes/<int:route_id>/worksheet/stops/<int:testing_site_id>/clock_events/clock_in"
+)
+def post_worksheet_stop_clock_in(route_id: int, testing_site_id: int):
+    month_first, err = _parse_portal_workflow_month()
+    if err is not None:
+        return err
+    ctx, err_resp = _portal_workflow_stop_context(route_id, testing_site_id, month_first)
+    if err_resp is not None:
+        return err_resp
+
+    from app.monthly.portal_workflow import clock_in_stop, find_open_clock_event_on_route
+    from app.monthly.worksheet_stops import is_primary_stop, sync_primary_history_from_stop
+
+    payload = request.get_json(silent=True) or {}
+    time_in = _normalize_ws_text(payload.get("time_in"))
+    if not time_in:
+        now_pt = datetime.now(ZoneInfo("America/Vancouver"))
+        hour = now_pt.hour % 12 or 12
+        time_in = f"{hour}:{now_pt.minute:02d} {'AM' if now_pt.hour < 12 else 'PM'}"
+
+    conflict = find_open_clock_event_on_route(
+        route_id,
+        month_first,
+        exclude_testing_site_id=testing_site_id,
+    )
+    if conflict is not None:
+        other_mtsm, _ev = conflict
+        return jsonify(
+            {
+                "error": "Clock out of the current stop before clocking in elsewhere.",
+                "code": "open_clock_in_conflict",
+                "testing_site_id": int(other_mtsm.monthly_testing_site_id),
+            }
+        ), 409
+
+    tech_id, tech_name = _portal_session_tech()
+    mtsm = ctx["mtsm"]
+    ts = ctx["ts"]
+    loc = ctx["loc"]
+    ev = clock_in_stop(mtsm, time_in_raw=time_in, tech_id=tech_id, tech_name=tech_name)
+    if is_primary_stop(ts, loc):
+        sync_primary_history_from_stop(mtsm, loc, route_id, month_first)
+    db.session.commit()
+    return jsonify({"ok": True, "clock_event": {"id": int(ev.id), "time_in": ev.time_in_raw}, "stop": ctx["stop_payload"]()})
+
+
+@monthly_routes_bp.post(
+    "/api/monthly_routes/routes/<int:route_id>/worksheet/stops/<int:testing_site_id>/clock_events/clock_out"
+)
+def post_worksheet_stop_clock_out(route_id: int, testing_site_id: int):
+    month_first, err = _parse_portal_workflow_month()
+    if err is not None:
+        return err
+    ctx, err_resp = _portal_workflow_stop_context(route_id, testing_site_id, month_first)
+    if err_resp is not None:
+        return err_resp
+
+    from app.monthly.portal_workflow import clock_out_stop
+    from app.monthly.worksheet_stops import is_primary_stop, sync_primary_history_from_stop
+
+    payload = request.get_json(silent=True) or {}
+    time_out = _normalize_ws_text(payload.get("time_out"))
+    if not time_out:
+        now_pt = datetime.now(ZoneInfo("America/Vancouver"))
+        hour = now_pt.hour % 12 or 12
+        time_out = f"{hour}:{now_pt.minute:02d} {'AM' if now_pt.hour < 12 else 'PM'}"
+
+    try:
+        ev = clock_out_stop(ctx["mtsm"], time_out_raw=time_out)
+    except ValueError:
+        return jsonify({"error": "No open clock-in on this stop.", "code": "no_open_clock"}), 400
+
+    if is_primary_stop(ctx["ts"], ctx["loc"]):
+        sync_primary_history_from_stop(ctx["mtsm"], ctx["loc"], route_id, month_first)
+    db.session.commit()
+    return jsonify(
+        {
+            "ok": True,
+            "clock_event": {"id": int(ev.id), "time_out": ev.time_out_raw},
+            "stop": ctx["stop_payload"](),
+        }
+    )
+
+
+@monthly_routes_bp.post(
+    "/api/monthly_routes/routes/<int:route_id>/worksheet/stops/<int:testing_site_id>/clock_events/cancel_clock_in"
+)
+def post_worksheet_stop_cancel_clock_in(route_id: int, testing_site_id: int):
+    month_first, err = _parse_portal_workflow_month()
+    if err is not None:
+        return err
+    ctx, err_resp = _portal_workflow_stop_context(route_id, testing_site_id, month_first)
+    if err_resp is not None:
+        return err_resp
+
+    from app.monthly.portal_workflow import cancel_clock_in_stop
+    from app.monthly.worksheet_stops import is_primary_stop, sync_primary_history_from_stop
+
+    try:
+        cancel_clock_in_stop(ctx["mtsm"])
+    except ValueError as exc:
+        code = str(exc)
+        if code in ("no_open_clock", "visit_has_outcome"):
+            return jsonify({"error": code.replace("_", " "), "code": code}), 400
+        raise
+
+    if is_primary_stop(ctx["ts"], ctx["loc"]):
+        sync_primary_history_from_stop(ctx["mtsm"], ctx["loc"], route_id, month_first)
+    db.session.commit()
+    return jsonify({"ok": True, "stop": ctx["stop_payload"]()})
+
+
+@monthly_routes_bp.post(
+    "/api/monthly_routes/routes/<int:route_id>/worksheet/transition_clock"
+)
+def post_worksheet_transition_clock(route_id: int):
+    month_first, err = _parse_portal_workflow_month()
+    if err is not None:
+        return err
+
+    from app.monthly.portal_workflow import transition_clock_between_stops
+    from app.monthly.worksheet_stops import (
+        is_primary_stop,
+        serialize_worksheet_stop,
+        sync_primary_history_from_stop,
+        worksheet_stop_number_for_site,
+    )
+
+    run_for_month = MonthlyRouteRun.query.filter_by(
+        monthly_route_id=route_id,
+        month_date=month_first,
+    ).one_or_none()
+    for block in (
+        _reject_if_portal_read_only(run_for_month),
+        _reject_patch_if_portal_run_completed(run_for_month),
+    ):
+        if block is not None:
+            return block
+
+    payload = request.get_json(silent=True) or {}
+    from_site = payload.get("from_testing_site_id")
+    to_site = payload.get("to_testing_site_id")
+    if from_site is None or to_site is None:
+        return jsonify({"error": "from_testing_site_id and to_testing_site_id are required"}), 400
+
+    time_out = _normalize_ws_text(payload.get("time_out"))
+    time_in = _normalize_ws_text(payload.get("time_in"))
+    if not time_out or not time_in:
+        now_pt = datetime.now(ZoneInfo("America/Vancouver"))
+        hour = now_pt.hour % 12 or 12
+        default_time = f"{hour}:{now_pt.minute:02d} {'AM' if now_pt.hour < 12 else 'PM'}"
+        time_out = time_out or default_time
+        time_in = time_in or default_time
+
+    tech_id, tech_name = _portal_session_tech()
+    try:
+        (
+            from_mtsm,
+            to_mtsm,
+            from_ts,
+            from_loc,
+            to_ts,
+            to_loc,
+        ) = transition_clock_between_stops(
+            route_id,
+            month_first,
+            int(from_site),
+            int(to_site),
+            time_out_raw=time_out,
+            time_in_raw=time_in,
+            tech_id=tech_id,
+            tech_name=tech_name,
+        )
+    except ValueError as exc:
+        code = str(exc)
+        if code == "open_clock_in_conflict":
+            return jsonify(
+                {
+                    "error": "Clock out of the current stop before clocking in elsewhere.",
+                    "code": code,
+                }
+            ), 409
+        if code in ("from_stop_not_found", "to_stop_not_found"):
+            return jsonify({"error": code.replace("_", " "), "code": code}), 404
+        if code == "same_stop":
+            return jsonify({"error": "from and to stops must differ", "code": code}), 400
+        raise
+
+    if is_primary_stop(from_ts, from_loc):
+        sync_primary_history_from_stop(from_mtsm, from_loc, route_id, month_first)
+    if is_primary_stop(to_ts, to_loc):
+        sync_primary_history_from_stop(to_mtsm, to_loc, route_id, month_first)
+    db.session.commit()
+
+    from_stop = serialize_worksheet_stop(
+        from_ts,
+        from_loc,
+        from_mtsm,
+        route_id=route_id,
+        month_first=month_first,
+        stop_number=worksheet_stop_number_for_site(route_id, month_first, int(from_site)),
+        run=run_for_month,
+    )
+    to_stop = serialize_worksheet_stop(
+        to_ts,
+        to_loc,
+        to_mtsm,
+        route_id=route_id,
+        month_first=month_first,
+        stop_number=worksheet_stop_number_for_site(route_id, month_first, int(to_site)),
+        run=run_for_month,
+    )
+    return jsonify({"ok": True, "from_stop": from_stop, "to_stop": to_stop})
+
+
+@monthly_routes_bp.put(
+    "/api/monthly_routes/routes/<int:route_id>/worksheet/stops/<int:testing_site_id>/test_outcome"
+)
+def put_worksheet_stop_test_outcome(route_id: int, testing_site_id: int):
+    month_first, err = _parse_portal_workflow_month()
+    if err is not None:
+        return err
+    ctx, err_resp = _portal_workflow_stop_context(route_id, testing_site_id, month_first)
+    if err_resp is not None:
+        return err_resp
+
+    from app.monthly.portal_workflow import set_test_outcome
+    from app.monthly.worksheet_stops import is_primary_stop, sync_primary_history_from_stop
+
+    payload = request.get_json(silent=True) or {}
+    outcome = _normalize_ws_text(payload.get("test_outcome"))
+    if not outcome:
+        return jsonify({"error": "test_outcome is required"}), 400
+
+    try:
+        set_test_outcome(
+            ctx["mtsm"],
+            ctx["loc"],
+            route_id,
+            month_first,
+            test_outcome=outcome,
+            skip_category=_normalize_ws_text(payload.get("skip_category")),
+            skip_note=_normalize_ws_text(payload.get("skip_note")),
+            confirmed_no_deficiencies=bool(payload.get("confirmed_no_deficiencies")),
+        )
+    except ValueError as exc:
+        code = str(exc)
+        _OUTCOME_ERROR_MESSAGES = {
+            "skip_category_required": "skip_category is required when test_outcome is skipped",
+            "deficiencies_block_all_good": (
+                "Cannot record All good while deficiencies are New or Verified on this stop."
+            ),
+            "unverified_deficiencies": (
+                "Verify all New deficiencies before recording this result."
+            ),
+            "confirmed_no_deficiencies_required": (
+                "Confirm that no deficiencies apply before recording Passed with problems."
+            ),
+            "invalid_test_outcome": "Invalid test_outcome",
+        }
+        if code in _OUTCOME_ERROR_MESSAGES:
+            return jsonify({"error": _OUTCOME_ERROR_MESSAGES[code], "code": code}), 400
+        return jsonify({"error": "Invalid test_outcome", "code": "invalid_test_outcome"}), 400
+
+    if is_primary_stop(ctx["ts"], ctx["loc"]):
+        sync_primary_history_from_stop(ctx["mtsm"], ctx["loc"], route_id, month_first)
+    db.session.commit()
+    return jsonify({"ok": True, "stop": ctx["stop_payload"]()})
+
+
+@monthly_routes_bp.get(
+    "/api/monthly_routes/routes/<int:route_id>/worksheet/stops/<int:testing_site_id>/deficiencies"
+)
+def get_worksheet_stop_deficiencies(route_id: int, testing_site_id: int):
+    month_first, err = _parse_portal_workflow_month()
+    if err is not None:
+        return err
+    ctx, err_resp = _portal_workflow_stop_context(route_id, testing_site_id, month_first)
+    if err_resp is not None:
+        return err_resp
+    from app.monthly.portal_workflow import list_deficiencies_for_site
+
+    include_hidden = (request.args.get("include_hidden") or "").strip() == "1"
+    return jsonify(
+        {
+            "deficiencies": list_deficiencies_for_site(
+                int(ctx["ts"].id),
+                include_hidden=include_hidden,
+            )
+        }
+    )
+
+
+@monthly_routes_bp.post(
+    "/api/monthly_routes/routes/<int:route_id>/worksheet/stops/<int:testing_site_id>/deficiencies"
+)
+def post_worksheet_stop_deficiency(route_id: int, testing_site_id: int):
+    month_first, err = _parse_portal_workflow_month()
+    if err is not None:
+        return err
+    ctx, err_resp = _portal_workflow_stop_context(route_id, testing_site_id, month_first)
+    if err_resp is not None:
+        return err_resp
+
+    from app.monthly.portal_workflow import create_deficiency, dual_write_legacy_result_fields
+
+    payload = request.get_json(silent=True) or {}
+    title = _normalize_ws_text(payload.get("title"))
+    if not title:
+        return jsonify({"error": "title is required"}), 400
+    tech_id, tech_name = _portal_session_tech()
+    run = ctx["run"]
+    try:
+        row = create_deficiency(
+            int(ctx["ts"].id),
+            int(run.id) if run is not None else None,
+            title=title,
+            severity=_normalize_ws_text(payload.get("severity")) or "deficient",
+            status=_normalize_ws_text(payload.get("status")) or "new",
+            description=_normalize_ws_text(payload.get("description")),
+            tech_id=tech_id,
+            tech_name=tech_name,
+        )
+    except ValueError:
+        return jsonify({"error": "Invalid severity or status"}), 400
+
+    mtsm = ctx["mtsm"]
+    if (_normalize_ws_text(mtsm.test_outcome) or "").lower() == "all_good":
+        mtsm.test_outcome = "passed_with_problems"
+        dual_write_legacy_result_fields(mtsm)
+
+    db.session.commit()
+    from app.monthly.portal_workflow import serialize_deficiency
+
+    return jsonify({"ok": True, "deficiency": serialize_deficiency(row), "stop": ctx["stop_payload"]()}), 201
+
+
+@monthly_routes_bp.patch(
+    "/api/monthly_routes/routes/<int:route_id>/worksheet/stops/<int:testing_site_id>/deficiencies/<int:deficiency_id>"
+)
+def patch_worksheet_stop_deficiency(route_id: int, testing_site_id: int, deficiency_id: int):
+    month_first, err = _parse_portal_workflow_month()
+    if err is not None:
+        return err
+    ctx, err_resp = _portal_workflow_stop_context(route_id, testing_site_id, month_first)
+    if err_resp is not None:
+        return err_resp
+
+    from app.db_models import MonthlyTestingSiteDeficiency
+    from app.monthly.portal_workflow import serialize_deficiency, update_deficiency
+
+    row = MonthlyTestingSiteDeficiency.query.filter_by(
+        id=int(deficiency_id),
+        monthly_testing_site_id=int(ctx["ts"].id),
+    ).one_or_none()
+    if row is None:
+        return jsonify({"error": "Deficiency not found"}), 404
+
+    payload = request.get_json(silent=True) or {}
+    tech_id, tech_name = _portal_session_tech()
+    try:
+        update_deficiency(
+            row,
+            title=_normalize_ws_text(payload.get("title")) if "title" in payload else None,
+            severity=_normalize_ws_text(payload.get("severity")) if "severity" in payload else None,
+            status=_normalize_ws_text(payload.get("status")) if "status" in payload else None,
+            description=_normalize_ws_text(payload.get("description")) if "description" in payload else None,
+            tech_id=tech_id,
+            tech_name=tech_name,
+        )
+    except ValueError:
+        return jsonify({"error": "Invalid severity or status"}), 400
+
+    db.session.commit()
+    return jsonify({"ok": True, "deficiency": serialize_deficiency(row), "stop": ctx["stop_payload"]()})
+
+
+@monthly_routes_bp.post(
+    "/api/monthly_routes/routes/<int:route_id>/worksheet/stops/<int:testing_site_id>/deficiencies/<int:deficiency_id>/verify"
+)
+def post_worksheet_stop_deficiency_verify(route_id: int, testing_site_id: int, deficiency_id: int):
+    month_first, err = _parse_portal_workflow_month()
+    if err is not None:
+        return err
+    ctx, err_resp = _portal_workflow_stop_context(route_id, testing_site_id, month_first)
+    if err_resp is not None:
+        return err_resp
+
+    from app.db_models import MonthlyTestingSiteDeficiency
+    from app.monthly.portal_workflow import serialize_deficiency, verify_deficiency
+
+    row = MonthlyTestingSiteDeficiency.query.filter_by(
+        id=int(deficiency_id),
+        monthly_testing_site_id=int(ctx["ts"].id),
+    ).one_or_none()
+    if row is None:
+        return jsonify({"error": "Deficiency not found"}), 404
+
+    payload = request.get_json(silent=True) or {}
+    tech_id, tech_name = _portal_session_tech()
+    verify_deficiency(
+        row,
+        tech_id=tech_id,
+        tech_name=tech_name,
+        note=_normalize_ws_text(payload.get("note")),
+    )
+    db.session.commit()
+    return jsonify({"ok": True, "deficiency": serialize_deficiency(row), "stop": ctx["stop_payload"]()})
+
+
+@monthly_routes_bp.post(
+    "/api/monthly_routes/routes/<int:route_id>/worksheet/stops/<int:testing_site_id>/reset"
+)
+def post_worksheet_stop_reset(route_id: int, testing_site_id: int):
+    month_first, err = _parse_portal_workflow_month()
+    if err is not None:
+        return err
+    ctx, err_resp = _portal_workflow_stop_context(route_id, testing_site_id, month_first)
+    if err_resp is not None:
+        return err_resp
+
+    from app.monthly.portal_workflow import reset_stop_on_run
+
+    reset_stop_on_run(
+        route_id,
+        month_first,
+        ctx["mtsm"],
+        ctx["ts"],
+        ctx["loc"],
+        ctx["run"],
+    )
+    db.session.commit()
+    return jsonify({"ok": True, "stop": ctx["stop_payload"]()})
 
 
 @monthly_routes_bp.post("/api/monthly_routes/routes/<int:route_id>/worksheet/reset_run")

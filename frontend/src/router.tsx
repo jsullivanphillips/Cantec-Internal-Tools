@@ -29,6 +29,7 @@ const ProcessingAttackPage = lazy(() => import('./pages/ProcessingAttackPage'))
 const BatteryCapacityCalculatorPage = lazy(() => import('./pages/BatteryCapacityCalculatorPage'))
 const QuotationToolPage = lazy(() => import('./pages/QuotationToolPage'))
 const TechnicianPortalLockPage = lazy(() => import('./pages/TechnicianPortalLockPage'))
+const TechnicianPortalTechPickerPage = lazy(() => import('./pages/TechnicianPortalTechPickerPage'))
 const TechnicianPortalStartPage = lazy(() => import('./pages/TechnicianPortalStartPage'))
 const TechnicianPortalRoutePage = lazy(() => import('./pages/TechnicianPortalRoutePage'))
 const TechnicianPortalWorksheetPage = lazy(() => import('./pages/TechnicianPortalWorksheetPage'))
@@ -80,6 +81,7 @@ export const router = createBrowserRouter([
     errorElement: <AppRouteErrorPage />,
     children: [
       { index: true, element: <TechnicianPortalLockPage /> },
+      { path: 'technician', element: <TechnicianPortalTechPickerPage /> },
       { path: 'start', element: <TechnicianPortalStartPage /> },
       { path: 'route/:routeId', element: <TechnicianPortalRoutePage /> },
       { path: 'route/:routeId/worksheet/:monthIso', element: <TechnicianPortalWorksheetPage /> },

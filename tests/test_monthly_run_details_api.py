@@ -19,7 +19,9 @@ from app.db_models import (
     MonthlyRouteTestHistory,
     MonthlyRouteWorksheetAuditEvent,
     MonthlySite,
+    MonthlyStopClockEvent,
     MonthlyTestingSite,
+    MonthlyTestingSiteDeficiency,
     MonthlyTestingSiteMonth,
     db,
 )
@@ -49,6 +51,8 @@ def run_details_client(monkeypatch):
         MonthlySite.__table__,
         MonthlyTestingSite.__table__,
         MonthlyTestingSiteMonth.__table__,
+        MonthlyStopClockEvent.__table__,
+        MonthlyTestingSiteDeficiency.__table__,
     ]
 
     with app.app_context():
@@ -132,9 +136,10 @@ def test_get_run_details_counts_and_run_header(run_details_client):
     assert body["route"]["id"] == 1
     assert body["month_date"] == "2026-05-01"
     assert body["run"]["id"] == 9001
-    assert body["counts"]["sites_tested_count"] == 1
-    assert body["counts"]["skipped_non_annual_count"] == 1
-    assert body["counts"]["skipped_annual_count"] == 0
+    assert body["counts"]["all_good_count"] == 1
+    assert body["counts"]["skipped_count"] == 1
+    assert body["counts"]["passed_with_problems_count"] == 0
+    assert body["counts"]["failed_count"] == 0
     notable = body["notable_stops"]
     assert any(int(s["location_id"]) == 102 for s in notable)
 
@@ -152,7 +157,7 @@ def test_run_details_counts_ignore_cleared_history_rows(run_details_client):
 
     res = client.get("/api/monthly_routes/routes/1/run_details?month=2026-05-01")
     assert res.status_code == 200
-    assert res.get_json()["counts"]["sites_tested_count"] == 0
+    assert res.get_json()["counts"]["all_good_count"] == 0
 
 
 def test_run_details_review_includes_tested_stop_without_property_edits(run_details_client):
@@ -170,6 +175,73 @@ def test_run_details_review_includes_tested_stop_without_property_edits(run_deta
     assert len(notable) == 1
     assert notable[0]["location_id"] == 101
     assert (notable[0].get("result_status") or "").strip().lower() == "tested"
+
+
+def test_run_details_notable_stops_includes_annual_month_without_technician_action(
+    run_details_client,
+):
+    """Annual-month sites appear in run review even with no skip/test outcome recorded."""
+    client, app = run_details_client
+    with app.app_context():
+        _seed_basic_route_data()
+        loc_annual = MonthlyRouteLocation(
+            id=103,
+            address="789 Annual Ln",
+            address_normalized="789 annual ln",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
+            building=None,
+            building_normalized="",
+            status_normalized="active",
+            status_raw="Active",
+            monthly_route_id=1,
+            annual_month="May",
+        )
+        db.session.add(loc_annual)
+        db.session.commit()
+        sync_testing_sites_from_legacy(loc_annual)
+
+    res = client.get("/api/monthly_routes/routes/1/run_details?month=2026-05-01")
+    assert res.status_code == 200
+    body = res.get_json()
+    notable = body["notable_stops"]
+    annual_stop = next((s for s in notable if int(s["location_id"]) == 103), None)
+    assert annual_stop is not None
+    assert annual_stop.get("annual_month") == "May"
+    assert not (annual_stop.get("result_status") or "").strip()
+    assert body["counts"]["skipped_count"] == 0
+    assert body["counts"]["all_good_count"] == 1
+
+
+def test_run_details_counts_annual_month_site_not_when_tested(run_details_client):
+    """Tested outcome wins over annual month on the same site."""
+    client, app = run_details_client
+    with app.app_context():
+        route, loc, hist, _run = _seed_basic_route_data()
+        assert loc.annual_month == "May"
+        assert (hist.result_status or "").strip().lower() == "tested"
+        loc_annual_only = MonthlyRouteLocation(
+            id=104,
+            address="100 Annual Only",
+            address_normalized="100 annual only",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
+            building=None,
+            building_normalized="",
+            status_normalized="active",
+            status_raw="Active",
+            monthly_route_id=route.id,
+            annual_month="May",
+        )
+        db.session.add(loc_annual_only)
+        db.session.commit()
+        sync_testing_sites_from_legacy(loc_annual_only)
+
+    res = client.get("/api/monthly_routes/routes/1/run_details?month=2026-05-01")
+    assert res.status_code == 200
+    counts = res.get_json()["counts"]
+    assert counts["all_good_count"] == 1
+    assert counts["skipped_count"] == 0
 
 
 def test_run_details_notable_stops_includes_run_comments_only(run_details_client, monkeypatch):
@@ -520,3 +592,54 @@ def test_complete_job_then_worksheet_matches_run_details(run_details_client, mon
     assert ws_run["status"] == "completed"
     assert ws_run["completed_at"] is not None
     assert ws_run["is_historical"] is True
+
+
+def test_patch_location_billing_status_office_override(run_details_client):
+    client, app = run_details_client
+    with app.app_context():
+        _seed_basic_route_data()
+
+    res = client.patch(
+        "/api/monthly_routes/routes/1/locations/101/billing_status?month=2026-05-01",
+        json={"billing_status": "do_not_bill"},
+    )
+    assert res.status_code == 200
+    body = res.get_json()
+    assert body["ok"] is True
+    assert body["location_id"] == 101
+    assert body["billing_status"] == "do_not_bill"
+
+    with app.app_context():
+        hist = db.session.get(MonthlyRouteTestHistory, 5001)
+        assert hist is not None
+        assert hist.billing_status == "do_not_bill"
+
+
+def test_patch_location_billing_status_legacy_locked(run_details_client):
+    client, app = run_details_client
+    with app.app_context():
+        _seed_basic_route_data()
+        hist = db.session.get(MonthlyRouteTestHistory, 5001)
+        assert hist is not None
+        hist.billing_status = "legacy"
+        db.session.commit()
+
+    res = client.patch(
+        "/api/monthly_routes/routes/1/locations/101/billing_status?month=2026-05-01",
+        json={"billing_status": "bill"},
+    )
+    assert res.status_code == 400
+    assert res.get_json()["code"] == "billing_legacy_locked"
+
+
+def test_patch_location_billing_status_invalid(run_details_client):
+    client, app = run_details_client
+    with app.app_context():
+        _seed_basic_route_data()
+
+    res = client.patch(
+        "/api/monthly_routes/routes/1/locations/101/billing_status?month=2026-05-01",
+        json={"billing_status": "legacy"},
+    )
+    assert res.status_code == 400
+    assert res.get_json()["code"] == "billing_legacy_locked"

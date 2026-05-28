@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { Alert, Badge, Button, Modal } from 'react-bootstrap'
+import { Alert, Badge, Button } from 'react-bootstrap'
 import {
   WORKSHEET_CLOCK_IN_BLOCKED_MESSAGE,
   isAnnualForMonth,
@@ -14,41 +14,37 @@ import { usePortalWorksheetDemo } from '../features/monthlyRoutes/usePortalWorks
 import PortalEditableFieldRow, { type PortalFieldEditActions } from '../features/monthlyRoutes/PortalEditableFieldRow'
 import type { WorksheetStopChangeSet } from '../features/monthlyRoutes/worksheetOfflineStore'
 import PortalWorksheetSkeleton from './PortalWorksheetSkeleton'
+import PortalClockEventsCard from '../features/monthlyRoutes/PortalClockEventsCard'
+import PortalSkipModal from '../features/monthlyRoutes/PortalSkipModal'
+import PortalRecordResultsModal, {
+  type RecordResultsCompletePayload,
+} from '../features/monthlyRoutes/PortalRecordResultsModal'
+import PortalDeficienciesCard from '../features/monthlyRoutes/PortalDeficienciesCard'
+import PortalDeficiencyModal from '../features/monthlyRoutes/PortalDeficiencyModal'
+import {
+  portalOutcomeDisplay,
+  portalStopDockBand,
+  optimisticClockOutPatch,
+  optimisticOutcomePatch,
+  portalStopHasOpenClock,
+  portalStopHasTestOutcome,
+  portalStopVisitComplete,
+  portalStopWorkflowReadOnly,
+  skipCategoryLabel,
+  type PortalDeficiencySummary,
+  type PortalSkipCategory,
+} from '../features/monthlyRoutes/portalWorkflowShared'
 
 type StopDisplayStatus = 'pending' | 'in_progress' | 'tested' | 'skipped'
 
 const NAV_EXPAND_TRANSITION_MS = 220
 
-const EXPLICIT_TIME_VALUE_RE = /^\d{1,2}:\d{1,2}(:\d{1,2})?(\s*[ap]\.?m\.?)?$/i
-
-function looksLikeExplicitTimeValue(raw: string | null | undefined): boolean {
-  const s = (raw ?? '').trim()
-  if (!s) return false
-  return EXPLICIT_TIME_VALUE_RE.test(s)
-}
-
-function headerTimesDisplay(stop: TechnicianWorksheetStop): ReactNode | null {
-  const rs = (stop.result_status || '').trim().toLowerCase()
-  if (rs === 'skipped' && worksheetStopSkipIsAnnual(stop)) {
-    return <span>ANNUAL</span>
-  }
-  const tin = (stop.time_in || '').trim()
-  const tout = (stop.time_out || '').trim()
-  if (!tin && !tout) return null
-  if (tin && looksLikeExplicitTimeValue(tin)) {
-    return (
-      <>
-        <span>Time in {tin}</span>
-        {tout && looksLikeExplicitTimeValue(tout) ? <span> · Time out {tout}</span> : null}
-      </>
-    )
-  }
-  if (tin) return <span>{tin}</span>
-  if (tout) return <span>Time out {tout}</span>
-  return null
-}
-
 function stopDisplayStatus(stop: TechnicianWorksheetStop): StopDisplayStatus {
+  if (portalStopHasTestOutcome(stop)) {
+    const outcome = (stop.test_outcome || '').trim().toLowerCase()
+    if (outcome === 'skipped') return 'skipped'
+    return 'tested'
+  }
   const rs = (stop.result_status || '').trim().toLowerCase()
   if (rs === 'tested') return 'tested'
   if (rs === 'skipped') return 'skipped'
@@ -57,6 +53,8 @@ function stopDisplayStatus(stop: TechnicianWorksheetStop): StopDisplayStatus {
 }
 
 function statusLabel(status: StopDisplayStatus, stop: TechnicianWorksheetStop): string {
+  const outcomeLabel = portalOutcomeDisplay(stop)
+  if (outcomeLabel && portalStopHasTestOutcome(stop)) return outcomeLabel
   if (status === 'tested') return 'Tested'
   if (status === 'skipped') {
     return worksheetStopSkipIsAnnual(stop) ? 'Annual skip' : 'Skipped'
@@ -96,6 +94,14 @@ function showAnnualMonthPill(
 }
 
 function skipReasonDisplay(stop: TechnicianWorksheetStop): string | null {
+  if (portalStopHasTestOutcome(stop) && (stop.test_outcome || '').toLowerCase() === 'skipped') {
+    const cat = skipCategoryLabel(stop.skip_category)
+    const note = (stop.skip_note || '').trim()
+    if (cat && note) return `${cat} — ${note}`
+    if (cat) return cat
+    if (note) return note
+    return 'Skipped'
+  }
   const reason = (stop.skip_reason || '').trim()
   if (!reason) return null
   const low = reason.toLowerCase()
@@ -118,6 +124,39 @@ function headerMonitoringDisplay(stop: TechnicianWorksheetStop): string {
   return `MONITORING: ${monitoring}`
 }
 
+function headerTimesDisplay(stop: TechnicianWorksheetStop): ReactNode | null {
+  const events = stop.clock_events ?? []
+  if (events.length > 0) {
+    const open = events.find((ev) => ev.time_in && !ev.time_out?.trim())
+    const last = events[events.length - 1]
+    const tin = open?.time_in ?? last?.time_in
+    const tout = open ? null : last?.time_out
+    if (!tin) return null
+    return (
+      <>
+        <span>Time in {tin}</span>
+        {tout?.trim() ? <span> · Time out {tout}</span> : open ? <span> · Clocked in</span> : null}
+      </>
+    )
+  }
+  const rs = (stop.result_status || '').trim().toLowerCase()
+  if (rs === 'skipped' && worksheetStopSkipIsAnnual(stop)) {
+    return <span>ANNUAL</span>
+  }
+  const tin = (stop.time_in || '').trim()
+  const tout = (stop.time_out || '').trim()
+  if (!tin && !tout) return null
+  if (tin) {
+    return (
+      <>
+        <span>Time in {tin}</span>
+        {tout ? <span> · Time out {tout}</span> : null}
+      </>
+    )
+  }
+  return tout ? <span>Time out {tout}</span> : null
+}
+
 function syncBadgeVariant(state: string): string {
   if (state === 'synced') return 'success'
   if (state === 'syncing') return 'primary'
@@ -129,6 +168,7 @@ function syncBadgeLabel(state: string): string {
   if (state === 'synced') return 'Synced'
   if (state === 'syncing') return 'Syncing…'
   if (state === 'conflict') return 'Conflict'
+  if (state === 'saved_offline') return 'Pending sync'
   return 'Offline'
 }
 
@@ -145,6 +185,8 @@ export default function TechnicianPortalWorksheetPage() {
 
   const liveWorksheet = usePortalWorksheet(idNum, monthQuery)
   const demoWorksheet = usePortalWorksheetDemo(monthQuery)
+  const worksheet = isDemo ? demoWorksheet : liveWorksheet
+
   const {
     payload,
     stops,
@@ -155,20 +197,26 @@ export default function TechnicianPortalWorksheetPage() {
     syncState,
     syncMessage,
     clockInBlockedForStop,
+    openClockInStop,
     queueStopChanges,
     initialLoading,
     showStopWorkspace,
     readOnlyWorksheet,
     canEditStops,
     setInteractiveBusy,
-    hhmmNow,
-  } = isDemo ? demoWorksheet : liveWorksheet
+    workflowActions,
+  } = worksheet
 
   const [activeId, setActiveId] = useState<number | null>(null)
   const [navExpanded, setNavExpanded] = useState(false)
   const [navItemsExpanded, setNavItemsExpanded] = useState(false)
   const [skipModalOpen, setSkipModalOpen] = useState(false)
-  const [skipDraft, setSkipDraft] = useState('')
+  const [resultsModalOpen, setResultsModalOpen] = useState(false)
+  const [resultsForClockOut, setResultsForClockOut] = useState(false)
+  const [defModalOpen, setDefModalOpen] = useState(false)
+  const [defModalMode, setDefModalMode] = useState<'add' | 'edit'>('add')
+  const [editingDeficiency, setEditingDeficiency] = useState<PortalDeficiencySummary | null>(null)
+  const [workflowBusy, setWorkflowBusy] = useState(false)
   const [editingField, setEditingField] = useState<string | null>(null)
   const [fieldEditActions, setFieldEditActions] = useState<PortalFieldEditActions | null>(null)
 
@@ -201,14 +249,40 @@ export default function TechnicianPortalWorksheetPage() {
     return { tested, skipped, annual, open, total: stops.length }
   }, [stops, runMonthIso])
 
+  const workflowReadOnly = Boolean(
+    active &&
+      (portalStopWorkflowReadOnly(active, runCompleted) ||
+        readOnlyWorksheet ||
+        active.portal_read_only),
+  )
+
+  const dockBand = active
+    ? portalStopDockBand(active, clockInBlockedForStop(active))
+    : 'A'
+
+  const outcomeBanner = active ? portalOutcomeDisplay(active) : null
+
   useEffect(() => {
     setEditingField(null)
     setFieldEditActions(null)
   }, [active?.testing_site_id])
 
   useEffect(() => {
-    setInteractiveBusy(skipModalOpen || editingField != null)
-  }, [skipModalOpen, editingField, setInteractiveBusy])
+    setInteractiveBusy(
+      skipModalOpen ||
+        resultsModalOpen ||
+        defModalOpen ||
+        editingField != null ||
+        workflowBusy,
+    )
+  }, [
+    skipModalOpen,
+    resultsModalOpen,
+    defModalOpen,
+    editingField,
+    workflowBusy,
+    setInteractiveBusy,
+  ])
 
   const applyStopPatch = useCallback(
     (patch: Parameters<typeof queueStopChanges>[1]) => {
@@ -218,48 +292,136 @@ export default function TechnicianPortalWorksheetPage() {
     [active, canEditStops, queueStopChanges],
   )
 
-  const clockIn = () => {
-    if (!active) return
+  const runWorkflow = useCallback(
+    async (fn: () => Promise<unknown>) => {
+      setWorkflowBusy(true)
+      try {
+        await fn()
+      } finally {
+        setWorkflowBusy(false)
+      }
+    },
+    [],
+  )
+
+  const handleClockIn = useCallback(() => {
+    if (!active || workflowReadOnly) return
     if (clockInBlockedForStop(active)) {
+      if (openClockInStop && openClockInStop.testing_site_id !== active.testing_site_id) {
+        void workflowActions.transitionClock(openClockInStop, active)
+        return
+      }
       window.alert(WORKSHEET_CLOCK_IN_BLOCKED_MESSAGE)
       return
     }
-    applyStopPatch({
-      time_in: hhmmNow(),
-      time_out: null,
-    })
-  }
+    void workflowActions.clockIn(active)
+  }, [active, workflowReadOnly, clockInBlockedForStop, openClockInStop, workflowActions])
 
-  const clockOut = () => {
+  const handleRecordResultsComplete = useCallback(
+    async ({ outcome, confirmedNoDeficiencies }: RecordResultsCompletePayload) => {
+      if (!active) return
+      const completeForClockOut = resultsForClockOut
+      setResultsModalOpen(false)
+      setResultsForClockOut(false)
+
+      const projected: TechnicianWorksheetStop = {
+        ...active,
+        ...optimisticOutcomePatch(active, outcome, { confirmedNoDeficiencies }),
+      }
+      void workflowActions.setTestOutcome(active, outcome, { confirmedNoDeficiencies })
+
+      let afterStop = projected
+      if (completeForClockOut && portalStopHasOpenClock(projected)) {
+        void workflowActions.clockOut(projected)
+        afterStop = { ...projected, ...optimisticClockOutPatch(projected) }
+      }
+
+      if (!portalStopHasOpenClock(afterStop)) {
+        const idx = stops.findIndex((s) => s.testing_site_id === active.testing_site_id)
+        const next = stops.slice(idx + 1).find((s) => !portalStopVisitComplete(s))
+        if (next) setActiveId(next.testing_site_id)
+      }
+    },
+    [active, workflowActions, stops, resultsForClockOut],
+  )
+
+  const handleClockOut = useCallback(() => {
+    if (!active || workflowReadOnly) return
+    if (!portalStopHasTestOutcome(active)) {
+      setResultsForClockOut(true)
+      setResultsModalOpen(true)
+      return
+    }
+    void workflowActions.clockOut(active)
+  }, [active, workflowReadOnly, workflowActions])
+
+  const handleCancelClockIn = useCallback(() => {
+    if (!active || workflowReadOnly) return
+    const undoFullVisit =
+      portalStopHasTestOutcome(active) ||
+      Boolean(active.has_run_changes) ||
+      (Array.isArray(active.deficiencies) && active.deficiencies.length > 0)
+    if (
+      !window.confirm(
+        undoFullVisit
+          ? `Cancel clock-in for stop #${active.stop_number}? This clears clock events, results, and deficiencies logged this run.`
+          : `Cancel clock-in for stop #${active.stop_number}? This removes the open clock-in only.`,
+      )
+    ) {
+      return
+    }
+    if (undoFullVisit) {
+      void workflowActions.resetStop(active)
+    } else {
+      void workflowActions.cancelClockIn(active)
+    }
+  }, [active, workflowReadOnly, workflowActions])
+
+  const handleRecordResultsOpen = useCallback(() => {
     if (!active) return
-    applyStopPatch({
-      time_out: hhmmNow(),
-      result_status: 'tested',
-    })
-    const idx = stops.findIndex((s) => s.testing_site_id === active.testing_site_id)
-    const next = stops.slice(idx + 1).find((s) => stopDisplayStatus(s) === 'pending')
-    if (next) setActiveId(next.testing_site_id)
-  }
+    if (!portalStopHasOpenClock(active)) {
+      window.alert('Clock in before recording results.')
+      return
+    }
+    setResultsForClockOut(false)
+    setResultsModalOpen(true)
+  }, [active])
 
-  const applySkip = () => {
-    applyStopPatch({
-      result_status: 'skipped',
-      skip_reason: skipDraft.trim() || 'Skipped',
-      time_in: null,
-      time_out: null,
-    })
-    setSkipModalOpen(false)
-    setSkipDraft('')
-  }
+  const handleSkipConfirm = useCallback(
+    (category: PortalSkipCategory, note: string) => {
+      if (!active || workflowReadOnly) return
+      setSkipModalOpen(false)
 
-  const resetStopOutcome = () => {
-    applyStopPatch({
-      result_status: null,
-      skip_reason: null,
-      time_in: null,
-      time_out: null,
-    })
-  }
+      const idx = stops.findIndex((s) => s.testing_site_id === active.testing_site_id)
+      const next = stops.slice(idx + 1).find((s) => !portalStopVisitComplete(s))
+      if (next) setActiveId(next.testing_site_id)
+
+      const projected: TechnicianWorksheetStop = {
+        ...active,
+        ...optimisticOutcomePatch(active, 'skipped', { skipCategory: category, skipNote: note }),
+      }
+      void workflowActions.setTestOutcome(active, 'skipped', {
+        skipCategory: category,
+        skipNote: note,
+      })
+      if (portalStopHasOpenClock(projected)) {
+        void workflowActions.clockOut(projected)
+      }
+    },
+    [active, workflowReadOnly, workflowActions, stops],
+  )
+
+  const handleReset = useCallback(() => {
+    if (!active || workflowReadOnly || !active.has_run_changes) return
+    if (
+      !window.confirm(
+        `Reset stop #${active.stop_number}? This clears clock events, results, and deficiencies logged this run.`,
+      )
+    ) {
+      return
+    }
+    void workflowActions.resetStop(active)
+  }, [active, workflowReadOnly, workflowActions])
 
   const saveField = useCallback(
     (field: keyof WorksheetStopChangeSet) => (text: string) => {
@@ -278,6 +440,54 @@ export default function TechnicianPortalWorksheetPage() {
     onEditingFieldChange: setEditingField,
     onEditActionsChange: handleFieldEditActionsChange,
   }
+
+  const openDeficiencyAdd = useCallback(() => {
+    setDefModalMode('add')
+    setEditingDeficiency(null)
+    setDefModalOpen(true)
+  }, [])
+
+  const openDeficiencyEdit = useCallback((def: PortalDeficiencySummary) => {
+    setDefModalMode('edit')
+    setEditingDeficiency(def)
+    setDefModalOpen(true)
+  }, [])
+
+  const handleDeficiencySave = useCallback(
+    (values: { title: string; severity: string; status: string; description: string }) => {
+      if (!active || workflowReadOnly) return
+      void runWorkflow(async () => {
+        if (defModalMode === 'add') {
+          await workflowActions.createDeficiency(active, {
+            title: values.title,
+            severity: values.severity,
+            status: values.status,
+            description: values.description || undefined,
+          })
+        } else if (editingDeficiency) {
+          await workflowActions.updateDeficiency(active, editingDeficiency.id, values)
+        }
+        setDefModalOpen(false)
+      })
+    },
+    [active, workflowReadOnly, defModalMode, editingDeficiency, runWorkflow, workflowActions],
+  )
+
+  const handleDeficiencyVerify = useCallback(
+    (def: PortalDeficiencySummary) => {
+      if (!active || workflowReadOnly) return
+      void runWorkflow(() => workflowActions.verifyDeficiency(active, def.id))
+    },
+    [active, workflowReadOnly, runWorkflow, workflowActions],
+  )
+
+  const handleToggleHiddenDeficiencies = useCallback(
+    (includeHidden: boolean) => {
+      if (!active || isDemo) return
+      void workflowActions.refreshDeficiencies(active, includeHidden)
+    },
+    [active, isDemo, workflowActions],
+  )
 
   useEffect(() => {
     if (!navExpanded) {
@@ -344,6 +554,113 @@ export default function TechnicianPortalWorksheetPage() {
     )
   }
 
+  const renderDockButtons = () => {
+    if (!active || workflowReadOnly) return null
+
+    if (dockBand === 'A') {
+      return (
+        <>
+          <Button
+            variant="primary"
+            className="pw-mock-dock-btn pw-mock-dock-normal-btn"
+            disabled={workflowBusy}
+            onClick={handleClockIn}
+          >
+            Clock in
+          </Button>
+          <Button
+            variant="outline-warning"
+            className="pw-mock-dock-btn pw-mock-dock-normal-btn"
+            disabled={workflowBusy}
+            onClick={() => setSkipModalOpen(true)}
+          >
+            Skip
+          </Button>
+        </>
+      )
+    }
+
+    if (dockBand === 'B') {
+      return (
+        <>
+          <Button
+            variant="success"
+            className="pw-mock-dock-btn pw-mock-dock-normal-btn"
+            disabled={workflowBusy}
+            onClick={handleRecordResultsOpen}
+          >
+            Record results
+          </Button>
+          <Button
+            variant="primary"
+            className="pw-mock-dock-btn pw-mock-dock-normal-btn"
+            disabled={workflowBusy}
+            onClick={handleClockOut}
+          >
+            Clock out
+          </Button>
+          <Button
+            variant="outline-secondary"
+            className="pw-mock-dock-btn pw-mock-dock-normal-btn"
+            disabled={workflowBusy}
+            onClick={handleCancelClockIn}
+          >
+            Cancel clock-in
+          </Button>
+          <Button
+            variant="outline-danger"
+            className="pw-mock-dock-btn pw-mock-dock-normal-btn"
+            disabled={workflowBusy}
+            onClick={openDeficiencyAdd}
+          >
+            Add deficiency
+          </Button>
+          <Button
+            variant="outline-warning"
+            className="pw-mock-dock-btn pw-mock-dock-normal-btn"
+            disabled={workflowBusy}
+            onClick={() => setSkipModalOpen(true)}
+          >
+            Skip
+          </Button>
+          {active.has_run_changes ? (
+            <Button
+              variant="outline-secondary"
+              className="pw-mock-dock-btn pw-mock-dock-normal-btn"
+              disabled={workflowBusy}
+              onClick={handleReset}
+            >
+              Reset
+            </Button>
+          ) : null}
+        </>
+      )
+    }
+
+    return (
+      <>
+        <Button
+          variant="primary"
+          className="pw-mock-dock-btn pw-mock-dock-normal-btn"
+          disabled={workflowBusy}
+          onClick={handleClockIn}
+        >
+          Clock in again
+        </Button>
+        {active.has_run_changes ? (
+          <Button
+            variant="outline-secondary"
+            className="pw-mock-dock-btn pw-mock-dock-normal-btn"
+            disabled={workflowBusy}
+            onClick={handleReset}
+          >
+            Reset
+          </Button>
+        ) : null}
+      </>
+    )
+  }
+
   if (!monthOk) {
     return (
       <div className="portal-worksheet-mockup p-3">
@@ -382,10 +699,9 @@ export default function TechnicianPortalWorksheetPage() {
   const activeHeaderTimes = active ? headerTimesDisplay(active) : null
   const activeFieldEditActions =
     editingField && fieldEditActions?.fieldKey === editingField ? fieldEditActions : null
-  const activeOutcomeComplete = activeStatus === 'tested' || activeStatus === 'skipped'
   const dockClassName = [
     'pw-mock-dock',
-    activeOutcomeComplete ? 'pw-mock-dock--completed' : '',
+    dockBand === 'C' ? 'pw-mock-dock--completed' : '',
     activeFieldEditActions ? 'pw-mock-dock--field-editing' : '',
   ]
     .filter(Boolean)
@@ -414,6 +730,11 @@ export default function TechnicianPortalWorksheetPage() {
         {isDemo ? (
           <Alert variant="info" className="py-1 px-2 mb-0 small">
             Sample data only — changes are not saved. For showing the new worksheet UI to coworkers.
+          </Alert>
+        ) : null}
+        {workflowReadOnly && active?.portal_read_only ? (
+          <Alert variant="secondary" className="py-1 px-2 mb-0 small pw-portal-readonly-banner">
+            Imported run — view only. Workflow actions are disabled.
           </Alert>
         ) : null}
         {syncMessage ? (
@@ -471,259 +792,225 @@ export default function TechnicianPortalWorksheetPage() {
           </aside>
 
           <div className="pw-mock-shell">
-                <section className="pw-mock-detail">
-                  <div className={`pw-mock-header ${headerBandClass(active, runMonthIso)}`}>
-                    <div className="pw-mock-header-top">
-                      <div className="pw-mock-header-stop">
-                        Stop #{active.stop_number}
-                        {showAnnualMonthPill(active, runMonthIso, activeStatus) ? (
-                          <span className="pw-mock-annual-pill">Annual month</span>
-                        ) : null}
-                      </div>
-                      <span className={`pw-mock-status-pill pw-mock-status-pill--${activeStatus}`}>
-                        {statusLabel(activeStatus, active)}
-                      </span>
-                    </div>
-                    <h1 className="pw-mock-header-address">{active.display_address}</h1>
-                    {active.building_name ? (
-                      <div className="pw-mock-header-line">{active.building_name}</div>
-                    ) : null}
-                    <div className="pw-mock-header-line text-muted">{activeMonitoringDisplay}</div>
-                    {activePanelDisplay ? (
-                      <div className="pw-mock-header-line fw-semibold">{activePanelDisplay}</div>
-                    ) : null}
-                    {activeHeaderTimes ? (
-                      <div className="pw-mock-header-times">{activeHeaderTimes}</div>
-                    ) : null}
-                    {activeStatus === 'skipped' ? (
-                      <div className="pw-mock-header-skip">
-                        {activeSkipLabel
-                          ? `Skipped: ${activeSkipLabel}`
-                          : worksheetStopSkipIsAnnual(active)
-                            ? 'Skipped: Annual'
-                            : 'Skipped'}
-                      </div>
+            <section className="pw-mock-detail">
+              <div className={`pw-mock-header ${headerBandClass(active, runMonthIso)}`}>
+                <div className="pw-mock-header-top">
+                  <div className="pw-mock-header-stop">
+                    Stop #{active.stop_number}
+                    {showAnnualMonthPill(active, runMonthIso, activeStatus) ? (
+                      <span className="pw-mock-annual-pill">Annual month</span>
                     ) : null}
                   </div>
-
-                  <div className="pw-mock-fields">
-                    <div className="pw-mock-field-group">
-                      <div className="pw-mock-field-group-title">Site</div>
-                      <PortalEditableFieldRow
-                        fieldKey="property_management_company"
-                        label="Property management"
-                        value={active.property_management_company ?? ''}
-                        onSave={saveField('property_management_company')}
-                        {...fieldEditProps}
-                      />
-                      <PortalEditableFieldRow
-                        fieldKey="building_name"
-                        label="Building"
-                        value={active.building_name ?? ''}
-                        onSave={saveField('building_name')}
-                        {...fieldEditProps}
-                      />
-                    </div>
-                    <div className="pw-mock-field-group">
-                      <div className="pw-mock-field-group-title">Access</div>
-                      <div className="pw-mock-access-row">
-                        <PortalEditableFieldRow
-                          fieldKey="ring"
-                          label="Ring"
-                          value={active.ring ?? ''}
-                          onSave={saveField('ring')}
-                          {...fieldEditProps}
-                        />
-                        <PortalEditableFieldRow
-                          fieldKey="key_number"
-                          label="Key #"
-                          value={active.key_number ?? ''}
-                          onSave={saveField('key_number')}
-                          {...fieldEditProps}
-                        />
-                        <PortalEditableFieldRow
-                          fieldKey="door_code"
-                          label="Door code"
-                          value={active.door_code ?? ''}
-                          onSave={saveField('door_code')}
-                          {...fieldEditProps}
-                        />
-                        <PortalEditableFieldRow
-                          fieldKey="annual_month"
-                          label="Annual"
-                          value={active.annual_month ?? ''}
-                          monthSelect
-                          onSave={saveField('annual_month')}
-                          {...fieldEditProps}
-                        />
-                      </div>
-                    </div>
-                    <div className="pw-mock-field-group">
-                      <div className="pw-mock-field-group-title">Panel</div>
-                      <PortalEditableFieldRow
-                        fieldKey="panel"
-                        label="Panel (make / model)"
-                        value={active.panel ?? ''}
-                        onSave={saveField('panel')}
-                        {...fieldEditProps}
-                      />
-                      <PortalEditableFieldRow
-                        fieldKey="panel_location"
-                        label="Panel location"
-                        value={active.panel_location ?? ''}
-                        onSave={saveField('panel_location')}
-                        {...fieldEditProps}
-                      />
-                    </div>
-                    <div className="pw-mock-field-group">
-                      <div className="pw-mock-field-group-title">Monitoring</div>
-                      <PortalEditableFieldRow
-                        fieldKey="monitoring_company"
-                        label="Company"
-                        value={active.monitoring_company ?? ''}
-                        onSave={saveField('monitoring_company')}
-                        {...fieldEditProps}
-                      />
-                      <PortalEditableFieldRow
-                        fieldKey="monitoring_notes"
-                        label="Notes"
-                        value={active.monitoring_notes ?? ''}
-                        multiline
-                        onSave={saveField('monitoring_notes')}
-                        {...fieldEditProps}
-                      />
-                    </div>
-                    <div className="pw-mock-field-group">
-                      <div className="pw-mock-field-group-title">Comments</div>
-                      <PortalEditableFieldRow
-                        fieldKey="testing_procedures"
-                        label="Testing procedures"
-                        value={active.testing_procedures ?? ''}
-                        multiline
-                        onSave={saveField('testing_procedures')}
-                        {...fieldEditProps}
-                      />
-                      <PortalEditableFieldRow
-                        fieldKey="inspection_tech_notes"
-                        label="Location comments"
-                        value={active.inspection_tech_notes ?? ''}
-                        multiline
-                        onSave={saveField('inspection_tech_notes')}
-                        {...fieldEditProps}
-                      />
-                      <PortalEditableFieldRow
-                        fieldKey="run_comments"
-                        label="Job comments"
-                        value={active.run_comments ?? ''}
-                        multiline
-                        onSave={saveField('run_comments')}
-                        {...fieldEditProps}
-                      />
-                    </div>
+                  <span className={`pw-mock-status-pill pw-mock-status-pill--${activeStatus}`}>
+                    {statusLabel(activeStatus, active)}
+                  </span>
+                </div>
+                <h1 className="pw-mock-header-address">{active.display_address}</h1>
+                {active.building_name ? (
+                  <div className="pw-mock-header-line">{active.building_name}</div>
+                ) : null}
+                <div className="pw-mock-header-line text-muted">{activeMonitoringDisplay}</div>
+                {activePanelDisplay ? (
+                  <div className="pw-mock-header-line fw-semibold">{activePanelDisplay}</div>
+                ) : null}
+                {activeHeaderTimes ? (
+                  <div className="pw-mock-header-times">{activeHeaderTimes}</div>
+                ) : null}
+                {dockBand === 'C' && outcomeBanner ? (
+                  <div className="pw-portal-outcome-banner">Current result: {outcomeBanner}</div>
+                ) : null}
+                {activeStatus === 'skipped' ? (
+                  <div className="pw-mock-header-skip">
+                    {activeSkipLabel
+                      ? `Skipped: ${activeSkipLabel}`
+                      : worksheetStopSkipIsAnnual(active)
+                        ? 'Skipped: Annual'
+                        : 'Skipped'}
                   </div>
-                </section>
+                ) : null}
+              </div>
 
-                <footer className={dockClassName}>
-                  {activeOutcomeComplete ? (
-                    <Button
-                      variant="outline-secondary"
-                      className="pw-mock-dock-btn pw-mock-dock-normal-btn"
-                      disabled={readOnlyWorksheet}
-                      onClick={resetStopOutcome}
-                    >
-                      Reset
-                    </Button>
-                  ) : active.time_in && !active.time_out ? (
-                    <Button
-                      variant="primary"
-                      className="pw-mock-dock-btn pw-mock-dock-normal-btn"
-                      disabled={readOnlyWorksheet}
-                      onClick={clockOut}
-                    >
-                      Clock out
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="primary"
-                      className="pw-mock-dock-btn pw-mock-dock-normal-btn"
-                      disabled={readOnlyWorksheet || !!active.time_in}
-                      onClick={clockIn}
-                    >
-                      Clock in
-                    </Button>
-                  )}
-                  {!activeOutcomeComplete ? (
-                    <Button
-                      variant="outline-warning"
-                      className="pw-mock-dock-btn pw-mock-dock-normal-btn"
-                      disabled={readOnlyWorksheet}
-                      onClick={() => {
-                        setSkipDraft(active.skip_reason ?? '')
-                        setSkipModalOpen(true)
-                      }}
-                    >
-                      Skip
-                    </Button>
-                  ) : null}
+              <div className="pw-mock-fields">
+                <PortalClockEventsCard stop={active} />
+                <div className="pw-mock-field-group">
+                  <div className="pw-mock-field-group-title">Site</div>
+                  <PortalEditableFieldRow
+                    fieldKey="property_management_company"
+                    label="Property management"
+                    value={active.property_management_company ?? ''}
+                    onSave={saveField('property_management_company')}
+                    {...fieldEditProps}
+                  />
+                  <PortalEditableFieldRow
+                    fieldKey="building_name"
+                    label="Building"
+                    value={active.building_name ?? ''}
+                    onSave={saveField('building_name')}
+                    {...fieldEditProps}
+                  />
+                </div>
+                <div className="pw-mock-field-group">
+                  <div className="pw-mock-field-group-title">Access</div>
+                  <div className="pw-mock-access-row">
+                    <PortalEditableFieldRow
+                      fieldKey="ring"
+                      label="Ring"
+                      value={active.ring ?? ''}
+                      onSave={saveField('ring')}
+                      {...fieldEditProps}
+                    />
+                    <PortalEditableFieldRow
+                      fieldKey="key_number"
+                      label="Key #"
+                      value={active.key_number ?? ''}
+                      onSave={saveField('key_number')}
+                      {...fieldEditProps}
+                    />
+                    <PortalEditableFieldRow
+                      fieldKey="door_code"
+                      label="Door code"
+                      value={active.door_code ?? ''}
+                      onSave={saveField('door_code')}
+                      {...fieldEditProps}
+                    />
+                    <PortalEditableFieldRow
+                      fieldKey="annual_month"
+                      label="Annual"
+                      value={active.annual_month ?? ''}
+                      monthSelect
+                      onSave={saveField('annual_month')}
+                      {...fieldEditProps}
+                    />
+                  </div>
+                </div>
+                <div className="pw-mock-field-group">
+                  <div className="pw-mock-field-group-title">Panel</div>
+                  <PortalEditableFieldRow
+                    fieldKey="panel"
+                    label="Panel (make / model)"
+                    value={active.panel ?? ''}
+                    onSave={saveField('panel')}
+                    {...fieldEditProps}
+                  />
+                  <PortalEditableFieldRow
+                    fieldKey="panel_location"
+                    label="Panel location"
+                    value={active.panel_location ?? ''}
+                    onSave={saveField('panel_location')}
+                    {...fieldEditProps}
+                  />
+                </div>
+                <div className="pw-mock-field-group">
+                  <div className="pw-mock-field-group-title">Monitoring</div>
+                  <PortalEditableFieldRow
+                    fieldKey="monitoring_company"
+                    label="Company"
+                    value={active.monitoring_company ?? ''}
+                    onSave={saveField('monitoring_company')}
+                    {...fieldEditProps}
+                  />
+                  <PortalEditableFieldRow
+                    fieldKey="monitoring_notes"
+                    label="Notes"
+                    value={active.monitoring_notes ?? ''}
+                    multiline
+                    onSave={saveField('monitoring_notes')}
+                    {...fieldEditProps}
+                  />
+                </div>
+                <PortalDeficienciesCard
+                  stop={active}
+                  readOnly={workflowReadOnly}
+                  onAdd={openDeficiencyAdd}
+                  onEdit={openDeficiencyEdit}
+                  onVerify={handleDeficiencyVerify}
+                  onToggleHidden={handleToggleHiddenDeficiencies}
+                />
+                <div className="pw-mock-field-group">
+                  <div className="pw-mock-field-group-title">Comments</div>
+                  <PortalEditableFieldRow
+                    fieldKey="testing_procedures"
+                    label="Testing procedures"
+                    value={active.testing_procedures ?? ''}
+                    multiline
+                    onSave={saveField('testing_procedures')}
+                    {...fieldEditProps}
+                  />
+                  <PortalEditableFieldRow
+                    fieldKey="inspection_tech_notes"
+                    label="Location comments"
+                    value={active.inspection_tech_notes ?? ''}
+                    multiline
+                    onSave={saveField('inspection_tech_notes')}
+                    {...fieldEditProps}
+                  />
+                  <PortalEditableFieldRow
+                    fieldKey="run_comments"
+                    label="Job comments"
+                    value={active.run_comments ?? ''}
+                    multiline
+                    onSave={saveField('run_comments')}
+                    {...fieldEditProps}
+                  />
+                </div>
+              </div>
+            </section>
+
+            <footer className={dockClassName}>
+              {!workflowReadOnly ? renderDockButtons() : null}
+              {activeFieldEditActions ? (
+                <>
                   <Button
-                    variant="outline-danger"
-                    className="pw-mock-dock-btn pw-mock-dock-normal-btn"
-                    disabled={readOnlyWorksheet}
-                    onClick={() => window.alert('Deficiency tracking is not available yet.')}
+                    variant="outline-secondary"
+                    className="pw-mock-dock-btn pw-mock-dock-edit-btn"
+                    onClick={activeFieldEditActions.cancel}
                   >
-                    Deficiency
+                    Cancel
                   </Button>
-                  {activeFieldEditActions ? (
-                    <>
-                      <Button
-                        variant="outline-secondary"
-                        className="pw-mock-dock-btn pw-mock-dock-edit-btn"
-                        onClick={activeFieldEditActions.cancel}
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        variant="primary"
-                        className="pw-mock-dock-btn pw-mock-dock-edit-btn"
-                        onClick={activeFieldEditActions.save}
-                      >
-                        Save
-                      </Button>
-                    </>
-                  ) : null}
-                </footer>
+                  <Button
+                    variant="primary"
+                    className="pw-mock-dock-btn pw-mock-dock-edit-btn"
+                    onClick={activeFieldEditActions.save}
+                  >
+                    Save
+                  </Button>
+                </>
+              ) : null}
+            </footer>
           </div>
         </div>
       ) : null}
 
       {active ? (
         <>
-          <Modal show={skipModalOpen} onHide={() => setSkipModalOpen(false)} centered>
-            <Modal.Header closeButton>
-              <Modal.Title>Skip stop #{active.stop_number}</Modal.Title>
-            </Modal.Header>
-            <Modal.Body>
-              <label className="form-label small" htmlFor="skip-reason">
-                Reason
-              </label>
-              <textarea
-                id="skip-reason"
-                className="form-control"
-                rows={3}
-                value={skipDraft}
-                onChange={(e) => setSkipDraft(e.target.value)}
-              />
-            </Modal.Body>
-            <Modal.Footer>
-              <Button variant="secondary" onClick={() => setSkipModalOpen(false)}>
-                Cancel
-              </Button>
-              <Button variant="warning" onClick={applySkip}>
-                Confirm skip
-              </Button>
-            </Modal.Footer>
-          </Modal>
-
+          <PortalSkipModal
+            show={skipModalOpen}
+            stopNumber={active.stop_number}
+            onHide={() => setSkipModalOpen(false)}
+            onConfirm={handleSkipConfirm}
+          />
+          <PortalRecordResultsModal
+            show={resultsModalOpen}
+            stop={active}
+            workflowActions={workflowActions}
+            title={
+              resultsForClockOut
+                ? `Clock out — record results (stop #${active.stop_number})`
+                : undefined
+            }
+            onHide={() => {
+              setResultsModalOpen(false)
+              setResultsForClockOut(false)
+            }}
+            onComplete={(payload) => handleRecordResultsComplete(payload)}
+          />
+          <PortalDeficiencyModal
+            show={defModalOpen}
+            mode={defModalMode}
+            deficiency={editingDeficiency}
+            onHide={() => setDefModalOpen(false)}
+            onSave={handleDeficiencySave}
+          />
         </>
       ) : null}
     </div>

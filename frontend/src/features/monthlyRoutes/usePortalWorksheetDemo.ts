@@ -10,6 +10,7 @@ import {
 } from './monthlyRoutesShared'
 import type { WorksheetStopChangeSet } from './worksheetOfflineStore'
 import type { PortalWorksheetSyncState } from './usePortalWorksheet'
+import { usePortalWorkflowActionsDemo } from './usePortalWorkflowActionsDemo'
 
 const MONTH_FIRST_RE = /^\d{4}-\d{2}-01$/
 
@@ -65,6 +66,8 @@ export function usePortalWorksheetDemo(monthIso: string) {
       openClockInStop != null && openClockInStop.testing_site_id !== stop.testing_site_id,
     [openClockInStop],
   )
+
+  const workflowActions = usePortalWorkflowActionsDemo(updateLocalStop)
 
   const queueStopChanges = useCallback(
     (stop: TechnicianWorksheetStop, changes: WorksheetStopChangeSet) => {
@@ -175,6 +178,7 @@ export function usePortalWorksheetDemo(monthIso: string) {
     canEditStops,
     setInteractiveBusy,
     hhmmNow,
+    workflowActions,
     isDemo: true as const,
   }
 }

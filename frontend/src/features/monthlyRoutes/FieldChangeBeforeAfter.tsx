@@ -26,8 +26,8 @@ export default function FieldChangeBeforeAfter({ item }: { item: NotableChangeIt
     return (
       <div className="run-detail-change" aria-label={changeAriaLabel(item)}>
         <div className="run-detail-change__label">{item.label}</div>
-        <div className="run-detail-change__removed">
-          <span className="run-detail-change__removed-tag">Removed</span>
+        <div className="run-detail-change__row run-detail-change__row--removed">
+          <span className="run-detail-change__tag run-detail-change__tag--remove">Removed</span>
           <span className="run-detail-change__value run-detail-change__value--old">{item.before}</span>
         </div>
       </div>
@@ -38,8 +38,8 @@ export default function FieldChangeBeforeAfter({ item }: { item: NotableChangeIt
     return (
       <div className="run-detail-change" aria-label={changeAriaLabel(item)}>
         <div className="run-detail-change__label">{item.label}</div>
-        <div className="run-detail-change__added">
-          <span className="run-detail-change__added-tag">Added</span>
+        <div className="run-detail-change__row run-detail-change__row--added">
+          <span className="run-detail-change__tag run-detail-change__tag--add">Added</span>
           <span className="run-detail-change__value run-detail-change__value--new">{item.after}</span>
         </div>
       </div>

@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Accordion, Alert, Badge, Button, Modal, Spinner } from 'react-bootstrap'
 import { Link, useParams } from 'react-router-dom'
+import RunDetailsLocationBillingPanel from '../features/monthlyRoutes/RunDetailsLocationBillingPanel'
 import RunDetailsSiteChangesList from '../features/monthlyRoutes/RunDetailsSiteChangesList'
+import type { RunReviewFilter } from '../features/monthlyRoutes/notableStopChanges'
+import {
+  buildNotableStopChangeCards,
+  summarizeRunReviewCards,
+} from '../features/monthlyRoutes/notableStopChanges'
 import type { OfficeFieldChange } from '../features/monthlyRoutes/officeWorksheetTableShared'
 import {
   parseYearMonth,
@@ -72,6 +78,10 @@ export default function MonthlyRunDetailPage() {
   const [runLifecycleAction, setRunLifecycleAction] = useState<'complete' | 'reopen' | null>(null)
   const [resetRunModalOpen, setResetRunModalOpen] = useState(false)
   const [resetRunBusy, setResetRunBusy] = useState(false)
+  const [reviewFilter, setReviewFilter] = useState<RunReviewFilter>('all')
+  const [runReviewAccordionKey, setRunReviewAccordionKey] = useState<string | null>(
+    'notable-worksheet',
+  )
 
   const loadRunDetails = useCallback(async (signal?: AbortSignal) => {
     if (!Number.isFinite(idNum) || !monthOk) return
@@ -197,6 +207,32 @@ export default function MonthlyRunDetailPage() {
     return map
   }, [payload?.field_changes_by_location])
 
+  const reviewCards = useMemo(() => {
+    if (!payload) return []
+    return buildNotableStopChangeCards(
+      payload.notable_stops ?? [],
+      payload.month_date,
+      fieldChangesByLocation,
+    )
+  }, [payload, fieldChangesByLocation])
+
+  const reviewSummary = useMemo(
+    () => summarizeRunReviewCards(reviewCards, payload?.month_date ?? ''),
+    [reviewCards, payload?.month_date],
+  )
+
+  const focusRunReview = useCallback((nextFilter?: RunReviewFilter) => {
+    if (nextFilter != null) setReviewFilter(nextFilter)
+    setRunReviewAccordionKey('notable-worksheet')
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    window.requestAnimationFrame(() => {
+      document.getElementById('run-review-section')?.scrollIntoView({
+        behavior: reduceMotion ? 'auto' : 'smooth',
+        block: 'start',
+      })
+    })
+  }, [])
+
   if (!Number.isFinite(idNum) || !monthOk) {
     return (
       <div className="monthly-route-detail-page">
@@ -223,8 +259,8 @@ export default function MonthlyRunDetailPage() {
     )
   }
 
-  const { route, counts, specialists_month, notable_stops: reviewStops, run } = payload
-  const reviewStopCount = reviewStops.length
+  const { route, counts, specialists_month, run } = payload
+  const reviewStopCount = reviewSummary.stopCount
   const monthHeading = formatMonthHeading(payload.month_date)
   const completedByLabel = completedByTechniciansPillLabel(
     specialists_month?.top_technicians ?? [],
@@ -349,24 +385,68 @@ export default function MonthlyRunDetailPage() {
         </section>
 
         <div className="monthly-run-detail-kpis" aria-label="Run outcome counts">
-          <div className="monthly-run-detail-kpi monthly-location-detail-surface">
-            <div className="monthly-run-detail-kpi__value tabular-nums">{counts.sites_tested_count}</div>
-            <div className="monthly-run-detail-kpi__label">Tested</div>
-          </div>
-          <div className="monthly-run-detail-kpi monthly-location-detail-surface">
-            <div className="monthly-run-detail-kpi__value tabular-nums">
-              {counts.skipped_non_annual_count}
-            </div>
-            <div className="monthly-run-detail-kpi__label">Skipped</div>
-          </div>
-          <div className="monthly-run-detail-kpi monthly-location-detail-surface">
-            <div className="monthly-run-detail-kpi__value tabular-nums">{counts.skipped_annual_count}</div>
-            <div className="monthly-run-detail-kpi__label">Annuals</div>
-          </div>
+          {(
+            [
+              {
+                key: 'all_good' as const,
+                count: counts.all_good_count,
+                label: 'All good',
+                modifier: 'all-good',
+              },
+              {
+                key: 'passed_with_problems' as const,
+                count: counts.passed_with_problems_count,
+                label: 'Passed w/ problems',
+                modifier: 'passed-problems',
+              },
+              {
+                key: 'failed' as const,
+                count: counts.failed_count,
+                label: 'Failed',
+                modifier: 'failed',
+              },
+              {
+                key: 'skipped' as const,
+                count: counts.skipped_count,
+                label: 'Skipped',
+                modifier: 'skipped',
+              },
+            ] as const
+          ).map(({ key, count, label, modifier }) =>
+            count > 0 ? (
+              <button
+                key={key}
+                type="button"
+                className={`monthly-run-detail-kpi monthly-location-detail-surface monthly-run-detail-kpi--interactive monthly-run-detail-kpi--${modifier}`}
+                onClick={() => focusRunReview(key)}
+              >
+                <div className="monthly-run-detail-kpi__value tabular-nums">{count}</div>
+                <div className="monthly-run-detail-kpi__label">{label}</div>
+              </button>
+            ) : (
+              <div
+                key={key}
+                className={`monthly-run-detail-kpi monthly-location-detail-surface monthly-run-detail-kpi--${modifier}`}
+              >
+                <div className="monthly-run-detail-kpi__value tabular-nums">{count}</div>
+                <div className="monthly-run-detail-kpi__label">{label}</div>
+              </div>
+            ),
+          )}
         </div>
 
+        <RunDetailsLocationBillingPanel
+          routeId={idNum}
+          monthDate={payload.month_date}
+          stops={payload.notable_stops ?? []}
+          run={run}
+          onBillingUpdated={loadRunDetails}
+        />
+
         <Accordion
-          defaultActiveKey="notable-worksheet"
+          id="run-review-section"
+          activeKey={runReviewAccordionKey}
+          onSelect={(key) => setRunReviewAccordionKey(key == null ? null : String(key))}
           className="monthly-run-detail-notable-accordion"
         >
           <Accordion.Item eventKey="notable-worksheet" className="monthly-location-detail-surface border-0">
@@ -379,9 +459,11 @@ export default function MonthlyRunDetailPage() {
             <Accordion.Body className="p-3 pt-2">
               {reviewStopCount > 0 ? (
                 <RunDetailsSiteChangesList
-                  stops={reviewStops}
+                  cards={reviewCards}
                   monthDate={payload.month_date}
-                  fieldChangesByLocation={fieldChangesByLocation}
+                  summary={reviewSummary}
+                  filter={reviewFilter}
+                  onFilterChange={setReviewFilter}
                 />
               ) : (
                 <p className="monthly-run-detail-empty mb-0">

@@ -49,7 +49,7 @@ export default function MonthlyRunDetailPageSkeleton() {
         </section>
 
         <div className="monthly-run-detail-kpis" aria-hidden>
-          {Array.from({ length: 3 }, (_, i) => (
+          {Array.from({ length: 4 }, (_, i) => (
             <div key={i} className="monthly-run-detail-kpi monthly-location-detail-surface">
               <SkeletonBar width="2.5rem" height={26} className="mx-auto" />
               <SkeletonBar width="4rem" height={11} className="mx-auto mt-2" />

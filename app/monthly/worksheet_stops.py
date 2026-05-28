@@ -55,6 +55,10 @@ _MTSM_OUTCOME_KEYS = (
     "sheet_time_out_raw",
     "source_value_raw",
     "session_route_stop_order",
+    "test_outcome",
+    "skip_category",
+    "skip_note",
+    "confirmed_no_deficiencies",
 )
 
 _MTSM_SNAPSHOT_DISPLAY_KEYS = (
@@ -83,6 +87,10 @@ def _cleared_outcome_fields() -> dict[str, object]:
         "sheet_time_in_raw": None,
         "sheet_time_out_raw": None,
         "source_value_raw": None,
+        "test_outcome": None,
+        "skip_category": None,
+        "skip_note": None,
+        "confirmed_no_deficiencies": False,
     }
 
 
@@ -366,12 +374,21 @@ def ensure_worksheet_stops_for_route_month(
 
 
 def _mtsm_has_field_progress(mtsm: MonthlyTestingSiteMonth) -> bool:
+    from app.db_models import MonthlyStopClockEvent
+
     rs = (mtsm.result_status or "").strip().lower()
     if rs in ("tested", "skipped"):
         return True
+    if _normalize_text(mtsm.test_outcome):
+        return True
     if _normalize_text(mtsm.sheet_time_in_raw) or _normalize_text(mtsm.sheet_time_out_raw):
         return True
-    return _normalize_text(mtsm.run_comments) is not None
+    if _normalize_text(mtsm.run_comments) is not None:
+        return True
+    return (
+        MonthlyStopClockEvent.query.filter_by(monthly_testing_site_month_id=int(mtsm.id)).count()
+        > 0
+    )
 
 
 def refresh_worksheet_stops_for_route_month(
@@ -607,6 +624,7 @@ def serialize_worksheet_stop(
     route_id: int,
     month_first: date,
     stop_number: int,
+    run: MonthlyRouteRun | None = None,
 ) -> dict[str, object]:
     company, mon_notes = _monitoring_labels(mtsm, ts, loc)
     panel = None
@@ -634,6 +652,10 @@ def serialize_worksheet_stop(
         run_comments = mtsm.run_comments
         result_status = mtsm.result_status
         skip_reason = mtsm.skip_reason
+        test_outcome = mtsm.test_outcome
+        skip_category = mtsm.skip_category
+        skip_note = mtsm.skip_note
+        confirmed_no_deficiencies = bool(mtsm.confirmed_no_deficiencies)
         time_in = mtsm.sheet_time_in_raw
         time_out = mtsm.sheet_time_out_raw
         sess_order = mtsm.session_route_stop_order
@@ -658,6 +680,10 @@ def serialize_worksheet_stop(
         door = preview.get("door_code")
         result_status = None
         skip_reason = None
+        test_outcome = None
+        skip_category = None
+        skip_note = None
+        confirmed_no_deficiencies = False
         time_in = None
         time_out = None
         sess_order = None
@@ -685,6 +711,10 @@ def serialize_worksheet_stop(
         "monitoring_notes": mon_notes,
         "result_status": result_status,
         "skip_reason": skip_reason,
+        "test_outcome": test_outcome,
+        "skip_category": skip_category,
+        "skip_note": skip_note,
+        "confirmed_no_deficiencies": confirmed_no_deficiencies,
         "testing_procedures": procedures,
         "inspection_tech_notes": tech_notes,
         "run_comments": run_comments,
@@ -695,6 +725,18 @@ def serialize_worksheet_stop(
         "stop_number": stop_number,
         "version_updated_at": version,
     }
+    from app.monthly.portal_workflow import portal_workflow_extras_for_stop
+
+    stop.update(
+        portal_workflow_extras_for_stop(
+            mtsm,
+            ts,
+            loc,
+            route_id=route_id,
+            month_first=month_first,
+            run=run,
+        )
+    )
     return stop
 
 
@@ -797,27 +839,21 @@ def worksheet_stops_from_attributed_history(
     return out
 
 
-def worksheet_stops_for_route_month(
+def _worksheet_stop_pairs_for_route_month(
     route_id: int,
     month_first: date,
-) -> list[dict[str, object]]:
-    """Load and sort portal worksheet stops for an active run month."""
+) -> list[tuple[MonthlyTestingSiteMonth | None, MonthlyTestingSite, MonthlyRouteLocation]]:
+    """Ordered (mtsm, testing site, location) tuples for one route month — no serialization."""
     locs = _route_locations(route_id)
     if not locs:
         return []
     loc_by_id = {int(loc.id): loc for loc in locs}
-    loc_ids = list(loc_by_id.keys())
-    hist_by_loc = _history_for_locations(loc_ids, month_first)
 
     ts_rows: list[MonthlyTestingSite] = []
-    ts_by_loc: dict[int, list[MonthlyTestingSite]] = {}
     for loc in locs:
-        for ts in _testing_sites_for_location(loc):
-            ts_rows.append(ts)
-            ts_by_loc.setdefault(int(loc.id), []).append(ts)
-
+        ts_rows.extend(_testing_sites_for_location(loc))
     if not ts_rows:
-        return worksheet_stops_from_attributed_history(route_id, month_first)
+        return []
 
     ts_by_id = {int(ts.id): ts for ts in ts_rows}
     ts_ids = list(ts_by_id.keys())
@@ -843,6 +879,52 @@ def worksheet_stops_for_route_month(
         pairs.append((mtsm_by_ts.get(ts_id), ts, loc))
 
     pairs.sort(key=lambda item: _stop_sort_key(item[0], item[1], item[2]))
+    return pairs
+
+
+def worksheet_stop_number_for_site(
+    route_id: int,
+    month_first: date,
+    testing_site_id: int,
+) -> int:
+    """1-based route stop number without building the full worksheet payload."""
+    for idx, (_mtsm, ts, _loc) in enumerate(
+        _worksheet_stop_pairs_for_route_month(route_id, month_first),
+        start=1,
+    ):
+        if int(ts.id) == int(testing_site_id):
+            return idx
+    return 0
+
+
+def worksheet_stops_for_route_month(
+    route_id: int,
+    month_first: date,
+) -> list[dict[str, object]]:
+    """Load and sort portal worksheet stops for an active run month."""
+    locs = _route_locations(route_id)
+    if not locs:
+        return []
+    loc_by_id = {int(loc.id): loc for loc in locs}
+    loc_ids = list(loc_by_id.keys())
+    hist_by_loc = _history_for_locations(loc_ids, month_first)
+
+    ts_rows: list[MonthlyTestingSite] = []
+    ts_by_loc: dict[int, list[MonthlyTestingSite]] = {}
+    for loc in locs:
+        for ts in _testing_sites_for_location(loc):
+            ts_rows.append(ts)
+            ts_by_loc.setdefault(int(loc.id), []).append(ts)
+
+    if not ts_rows:
+        return worksheet_stops_from_attributed_history(route_id, month_first)
+
+    pairs = _worksheet_stop_pairs_for_route_month(route_id, month_first)
+
+    run = MonthlyRouteRun.query.filter_by(
+        monthly_route_id=route_id,
+        month_date=month_first,
+    ).one_or_none()
 
     out: list[dict[str, object]] = []
     for idx, (mtsm, ts, loc) in enumerate(pairs, start=1):
@@ -856,6 +938,7 @@ def worksheet_stops_for_route_month(
             route_id=route_id,
             month_first=month_first,
             stop_number=idx,
+            run=run,
         )
         if is_primary and hist is not None and mtsm is None:
             stop = _overlay_history_on_stop(stop, hist, ts=ts, loc=loc)
@@ -876,6 +959,61 @@ def _route_month_has_run_comments(route_id: int, month_first: date) -> bool:
         .first()
         is not None
     )
+
+
+def _is_annual_for_month(month_first: date, annual_month: object) -> bool:
+    """True when the site's annual month matches this worksheet month (portal parity)."""
+    annual = (str(annual_month).strip().lower() if annual_month is not None else "")
+    if not annual or annual == "to":
+        return False
+    full = month_first.strftime("%B").lower()
+    short = month_first.strftime("%b").lower()
+    return annual in {full, short}
+
+
+def _sheet_skip_reason_is_annual(skip_reason: object) -> bool:
+    s = (str(skip_reason).strip().lower() if skip_reason is not None else "")
+    return s in {"annual", "annual_booked"}
+
+
+_PORTAL_OUTCOME_COUNT_KEYS = (
+    "all_good",
+    "passed_with_problems",
+    "failed",
+    "skipped",
+)
+
+
+def _worksheet_stop_portal_outcome(stop: dict[str, object]) -> str | None:
+    """Portal outcome for run-details KPIs (stop grain), with legacy fallback."""
+    outcome = (str(stop.get("test_outcome") or "")).strip().lower()
+    if outcome in _PORTAL_OUTCOME_COUNT_KEYS:
+        return outcome
+    rs = (str(stop.get("result_status") or "")).strip().lower()
+    if rs == "tested":
+        return "all_good"
+    if rs == "skipped":
+        return "skipped"
+    return None
+
+
+def run_details_counts_for_route_month(route_id: int, month_first: date) -> dict[str, int]:
+    """Stop-level KPI counts from portal ``test_outcome`` (legacy ``result_status`` fallback)."""
+    stops = worksheet_stops_for_route_month(route_id, month_first)
+    counts = {
+        "all_good_count": 0,
+        "passed_with_problems_count": 0,
+        "failed_count": 0,
+        "skipped_count": 0,
+    }
+    for stop in stops:
+        outcome = _worksheet_stop_portal_outcome(stop)
+        if outcome is None:
+            continue
+        key = f"{outcome}_count"
+        if key in counts:
+            counts[key] += 1
+    return counts
 
 
 def _route_month_has_skipped_stops(route_id: int, month_first: date) -> bool:
@@ -902,17 +1040,19 @@ def notable_worksheet_stops_for_run_details(
     month_first: date,
     property_change_location_ids: set[int],
 ) -> list[dict[str, object]]:
-    """Worksheet stops for office run review: updates, skips, comments, and tested (no edits)."""
+    """Worksheet stops for office run review: updates, skips, comments, tested, and annual month."""
     all_stops = worksheet_stops_for_route_month(route_id, month_first)
     filtered: list[dict[str, object]] = []
     for stop in all_stops:
         lid = int(stop["location_id"])
         rs = (str(stop.get("result_status") or "")).strip().lower()
         has_run_comments = _normalize_text(stop.get("run_comments")) is not None
+        is_annual_month = _is_annual_for_month(month_first, stop.get("annual_month"))
+        has_outcome = _normalize_text(stop.get("test_outcome")) is not None
         has_updates = (
             lid in property_change_location_ids or rs == "skipped" or has_run_comments
         )
-        if has_updates or rs == "tested":
+        if has_updates or rs == "tested" or is_annual_month or has_outcome:
             filtered.append(dict(stop))
 
     return filtered
@@ -1051,6 +1191,9 @@ def sync_primary_history_from_stop(
         hist = MonthlyRouteTestHistory(**hist_kw)
         db.session.add(hist)
         db.session.flush()
+    from app.monthly.portal_workflow import dual_write_legacy_result_fields
+
+    dual_write_legacy_result_fields(mtsm)
     hist.result_status = mtsm.result_status
     hist.skip_reason = mtsm.skip_reason
     hist.sheet_time_in_raw = mtsm.sheet_time_in_raw

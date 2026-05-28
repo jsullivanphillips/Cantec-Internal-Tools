@@ -1,5 +1,13 @@
 import type { TechnicianWorksheetStop } from './monthlyRoutesShared'
 import {
+  runReviewOutcomeBadgeClass,
+  runReviewOutcomeHeadline,
+  stopHasOutcomeOnlyReview,
+  stopMatchesOutcomeFilter,
+  stopPortalOutcome,
+} from './officeRunReviewShared'
+import type { PortalTestOutcome } from './portalWorkflowShared'
+import {
   auditFieldDisplayLabel,
   fieldChangesForLocation,
   formatOfficeAuditValue,
@@ -52,31 +60,22 @@ export function runReviewResultHeadline(
   stop: TechnicianWorksheetStop,
   monthDate: string,
 ): string | null {
-  const status = officeStopStatus(stop, monthDate)
-  if (status === 'tested') return 'Tested'
-  if (status === 'annual') return 'Skipped due to Annual'
-  if (status === 'skipped') {
-    const skipBlock = worksheetSkipReasonDisplayBlock(stop.skip_reason)
-    if (skipBlock && skipBlock !== '—') {
-      return `Skipped · ${skipBlock}`
-    }
-    return 'Skipped'
-  }
-  return null
-}
-
-function resultHeadlineClass(status: ReturnType<typeof officeStopStatus>): string {
-  if (status === 'tested') return 'run-detail-site-card__result--tested'
-  if (status === 'annual') return 'run-detail-site-card__result--annual'
-  if (status === 'skipped') return 'run-detail-site-card__result--skipped'
-  return 'run-detail-site-card__result--pending'
+  return runReviewOutcomeHeadline(stop, monthDate)
 }
 
 export function runReviewResultHeadlineClass(
   stop: TechnicianWorksheetStop,
   monthDate: string,
 ): string {
-  return resultHeadlineClass(officeStopStatus(stop, monthDate))
+  return runReviewOutcomeBadgeClass(stop, monthDate)
+}
+
+/** True when the stop was skipped for a reason other than annual (run-review card highlight). */
+export function isNonAnnualSkippedStop(
+  stop: TechnicianWorksheetStop,
+  monthDate: string,
+): boolean {
+  return officeStopStatus(stop, monthDate) === 'skipped'
 }
 
 const CHANGE_LABEL_ORDER: readonly string[] = [
@@ -193,9 +192,10 @@ export function collectNotableStopChanges(
   const siteLabel = (stop.label || '').trim() || 'Primary testing location'
   const allChanges = sortChanges(items)
   const changes = allChanges.filter((item) => item.id !== 'status')
-  const status = officeStopStatus(stop, monthDate)
   const reviewKind: RunReviewCardKind =
-    changes.length === 0 && status === 'tested' ? 'tested_only' : 'with_changes'
+    changes.length === 0 && stopHasOutcomeOnlyReview(stop, monthDate)
+      ? 'tested_only'
+      : 'with_changes'
   return {
     stop,
     stopNumber: stop.stop_number,
@@ -214,6 +214,174 @@ function stopsAtLocation(stops: TechnicianWorksheetStop[], locationId: number): 
   return stops
     .filter((s) => s.location_id === locationId)
     .sort((a, b) => a.testing_site_id - b.testing_site_id)
+}
+
+export const RUN_REVIEW_TESTED_GROUP_DOM_ID = 'run-review-tested-only-group'
+
+export const RUN_REVIEW_EXPAND_CARD_EVENT = 'run-review:expand-card'
+
+export function dispatchRunReviewExpandCard(domId: string): void {
+  window.dispatchEvent(new CustomEvent(RUN_REVIEW_EXPAND_CARD_EVENT, { detail: { domId } }))
+}
+
+export type RunReviewCardTier = 'tested_only' | 'standard' | 'attention'
+
+export type RunReviewChangeGroupKey = 'site_details' | 'comments'
+
+export type RunReviewChangeGroup = {
+  key: RunReviewChangeGroupKey
+  title: string
+  items: NotableChangeItem[]
+}
+
+const COMMENT_CHANGE_LABELS = new Set<string>(['Location comments', 'Job comment'])
+
+export function runReviewCardTier(
+  card: NotableStopChangeCard,
+  monthDate: string,
+): RunReviewCardTier {
+  if (cardIsTestedOnly(card)) return 'tested_only'
+  const status = officeStopStatus(card.stop, monthDate)
+  if (status === 'skipped' || status === 'annual') return 'standard'
+  if (cardHasFieldEdits(card)) return 'attention'
+  return 'standard'
+}
+
+export function partitionRunReviewCards(
+  cards: NotableStopChangeCard[],
+  monthDate: string,
+): { attentionAndStandard: NotableStopChangeCard[]; testedOnly: NotableStopChangeCard[] } {
+  const attentionAndStandard: NotableStopChangeCard[] = []
+  const testedOnly: NotableStopChangeCard[] = []
+  for (const card of cards) {
+    if (runReviewCardTier(card, monthDate) === 'tested_only') {
+      testedOnly.push(card)
+    } else {
+      attentionAndStandard.push(card)
+    }
+  }
+  return { attentionAndStandard, testedOnly }
+}
+
+export function groupNotableChanges(changes: NotableChangeItem[]): RunReviewChangeGroup[] {
+  const siteDetails: NotableChangeItem[] = []
+  const comments: NotableChangeItem[] = []
+  for (const item of changes) {
+    if (COMMENT_CHANGE_LABELS.has(item.label)) {
+      comments.push(item)
+    } else {
+      siteDetails.push(item)
+    }
+  }
+  const groups: RunReviewChangeGroup[] = []
+  if (siteDetails.length > 0) {
+    groups.push({ key: 'site_details', title: 'Site details', items: siteDetails })
+  }
+  if (comments.length > 0) {
+    groups.push({ key: 'comments', title: 'Comments', items: comments })
+  }
+  return groups
+}
+
+export type RunReviewSummary = {
+  stopCount: number
+  outcomeOnlyCount: number
+  allGoodCount: number
+  passedWithProblemsCount: number
+  failedCount: number
+  skippedCount: number
+  updatedCount: number
+}
+
+export function runReviewStopDomId(card: NotableStopChangeCard): string {
+  return `run-review-stop-${card.locationId}-${card.stop.testing_site_id}`
+}
+
+export function cardIsTestedOnly(card: NotableStopChangeCard): boolean {
+  return card.reviewKind === 'tested_only'
+}
+
+export function cardHasFieldEdits(card: NotableStopChangeCard): boolean {
+  return card.changes.length > 0
+}
+
+export function cardNeedsReview(card: NotableStopChangeCard, monthDate: string): boolean {
+  if (cardIsTestedOnly(card)) return false
+  return cardHasFieldEdits(card) || isNonAnnualSkippedStop(card.stop, monthDate)
+}
+
+export type RunReviewFilter =
+  | 'all'
+  | 'all_good'
+  | 'passed_with_problems'
+  | 'failed'
+  | 'skipped'
+  | 'updated'
+
+export function cardMatchesRunReviewFilter(
+  card: NotableStopChangeCard,
+  filter: RunReviewFilter,
+  monthDate: string,
+): boolean {
+  if (filter === 'all') return true
+  if (filter === 'updated') return cardHasFieldEdits(card)
+  if (
+    filter === 'all_good' ||
+    filter === 'passed_with_problems' ||
+    filter === 'failed' ||
+    filter === 'skipped'
+  ) {
+    return stopMatchesOutcomeFilter(card.stop, monthDate, filter as PortalTestOutcome)
+  }
+  return true
+}
+
+export function filterRunReviewCards(
+  cards: NotableStopChangeCard[],
+  filter: RunReviewFilter,
+  monthDate: string,
+): NotableStopChangeCard[] {
+  if (filter === 'all') return cards
+  return cards.filter((card) => cardMatchesRunReviewFilter(card, filter, monthDate))
+}
+
+export function summarizeRunReviewCards(
+  cards: NotableStopChangeCard[],
+  monthDate: string,
+): RunReviewSummary {
+  let outcomeOnlyCount = 0
+  let allGoodCount = 0
+  let passedWithProblemsCount = 0
+  let failedCount = 0
+  let skippedCount = 0
+  let updatedCount = 0
+  for (const card of cards) {
+    if (cardIsTestedOnly(card)) outcomeOnlyCount += 1
+    if (cardHasFieldEdits(card)) updatedCount += 1
+    const outcome = stopPortalOutcome(card.stop)
+    if (outcome === 'all_good' || (!outcome && officeStopStatus(card.stop, monthDate) === 'tested')) {
+      allGoodCount += 1
+    } else if (outcome === 'passed_with_problems') {
+      passedWithProblemsCount += 1
+    } else if (outcome === 'failed') {
+      failedCount += 1
+    } else if (
+      outcome === 'skipped' ||
+      officeStopStatus(card.stop, monthDate) === 'skipped' ||
+      officeStopStatus(card.stop, monthDate) === 'annual'
+    ) {
+      skippedCount += 1
+    }
+  }
+  return {
+    stopCount: cards.length,
+    outcomeOnlyCount,
+    allGoodCount,
+    passedWithProblemsCount,
+    failedCount,
+    skippedCount,
+    updatedCount,
+  }
 }
 
 /** One card per notable stop, ordered by route stop number. */

@@ -1119,6 +1119,12 @@ class MonthlyTestingSite(db.Model):
         cascade="all, delete-orphan",
         lazy="dynamic",
     )
+    deficiencies = db.relationship(
+        "MonthlyTestingSiteDeficiency",
+        back_populates="testing_site",
+        cascade="all, delete-orphan",
+        lazy="dynamic",
+    )
 
 
 class MonthlyTestingSiteMonth(db.Model):
@@ -1172,6 +1178,11 @@ class MonthlyTestingSiteMonth(db.Model):
     run_comments = db.Column(db.Text, nullable=True)
     sheet_time_in_raw = db.Column(db.String(64), nullable=True)
     sheet_time_out_raw = db.Column(db.String(64), nullable=True)
+    #: Portal test result: all_good, passed_with_problems, failed, skipped.
+    test_outcome = db.Column(db.String(32), nullable=True)
+    skip_category = db.Column(db.String(64), nullable=True)
+    skip_note = db.Column(db.Text, nullable=True)
+    confirmed_no_deficiencies = db.Column(db.Boolean, nullable=False, default=False)
     #: Run-month monitoring company label (free text; may differ from library FK).
     monitoring_company_name = db.Column(db.String(255), nullable=True)
     monitoring_notes = db.Column(db.Text, nullable=True)
@@ -1189,6 +1200,13 @@ class MonthlyTestingSiteMonth(db.Model):
     )
 
     testing_site = db.relationship("MonthlyTestingSite", back_populates="month_rows")
+    clock_events = db.relationship(
+        "MonthlyStopClockEvent",
+        back_populates="stop_month",
+        cascade="all, delete-orphan",
+        lazy="dynamic",
+        order_by="MonthlyStopClockEvent.sort_order",
+    )
     run = db.relationship(
         "MonthlyRouteRun",
         foreign_keys=[run_id],
@@ -1197,6 +1215,85 @@ class MonthlyTestingSiteMonth(db.Model):
         "MonthlyRoute",
         foreign_keys=[test_monthly_route_id],
     )
+
+
+class MonthlyStopClockEvent(db.Model):
+    """One clock-in / clock-out pair for a portal worksheet stop visit."""
+
+    __tablename__ = "monthly_stop_clock_event"
+    __table_args__ = (
+        db.Index("ix_monthly_stop_clock_event_mtsm_id", "monthly_testing_site_month_id"),
+    )
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    monthly_testing_site_month_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monthly_testing_site_month.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    sort_order = db.Column(db.SmallInteger, nullable=False, default=0)
+    time_in_raw = db.Column(db.String(64), nullable=False)
+    time_out_raw = db.Column(db.String(64), nullable=True)
+    created_by_tech_id = db.Column(db.String(64), nullable=True)
+    created_by_tech_name = db.Column(db.String(255), nullable=True)
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        nullable=False,
+    )
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        onupdate=db.func.now(),
+        nullable=False,
+    )
+
+    stop_month = db.relationship("MonthlyTestingSiteMonth", back_populates="clock_events")
+
+
+class MonthlyTestingSiteDeficiency(db.Model):
+    """App-only deficiency tied to a testing stop; persists across runs."""
+
+    __tablename__ = "monthly_testing_site_deficiency"
+    __table_args__ = (
+        db.Index("ix_monthly_testing_site_deficiency_site_id", "monthly_testing_site_id"),
+        db.Index("ix_monthly_testing_site_deficiency_created_run_id", "created_run_id"),
+    )
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    monthly_testing_site_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monthly_testing_site.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    created_run_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monthly_route_run.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    title = db.Column(db.String(255), nullable=False)
+    severity = db.Column(db.String(32), nullable=False)
+    status = db.Column(db.String(32), nullable=False, default="new")
+    description = db.Column(db.Text, nullable=True)
+    verification_notes = db.Column(db.Text, nullable=True)
+    reported_by_tech_id = db.Column(db.String(64), nullable=True)
+    reported_by_tech_name = db.Column(db.String(255), nullable=True)
+    last_edited_by_tech_id = db.Column(db.String(64), nullable=True)
+    last_edited_by_tech_name = db.Column(db.String(255), nullable=True)
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        nullable=False,
+    )
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        onupdate=db.func.now(),
+        nullable=False,
+    )
+
+    testing_site = db.relationship("MonthlyTestingSite", back_populates="deficiencies")
+    created_run = db.relationship("MonthlyRouteRun", foreign_keys=[created_run_id])
 
 
 class MonthlyKeyBridge(db.Model):
@@ -1346,6 +1443,8 @@ class MonthlyRouteTestHistory(db.Model):
     sheet_time_in_raw = db.Column(db.String(64), nullable=True)
     #: Technician worksheet ``Time Out`` raw value for this route-month row.
     sheet_time_out_raw = db.Column(db.String(64), nullable=True)
+    #: Office processor billing decision: bill, do_not_bill, unset, legacy.
+    billing_status = db.Column(db.String(16), nullable=True)
     #: Free-form monitoring block from the technician sheet CSV (signals, acct #, etc.).
     #: The worksheet shows this when set; otherwise falls back to ``MonitoringCompany`` on the location.
     monitoring_notes = db.Column(db.Text, nullable=True)

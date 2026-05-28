@@ -1,64 +1,59 @@
 import { useMemo } from 'react'
-import type { TechnicianWorksheetStop } from './monthlyRoutesShared'
-import { buildNotableStopChangeCards } from './notableStopChanges'
-import type { OfficeFieldChange } from './officeWorksheetTableShared'
 import RunDetailsSiteChangeCard from './RunDetailsSiteChangeCard'
+import RunReviewFilterBar from './RunReviewFilterBar'
+import RunReviewTestedOnlyGroup from './RunReviewTestedOnlyGroup'
+import type { NotableStopChangeCard, RunReviewFilter, RunReviewSummary } from './notableStopChanges'
+import { filterRunReviewCards, partitionRunReviewCards, runReviewStopDomId } from './notableStopChanges'
 
 export default function RunDetailsSiteChangesList({
-  stops,
+  cards,
   monthDate,
-  fieldChangesByLocation,
+  summary,
+  filter,
+  onFilterChange,
 }: {
-  stops: TechnicianWorksheetStop[]
+  cards: NotableStopChangeCard[]
   monthDate: string
-  fieldChangesByLocation?: Map<number, OfficeFieldChange[]>
+  summary: RunReviewSummary
+  filter: RunReviewFilter
+  onFilterChange: (filter: RunReviewFilter) => void
 }) {
-  const cards = useMemo(
-    () => buildNotableStopChangeCards(stops, monthDate, fieldChangesByLocation),
-    [stops, monthDate, fieldChangesByLocation],
+  const filtered = useMemo(
+    () => filterRunReviewCards(cards, filter, monthDate),
+    [cards, filter, monthDate],
   )
 
-  const { changeCount, withUpdatesCount, testedOnlyCount } = useMemo(() => {
-    let changes = 0
-    let withUpdates = 0
-    let testedOnly = 0
-    for (const card of cards) {
-      changes += card.changes.length
-      if (card.reviewKind === 'tested_only') testedOnly += 1
-      else if (card.changes.length > 0) withUpdates += 1
-    }
-    return { changeCount: changes, withUpdatesCount: withUpdates, testedOnlyCount: testedOnly }
-  }, [cards])
+  const { attentionAndStandard, testedOnly } = useMemo(
+    () => partitionRunReviewCards(filtered, monthDate),
+    [filtered, monthDate],
+  )
 
-  const summaryParts: string[] = []
-  if (withUpdatesCount > 0) {
-    summaryParts.push(
-      withUpdatesCount === 1 ? '1 site with updates' : `${withUpdatesCount} sites with updates`,
-    )
-  }
-  if (testedOnlyCount > 0) {
-    summaryParts.push(
-      testedOnlyCount === 1 ? '1 tested (no edits)' : `${testedOnlyCount} tested (no edits)`,
-    )
-  }
+  const usePartitionedLayout = filter === 'all'
+
+  const flatList = usePartitionedLayout ? attentionAndStandard : filtered
 
   return (
     <div className="monthly-run-detail-changes">
-      {summaryParts.length > 0 ? (
-        <p className="monthly-run-detail-changes__summary text-muted small">
-          {summaryParts.join(' · ')}
-          {changeCount > 0
-            ? ` · ${changeCount === 1 ? '1 change' : `${changeCount} changes`}`
-            : null}
-        </p>
-      ) : null}
-      <ul className="monthly-run-detail-changes__list list-unstyled mb-0">
-        {cards.map((card) => (
-          <li key={`${card.locationId}:${card.stop.testing_site_id}`}>
-            <RunDetailsSiteChangeCard card={card} />
-          </li>
-        ))}
-      </ul>
+      <RunReviewFilterBar filter={filter} onFilterChange={onFilterChange} summary={summary} />
+      {filtered.length === 0 && cards.length > 0 ? (
+        <p className="monthly-run-detail-empty mb-0">No stops match this filter.</p>
+      ) : (
+        <>
+          <ul className="monthly-run-detail-changes__list list-unstyled mb-0">
+            {flatList.map((card) => (
+              <li
+                key={`${card.locationId}:${card.stop.testing_site_id}`}
+                id={runReviewStopDomId(card)}
+              >
+                <RunDetailsSiteChangeCard card={card} />
+              </li>
+            ))}
+          </ul>
+          {usePartitionedLayout && testedOnly.length > 0 ? (
+            <RunReviewTestedOnlyGroup cards={testedOnly} />
+          ) : null}
+        </>
+      )}
     </div>
   )
 }

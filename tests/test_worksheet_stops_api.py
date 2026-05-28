@@ -17,7 +17,9 @@ from app.db_models import (
     MonthlyRouteTestHistory,
     MonthlyRouteWorksheetAuditEvent,
     MonthlySite,
+    MonthlyStopClockEvent,
     MonthlyTestingSite,
+    MonthlyTestingSiteDeficiency,
     MonthlyTestingSiteMonth,
     db,
 )
@@ -45,6 +47,8 @@ def stops_client(monkeypatch):
         MonthlySite.__table__,
         MonthlyTestingSite.__table__,
         MonthlyTestingSiteMonth.__table__,
+        MonthlyStopClockEvent.__table__,
+        MonthlyTestingSiteDeficiency.__table__,
     ]
 
     with app.app_context():
@@ -100,7 +104,8 @@ def _seed_route_with_two_stops() -> tuple[int, int, int]:
 def test_get_worksheet_includes_stops_preview(stops_client, monkeypatch):
     from app.routes import monthly_routes as mr_mod
 
-    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
+    # Pacific "current" month is June so May GET stays preview-only (no auto run file).
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 6, 1))
 
     client, app = stops_client
     with app.app_context():
@@ -138,6 +143,10 @@ def test_portal_start_materializes_stops(stops_client, monkeypatch):
     by_id = {int(s["testing_site_id"]): s for s in stops}
     assert by_id[ts_primary]["history_month_row_id"] > 0
     assert by_id[ts_second]["history_month_row_id"] > 0
+    for stop in stops:
+        assert "clock_events" in stop
+        assert "test_outcome" in stop
+        assert "portal_read_only" in stop
 
     with app.app_context():
         assert MonthlyTestingSiteMonth.query.filter_by(month_date=date(2026, 5, 1)).count() == 2

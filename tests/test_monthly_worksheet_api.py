@@ -349,7 +349,7 @@ def test_worksheet_reset_run_clears_master_sheet_legacy_history(worksheet_client
 
     details = client.get("/api/monthly_routes/routes/1/run_details?month=2026-05-01")
     assert details.status_code == 200
-    assert details.get_json()["counts"]["sites_tested_count"] == 0
+    assert details.get_json()["counts"]["all_good_count"] == 0
 
 
 def test_worksheet_reset_run_rejects_completed(worksheet_client):

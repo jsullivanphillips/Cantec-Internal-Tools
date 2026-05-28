@@ -127,7 +127,7 @@ Delegates most mutations to `monthly_routes`, then augments with v2:
 
 **Frontend split:** Library/map pages use **`/api/monthly_sites/...`**; route detail, run details, and worksheet use **`/api/monthly_routes/...`**.
 
-**Office run navigation:** Route detail → **Run details** (`/monthlies/routes/:routeId/runs/:monthIso`, `GET .../run_details`) → technician worksheet. Run details requires a ``MonthlyRouteRun`` row for that month (CSV import, portal, or worksheet materialization)—master-sheet ledger history alone is not enough. The route detail API exposes ``runs_by_month`` (run files) separately from ``testing_by_month`` (sheet ledger counts from ``monthly_route_test_history``). Run details exposes a collapsible **Run review** via ``notable_stops``: every stop that was **tested**, **skipped**, or had property/snapshot audit edits or run comments. Tested stops with no edits render as a minimal card; others show a per-field change summary (line diff for long text). ``field_changes_by_location`` supplies audit data; test workflow and ``reset_run`` audit rows are omitted.
+**Office run navigation:** Route detail → **Run details** (`/monthlies/routes/:routeId/runs/:monthIso`, `GET .../run_details`) → technician worksheet. Run details requires a ``MonthlyRouteRun`` row for that month (CSV import, portal, or worksheet materialization)—master-sheet ledger history alone is not enough. The route detail API exposes ``runs_by_month`` (run files) separately from ``testing_by_month`` (sheet ledger counts from ``monthly_route_test_history``). Run details **KPI counts** (Tested / Skipped / Annuals) are derived from worksheet stops on the route for that month: a site counts as **Annual** when its ``annual_month`` matches the run month (or it was skipped with an annual reason), unless it was **tested**. Run details exposes a collapsible **Run review** via ``notable_stops``: every stop that was **tested**, **skipped**, is due as an **annual** that month (``annual_month`` matches the run month, even if the technician took no action), or had property/snapshot audit edits or run comments. Tested stops with no edits render as a minimal card; others show a per-field change summary (line diff for long text). ``field_changes_by_location`` supplies audit data; test workflow and ``reset_run`` audit rows are omitted.
 
 **Run lock (office completes the job):** A run is editable in the technician portal until office staff press **Complete job** on the **Run details** page (`POST .../runs/complete` sets `status=completed` and `completed_at`). That sets `is_historical` on the worksheet payload and blocks all portal PATCHes (`run_completed_locked`). **Reopen job** on Run details (`POST .../runs/reopen`) clears completion. Technicians no longer use Start/Complete run in the portal — opening the current month's worksheet materializes the run file automatically.
 
@@ -333,6 +333,116 @@ Backfill portal stop months from attributed history:
 
 **Planned next:** office worksheet on `stops[]`; route CSV column mapping into `MonthlyTestingSiteMonth` fields; audit FK on `monthly_testing_site_month_id` (drop dual-write).
 
+### Portal workflow foundation (2026-05, Phase 1)
+
+Migration `z5a6b7c8d9e0` adds:
+
+| Table / column | Purpose |
+|----------------|---------|
+| `monthly_stop_clock_event` | Multiple clock-in/out pairs per `MonthlyTestingSiteMonth` |
+| `monthly_testing_site_month.test_outcome` | `all_good`, `passed_with_problems`, `failed`, `skipped` |
+| `monthly_testing_site_month.skip_category` / `skip_note` | Structured skip (replaces free-text-only `skip_reason` for new work) |
+| `monthly_testing_site_month.confirmed_no_deficiencies` | Processor flag when Passed with problems has zero deficiencies |
+| `monthly_route_test_history.billing_status` | Per **location** per month: `bill`, `do_not_bill`, `unset`, `legacy` |
+| `monthly_testing_site_deficiency` | App-only deficiencies per testing site (persist across runs; `created_run_id`) |
+
+**Domain:** `app/monthly/portal_workflow.py` — clock events, outcomes, billing defaults, deficiencies, per-stop reset.
+
+**Technician portal session:** After PIN, `POST /api/technician_portal/session/technician` stores `portal_tech_id` / `portal_tech_name`. `GET /api/technician_portal/technicians` returns cached ServiceTrade active techs (fallback **Shop Tech**).
+
+**Stop sub-resources** (all require `?month=YYYY-MM-01` and portal auth):
+
+| Method | Path |
+|--------|------|
+| GET | `.../worksheet/stops/<testing_site_id>/clock_events` |
+| POST | `.../clock_events/clock_in`, `.../clock_events/clock_out`, `.../clock_events/cancel_clock_in` |
+| POST | `.../worksheet/transition_clock` (body: `from_testing_site_id`, `to_testing_site_id`, optional `time_out` / `time_in`) |
+| PUT | `.../test_outcome` |
+| GET/POST | `.../deficiencies` |
+| PATCH | `.../deficiencies/<id>` |
+| POST | `.../deficiencies/<id>/verify` |
+| POST | `.../reset` (per-stop; audit `stop_reset`) |
+
+Worksheet `stops[]` payload adds: `clock_events`, `test_outcome`, `skip_category`, `skip_note`, `deficiencies`, `has_run_changes`, `billing_status`, `is_legacy_outcome`, `portal_read_only`, `is_legacy_run`.
+
+**Billing defaults:** Non-skip outcome on any stop at a location → `bill`; all stops skipped → `unset`; any billable stop on location → `bill` (E1). Office sets final Bill / Do not bill on **Run details** (see Phase 4 below).
+
+**Read-only runs:** `MonthlyRouteRun.source = csv_import` → `portal_read_only` (portal PATCH/workflow blocked).
+
+Legacy `result_status` / `sheet_time_in_raw` / `sheet_time_out_raw` remain for CSV and transition; primary-stop dual-write continues via `sync_primary_history_from_stop`.
+
+### Portal UI core (2026-05, Phase 2)
+
+**Routes:** PIN unlock → `/tech/technician` (tech picker) → `/tech/start` → route → worksheet. Layout redirects to the picker when `GET /api/technician_portal/session/technician` returns 404.
+
+**Worksheet dock bands** (`portalWorkflowShared.portalStopDockBand`):
+
+| Band | When | Actions |
+|------|------|---------|
+| A | Not clocked in here; visit incomplete | Clock in, Skip |
+| B | Open clock on this stop | Record results, Clock out, Cancel clock-in, Add deficiency, Skip, Reset* |
+| C | `test_outcome` set and no open clock | Clock in again, Reset* |
+
+\*Reset only when `has_run_changes`; confirm dialog.
+
+**APIs used by the portal UI (not legacy PATCH `time_in`/`time_out` on the dock):**
+
+- `POST .../clock_events/clock_in` / `clock_out` / `cancel_clock_in` (removes open clock-in only when the stop has no other run data). **Cancel clock-in** in the dock uses full **reset** when a test outcome, deficiencies, or other run changes exist so the stop returns to a clean pending state.
+- `PUT .../test_outcome` (four outcomes + structured skip)
+- Deficiency CRUD + `POST .../verify`
+- `POST .../reset` per stop
+
+Field edits (procedures, panel, comments, etc.) still use `PATCH .../worksheet/stops/:id`. Workflow mutations queue in `localStorage` key `portalWorkflowSyncQueue` (separate from field PATCH queue).
+
+### Portal business rules (2026-05, Phase 3)
+
+**Server validation** (`validate_test_outcome` in `app/monthly/portal_workflow.py`, enforced on `PUT .../test_outcome`):
+
+| Outcome | Rule |
+|---------|------|
+| `all_good` | Rejected if any deficiency on the testing site is **New** or **Verified** (`code: deficiencies_block_all_good`) |
+| `passed_with_problems` | If no New/Verified deficiencies: requires `confirmed_no_deficiencies: true` (`confirmed_no_deficiencies_required`). If deficiencies exist: all must be **Verified** (no **New**) (`unverified_deficiencies`) |
+| `failed` | Rejected while any **New** deficiency remains (`unverified_deficiencies`) |
+| `skipped` | Unchanged |
+
+Creating a deficiency while the stop is `all_good` auto-downgrades to `passed_with_problems` (API + UI).
+
+**Record Results wizard** (`PortalRecordResultsModal`): choose outcome → optional **verify** step (each **New** deficiency must be verified inline) → optional **confirm none** for Passed with problems with zero active deficiencies → save outcome. Open clock stays until **Clock out** unless the modal was opened from **Clock out** (no outcome yet)—that path saves the result and then clocks out. **Record results** alone does not clock out. **Skip** while clocked in still auto clock-outs before saving the skip.
+
+**Offline queue:** Invalid `test_outcome` payloads are dropped on sync with an alert (not retried indefinitely).
+
+### Portal sync & projected state (2026-05)
+
+Technician workflow actions are **optimistic**: the UI updates immediately, then a **serial** `portalWorkflowSyncQueue` drains one server mutation at a time per route/month.
+
+| Layer | Module | Role |
+|-------|--------|------|
+| Intent | `usePortalWorkflowActions` + `worksheetOfflineStore` | Optimistic patch + enqueue |
+| Projection | `portalRouteProjection.ts` | `projectStopsWithWorkflowQueue` — apply pending queue in `enqueuedAt` order for gating and refresh merge |
+| Drain | `portalWorkflowQueueRunner.ts` | Strict FIFO; merges each server `stop` (or `from_stop` / `to_stop` for transition) into cached payload |
+
+**Open-clock gating** uses **projected** state (`projectedOpenClockSiteId`, `projectedClockInBlockedForStop`), not raw server snapshots, so clock-out → clock-in on the next stop is allowed while sync is pending.
+
+**Refresh:** `mergeWorkflowQueueIntoPayload` overlays the workflow queue on GET/SSE merges so stale server data cannot reopen a site the technician already clocked out of. Remote refresh is suppressed while the workflow queue is non-empty.
+
+**Errors:** `open_clock_in_conflict` on `clock_in` retries with backoff when the queue shows an earlier `clock_out` or `transition_clock` for another site (transient lag). `no_open_clock` on `clock_out` retries when the client still shows an open clock on that stop; otherwise idempotent drop. Real conflicts (second device, wrong site) still alert after retry cap.
+
+**Atomic move:** `POST .../worksheet/transition_clock` (`transition_clock_between_stops` in `portal_workflow.py`) closes the open clock on `from_testing_site_id` and clocks in on `to_testing_site_id` in one transaction. The portal uses this only when the user taps **Clock in** on a stop while another stop still has an open clock (explicit site-to-site move). **Record results** saves the outcome, clocks out the current stop if needed, and **selects** the next incomplete stop—it does not clock in there automatically.
+
+### Office run details (2026-05, Phase 4)
+
+**Run details KPI row** (`GET .../run_details` → `counts`): stop-level tallies — `all_good_count`, `passed_with_problems_count`, `failed_count`, `skipped_count`. Uses `test_outcome` when set; legacy `result_status tested` counts as `all_good`; legacy `skipped` counts as `skipped`. Annual-month sites without an outcome are **not** included in KPI tiles.
+
+**Office billing PATCH** (staff session):
+
+| Method | Path |
+|--------|------|
+| PATCH | `/api/monthly_routes/routes/<route_id>/locations/<location_id>/billing_status?month=YYYY-MM-01` |
+
+Body: `{ "billing_status": "bill" | "do_not_bill" | "unset" }`. Rejects when the row is `legacy` (`code: billing_legacy_locked`). `csv_import` runs: billing controls disabled in UI (read-only).
+
+**Run review UI:** Outcome headlines via `portalOutcomeDisplay` / legacy labels; filters by outcome + Updated; `confirmed_no_deficiencies` pill on Passed-with-problems cards; billing badge per location on stop cards; **Billing by location** panel between KPIs and run review.
+
 ---
 
 ## 12. Known gaps and active work
@@ -341,7 +451,7 @@ Backfill portal stop months from attributed history:
 
 2. **Dual schema cutover incomplete** — Legacy `MonthlyRouteLocation` still owns library billing fields (address, status, route assignment, spreadsheet notes). V2 `MonthlyTestingSite` owns per-stop display fields (ring, keys, panel, procedures, price). **Location detail + edit modal** (`MonthlyLocationDetailPage`, `MonthlyLocationLibraryModal`) read/write v2 stops via `GET/PATCH /api/monthly_sites/testing_sites/:id`; primary stop edits dual-write back to legacy for sheet parity.
 
-3. **Portal identity** — No per-tech identity in v1 portal; audit uses `source='technician_app'`.
+3. **Portal identity** — Phase 2 tech picker sets `portal_tech_id` / `portal_tech_name` on workflow APIs; field PATCH audit may still show `technician_app` until fully aligned.
 
 4. **Documentation** — This file is the architecture reference; `README.md` only documents the technician portal env var.
 
@@ -373,6 +483,8 @@ Backfill portal stop months from attributed history:
 | `app/monthly/history_sheet_notes.py` | Latest-run vs history-only sheet notes |
 | `app/monthly/runs.py` | Run get-or-create |
 | `app/api_auth_gate.py` | Portal auth exemptions |
+| `frontend/src/features/monthlyRoutes/portalRouteProjection.ts` | Workflow queue projection + open-clock gating |
+| `frontend/src/features/monthlyRoutes/portalWorkflowQueueRunner.ts` | Serial workflow drain |
 
 ---
 

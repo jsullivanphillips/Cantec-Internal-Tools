@@ -8,6 +8,10 @@ type PortalMeResponse = {
   configured: boolean
 }
 
+type SessionTechnicianResponse = {
+  technician: { id: string; name: string } | null
+}
+
 const LOCK_PATH = '/tech'
 
 /**
@@ -21,8 +25,14 @@ export default function TechnicianPortalLayout() {
   const location = useLocation()
   const [logoFailed, setLogoFailed] = useState(false)
   const [unlocked, setUnlocked] = useState<boolean | null>(null)
+  const [sessionTechName, setSessionTechName] = useState<string | null>(null)
 
   const isLockScreen = location.pathname === LOCK_PATH || location.pathname === `${LOCK_PATH}/`
+  const isTechnicianPicker =
+    location.pathname === '/tech/technician' || location.pathname === '/tech/technician/'
+  const needsTechnicianSession =
+    location.pathname.startsWith('/tech/start') ||
+    location.pathname.startsWith('/tech/route/')
   const isWorksheetScreen = location.pathname.includes('/worksheet/')
 
   const refreshLock = useCallback(async () => {
@@ -50,6 +60,32 @@ export default function TechnicianPortalLayout() {
       nav(LOCK_PATH, { replace: true })
     }
   }, [unlocked, isLockScreen, nav])
+
+  useEffect(() => {
+    if (!unlocked || isLockScreen || isTechnicianPicker) {
+      setSessionTechName(null)
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      try {
+        const data = await apiJson<SessionTechnicianResponse>('/api/technician_portal/session/technician')
+        if (cancelled) return
+        setSessionTechName(data.technician?.name ?? null)
+        if (needsTechnicianSession && !data.technician) {
+          nav('/tech/technician', { replace: true })
+        }
+      } catch {
+        if (cancelled) return
+        if (needsTechnicianSession) {
+          nav('/tech/technician', { replace: true })
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [unlocked, isLockScreen, isTechnicianPicker, needsTechnicianSession, nav, location.pathname])
 
   useEffect(() => {
     const root = document.documentElement
@@ -131,6 +167,11 @@ export default function TechnicianPortalLayout() {
             <span className="fw-semibold text-primary text-truncate">Technician Portal</span>
           )}
           <span className="text-muted small d-none d-sm-inline">Technician Portal</span>
+          {sessionTechName ? (
+            <span className="badge text-bg-light border text-secondary d-none d-md-inline">
+              {sessionTechName}
+            </span>
+          ) : null}
         </div>
         {unlocked && !isLockScreen ? (
           <Button variant="outline-secondary" size="sm" type="button" onClick={lock}>

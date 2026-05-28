@@ -30,6 +30,11 @@ PACIFIC_TZ = ZoneInfo("America/Vancouver")
 
 PORTAL_PIN_ENV = "TECHNICIAN_PORTAL_PIN"
 SESSION_FLAG = "tech_portal_unlocked"
+SESSION_TECH_ID = "portal_tech_id"
+SESSION_TECH_NAME = "portal_tech_name"
+
+_TECHNICIANS_CACHE: dict[str, object] = {"expires_at": 0.0, "data": []}
+_TECHNICIANS_CACHE_TTL_SEC = 3600
 
 
 def _today_local() -> date:
@@ -119,8 +124,78 @@ def portal_me():
         {
             "unlocked": bool(session.get(SESSION_FLAG)),
             "configured": _portal_pin_configured() is not None,
+            "technician": _session_technician_payload(),
         }
     )
+
+
+def _session_technician_payload() -> dict[str, object] | None:
+    tech_id = session.get(SESSION_TECH_ID)
+    tech_name = session.get(SESSION_TECH_NAME)
+    if not tech_id and not tech_name:
+        return None
+    return {
+        "id": str(tech_id) if tech_id is not None else None,
+        "name": str(tech_name) if tech_name is not None else None,
+    }
+
+
+def _cached_active_technicians() -> list[dict[str, object]]:
+    import time as time_mod
+
+    from app.monthly.portal_workflow import SHOP_TECH_ID, SHOP_TECH_NAME
+
+    now = time_mod.time()
+    if now < float(_TECHNICIANS_CACHE.get("expires_at") or 0):
+        cached = _TECHNICIANS_CACHE.get("data")
+        if isinstance(cached, list):
+            return cached
+
+    slim: list[dict[str, object]] = []
+    try:
+        from app.routes.scheduling_attack import get_active_techs
+
+        for t in get_active_techs() or []:
+            tech_id = t.get("id")
+            name = (t.get("name") or "").strip()
+            if tech_id and name:
+                slim.append({"id": str(tech_id), "name": name})
+        slim.sort(key=lambda x: str(x.get("name", "")).lower())
+    except Exception:
+        slim = []
+
+    if not slim:
+        slim = [{"id": SHOP_TECH_ID, "name": SHOP_TECH_NAME}]
+
+    _TECHNICIANS_CACHE["data"] = slim
+    _TECHNICIANS_CACHE["expires_at"] = now + _TECHNICIANS_CACHE_TTL_SEC
+    return slim
+
+
+@technician_portal_bp.get("/technicians")
+def portal_technicians():
+    return jsonify({"technicians": _cached_active_technicians()})
+
+
+@technician_portal_bp.get("/session/technician")
+def portal_get_session_technician():
+    tech = _session_technician_payload()
+    if tech is None:
+        return jsonify({"technician": None}), 404
+    return jsonify({"technician": tech})
+
+
+@technician_portal_bp.post("/session/technician")
+def portal_set_session_technician():
+    data = request.get_json(silent=True) or {}
+    tech_id = (data.get("id") or data.get("tech_id") or "").strip()
+    tech_name = (data.get("name") or data.get("tech_name") or "").strip()
+    if not tech_id or not tech_name:
+        return jsonify({"error": "id and name are required"}), 400
+    session[SESSION_TECH_ID] = tech_id
+    session[SESSION_TECH_NAME] = tech_name
+    session.modified = True
+    return jsonify({"ok": True, "technician": {"id": tech_id, "name": tech_name}})
 
 
 def _serialize_route_for_portal(mr: MonthlyRoute, *, location_count: int) -> dict[str, object]:

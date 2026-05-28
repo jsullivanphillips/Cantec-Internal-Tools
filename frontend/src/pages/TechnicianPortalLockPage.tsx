@@ -26,7 +26,7 @@ export default function TechnicianPortalLockPage() {
         if (cancelled) return
         setConfigured(!!me.configured)
         if (me.unlocked) {
-          nav('/tech/start', { replace: true })
+          nav('/tech/technician', { replace: true })
         }
       } catch {
         if (cancelled) return
@@ -59,7 +59,7 @@ export default function TechnicianPortalLockPage() {
           body: JSON.stringify({ pin: trimmed }),
         })
         if (res.ok) {
-          nav('/tech/start', { replace: true })
+          nav('/tech/technician', { replace: true })
           return
         }
         if (res.status === 503) {
