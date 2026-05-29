@@ -341,6 +341,7 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
   const workflowActions = usePortalWorkflowActions({
     routeId,
     monthIso,
+    runId: payload?.run?.id ?? null,
     setPayload,
     setSyncState,
     suppressRemoteRefreshUntilRef,

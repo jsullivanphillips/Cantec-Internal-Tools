@@ -216,7 +216,6 @@ export default function TechnicianPortalWorksheetPage() {
   const [defModalOpen, setDefModalOpen] = useState(false)
   const [defModalMode, setDefModalMode] = useState<'add' | 'edit'>('add')
   const [editingDeficiency, setEditingDeficiency] = useState<PortalDeficiencySummary | null>(null)
-  const [workflowBusy, setWorkflowBusy] = useState(false)
   const [editingField, setEditingField] = useState<string | null>(null)
   const [fieldEditActions, setFieldEditActions] = useState<PortalFieldEditActions | null>(null)
 
@@ -272,15 +271,13 @@ export default function TechnicianPortalWorksheetPage() {
       skipModalOpen ||
         resultsModalOpen ||
         defModalOpen ||
-        editingField != null ||
-        workflowBusy,
+        editingField != null,
     )
   }, [
     skipModalOpen,
     resultsModalOpen,
     defModalOpen,
     editingField,
-    workflowBusy,
     setInteractiveBusy,
   ])
 
@@ -290,18 +287,6 @@ export default function TechnicianPortalWorksheetPage() {
       queueStopChanges(active, patch)
     },
     [active, canEditStops, queueStopChanges],
-  )
-
-  const runWorkflow = useCallback(
-    async (fn: () => Promise<unknown>) => {
-      setWorkflowBusy(true)
-      try {
-        await fn()
-      } finally {
-        setWorkflowBusy(false)
-      }
-    },
-    [],
   )
 
   const handleClockIn = useCallback(() => {
@@ -456,29 +441,27 @@ export default function TechnicianPortalWorksheetPage() {
   const handleDeficiencySave = useCallback(
     (values: { title: string; severity: string; status: string; description: string }) => {
       if (!active || workflowReadOnly) return
-      void runWorkflow(async () => {
-        if (defModalMode === 'add') {
-          await workflowActions.createDeficiency(active, {
-            title: values.title,
-            severity: values.severity,
-            status: values.status,
-            description: values.description || undefined,
-          })
-        } else if (editingDeficiency) {
-          await workflowActions.updateDeficiency(active, editingDeficiency.id, values)
-        }
-        setDefModalOpen(false)
-      })
+      setDefModalOpen(false)
+      if (defModalMode === 'add') {
+        void workflowActions.createDeficiency(active, {
+          title: values.title,
+          severity: values.severity,
+          status: values.status,
+          description: values.description || undefined,
+        })
+      } else if (editingDeficiency) {
+        void workflowActions.updateDeficiency(active, editingDeficiency.id, values)
+      }
     },
-    [active, workflowReadOnly, defModalMode, editingDeficiency, runWorkflow, workflowActions],
+    [active, workflowReadOnly, defModalMode, editingDeficiency, workflowActions],
   )
 
   const handleDeficiencyVerify = useCallback(
     (def: PortalDeficiencySummary) => {
       if (!active || workflowReadOnly) return
-      void runWorkflow(() => workflowActions.verifyDeficiency(active, def.id))
+      void workflowActions.verifyDeficiency(active, def.id)
     },
-    [active, workflowReadOnly, runWorkflow, workflowActions],
+    [active, workflowReadOnly, workflowActions],
   )
 
   const handleToggleHiddenDeficiencies = useCallback(
@@ -563,7 +546,6 @@ export default function TechnicianPortalWorksheetPage() {
           <Button
             variant="primary"
             className="pw-mock-dock-btn pw-mock-dock-normal-btn"
-            disabled={workflowBusy}
             onClick={handleClockIn}
           >
             Clock in
@@ -571,7 +553,6 @@ export default function TechnicianPortalWorksheetPage() {
           <Button
             variant="outline-warning"
             className="pw-mock-dock-btn pw-mock-dock-normal-btn"
-            disabled={workflowBusy}
             onClick={() => setSkipModalOpen(true)}
           >
             Skip
@@ -586,7 +567,6 @@ export default function TechnicianPortalWorksheetPage() {
           <Button
             variant="success"
             className="pw-mock-dock-btn pw-mock-dock-normal-btn"
-            disabled={workflowBusy}
             onClick={handleRecordResultsOpen}
           >
             Record results
@@ -594,7 +574,6 @@ export default function TechnicianPortalWorksheetPage() {
           <Button
             variant="primary"
             className="pw-mock-dock-btn pw-mock-dock-normal-btn"
-            disabled={workflowBusy}
             onClick={handleClockOut}
           >
             Clock out
@@ -602,7 +581,6 @@ export default function TechnicianPortalWorksheetPage() {
           <Button
             variant="outline-secondary"
             className="pw-mock-dock-btn pw-mock-dock-normal-btn"
-            disabled={workflowBusy}
             onClick={handleCancelClockIn}
           >
             Cancel clock-in
@@ -610,7 +588,6 @@ export default function TechnicianPortalWorksheetPage() {
           <Button
             variant="outline-danger"
             className="pw-mock-dock-btn pw-mock-dock-normal-btn"
-            disabled={workflowBusy}
             onClick={openDeficiencyAdd}
           >
             Add deficiency
@@ -618,7 +595,6 @@ export default function TechnicianPortalWorksheetPage() {
           <Button
             variant="outline-warning"
             className="pw-mock-dock-btn pw-mock-dock-normal-btn"
-            disabled={workflowBusy}
             onClick={() => setSkipModalOpen(true)}
           >
             Skip
@@ -627,7 +603,6 @@ export default function TechnicianPortalWorksheetPage() {
             <Button
               variant="outline-secondary"
               className="pw-mock-dock-btn pw-mock-dock-normal-btn"
-              disabled={workflowBusy}
               onClick={handleReset}
             >
               Reset
@@ -642,7 +617,6 @@ export default function TechnicianPortalWorksheetPage() {
         <Button
           variant="primary"
           className="pw-mock-dock-btn pw-mock-dock-normal-btn"
-          disabled={workflowBusy}
           onClick={handleClockIn}
         >
           Clock in again
@@ -651,7 +625,6 @@ export default function TechnicianPortalWorksheetPage() {
           <Button
             variant="outline-secondary"
             className="pw-mock-dock-btn pw-mock-dock-normal-btn"
-            disabled={workflowBusy}
             onClick={handleReset}
           >
             Reset
@@ -992,6 +965,7 @@ export default function TechnicianPortalWorksheetPage() {
           <PortalRecordResultsModal
             show={resultsModalOpen}
             stop={active}
+            runId={payload?.run?.id ?? null}
             workflowActions={workflowActions}
             title={
               resultsForClockOut

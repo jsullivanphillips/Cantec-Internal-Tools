@@ -8,6 +8,7 @@ import {
   portalStopNeedsDeficiencyVerify,
   portalStopNeedsNoDeficiencyConfirm,
   portalStopNewDeficiencies,
+  portalStopNewDeficienciesFromPriorRuns,
   portalStopVisitComplete,
 } from './portalWorkflowShared'
 import type { PortalDeficiencySummary } from './portalWorkflowShared'
@@ -104,11 +105,11 @@ describe('portalStopDockBand', () => {
   })
 })
 
-function def(status: string, id = 1): PortalDeficiencySummary {
+function def(status: string, id = 1, createdRunId: number | null = 1): PortalDeficiencySummary {
   return {
     id,
     monthly_testing_site_id: 1,
-    created_run_id: 1,
+    created_run_id: createdRunId,
     title: 'Bell',
     severity: 'deficient',
     status,
@@ -129,11 +130,18 @@ describe('deficiency outcome helpers', () => {
     expect(portalStopNewDeficiencies(withNew)).toHaveLength(1)
   })
 
-  it('requires verify step for passed_with_problems / failed when New exist', () => {
-    const stop = baseStop({ deficiencies: [def('new')] })
-    expect(portalStopNeedsDeficiencyVerify('passed_with_problems', stop)).toBe(true)
-    expect(portalStopNeedsDeficiencyVerify('failed', stop)).toBe(true)
-    expect(portalStopNeedsDeficiencyVerify('all_good', stop)).toBe(false)
+  it('requires verify step for passed_with_problems / failed when prior-run New exist', () => {
+    const stop = baseStop({ deficiencies: [def('new', 1, 99)] })
+    expect(portalStopNeedsDeficiencyVerify('passed_with_problems', stop, 1)).toBe(true)
+    expect(portalStopNeedsDeficiencyVerify('failed', stop, 1)).toBe(true)
+    expect(portalStopNeedsDeficiencyVerify('all_good', stop, 1)).toBe(false)
+  })
+
+  it('skips verify step for deficiencies logged on the active run', () => {
+    const stop = baseStop({ deficiencies: [def('new', 1, 1)] })
+    expect(portalStopNewDeficienciesFromPriorRuns(stop, 1)).toHaveLength(0)
+    expect(portalStopNeedsDeficiencyVerify('passed_with_problems', stop, 1)).toBe(false)
+    expect(portalStopNeedsDeficiencyVerify('failed', stop, 1)).toBe(false)
   })
 
   it('requires no-deficiency confirm for passed_with_problems with zero active', () => {

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 from typing import Any
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 
 from app.db_models import (
     MonthlyRouteLocation,
@@ -452,11 +452,28 @@ def count_new_deficiencies(testing_site_id: int) -> int:
     )
 
 
+def count_new_deficiencies_requiring_verify(testing_site_id: int, run_id: int | None) -> int:
+    """New deficiencies from before this run (or with no run stamp) must be verified before outcome."""
+    q = (
+        _deficiency_query_for_site(testing_site_id)
+        .filter(MonthlyTestingSiteDeficiency.status == "new")
+    )
+    if run_id is not None:
+        q = q.filter(
+            or_(
+                MonthlyTestingSiteDeficiency.created_run_id.is_(None),
+                MonthlyTestingSiteDeficiency.created_run_id != int(run_id),
+            )
+        )
+    return q.count()
+
+
 def validate_test_outcome(
     testing_site_id: int,
     test_outcome: str,
     *,
     confirmed_no_deficiencies: bool = False,
+    run_id: int | None = None,
 ) -> None:
     outcome = test_outcome.strip().lower()
     if outcome not in TEST_OUTCOMES:
@@ -466,7 +483,7 @@ def validate_test_outcome(
         return
 
     active = count_active_deficiencies(testing_site_id)
-    new_count = count_new_deficiencies(testing_site_id)
+    new_count = count_new_deficiencies_requiring_verify(testing_site_id, run_id)
 
     if outcome == "all_good":
         if active > 0:
@@ -498,6 +515,7 @@ def set_test_outcome(
     skip_category: str | None = None,
     skip_note: str | None = None,
     confirmed_no_deficiencies: bool = False,
+    run_id: int | None = None,
 ) -> None:
     outcome = test_outcome.strip().lower()
     if outcome not in TEST_OUTCOMES:
@@ -508,6 +526,7 @@ def set_test_outcome(
         testing_site_id,
         outcome,
         confirmed_no_deficiencies=confirmed_no_deficiencies,
+        run_id=run_id,
     )
 
     mtsm.test_outcome = outcome

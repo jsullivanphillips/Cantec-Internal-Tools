@@ -3208,6 +3208,7 @@ def put_worksheet_stop_test_outcome(route_id: int, testing_site_id: int):
             skip_category=_normalize_ws_text(payload.get("skip_category")),
             skip_note=_normalize_ws_text(payload.get("skip_note")),
             confirmed_no_deficiencies=bool(payload.get("confirmed_no_deficiencies")),
+            run_id=int(ctx["run"].id) if ctx["run"] is not None else None,
         )
     except ValueError as exc:
         code = str(exc)
@@ -3217,7 +3218,7 @@ def put_worksheet_stop_test_outcome(route_id: int, testing_site_id: int):
                 "Cannot record All good while deficiencies are New or Verified on this stop."
             ),
             "unverified_deficiencies": (
-                "Verify all New deficiencies before recording this result."
+                "Verify all pre-existing New deficiencies before recording this result."
             ),
             "confirmed_no_deficiencies_required": (
                 "Confirm that no deficiencies apply before recording Passed with problems."

@@ -374,16 +374,42 @@ def test_test_outcome_validation_rules(portal_client, monkeypatch):
     assert blocked.status_code == 400
     assert blocked.get_json().get("code") == "deficiencies_block_all_good"
 
-    pwp_no_confirm = client.put(base, json={"test_outcome": "passed_with_problems"})
-    assert pwp_no_confirm.status_code == 400
-    assert pwp_no_confirm.get_json().get("code") == "unverified_deficiencies"
+    pwp_same_run = client.put(base, json={"test_outcome": "passed_with_problems"})
+    assert pwp_same_run.status_code == 200
 
-    failed_new = client.put(base, json={"test_outcome": "failed"})
-    assert failed_new.status_code == 400
-    assert failed_new.get_json().get("code") == "unverified_deficiencies"
+    failed_same_run = client.put(base, json={"test_outcome": "failed"})
+    assert failed_same_run.status_code == 200
+
+    reset = client.post(
+        f"/api/monthly_routes/routes/{route_id}/worksheet/stops/{ts_a}/reset"
+        f"?month={month}&tech_portal=1",
+    )
+    assert reset.status_code == 200
+
+    with app.app_context():
+        prior = MonthlyTestingSiteDeficiency(
+            id=5001,
+            monthly_testing_site_id=ts_a,
+            created_run_id=None,
+            title="Carry-over bell",
+            severity="deficient",
+            status="new",
+            description="From a prior visit",
+        )
+        db.session.add(prior)
+        db.session.commit()
+        prior_id = int(prior.id)
+
+    pwp_prior = client.put(base, json={"test_outcome": "passed_with_problems"})
+    assert pwp_prior.status_code == 400
+    assert pwp_prior.get_json().get("code") == "unverified_deficiencies"
+
+    failed_prior = client.put(base, json={"test_outcome": "failed"})
+    assert failed_prior.status_code == 400
+    assert failed_prior.get_json().get("code") == "unverified_deficiencies"
 
     verified = client.post(
-        f"/api/monthly_routes/routes/{route_id}/worksheet/stops/{ts_a}/deficiencies/{def_id}/verify"
+        f"/api/monthly_routes/routes/{route_id}/worksheet/stops/{ts_a}/deficiencies/{prior_id}/verify"
         f"?month={month}&tech_portal=1",
         json={},
     )
@@ -397,6 +423,10 @@ def test_test_outcome_validation_rules(portal_client, monkeypatch):
         f"?month={month}&tech_portal=1",
     )
     assert reset.status_code == 200
+
+    with app.app_context():
+        MonthlyTestingSiteDeficiency.query.filter_by(monthly_testing_site_id=ts_a).delete()
+        db.session.commit()
 
     pwp_zero = client.put(base, json={"test_outcome": "passed_with_problems"})
     assert pwp_zero.status_code == 400

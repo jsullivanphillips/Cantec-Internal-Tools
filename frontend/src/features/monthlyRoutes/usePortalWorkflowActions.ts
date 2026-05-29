@@ -5,7 +5,10 @@ import {
   optimisticCancelClockInPatch,
   optimisticClockInPatch,
   optimisticClockOutPatch,
+  optimisticCreateDeficiencyPatch,
   optimisticOutcomePatch,
+  optimisticUpdateDeficiencyPatch,
+  optimisticVerifyDeficiencyPatch,
   portalHhmmNow,
   type PortalSkipCategory,
   type PortalTestOutcome,
@@ -32,6 +35,7 @@ function extendSuppressWhileWorkflowPending(
 type WorkflowHookParams = {
   routeId: number
   monthIso: string
+  runId: number | null
   setPayload: Dispatch<SetStateAction<TechnicianWorksheetPayload | null>>
   setSyncState: (s: PortalWorksheetSyncState) => void
   suppressRemoteRefreshUntilRef: MutableRefObject<number>
@@ -41,6 +45,7 @@ type WorkflowHookParams = {
 export function usePortalWorkflowActions({
   routeId,
   monthIso,
+  runId,
   setPayload,
   setSyncState,
   suppressRemoteRefreshUntilRef,
@@ -209,8 +214,14 @@ export function usePortalWorkflowActions({
     async (
       stop: TechnicianWorksheetStop,
       body: { title: string; severity: string; status: string; description?: string },
-    ) => runAction(stop, 'create_deficiency', body, undefined, { awaitServer: true }),
-    [runAction],
+    ) =>
+      runAction(
+        stop,
+        'create_deficiency',
+        { ...body, run_id: runId },
+        optimisticCreateDeficiencyPatch(stop, body, runId),
+      ),
+    [runAction, runId],
   )
 
   const updateDeficiency = useCallback(
@@ -219,9 +230,12 @@ export function usePortalWorkflowActions({
       deficiencyId: number,
       body: { title?: string; severity?: string; status?: string; description?: string },
     ) =>
-      runAction(stop, 'update_deficiency', { deficiency_id: deficiencyId, ...body }, undefined, {
-        awaitServer: true,
-      }),
+      runAction(
+        stop,
+        'update_deficiency',
+        { deficiency_id: deficiencyId, ...body },
+        optimisticUpdateDeficiencyPatch(stop, deficiencyId, body),
+      ),
     [runAction],
   )
 
@@ -231,8 +245,7 @@ export function usePortalWorkflowActions({
         stop,
         'verify_deficiency',
         { deficiency_id: deficiencyId, note: note ?? '' },
-        undefined,
-        { awaitServer: true },
+        optimisticVerifyDeficiencyPatch(stop, deficiencyId),
       ),
     [runAction],
   )

@@ -3,7 +3,7 @@ import type { TechnicianWorksheetStop } from './monthlyRoutesShared'
 import {
   PORTAL_OUTCOME_VALIDATION_MESSAGES,
   portalStopActiveDeficiencies,
-  portalStopNewDeficiencies,
+  portalStopNewDeficienciesFromPriorRuns,
   type PortalSkipCategory,
   type PortalTestOutcome,
 } from './portalWorkflowShared'
@@ -26,7 +26,10 @@ function mergeStopPatch(
   return { ...stop, ...patch }
 }
 
-export function usePortalWorkflowActionsDemo(patchStop: PatchStop) {
+export function usePortalWorkflowActionsDemo(
+  patchStop: PatchStop,
+  runId: number | null = null,
+) {
   const mergeStop = useCallback(
     (stop: TechnicianWorksheetStop) => patchStop(stop.testing_site_id, stop),
     [patchStop],
@@ -97,7 +100,7 @@ export function usePortalWorkflowActionsDemo(patchStop: PatchStop) {
       },
     ) => {
       const active = portalStopActiveDeficiencies(stop).length
-      const newCount = portalStopNewDeficiencies(stop).length
+      const newCount = portalStopNewDeficienciesFromPriorRuns(stop, runId).length
       if (testOutcome === 'all_good' && active > 0) {
         window.alert(PORTAL_OUTCOME_VALIDATION_MESSAGES.deficiencies_block_all_good)
         return { ok: false }
@@ -127,7 +130,7 @@ export function usePortalWorkflowActionsDemo(patchStop: PatchStop) {
       patchStop(stop.testing_site_id, patch)
       return { ok: true, stop: mergeStopPatch(stop, patch) }
     },
-    [patchStop],
+    [patchStop, runId],
   )
 
   const createDeficiency = useCallback(
@@ -139,7 +142,7 @@ export function usePortalWorkflowActionsDemo(patchStop: PatchStop) {
       const row: PortalDeficiencySummary = {
         id: Date.now(),
         monthly_testing_site_id: stop.testing_site_id,
-        created_run_id: null,
+        created_run_id: runId,
         title: body.title,
         severity: body.severity,
         status: body.status,
@@ -157,7 +160,7 @@ export function usePortalWorkflowActionsDemo(patchStop: PatchStop) {
       patchStop(stop.testing_site_id, patch)
       return { ok: true, stop: mergeStopPatch(stop, patch) }
     },
-    [patchStop],
+    [patchStop, runId],
   )
 
   const updateDeficiency = useCallback(

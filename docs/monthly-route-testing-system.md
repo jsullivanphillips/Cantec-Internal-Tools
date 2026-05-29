@@ -401,13 +401,13 @@ Field edits (procedures, panel, comments, etc.) still use `PATCH .../worksheet/s
 | Outcome | Rule |
 |---------|------|
 | `all_good` | Rejected if any deficiency on the testing site is **New** or **Verified** (`code: deficiencies_block_all_good`) |
-| `passed_with_problems` | If no New/Verified deficiencies: requires `confirmed_no_deficiencies: true` (`confirmed_no_deficiencies_required`). If deficiencies exist: all must be **Verified** (no **New**) (`unverified_deficiencies`) |
-| `failed` | Rejected while any **New** deficiency remains (`unverified_deficiencies`) |
+| `passed_with_problems` | If no New/Verified deficiencies: requires `confirmed_no_deficiencies: true` (`confirmed_no_deficiencies_required`). If deficiencies exist: all **New** deficiencies from **before this run** (or with no `created_run_id`) must be **Verified** (`unverified_deficiencies`). New deficiencies logged on the active run are exempt. |
+| `failed` | Rejected while any **New** deficiency from before this run remains (`unverified_deficiencies`) |
 | `skipped` | Unchanged |
 
 Creating a deficiency while the stop is `all_good` auto-downgrades to `passed_with_problems` (API + UI).
 
-**Record Results wizard** (`PortalRecordResultsModal`): choose outcome → optional **verify** step (each **New** deficiency must be verified inline) → optional **confirm none** for Passed with problems with zero active deficiencies → save outcome. Open clock stays until **Clock out** unless the modal was opened from **Clock out** (no outcome yet)—that path saves the result and then clocks out. **Record results** alone does not clock out. **Skip** while clocked in still auto clock-outs before saving the skip.
+**Record Results wizard** (`PortalRecordResultsModal`): choose outcome → optional **verify** step (each pre-existing **New** deficiency must be verified inline; deficiencies logged on the active run are skipped) → optional **confirm none** for Passed with problems with zero active deficiencies → save outcome. Open clock stays until **Clock out** unless the modal was opened from **Clock out** (no outcome yet)—that path saves the result and then clocks out. **Record results** alone does not clock out. **Skip** while clocked in still auto clock-outs before saving the skip.
 
 **Offline queue:** Invalid `test_outcome` payloads are dropped on sync with an alert (not retried indefinitely).
 

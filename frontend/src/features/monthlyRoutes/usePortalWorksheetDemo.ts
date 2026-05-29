@@ -67,7 +67,7 @@ export function usePortalWorksheetDemo(monthIso: string) {
     [openClockInStop],
   )
 
-  const workflowActions = usePortalWorkflowActionsDemo(updateLocalStop)
+  const workflowActions = usePortalWorkflowActionsDemo(updateLocalStop, payload.run?.id ?? null)
 
   const queueStopChanges = useCallback(
     (stop: TechnicianWorksheetStop, changes: WorksheetStopChangeSet) => {

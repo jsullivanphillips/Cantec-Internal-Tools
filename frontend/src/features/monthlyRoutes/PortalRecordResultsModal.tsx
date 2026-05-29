@@ -5,7 +5,7 @@ import {
   portalStopCanChooseAllGood,
   portalStopNeedsDeficiencyVerify,
   portalStopNeedsNoDeficiencyConfirm,
-  portalStopNewDeficiencies,
+  portalStopNewDeficienciesFromPriorRuns,
   TEST_OUTCOME_OPTIONS,
   type PortalDeficiencySummary,
   type PortalTestOutcome,
@@ -28,6 +28,7 @@ type WizardStep = 'choose' | 'verify' | 'confirm_none'
 type Props = {
   show: boolean
   stop: TechnicianWorksheetStop
+  runId?: number | null
   title?: string
   workflowActions: WorkflowActions
   onHide: () => void
@@ -45,6 +46,7 @@ function severityLabel(severity: string): string {
 export default function PortalRecordResultsModal({
   show,
   stop,
+  runId = null,
   title,
   workflowActions,
   onHide,
@@ -71,7 +73,10 @@ export default function PortalRecordResultsModal({
     setLocalStop(stop)
   }, [show, stop])
 
-  const newDeficiencies = useMemo(() => portalStopNewDeficiencies(localStop), [localStop])
+  const newDeficienciesToVerify = useMemo(
+    () => portalStopNewDeficienciesFromPriorRuns(localStop, runId),
+    [localStop, runId],
+  )
   const canAllGood = portalStopCanChooseAllGood(localStop)
   const outcomeOptions = TEST_OUTCOME_OPTIONS.filter((o) => o.value !== 'skipped')
 
@@ -79,7 +84,7 @@ export default function PortalRecordResultsModal({
     (outcome: PortalTestOutcome) => {
       if (outcome === 'all_good' && !portalStopCanChooseAllGood(localStop)) return
       setPendingOutcome(outcome)
-      if (portalStopNeedsDeficiencyVerify(outcome, localStop)) {
+      if (portalStopNeedsDeficiencyVerify(outcome, localStop, runId)) {
         setStep('verify')
         return
       }
@@ -91,7 +96,7 @@ export default function PortalRecordResultsModal({
         setStep('choose')
       })
     },
-    [localStop, onComplete, onHide],
+    [localStop, onComplete, onHide, runId],
   )
 
   const handleVerify = useCallback(
@@ -108,7 +113,7 @@ export default function PortalRecordResultsModal({
   )
 
   const handleVerifyContinue = useCallback(() => {
-    if (!pendingOutcome || portalStopNewDeficiencies(localStop).length > 0) return
+    if (!pendingOutcome || portalStopNewDeficienciesFromPriorRuns(localStop, runId).length > 0) return
     if (portalStopNeedsNoDeficiencyConfirm(pendingOutcome, localStop)) {
       setStep('confirm_none')
       return
@@ -116,7 +121,7 @@ export default function PortalRecordResultsModal({
     void onComplete({ outcome: pendingOutcome }).catch(() => {
       setStep('verify')
     })
-  }, [localStop, onComplete, onHide, pendingOutcome])
+  }, [localStop, onComplete, onHide, pendingOutcome, runId])
 
   const handleConfirmNone = useCallback(() => {
     if (pendingOutcome !== 'passed_with_problems') return
@@ -182,10 +187,11 @@ export default function PortalRecordResultsModal({
         {step === 'verify' ? (
           <>
             <p className="small text-muted mb-3">
-              Verify each New deficiency before continuing.
+              Verify each pre-existing New deficiency before continuing. Deficiencies you logged
+              this run do not need verification here.
             </p>
             <ul className="list-unstyled mb-0 pw-portal-def-list">
-              {newDeficiencies.map((def) => (
+              {newDeficienciesToVerify.map((def) => (
                 <li key={def.id} className="pw-portal-def-item d-flex justify-content-between gap-2">
                   <div>
                     <div className="fw-semibold">{def.title}</div>
@@ -230,7 +236,7 @@ export default function PortalRecordResultsModal({
             </Button>
             <Button
               variant="primary"
-              disabled={newDeficiencies.length > 0 || verifyBusyId != null}
+              disabled={newDeficienciesToVerify.length > 0 || verifyBusyId != null}
               onClick={handleVerifyContinue}
             >
               Continue

@@ -240,6 +240,23 @@ export function portalStopNewDeficiencies(stop: TechnicianWorksheetStop): Portal
   return (stop.deficiencies ?? []).filter((d) => deficiencyStatus(d) === 'new')
 }
 
+/** True when the deficiency was logged on the active portal run (not a carry-over from a prior visit). */
+export function deficiencyCreatedOnRun(
+  def: PortalDeficiencySummary,
+  runId: number | null | undefined,
+): boolean {
+  if (runId == null || def.created_run_id == null) return false
+  return def.created_run_id === runId
+}
+
+/** New deficiencies from before this run — these must be verified before recording Failed / Passed with problems. */
+export function portalStopNewDeficienciesFromPriorRuns(
+  stop: TechnicianWorksheetStop,
+  runId: number | null | undefined,
+): PortalDeficiencySummary[] {
+  return portalStopNewDeficiencies(stop).filter((d) => !deficiencyCreatedOnRun(d, runId))
+}
+
 export function portalStopCanChooseAllGood(stop: TechnicianWorksheetStop): boolean {
   return portalStopActiveDeficiencies(stop).length === 0
 }
@@ -247,9 +264,10 @@ export function portalStopCanChooseAllGood(stop: TechnicianWorksheetStop): boole
 export function portalStopNeedsDeficiencyVerify(
   outcome: PortalTestOutcome,
   stop: TechnicianWorksheetStop,
+  runId?: number | null,
 ): boolean {
   if (outcome !== 'passed_with_problems' && outcome !== 'failed') return false
-  return portalStopNewDeficiencies(stop).length > 0
+  return portalStopNewDeficienciesFromPriorRuns(stop, runId).length > 0
 }
 
 export function portalStopNeedsNoDeficiencyConfirm(
@@ -259,10 +277,62 @@ export function portalStopNeedsNoDeficiencyConfirm(
   return outcome === 'passed_with_problems' && portalStopActiveDeficiencies(stop).length === 0
 }
 
+export function optimisticCreateDeficiencyPatch(
+  stop: TechnicianWorksheetStop,
+  body: { title: string; severity: string; status: string; description?: string },
+  runId: number | null | undefined,
+): Partial<TechnicianWorksheetStop> {
+  const row: PortalDeficiencySummary = {
+    id: -Date.now(),
+    monthly_testing_site_id: stop.testing_site_id,
+    created_run_id: runId ?? null,
+    title: body.title,
+    severity: body.severity,
+    status: body.status,
+    description: body.description ?? null,
+    verification_notes: null,
+  }
+  const patch: Partial<TechnicianWorksheetStop> = {
+    deficiencies: [...(stop.deficiencies ?? []), row],
+    has_run_changes: true,
+  }
+  if (norm(stop.test_outcome).toLowerCase() === 'all_good') {
+    patch.test_outcome = 'passed_with_problems'
+    patch.confirmed_no_deficiencies = false
+  }
+  return patch
+}
+
+export function optimisticUpdateDeficiencyPatch(
+  stop: TechnicianWorksheetStop,
+  deficiencyId: number,
+  body: { title?: string; severity?: string; status?: string; description?: string },
+): Partial<TechnicianWorksheetStop> {
+  return {
+    deficiencies: (stop.deficiencies ?? []).map((d) =>
+      d.id === deficiencyId ? { ...d, ...body } : d,
+    ),
+    has_run_changes: true,
+  }
+}
+
+export function optimisticVerifyDeficiencyPatch(
+  stop: TechnicianWorksheetStop,
+  deficiencyId: number,
+): Partial<TechnicianWorksheetStop> {
+  return {
+    deficiencies: (stop.deficiencies ?? []).map((d) =>
+      d.id === deficiencyId ? { ...d, status: 'verified' } : d,
+    ),
+    has_run_changes: true,
+  }
+}
+
 export const PORTAL_OUTCOME_VALIDATION_MESSAGES: Record<string, string> = {
   deficiencies_block_all_good:
     'Cannot record All good while deficiencies are New or Verified on this stop.',
-  unverified_deficiencies: 'Verify all New deficiencies before recording this result.',
+  unverified_deficiencies:
+    'Verify all pre-existing New deficiencies before recording this result.',
   confirmed_no_deficiencies_required:
     'Confirm that no deficiencies apply before recording Passed with problems.',
 }

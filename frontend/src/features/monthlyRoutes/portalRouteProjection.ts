@@ -8,7 +8,10 @@ import {
   optimisticCancelClockInPatch,
   optimisticClockInPatch,
   optimisticClockOutPatch,
+  optimisticCreateDeficiencyPatch,
   optimisticOutcomePatch,
+  optimisticUpdateDeficiencyPatch,
+  optimisticVerifyDeficiencyPatch,
   portalHhmmNow,
   type PortalSkipCategory,
   type PortalTestOutcome,
@@ -46,6 +49,35 @@ export function applyWorkflowActionToStop(
         }),
       }
     }
+    case 'create_deficiency':
+      return {
+        ...stop,
+        ...optimisticCreateDeficiencyPatch(
+          stop,
+          {
+            title: String(payload.title ?? ''),
+            severity: String(payload.severity ?? 'deficient'),
+            status: String(payload.status ?? 'new'),
+            description: payload.description ? String(payload.description) : undefined,
+          },
+          payload.run_id != null ? Number(payload.run_id) : null,
+        ),
+      }
+    case 'update_deficiency': {
+      const deficiencyId = Number(payload.deficiency_id)
+      const body = {
+        title: payload.title != null ? String(payload.title) : undefined,
+        severity: payload.severity != null ? String(payload.severity) : undefined,
+        status: payload.status != null ? String(payload.status) : undefined,
+        description: payload.description != null ? String(payload.description) : undefined,
+      }
+      return { ...stop, ...optimisticUpdateDeficiencyPatch(stop, deficiencyId, body) }
+    }
+    case 'verify_deficiency':
+      return {
+        ...stop,
+        ...optimisticVerifyDeficiencyPatch(stop, Number(payload.deficiency_id)),
+      }
     case 'reset_stop':
       return {
         ...stop,

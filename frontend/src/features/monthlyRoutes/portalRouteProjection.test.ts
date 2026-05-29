@@ -111,6 +111,26 @@ describe('projectStopsWithWorkflowQueue', () => {
     expect(projectedOpenClockSiteId(projected, ROUTE_ID, MONTH, queue)).toBe(2)
   })
 
+  it('create_deficiency adds optimistic row while queued', () => {
+    const stops = [baseStop(1)]
+    const queue = [
+      queueItem({
+        action: 'create_deficiency',
+        testingSiteId: 1,
+        payload: {
+          title: 'Bell',
+          severity: 'deficient',
+          status: 'new',
+          run_id: 42,
+        },
+        enqueuedAt: 1,
+      }),
+    ]
+    const projected = projectStopsWithWorkflowQueue(stops, ROUTE_ID, MONTH, queue)
+    expect(projected[0].deficiencies).toHaveLength(1)
+    expect(projected[0].deficiencies?.[0]?.title).toBe('Bell')
+  })
+
   it('cancel_clock_in removes open clock from projected stop', () => {
     const stops = [
       baseStop(1, {
