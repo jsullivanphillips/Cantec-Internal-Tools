@@ -4,6 +4,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from app import create_app
+from app.monthly.monthly_sites_sync import sync_testing_sites_from_legacy
 from app.db_models import (
     Key,
     MonitoringCompany,
@@ -1540,3 +1541,90 @@ def test_portal_routes_suggest_empty_returns_empty(portal_only_client):
     res = client.get("/api/technician_portal/routes_suggest?q=")
     assert res.status_code == 200
     assert res.get_json()["routes"] == []
+
+
+def test_legacy_worksheet_row_patch_syncs_snapshot_fields_to_mtsm(worksheet_client):
+    """Staff office worksheet row edits must appear on the technician portal stop list."""
+    client, app = worksheet_client
+    with app.app_context():
+        route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
+        loc = MonthlyRouteLocation(
+            id=101,
+            address="123 Test St",
+            address_normalized="123 test st",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
+            building=None,
+            building_normalized="",
+            status_normalized="active",
+            status_raw="Active",
+            monthly_route_id=1,
+            testing_procedures="Library proc",
+            inspection_tech_notes="Library notes",
+        )
+        hist = MonthlyRouteTestHistory(
+            id=5100,
+            location_id=101,
+            month_date=date(2026, 5, 1),
+            test_monthly_route_id=1,
+            testing_procedures="Library proc",
+            inspection_tech_notes="Library notes",
+        )
+        run = MonthlyRouteRun(
+            id=5101,
+            monthly_route_id=1,
+            month_date=date(2026, 5, 1),
+            status="scheduled",
+            source="office_manual",
+        )
+        db.session.add_all([route, loc, hist, run])
+        db.session.commit()
+        sync_testing_sites_from_legacy(loc)
+        ts = (
+            MonthlyTestingSite.query.filter_by(monthly_site_id=MonthlySite.query.one().id)
+            .order_by(MonthlyTestingSite.sort_order.asc(), MonthlyTestingSite.id.asc())
+            .first()
+        )
+        mtsm = MonthlyTestingSiteMonth(
+            id=5102,
+            monthly_testing_site_id=int(ts.id),
+            month_date=date(2026, 5, 1),
+            test_monthly_route_id=1,
+            run_id=5101,
+            testing_procedures="Stale proc",
+            inspection_tech_notes="Stale notes",
+        )
+        db.session.add(mtsm)
+        db.session.commit()
+        ts_id = int(ts.id)
+
+    res = client.patch(
+        "/api/monthly_routes/routes/1/worksheet/rows/101?month=2026-05-01",
+        json={
+            "changes": {
+                "testing_procedures": "Office sheet procedures",
+                "inspection_tech_notes": "Office location comments",
+            }
+        },
+    )
+    assert res.status_code == 200
+
+    with app.app_context():
+        row = db.session.get(MonthlyTestingSiteMonth, 5102)
+        assert row.testing_procedures == "Office sheet procedures"
+        assert row.inspection_tech_notes == "Office location comments"
+        from app.monthly.worksheet_stops import serialize_worksheet_stop
+
+        loc = db.session.get(MonthlyRouteLocation, 101)
+        ts = db.session.get(MonthlyTestingSite, ts_id)
+        stop = serialize_worksheet_stop(
+            ts,
+            loc,
+            row,
+            route_id=1,
+            month_first=date(2026, 5, 1),
+            stop_number=1,
+            include_portal_extras=False,
+        )
+        assert stop["testing_procedures"] == "Office sheet procedures"
+        assert stop["inspection_tech_notes"] == "Office location comments"

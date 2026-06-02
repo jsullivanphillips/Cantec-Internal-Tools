@@ -2699,6 +2699,9 @@ def patch_monthly_route_worksheet_row(route_id: int, location_id: int):
         row.skip_reason = None
 
     if changed_any:
+        from app.monthly.worksheet_stops import sync_mtsm_snapshots_from_history_for_location
+
+        sync_mtsm_snapshots_from_history_for_location(route_id, month_first, loc, row)
         db.session.commit()
     else:
         db.session.rollback()

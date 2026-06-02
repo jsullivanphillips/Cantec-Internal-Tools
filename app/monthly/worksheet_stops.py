@@ -569,7 +569,7 @@ def refresh_worksheet_stops_for_route_month(
                 month_first=month_first,
                 primary=is_primary,
                 location_hist=loc_hist if is_primary else None,
-                existing_row=None,
+                existing_row=row,
             )
             if row is None:
                 fields = dict(fresh)
@@ -1384,6 +1384,40 @@ def find_open_clock_in_stop_on_route(
         if worksheet_stop_open_clock_in(row):
             return row
     return None
+
+
+def sync_mtsm_snapshots_from_history_for_location(
+    route_id: int,
+    month_first: date,
+    loc: MonthlyRouteLocation,
+    hist: MonthlyRouteTestHistory,
+) -> None:
+    """Push legacy staff-worksheet row edits onto portal stop-month rows (tech portal reads MTSM)."""
+    site = ensure_monthly_site_for_location(loc)
+    ts_rows = (
+        MonthlyTestingSite.query.filter_by(monthly_site_id=int(site.id))
+        .order_by(MonthlyTestingSite.sort_order.asc(), MonthlyTestingSite.id.asc())
+        .all()
+    )
+    if not ts_rows:
+        return
+    panel = _normalize_text(hist.facp)
+    for ts in ts_rows:
+        mtsm = (
+            MonthlyTestingSiteMonth.query.filter_by(
+                monthly_testing_site_id=int(ts.id),
+                month_date=month_first,
+                test_monthly_route_id=route_id,
+            )
+            .one_or_none()
+        )
+        if mtsm is None:
+            continue
+        for mtsm_key, hist_key in _HISTORY_SNAPSHOT_TO_MTSM:
+            setattr(mtsm, mtsm_key, getattr(hist, hist_key))
+        if panel is not None:
+            mtsm.panel = panel
+            mtsm.facp = panel
 
 
 def sync_primary_history_from_stop(

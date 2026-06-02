@@ -678,6 +678,48 @@ def test_worksheet_stop_display_uses_run_month_notes_not_library_master(stops_cl
     assert primary["inspection_tech_notes"] == "April notes"
 
 
+def test_refresh_worksheet_stops_preserves_office_prep_fields(stops_client, monkeypatch):
+    """Portal ``refresh_paperwork`` must not wipe office-edited stop-month snapshot fields."""
+    from app.monthly.worksheet_stops import refresh_worksheet_stops_for_route_month
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 6, 1))
+
+    client, app = stops_client
+    with app.app_context():
+        route_id, ts_id, _ = _seed_route_with_two_stops()
+        run = MonthlyRouteRun(
+            id=5020,
+            monthly_route_id=route_id,
+            month_date=date(2026, 6, 1),
+            started_at=datetime(2026, 6, 2, 8, 0, tzinfo=PACIFIC_TZ),
+            status="open",
+            source="office_manual",
+        )
+        db.session.add(run)
+        db.session.add(
+            MonthlyTestingSiteMonth(
+                id=92010,
+                monthly_testing_site_id=ts_id,
+                month_date=date(2026, 6, 1),
+                test_monthly_route_id=route_id,
+                run_id=5020,
+                run_comments="Bring ladder",
+                testing_procedures="Office procedures",
+                inspection_tech_notes="Office location notes",
+                office_attention=True,
+            )
+        )
+        db.session.commit()
+        refresh_worksheet_stops_for_route_month(route_id, date(2026, 6, 1), run)
+        db.session.commit()
+        mtsm = db.session.get(MonthlyTestingSiteMonth, 92010)
+        assert mtsm.run_comments == "Bring ladder"
+        assert mtsm.testing_procedures == "Office procedures"
+        assert mtsm.inspection_tech_notes == "Office location notes"
+        assert mtsm.office_attention is True
+
+
 def test_run_comments_not_copied_to_new_month(stops_client, monkeypatch):
     """Prior-month ``run_comments`` must not seed into a newly materialized month."""
     from app.monthly.worksheet_stops import ensure_worksheet_stops_for_route_month
