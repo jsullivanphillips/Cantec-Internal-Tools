@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { Alert, Badge, Button } from 'react-bootstrap'
+import { Alert, Badge, Button, Spinner } from 'react-bootstrap'
 import {
   WORKSHEET_CLOCK_IN_BLOCKED_MESSAGE,
   isAnnualForMonth,
@@ -9,9 +9,14 @@ import {
   type TechnicianWorksheetStop,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
 import { isPortalWorksheetDemoRoute } from '../features/monthlyRoutes/portalWorksheetDemo'
+import PortalBlockingOverlay from '../features/monthlyRoutes/PortalBlockingOverlay'
 import { usePortalWorksheet } from '../features/monthlyRoutes/usePortalWorksheet'
 import { usePortalWorksheetDemo } from '../features/monthlyRoutes/usePortalWorksheetDemo'
 import PortalEditableFieldRow, { type PortalFieldEditActions } from '../features/monthlyRoutes/PortalEditableFieldRow'
+import PortalMonitoringCompanyField from '../features/monthlyRoutes/PortalMonitoringCompanyField'
+import { stopMonitoringDisplay, stopMonitoringSummaryLabel, stopHasMonitoring } from '../features/monthlyRoutes/stopMonitoringDisplay'
+import { useMonitoringCompanies } from '../features/monthlyRoutes/useMonitoringCompanies'
+import type { MonitoringCompanySummary } from '../features/monthlyRoutes/monthlyRoutesShared'
 import type { WorksheetStopChangeSet } from '../features/monthlyRoutes/worksheetOfflineStore'
 import PortalWorksheetSkeleton from './PortalWorksheetSkeleton'
 import PortalClockEventsCard from '../features/monthlyRoutes/PortalClockEventsCard'
@@ -22,7 +27,10 @@ import PortalRecordResultsModal, {
 import PortalDeficienciesCard from '../features/monthlyRoutes/PortalDeficienciesCard'
 import PortalDeficiencyModal from '../features/monthlyRoutes/PortalDeficiencyModal'
 import {
+  portalHeaderBandClass,
+  portalNavStopStatusClass,
   portalOutcomeDisplay,
+  portalStatusPillClass,
   portalStopDockBand,
   optimisticClockOutPatch,
   optimisticOutcomePatch,
@@ -63,32 +71,12 @@ function statusLabel(status: StopDisplayStatus, stop: TechnicianWorksheetStop): 
   return 'Pending'
 }
 
-function navStopStatusClass(stop: TechnicianWorksheetStop, runMonthIso: string): string {
-  if (worksheetStopIsOpenClockIn(stop)) return 'pw-mock-nav-stop--clocked-in'
-  const status = stopDisplayStatus(stop)
-  if (status === 'tested') return 'pw-mock-nav-stop--tested'
-  if (status === 'skipped' && worksheetStopSkipIsAnnual(stop)) return 'pw-mock-nav-stop--annual'
-  if (status === 'skipped') return 'pw-mock-nav-stop--skipped'
-  if (isAnnualForMonth(stop.annual_month, runMonthIso)) return 'pw-mock-nav-stop--annual'
-  return ''
-}
-
-function headerBandClass(stop: TechnicianWorksheetStop, runMonthIso: string): string {
-  const status = stopDisplayStatus(stop)
-  if (status === 'tested') return 'pw-mock-header--tested'
-  if (status === 'skipped' && worksheetStopSkipIsAnnual(stop)) return 'pw-mock-header--annual'
-  if (status === 'skipped') return 'pw-mock-header--skipped'
-  if (status === 'in_progress') return 'pw-mock-header--progress'
-  if (isAnnualForMonth(stop.annual_month, runMonthIso)) return 'pw-mock-header--annual'
-  return ''
-}
-
 function showAnnualMonthPill(
   stop: TechnicianWorksheetStop,
   runMonthIso: string,
   status: StopDisplayStatus,
 ): boolean {
-  if (status === 'tested') return false
+  if (portalStopHasTestOutcome(stop)) return false
   if (status === 'skipped') return worksheetStopSkipIsAnnual(stop)
   return isAnnualForMonth(stop.annual_month, runMonthIso)
 }
@@ -119,9 +107,7 @@ function headerPanelDisplay(stop: TechnicianWorksheetStop): string | null {
 }
 
 function headerMonitoringDisplay(stop: TechnicianWorksheetStop): string {
-  const monitoring = (stop.monitoring_company || '').trim()
-  if (!monitoring || monitoring === '—') return 'No Monitoring'
-  return `MONITORING: ${monitoring}`
+  return stopMonitoringSummaryLabel(stop)
 }
 
 function headerTimesDisplay(stop: TechnicianWorksheetStop): ReactNode | null {
@@ -194,6 +180,19 @@ export default function TechnicianPortalWorksheetPage() {
     monthOk,
     monthHeading,
     runCompleted,
+    runEnded,
+    runPrepared,
+    showStartRun,
+    showEndRun,
+    showReopenField,
+    onPortalStartRun,
+    onPortalEndRun,
+    onPortalReopenField,
+    portalStartingRun,
+    runLifecycleBusy,
+    isCurrentMonth,
+    viewingHistoricalRun,
+    hasRunFile,
     syncState,
     syncMessage,
     clockInBlockedForStop,
@@ -206,6 +205,9 @@ export default function TechnicianPortalWorksheetPage() {
     setInteractiveBusy,
     workflowActions,
   } = worksheet
+
+  const { companies: monitoringCompanies, loading: monitoringCompaniesLoading, appendCompany } =
+    useMonitoringCompanies()
 
   const [activeId, setActiveId] = useState<number | null>(null)
   const [navExpanded, setNavExpanded] = useState(false)
@@ -415,6 +417,26 @@ export default function TechnicianPortalWorksheetPage() {
     [applyStopPatch],
   )
 
+  const saveMonitoringCompanyId = useCallback(
+    (companyId: number | null) => {
+      const selected =
+        companyId != null ? monitoringCompanies.find((row) => row.id === companyId) ?? null : null
+      applyStopPatch({
+        monitoring_company_id: companyId,
+        monitoring_company: selected?.name?.trim() || null,
+        monitoring_company_record: selected,
+      })
+    },
+    [applyStopPatch, monitoringCompanies],
+  )
+
+  const handleMonitoringCompanyCreated = useCallback(
+    (company: MonitoringCompanySummary) => {
+      appendCompany(company)
+    },
+    [appendCompany],
+  )
+
   const handleFieldEditActionsChange = useCallback((actions: PortalFieldEditActions | null) => {
     setFieldEditActions(actions)
   }, [])
@@ -485,14 +507,26 @@ export default function TechnicianPortalWorksheetPage() {
 
   const renderNavStop = (stop: TechnicianWorksheetStop) => {
     const isActive = stop.testing_site_id === activeId
-    const statusClass = navStopStatusClass(stop, runMonthIso)
+    const statusClass = portalNavStopStatusClass(stop, runMonthIso)
     const clockedIn = worksheetStopIsOpenClockIn(stop)
     const activeClass = isActive ? ' pw-mock-nav-stop--active' : ''
     const statusSuffix = statusClass ? ` ${statusClass}` : ''
     const displayStatus = stopDisplayStatus(stop)
     const ring = (stop.ring || '—').trim()
     const key = (stop.key_number || '—').trim()
-    const monitoring = (stop.monitoring_company || '—').trim()
+    const monitoring = stopMonitoringDisplay(stop)
+    const hasMonitoring = stopHasMonitoring(stop)
+    const collapsedTitleParts = [
+      `#${stop.stop_number} — ${stop.display_address}`,
+      hasMonitoring
+        ? [
+            monitoring.company !== '—' ? monitoring.company : null,
+            monitoring.account !== '—' ? `Acct ${monitoring.account}` : null,
+          ]
+            .filter(Boolean)
+            .join(' · ')
+        : null,
+    ].filter(Boolean)
 
     if (!navItemsExpanded) {
       return (
@@ -501,7 +535,7 @@ export default function TechnicianPortalWorksheetPage() {
           type="button"
           className={`pw-mock-nav-stop pw-mock-nav-stop--collapsed${statusSuffix}${activeClass}`}
           onClick={() => setActiveId(stop.testing_site_id)}
-          title={`#${stop.stop_number} — ${stop.display_address}`}
+          title={collapsedTitleParts.join(' · ')}
           aria-label={`Stop ${stop.stop_number}, ${clockedIn ? 'Clocked in' : statusLabel(displayStatus, stop)}`}
           aria-current={isActive ? 'true' : undefined}
         >
@@ -520,10 +554,22 @@ export default function TechnicianPortalWorksheetPage() {
       >
         <span className="pw-mock-nav-stop-address">{stop.display_address}</span>
         <span className="pw-mock-nav-stop-detail">
-          <span className="pw-mock-nav-stop-line">
-            <span className="pw-mock-nav-stop-label">Monitoring</span>
-            {monitoring}
-          </span>
+          {hasMonitoring ? (
+            <>
+              {monitoring.company !== '—' ? (
+                <span className="pw-mock-nav-stop-line">
+                  <span className="pw-mock-nav-stop-label">Monitoring</span>
+                  {monitoring.company}
+                </span>
+              ) : null}
+              {monitoring.account !== '—' ? (
+                <span className="pw-mock-nav-stop-line">
+                  <span className="pw-mock-nav-stop-label">Acct</span>
+                  {monitoring.account}
+                </span>
+              ) : null}
+            </>
+          ) : null}
           <span className="pw-mock-nav-stop-line">
             <span className="pw-mock-nav-stop-label">Key</span>
             {key}
@@ -680,8 +726,21 @@ export default function TechnicianPortalWorksheetPage() {
     .filter(Boolean)
     .join(' ')
 
+  const showAwaitingOfficePrepare =
+    !isDemo &&
+    isCurrentMonth &&
+    !viewingHistoricalRun &&
+    hasRunFile &&
+    !runPrepared &&
+    !runCompleted &&
+    (payload?.run?.started_at ?? '').trim().length === 0
+
   return (
     <div className="portal-worksheet-mockup">
+      <PortalBlockingOverlay
+        show={portalStartingRun || runLifecycleBusy}
+        message={portalStartingRun ? 'Starting run…' : 'Updating run…'}
+      />
       <header className="pw-mock-chrome">
         <div className="pw-mock-chrome-top">
           <Link to={routeBackPath} className="btn btn-link text-primary p-0 pw-mock-back" aria-label="Back to route">
@@ -693,12 +752,68 @@ export default function TechnicianPortalWorksheetPage() {
               {monthHeading} run · {progress.total} stops
             </div>
           </div>
-          <Badge
-            bg={isDemo ? 'info' : syncBadgeVariant(syncState)}
-            className="pw-mock-sync"
-          >
-            {isDemo ? 'Demo' : syncBadgeLabel(syncState)}
-          </Badge>
+          <div className="pw-mock-chrome-actions">
+            {showStartRun ? (
+              <Button
+                size="sm"
+                variant="primary"
+                className="pw-mock-chrome-run-action"
+                disabled={portalStartingRun || runLifecycleBusy}
+                onClick={() => void onPortalStartRun()}
+              >
+                {portalStartingRun ? (
+                  <>
+                    <Spinner animation="border" size="sm" className="me-1" aria-hidden />
+                    Starting…
+                  </>
+                ) : (
+                  'Start run'
+                )}
+              </Button>
+            ) : null}
+            {showEndRun ? (
+              <Button
+                size="sm"
+                variant="outline-success"
+                className="pw-mock-chrome-run-action"
+                disabled={runLifecycleBusy || portalStartingRun}
+                onClick={() => void onPortalEndRun()}
+              >
+                {runLifecycleBusy && !portalStartingRun ? (
+                  <>
+                    <Spinner animation="border" size="sm" className="me-1" aria-hidden />
+                    Ending…
+                  </>
+                ) : (
+                  'End field run'
+                )}
+              </Button>
+            ) : null}
+            {showReopenField ? (
+              <Button
+                size="sm"
+                variant="outline-warning"
+                className="pw-mock-chrome-run-action"
+                disabled={runLifecycleBusy || portalStartingRun}
+                onClick={() => void onPortalReopenField()}
+              >
+                {runLifecycleBusy && !portalStartingRun ? (
+                  <>
+                    <Spinner animation="border" size="sm" className="me-1" aria-hidden />
+                    Reopening…
+                  </>
+                ) : (
+                  'Reopen run'
+                )}
+              </Button>
+            ) : null}
+            <Badge
+              bg={isDemo ? 'info' : syncBadgeVariant(syncState)}
+              className="pw-mock-sync"
+            >
+              {isDemo ? 'Demo' : syncBadgeLabel(syncState)}
+            </Badge>
+          </div>
         </div>
         {isDemo ? (
           <Alert variant="info" className="py-1 px-2 mb-0 small">
@@ -721,7 +836,13 @@ export default function TechnicianPortalWorksheetPage() {
             {progress.open} open
           </span>
           {runCompleted ? (
-            <span className="small text-muted">Job completed — contact the office to reopen.</span>
+            <span className="small text-muted">Job closed by office — contact the office to reopen.</span>
+          ) : runEnded ? (
+            <span className="small text-muted">Field work ended — use Reopen run to continue testing.</span>
+          ) : showAwaitingOfficePrepare ? (
+            <span className="small text-muted">
+              Waiting for office to release this route — tap Start run once it is prepared.
+            </span>
           ) : null}
         </div>
       </header>
@@ -766,7 +887,7 @@ export default function TechnicianPortalWorksheetPage() {
 
           <div className="pw-mock-shell">
             <section className="pw-mock-detail">
-              <div className={`pw-mock-header ${headerBandClass(active, runMonthIso)}`}>
+              <div className={`pw-mock-header ${portalHeaderBandClass(active, runMonthIso)}`}>
                 <div className="pw-mock-header-top">
                   <div className="pw-mock-header-stop">
                     Stop #{active.stop_number}
@@ -774,7 +895,9 @@ export default function TechnicianPortalWorksheetPage() {
                       <span className="pw-mock-annual-pill">Annual month</span>
                     ) : null}
                   </div>
-                  <span className={`pw-mock-status-pill pw-mock-status-pill--${activeStatus}`}>
+                  <span
+                    className={`pw-mock-status-pill pw-mock-status-pill--${portalStatusPillClass(active, runMonthIso)}`}
+                  >
                     {statusLabel(activeStatus, active)}
                   </span>
                 </div>
@@ -875,11 +998,23 @@ export default function TechnicianPortalWorksheetPage() {
                 </div>
                 <div className="pw-mock-field-group">
                   <div className="pw-mock-field-group-title">Monitoring</div>
-                  <PortalEditableFieldRow
-                    fieldKey="monitoring_company"
+                  <PortalMonitoringCompanyField
+                    fieldKey="monitoring_company_id"
                     label="Company"
-                    value={active.monitoring_company ?? ''}
-                    onSave={saveField('monitoring_company')}
+                    companyId={active.monitoring_company_id ?? null}
+                    companyName={active.monitoring_company}
+                    companyRecord={active.monitoring_company_record}
+                    companies={monitoringCompanies}
+                    companiesLoading={monitoringCompaniesLoading}
+                    onSave={saveMonitoringCompanyId}
+                    onCompanyCreated={handleMonitoringCompanyCreated}
+                    {...fieldEditProps}
+                  />
+                  <PortalEditableFieldRow
+                    fieldKey="monitoring_account_number"
+                    label="Account #"
+                    value={active.monitoring_account_number ?? ''}
+                    onSave={saveField('monitoring_account_number')}
                     {...fieldEditProps}
                   />
                   <PortalEditableFieldRow

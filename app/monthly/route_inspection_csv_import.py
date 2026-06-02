@@ -41,7 +41,12 @@ from app.db_models import (
     MonthlyRouteTestHistory,
     db,
 )
-from app.monthly.monthly_sites_sync import apply_panel_fields_to_primary_testing_site
+from app.monthly.monthly_sites_sync import (
+    apply_monitoring_fields_to_primary_testing_site,
+    apply_panel_fields_to_primary_testing_site,
+)
+from app.monthly.monitoring_companies import find_active_monitoring_company_by_name
+from app.monthly.monitoring_notes_parse import parse_monitoring_notes, rebuild_monitoring_notes
 from app.monthly.sheet_visit_times import analyze_sheet_time_cells
 
 LOG = logging.getLogger("route_inspection_csv_import")
@@ -1034,6 +1039,18 @@ def run_route_inspection_csv_import(
         panel_text, panel_location_text = parse_facp_panel_fields(facp_cell)
         monitoring_cell = _row_get_alias(row, _MONITORING_ALIASES)
         monitoring_notes = _clean_multiline(monitoring_cell)
+        parsed_monitoring = parse_monitoring_notes(monitoring_notes)
+        monitoring_account_number = (parsed_monitoring.acct or "").strip() or None
+        monitoring_company_id: int | None = None
+        if parsed_monitoring.company:
+            matched = find_active_monitoring_company_by_name(parsed_monitoring.company)
+            if matched is not None:
+                monitoring_company_id = int(matched.id)
+        cleaned_monitoring_notes = rebuild_monitoring_notes(parsed_monitoring) or monitoring_notes
+        if _is_monitoring_none(monitoring_cell):
+            monitoring_company_id = None
+            monitoring_account_number = None
+            cleaned_monitoring_notes = None
         testing_procedures = _clean_multiline(
             _row_get_alias(row, _TESTING_PROCEDURES_ALIASES)
         )
@@ -1051,6 +1068,12 @@ def run_route_inspection_csv_import(
             loc,
             panel=panel_text,
             panel_location=panel_location_text,
+        )
+        apply_monitoring_fields_to_primary_testing_site(
+            loc,
+            monitoring_company_id=monitoring_company_id,
+            monitoring_account_number=monitoring_account_number,
+            monitoring_notes=cleaned_monitoring_notes,
         )
 
         if is_latest_history_month_for_location(int(loc.id), month_date):
@@ -1121,7 +1144,7 @@ def run_route_inspection_csv_import(
             ring=ring_detail,
             key_number=keys_text,
             annual_month=annual,
-            monitoring_notes=monitoring_notes,
+            monitoring_notes=cleaned_monitoring_notes,
             run_id=int(run.id) if run is not None else None,
             now=now,
         )

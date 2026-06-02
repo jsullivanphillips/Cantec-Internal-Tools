@@ -3,10 +3,12 @@ import { Badge, Button, Spinner } from 'react-bootstrap'
 import {
   billingStatusLabel,
   billingStatusVariant,
-  groupStopsByLocation,
   type OfficeBillingStatus,
 } from './officeRunReviewShared'
-import type { TechnicianWorksheetStop, TechnicianWorksheetRun } from './monthlyRoutesShared'
+import type {
+  MonthlyRunDetailBillingLocation,
+  TechnicianWorksheetRun,
+} from './monthlyRoutesShared'
 import { apiJson } from '../../lib/apiClient'
 
 type BillingPatchResponse = {
@@ -19,17 +21,16 @@ type BillingPatchResponse = {
 export default function RunDetailsLocationBillingPanel({
   routeId,
   monthDate,
-  stops,
+  billingLocations,
   run,
   onBillingUpdated,
 }: {
   routeId: number
   monthDate: string
-  stops: TechnicianWorksheetStop[]
+  billingLocations: MonthlyRunDetailBillingLocation[]
   run: TechnicianWorksheetRun | null
   onBillingUpdated: () => Promise<void>
 }) {
-  const groups = groupStopsByLocation(stops)
   const readOnly = (run?.source || '').trim().toLowerCase() === 'csv_import'
 
   const [busyLocationId, setBusyLocationId] = useState<number | null>(null)
@@ -59,7 +60,7 @@ export default function RunDetailsLocationBillingPanel({
     [routeId, monthDate, onBillingUpdated],
   )
 
-  if (!groups.length) return null
+  if (!billingLocations.length) return null
 
   return (
     <section
@@ -76,20 +77,20 @@ export default function RunDetailsLocationBillingPanel({
         </p>
       ) : null}
       <ul className="monthly-run-detail-billing__list list-unstyled mb-0">
-        {groups.map((group) => {
+        {billingLocations.map((group) => {
           const status = (group.billing_status || 'unset').toLowerCase()
           const isLegacy = status === 'legacy'
-          const disabled = readOnly || isLegacy || busyLocationId === group.locationId
+          const disabled = readOnly || isLegacy || busyLocationId === group.location_id
           return (
-            <li key={group.locationId} className="monthly-run-detail-billing__row">
+            <li key={group.location_id} className="monthly-run-detail-billing__row">
               <div className="monthly-run-detail-billing__label">
-                <span className="monthly-run-detail-billing__address">{group.label}</span>
+                <span className="monthly-run-detail-billing__address">{group.location_label}</span>
                 <Badge bg={billingStatusVariant(group.billing_status)} className="ms-2">
                   {billingStatusLabel(group.billing_status)}
                 </Badge>
               </div>
               <div className="monthly-run-detail-billing__actions">
-                {busyLocationId === group.locationId ? (
+                {busyLocationId === group.location_id ? (
                   <Spinner animation="border" size="sm" aria-label="Saving billing" />
                 ) : (
                   <>
@@ -97,7 +98,7 @@ export default function RunDetailsLocationBillingPanel({
                       size="sm"
                       variant={status === 'bill' ? 'success' : 'outline-success'}
                       disabled={disabled}
-                      onClick={() => void setBilling(group.locationId, 'bill')}
+                      onClick={() => void setBilling(group.location_id, 'bill')}
                     >
                       Bill
                     </Button>
@@ -105,7 +106,7 @@ export default function RunDetailsLocationBillingPanel({
                       size="sm"
                       variant={status === 'do_not_bill' ? 'danger' : 'outline-danger'}
                       disabled={disabled}
-                      onClick={() => void setBilling(group.locationId, 'do_not_bill')}
+                      onClick={() => void setBilling(group.location_id, 'do_not_bill')}
                     >
                       Do not bill
                     </Button>
@@ -114,7 +115,7 @@ export default function RunDetailsLocationBillingPanel({
                         size="sm"
                         variant={status === 'unset' ? 'warning' : 'outline-secondary'}
                         disabled={disabled}
-                        onClick={() => void setBilling(group.locationId, 'unset')}
+                        onClick={() => void setBilling(group.location_id, 'unset')}
                       >
                         Unset
                       </Button>

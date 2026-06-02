@@ -1,14 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Accordion, Alert, Badge, Button, Modal, Spinner } from 'react-bootstrap'
+import { Alert, Badge, Button, Modal, Spinner } from 'react-bootstrap'
 import { Link, useParams } from 'react-router-dom'
-import RunDetailsLocationBillingPanel from '../features/monthlyRoutes/RunDetailsLocationBillingPanel'
-import RunDetailsSiteChangesList from '../features/monthlyRoutes/RunDetailsSiteChangesList'
+import RunDetailsLocationReviewList from '../features/monthlyRoutes/RunDetailsLocationReviewList'
+import RunWorkflowStepper from '../features/monthlyRoutes/RunWorkflowStepper'
 import type { RunReviewFilter } from '../features/monthlyRoutes/notableStopChanges'
-import {
-  buildNotableStopChangeCards,
-  summarizeRunReviewCards,
-} from '../features/monthlyRoutes/notableStopChanges'
-import type { OfficeFieldChange } from '../features/monthlyRoutes/officeWorksheetTableShared'
 import {
   parseYearMonth,
   runOfficeStatusPillLabel,
@@ -18,6 +13,21 @@ import {
   type MonthlySpecialistTechRow,
   type TechnicianWorksheetRun,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
+import {
+  canOfficeCompleteRun,
+  deriveRunWorkflowStage,
+  runFieldEnded,
+  runInOfficePrepPhase,
+  runIsPrepared,
+} from '../features/monthlyRoutes/runWorkflowShared'
+import {
+  computeRunDetailsPrepSummary,
+  dispatchRunLocationExpand,
+  filterRunDetailLocations,
+  patchRunDetailLocationBilling,
+  runLocationReviewDomId,
+  type RunLocationReviewFilter,
+} from '../features/monthlyRoutes/runDetailsLocationReview'
 import { clearWorksheetCache } from '../features/monthlyRoutes/worksheetOfflineStore'
 import { apiJson, isAbortError } from '../lib/apiClient'
 import MonthlyRunDetailPageSkeleton from './MonthlyRunDetailPageSkeleton'
@@ -65,6 +75,10 @@ function runActivityVariant(activity: ReturnType<typeof worksheetOfficeRunActivi
   }
 }
 
+function toLocationFilter(filter: RunReviewFilter): RunLocationReviewFilter {
+  return filter
+}
+
 export default function MonthlyRunDetailPage() {
   const { routeId, monthIso } = useParams<{ routeId: string; monthIso: string }>()
   const idNum = routeId ? parseInt(routeId, 10) : NaN
@@ -74,14 +88,12 @@ export default function MonthlyRunDetailPage() {
   const [payload, setPayload] = useState<MonthlyRunDetailPayload | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  /** Which lifecycle action is in flight; keeps loading label on the clicked button only. */
-  const [runLifecycleAction, setRunLifecycleAction] = useState<'complete' | 'reopen' | null>(null)
+  const [runLifecycleAction, setRunLifecycleAction] = useState<
+    'prepare' | 'review_complete' | 'complete' | 'reopen' | null
+  >(null)
   const [resetRunModalOpen, setResetRunModalOpen] = useState(false)
   const [resetRunBusy, setResetRunBusy] = useState(false)
-  const [reviewFilter, setReviewFilter] = useState<RunReviewFilter>('all')
-  const [runReviewAccordionKey, setRunReviewAccordionKey] = useState<string | null>(
-    'notable-worksheet',
-  )
+  const [reviewFilter, setReviewFilter] = useState<RunLocationReviewFilter>('all')
 
   const loadRunDetails = useCallback(async (signal?: AbortSignal) => {
     if (!Number.isFinite(idNum) || !monthOk) return
@@ -116,6 +128,65 @@ export default function MonthlyRunDetailPage() {
     })()
     return () => ac.abort()
   }, [idNum, monthOk, loadRunDetails])
+
+  const onBillingPatched = useCallback((locationId: number, billingStatus: string) => {
+    setPayload((prev) => {
+      if (!prev?.locations?.length) return prev
+      return {
+        ...prev,
+        locations: patchRunDetailLocationBilling(
+          prev.locations,
+          locationId,
+          billingStatus,
+          prev.month_date,
+        ),
+      }
+    })
+  }, [])
+
+  const onMarkPrepared = useCallback(async () => {
+    if (!Number.isFinite(idNum) || !monthOk) return
+    if (runLifecycleAction != null) return
+    setRunLifecycleAction('prepare')
+    try {
+      await apiJson<{ run: TechnicianWorksheetRun }>(
+        `/api/monthly_routes/routes/${idNum}/runs/prepare`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ month_date: monthQuery }),
+        },
+      )
+      clearWorksheetCache(idNum, monthQuery)
+      await loadRunDetails()
+    } catch {
+      window.alert('Could not mark route prepared. Try again.')
+    } finally {
+      setRunLifecycleAction(null)
+    }
+  }, [idNum, monthOk, monthQuery, loadRunDetails, runLifecycleAction])
+
+  const onMarkReviewComplete = useCallback(async () => {
+    if (!Number.isFinite(idNum) || !monthOk || !payload?.run) return
+    if (runLifecycleAction != null) return
+    setRunLifecycleAction('review_complete')
+    try {
+      await apiJson<{ run: TechnicianWorksheetRun }>(
+        `/api/monthly_routes/routes/${idNum}/runs/review_complete`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ month_date: monthQuery }),
+        },
+      )
+      clearWorksheetCache(idNum, monthQuery)
+      await loadRunDetails()
+    } catch {
+      window.alert('Could not mark review complete. Try again.')
+    } finally {
+      setRunLifecycleAction(null)
+    }
+  }, [idNum, monthOk, monthQuery, payload?.run, loadRunDetails, runLifecycleAction])
 
   const onCompleteJob = useCallback(async () => {
     if (!Number.isFinite(idNum) || !monthOk || !payload?.run) return
@@ -199,39 +270,31 @@ export default function MonthlyRunDetailPage() {
     [payload?.run],
   )
 
-  const fieldChangesByLocation = useMemo(() => {
-    const map = new Map<number, OfficeFieldChange[]>()
-    for (const loc of payload?.field_changes_by_location ?? []) {
-      map.set(loc.location_id, loc.changes)
-    }
-    return map
-  }, [payload?.field_changes_by_location])
+  const locations = payload?.locations ?? []
+  const prepPhase = runInOfficePrepPhase(payload?.run ?? null)
+  const prepSummary = useMemo(() => computeRunDetailsPrepSummary(locations), [locations])
 
-  const reviewCards = useMemo(() => {
-    if (!payload) return []
-    return buildNotableStopChangeCards(
-      payload.notable_stops ?? [],
-      payload.month_date,
-      fieldChangesByLocation,
-    )
-  }, [payload, fieldChangesByLocation])
-
-  const reviewSummary = useMemo(
-    () => summarizeRunReviewCards(reviewCards, payload?.month_date ?? ''),
-    [reviewCards, payload?.month_date],
-  )
-
-  const focusRunReview = useCallback((nextFilter?: RunReviewFilter) => {
-    if (nextFilter != null) setReviewFilter(nextFilter)
-    setRunReviewAccordionKey('notable-worksheet')
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    window.requestAnimationFrame(() => {
-      document.getElementById('run-review-section')?.scrollIntoView({
-        behavior: reduceMotion ? 'auto' : 'smooth',
-        block: 'start',
+  const focusRunReview = useCallback(
+    (nextFilter?: RunReviewFilter) => {
+      const filter: RunLocationReviewFilter =
+        nextFilter != null ? toLocationFilter(nextFilter) : 'all'
+      setReviewFilter(filter)
+      const monthDate = payload?.month_date ?? monthQuery
+      const matched = filterRunDetailLocations(locations, filter, monthDate)
+      const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      window.requestAnimationFrame(() => {
+        document.getElementById('run-review-section')?.scrollIntoView({
+          behavior: reduceMotion ? 'auto' : 'smooth',
+          block: 'start',
+        })
+        const first = matched[0]
+        if (first) {
+          dispatchRunLocationExpand(runLocationReviewDomId(first.location_id))
+        }
       })
-    })
-  }, [])
+    },
+    [locations, monthQuery, payload?.month_date],
+  )
 
   if (!Number.isFinite(idNum) || !monthOk) {
     return (
@@ -260,13 +323,16 @@ export default function MonthlyRunDetailPage() {
   }
 
   const { route, counts, specialists_month, run } = payload
-  const reviewStopCount = reviewSummary.stopCount
   const monthHeading = formatMonthHeading(payload.month_date)
   const completedByLabel = completedByTechniciansPillLabel(
     specialists_month?.top_technicians ?? [],
   )
   const runCompleted = worksheetRunExplicitlyCompleted(run)
-  const showCompleteJob = run != null && !runCompleted
+  const workflowStage = deriveRunWorkflowStage(run)
+  const showMarkPrepared = !runCompleted && (run == null || !runIsPrepared(run))
+  const showMarkReviewComplete =
+    run != null && !runCompleted && runFieldEnded(run) && !run?.office_review_completed_at
+  const showCompleteJob = run != null && !runCompleted && canOfficeCompleteRun(run)
   const showReopenJob = run != null && runCompleted
   const showResetRun = run != null && !runCompleted
   const lifecycleBusy = runLifecycleAction != null
@@ -293,9 +359,10 @@ export default function MonthlyRunDetailPage() {
               {monthHeading}
               <span className="monthly-run-detail-hero__route-ref"> · {route.label}</span>
             </h1>
+            <RunWorkflowStepper run={run} className="monthly-run-detail-workflow mb-3" />
             <div className="monthly-route-detail-hero__meta">
               <Badge bg={runActivityVariant(runActivity)} className="monthly-route-pill">
-                {runOfficeStatusPillLabel(runActivity, payload.month_date, route)}
+                {runOfficeStatusPillLabel(runActivity, payload.month_date, route, undefined, run)}
               </Badge>
               {run?.source ? (
                 <Badge bg="light" text="dark" className="monthly-route-pill">
@@ -304,18 +371,76 @@ export default function MonthlyRunDetailPage() {
               ) : null}
               {formatRunTimestamp(run?.started_at) ? (
                 <Badge bg="light" text="dark" className="monthly-route-pill">
-                  Started {formatRunTimestamp(run?.started_at)}
+                  Field started {formatRunTimestamp(run?.started_at)}
+                </Badge>
+              ) : null}
+              {formatRunTimestamp(run?.field_ended_at) ? (
+                <Badge bg="light" text="dark" className="monthly-route-pill">
+                  Field ended {formatRunTimestamp(run?.field_ended_at)}
+                </Badge>
+              ) : null}
+              {formatRunTimestamp(run?.office_review_completed_at) ? (
+                <Badge bg="light" text="dark" className="monthly-route-pill">
+                  Review done {formatRunTimestamp(run?.office_review_completed_at)}
                 </Badge>
               ) : null}
               {formatRunTimestamp(run?.completed_at) ? (
                 <Badge bg="light" text="dark" className="monthly-route-pill">
-                  Completed {formatRunTimestamp(run?.completed_at)}
+                  Closed {formatRunTimestamp(run?.completed_at)}
                 </Badge>
               ) : null}
             </div>
+            {workflowStage === 'awaiting_office_review' ? (
+              <p className="small text-muted mb-0 mt-2">
+                Technicians finished field work. Set billing and follow-ups in the review section below,
+                then mark review complete.
+              </p>
+            ) : null}
+            {run == null ? (
+              <p className="small text-muted mb-0 mt-2">
+                No run file yet for this month. Review stops below, then mark prepared when technicians may
+                start field work.
+              </p>
+            ) : null}
           </div>
           <div className="monthly-route-detail-hero__right">
             <div className="monthly-route-detail-actions">
+              {showMarkPrepared ? (
+                <Button
+                  size="sm"
+                  variant="outline-primary"
+                  className="monthly-location-detail-action"
+                  disabled={lifecycleBusy}
+                  onClick={() => void onMarkPrepared()}
+                >
+                  {runLifecycleAction === 'prepare' ? (
+                    <>
+                      <Spinner animation="border" size="sm" className="me-1" aria-hidden />
+                      Preparing…
+                    </>
+                  ) : (
+                    'Mark prepared'
+                  )}
+                </Button>
+              ) : null}
+              {showMarkReviewComplete ? (
+                <Button
+                  size="sm"
+                  variant="outline-primary"
+                  className="monthly-location-detail-action"
+                  disabled={lifecycleBusy}
+                  onClick={() => void onMarkReviewComplete()}
+                >
+                  {runLifecycleAction === 'review_complete' ? (
+                    <>
+                      <Spinner animation="border" size="sm" className="me-1" aria-hidden />
+                      Saving…
+                    </>
+                  ) : (
+                    'Mark review complete'
+                  )}
+                </Button>
+              ) : null}
               {showReopenJob ? (
                 <Button
                   size="sm"
@@ -384,95 +509,107 @@ export default function MonthlyRunDetailPage() {
           </div>
         </section>
 
-        <div className="monthly-run-detail-kpis" aria-label="Run outcome counts">
-          {(
-            [
-              {
-                key: 'all_good' as const,
-                count: counts.all_good_count,
-                label: 'All good',
-                modifier: 'all-good',
-              },
-              {
-                key: 'passed_with_problems' as const,
-                count: counts.passed_with_problems_count,
-                label: 'Passed w/ problems',
-                modifier: 'passed-problems',
-              },
-              {
-                key: 'failed' as const,
-                count: counts.failed_count,
-                label: 'Failed',
-                modifier: 'failed',
-              },
-              {
-                key: 'skipped' as const,
-                count: counts.skipped_count,
-                label: 'Skipped',
-                modifier: 'skipped',
-              },
-            ] as const
-          ).map(({ key, count, label, modifier }) =>
-            count > 0 ? (
-              <button
-                key={key}
-                type="button"
-                className={`monthly-run-detail-kpi monthly-location-detail-surface monthly-run-detail-kpi--interactive monthly-run-detail-kpi--${modifier}`}
-                onClick={() => focusRunReview(key)}
-              >
-                <div className="monthly-run-detail-kpi__value tabular-nums">{count}</div>
-                <div className="monthly-run-detail-kpi__label">{label}</div>
-              </button>
-            ) : (
-              <div
-                key={key}
-                className={`monthly-run-detail-kpi monthly-location-detail-surface monthly-run-detail-kpi--${modifier}`}
-              >
-                <div className="monthly-run-detail-kpi__value tabular-nums">{count}</div>
-                <div className="monthly-run-detail-kpi__label">{label}</div>
+        {prepPhase ? (
+          <div className="monthly-run-detail-prep-summary" aria-label="Prep summary">
+            <div className="monthly-run-detail-kpi monthly-location-detail-surface">
+              <div className="monthly-run-detail-kpi__value tabular-nums">{prepSummary.stopCount}</div>
+              <div className="monthly-run-detail-kpi__label">
+                {prepSummary.stopCount === 1 ? 'Stop' : 'Stops'}
               </div>
-            ),
-          )}
-        </div>
-
-        <RunDetailsLocationBillingPanel
-          routeId={idNum}
-          monthDate={payload.month_date}
-          stops={payload.notable_stops ?? []}
-          run={run}
-          onBillingUpdated={loadRunDetails}
-        />
-
-        <Accordion
-          id="run-review-section"
-          activeKey={runReviewAccordionKey}
-          onSelect={(key) => setRunReviewAccordionKey(key == null ? null : String(key))}
-          className="monthly-run-detail-notable-accordion"
-        >
-          <Accordion.Item eventKey="notable-worksheet" className="monthly-location-detail-surface border-0">
-            <Accordion.Header>
-              <span className="monthly-run-detail-notable-accordion__title">Run review</span>
-              <span className="monthly-run-detail-notable-accordion__meta text-muted small ms-2">
-                {reviewStopCount === 1 ? '1 stop' : `${reviewStopCount} stops`}
-              </span>
-            </Accordion.Header>
-            <Accordion.Body className="p-3 pt-2">
-              {reviewStopCount > 0 ? (
-                <RunDetailsSiteChangesList
-                  cards={reviewCards}
-                  monthDate={payload.month_date}
-                  summary={reviewSummary}
-                  filter={reviewFilter}
-                  onFilterChange={setReviewFilter}
-                />
+            </div>
+            <div className="monthly-run-detail-kpi monthly-location-detail-surface">
+              <div className="monthly-run-detail-kpi__value tabular-nums">{prepSummary.locationCount}</div>
+              <div className="monthly-run-detail-kpi__label">
+                {prepSummary.locationCount === 1 ? 'Location' : 'Locations'}
+              </div>
+            </div>
+            {prepSummary.multiSiteLocationCount > 0 ? (
+              <div className="monthly-run-detail-kpi monthly-location-detail-surface">
+                <div className="monthly-run-detail-kpi__value tabular-nums">
+                  {prepSummary.multiSiteLocationCount}
+                </div>
+                <div className="monthly-run-detail-kpi__label">Multi-site</div>
+              </div>
+            ) : null}
+            <div className="monthly-run-detail-kpi monthly-location-detail-surface">
+              <div className="monthly-run-detail-kpi__value tabular-nums">
+                {prepSummary.openDeficiencyCount}
+              </div>
+              <div className="monthly-run-detail-kpi__label">Open deficiencies</div>
+            </div>
+          </div>
+        ) : (
+          <div className="monthly-run-detail-kpis" aria-label="Run outcome counts">
+            {(
+              [
+                {
+                  key: 'all_good' as const,
+                  count: counts.all_good_count,
+                  label: 'All good',
+                  modifier: 'all-good',
+                },
+                {
+                  key: 'passed_with_problems' as const,
+                  count: counts.passed_with_problems_count,
+                  label: 'Passed w/ problems',
+                  modifier: 'passed-problems',
+                },
+                {
+                  key: 'failed' as const,
+                  count: counts.failed_count,
+                  label: 'Failed',
+                  modifier: 'failed',
+                },
+                {
+                  key: 'skipped' as const,
+                  count: counts.skipped_count,
+                  label: 'Skipped',
+                  modifier: 'skipped',
+                },
+              ] as const
+            ).map(({ key, count, label, modifier }) =>
+              count > 0 ? (
+                <button
+                  key={key}
+                  type="button"
+                  className={`monthly-run-detail-kpi monthly-location-detail-surface monthly-run-detail-kpi--interactive monthly-run-detail-kpi--${modifier}`}
+                  onClick={() => focusRunReview(key)}
+                >
+                  <div className="monthly-run-detail-kpi__value tabular-nums">{count}</div>
+                  <div className="monthly-run-detail-kpi__label">{label}</div>
+                </button>
               ) : (
-                <p className="monthly-run-detail-empty mb-0">
-                  No tested stops or updates recorded for this run yet.
-                </p>
-              )}
-            </Accordion.Body>
-          </Accordion.Item>
-        </Accordion>
+                <div
+                  key={key}
+                  className={`monthly-run-detail-kpi monthly-location-detail-surface monthly-run-detail-kpi--${modifier}`}
+                >
+                  <div className="monthly-run-detail-kpi__value tabular-nums">{count}</div>
+                  <div className="monthly-run-detail-kpi__label">{label}</div>
+                </div>
+              ),
+            )}
+          </div>
+        )}
+
+        {locations.length > 0 ? (
+          <RunDetailsLocationReviewList
+            locations={locations}
+            monthDate={payload.month_date}
+            routeId={idNum}
+            run={run}
+            runCompleted={runCompleted}
+            reviewSummary={payload.review_summary ?? null}
+            filter={reviewFilter}
+            onFilterChange={setReviewFilter}
+            onBillingPatched={onBillingPatched}
+            onPrepSaved={loadRunDetails}
+            onDeficiencyUpdated={loadRunDetails}
+          />
+        ) : (
+          <section id="run-review-section" className="monthly-location-detail-surface p-3">
+            <p className="monthly-run-detail-empty mb-0">No worksheet stops for this run yet.</p>
+          </section>
+        )}
       </div>
       <Modal
         show={resetRunModalOpen}
@@ -488,8 +625,9 @@ export default function MonthlyRunDetailPage() {
         <Modal.Body>
           <p className="mb-2">
             This clears everything recorded during this run for this month: tested/skipped outcomes,
-            times, run comments, field edits (panel, annual month, access codes, etc.), and the
-            sites-with-updates change log. Worksheet rows are restored from the library master.
+            clock events, times, run comments, field edits (panel, annual month, access codes, etc.), billing
+            status on each site, and the sites-with-updates change log. Worksheet rows are restored
+            from the library master.
           </p>
           <p className="mb-0 small text-muted">
             If the job was marked complete, use <strong>Reopen job</strong> first.

@@ -140,8 +140,14 @@ export function usePortalWorksheetDemo(monthIso: string) {
   const showStopWorkspace = stops.length > 0 && hasRunFile
   const canEditStops = showStopWorkspace && !runCompleted && !viewingHistoricalRun && isCurrentMonth
   const showStartRun = false
+  const showEndRun = false
   const showCompleteRun = false
+  const showReopenField = false
   const showReopenRun = false
+  const runPrepared = true
+  const runEnded = false
+  const onPortalEndRun = onPortalCompleteRun
+  const onPortalReopenField = onPortalReopenRun
   const readOnlyWorksheet = showStopWorkspace && !canEditStops
 
   return {
@@ -162,17 +168,23 @@ export function usePortalWorksheetDemo(monthIso: string) {
     updateLocalStop,
     queueStopChanges,
     onPortalStartRun,
+    onPortalEndRun,
     onPortalCompleteRun,
+    onPortalReopenField,
     onPortalReopenRun,
     runStarted,
+    runPrepared,
+    runEnded,
     runCompleted,
     isHistoricalMonth,
     isCurrentMonth,
     hasRunFile,
     showStopWorkspace,
     showStartRun,
+    showEndRun,
     showCompleteRun,
     showReopenRun,
+    showReopenField,
     viewingHistoricalRun,
     readOnlyWorksheet,
     canEditStops,

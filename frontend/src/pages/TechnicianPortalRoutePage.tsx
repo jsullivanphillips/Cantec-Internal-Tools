@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Alert, Button, Card, Modal, Spinner } from 'react-bootstrap'
+import { Alert, Button, Card, Spinner } from 'react-bootstrap'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import RunWorkflowStepper from '../features/monthlyRoutes/RunWorkflowStepper'
+import PortalBlockingOverlay from '../features/monthlyRoutes/PortalBlockingOverlay'
 import {
   parseYearMonth,
   worksheetRunExplicitlyCompleted,
   type TechnicianWorksheetRun,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
+import { runFieldEnded } from '../features/monthlyRoutes/runWorkflowShared'
 import { apiJson } from '../lib/apiClient'
 
 type PortalRoute = {
@@ -39,22 +42,22 @@ function formatRunSubtitle(run: TechnicianWorksheetRun): string {
   const parts: string[] = []
   if (run.status === 'completed') parts.push('Completed')
   else parts.push('Open')
-  if (run.opened_at) {
-    const d = new Date(run.opened_at)
-    if (!Number.isNaN(d.getTime())) {
-      parts.push(`File opened ${d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}`)
-    }
-  }
   if (run.started_at) {
     const d = new Date(run.started_at)
     if (!Number.isNaN(d.getTime())) {
       parts.push(`Field started ${d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}`)
     }
   }
+  if (run.field_ended_at) {
+    const d = new Date(run.field_ended_at)
+    if (!Number.isNaN(d.getTime())) {
+      parts.push(`Field ended ${d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}`)
+    }
+  }
   if (run.completed_at) {
     const d = new Date(run.completed_at)
     if (!Number.isNaN(d.getTime())) {
-      parts.push(`Ended ${d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}`)
+      parts.push(`Closed ${d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}`)
     }
   }
   return parts.join(' · ')
@@ -68,10 +71,8 @@ export default function TechnicianPortalRoutePage() {
   const [data, setData] = useState<PortalRouteSummaryResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false)
-  const [regenerating, setRegenerating] = useState(false)
-  const [regenerateError, setRegenerateError] = useState<string | null>(null)
-  const [regenerateNotice, setRegenerateNotice] = useState<string | null>(null)
+  const [runLifecycleBusy, setRunLifecycleBusy] = useState(false)
+  const [runLifecycleMessage, setRunLifecycleMessage] = useState('Updating run…')
   const load = useCallback(async () => {
     if (Number.isNaN(idNum)) {
       setLoading(false)
@@ -115,45 +116,64 @@ export default function TechnicianPortalRoutePage() {
     [idNum, nav],
   )
 
-  const regeneratePaperwork = useCallback(async () => {
-    if (Number.isNaN(idNum)) return
-    setRegenerateError(null)
-    setRegenerateNotice(null)
-    setRegenerating(true)
-    try {
-      const body = await apiJson<{
-        ok: boolean
-        stops_created: number
-        stops_refreshed: number
-      }>(`/api/technician_portal/routes/${idNum}/regenerate_paperwork`, { method: 'POST' })
-      const total = (body.stops_created ?? 0) + (body.stops_refreshed ?? 0)
-      setRegenerateNotice(
-        total > 0
-          ? `Paperwork refreshed for ${total} ${total === 1 ? 'stop' : 'stops'}. Open the worksheet to review.`
-          : 'Paperwork is up to date.',
-      )
-      setShowRegenerateConfirm(false)
-      await load()
-    } catch (e) {
-      const maybe = e as { code?: string; message?: string }
-      if (maybe?.code === 'run_completed') {
-        setRegenerateError('This month’s run is completed. Ask the office to reopen it first.')
-      } else if (maybe?.code === 'portal_locked') {
-        nav('/tech', { replace: true })
-      } else {
-        setRegenerateError('Could not refresh paperwork. Try again.')
-      }
-    } finally {
-      setRegenerating(false)
-    }
-  }, [idNum, load, nav])
-
   const monthLabel = data ? formatMonthHeading(data.current_month_first) : ''
-  const canRegeneratePaperwork =
-    data != null && !worksheetRunExplicitlyCompleted(data.current_month_run)
+
+  const endFieldRun = useCallback(async () => {
+    if (Number.isNaN(idNum)) return
+    setRunLifecycleMessage('Ending field run…')
+    setRunLifecycleBusy(true)
+    try {
+      const body = await apiJson<{ run: TechnicianWorksheetRun }>(
+        `/api/technician_portal/routes/${idNum}/runs/end`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}',
+        },
+      )
+      setData((prev) => (prev ? { ...prev, current_month_run: body.run } : prev))
+    } catch {
+      window.alert('Could not end run. Try again.')
+    } finally {
+      setRunLifecycleBusy(false)
+    }
+  }, [idNum])
+
+  const reopenFieldRun = useCallback(async () => {
+    if (Number.isNaN(idNum)) return
+    setRunLifecycleMessage('Reopening run…')
+    setRunLifecycleBusy(true)
+    try {
+      const body = await apiJson<{ run: TechnicianWorksheetRun }>(
+        `/api/technician_portal/routes/${idNum}/runs/reopen_field`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}',
+        },
+      )
+      setData((prev) => (prev ? { ...prev, current_month_run: body.run } : prev))
+    } catch {
+      window.alert('Could not reopen run. Try again.')
+    } finally {
+      setRunLifecycleBusy(false)
+    }
+  }, [idNum])
+
+  const currentRun = data?.current_month_run ?? null
+  const showEndRun =
+    currentRun != null &&
+    (currentRun.started_at || '').trim().length > 0 &&
+    !runFieldEnded(currentRun) &&
+    !worksheetRunExplicitlyCompleted(currentRun)
+  const showReopenField =
+    currentRun != null &&
+    runFieldEnded(currentRun) &&
+    !worksheetRunExplicitlyCompleted(currentRun)
 
   return (
     <div className="container py-4" style={{ maxWidth: '40rem' }}>
+      <PortalBlockingOverlay show={runLifecycleBusy} message={runLifecycleMessage} />
       <div className="mb-3">
         <Link to="/tech/start" className="btn btn-link text-primary px-0 mb-2">
           ← Back to routes
@@ -176,17 +196,6 @@ export default function TechnicianPortalRoutePage() {
             </div>
           </div>
 
-          {regenerateNotice ? (
-            <Alert variant="success" className="mb-3" onClose={() => setRegenerateNotice(null)} dismissible>
-              {regenerateNotice}
-            </Alert>
-          ) : null}
-          {regenerateError ? (
-            <Alert variant="danger" className="mb-3" onClose={() => setRegenerateError(null)} dismissible>
-              {regenerateError}
-            </Alert>
-          ) : null}
-
           {data.current_month_run == null ? (
             <Card className="shadow-sm border-primary mb-4">
               <Card.Body className="py-4">
@@ -204,23 +213,13 @@ export default function TechnicianPortalRoutePage() {
                 >
                   Open worksheet for {monthLabel}
                 </Button>
-                {canRegeneratePaperwork ? (
-                  <Button
-                    variant="outline-secondary"
-                    className="w-100 mt-2"
-                    type="button"
-                    disabled={regenerating}
-                    onClick={() => setShowRegenerateConfirm(true)}
-                  >
-                    Refresh paperwork from office data
-                  </Button>
-                ) : null}
               </Card.Body>
             </Card>
           ) : (
             <Card className="shadow-sm border-primary mb-4">
               <Card.Body className="py-4">
                 <div className="fw-semibold mb-2">This month</div>
+                <RunWorkflowStepper run={data.current_month_run} className="mb-3" />
                 <Button
                   variant="primary"
                   size="lg"
@@ -232,50 +231,31 @@ export default function TechnicianPortalRoutePage() {
                   <div>Open run for {monthLabel}</div>
                   <div className="small fw-normal opacity-75">{formatRunSubtitle(data.current_month_run)}</div>
                 </Button>
-                {canRegeneratePaperwork ? (
+                {showEndRun ? (
                   <Button
-                    variant="outline-secondary"
+                    variant="outline-success"
                     className="w-100 mt-2"
                     type="button"
-                    disabled={regenerating}
-                    onClick={() => setShowRegenerateConfirm(true)}
+                    disabled={runLifecycleBusy}
+                    onClick={() => void endFieldRun()}
                   >
-                    Refresh paperwork from office data
+                    End field run
+                  </Button>
+                ) : null}
+                {showReopenField ? (
+                  <Button
+                    variant="outline-warning"
+                    className="w-100 mt-2"
+                    type="button"
+                    disabled={runLifecycleBusy}
+                    onClick={() => void reopenFieldRun()}
+                  >
+                    Reopen run
                   </Button>
                 ) : null}
               </Card.Body>
             </Card>
           )}
-
-          <Modal show={showRegenerateConfirm} onHide={() => setShowRegenerateConfirm(false)} centered>
-            <Modal.Header closeButton>
-              <Modal.Title>Refresh paperwork?</Modal.Title>
-            </Modal.Header>
-            <Modal.Body>
-              <p className="mb-2">
-                This reloads testing procedures, tech notes, panel info, and other sheet fields for {monthLabel} from
-                the latest office and prior-run data.
-              </p>
-              <p className="mb-0 text-muted small">
-                Times, tested/skipped results, and run comments you already entered are kept. To clear field progress,
-                use <strong>Reset run</strong> on the worksheet.
-              </p>
-            </Modal.Body>
-            <Modal.Footer>
-              <Button variant="secondary" type="button" onClick={() => setShowRegenerateConfirm(false)}>
-                Cancel
-              </Button>
-              <Button variant="primary" type="button" disabled={regenerating} onClick={() => void regeneratePaperwork()}>
-                {regenerating ? (
-                  <>
-                    <Spinner animation="border" size="sm" className="me-2" /> Refreshing…
-                  </>
-                ) : (
-                  'Refresh paperwork'
-                )}
-              </Button>
-            </Modal.Footer>
-          </Modal>
 
           <div className="fw-semibold mb-2">Previous runs</div>
           {data.prior_runs.length === 0 ? (

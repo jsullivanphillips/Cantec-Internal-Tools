@@ -6,8 +6,15 @@ import {
   worksheetRunExplicitlyCompleted,
   WORKSHEET_CLOCK_IN_BLOCKED_MESSAGE,
   type TechnicianWorksheetPayload,
+  type TechnicianWorksheetRun,
   type TechnicianWorksheetStop,
 } from './monthlyRoutesShared'
+import {
+  canPortalEditRun,
+  runFieldEnded,
+  runIsPrepared,
+  worksheetRunFieldInProgress,
+} from './runWorkflowShared'
 import {
   backoffMs,
   enqueueWorksheetChange,
@@ -21,6 +28,7 @@ import {
   saveSyncQueue,
   saveWorksheetCache,
   type WorksheetStopChangeSet,
+  worksheetStopChangesForSync,
 } from './worksheetOfflineStore'
 import { apiJson, authFailureRedirectPath, isAbortError } from '../../lib/apiClient'
 import { runPortalWorkflowSyncQueue } from './portalWorkflowSync'
@@ -130,6 +138,9 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
       }
       try {
         const qs = new URLSearchParams({ month: monthIso, tech_portal: '1' })
+        if (mode === 'initial' && monthIso === monthFirstIsoPacificToday()) {
+          qs.set('refresh_paperwork', '1')
+        }
         const data = await apiJson<TechnicianWorksheetPayload>(
           `/api/monthly_routes/routes/${routeId}/worksheet?${qs.toString()}`,
           { signal },
@@ -243,7 +254,7 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
               client_mutation_id: item.id,
               client_mutated_at: item.clientMutatedAt,
               source: 'technician_app',
-              changes: item.changes,
+              changes: worksheetStopChangesForSync(item.changes),
             }),
           },
         )
@@ -348,67 +359,100 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
     triggerSyncRef: triggerWorkflowSyncRef,
   })
 
-  const runStarted = (payload?.run?.started_at || '').trim().length > 0
+  const runPrepared = runIsPrepared(payload?.run)
+  const runEnded = runFieldEnded(payload?.run)
   const runCompleted = worksheetRunExplicitlyCompleted(payload?.run)
+  const runStarted = worksheetRunFieldInProgress(payload?.run) || runEnded
   const isHistoricalMonth = Boolean(payload?.run?.is_historical)
   const isCurrentMonth = monthOk && monthIso === monthFirstIsoPacificToday()
   const hasRunFile = payload?.run != null
+  const runMonthMatchesWorksheet =
+    monthOk && (payload?.run?.month_date ?? '').trim() === monthIso.trim()
+  /** Prior-month browse is read-only; ``is_historical`` only gates stop edits, not run lifecycle. */
   const viewingHistoricalRun = fromPriorRun || !isCurrentMonth || isHistoricalMonth
+  const showPortalRunLifecycle =
+    hasRunFile && !fromPriorRun && !runCompleted && runMonthMatchesWorksheet
+
+  const applyServerRunToPayload = useCallback((run: TechnicianWorksheetRun) => {
+    setPayload((prev) => {
+      if (!prev) return prev
+      const next = { ...prev, run }
+      saveWorksheetCache(next)
+      return next
+    })
+  }, [])
 
   const onPortalStartRun = useCallback(async () => {
     if (Number.isNaN(routeId) || viewingHistoricalRun) return
     if (payload?.run != null && payload.run.started_at != null) return
     setPortalStartingRun(true)
     try {
-      await apiJson<{ run: { month_date: string } }>(`/api/technician_portal/routes/${routeId}/runs`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: '{}',
-      })
-      await load()
-    } catch {
-      window.alert('Could not start run. Try again.')
+      const body = await apiJson<{ run: TechnicianWorksheetRun }>(
+        `/api/technician_portal/routes/${routeId}/runs`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}',
+        },
+      )
+      applyServerRunToPayload(body.run)
+    } catch (e) {
+      const maybe = e as { code?: string }
+      if (maybe?.code === 'run_not_prepared') {
+        window.alert('Office has not released this route for testing yet.')
+      } else {
+        window.alert('Could not start run. Try again.')
+      }
     } finally {
       setPortalStartingRun(false)
     }
-  }, [routeId, payload?.run, load, viewingHistoricalRun])
+  }, [routeId, payload?.run, applyServerRunToPayload, viewingHistoricalRun])
 
-  const onPortalCompleteRun = useCallback(async () => {
+  const onPortalEndRun = useCallback(async () => {
     if (Number.isNaN(routeId) || !monthOk) return
     const run = payload?.run
-    if (!run?.started_at || worksheetRunExplicitlyCompleted(run)) return
+    if (!run?.started_at || worksheetRunExplicitlyCompleted(run) || runFieldEnded(run)) return
     setRunLifecycleBusy(true)
     try {
-      await apiJson(`/api/technician_portal/routes/${routeId}/runs/complete`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ month_date: monthIso }),
-      })
-      await load()
+      const body = await apiJson<{ run: TechnicianWorksheetRun }>(
+        `/api/technician_portal/routes/${routeId}/runs/end`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}',
+        },
+      )
+      applyServerRunToPayload(body.run)
     } catch {
-      window.alert('Could not complete run. Try again.')
+      window.alert('Could not end run. Try again.')
     } finally {
       setRunLifecycleBusy(false)
     }
-  }, [routeId, monthOk, monthIso, payload?.run, load])
+  }, [routeId, monthOk, payload?.run, applyServerRunToPayload])
 
-  const onPortalReopenRun = useCallback(async () => {
+  const onPortalReopenField = useCallback(async () => {
     if (Number.isNaN(routeId) || !monthOk || payload?.run == null) return
-    if (!worksheetRunExplicitlyCompleted(payload.run)) return
+    if (!runFieldEnded(payload.run) || worksheetRunExplicitlyCompleted(payload.run)) return
     setRunLifecycleBusy(true)
     try {
-      await apiJson(`/api/technician_portal/routes/${routeId}/runs/reopen`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ month_date: monthIso }),
-      })
-      await load()
+      const body = await apiJson<{ run: TechnicianWorksheetRun }>(
+        `/api/technician_portal/routes/${routeId}/runs/reopen_field`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}',
+        },
+      )
+      applyServerRunToPayload(body.run)
     } catch {
       window.alert('Could not reopen run. Try again.')
     } finally {
       setRunLifecycleBusy(false)
     }
-  }, [routeId, monthOk, monthIso, payload?.run, load])
+  }, [routeId, monthOk, payload?.run, applyServerRunToPayload])
+
+  const onPortalCompleteRun = onPortalEndRun
+  const onPortalReopenRun = onPortalReopenField
 
   const applyRemoteWorksheetRefresh = useCallback(() => {
     if (Date.now() < suppressRemoteRefreshUntilRef.current) {
@@ -546,10 +590,13 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
 
   const showStopWorkspace = stops.length > 0 && hasRunFile
   const canEditStops =
-    showStopWorkspace && !runCompleted && !viewingHistoricalRun && isCurrentMonth
-  const showStartRun = false
-  const showCompleteRun = false
-  const showReopenRun = false
+    showStopWorkspace &&
+    canPortalEditRun(payload?.run) &&
+    !viewingHistoricalRun &&
+    isCurrentMonth
+  const showStartRun = showPortalRunLifecycle && runPrepared && !runStarted
+  const showEndRun = showPortalRunLifecycle && worksheetRunFieldInProgress(payload?.run)
+  const showReopenField = showPortalRunLifecycle && runEnded && !worksheetRunFieldInProgress(payload?.run)
   const readOnlyWorksheet = showStopWorkspace && !canEditStops
   /** True until the first successful fetch for this route/month (avoids stale prior-month UI). */
   const initialLoading = loading && !hasLoadedOnce
@@ -572,17 +619,21 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
     updateLocalStop,
     queueStopChanges,
     onPortalStartRun,
+    onPortalEndRun,
     onPortalCompleteRun,
+    onPortalReopenField,
     onPortalReopenRun,
     runStarted,
+    runPrepared,
+    runEnded,
     runCompleted,
     isHistoricalMonth,
     isCurrentMonth,
     hasRunFile,
     showStopWorkspace,
     showStartRun,
-    showCompleteRun,
-    showReopenRun,
+    showEndRun,
+    showReopenField,
     viewingHistoricalRun,
     readOnlyWorksheet,
     canEditStops,

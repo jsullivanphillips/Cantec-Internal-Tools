@@ -200,19 +200,8 @@ def mirror_mtsm_snapshot_to_primary_master(
     ts.testing_procedures = mtsm.testing_procedures
     ts.inspection_tech_notes = mtsm.inspection_tech_notes
     ts.monitoring_notes = mtsm.monitoring_notes
-    company_name = (mtsm.monitoring_company_name or "").strip() or None
-    if company_name:
-        folded = company_name.casefold()
-        mc = MonitoringCompany.query.filter(
-            db.func.lower(MonitoringCompany.name) == folded
-        ).first()
-        if mc is None:
-            for row in MonitoringCompany.query.limit(500).all():
-                if (row.name or "").strip().casefold() == folded:
-                    mc = row
-                    break
-        if mc is not None:
-            ts.monitoring_company_id = int(mc.id)
+    ts.monitoring_account_number = mtsm.monitoring_account_number
+    ts.monitoring_company_id = mtsm.monitoring_company_id
 
 
 def push_primary_testing_site_display_to_legacy(loc: MonthlyRouteLocation, ts: MonthlyTestingSite) -> None:
@@ -252,6 +241,26 @@ def apply_panel_fields_to_primary_testing_site(
     primary.panel = panel
     primary.facp_detail = panel
     primary.panel_location = panel_location
+
+
+def apply_monitoring_fields_to_primary_testing_site(
+    loc: MonthlyRouteLocation,
+    *,
+    monitoring_company_id: int | None,
+    monitoring_account_number: str | None,
+    monitoring_notes: str | None,
+) -> None:
+    """Set primary v2 stop monitoring FK, account number, and notes."""
+    try:
+        rows = sync_testing_sites_from_legacy(loc)
+    except (OperationalError, ProgrammingError):
+        return
+    if not rows:
+        return
+    primary = min(rows, key=lambda t: int(t.sort_order))
+    primary.monitoring_company_id = monitoring_company_id
+    primary.monitoring_account_number = monitoring_account_number
+    primary.monitoring_notes = monitoring_notes
 
 
 def push_testing_site_keys_to_legacy(loc: MonthlyRouteLocation) -> None:

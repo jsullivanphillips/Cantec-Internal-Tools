@@ -14,7 +14,9 @@ from app.db_models import (
     MonthlyRouteTestHistory,
     MonthlyRouteWorksheetAuditEvent,
     MonthlySite,
+    MonthlyStopClockEvent,
     MonthlyTestingSite,
+    MonthlyTestingSiteDeficiency,
     MonthlyTestingSiteMonth,
     db,
 )
@@ -122,11 +124,14 @@ def portal_only_client(monkeypatch):
             MonthlySite.__table__,
             MonthlyTestingSite.__table__,
             MonthlyTestingSiteMonth.__table__,
+            MonthlyStopClockEvent.__table__,
+            MonthlyTestingSiteDeficiency.__table__,
         ]
         db.metadata.create_all(db.engine, tables=portal_tables)
         with app.test_client() as client:
             with client.session_transaction() as sess:
                 sess["tech_portal_unlocked"] = True
+                sess["username"] = "office_tester"
                 sess.pop("authenticated", None)
             yield client, app
         db.session.remove()
@@ -258,6 +263,7 @@ def test_worksheet_reset_run_clears_non_annual_preserves_annual(worksheet_client
             result_status="tested",
             sheet_time_in_raw="8am",
             sheet_time_out_raw="9am",
+            billing_status="bill",
             test_monthly_route_id=1,
         )
         h_annual = MonthlyRouteTestHistory(
@@ -266,6 +272,7 @@ def test_worksheet_reset_run_clears_non_annual_preserves_annual(worksheet_client
             month_date=date(2026, 5, 1),
             result_status="skipped",
             skip_reason="annual",
+            billing_status="do_not_bill",
             test_monthly_route_id=1,
         )
         db.session.add_all([route, loc_a, loc_b, run, h_clear, h_annual])
@@ -292,10 +299,12 @@ def test_worksheet_reset_run_clears_non_annual_preserves_annual(worksheet_client
         assert r1.result_status is None
         assert r1.sheet_time_in_raw is None
         assert r1.sheet_time_out_raw is None
+        assert r1.billing_status is None
         r2 = db.session.get(MonthlyRouteTestHistory, 8002)
         assert r2 is not None
         assert r2.result_status is None
         assert (r2.skip_reason or "").strip() == ""
+        assert r2.billing_status is None
         run_after = db.session.get(MonthlyRouteRun, 9001)
         assert run_after is not None
         assert run_after.started_at is None
@@ -350,6 +359,51 @@ def test_worksheet_reset_run_clears_master_sheet_legacy_history(worksheet_client
     details = client.get("/api/monthly_routes/routes/1/run_details?month=2026-05-01")
     assert details.status_code == 200
     assert details.get_json()["counts"]["all_good_count"] == 0
+
+
+def test_worksheet_reset_run_preserves_legacy_billing(worksheet_client):
+    client, app = worksheet_client
+    with app.app_context():
+        route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
+        loc = MonthlyRouteLocation(
+            id=101,
+            address="123 Test St",
+            address_normalized="123 test st",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
+            building=None,
+            building_normalized="",
+            status_normalized="active",
+            status_raw="Active",
+            monthly_route_id=1,
+        )
+        run = MonthlyRouteRun(
+            id=9002,
+            monthly_route_id=1,
+            month_date=date(2026, 5, 1),
+            started_at=datetime(2026, 5, 2, 10, 0, 0, tzinfo=PACIFIC_TZ),
+            status="open",
+            source="technician_app",
+        )
+        hist = MonthlyRouteTestHistory(
+            id=8003,
+            location_id=101,
+            month_date=date(2026, 5, 1),
+            result_status="tested",
+            billing_status="legacy",
+            test_monthly_route_id=1,
+        )
+        db.session.add_all([route, loc, run, hist])
+        db.session.commit()
+
+    res = client.post("/api/monthly_routes/routes/1/worksheet/reset_run?month=2026-05-01", json={})
+    assert res.status_code == 200
+
+    with app.app_context():
+        row = db.session.get(MonthlyRouteTestHistory, 8003)
+        assert row is not None
+        assert row.result_status is None
+        assert row.billing_status == "legacy"
 
 
 def test_worksheet_reset_run_rejects_completed(worksheet_client):
@@ -1205,9 +1259,9 @@ def test_portal_post_runs_then_get_worksheet(portal_only_client, monkeypatch):
         db.session.add_all([route, loc])
         db.session.commit()
 
-    post = client.post("/api/technician_portal/routes/1/runs")
-    assert post.status_code == 200
-    started = post.get_json()
+    from tests.run_workflow_helpers import portal_start_run
+
+    started = portal_start_run(client)
     assert started["run"]["month_date"] == "2026-05-01"
     assert started["run"]["opened_at"] is not None
     assert started["run"]["started_at"] is not None
@@ -1254,12 +1308,12 @@ def test_portal_reopen_completed_run_forbidden(portal_only_client, monkeypatch):
         db.session.commit()
 
     res = client.post(
-        "/api/technician_portal/routes/1/runs/reopen",
-        json={"month_date": "2026-05-01"},
+        "/api/technician_portal/routes/1/runs/reopen_field",
+        json={},
         content_type="application/json",
     )
-    assert res.status_code == 403
-    assert res.get_json().get("code") == "portal_reopen_forbidden"
+    assert res.status_code == 409
+    assert res.get_json().get("code") == "run_completed"
 
 
 def test_portal_patch_blocked_when_run_completed(portal_only_client, monkeypatch):

@@ -1887,9 +1887,10 @@ export default function TechnicianWorksheetPage() {
         <Modal.Body>
           <p className="mb-2">
             This clears everything recorded during this run for this month: tested/skipped outcomes,{' '}
-            <strong>Time In</strong> / <strong>Time Out</strong>, run comments, and any field edits
-            (panel, annual month, door codes, etc.). Worksheet rows are restored from the library
-            master. The <strong>field run started</strong> timestamp is cleared.
+            clock events, <strong>Time In</strong> / <strong>Time Out</strong>, run comments, billing status on
+            each site, and any field edits (panel, annual month, door codes, etc.). Worksheet rows
+            are restored from the library master. The <strong>field run started</strong> timestamp
+            is cleared.
           </p>
           <p className="mb-0 small text-muted">
             Use this when you need a clean restart. Completed jobs must be reopened first.

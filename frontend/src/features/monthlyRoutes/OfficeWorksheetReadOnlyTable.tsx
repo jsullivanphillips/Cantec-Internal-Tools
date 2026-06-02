@@ -28,6 +28,7 @@ import {
   type OfficeStopStatus,
   type OfficeWorksheetChangeColumnVisibility,
 } from './officeWorksheetTableShared'
+import { stopMonitoringDisplay } from './stopMonitoringDisplay'
 
 function officeCellClassName(updated: boolean | undefined, extra = ''): string {
   const base = `tw-office-detail-cell${extra ? ` ${extra}` : ''}`
@@ -307,17 +308,29 @@ function OfficeStopTableRow({
       {columns.monitoring ? (
         <td className={officeCellClassName(monitoringUpdated)}>
           <div className="tw-office-compact-field-list">
-            <OfficeCompactField
-              label="Company"
-              value={stop.monitoring_company}
-              change={auditChangeForCompactLabel(lid, 'Company', fieldChangesByLocation)}
-            />
-            <OfficeCompactField
-              label="Notes"
-              value={stop.monitoring_notes}
-              wide
-              change={auditChangeForCompactLabel(lid, 'Notes', fieldChangesByLocation)}
-            />
+            {(() => {
+              const monitoring = stopMonitoringDisplay(stop)
+              return (
+                <>
+                  <OfficeCompactField
+                    label="Company"
+                    value={monitoring.company}
+                    change={auditChangeForCompactLabel(lid, 'Company', fieldChangesByLocation)}
+                  />
+                  <OfficeCompactField
+                    label="Account #"
+                    value={monitoring.account}
+                    change={auditChangeForCompactLabel(lid, 'Account #', fieldChangesByLocation)}
+                  />
+                  <OfficeCompactField
+                    label="Notes"
+                    value={monitoring.notes}
+                    wide
+                    change={auditChangeForCompactLabel(lid, 'Notes', fieldChangesByLocation)}
+                  />
+                </>
+              )
+            })()}
           </div>
         </td>
       ) : null}

@@ -38,6 +38,9 @@ export type LinkedKeySummary = {
 export type MonitoringCompanySummary = {
   id: number
   name: string | null
+  primary_phone?: string | null
+  secondary_phone?: string | null
+  active?: boolean
 }
 
 /** V2 testing stop (``MonthlyTestingSite``); one worksheet row / billing line item. */
@@ -65,6 +68,7 @@ export type TestingSiteSummary = {
   facp_detail: string | null
   monitoring_company_id?: number | null
   monitoring_company?: MonitoringCompanySummary | null
+  monitoring_account_number?: string | null
   monitoring_notes: string | null
   testing_procedures: string | null
   inspection_tech_notes: string | null
@@ -226,6 +230,8 @@ export type RouteRunMonthSummary = {
   opened_at: string | null
   started_at: string | null
   completed_at: string | null
+  workflow_stage?: string
+  workflow_stage_label?: string
 }
 
 export type MonthlyRouteDetailPayload = {
@@ -330,14 +336,142 @@ export type MonthlyRunDetailLocationFieldChanges = {
   changes: MonthlyRunDetailLocationFieldChange[]
 }
 
+export type MonthlyRunDetailBillingLocation = {
+  location_id: number
+  location_label: string
+  billing_status: string | null
+}
+
+export type MonthlyRunDetailReviewMeta = {
+  stop_count: number
+}
+
+export type MonthlyRunDetailDeficiencySummary = {
+  id: number
+  monthly_testing_site_id?: number
+  created_run_id?: number | null
+  title: string | null
+  severity: string | null
+  status: string | null
+  description?: string | null
+  verification_notes?: string | null
+  reported_by_tech_id?: string | null
+  reported_by_tech_name?: string | null
+  last_edited_by_tech_id?: string | null
+  last_edited_by_tech_name?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export type MonthlyRunDetailLocationAttentionFlags = {
+  billing_unset: boolean
+  has_field_edits: boolean
+  has_active_deficiencies: boolean
+  has_job_comment: boolean
+  needs_attention: boolean
+}
+
+export type MonthlyRunDetailLocationStop = {
+  testing_site_id: number
+  location_id: number
+  stop_number: number
+  display_address: string
+  label: string | null
+  month_date: string
+  result_status: string | null
+  test_outcome?: string | null
+  skip_reason?: string | null
+  skip_category?: string | null
+  skip_note?: string | null
+  annual_month: string | null
+  ring?: string | null
+  key_number?: string | null
+  door_code?: string | null
+  monitoring_company?: string | null
+  monitoring_company_id?: number | null
+  monitoring_account_number?: string | null
+  monitoring_notes?: string | null
+  monitoring_company_record?: MonitoringCompanySummary | null
+  run_comments: string | null
+  testing_procedures: string | null
+  inspection_tech_notes: string | null
+  confirmed_no_deficiencies?: boolean
+  billing_status?: string | null
+  has_field_edits: boolean
+  review_kind: 'with_changes' | 'tested_only'
+  deficiency_summaries: MonthlyRunDetailDeficiencySummary[]
+  has_active_deficiencies: boolean
+}
+
+export type MonthlyRunDetailLocation = {
+  location_id: number
+  location_label: string
+  billing_status: string | null
+  first_stop_number: number
+  last_stop_number: number
+  attention_flags: MonthlyRunDetailLocationAttentionFlags
+  stops: MonthlyRunDetailLocationStop[]
+}
+
+export type RunReviewStopSummary = {
+  testing_site_id: number
+  location_id: number
+  stop_number: number
+  display_address: string
+  label: string | null
+  month_date: string
+  result_status: string | null
+  test_outcome?: string | null
+  skip_reason?: string | null
+  skip_category?: string | null
+  skip_note?: string | null
+  annual_month: string | null
+  run_comments: string | null
+  confirmed_no_deficiencies?: boolean
+  billing_status?: string | null
+  has_field_edits: boolean
+  review_kind: 'with_changes' | 'tested_only'
+}
+
+export type RunReviewSummaryPayload = {
+  stop_count: number
+  outcome_only_count: number
+  all_good_count: number
+  passed_with_problems_count: number
+  failed_count: number
+  skipped_count: number
+  updated_count: number
+}
+
+export type MonthlyRunDetailReviewPayload = {
+  stops: RunReviewStopSummary[]
+  summary: RunReviewSummaryPayload
+}
+
+export type RunReviewStopDetailChange = {
+  id: string
+  kind: 'field' | 'field_added' | 'field_removed' | 'status' | 'comment_added'
+  label: string
+  before: string | null
+  after: string
+}
+
+export type MonthlyRunDetailReviewStopDetailPayload = {
+  testing_site_id: number
+  location_id: number
+  changes: RunReviewStopDetailChange[]
+}
+
 export type MonthlyRunDetailPayload = {
   route: MonthlyRouteSummary
   month_date: string
   run: TechnicianWorksheetRun | null
   counts: MonthlyRunDetailCounts
   specialists_month: MonthlyRouteSpecialistMonthPayload | null
-  notable_stops: TechnicianWorksheetStop[]
-  field_changes_by_location: MonthlyRunDetailLocationFieldChanges[]
+  billing_locations: MonthlyRunDetailBillingLocation[]
+  review_meta: MonthlyRunDetailReviewMeta
+  locations?: MonthlyRunDetailLocation[]
+  review_summary?: RunReviewSummaryPayload
 }
 
 export type TechnicianWorksheetRow = {
@@ -382,10 +516,21 @@ export type TechnicianWorksheetRun = {
   opened_at: string | null
   /** ISO timestamp when field techs explicitly started the run (portal ``Start Run``). */
   started_at: string | null
+  /** Office released the route-month for field work. */
+  prepared_at?: string | null
+  prepared_by?: string | null
+  /** Field technicians ended active testing (portal End run). */
+  field_ended_at?: string | null
+  /** Office finished the run-details review checklist. */
+  office_review_completed_at?: string | null
+  office_review_completed_by?: string | null
   /** ISO timestamp when the run was marked completed (office / workflow). */
   completed_at: string | null
   /** Where the run was created: ``technician_app``, ``csv_import``, ``office_manual``. */
   source: string
+  /** Server-derived workflow stage id (see ``runWorkflowShared``). */
+  workflow_stage?: string
+  workflow_stage_label?: string
   /**
    * Server-computed flag: ``true`` when the run is explicitly finished (``completed_at`` / terminal ``status``),
    * or when the run's month is strictly before the current Pacific month. Worksheet uses this to switch the
@@ -404,10 +549,12 @@ export function worksheetRunExplicitlyCompleted(run: TechnicianWorksheetRun | nu
   return st === 'completed' || st === 'closed'
 }
 
-/** Field technicians started the run (portal) and it is not finished — office must not edit outcomes. */
+/** Field technicians are actively logging (started, not field-ended, not office-closed). */
 export function worksheetRunFieldActive(run: TechnicianWorksheetRun | null | undefined): boolean {
   if (!run || worksheetRunExplicitlyCompleted(run)) return false
-  return (run.started_at || '').trim().length > 0
+  const started = (run.started_at || '').trim().length > 0
+  const fieldEnded = (run.field_ended_at || '').trim().length > 0
+  return started && !fieldEnded
 }
 
 export type WorksheetOfficeRunActivity = 'completed' | 'active' | 'inactive'
@@ -439,6 +586,9 @@ export type TechnicianWorksheetStop = {
   key_number: string | null
   annual_month: string | null
   monitoring_company: string | null
+  monitoring_company_id?: number | null
+  monitoring_company_record?: MonitoringCompanySummary | null
+  monitoring_account_number?: string | null
   monitoring_notes: string | null
   result_status: string | null
   skip_reason: string | null
@@ -783,6 +933,7 @@ export type TestingSiteEditForm = {
   property_management_company: string
   annual_month: string
   monitoring_company_id: string
+  monitoring_account_number: string
   monitoring_notes: string
   testing_procedures: string
   inspection_tech_notes: string
@@ -812,6 +963,7 @@ export function buildTestingSiteEditForm(
     annual_month: normalizeAnnualMonthForSelect(annualRaw),
     monitoring_company_id:
       ts.monitoring_company_id != null ? String(ts.monitoring_company_id) : '',
+    monitoring_account_number: ts.monitoring_account_number ?? '',
     monitoring_notes: ts.monitoring_notes ?? '',
     testing_procedures: ts.testing_procedures ?? '',
     inspection_tech_notes: ts.inspection_tech_notes ?? '',
@@ -838,6 +990,7 @@ export function testingSitePayloadFromEditForm(form: TestingSiteEditForm): Recor
     property_management_company: form.property_management_company.trim() || null,
     annual_month: form.annual_month.trim() || null,
     monitoring_company_id,
+    monitoring_account_number: form.monitoring_account_number.trim() || null,
     monitoring_notes: form.monitoring_notes.trim() || null,
     testing_procedures: form.testing_procedures.trim() || null,
     inspection_tech_notes: form.inspection_tech_notes.trim() || null,
@@ -971,13 +1124,17 @@ export function isPacificTodayRouteScheduledTestDay(
   return sched === pacificCalendarDateIso(reference)
 }
 
-/** Office run-details / worksheet status pill when the run file is open vs finished. */
+/** Office run-details / worksheet status pill (workflow-aware when run header present). */
 export function runOfficeStatusPillLabel(
   activity: WorksheetOfficeRunActivity,
   monthFirstIso: string,
   route: MonthlyRouteSummary | null | undefined,
   reference: Date = new Date(),
+  run?: TechnicianWorksheetRun | null,
 ): string {
+  if (run?.workflow_stage_label) {
+    return run.workflow_stage_label
+  }
   switch (activity) {
     case 'completed':
       return 'Completed'

@@ -6,9 +6,15 @@ import {
   buildTestingSiteEditForm,
   normalizeAnnualMonthForSelect,
   type LibraryLocation,
+  type MonitoringCompanySummary,
   type TestingSiteEditForm,
   type TestingSiteSummary,
 } from './monthlyRoutesShared'
+import MonitoringCompanySelect, {
+  monitoringCompanyDisplayName,
+  monitoringCompanyPhonesText,
+} from './MonitoringCompanySelect'
+import { useMonitoringCompanies } from './useMonitoringCompanies'
 
 const INPUT_STYLE: CSSProperties = {
   backgroundColor: '#f8fafc',
@@ -304,8 +310,10 @@ function TestingSiteViewFields({
       <dd className="col-sm-9">{site.panel_location?.trim() || '—'}</dd>
       <dt className="col-sm-3 text-muted">Door code</dt>
       <dd className="col-sm-9">{site.door_code?.trim() || '—'}</dd>
-      <dt className="col-sm-3 text-muted">Monitoring</dt>
+      <dt className="col-sm-3 text-muted">Monitoring company</dt>
       <dd className="col-sm-9">{monitoringDisplay(site) || '—'}</dd>
+      <dt className="col-sm-3 text-muted">Account #</dt>
+      <dd className="col-sm-9">{site.monitoring_account_number?.trim() || '—'}</dd>
       <dt className="col-sm-3 text-muted">Monitoring notes</dt>
       <dd className="col-sm-9 text-break" style={{ whiteSpace: 'pre-wrap' }}>
         {site.monitoring_notes?.trim() || '—'}
@@ -536,6 +544,136 @@ function InlineTestingSiteFieldRow({
   )
 }
 
+function InlineMonitoringCompanyFieldRow({
+  site,
+  form,
+  companies,
+  companiesLoading,
+  onCompanyCreated,
+  onSave,
+}: {
+  site: TestingSiteSummary
+  form: TestingSiteEditForm
+  companies: MonitoringCompanySummary[]
+  companiesLoading?: boolean
+  onCompanyCreated: (company: MonitoringCompanySummary) => void
+  onSave: (fieldKey: EditableTestingSiteField, value: string) => Promise<void> | void
+}) {
+  const inputId = useId()
+  const [editing, setEditing] = useState(false)
+  const [draftId, setDraftId] = useState(form.monitoring_company_id)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  const parsedId = form.monitoring_company_id.trim()
+    ? Number.parseInt(form.monitoring_company_id, 10)
+    : null
+  const displayName = monitoringCompanyDisplayName(
+    parsedId != null && !Number.isNaN(parsedId) ? parsedId : null,
+    companies,
+    site.monitoring_company?.name,
+  )
+  const phones = monitoringCompanyPhonesText(
+    site.monitoring_company ??
+      (parsedId != null && !Number.isNaN(parsedId)
+        ? companies.find((row) => row.id === parsedId)
+        : null),
+  )
+
+  useEffect(() => {
+    if (!editing) setDraftId(form.monitoring_company_id)
+  }, [form.monitoring_company_id, editing])
+
+  const commit = async () => {
+    const next = draftId.trim()
+    if (next === form.monitoring_company_id.trim()) {
+      setEditing(false)
+      setSaveError(null)
+      return
+    }
+    setSaving(true)
+    setSaveError(null)
+    try {
+      await onSave('monitoring_company_id', next)
+      setEditing(false)
+    } catch (err) {
+      setSaveError(getErrorMessage(err))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!editing) {
+    return (
+      <div
+        className="monthly-testing-site-field-row monthly-testing-site-field-row--editable"
+        role="button"
+        tabIndex={0}
+        onClick={(e) => {
+          const target = e.target
+          if (target instanceof HTMLElement && target.closest('a, button')) return
+          setSaveError(null)
+          setEditing(true)
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            setSaveError(null)
+            setEditing(true)
+          }
+        }}
+      >
+        <div className="monthly-testing-site-field-label">Monitoring company</div>
+        <div className="monthly-testing-site-field-value">
+          <div>{displayName}</div>
+          {phones ? <div className="text-muted small">{phones}</div> : null}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="monthly-testing-site-field-row monthly-testing-site-field-row--editing">
+      <label className="monthly-testing-site-field-label" htmlFor={inputId}>
+        Monitoring company
+      </label>
+      <div className="monthly-testing-site-field-value">
+        <MonitoringCompanySelect
+          id={inputId}
+          companies={companies}
+          value={draftId.trim() ? Number.parseInt(draftId, 10) || null : null}
+          disabled={saving || companiesLoading}
+          onChange={(nextId) => setDraftId(nextId != null ? String(nextId) : '')}
+          onCompanyCreated={onCompanyCreated}
+        />
+        {saveError ? <div className="text-danger small mt-1">{saveError}</div> : null}
+        <div className="monthly-testing-site-field-edit-actions">
+          <button
+            type="button"
+            className="monthly-testing-site-field-edit-btn"
+            disabled={saving}
+            onClick={() => {
+              setDraftId(form.monitoring_company_id)
+              setSaveError(null)
+              setEditing(false)
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="monthly-testing-site-field-edit-btn monthly-testing-site-field-edit-btn--primary"
+            disabled={saving}
+            onClick={() => void commit()}
+          >
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function InlineTestingSiteSection({
   title,
   variant,
@@ -570,6 +708,7 @@ function TestingSiteInlineFields({
 }) {
   const form = buildTestingSiteEditForm(site, location)
   const annualOptions = annualMonthDropdownOptions(form.annual_month)
+  const { companies, loading: companiesLoading, appendCompany } = useMonitoringCompanies()
 
   const saveField = (fieldKey: EditableTestingSiteField, value: string) =>
     onInlineSave({ ...form, [fieldKey]: value })
@@ -669,15 +808,19 @@ function TestingSiteInlineFields({
           displayValue={site.panel_location?.trim() || '—'}
           onSave={saveField}
         />
+        <InlineMonitoringCompanyFieldRow
+          site={site}
+          form={form}
+          companies={companies}
+          companiesLoading={companiesLoading}
+          onCompanyCreated={appendCompany}
+          onSave={saveField}
+        />
         <InlineTestingSiteFieldRow
-          fieldKey="monitoring_company_id"
-          label="Monitoring company"
-          value={form.monitoring_company_id}
-          displayValue={monitoringDisplay(site) || '—'}
-          inputMode="numeric"
-          helperText={
-            site.monitoring_company?.name ? `Current company: ${site.monitoring_company.name}` : null
-          }
+          fieldKey="monitoring_account_number"
+          label="Account #"
+          value={form.monitoring_account_number}
+          displayValue={site.monitoring_account_number?.trim() || '—'}
           onSave={saveField}
         />
         <InlineTestingSiteFieldRow
@@ -729,6 +872,11 @@ function TestingSiteEditFormFields({
   form: TestingSiteEditForm
   onFormChange: (patch: Partial<TestingSiteEditForm>) => void
 }) {
+  const { companies, loading: companiesLoading, appendCompany } = useMonitoringCompanies()
+  const companyId = form.monitoring_company_id.trim()
+    ? Number.parseInt(form.monitoring_company_id, 10)
+    : null
+
   return (
     <div className="d-flex flex-column gap-2">
       {total > 1 ? (
@@ -862,18 +1010,25 @@ function TestingSiteEditFormFields({
         </div>
       </div>
       <Form.Group>
-        <Form.Label className="small mb-1">Monitoring company ID</Form.Label>
+        <Form.Label className="small mb-1">Monitoring company</Form.Label>
+        <MonitoringCompanySelect
+          companies={companies}
+          value={companyId != null && !Number.isNaN(companyId) ? companyId : null}
+          disabled={companiesLoading}
+          onChange={(nextId) =>
+            onFormChange({ monitoring_company_id: nextId != null ? String(nextId) : '' })
+          }
+          onCompanyCreated={appendCompany}
+        />
+      </Form.Group>
+      <Form.Group>
+        <Form.Label className="small mb-1">Account #</Form.Label>
         <Form.Control
           style={INPUT_STYLE}
           size="sm"
-          inputMode="numeric"
-          placeholder="Leave blank if none"
-          value={form.monitoring_company_id}
-          onChange={(e) => onFormChange({ monitoring_company_id: e.target.value })}
+          value={form.monitoring_account_number}
+          onChange={(e) => onFormChange({ monitoring_account_number: e.target.value })}
         />
-        {site.monitoring_company?.name ? (
-          <Form.Text className="text-muted">Current: {site.monitoring_company.name}</Form.Text>
-        ) : null}
       </Form.Group>
       <Form.Group>
         <Form.Label className="small mb-1">Monitoring notes</Form.Label>

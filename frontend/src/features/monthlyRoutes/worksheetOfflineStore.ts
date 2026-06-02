@@ -40,6 +40,8 @@ export type WorksheetStopChangeSet = Partial<
     | 'property_management_company'
     | 'building_name'
     | 'monitoring_company'
+    | 'monitoring_company_id'
+    | 'monitoring_account_number'
     | 'monitoring_notes'
     | 'result_status'
     | 'skip_reason'
@@ -49,7 +51,21 @@ export type WorksheetStopChangeSet = Partial<
     | 'time_in'
     | 'time_out'
   >
->
+> & {
+  /** Local optimistic display only; never sent to the API. */
+  monitoring_company_record?: TechnicianWorksheetStop['monitoring_company_record']
+}
+
+const LOCAL_ONLY_WORKSHEET_STOP_CHANGE_KEYS = new Set(['monitoring_company', 'monitoring_company_record'])
+
+/** Strip client-only optimistic fields before PATCH. */
+export function worksheetStopChangesForSync(changes: WorksheetStopChangeSet): WorksheetStopChangeSet {
+  const next: WorksheetStopChangeSet = { ...changes }
+  for (const key of LOCAL_ONLY_WORKSHEET_STOP_CHANGE_KEYS) {
+    delete next[key as keyof WorksheetStopChangeSet]
+  }
+  return next
+}
 
 export type WorksheetQueueItem = {
   id: string

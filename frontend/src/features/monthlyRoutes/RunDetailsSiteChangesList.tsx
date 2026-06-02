@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import RunDetailsSiteChangeCard from './RunDetailsSiteChangeCard'
 import RunReviewFilterBar from './RunReviewFilterBar'
 import RunReviewTestedOnlyGroup from './RunReviewTestedOnlyGroup'
-import type { NotableStopChangeCard, RunReviewFilter, RunReviewSummary } from './notableStopChanges'
+import type { NotableChangeItem, NotableStopChangeCard, RunReviewFilter, RunReviewSummary } from './notableStopChanges'
 import { filterRunReviewCards, partitionRunReviewCards, runReviewStopDomId } from './notableStopChanges'
 
 export default function RunDetailsSiteChangesList({
@@ -11,12 +11,16 @@ export default function RunDetailsSiteChangesList({
   summary,
   filter,
   onFilterChange,
+  routeId,
+  onCardDetailLoaded,
 }: {
   cards: NotableStopChangeCard[]
   monthDate: string
   summary: RunReviewSummary
   filter: RunReviewFilter
   onFilterChange: (filter: RunReviewFilter) => void
+  routeId: number
+  onCardDetailLoaded: (testingSiteId: number, changes: NotableChangeItem[]) => void
 }) {
   const filtered = useMemo(
     () => filterRunReviewCards(cards, filter, monthDate),
@@ -45,12 +49,22 @@ export default function RunDetailsSiteChangesList({
                 key={`${card.locationId}:${card.stop.testing_site_id}`}
                 id={runReviewStopDomId(card)}
               >
-                <RunDetailsSiteChangeCard card={card} />
+                <RunDetailsSiteChangeCard
+                  card={card}
+                  routeId={routeId}
+                  monthDate={monthDate}
+                  onDetailLoaded={onCardDetailLoaded}
+                />
               </li>
             ))}
           </ul>
           {usePartitionedLayout && testedOnly.length > 0 ? (
-            <RunReviewTestedOnlyGroup cards={testedOnly} />
+            <RunReviewTestedOnlyGroup
+              cards={testedOnly}
+              routeId={routeId}
+              monthDate={monthDate}
+              onCardDetailLoaded={onCardDetailLoaded}
+            />
           ) : null}
         </>
       )}

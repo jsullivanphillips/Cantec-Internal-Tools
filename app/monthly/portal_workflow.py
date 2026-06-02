@@ -546,6 +546,22 @@ def set_test_outcome(
     apply_billing_defaults_for_location(int(loc.id), month_first, route_id)
 
 
+def clear_test_outcome(
+    mtsm: MonthlyTestingSiteMonth,
+    loc: MonthlyRouteLocation,
+    route_id: int,
+    month_first: date,
+) -> None:
+    """Office clears portal test outcome so the stop returns to pending review."""
+    mtsm.test_outcome = None
+    mtsm.skip_category = None
+    mtsm.skip_note = None
+    mtsm.confirmed_no_deficiencies = False
+    mtsm.result_status = None
+    mtsm.skip_reason = None
+    apply_billing_defaults_for_location(int(loc.id), month_first, route_id)
+
+
 def serialize_deficiency(d: MonthlyTestingSiteDeficiency) -> dict[str, object]:
     return {
         "id": int(d.id),

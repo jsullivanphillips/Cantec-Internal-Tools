@@ -1,4 +1,4 @@
-import type { TechnicianWorksheetStop } from './monthlyRoutesShared'
+import type { RunReviewStopSummary, TechnicianWorksheetStop } from './monthlyRoutesShared'
 import {
   runReviewOutcomeBadgeClass,
   runReviewOutcomeHeadline,
@@ -6,7 +6,7 @@ import {
   stopMatchesOutcomeFilter,
   stopPortalOutcome,
 } from './officeRunReviewShared'
-import type { PortalTestOutcome } from './portalWorkflowShared'
+import { formatSkipReasonDisplayText, type PortalTestOutcome } from './portalWorkflowShared'
 import {
   auditFieldDisplayLabel,
   fieldChangesForLocation,
@@ -15,7 +15,6 @@ import {
   officeStopStatusLabel,
   stopHasRunComments,
   worksheetReadOnlyDisplay,
-  worksheetSkipReasonDisplayBlock,
   type OfficeFieldChange,
 } from './officeWorksheetTableShared'
 
@@ -53,6 +52,8 @@ export type NotableStopChangeCard = {
   /** Shown inline with stop # and address (not duplicated in the change list). */
   resultHeadline: string | null
   changes: NotableChangeItem[]
+  /** True when audit field edits exist but changes[] not loaded yet. */
+  hasFieldEdits?: boolean
 }
 
 /** Inline result text for run-review card headers. */
@@ -141,9 +142,9 @@ function collectStatusChange(
 ): NotableChangeItem | null {
   const status = officeStopStatus(stop, monthDate)
   if (status !== 'skipped' && status !== 'annual') return null
-  const skipBlock = worksheetSkipReasonDisplayBlock(stop.skip_reason)
+  const skipBlock = formatSkipReasonDisplayText(stop.skip_reason)
   let after = officeStopStatusLabel(status)
-  if (skipBlock && skipBlock !== '—') {
+  if (skipBlock) {
     after = `${after} · ${skipBlock}`
   }
   return {
@@ -208,6 +209,97 @@ export function collectNotableStopChanges(
     resultHeadline: runReviewResultHeadline(stop, monthDate),
     changes,
   }
+}
+
+function stopsAtLocationFromSummaries(
+  stops: RunReviewStopSummary[],
+  locationId: number,
+): RunReviewStopSummary[] {
+  return stops
+    .filter((s) => s.location_id === locationId)
+    .sort((a, b) => a.testing_site_id - b.testing_site_id)
+}
+
+/** Map lazy review summary row to worksheet stop shape for shared review helpers. */
+export function reviewSummaryAsWorksheetStop(summary: RunReviewStopSummary): TechnicianWorksheetStop {
+  return {
+    testing_site_id: summary.testing_site_id,
+    location_id: summary.location_id,
+    history_month_row_id: 0,
+    month_date: summary.month_date,
+    display_address: summary.display_address,
+    building_name: null,
+    property_management_company: null,
+    label: summary.label,
+    panel: null,
+    panel_location: null,
+    door_code: null,
+    ring: null,
+    key_number: null,
+    annual_month: summary.annual_month,
+    monitoring_company: null,
+    monitoring_notes: null,
+    result_status: summary.result_status,
+    skip_reason: summary.skip_reason ?? null,
+    test_outcome: summary.test_outcome,
+    skip_category: summary.skip_category,
+    skip_note: summary.skip_note,
+    confirmed_no_deficiencies: summary.confirmed_no_deficiencies,
+    billing_status: summary.billing_status,
+    testing_procedures: null,
+    inspection_tech_notes: null,
+    run_comments: summary.run_comments,
+    time_in: null,
+    time_out: null,
+    route_stop_order: null,
+    session_route_stop_order: null,
+    stop_number: summary.stop_number,
+    version_updated_at: null,
+  }
+}
+
+/** Build review cards from lazy-loaded summaries (no field deltas until card expand). */
+export function buildNotableStopChangeCardsFromSummaries(
+  summaries: RunReviewStopSummary[],
+  monthDate: string,
+): NotableStopChangeCard[] {
+  const ordered = [...summaries].sort((a, b) => {
+    const aNum = Number.isFinite(a.stop_number) ? a.stop_number : Number.MAX_SAFE_INTEGER
+    const bNum = Number.isFinite(b.stop_number) ? b.stop_number : Number.MAX_SAFE_INTEGER
+    return aNum - bNum || a.location_id - b.location_id || a.testing_site_id - b.testing_site_id
+  })
+  const locationCounts = new Map<number, number>()
+  for (const stop of ordered) {
+    locationCounts.set(stop.location_id, (locationCounts.get(stop.location_id) ?? 0) + 1)
+  }
+  return ordered.map((summary) => {
+    const stop = reviewSummaryAsWorksheetStop(summary)
+    const atLocation = stopsAtLocationFromSummaries(ordered, summary.location_id)
+    const siteIndex =
+      atLocation.findIndex((s) => s.testing_site_id === summary.testing_site_id) + 1
+    const siteCount = locationCounts.get(summary.location_id) ?? 1
+    const siteLabel = (summary.label || '').trim() || 'Primary testing location'
+    return {
+      stop,
+      stopNumber: summary.stop_number,
+      displayAddress: summary.display_address,
+      locationId: summary.location_id,
+      siteLabel,
+      siteIndex,
+      siteCount,
+      reviewKind: summary.review_kind,
+      resultHeadline: runReviewResultHeadline(stop, monthDate),
+      changes: [],
+      hasFieldEdits: summary.has_field_edits,
+    }
+  })
+}
+
+export function mergeStopDetailChanges(
+  card: NotableStopChangeCard,
+  changes: NotableChangeItem[],
+): NotableStopChangeCard {
+  return { ...card, changes: sortChanges(changes) }
 }
 
 function stopsAtLocation(stops: TechnicianWorksheetStop[], locationId: number): TechnicianWorksheetStop[] {
@@ -302,7 +394,8 @@ export function cardIsTestedOnly(card: NotableStopChangeCard): boolean {
 }
 
 export function cardHasFieldEdits(card: NotableStopChangeCard): boolean {
-  return card.changes.length > 0
+  if (card.changes.length > 0) return true
+  return card.hasFieldEdits === true
 }
 
 export function cardNeedsReview(card: NotableStopChangeCard, monthDate: string): boolean {

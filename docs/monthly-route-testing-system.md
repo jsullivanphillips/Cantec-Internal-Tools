@@ -109,7 +109,7 @@ Primary API for library, routes, worksheet, CSV import, comments.
 | Library | `GET/POST/PATCH/DELETE /api/monthly_routes/library[...]` — filters: `q`, `route`, `skipped_any`, `annual_tested_conflict`, month range |
 | Routes | `GET /api/monthly_routes/routes`, `GET .../routes/<id>` |
 | Worksheet | `GET .../worksheet`, `GET .../worksheet/stream` (SSE), `PATCH .../worksheet/rows/<location_id>`, `PATCH .../worksheet/stops/<testing_site_id>` (portal v2), `POST .../worksheet/reset_run` |
-| Runs | `GET .../run_details?month=` (office run summary), `POST .../runs/import_csv`, `POST .../runs/complete`, `POST .../runs/reopen` |
+| Runs | `GET .../run_details?month=` (office run summary), `GET .../run_details/review?month=` (lazy run review), `GET .../run_details/review/stops/<testing_site_id>?month=` (per-stop change detail), `POST .../runs/import_csv`, `POST .../runs/complete`, `POST .../runs/reopen` |
 | Other | `PUT .../location_order`, comments, geocode, `GET .../testing_session` |
 
 Location create/update also runs: `sync_monthly_route_fk_for_location`, `sync_key_fk_for_location`, v2 `sync_testing_sites_from_legacy`, `push_legacy_keys_to_primary_testing_site`.
@@ -127,7 +127,17 @@ Delegates most mutations to `monthly_routes`, then augments with v2:
 
 **Frontend split:** Library/map pages use **`/api/monthly_sites/...`**; route detail, run details, and worksheet use **`/api/monthly_routes/...`**.
 
-**Office run navigation:** Route detail → **Run details** (`/monthlies/routes/:routeId/runs/:monthIso`, `GET .../run_details`) → technician worksheet. Run details requires a ``MonthlyRouteRun`` row for that month (CSV import, portal, or worksheet materialization)—master-sheet ledger history alone is not enough. The route detail API exposes ``runs_by_month`` (run files) separately from ``testing_by_month`` (sheet ledger counts from ``monthly_route_test_history``). Run details **KPI counts** (Tested / Skipped / Annuals) are derived from worksheet stops on the route for that month: a site counts as **Annual** when its ``annual_month`` matches the run month (or it was skipped with an annual reason), unless it was **tested**. Run details exposes a collapsible **Run review** via ``notable_stops``: every stop that was **tested**, **skipped**, is due as an **annual** that month (``annual_month`` matches the run month, even if the technician took no action), or had property/snapshot audit edits or run comments. Tested stops with no edits render as a minimal card; others show a per-field change summary (line diff for long text). ``field_changes_by_location`` supplies audit data; test workflow and ``reset_run`` audit rows are omitted.
+**Office run navigation:** Route detail → click any month row in the runs table → **Run details** (`/monthlies/routes/:routeId/runs/:monthIso`) → technician worksheet. Every calendar month row opens run details (draft prep, active run, or legacy sheet). The **Status** column shows the workflow stage when a ``MonthlyRouteRun`` exists (``Draft``, ``Prepared``, ``Field in progress``, etc.), **Legacy sheet** when only master-sheet ledger history exists, or **Draft** when neither exists yet. ``runs_by_month`` on the route detail API includes ``workflow_stage`` / ``workflow_stage_label`` for months with a run file.
+
+**Run details loading:**
+
+1. **Base** — ``GET .../run_details?month=`` returns route header, run lifecycle, KPI ``counts``, ``locations[]`` (all worksheet stops grouped by billing location with ``attention_flags`` and per-stop ``deficiency_summaries`` — same fields as portal worksheet deficiencies, for office review cards/modal), ``review_summary``, plus legacy ``billing_locations`` / ``review_meta`` for compatibility.
+2. **Stop detail** — ``GET .../run_details/review/stops/<testing_site_id>?month=`` loads when a stop row’s field changes are expanded; returns pre-built ``changes[]``. **Site modal** — ``GET .../run_details/stops/<testing_site_id>?month=`` loads one full worksheet stop (panel fields, clock events, deficiencies) when office staff open site details from a location card.
+3. **Legacy review list** — ``GET .../run_details/review?month=`` remains for older clients (notable stops only); the SPA uses the unified ``locations`` payload.
+
+Run details **KPI counts** are derived from worksheet stops for that month. Run review includes every stop that was **tested**, **skipped**, is due as an **annual** that month, or had property audit edits or run comments. Test workflow, ``reset_run``, and per-stop ``stop_reset`` audit rows are omitted from field-change detail and ``has_field_edits`` flags.
+
+**Run details UI (prep vs review):** When the run is **Draft** or **Prepared** (no ``started_at``), the SPA shows a **prep table** inside a card surface — one row per testing site with sticky stop # and address columns. Columns: stop #, address, access (ring / key # / door code / annual month), monitoring (company / account # / notes), deficiencies (new + verified, compact cards with modal detail), job comments, testing procedures, and location comments. Fields use click-to-edit with explicit **Save** and **Cancel**; ``PATCH …/worksheet/stops/<testing_site_id>`` persists changes; the backend materializes ``MonthlyTestingSiteMonth`` rows on first office save or on ``POST …/runs/prepare``. A prep summary bar (stop count, locations, open deficiencies) replaces outcome KPIs during prep. After technicians **start the run**, the UI switches to the **review card** layout (billing, deficiencies, outcomes, follow-ups). Opening **site details** from a location card uses the same click-to-edit field rows as the technician portal worksheet (snapshot fields, monitoring, deficiencies, and comments). After **field end**, the site modal header status pill becomes a dropdown (Pending, All good, Passed with problems, Failed, Skip) backed by ``PUT …/worksheet/stops/<id>/test_outcome`` (office browser, no ``tech_portal``); ``{ "clear": true }`` clears the outcome back to pending. Skip and deficiency-verify flows reuse the portal modals.
 
 **Run lock (office completes the job):** A run is editable in the technician portal until office staff press **Complete job** on the **Run details** page (`POST .../runs/complete` sets `status=completed` and `completed_at`). That sets `is_historical` on the worksheet payload and blocks all portal PATCHes (`run_completed_locked`). **Reopen job** on Run details (`POST .../runs/reopen`) clears completion. Technicians no longer use Start/Complete run in the portal — opening the current month's worksheet materializes the run file automatically.
 
@@ -257,11 +267,40 @@ Tests often use minimal SQLite table subsets with explicit BIGINT id assignment.
 
 ---
 
-## 11. Technician field run (current month)
+## 11. Run workflow state machine
+
+Each ``MonthlyRouteRun`` moves through explicit office and field phases. The API exposes ``workflow_stage`` / ``workflow_stage_label`` on every serialized run header.
+
+| Stage | Timestamps | Who advances |
+|-------|------------|--------------|
+| Draft | (run file may exist via ``opened_at``) | — |
+| Prepared | ``prepared_at`` | Office ``POST …/runs/prepare`` |
+| Field in progress | ``started_at`` | Portal ``POST …/runs`` (requires prepared) |
+| Awaiting office review | ``field_ended_at`` | Portal ``POST …/runs/end`` |
+| Ready to close | ``office_review_completed_at`` | Office ``POST …/runs/review_complete`` |
+| Completed | ``completed_at`` | Office ``POST …/runs/complete`` (requires review complete) |
+
+**Technician reopen field:** ``POST …/runs/reopen_field`` clears ``field_ended_at`` and office review-complete so techs can edit stops again.
+
+**Edit gates**
+
+| Surface | Allowed when |
+|---------|----------------|
+| Portal stop / clock / deficiencies | ``started_at`` set, ``field_ended_at`` null, run not office-completed |
+| Office tested/skipped outcomes | ``field_ended_at`` set, not office-completed |
+| Office billing (run details) | Same as outcomes |
+| CSV import replace month | Run not office-completed; import sets ``prepared_at`` |
+
+Logic: ``app/monthly/run_workflow.py``. UI stepper: ``RunWorkflowStepper.tsx``.
+
+---
+
+## 12. Technician field run (current month)
 
 ```
 /tech PIN → session[tech_portal_unlocked]
   → GET /api/technician_portal/routes_today
+  → Office: POST /api/monthly_routes/routes/:id/runs/prepare  (release route)
   → POST /api/technician_portal/routes/:id/runs
        → MonthlyRouteRun (started_at set)
        → materialize MonthlyRouteTestHistory rows + MonthlyTestingSiteMonth stops
@@ -269,7 +308,9 @@ Tests often use minimal SQLite table subsets with explicit BIGINT id assignment.
        → ``stops[]`` (v2 testing-site grain); ``rows[]`` still returned for compatibility
   → PATCH .../worksheet/stops/:testing_site_id
        → MonthlyTestingSiteMonth + dual-write primary location history (audit FK)
-  → POST portal .../runs/complete
+  → POST /api/technician_portal/routes/:id/runs/end   (field handoff)
+  → Office: review billing / outcomes on run details
+  → POST …/runs/review_complete → POST …/runs/complete
 ```
 
 **Portal vs office worksheet:** Field technicians use `TechnicianPortalWorksheetPage` at `/tech/route/:routeId/worksheet/:monthIso` (stop-by-stop UI). Office staff keep `TechnicianWorksheetPage` (location-grain table) until a later office cutover.
@@ -287,7 +328,7 @@ Tests often use minimal SQLite table subsets with explicit BIGINT id assignment.
 
 - **Portal `stops[]` and office `rows[]` (historical month):** All site fields for that visit come from the **run month** (`MonthlyTestingSiteMonth`, or `MonthlyRouteTestHistory` when no MTSM row). Older months are not overwritten when a later month or the library master changes.
 - **New run materialize:** `seed_stop_month_fields` copies display fields from **office master** (`MonthlyTestingSite` / `master_template_fields`), with gaps filled from the **most recent prior** `MonthlyTestingSiteMonth`, then from the **current or prior** `MonthlyRouteTestHistory` row (so an April CSV import carries procedures into May even when no April portal stop rows exist). Outcomes (tested/skipped/times) start empty. **`run_comments` always starts empty** for a new month (never copied from prior month or master).
-- **Portal refresh paperwork:** `POST /api/technician_portal/routes/<id>/regenerate_paperwork` re-runs that seeding for the **Pacific current month** when the run is not completed (route hub button). Snapshot fields are overwritten from latest office/prior-run data; times, outcomes, and run comments are preserved. **`POST …/worksheet/reset_run`** clears the full run for that route-month: deletes worksheet audit events, clears attributed ``monthly_route_test_history`` outcomes and run snapshots (including master-sheet legacy rows), re-seeds every ``MonthlyTestingSiteMonth`` from library master (testing outcomes, run comments, and field edits such as annual month / panel / PMC), clears ``MonthlyRouteRun.started_at``, and mirrors primary stops to library when this month is the location's latest. Run-details KPIs count only rows with ``result_status`` ``tested`` or ``skipped``.
+- **Portal refresh paperwork:** Opening the current-month portal worksheet (`GET …/worksheet?tech_portal=1&refresh_paperwork=1`) re-runs stop-month seeding from the latest office/prior-run data when the run is not completed (automatic on each worksheet open; prior months and background SSE refreshes skip this). Snapshot fields are overwritten; times, tested/skipped outcomes, and run comments are preserved. `POST /api/technician_portal/routes/<id>/regenerate_paperwork` performs the same refresh explicitly if needed. **`POST …/worksheet/reset_run`** clears the full run for that route-month: deletes worksheet audit events, clears attributed ``monthly_route_test_history`` outcomes and run snapshots (including master-sheet legacy rows), clears per-location ``billing_status`` (``bill`` / ``do_not_bill`` / ``unset``; **legacy** billing is preserved), re-seeds every ``MonthlyTestingSiteMonth`` from library master (testing outcomes, run comments, and field edits such as annual month / panel / PMC), clears ``MonthlyRouteRun.started_at``, and mirrors primary stops to library when this month is the location's latest. Run-details KPIs count only rows with ``result_status`` ``tested`` or ``skipped``.
 - **Library location display:** Each `MonthlyTestingSite` master row is the **newest edition** for that testing stop (office edits + mirror from the latest run month when techs PATCH snapshot fields). Primary testing-site values also dual-write to the legacy route location for sheet/detail parity.
 - **Portal stop PATCH (latest month only):** Snapshot field edits on the current/latest run mirror to that stop's `MonthlyTestingSite` master via `mirror_mtsm_snapshot_to_primary_master` (`monthly_sites_sync.py`). Primary stops also mirror to the legacy location. Older months never mirror.
 - **Office testing-site PATCH:** Updates master directly; the next run seeds from that master.
@@ -307,10 +348,30 @@ Master data lives on **`MonthlyTestingSite`** (migration `z4a5b6c7d8e9`):
 | Panel | `panel` (legacy `facp_detail` kept in sync) |
 | Panel location | `panel_location` |
 | Door code (if any) | `door_code` |
-| Monitoring company | `monitoring_company_id` → `monitoring_company` |
-| Monitoring notes | `monitoring_notes` |
+| Monitoring company | `monitoring_company_id` → `monitoring_company` (directory phones on `MonitoringCompany`) |
+| Monitoring account # | `monitoring_account_number` (site-specific; not on directory row) |
+| Monitoring notes | `monitoring_notes` (signals, passwords, free notes — not account #) |
 
-Run-month copies: **`MonthlyTestingSiteMonth`** (`panel`, `panel_location`, `door_code`, `building_name`, `property_management_company`, `testing_procedures`, `inspection_tech_notes`, `monitoring_notes`, plus existing ring/key/annual).
+Run-month copies: **`MonthlyTestingSiteMonth`** (`panel`, `panel_location`, `door_code`, `building_name`, `property_management_company`, `testing_procedures`, `inspection_tech_notes`, `monitoring_company_id`, `monitoring_account_number`, `monitoring_notes`, plus existing ring/key/annual).
+
+### Monitoring company directory (2026-05)
+
+Office maintains vendors at **`/monthlies/monitoring-companies`**. Technicians pick from the directory on portal worksheets and can add a new company inline (deduped by normalized name, immediate use).
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/monitoring_companies` | List/search (`q`, `active`, `limit`) |
+| GET | `/api/monitoring_companies/:id` | Detail |
+| POST | `/api/monitoring_companies` | Create (office + portal); returns `reused_existing` when name matches |
+| PATCH | `/api/monitoring_companies/:id` | Update name/phones/active |
+| POST | `/api/monitoring_companies/:id/merge` | Merge duplicate into canonical row |
+
+Backfill structured monitoring fields from legacy `monitoring_notes` paste shapes:
+
+- `python -m app.scripts.backfill_monitoring_account_numbers` (dry-run)
+- `python -m app.scripts.backfill_monitoring_account_numbers --execute`
+
+Legacy `monitoring_company_name` on run-month rows remains for historical fidelity; new worksheet PATCHes use `monitoring_company_id` + `monitoring_account_number`.
 
 ### Comments (portal worksheet — 2026-05)
 
@@ -433,15 +494,17 @@ Technician workflow actions are **optimistic**: the UI updates immediately, then
 
 **Run details KPI row** (`GET .../run_details` → `counts`): stop-level tallies — `all_good_count`, `passed_with_problems_count`, `failed_count`, `skipped_count`. Uses `test_outcome` when set; legacy `result_status tested` counts as `all_good`; legacy `skipped` counts as `skipped`. Annual-month sites without an outcome are **not** included in KPI tiles.
 
+**Lazy review endpoints:** ``GET .../run_details/review`` and ``GET .../run_details/review/stops/:testing_site_id`` (see §5.2). Implementation: ``app/monthly/run_details_review.py``.
+
 **Office billing PATCH** (staff session):
 
 | Method | Path |
 |--------|------|
 | PATCH | `/api/monthly_routes/routes/<route_id>/locations/<location_id>/billing_status?month=YYYY-MM-01` |
 
-Body: `{ "billing_status": "bill" | "do_not_bill" | "unset" }`. Rejects when the row is `legacy` (`code: billing_legacy_locked`). `csv_import` runs: billing controls disabled in UI (read-only).
+Body: `{ "billing_status": "bill" | "do_not_bill" | "unset" }`. Allowed only after technicians **end field** on the run (`office_may_edit_billing`; `409` + `code: billing_before_field_end` while field work is open). Rejects when the row is `legacy` (`code: billing_legacy_locked`). `csv_import` runs: billing controls disabled in UI (read-only).
 
-**Run review UI:** Outcome headlines via `portalOutcomeDisplay` / legacy labels; filters by outcome + Updated; `confirmed_no_deficiencies` pill on Passed-with-problems cards; billing badge per location on stop cards; **Billing by location** panel between KPIs and run review.
+**Run review UI:** Outcome headlines via `portalOutcomeDisplay` / legacy labels; filters by outcome + Updated; `confirmed_no_deficiencies` pill on Passed-with-problems cards. **Bill / Do not bill** toggles and the billing column appear only after field end; while technicians are still on the run, office can review outcomes and deficiencies without billing controls (auto-default billing still updates in the background when outcomes change).
 
 ---
 

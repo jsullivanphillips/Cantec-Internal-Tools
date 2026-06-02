@@ -1,7 +1,7 @@
 import { useCallback, useImperativeHandle, useRef, useState, forwardRef } from 'react'
 import { Collapse } from 'react-bootstrap'
 import RunDetailsSiteChangeCard from './RunDetailsSiteChangeCard'
-import type { NotableStopChangeCard } from './notableStopChanges'
+import type { NotableChangeItem, NotableStopChangeCard } from './notableStopChanges'
 import { RUN_REVIEW_TESTED_GROUP_DOM_ID, runReviewStopDomId } from './notableStopChanges'
 
 export type RunReviewTestedOnlyGroupHandle = {
@@ -10,8 +10,17 @@ export type RunReviewTestedOnlyGroupHandle = {
 
 const RunReviewTestedOnlyGroup = forwardRef<
   RunReviewTestedOnlyGroupHandle,
-  { cards: NotableStopChangeCard[]; defaultExpanded?: boolean }
->(function RunReviewTestedOnlyGroup({ cards, defaultExpanded = false }, ref) {
+  {
+    cards: NotableStopChangeCard[]
+    defaultExpanded?: boolean
+    routeId: number
+    monthDate: string
+    onCardDetailLoaded: (testingSiteId: number, changes: NotableChangeItem[]) => void
+  }
+>(function RunReviewTestedOnlyGroup(
+  { cards, defaultExpanded = false, routeId, monthDate, onCardDetailLoaded },
+  ref,
+) {
   const [expanded, setExpanded] = useState(defaultExpanded)
   const scrollAfterExpandRef = useRef(false)
 
@@ -69,7 +78,12 @@ const RunReviewTestedOnlyGroup = forwardRef<
           <ul className="run-review-tested-group__list list-unstyled mb-0">
             {cards.map((card) => (
               <li key={`${card.locationId}:${card.stop.testing_site_id}`} id={runReviewStopDomId(card)}>
-                <RunDetailsSiteChangeCard card={card} />
+                <RunDetailsSiteChangeCard
+                  card={card}
+                  routeId={routeId}
+                  monthDate={monthDate}
+                  onDetailLoaded={onCardDetailLoaded}
+                />
               </li>
             ))}
           </ul>

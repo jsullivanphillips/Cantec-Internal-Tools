@@ -66,9 +66,9 @@ def _serialize_linked_key(key: Key | None) -> dict[str, object] | None:
 
 
 def _serialize_monitoring_company(mc: MonitoringCompany | None) -> dict[str, object] | None:
-    if mc is None:
-        return None
-    return {"id": int(mc.id), "name": (mc.name or "").strip() or None}
+    from app.monthly.monitoring_companies import serialize_monitoring_company
+
+    return serialize_monitoring_company(mc)
 
 
 def _effective_panel(ts: MonthlyTestingSite) -> str | None:
@@ -118,6 +118,7 @@ def _serialize_testing_site(ts: MonthlyTestingSite) -> dict[str, object]:
         "facp_detail": ts.facp_detail,
         "monitoring_company_id": ts.monitoring_company_id,
         "monitoring_company": _serialize_monitoring_company(ts.monitoring_company),
+        "monitoring_account_number": ts.monitoring_account_number,
         "monitoring_notes": ts.monitoring_notes,
         "testing_procedures": ts.testing_procedures,
         "inspection_tech_notes": ts.inspection_tech_notes,
@@ -391,6 +392,9 @@ def _apply_testing_site_payload(ts: MonthlyTestingSite, payload: dict) -> tuple[
             if db.session.get(MonitoringCompany, mcid) is None:
                 return ({"error": "monitoring_company_id does not reference an existing monitoring company"}, 400)
             ts.monitoring_company_id = mcid
+    if "monitoring_account_number" in payload:
+        raw = payload.get("monitoring_account_number")
+        ts.monitoring_account_number = (str(raw).strip() or None) if raw is not None else None
     if "testing_procedures" in payload:
         v = payload.get("testing_procedures")
         ts.testing_procedures = (str(v).strip() or None) if v is not None else None

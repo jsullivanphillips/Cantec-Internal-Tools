@@ -693,7 +693,15 @@ class MonthlyRouteRun(db.Model):
     opened_at = db.Column(db.DateTime(timezone=True), nullable=True)
     #: Field technicians explicitly started the run (portal ``POST …/runs``); not auto-set on browse.
     started_at = db.Column(db.DateTime(timezone=True), nullable=True)
-    #: Run marked completed (office / future workflow).
+    #: Office released the route-month for field work (``POST …/runs/prepare``).
+    prepared_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    prepared_by = db.Column(db.String(128), nullable=True)
+    #: Field technicians ended active testing (portal ``POST …/runs/end``).
+    field_ended_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    #: Office finished review checklist (``POST …/runs/review_complete``).
+    office_review_completed_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    office_review_completed_by = db.Column(db.String(128), nullable=True)
+    #: Run marked completed (office ``POST …/runs/complete``).
     completed_at = db.Column(db.DateTime(timezone=True), nullable=True)
     status = db.Column(db.String(16), nullable=False, server_default="open")
     source = db.Column(db.String(32), nullable=False, server_default="technician_app")
@@ -1089,6 +1097,7 @@ class MonthlyTestingSite(db.Model):
         db.ForeignKey("monitoring_company.id", ondelete="SET NULL"),
         nullable=True,
     )
+    monitoring_account_number = db.Column(db.String(64), nullable=True)
     monitoring_notes = db.Column(db.Text, nullable=True)
 
     created_at = db.Column(
@@ -1185,6 +1194,13 @@ class MonthlyTestingSiteMonth(db.Model):
     confirmed_no_deficiencies = db.Column(db.Boolean, nullable=False, default=False)
     #: Run-month monitoring company label (free text; may differ from library FK).
     monitoring_company_name = db.Column(db.String(255), nullable=True)
+    monitoring_company_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monitoring_company.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    monitoring_account_number = db.Column(db.String(64), nullable=True)
     monitoring_notes = db.Column(db.Text, nullable=True)
 
     created_at = db.Column(
@@ -1200,6 +1216,10 @@ class MonthlyTestingSiteMonth(db.Model):
     )
 
     testing_site = db.relationship("MonthlyTestingSite", back_populates="month_rows")
+    monitoring_company = db.relationship(
+        "MonitoringCompany",
+        foreign_keys=[monitoring_company_id],
+    )
     clock_events = db.relationship(
         "MonthlyStopClockEvent",
         back_populates="stop_month",

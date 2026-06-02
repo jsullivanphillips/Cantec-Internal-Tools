@@ -30,6 +30,8 @@ type Props = {
   stop: TechnicianWorksheetStop
   runId?: number | null
   title?: string
+  /** When set, open directly on verify / confirm steps (office outcome dropdown). */
+  initialOutcome?: PortalTestOutcome | null
   workflowActions: WorkflowActions
   onHide: () => void
   onComplete: (payload: RecordResultsCompletePayload) => Promise<void>
@@ -48,6 +50,7 @@ export default function PortalRecordResultsModal({
   stop,
   runId = null,
   title,
+  initialOutcome = null,
   workflowActions,
   onHide,
   onComplete,
@@ -60,13 +63,24 @@ export default function PortalRecordResultsModal({
 
   useEffect(() => {
     if (show && !wasOpenRef.current) {
-      setStep('choose')
-      setPendingOutcome(null)
       setLocalStop(stop)
       setVerifyBusyId(null)
+      if (initialOutcome) {
+        setPendingOutcome(initialOutcome)
+        if (portalStopNeedsDeficiencyVerify(initialOutcome, stop, runId)) {
+          setStep('verify')
+        } else if (portalStopNeedsNoDeficiencyConfirm(initialOutcome, stop)) {
+          setStep('confirm_none')
+        } else {
+          setStep('choose')
+        }
+      } else {
+        setStep('choose')
+        setPendingOutcome(null)
+      }
     }
     wasOpenRef.current = show
-  }, [show, stop.testing_site_id, stop])
+  }, [show, stop.testing_site_id, stop, initialOutcome, runId])
 
   useEffect(() => {
     if (!show) return

@@ -55,7 +55,9 @@ def master_template_fields(
         "facp": panel,
         "testing_procedures": ts.testing_procedures or loc.testing_procedures,
         "inspection_tech_notes": ts.inspection_tech_notes or loc.inspection_tech_notes,
+        "monitoring_company_id": ts.monitoring_company_id,
         "monitoring_company_name": _master_monitoring_company_name(ts, loc),
+        "monitoring_account_number": ts.monitoring_account_number,
         "monitoring_notes": ts.monitoring_notes,
     }
 
@@ -84,6 +86,7 @@ def merge_template_with_prior_fallback(
     for key in (
         *SNAPSHOT_STRING_FIELDS,
         *SNAPSHOT_TEXT_FIELDS,
+        "monitoring_company_id",
         "monitoring_company_name",
         "monitoring_notes",
     ):

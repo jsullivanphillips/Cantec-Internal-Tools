@@ -1,15 +1,18 @@
-import { useEffect, useId, useState } from 'react'
-import { Badge, Collapse } from 'react-bootstrap'
+import { useCallback, useEffect, useId, useState } from 'react'
+import { Badge, Collapse, Spinner } from 'react-bootstrap'
 import { Link } from 'react-router-dom'
 import { billingStatusLabel, billingStatusVariant } from './officeRunReviewShared'
+import RunReviewOutcomeLabel from './RunReviewOutcomeLabel'
 import RunDetailsSiteChangeGroups from './RunDetailsSiteChangeGroups'
-import type { NotableStopChangeCard } from './notableStopChanges'
+import type { NotableChangeItem, NotableStopChangeCard } from './notableStopChanges'
 import {
   RUN_REVIEW_EXPAND_CARD_EVENT,
   runReviewCardTier,
   runReviewResultHeadlineClass,
   runReviewStopDomId,
 } from './notableStopChanges'
+import type { MonthlyRunDetailReviewStopDetailPayload } from './monthlyRoutesShared'
+import { apiJson } from '../../lib/apiClient'
 
 function RunReviewSiteHeaderSummary({
   card,
@@ -58,7 +61,12 @@ function RunReviewSiteHeaderSummary({
         </Badge>
       ) : null}
       {resultHeadline ? (
-        <span className={`run-detail-site-card__badge ${resultClass}`}>{resultHeadline}</span>
+        <RunReviewOutcomeLabel
+          stop={stop}
+          monthDate={monthDate}
+          headline={resultHeadline}
+          badgeClass={resultClass}
+        />
       ) : null}
       {showNoDefPill ? (
         <span className="run-detail-site-card__no-def-pill">No deficiencies confirmed</span>
@@ -94,14 +102,57 @@ function RunReviewSiteHeaderSummary({
   )
 }
 
-export default function RunDetailsSiteChangeCard({ card }: { card: NotableStopChangeCard }) {
+export default function RunDetailsSiteChangeCard({
+  card,
+  routeId,
+  monthDate,
+  onDetailLoaded,
+}: {
+  card: NotableStopChangeCard
+  routeId: number
+  monthDate: string
+  onDetailLoaded: (testingSiteId: number, changes: NotableChangeItem[]) => void
+}) {
   const { changes, stopNumber, displayAddress, resultHeadline, stop, siteLabel, siteIndex, siteCount } =
     card
-  const monthDate = stop.month_date
-  const tier = runReviewCardTier(card, monthDate)
+  const monthIso = stop.month_date || monthDate
+  const tier = runReviewCardTier(card, monthIso)
   const bodyId = useId()
   const [cardExpanded, setCardExpanded] = useState(false)
-  const hasDetails = changes.length > 0 || siteCount > 1
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [detailError, setDetailError] = useState<string | null>(null)
+  const needsDetailFetch = card.hasFieldEdits === true && changes.length === 0
+  const hasDetails = changes.length > 0 || needsDetailFetch || siteCount > 1
+
+  const loadDetail = useCallback(async () => {
+    if (!needsDetailFetch || detailLoading) return
+    setDetailLoading(true)
+    setDetailError(null)
+    try {
+      const qs = new URLSearchParams({ month: monthDate })
+      const data = await apiJson<MonthlyRunDetailReviewStopDetailPayload>(
+        `/api/monthly_routes/routes/${routeId}/run_details/review/stops/${stop.testing_site_id}?${qs.toString()}`,
+      )
+      onDetailLoaded(stop.testing_site_id, data.changes)
+    } catch {
+      setDetailError('Could not load site changes.')
+    } finally {
+      setDetailLoading(false)
+    }
+  }, [
+    needsDetailFetch,
+    detailLoading,
+    monthDate,
+    routeId,
+    stop.testing_site_id,
+    onDetailLoaded,
+  ])
+
+  useEffect(() => {
+    if (cardExpanded && needsDetailFetch) {
+      void loadDetail()
+    }
+  }, [cardExpanded, needsDetailFetch, loadDetail])
 
   useEffect(() => {
     const domId = runReviewStopDomId(card)
@@ -151,6 +202,16 @@ export default function RunDetailsSiteChangeCard({ card }: { card: NotableStopCh
                 ) : null}
                 Site {siteIndex} of {siteCount} at this address
               </div>
+            ) : null}
+            {detailLoading ? (
+              <div className="run-detail-site-card__loading py-2">
+                <Spinner animation="border" size="sm" aria-label="Loading site changes" />
+              </div>
+            ) : null}
+            {detailError ? (
+              <p className="text-danger small mb-0" role="alert">
+                {detailError}
+              </p>
             ) : null}
             {changes.length > 0 ? (
               <div className="run-detail-site-card__changes">

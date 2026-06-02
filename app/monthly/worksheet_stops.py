@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload, selectinload
 
 from app.db_models import (
+    MonitoringCompany,
     MonthlyRoute,
     MonthlyRouteLocation,
     MonthlyRouteRun,
@@ -32,6 +33,7 @@ from app.monthly.site_field_template import (
     merge_template_with_prior_fallback,
 )
 from app.monthly.testing_site_fields import SNAPSHOT_STRING_FIELDS, SNAPSHOT_TEXT_FIELDS
+from app.monthly.monitoring_companies import serialize_monitoring_company
 
 if TYPE_CHECKING:
     pass
@@ -74,7 +76,9 @@ _MTSM_SNAPSHOT_DISPLAY_KEYS = (
     "testing_procedures",
     "inspection_tech_notes",
     "run_comments",
+    "monitoring_company_id",
     "monitoring_company_name",
+    "monitoring_account_number",
     "monitoring_notes",
 )
 
@@ -96,6 +100,42 @@ def _cleared_outcome_fields() -> dict[str, object]:
 
 def _snapshot_fields_from_mtsm(mtsm: MonthlyTestingSiteMonth) -> dict[str, object]:
     return {key: getattr(mtsm, key) for key in _MTSM_SNAPSHOT_DISPLAY_KEYS}
+
+
+def _fill_snapshot_gaps_from_master(
+    values: dict[str, object],
+    ts: MonthlyTestingSite,
+    loc: MonthlyRouteLocation,
+) -> None:
+    """Use library master for empty stop-month snapshot fields (prep / display parity)."""
+    template = master_template_fields(ts, loc)
+    for key in (
+        "annual_month",
+        "property_management_company",
+        "building_name",
+        "panel_location",
+        "door_code",
+        "ring",
+        "key_number",
+        "testing_procedures",
+        "inspection_tech_notes",
+        "monitoring_company_id",
+        "monitoring_company_name",
+        "monitoring_account_number",
+        "monitoring_notes",
+    ):
+        if _normalize_text(values.get(key)) is not None:
+            continue
+        if key in template:
+            values[key] = template[key]
+    if _normalize_text(values.get("panel")) is None:
+        panel = _normalize_text(template.get("panel"))
+        values["panel"] = panel
+        values["facp"] = panel
+
+
+def _coalesce_with_master(value: object, master_value: object) -> object:
+    return value if _normalize_text(value) is not None else master_value
 
 
 def _next_sqlite_bigint_id(model) -> int | None:
@@ -129,24 +169,64 @@ def _display_address(loc: MonthlyRouteLocation | None, location_id: int) -> str:
     return f"Location {location_id}"
 
 
+def _monitoring_company_record(
+    mcid: int | None,
+    mtsm: MonthlyTestingSiteMonth | None,
+    ts: MonthlyTestingSite,
+    loc: MonthlyRouteLocation | None,
+) -> MonitoringCompany | None:
+    if mcid is not None:
+        if mtsm is not None and mtsm.monitoring_company is not None and int(mtsm.monitoring_company.id) == int(mcid):
+            return mtsm.monitoring_company
+        if ts.monitoring_company is not None and int(ts.monitoring_company.id) == int(mcid):
+            return ts.monitoring_company
+        return db.session.get(MonitoringCompany, int(mcid))
+    return None
+
+
 def _monitoring_labels(
     mtsm: MonthlyTestingSiteMonth | None,
     ts: MonthlyTestingSite,
     loc: MonthlyRouteLocation | None,
-) -> tuple[str | None, str | None]:
-    if mtsm is not None:
-        return (
-            _normalize_text(mtsm.monitoring_company_name),
-            _normalize_text(mtsm.monitoring_notes),
-        )
-    from app.monthly.site_field_template import _master_monitoring_company_name
+) -> tuple[str | None, str | None, int | None, str | None, MonitoringCompany | None]:
+    mcid: int | None = None
+    acct: str | None = None
+    mon_notes: str | None = None
+    company_name: str | None = None
 
-    if loc is None:
-        company = (
-            _normalize_text(ts.monitoring_company.name) if ts.monitoring_company is not None else None
-        )
-        return company, None
-    return _master_monitoring_company_name(ts, loc), None
+    if mtsm is not None:
+        mcid = int(mtsm.monitoring_company_id) if mtsm.monitoring_company_id is not None else None
+        acct = _normalize_text(mtsm.monitoring_account_number)
+        mon_notes = _normalize_text(mtsm.monitoring_notes)
+        company_name = _normalize_text(mtsm.monitoring_company_name)
+        if loc is not None:
+            preview = master_template_fields(ts, loc)
+            if mcid is None and preview.get("monitoring_company_id") is not None:
+                mcid = int(preview["monitoring_company_id"])
+            if acct is None:
+                acct = _normalize_text(preview.get("monitoring_account_number"))
+            if mon_notes is None:
+                mon_notes = _normalize_text(preview.get("monitoring_notes"))
+            if company_name is None:
+                company_name = _normalize_text(preview.get("monitoring_company_name"))
+    else:
+        preview = master_template_fields(ts, loc) if loc is not None else {}
+        mcid = int(ts.monitoring_company_id) if ts.monitoring_company_id is not None else None
+        acct = _normalize_text(preview.get("monitoring_account_number") or ts.monitoring_account_number)
+        mon_notes = _normalize_text(preview.get("monitoring_notes"))
+        company_name = _normalize_text(preview.get("monitoring_company_name"))
+
+    mc = _monitoring_company_record(mcid, mtsm, ts, loc)
+    if mc is not None:
+        company_name = _normalize_text(mc.name)
+    elif not company_name and loc is not None:
+        from app.monthly.site_field_template import _master_monitoring_company_name
+
+        company_name = _master_monitoring_company_name(ts, loc)
+    elif not company_name and ts.monitoring_company is not None:
+        company_name = _normalize_text(ts.monitoring_company.name)
+
+    return company_name, mon_notes, mcid, acct, mc
 
 
 _HISTORY_SNAPSHOT_TO_MTSM: tuple[tuple[str, str], ...] = (
@@ -204,6 +284,7 @@ def seed_stop_month_fields(
     """Build insert/update payload for ``MonthlyTestingSiteMonth``."""
     if existing_row is not None:
         base = _snapshot_fields_from_mtsm(existing_row)
+        _fill_snapshot_gaps_from_master(base, ts, loc)
         for key in _MTSM_OUTCOME_KEYS:
             base[key] = getattr(existing_row, key)
         if base.get("monitoring_notes") is None and location_hist is not None:
@@ -286,6 +367,20 @@ def _history_for_locations(
         .all()
     )
     return {int(r.location_id): r for r in rows}
+
+
+def route_month_has_worksheet_stops(route_id: int, month_first: date) -> bool:
+    """True when at least one stop-month row exists for this route and calendar month."""
+    row = (
+        db.session.query(MonthlyTestingSiteMonth.id)
+        .filter(
+            MonthlyTestingSiteMonth.month_date == month_first,
+            MonthlyTestingSiteMonth.test_monthly_route_id == route_id,
+        )
+        .limit(1)
+        .first()
+    )
+    return row is not None
 
 
 def ensure_worksheet_stops_for_route_month(
@@ -625,8 +720,10 @@ def serialize_worksheet_stop(
     month_first: date,
     stop_number: int,
     run: MonthlyRouteRun | None = None,
+    include_portal_extras: bool = True,
+    billing_status: str | None = None,
 ) -> dict[str, object]:
-    company, mon_notes = _monitoring_labels(mtsm, ts, loc)
+    company, mon_notes, mcid, mon_acct, mc = _monitoring_labels(mtsm, ts, loc)
     panel = None
     ring = None
     key_number = None
@@ -665,6 +762,17 @@ def serialize_worksheet_stop(
         building = _normalize_text(mtsm.building_name)
         panel_loc = mtsm.panel_location
         door = mtsm.door_code
+        master = master_template_fields(ts, loc)
+        ring = _coalesce_with_master(ring, master.get("ring"))
+        key_number = _coalesce_with_master(key_number, master.get("key_number"))
+        annual_month = _coalesce_with_master(annual_month, master.get("annual_month"))
+        procedures = _coalesce_with_master(procedures, master.get("testing_procedures"))
+        tech_notes = _coalesce_with_master(tech_notes, master.get("inspection_tech_notes"))
+        panel = panel or _normalize_text(master.get("panel"))
+        pmc = pmc or _normalize_text(master.get("property_management_company"))
+        building = building or _normalize_text(master.get("building_name"))
+        panel_loc = _coalesce_with_master(panel_loc, master.get("panel_location"))
+        door = _coalesce_with_master(door, master.get("door_code"))
     else:
         preview = master_template_fields(ts, loc)
         panel = _normalize_text(preview.get("panel"))
@@ -708,6 +816,9 @@ def serialize_worksheet_stop(
         "key_number": key_number,
         "annual_month": annual_month,
         "monitoring_company": company,
+        "monitoring_company_id": mcid,
+        "monitoring_company_record": serialize_monitoring_company(mc),
+        "monitoring_account_number": mon_acct,
         "monitoring_notes": mon_notes,
         "result_status": result_status,
         "skip_reason": skip_reason,
@@ -725,18 +836,33 @@ def serialize_worksheet_stop(
         "stop_number": stop_number,
         "version_updated_at": version,
     }
-    from app.monthly.portal_workflow import portal_workflow_extras_for_stop
+    if include_portal_extras:
+        from app.monthly.portal_workflow import portal_workflow_extras_for_stop
 
-    stop.update(
-        portal_workflow_extras_for_stop(
-            mtsm,
-            ts,
-            loc,
-            route_id=route_id,
-            month_first=month_first,
-            run=run,
+        stop.update(
+            portal_workflow_extras_for_stop(
+                mtsm,
+                ts,
+                loc,
+                route_id=route_id,
+                month_first=month_first,
+                run=run,
+            )
         )
-    )
+    else:
+        from app.monthly.portal_workflow import is_legacy_outcome, portal_run_is_read_only
+
+        stop.update(
+            {
+                "clock_events": [],
+                "deficiencies": [],
+                "has_run_changes": False,
+                "billing_status": billing_status,
+                "is_legacy_outcome": is_legacy_outcome(mtsm),
+                "portal_read_only": portal_run_is_read_only(run),
+                "is_legacy_run": portal_run_is_read_only(run),
+            }
+        )
     return stop
 
 
@@ -770,6 +896,43 @@ def portal_worksheet_preview_stops(
     return stops
 
 
+def _testing_sites_by_location_bulk(
+    locs: list[MonthlyRouteLocation],
+) -> dict[int, list[MonthlyTestingSite]]:
+    """Load testing sites for many route locations in O(1) queries (fallback sync per missing site)."""
+    if not locs:
+        return {}
+    loc_ids = [int(loc.id) for loc in locs]
+    site_rows = MonthlySite.query.filter(
+        MonthlySite.legacy_monthly_route_location_id.in_(loc_ids)
+    ).all()
+    site_by_loc_id = {int(s.legacy_monthly_route_location_id): s for s in site_rows}
+    site_ids = [int(s.id) for s in site_rows]
+    ts_by_site_id: dict[int, list[MonthlyTestingSite]] = {}
+    if site_ids:
+        for ts in (
+            MonthlyTestingSite.query.options(joinedload(MonthlyTestingSite.monitoring_company))
+            .filter(MonthlyTestingSite.monthly_site_id.in_(site_ids))
+            .order_by(MonthlyTestingSite.sort_order.asc(), MonthlyTestingSite.id.asc())
+            .all()
+        ):
+            ts_by_site_id.setdefault(int(ts.monthly_site_id), []).append(ts)
+
+    out: dict[int, list[MonthlyTestingSite]] = {}
+    for loc in locs:
+        lid = int(loc.id)
+        site = site_by_loc_id.get(lid)
+        if site is None:
+            ts_rows = sync_testing_sites_from_legacy(loc)
+            out[lid] = ts_rows
+            continue
+        ts_rows = ts_by_site_id.get(int(site.id), [])
+        if not ts_rows:
+            ts_rows = sync_testing_sites_from_legacy(loc)
+        out[lid] = ts_rows
+    return out
+
+
 def _testing_sites_for_location(loc: MonthlyRouteLocation) -> list[MonthlyTestingSite]:
     site = ensure_monthly_site_for_location(loc)
     ts_rows = (
@@ -786,6 +949,8 @@ def _testing_sites_for_location(loc: MonthlyRouteLocation) -> list[MonthlyTestin
 def worksheet_stops_from_attributed_history(
     route_id: int,
     month_first: date,
+    *,
+    include_portal_extras: bool = True,
 ) -> list[dict[str, object]]:
     """Build portal stops from legacy history when no v2 stop-month rows exist yet."""
     hist_rows = _attributed_history_for_route_month(route_id, month_first)
@@ -825,6 +990,9 @@ def worksheet_stops_from_attributed_history(
             )
             .one_or_none()
         )
+        billing_status = None
+        if not include_portal_extras:
+            billing_status = _normalize_text(hist.billing_status)
         stop = serialize_worksheet_stop(
             ts,
             loc,
@@ -832,6 +1000,8 @@ def worksheet_stops_from_attributed_history(
             route_id=route_id,
             month_first=month_first,
             stop_number=idx,
+            include_portal_extras=include_portal_extras,
+            billing_status=billing_status,
         )
         if mtsm is None:
             stop = _overlay_history_on_stop(stop, hist, ts=ts, loc=loc)
@@ -842,16 +1012,23 @@ def worksheet_stops_from_attributed_history(
 def _worksheet_stop_pairs_for_route_month(
     route_id: int,
     month_first: date,
+    *,
+    locs: list[MonthlyRouteLocation] | None = None,
+    ts_by_loc: dict[int, list[MonthlyTestingSite]] | None = None,
 ) -> list[tuple[MonthlyTestingSiteMonth | None, MonthlyTestingSite, MonthlyRouteLocation]]:
     """Ordered (mtsm, testing site, location) tuples for one route month — no serialization."""
-    locs = _route_locations(route_id)
+    if locs is None:
+        locs = _route_locations(route_id)
     if not locs:
         return []
     loc_by_id = {int(loc.id): loc for loc in locs}
 
+    if ts_by_loc is None:
+        ts_by_loc = _testing_sites_by_location_bulk(locs)
+
     ts_rows: list[MonthlyTestingSite] = []
     for loc in locs:
-        ts_rows.extend(_testing_sites_for_location(loc))
+        ts_rows.extend(ts_by_loc.get(int(loc.id), []))
     if not ts_rows:
         return []
 
@@ -900,6 +1077,8 @@ def worksheet_stop_number_for_site(
 def worksheet_stops_for_route_month(
     route_id: int,
     month_first: date,
+    *,
+    include_portal_extras: bool = True,
 ) -> list[dict[str, object]]:
     """Load and sort portal worksheet stops for an active run month."""
     locs = _route_locations(route_id)
@@ -908,18 +1087,21 @@ def worksheet_stops_for_route_month(
     loc_by_id = {int(loc.id): loc for loc in locs}
     loc_ids = list(loc_by_id.keys())
     hist_by_loc = _history_for_locations(loc_ids, month_first)
+    ts_by_loc = _testing_sites_by_location_bulk(locs)
 
-    ts_rows: list[MonthlyTestingSite] = []
-    ts_by_loc: dict[int, list[MonthlyTestingSite]] = {}
-    for loc in locs:
-        for ts in _testing_sites_for_location(loc):
-            ts_rows.append(ts)
-            ts_by_loc.setdefault(int(loc.id), []).append(ts)
+    if not any(ts_by_loc.values()):
+        return worksheet_stops_from_attributed_history(
+            route_id,
+            month_first,
+            include_portal_extras=include_portal_extras,
+        )
 
-    if not ts_rows:
-        return worksheet_stops_from_attributed_history(route_id, month_first)
-
-    pairs = _worksheet_stop_pairs_for_route_month(route_id, month_first)
+    pairs = _worksheet_stop_pairs_for_route_month(
+        route_id,
+        month_first,
+        locs=locs,
+        ts_by_loc=ts_by_loc,
+    )
 
     run = MonthlyRouteRun.query.filter_by(
         monthly_route_id=route_id,
@@ -931,6 +1113,9 @@ def worksheet_stops_for_route_month(
         hist = hist_by_loc.get(int(loc.id))
         primary = primary_testing_site(ts_by_loc.get(int(loc.id), []))
         is_primary = primary is not None and int(primary.id) == int(ts.id)
+        billing_status = None
+        if not include_portal_extras and hist is not None:
+            billing_status = _normalize_text(hist.billing_status)
         stop = serialize_worksheet_stop(
             ts,
             loc,
@@ -939,6 +1124,8 @@ def worksheet_stops_for_route_month(
             month_first=month_first,
             stop_number=idx,
             run=run,
+            include_portal_extras=include_portal_extras,
+            billing_status=billing_status,
         )
         if is_primary and hist is not None and mtsm is None:
             stop = _overlay_history_on_stop(stop, hist, ts=ts, loc=loc)
@@ -999,7 +1186,13 @@ def _worksheet_stop_portal_outcome(stop: dict[str, object]) -> str | None:
 
 def run_details_counts_for_route_month(route_id: int, month_first: date) -> dict[str, int]:
     """Stop-level KPI counts from portal ``test_outcome`` (legacy ``result_status`` fallback)."""
-    stops = worksheet_stops_for_route_month(route_id, month_first)
+    from app.monthly.run_details_review import run_details_counts_from_stop_months
+
+    return run_details_counts_from_stop_months(route_id, month_first)
+
+
+def _run_details_counts_from_stops(stops: list[dict[str, object]]) -> dict[str, int]:
+    """Shared counter for lean stop dicts."""
     counts = {
         "all_good_count": 0,
         "passed_with_problems_count": 0,
@@ -1014,6 +1207,12 @@ def run_details_counts_for_route_month(route_id: int, month_first: date) -> dict
         if key in counts:
             counts[key] += 1
     return counts
+
+
+def run_details_counts_for_route_month_legacy(route_id: int, month_first: date) -> dict[str, int]:
+    """Full worksheet serialization path (tests / legacy callers)."""
+    stops = worksheet_stops_for_route_month(route_id, month_first)
+    return _run_details_counts_from_stops(stops)
 
 
 def _route_month_has_skipped_stops(route_id: int, month_first: date) -> bool:
@@ -1102,7 +1301,8 @@ def load_stop_for_patch(
     if loc is None or int(loc.monthly_route_id) != int(route_id):
         return None, ts, loc
     mtsm = (
-        MonthlyTestingSiteMonth.query.filter_by(
+        MonthlyTestingSiteMonth.query.options(joinedload(MonthlyTestingSiteMonth.monitoring_company))
+        .filter_by(
             monthly_testing_site_id=testing_site_id,
             month_date=month_first,
         )
@@ -1235,6 +1435,7 @@ _HISTORY_RUN_RESET_ATTRS = (
     "testing_procedures",
     "inspection_tech_notes",
     "monitoring_notes",
+    "billing_status",
 )
 
 _FRESH_STOP_MONTH_SKIP_KEYS = frozenset({"month_date", "monthly_testing_site_id"})
@@ -1245,6 +1446,11 @@ def _history_row_has_run_scoped_data(hist: MonthlyRouteTestHistory) -> bool:
         val = getattr(hist, attr, None)
         if val is None:
             continue
+        if attr == "billing_status":
+            billing = (str(val) if val is not None else "").strip().lower()
+            if billing in {"", "unset", "legacy"}:
+                continue
+            return True
         if isinstance(val, str) and not val.strip():
             continue
         return True
@@ -1252,7 +1458,10 @@ def _history_row_has_run_scoped_data(hist: MonthlyRouteTestHistory) -> bool:
 
 
 def _clear_history_run_scoped_fields(hist: MonthlyRouteTestHistory) -> None:
+    billing_locked = (_normalize_text(hist.billing_status) or "").lower() == "legacy"
     for attr in _HISTORY_RUN_RESET_ATTRS:
+        if attr == "billing_status" and billing_locked:
+            continue
         setattr(hist, attr, None)
 
 
@@ -1370,6 +1579,47 @@ def _reseed_stop_month_rows_from_master(
     return reseeded
 
 
+def _delete_clock_events_for_route_month(route_id: int, month_first: date) -> int:
+    """Remove portal clock event rows for every stop on a route-month."""
+    from app.db_models import MonthlyStopClockEvent
+
+    locs = _route_locations(route_id)
+    if not locs:
+        return 0
+
+    all_ts_ids: list[int] = []
+    for loc in locs:
+        site = ensure_monthly_site_for_location(loc)
+        ts_rows = sync_testing_sites_from_legacy(loc)
+        if not ts_rows:
+            ts_rows = (
+                MonthlyTestingSite.query.filter_by(monthly_site_id=int(site.id))
+                .order_by(MonthlyTestingSite.sort_order.asc(), MonthlyTestingSite.id.asc())
+                .all()
+            )
+        all_ts_ids.extend(int(t.id) for t in ts_rows)
+
+    if not all_ts_ids:
+        return 0
+
+    mtsm_ids = [
+        int(row.id)
+        for row in MonthlyTestingSiteMonth.query.filter(
+            MonthlyTestingSiteMonth.month_date == month_first,
+            MonthlyTestingSiteMonth.monthly_testing_site_id.in_(all_ts_ids),
+        ).all()
+    ]
+    if not mtsm_ids:
+        return 0
+
+    deleted = (
+        MonthlyStopClockEvent.query.filter(
+            MonthlyStopClockEvent.monthly_testing_site_month_id.in_(mtsm_ids),
+        ).delete(synchronize_session=False)
+    )
+    return int(deleted or 0)
+
+
 def reset_worksheet_run_for_route_month(
     route_id: int,
     month_first: date,
@@ -1377,8 +1627,9 @@ def reset_worksheet_run_for_route_month(
 ) -> dict[str, int]:
     """Clear all run-scoped worksheet progress and property edits for one route-month.
 
-    Deletes worksheet audit events, clears attributed history, re-seeds stop-month rows from
-    library master, and mirrors primary stops to library when this is the latest run month.
+    Deletes worksheet audit events, clears attributed history (including per-location billing
+    decisions except locked legacy billing), re-seeds stop-month rows from library master, and
+    mirrors primary stops to library when this is the latest run month.
     """
     deleted_audits = (
         MonthlyRouteWorksheetAuditEvent.query.filter_by(
@@ -1392,6 +1643,8 @@ def reset_worksheet_run_for_route_month(
         if _history_row_has_run_scoped_data(hist):
             cleared_history += 1
         _clear_history_run_scoped_fields(hist)
+
+    deleted_clock_events = _delete_clock_events_for_route_month(route_id, month_first)
 
     reseeded_stops = _reseed_stop_month_rows_from_master(route_id, month_first, run)
 
@@ -1419,6 +1672,7 @@ def reset_worksheet_run_for_route_month(
     return {
         "deleted_audit_events": int(deleted_audits or 0),
         "cleared_history_rows": cleared_history,
+        "deleted_clock_events": deleted_clock_events,
         "reseeded_stops": reseeded_stops,
         "mirrored_library_locations": mirrored,
     }
@@ -1451,9 +1705,72 @@ STOP_PATCH_FIELD_MAP: dict[str, str] = {
     "door_code": "door_code",
     "property_management_company": "property_management_company",
     "building_name": "building_name",
+    "monitoring_company_id": "monitoring_company_id",
+    "monitoring_account_number": "monitoring_account_number",
     "monitoring_notes": "monitoring_notes",
     "monitoring_company": "monitoring_company_name",
 }
+
+
+def sync_mtsm_monitoring_company_name(mtsm: MonthlyTestingSiteMonth) -> None:
+    mcid = mtsm.monitoring_company_id
+    if mcid is None:
+        return
+    mc = db.session.get(MonitoringCompany, int(mcid))
+    mtsm.monitoring_company_name = (mc.name or "").strip() if mc is not None else None
+
+
+def apply_worksheet_stop_field_change(
+    mtsm: MonthlyTestingSiteMonth,
+    field_name: str,
+    raw_value: object,
+) -> tuple[bool, str | None]:
+    """Apply one stop PATCH field to ``mtsm``. Returns ``(changed, error_message)``."""
+    if field_name not in STOP_PATCH_FIELD_MAP:
+        return False, f"Unsupported worksheet field: {field_name}"
+    attr_name = STOP_PATCH_FIELD_MAP[field_name]
+
+    if field_name == "monitoring_company":
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "Deprecated monitoring_company text PATCH on worksheet stop; use monitoring_company_id"
+        )
+        return False, "monitoring_company text is deprecated; use monitoring_company_id"
+
+    if field_name == "monitoring_company_id":
+        if raw_value is None or raw_value == "":
+            new_id = None
+        else:
+            try:
+                new_id = int(raw_value)
+            except (TypeError, ValueError):
+                return False, "monitoring_company_id must be an integer or null"
+            if db.session.get(MonitoringCompany, new_id) is None:
+                return False, "monitoring company not found"
+        if mtsm.monitoring_company_id == new_id:
+            return False, None
+        mtsm.monitoring_company_id = new_id
+        mc = db.session.get(MonitoringCompany, new_id) if new_id is not None else None
+        mtsm.monitoring_company_name = (mc.name or "").strip() if mc is not None else None
+        return True, None
+
+    if field_name == "panel" and raw_value is not None:
+        new_val = _normalize_text(raw_value)
+        old_panel = _normalize_text(mtsm.panel) or _normalize_text(mtsm.facp)
+        if old_panel == new_val:
+            return False, None
+        mtsm.panel = new_val
+        mtsm.facp = new_val
+        return True, None
+
+    new_val = _normalize_text(raw_value)
+    old_val = getattr(mtsm, attr_name)
+    if old_val == new_val:
+        return False, None
+    setattr(mtsm, attr_name, new_val)
+    return True, None
+
 
 # Subset of stop PATCH keys mirrored on ``MonthlyRouteTestHistory`` for audit/dual-write.
 # Other snapshot fields (building, door, PMC, panel location, monitoring company name)
@@ -1473,7 +1790,7 @@ STOP_PATCH_HISTORY_AUDIT_ATTR: dict[str, str] = {
     "monitoring_notes": "monitoring_notes",
 }
 
-# Office run-details field-changes card: omit test workflow, run comments, and reset-run audit.
+# Office run-details field-changes card: omit test workflow, run comments, and reset audit.
 RUN_DETAILS_EXCLUDED_AUDIT_FIELDS = frozenset({
     "result_status",
     "skip_reason",
@@ -1481,4 +1798,5 @@ RUN_DETAILS_EXCLUDED_AUDIT_FIELDS = frozenset({
     "time_out",
     "run_comments",
     "reset_run",
+    "stop_reset",
 })

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { TechnicianWorksheetStop } from './monthlyRoutesShared'
 import {
+  formatSkipReasonDisplayText,
+  portalSkipReasonDetail,
   portalStopActiveDeficiencies,
   portalStopCanChooseAllGood,
   portalStopDockBand,
@@ -9,8 +11,12 @@ import {
   portalStopNeedsNoDeficiencyConfirm,
   portalStopNewDeficiencies,
   portalStopNewDeficienciesFromPriorRuns,
+  portalHeaderBandClass,
+  portalStatusPillClass,
   portalStopVisitComplete,
+  portalStopVisualTone,
 } from './portalWorkflowShared'
+import { runReviewOutcomeHeadline } from './officeRunReviewShared'
 import type { PortalDeficiencySummary } from './portalWorkflowShared'
 
 function baseStop(overrides: Partial<TechnicianWorksheetStop> = {}): TechnicianWorksheetStop {
@@ -148,5 +154,46 @@ describe('deficiency outcome helpers', () => {
     const stop = baseStop({ deficiencies: [def('fixed')] })
     expect(portalStopNeedsNoDeficiencyConfirm('passed_with_problems', stop)).toBe(true)
     expect(portalStopNeedsNoDeficiencyConfirm('failed', stop)).toBe(false)
+  })
+})
+
+describe('portalSkipReasonDetail', () => {
+  it('joins category, note, and legacy skip_reason', () => {
+    const stop = baseStop({
+      test_outcome: 'skipped',
+      skip_category: 'access_issues',
+      skip_note: 'Gate code changed',
+      skip_reason: 'access_issues: Gate code changed',
+    })
+    expect(portalSkipReasonDetail(stop)).toBe('Access issues · Gate code changed')
+  })
+
+  it('uses legacy skip_reason when portal fields are empty', () => {
+    const stop = baseStop({
+      test_outcome: 'skipped',
+      skip_reason: 'No power to panel',
+    })
+    expect(portalSkipReasonDetail(stop)).toBe('No power to panel')
+    expect(runReviewOutcomeHeadline(stop, '2026-05-01')).toBe('Skipped · No power to panel')
+  })
+
+  it('formats category keys in skip_reason', () => {
+    expect(formatSkipReasonDisplayText('lack_of_time')).toBe('Lack of time')
+    expect(formatSkipReasonDisplayText('lack_of_time: Ran out of daylight')).toBe(
+      'Lack of time · Ran out of daylight',
+    )
+  })
+
+  it('passed_with_problems uses a distinct visual tone from annual', () => {
+    const passedProblems = baseStop({ test_outcome: 'passed_with_problems' })
+    expect(portalStopVisualTone(passedProblems, '2026-05-01')).toBe('passed_with_problems')
+    expect(portalStatusPillClass(passedProblems, '2026-05-01')).toBe('passed-problems')
+    expect(portalHeaderBandClass(passedProblems, '2026-05-01')).toBe(
+      'pw-mock-header--passed-problems',
+    )
+
+    const annualDue = baseStop({ annual_month: 'May' })
+    expect(portalStopVisualTone(annualDue, '2026-05-01')).toBe('annual')
+    expect(portalStatusPillClass(annualDue, '2026-05-01')).toBe('pending')
   })
 })

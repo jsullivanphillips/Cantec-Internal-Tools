@@ -20,11 +20,10 @@ import {
 } from 'react'
 import { Chart } from 'react-chartjs-2'
 import { Accordion, Alert, Badge, Button, Card, Col, Form, Modal, Row, Spinner, Table } from 'react-bootstrap'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import MonthlyLibraryCommentsPanel from '../features/monthlyRoutes/MonthlyLibraryCommentsPanel'
 import MonthlyRouteMapCard from '../features/monthlyRoutes/MonthlyRouteMapCard'
 import {
-  monthFirstIsoPacificToday,
   parseYearMonth,
   toMonthKey,
   type MonthlyLocationComment,
@@ -39,6 +38,7 @@ import {
 } from '../features/monthlyRoutes/monthlyRoutesShared'
 import { apiJson, apiPostFormData, isAbortError } from '../lib/apiClient'
 import { formatCurrencyCad } from '../lib/formatCurrencyCad'
+import { routeMonthRunStatusLabel } from '../features/monthlyRoutes/runWorkflowShared'
 
 function englishOrdinal(n: number): string {
   if (11 <= (n % 100) && (n % 100) <= 13) return `${n}th`
@@ -128,15 +128,6 @@ function formatSpecialistsForMonth(payload: MonthlyRouteSpecialistMonthPayload |
   const list = payload?.top_technicians
   if (!list?.length) return '—'
   return list.map((t) => specialistTechLabel(t)).join(', ')
-}
-
-/** True if ST specialist-month row shows attributed completed jobs; false if row exists but zero; null if no row. */
-function stRouteTestedForMonth(
-  payload: MonthlyRouteSpecialistMonthPayload | undefined
-): boolean | null {
-  if (payload === undefined) return null
-  const n = payload.completed_jobs_attributed
-  return typeof n === 'number' && n > 0
 }
 
 function coerceSkippedSites(value: unknown): RouteTestingSkippedSite[] {
@@ -621,6 +612,7 @@ function RouteYearToolbar({
 
 export default function MonthlyRouteDetailPage() {
   const { routeId } = useParams<{ routeId: string }>()
+  const nav = useNavigate()
   const idNum = routeId ? parseInt(routeId, 10) : NaN
 
   const [route, setRoute] = useState<MonthlyRouteSummary | null>(null)
@@ -641,6 +633,24 @@ export default function MonthlyRouteDetailPage() {
   const [orderedSites, setOrderedSites] = useState<RouteLocationListItem[]>([])
   const [orderSaving, setOrderSaving] = useState(false)
   const [orderError, setOrderError] = useState<string | null>(null)
+
+  const openRunDetails = useCallback(
+    (monthIso: string) => {
+      if (Number.isNaN(idNum)) return
+      nav(`/monthlies/routes/${idNum}/runs/${encodeURIComponent(monthIso)}`)
+    },
+    [idNum, nav],
+  )
+
+  const activateRunDetailsRowKeyboard = useCallback(
+    (e: KeyboardEvent<HTMLTableRowElement>, monthIso: string) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault()
+        openRunDetails(monthIso)
+      }
+    },
+    [openRunDetails],
+  )
 
   const load = useCallback(
     async (signal?: AbortSignal) => {
@@ -1037,7 +1047,7 @@ export default function MonthlyRouteDetailPage() {
                 >
                   <colgroup>
                     <col />
-                    <col style={{ width: '5.25rem' }} />
+                    <col style={{ width: '8.5rem' }} />
                     <col style={{ width: '8rem' }} />
                     <col style={{ width: '6rem' }} />
                     <col style={{ width: '7.25rem' }} />
@@ -1050,7 +1060,7 @@ export default function MonthlyRouteDetailPage() {
                       >
                         Test date
                       </th>
-                      <th className="text-center text-nowrap px-2 align-bottom">Tested</th>
+                      <th className="text-center text-nowrap px-2 align-bottom">Status</th>
                       <th
                         className="text-center tabular-nums px-2 align-bottom"
                         style={{ whiteSpace: 'normal', lineHeight: 1.25, fontWeight: 600 }}
@@ -1080,7 +1090,11 @@ export default function MonthlyRouteDetailPage() {
                       ? monthIsoKeysForCalendarYear(effectiveHistoryYear).map((monthIso) => {
                           const cell = testingByMonth[monthIso]
                           const hasSheetHistoryForMonth = cell !== undefined
-                          const hasRunFileForMonth = runsByMonth[monthIso] != null
+                          const runSummary = runsByMonth[monthIso]
+                          const runStatusLabel = routeMonthRunStatusLabel(
+                            runSummary,
+                            hasSheetHistoryForMonth,
+                          )
                           const sitesTested =
                             cell && typeof cell.sites_tested_count === 'number'
                               ? cell.sites_tested_count
@@ -1097,7 +1111,6 @@ export default function MonthlyRouteDetailPage() {
                             <em className="text-muted fst-italic">No data</em>
                           )
                           const specCell = specialistsByMonth[monthIso]
-                          const stTested = stRouteTestedForMonth(specCell)
                           const techsLabel = formatSpecialistsForMonth(specCell)
                           const routeTestLabel = formatStoredPacificCalendarDate(specCell?.route_tested_on ?? null)
                           const openSkippedNonAnnualModal = () =>
@@ -1113,7 +1126,15 @@ export default function MonthlyRouteDetailPage() {
                               sites: coerceSkippedSites(cell?.skipped_annual_sites),
                             })
                           return (
-                            <tr key={monthIso}>
+                            <tr
+                              key={monthIso}
+                              className="monthly-route-detail-runs-row"
+                              role="link"
+                              tabIndex={0}
+                              aria-label={`Open run details for ${formatMonthHeading(monthIso)} — ${runStatusLabel}`}
+                              onClick={() => openRunDetails(monthIso)}
+                              onKeyDown={(e) => activateRunDetailsRowKeyboard(e, monthIso)}
+                            >
                               <td
                                 title={
                                   routeTestLabel
@@ -1121,30 +1142,10 @@ export default function MonthlyRouteDetailPage() {
                                     : undefined
                                 }
                               >
-                                <div>{routeTestLabel ?? formatMonthHeading(monthIso)}</div>
-                                {hasRunFileForMonth && monthIso <= monthFirstIsoPacificToday() ? (
-                                  <div>
-                                    <Link
-                                      className="small"
-                                      to={`/monthlies/routes/${idNum}/runs/${encodeURIComponent(monthIso)}`}
-                                    >
-                                      Run details
-                                    </Link>
-                                  </div>
-                                ) : null}
+                                {routeTestLabel ?? formatMonthHeading(monthIso)}
                               </td>
-                              <td className="text-center align-bottom px-2">
-                                {stTested === true ? (
-                                  <span className="text-success" aria-label="Yes">
-                                    <i className="bi bi-check-lg" aria-hidden />
-                                  </span>
-                                ) : stTested === false ? (
-                                  <span className="text-muted">—</span>
-                                ) : (
-                                  <span className="text-muted" title="No specialist-by-month data for this month">
-                                    —
-                                  </span>
-                                )}
+                              <td className="text-center align-middle px-2 small">
+                                {runStatusLabel}
                               </td>
                               <td className="text-center align-bottom tabular-nums px-2">
                                 {hasSheetHistoryForMonth ? sitesTested : sheetCountsNoData}
@@ -1160,9 +1161,14 @@ export default function MonthlyRouteDetailPage() {
                                       role: 'button' as const,
                                       tabIndex: 0,
                                       'aria-label': `List sites skipped (${skippedNonAnnual}) for ${formatMonthHeading(monthIso)}`,
-                                      onClick: openSkippedNonAnnualModal,
-                                      onKeyDown: (e: KeyboardEvent<HTMLTableCellElement>) =>
-                                        activateSkipCellKeyboard(e, openSkippedNonAnnualModal),
+                                      onClick: (e) => {
+                                        e.stopPropagation()
+                                        openSkippedNonAnnualModal()
+                                      },
+                                      onKeyDown: (e: KeyboardEvent<HTMLTableCellElement>) => {
+                                        e.stopPropagation()
+                                        activateSkipCellKeyboard(e, openSkippedNonAnnualModal)
+                                      },
                                     }
                                   : {})}
                               >
@@ -1187,9 +1193,14 @@ export default function MonthlyRouteDetailPage() {
                                       role: 'button' as const,
                                       tabIndex: 0,
                                       'aria-label': `List annual skips (${skippedAnnual}) for ${formatMonthHeading(monthIso)}`,
-                                      onClick: openSkippedAnnualModal,
-                                      onKeyDown: (e: KeyboardEvent<HTMLTableCellElement>) =>
-                                        activateSkipCellKeyboard(e, openSkippedAnnualModal),
+                                      onClick: (e) => {
+                                        e.stopPropagation()
+                                        openSkippedAnnualModal()
+                                      },
+                                      onKeyDown: (e: KeyboardEvent<HTMLTableCellElement>) => {
+                                        e.stopPropagation()
+                                        activateSkipCellKeyboard(e, openSkippedAnnualModal)
+                                      },
                                     }
                                   : {})}
                               >

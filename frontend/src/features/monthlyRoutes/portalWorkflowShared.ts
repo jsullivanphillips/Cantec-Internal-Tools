@@ -1,6 +1,12 @@
 /** Portal workflow UI helpers (clock events, test outcomes, dock bands). */
 
-import type { TechnicianWorksheetStop } from './monthlyRoutesShared'
+import { worksheetSkipReasonDisplayBlock } from './officeWorksheetTableShared'
+import {
+  isAnnualForMonth,
+  worksheetStopIsOpenClockIn,
+  worksheetStopSkipIsAnnual,
+  type TechnicianWorksheetStop,
+} from './monthlyRoutesShared'
 
 export type PortalTestOutcome = 'all_good' | 'passed_with_problems' | 'failed' | 'skipped'
 
@@ -216,9 +222,63 @@ export function portalOutcomeDisplay(stop: TechnicianWorksheetStop): string | nu
   return null
 }
 
+function formatSnakeCaseLabel(key: string): string {
+  if (!/^[a-z][a-z0-9_]*$/.test(key)) return key
+  return key
+    .split('_')
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+}
+
 export function skipCategoryLabel(category: string | null | undefined): string {
-  const c = norm(category).toLowerCase() as PortalSkipCategory
-  return SKIP_CATEGORIES.find((x) => x.value === c)?.label ?? category ?? ''
+  const raw = norm(category)
+  if (!raw) return ''
+  const c = raw.toLowerCase() as PortalSkipCategory
+  const known = SKIP_CATEGORIES.find((x) => x.value === c)
+  if (known) return known.label
+  if (/^[a-z][a-z0-9_]*$/.test(c)) return formatSnakeCaseLabel(c)
+  return raw
+}
+
+/** Format stored skip_reason text (category key, ``key: note``, or free text). */
+export function formatSkipReasonDisplayText(text: string | null | undefined): string | null {
+  const raw = worksheetSkipReasonDisplayBlock(text)
+  if (!raw || raw === '—') return null
+  const colon = raw.indexOf(':')
+  if (colon > 0) {
+    const key = raw.slice(0, colon).trim()
+    const rest = raw.slice(colon + 1).trim()
+    const keyLabel = skipCategoryLabel(key)
+    if (keyLabel !== key) {
+      return rest ? `${keyLabel} · ${rest}` : keyLabel
+    }
+  }
+  if (/^[a-z][a-z0-9_]*$/.test(raw.toLowerCase())) {
+    return skipCategoryLabel(raw)
+  }
+  return raw
+}
+
+/** Category, free-text note, and legacy ``skip_reason`` for office / run-details display. */
+export function portalSkipReasonDetail(stop: TechnicianWorksheetStop): string | null {
+  const catLabel = skipCategoryLabel(stop.skip_category)
+  const note = norm(stop.skip_note)
+  const legacyPart = formatSkipReasonDisplayText(stop.skip_reason) ?? ''
+  const parts: string[] = []
+  if (catLabel) parts.push(catLabel)
+  if (note) parts.push(note)
+  if (legacyPart) {
+    const summary = parts.join(' · ').toLowerCase()
+    const legacyLow = legacyPart.toLowerCase()
+    const redundant =
+      summary.length > 0 &&
+      (legacyLow === summary ||
+        legacyLow === `${norm(stop.skip_category).toLowerCase()}: ${note.toLowerCase()}` ||
+        legacyLow === `${norm(stop.skip_category).toLowerCase()}: ${note}`)
+    if (!redundant) parts.push(legacyPart)
+  }
+  return parts.length ? parts.join(' · ') : null
 }
 
 export function portalStopWorkflowReadOnly(stop: TechnicianWorksheetStop, runCompleted: boolean): boolean {
@@ -326,6 +386,70 @@ export function optimisticVerifyDeficiencyPatch(
     ),
     has_run_changes: true,
   }
+}
+
+/** Portal / field worksheet stop chrome (nav tile, header band, status pill). */
+export type PortalStopVisualTone =
+  | 'pending'
+  | 'in_progress'
+  | 'all_good'
+  | 'passed_with_problems'
+  | 'failed'
+  | 'skipped'
+  | 'annual'
+
+export function portalStopVisualTone(
+  stop: TechnicianWorksheetStop,
+  runMonthIso: string,
+): PortalStopVisualTone {
+  if (portalStopHasTestOutcome(stop)) {
+    const outcome = norm(stop.test_outcome).toLowerCase()
+    if (outcome === 'skipped') {
+      return worksheetStopSkipIsAnnual(stop) ? 'annual' : 'skipped'
+    }
+    if (outcome === 'passed_with_problems') return 'passed_with_problems'
+    if (outcome === 'failed') return 'failed'
+    return 'all_good'
+  }
+  const rs = norm(stop.result_status).toLowerCase()
+  if (rs === 'tested') return 'all_good'
+  if (rs === 'skipped') return worksheetStopSkipIsAnnual(stop) ? 'annual' : 'skipped'
+  if (worksheetStopIsOpenClockIn(stop)) return 'in_progress'
+  if (isAnnualForMonth(stop.annual_month, runMonthIso)) return 'annual'
+  return 'pending'
+}
+
+export function portalHeaderBandClass(stop: TechnicianWorksheetStop, runMonthIso: string): string {
+  const tone = portalStopVisualTone(stop, runMonthIso)
+  if (tone === 'all_good') return 'pw-mock-header--tested'
+  if (tone === 'passed_with_problems') return 'pw-mock-header--passed-problems'
+  if (tone === 'failed') return 'pw-mock-header--failed'
+  if (tone === 'skipped') return 'pw-mock-header--skipped'
+  if (tone === 'annual') return 'pw-mock-header--annual'
+  if (tone === 'in_progress') return 'pw-mock-header--progress'
+  return ''
+}
+
+export function portalNavStopStatusClass(stop: TechnicianWorksheetStop, runMonthIso: string): string {
+  if (worksheetStopIsOpenClockIn(stop)) return 'pw-mock-nav-stop--clocked-in'
+  const tone = portalStopVisualTone(stop, runMonthIso)
+  if (tone === 'all_good') return 'pw-mock-nav-stop--tested'
+  if (tone === 'passed_with_problems') return 'pw-mock-nav-stop--passed-problems'
+  if (tone === 'failed') return 'pw-mock-nav-stop--failed'
+  if (tone === 'skipped') return 'pw-mock-nav-stop--skipped'
+  if (tone === 'annual') return 'pw-mock-nav-stop--annual'
+  return ''
+}
+
+/** Suffix for ``pw-mock-status-pill--*`` (e.g. ``passed-problems``). */
+export function portalStatusPillClass(stop: TechnicianWorksheetStop, runMonthIso: string): string {
+  const tone = portalStopVisualTone(stop, runMonthIso)
+  if (tone === 'all_good') return 'tested'
+  if (tone === 'passed_with_problems') return 'passed-problems'
+  if (tone === 'failed') return 'failed'
+  if (tone === 'skipped') return 'skipped'
+  if (tone === 'in_progress') return 'in_progress'
+  return 'pending'
 }
 
 export const PORTAL_OUTCOME_VALIDATION_MESSAGES: Record<string, string> = {

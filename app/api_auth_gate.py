@@ -17,6 +17,7 @@ _PORTAL_WORKSHEET_PATH_RE = re.compile(
 )
 # Any route-scoped monthly API the technician portal may call while unlocked (worksheet, runs, etc.).
 _PORTAL_MONTHLY_ROUTE_API_RE = re.compile(r"^/api/monthly_routes/routes/\d+(?:/.*)?$")
+_PORTAL_MONITORING_COMPANIES_API_RE = re.compile(r"^/api/monitoring_companies(?:/\d+(?:/merge)?)?$")
 
 
 def register_api_session_auth(app):
@@ -35,6 +36,8 @@ def register_api_session_auth(app):
         if not session.get("tech_portal_unlocked"):
             return False
         if _PORTAL_MONTHLY_ROUTE_API_RE.match(path):
+            return True
+        if _PORTAL_MONITORING_COMPANIES_API_RE.match(path):
             return True
         return bool(_PORTAL_WORKSHEET_PATH_RE.match(path))
 

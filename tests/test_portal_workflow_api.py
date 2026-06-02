@@ -56,6 +56,7 @@ def portal_client(monkeypatch):
                 sess["tech_portal_unlocked"] = True
                 sess["portal_tech_id"] = "1001"
                 sess["portal_tech_name"] = "Test Tech"
+                sess["username"] = "office_tester"
             yield client, app
         db.session.remove()
         db.metadata.drop_all(db.engine, tables=list(reversed(tables)))
@@ -101,8 +102,9 @@ def _seed_route_with_two_stops() -> tuple[int, int, int, int]:
 
 
 def _start_run(client, route_id: int = 1) -> None:
-    post = client.post(f"/api/technician_portal/routes/{route_id}/runs")
-    assert post.status_code == 200
+    from tests.run_workflow_helpers import portal_start_run
+
+    portal_start_run(client, route_id)
 
 
 def test_technician_session_and_list(portal_client):

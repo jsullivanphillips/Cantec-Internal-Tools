@@ -1,13 +1,11 @@
 /** Office run-details review: portal outcomes, billing labels, location grouping. */
 
 import type { TechnicianWorksheetStop } from './monthlyRoutesShared'
+import { officeStopStatus, officeStopStatusLabel } from './officeWorksheetTableShared'
 import {
-  officeStopStatus,
-  officeStopStatusLabel,
-  worksheetSkipReasonDisplayBlock,
-} from './officeWorksheetTableShared'
-import {
+  formatSkipReasonDisplayText,
   portalOutcomeDisplay,
+  portalSkipReasonDetail,
   skipCategoryLabel,
   type PortalTestOutcome,
 } from './portalWorkflowShared'
@@ -30,6 +28,36 @@ export function stopPortalOutcome(stop: TechnicianWorksheetStop): PortalTestOutc
   return PORTAL_OUTCOMES.has(outcome) ? outcome : null
 }
 
+export type RunReviewOutcomeIconKind = 'all_good' | 'failed' | 'passed_with_problems' | 'annual'
+
+/** Icon shown beside run-review outcome text (null when no icon applies). */
+export function runReviewOutcomeIconKind(
+  stop: TechnicianWorksheetStop,
+  monthDate: string,
+): RunReviewOutcomeIconKind | null {
+  if (runReviewStopIsAnnualSkip(stop, monthDate)) return 'annual'
+  const outcome = stopPortalOutcome(stop)
+  if (outcome === 'all_good') return 'all_good'
+  if (outcome === 'failed') return 'failed'
+  if (outcome === 'passed_with_problems') return 'passed_with_problems'
+  const status = officeStopStatus(stop, monthDate)
+  if (status === 'annual') return 'annual'
+  if (status === 'tested') return 'all_good'
+  return null
+}
+
+/** Skipped because of annual month / annual skip reason (not a generic field skip). */
+export function runReviewStopIsAnnualSkip(
+  stop: TechnicianWorksheetStop,
+  monthDate: string,
+): boolean {
+  const outcome = stopPortalOutcome(stop)
+  const rs = norm(stop.result_status).toLowerCase()
+  const skipped = outcome === 'skipped' || rs === 'skipped'
+  if (!skipped) return false
+  return officeStopStatus(stop, monthDate) === 'annual'
+}
+
 export function runReviewOutcomeHeadline(
   stop: TechnicianWorksheetStop,
   monthDate: string,
@@ -37,8 +65,8 @@ export function runReviewOutcomeHeadline(
   const portalLabel = portalOutcomeDisplay(stop)
   if (portalLabel) {
     if (stopPortalOutcome(stop) === 'skipped') {
-      const note = norm(stop.skip_note)
-      if (note) return `${portalLabel} · ${note}`
+      const detail = portalSkipReasonDetail(stop)
+      if (detail) return `Skipped · ${detail}`
     }
     return portalLabel
   }
@@ -50,13 +78,13 @@ export function runReviewOutcomeHeadline(
     if (cat) {
       const catLabel = skipCategoryLabel(cat)
       const note = norm(stop.skip_note)
-      const reason = worksheetSkipReasonDisplayBlock(stop.skip_reason)
-      const parts = [catLabel, note, reason !== '—' ? reason : ''].filter(Boolean)
+      const reason = formatSkipReasonDisplayText(stop.skip_reason)
+      const parts = [catLabel, note, reason ?? ''].filter(Boolean)
       if (parts.length) return `Skipped · ${parts.join(' · ')}`
       return 'Skipped (legacy)'
     }
-    const skipBlock = worksheetSkipReasonDisplayBlock(stop.skip_reason)
-    if (skipBlock && skipBlock !== '—') return `Skipped · ${skipBlock}`
+    const skipBlock = formatSkipReasonDisplayText(stop.skip_reason)
+    if (skipBlock) return `Skipped · ${skipBlock}`
     return 'Skipped (legacy)'
   }
   return null
@@ -70,7 +98,11 @@ export function runReviewOutcomeBadgeClass(
   if (outcome === 'all_good') return 'run-detail-site-card__badge--all-good'
   if (outcome === 'passed_with_problems') return 'run-detail-site-card__badge--passed-problems'
   if (outcome === 'failed') return 'run-detail-site-card__badge--failed'
-  if (outcome === 'skipped') return 'run-detail-site-card__badge--skipped'
+  if (outcome === 'skipped') {
+    return runReviewStopIsAnnualSkip(stop, monthDate)
+      ? 'run-detail-site-card__badge--annual'
+      : 'run-detail-site-card__badge--skipped'
+  }
   const status = officeStopStatus(stop, monthDate)
   if (status === 'tested') return 'run-detail-site-card__badge--legacy-tested'
   if (status === 'annual') return 'run-detail-site-card__badge--annual'
@@ -148,7 +180,10 @@ export function stopMatchesOutcomeFilter(
 ): boolean {
   const outcome = stopPortalOutcome(stop)
   if (outcome === filter) return true
-  if (filter === 'all_good' && officeStopStatus(stop, monthDate) === 'tested') return true
+  // Legacy tested rows without test_outcome only.
+  if (filter === 'all_good' && !outcome && officeStopStatus(stop, monthDate) === 'tested') {
+    return true
+  }
   if (filter === 'skipped') {
     const status = officeStopStatus(stop, monthDate)
     return status === 'skipped' || status === 'annual'
