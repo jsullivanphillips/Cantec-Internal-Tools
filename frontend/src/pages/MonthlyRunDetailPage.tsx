@@ -24,6 +24,7 @@ import { syncRunDetailsStopCache } from '../features/monthlyRoutes/useRunDetails
 import { useRunDetailsStopPatch } from '../features/monthlyRoutes/useRunDetailsStopPatch'
 import {
   canOfficeCompleteRun,
+  canOfficeReturnRunToPrep,
   deriveRunWorkflowStage,
   runFieldEnded,
   runInOfficePrepPhase,
@@ -37,6 +38,7 @@ import {
   patchRunDetailPreRunMessage,
   patchRunDetailLocationStop,
   runLocationReviewDomId,
+  type RunDetailReviewSectionTab,
   type RunLocationReviewFilter,
 } from '../features/monthlyRoutes/runDetailsLocationReview'
 import { clearWorksheetCache } from '../features/monthlyRoutes/worksheetOfflineStore'
@@ -100,11 +102,12 @@ export default function MonthlyRunDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [runLifecycleAction, setRunLifecycleAction] = useState<
-    'prepare' | 'review_complete' | 'complete' | 'reopen' | null
+    'prepare' | 'unprepare' | 'review_complete' | 'complete' | 'reopen' | null
   >(null)
   const [resetRunModalOpen, setResetRunModalOpen] = useState(false)
   const [resetRunBusy, setResetRunBusy] = useState(false)
   const [reviewFilter, setReviewFilter] = useState<RunLocationReviewFilter>('all')
+  const [reviewSectionTab, setReviewSectionTab] = useState<RunDetailReviewSectionTab>('run_review')
   const pendingRunDetailsReloadRef = useRef(false)
 
   const loadRunDetails = useCallback(async (signal?: AbortSignal) => {
@@ -211,11 +214,11 @@ export default function MonthlyRunDetailPage() {
       syncRunDetailsStopCache(idNum, monthQuery, stop)
       const patch =
         scope === 'deficiency'
-          ? deficiencyPatchFromWorksheetStop(stop)
+          ? deficiencyPatchFromWorksheetStop(stop, payload?.run ?? null)
           : detailPatchFromWorksheetStop(stop)
       onStopPatched(stop.testing_site_id, patch)
     },
-    [idNum, monthOk, monthQuery, onStopPatched],
+    [idNum, monthOk, monthQuery, onStopPatched, payload?.run],
   )
 
   const stopPatch = useRunDetailsStopPatch({
@@ -263,6 +266,39 @@ export default function MonthlyRunDetailPage() {
       setRunLifecycleAction(null)
     }
   }, [idNum, monthOk, monthQuery, loadRunDetails, runLifecycleAction])
+
+  const onReturnToPrep = useCallback(async () => {
+    if (!Number.isFinite(idNum) || !monthOk || !payload?.run) return
+    if (runLifecycleAction != null) return
+    if (
+      !window.confirm(
+        'Return this run to prep? Technicians will not be able to start field work until you mark it prepared again.',
+      )
+    ) {
+      return
+    }
+    setRunLifecycleAction('unprepare')
+    try {
+      await apiJson<{ run: TechnicianWorksheetRun }>(
+        `/api/monthly_routes/routes/${idNum}/runs/unprepare`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ month_date: monthQuery }),
+        },
+      )
+      clearWorksheetCache(idNum, monthQuery)
+      await loadRunDetails()
+    } catch (e) {
+      const msg =
+        typeof e === 'object' && e != null && 'error' in (e as Record<string, unknown>)
+          ? String((e as { error?: unknown }).error)
+          : 'Could not return run to prep. Try again.'
+      window.alert(msg)
+    } finally {
+      setRunLifecycleAction(null)
+    }
+  }, [idNum, monthOk, monthQuery, payload?.run, loadRunDetails, runLifecycleAction])
 
   const onMarkReviewComplete = useCallback(async () => {
     if (!Number.isFinite(idNum) || !monthOk || !payload?.run) return
@@ -374,6 +410,7 @@ export default function MonthlyRunDetailPage() {
 
   const focusRunReview = useCallback(
     (nextFilter?: RunReviewFilter) => {
+      setReviewSectionTab('run_review')
       const filter: RunLocationReviewFilter =
         nextFilter != null ? toLocationFilter(nextFilter) : 'all'
       setReviewFilter(filter)
@@ -428,6 +465,7 @@ export default function MonthlyRunDetailPage() {
   const runCompleted = worksheetRunExplicitlyCompleted(run)
   const workflowStage = deriveRunWorkflowStage(run)
   const showMarkPrepared = !runCompleted && (run == null || !runIsPrepared(run))
+  const showReturnToPrep = run != null && canOfficeReturnRunToPrep(run)
   const showMarkReviewComplete =
     run != null && !runCompleted && runFieldEnded(run) && !run?.office_review_completed_at
   const showCompleteJob = run != null && !runCompleted && canOfficeCompleteRun(run)
@@ -518,6 +556,24 @@ export default function MonthlyRunDetailPage() {
                     </>
                   ) : (
                     'Mark prepared'
+                  )}
+                </Button>
+              ) : null}
+              {showReturnToPrep ? (
+                <Button
+                  size="sm"
+                  variant="outline-secondary"
+                  className="monthly-location-detail-action"
+                  disabled={lifecycleBusy}
+                  onClick={() => void onReturnToPrep()}
+                >
+                  {runLifecycleAction === 'unprepare' ? (
+                    <>
+                      <Spinner animation="border" size="sm" className="me-1" aria-hidden />
+                      Returning…
+                    </>
+                  ) : (
+                    'Return to prep'
                   )}
                 </Button>
               ) : null}
@@ -705,9 +761,9 @@ export default function MonthlyRunDetailPage() {
             routeId={idNum}
             run={run}
             runCompleted={runCompleted}
-            reviewSummary={payload.review_summary ?? null}
             filter={reviewFilter}
-            onFilterChange={setReviewFilter}
+            sectionTab={reviewSectionTab}
+            onSectionTabChange={setReviewSectionTab}
             onBillingPatched={onBillingPatched}
             stopPatch={stopPatch}
             onStopMergedFromWorksheet={onStopMergedFromWorksheet}

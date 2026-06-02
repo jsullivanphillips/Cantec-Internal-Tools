@@ -5,6 +5,7 @@ import {
   projectedOpenClockSiteId,
   projectStopsWithWorkflowQueue,
 } from './portalRouteProjection'
+import { portalStopHasOpenClock } from './portalWorkflowShared'
 import { mergeWorkflowQueueIntoPayload } from './worksheetOfflineStore'
 import type { PortalWorkflowQueueItem } from './worksheetOfflineStore'
 function baseStop(
@@ -150,6 +151,52 @@ describe('projectStopsWithWorkflowQueue', () => {
     ]
     const projected = projectStopsWithWorkflowQueue(stops, ROUTE_ID, MONTH, queue)
     expect(projectedOpenClockSiteId(projected, ROUTE_ID, MONTH, queue)).toBeNull()
+  })
+
+  it('queued clock_in then cancel_clock_in leaves stop without open clock', () => {
+    const stops = [baseStop(1)]
+    const queue = [
+      queueItem({
+        id: 'cin',
+        action: 'clock_in',
+        testingSiteId: 1,
+        payload: { time_in: '9:00 AM' },
+        enqueuedAt: 1,
+      }),
+      queueItem({
+        id: 'cancel',
+        action: 'cancel_clock_in',
+        testingSiteId: 1,
+        payload: {},
+        enqueuedAt: 2,
+      }),
+    ]
+    const projected = projectStopsWithWorkflowQueue(stops, ROUTE_ID, MONTH, queue)
+    expect(portalStopHasOpenClock(projected[0])).toBe(false)
+    expect(projectedOpenClockSiteId(projected, ROUTE_ID, MONTH, queue)).toBeNull()
+  })
+
+  it('queued clock_in then reset_stop clears projected open clock', () => {
+    const stops = [baseStop(1)]
+    const queue = [
+      queueItem({
+        id: 'cin',
+        action: 'clock_in',
+        testingSiteId: 1,
+        payload: { time_in: '9:00 AM' },
+        enqueuedAt: 1,
+      }),
+      queueItem({
+        id: 'reset',
+        action: 'reset_stop',
+        testingSiteId: 1,
+        payload: {},
+        enqueuedAt: 2,
+      }),
+    ]
+    const projected = projectStopsWithWorkflowQueue(stops, ROUTE_ID, MONTH, queue)
+    expect(portalStopHasOpenClock(projected[0])).toBe(false)
+    expect(projected[0].has_run_changes).toBe(false)
   })
 })
 

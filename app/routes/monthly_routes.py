@@ -2039,7 +2039,7 @@ def _serialize_monthly_run_details_payload(
     from app.monthly.run_details_review import run_details_base_payload_extras
 
     counts, billing_locations, review_meta, locations, review_summary = run_details_base_payload_extras(
-        route_id, month_first
+        route_id, month_first, run=run
     )
 
     return {
@@ -2915,6 +2915,10 @@ def patch_monthly_route_worksheet_stop(route_id: int, testing_site_id: int):
     actor_username = _session_username_clean()
     actor_name = actor_username
     source = _normalize_ws_text(payload.get("source")) or "technician_app"
+    from app.monthly.run_workflow import run_in_office_prep_phase
+
+    if _office_staff_worksheet_patch() and run_in_office_prep_phase(run_for_month):
+        source = "office_manual"
     client_mutated_at = _parse_iso_dt(payload.get("client_mutated_at"))
     audit_ids = WorksheetAuditEventIdAllocator()
 
@@ -3469,6 +3473,8 @@ def post_worksheet_stop_deficiency(route_id: int, testing_site_id: int):
     if (_normalize_ws_text(mtsm.test_outcome) or "").lower() == "all_good":
         mtsm.test_outcome = "passed_with_problems"
         dual_write_legacy_result_fields(mtsm)
+    if mtsm.confirmed_no_deficiencies:
+        mtsm.confirmed_no_deficiencies = False
 
     db.session.commit()
     from app.monthly.portal_workflow import serialize_deficiency
@@ -3693,6 +3699,11 @@ def get_monthly_route_worksheet_row_audit(route_id: int, location_id: int):
 _RUN_CSV_MAX_BYTES = 5 * 1024 * 1024  # 5 MB ceiling on uploaded inspection CSVs.
 
 
+def _multipart_form_bool(name: str) -> bool:
+    raw = (request.form.get(name) or "").strip().lower()
+    return raw in ("1", "true", "yes", "on")
+
+
 @monthly_routes_bp.post("/api/monthly_routes/routes/<int:route_id>/runs/import_csv")
 def import_route_run_csv(route_id: int):
     """Upload a technician inspection CSV and materialize a run for ``route_id``.
@@ -3802,6 +3813,8 @@ def import_route_run_csv(route_id: int):
             409,
         )
 
+    sync_stop_order = _multipart_form_bool("sync_stop_order")
+
     try:
         result = run_route_inspection_csv_import(
             csv_bytes=csv_bytes,
@@ -3809,14 +3822,24 @@ def import_route_run_csv(route_id: int):
             route=route,
             month_date=month_first,
             dry_run=False,
+            sync_stop_order=sync_stop_order,
         )
     except ValueError as e:
         db.session.rollback()
         return jsonify({"error": f"CSV parse error: {e}"}), 400
 
-    from app.monthly.worksheet_stops import ensure_worksheet_stops_for_route_month
+    from app.monthly.worksheet_stops import (
+        apply_session_stop_order_from_history_for_route_month,
+        ensure_worksheet_stops_for_route_month,
+    )
 
     ensure_worksheet_stops_for_route_month(int(route.id), month_first, run)
+    session_stop_order_applied = 0
+    if sync_stop_order:
+        session_stop_order_applied = apply_session_stop_order_from_history_for_route_month(
+            int(route.id),
+            month_first,
+        )
     db.session.commit()
 
     return jsonify(
@@ -3830,6 +3853,10 @@ def import_route_run_csv(route_id: int):
             "history_upserts": result.history_upserts,
             "rows_without_history_signal": result.skipped_no_history,
             "existing_status_preserved": result.existing_status_preserved,
+            "sync_stop_order": sync_stop_order,
+            "stop_order_applied": result.stop_order_applied,
+            "stop_order_skipped_not_on_sheet_route": result.stop_order_skipped_not_on_sheet_route,
+            "session_stop_order_applied": session_stop_order_applied,
             "issues": [
                 {"kind": i.kind, "csv_row": i.csv_row, "detail": i.detail}
                 for i in result.issues
@@ -3901,6 +3928,48 @@ def post_monthly_route_run_prepare(route_id: int):
     from app.monthly.worksheet_stops import ensure_worksheet_stops_for_route_month
 
     ensure_worksheet_stops_for_route_month(route_id, month_first, run)
+    db.session.add(run)
+    db.session.commit()
+    return jsonify({"ok": True, "run": _serialize_run(run)})
+
+
+@monthly_routes_bp.post("/api/monthly_routes/routes/<int:route_id>/runs/unprepare")
+def post_monthly_route_run_unprepare(route_id: int):
+    """Office: return a prepared run to prep (before field work starts)."""
+    if not session.get("authenticated"):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json(silent=True) or {}
+    month_first = _parse_month(data.get("month_date"))
+    if month_first is None:
+        return jsonify({"error": "month_date required (YYYY-MM-01)"}), 400
+    if _get_monthly_route(route_id) is None:
+        return jsonify({"error": "Route not found"}), 404
+
+    run = MonthlyRouteRun.query.filter_by(
+        monthly_route_id=route_id,
+        month_date=month_first,
+    ).one_or_none()
+    if run is None:
+        return jsonify({"error": "No run file for this route and month.", "code": "run_not_found"}), 404
+
+    from app.monthly.run_workflow import clear_run_prepared, office_may_unprepare_run
+
+    if not office_may_unprepare_run(run):
+        if _run_explicitly_completed(run):
+            code = "run_completed"
+            message = "This run is completed; reopen it before returning to prep."
+        elif run.started_at is not None:
+            code = "run_field_started"
+            message = (
+                "Technicians have already started this run; reset field work before returning to prep."
+            )
+        else:
+            code = "run_not_prepared"
+            message = "This run is not marked prepared."
+        return jsonify({"error": message, "code": code}), 409
+
+    clear_run_prepared(run)
     db.session.add(run)
     db.session.commit()
     return jsonify({"ok": True, "run": _serialize_run(run)})

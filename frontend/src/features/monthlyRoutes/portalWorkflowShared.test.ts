@@ -5,7 +5,9 @@ import {
   portalSkipReasonDetail,
   portalStopActiveDeficiencies,
   portalStopCanChooseAllGood,
+  portalStopCanReset,
   portalStopDockBand,
+  optimisticClockInPatch,
   portalStopHasOpenClock,
   portalStopNeedsDeficiencyVerify,
   portalStopNeedsNoDeficiencyConfirm,
@@ -196,6 +198,22 @@ describe('portalSkipReasonDetail', () => {
     const annualDue = baseStop({ annual_month: 'May' })
     expect(portalStopVisualTone(annualDue, '2026-05-01')).toBe('annual')
     expect(portalStatusPillClass(annualDue, '2026-05-01')).toBe('pending')
+  })
+})
+
+describe('portalStopCanReset', () => {
+  it('is true immediately after optimistic clock-in', () => {
+    const stop = baseStop()
+    const patched = { ...stop, ...optimisticClockInPatch(stop, '9:00 AM') }
+    expect(patched.has_run_changes).toBe(true)
+    expect(portalStopCanReset(patched)).toBe(true)
+  })
+
+  it('is true when an open clock is present', () => {
+    const stop = baseStop({
+      clock_events: [{ id: 1, sort_order: 1, time_in: '9:00 AM', time_out: null }],
+    })
+    expect(portalStopCanReset(stop)).toBe(true)
   })
 })
 

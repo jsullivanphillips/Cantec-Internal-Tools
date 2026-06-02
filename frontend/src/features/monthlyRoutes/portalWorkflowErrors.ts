@@ -24,6 +24,7 @@ const ALERT_DROP_CODES = new Set([
 ])
 
 const MAX_TRANSIENT_CONFLICT_ATTEMPTS = 5
+const MAX_CANCEL_NO_OPEN_CLOCK_ATTEMPTS = 4
 
 export function workflowErrorMessage(code: string | undefined, fallback?: string): string {
   if (code && PORTAL_OUTCOME_VALIDATION_MESSAGES[code]) {
@@ -54,6 +55,10 @@ export function classifyWorkflowError(
   if (code === 'no_open_clock' && (action === 'clock_out' || action === 'cancel_clock_in')) {
     const siteId = opts?.item?.testingSiteId
     const stop = opts?.stops?.find((s) => s.testing_site_id === siteId)
+    const attempts = opts?.item?.attempts ?? 0
+    if (action === 'cancel_clock_in' && attempts < MAX_CANCEL_NO_OPEN_CLOCK_ATTEMPTS) {
+      return 'retry'
+    }
     if (stop && portalStopHasOpenClock(stop)) {
       return 'retry'
     }

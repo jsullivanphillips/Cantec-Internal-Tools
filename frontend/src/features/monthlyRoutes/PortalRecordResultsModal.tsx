@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Alert, Button, Modal, Spinner } from 'react-bootstrap'
+import { Button, Modal, Spinner } from 'react-bootstrap'
 import type { TechnicianWorksheetStop } from './monthlyRoutesShared'
 import {
   portalStopCanChooseAllGood,
@@ -29,12 +29,36 @@ type Props = {
   show: boolean
   stop: TechnicianWorksheetStop
   runId?: number | null
-  title?: string
+  /** When true, completing the modal also clocks out (opened from Clock out). */
+  recordAndClockOut?: boolean
   /** When set, open directly on verify / confirm steps (office outcome dropdown). */
   initialOutcome?: PortalTestOutcome | null
   workflowActions: WorkflowActions
   onHide: () => void
   onComplete: (payload: RecordResultsCompletePayload) => Promise<void>
+}
+
+const CHOOSE_OUTCOMES = TEST_OUTCOME_OPTIONS.filter((o) => o.value !== 'skipped')
+
+const OUTCOME_META: Record<
+  Exclude<PortalTestOutcome, 'skipped'>,
+  { icon: string; description: string; tone: 'success' | 'warning' | 'danger' }
+> = {
+  all_good: {
+    icon: 'bi-check-lg',
+    description: 'No deficiencies. All tests passed.',
+    tone: 'success',
+  },
+  passed_with_problems: {
+    icon: 'bi-exclamation-triangle',
+    description: 'Tests passed, but deficiencies were noted.',
+    tone: 'warning',
+  },
+  failed: {
+    icon: 'bi-x-lg',
+    description: 'System failed testing requirements.',
+    tone: 'danger',
+  },
 }
 
 function severityLabel(severity: string): string {
@@ -45,11 +69,27 @@ function severityLabel(severity: string): string {
   return severity
 }
 
+function severityTone(severity: string): string {
+  const s = severity.toLowerCase()
+  if (s === 'inoperable') return 'inoperable'
+  if (s === 'deficient') return 'deficient'
+  if (s === 'suggested') return 'suggested'
+  return 'default'
+}
+
+function stopAddressLabel(stop: TechnicianWorksheetStop): string {
+  return (stop.display_address || '').trim() || `Stop #${stop.stop_number}`
+}
+
+function modalHeading(recordAndClockOut: boolean): string {
+  return recordAndClockOut ? 'Record result and clock out' : 'Record result'
+}
+
 export default function PortalRecordResultsModal({
   show,
   stop,
   runId = null,
-  title,
+  recordAndClockOut = false,
   initialOutcome = null,
   workflowActions,
   onHide,
@@ -92,7 +132,24 @@ export default function PortalRecordResultsModal({
     [localStop, runId],
   )
   const canAllGood = portalStopCanChooseAllGood(localStop)
-  const outcomeOptions = TEST_OUTCOME_OPTIONS.filter((o) => o.value !== 'skipped')
+  const verifyRemaining = newDeficienciesToVerify.length
+  const [verifyBaseline, setVerifyBaseline] = useState(0)
+
+  useEffect(() => {
+    if (!show) {
+      setVerifyBaseline(0)
+      return
+    }
+    if (step === 'verify' && verifyRemaining > verifyBaseline) {
+      setVerifyBaseline(verifyRemaining)
+    }
+    if (step === 'choose') {
+      setVerifyBaseline(0)
+    }
+  }, [show, step, verifyRemaining, verifyBaseline])
+
+  const verifyTotal = verifyBaseline || verifyRemaining
+  const verifyCompleted = Math.max(0, verifyTotal - verifyRemaining)
 
   const handlePickOutcome = useCallback(
     (outcome: PortalTestOutcome) => {
@@ -110,7 +167,7 @@ export default function PortalRecordResultsModal({
         setStep('choose')
       })
     },
-    [localStop, onComplete, onHide, runId],
+    [localStop, onComplete, runId],
   )
 
   const handleVerify = useCallback(
@@ -135,63 +192,122 @@ export default function PortalRecordResultsModal({
     void onComplete({ outcome: pendingOutcome }).catch(() => {
       setStep('verify')
     })
-  }, [localStop, onComplete, onHide, pendingOutcome, runId])
+  }, [localStop, onComplete, pendingOutcome, runId])
 
   const handleConfirmNone = useCallback(() => {
     if (pendingOutcome !== 'passed_with_problems') return
     void onComplete({ outcome: pendingOutcome, confirmedNoDeficiencies: true }).catch(() => {
       setStep('confirm_none')
     })
-  }, [onComplete, onHide, pendingOutcome])
+  }, [onComplete, pendingOutcome])
 
-  const modalTitle =
-    step === 'verify'
-      ? `Verify deficiencies — stop #${localStop.stop_number}`
-      : step === 'confirm_none'
-        ? `Confirm — stop #${localStop.stop_number}`
-        : title ?? `Record results — stop #${localStop.stop_number}`
+  const heading = modalHeading(recordAndClockOut)
+  const contextLabel = stopAddressLabel(localStop)
+  const pendingMeta =
+    pendingOutcome && pendingOutcome !== 'skipped' ? OUTCOME_META[pendingOutcome] : null
 
   return (
-    <Modal show={show} onHide={onHide} centered>
-      <Modal.Header closeButton>
-        <Modal.Title>{modalTitle}</Modal.Title>
-      </Modal.Header>
-      <Modal.Body>
+    <Modal
+      show={show}
+      onHide={onHide}
+      centered
+      className="pw-record-results-modal"
+      contentClassName="pw-record-results-modal__content"
+      dialogClassName="pw-record-results-modal__dialog"
+    >
+      <div className="pw-record-results-modal__header">
+        <div className="pw-record-results-modal__header-text">
+          <h2 className="pw-record-results-modal__title">{heading}</h2>
+          <p className="pw-record-results-modal__context">{contextLabel}</p>
+        </div>
+        <button
+          type="button"
+          className="pw-record-results-modal__close btn btn-link"
+          aria-label="Close"
+          onClick={onHide}
+        >
+          <i className="bi bi-x-lg" aria-hidden />
+        </button>
+      </div>
+
+      {step !== 'choose' ? (
+        <div className="pw-record-results-modal__stepper" aria-label="Workflow progress">
+          <div className="pw-record-results-modal__step pw-record-results-modal__step--done">
+            <span className="pw-record-results-modal__step-marker">
+              <i className="bi bi-check-lg" aria-hidden />
+            </span>
+            <span className="pw-record-results-modal__step-label">Select result</span>
+          </div>
+          <div
+            className={`pw-record-results-modal__step${step === 'verify' ? ' pw-record-results-modal__step--active' : verifyRemaining === 0 && step === 'confirm_none' ? ' pw-record-results-modal__step--done' : ''}`}
+          >
+            <span className="pw-record-results-modal__step-marker">
+              {step !== 'verify' && verifyRemaining === 0 && step === 'confirm_none' ? (
+                <i className="bi bi-check-lg" aria-hidden />
+              ) : (
+                '2'
+              )}
+            </span>
+            <span className="pw-record-results-modal__step-label">Verify</span>
+          </div>
+          <div
+            className={`pw-record-results-modal__step${step === 'confirm_none' ? ' pw-record-results-modal__step--active' : ''}`}
+          >
+            <span className="pw-record-results-modal__step-marker">3</span>
+            <span className="pw-record-results-modal__step-label">Confirm</span>
+          </div>
+        </div>
+      ) : null}
+
+      <Modal.Body className="pw-record-results-modal__body">
         {step === 'choose' ? (
           <>
             {localStop.is_legacy_outcome ? (
-              <p className="small text-muted mb-3">
-                This stop has a legacy outcome on file. Choose a new result to continue with the
-                updated workflow.
-              </p>
+              <div className="pw-record-results-modal__callout pw-record-results-modal__callout--info">
+                <i className="bi bi-info-circle" aria-hidden />
+                <div>
+                  This stop has a legacy outcome on file. Choose a new result to continue with the
+                  updated workflow.
+                </div>
+              </div>
             ) : null}
+
             {!canAllGood ? (
-              <Alert variant="warning" className="small py-2">
-                All good is unavailable while New or Verified deficiencies are on this stop. Verify
-                or update deficiencies first, or choose Passed with problems / Failed.
-              </Alert>
+              <div className="pw-record-results-modal__callout pw-record-results-modal__callout--warning">
+                <i className="bi bi-exclamation-triangle" aria-hidden />
+                <div>
+                  <strong>All good is unavailable</strong> while New or Verified deficiencies are on
+                  this stop. Verify or update deficiencies first, or choose Passed with problems /
+                  Failed.
+                </div>
+              </div>
             ) : null}
-            <div className="d-grid gap-2">
-              {outcomeOptions.map((opt) => {
+
+            <div className="pw-record-results-modal__outcomes" role="list">
+              {CHOOSE_OUTCOMES.map((opt) => {
+                const meta = OUTCOME_META[opt.value as Exclude<PortalTestOutcome, 'skipped'>]
                 const disabled = opt.value === 'all_good' && !canAllGood
                 return (
-                  <Button
+                  <button
                     key={opt.value}
-                    variant={
-                      opt.variant === 'success'
-                        ? 'success'
-                        : opt.variant === 'warning'
-                          ? 'warning'
-                          : opt.variant === 'danger'
-                            ? 'danger'
-                            : 'secondary'
-                    }
-                    className="pw-portal-outcome-btn"
+                    type="button"
+                    role="listitem"
+                    className={`pw-record-results-modal__outcome pw-record-results-modal__outcome--${meta.tone}${disabled ? ' pw-record-results-modal__outcome--disabled' : ''}`}
                     disabled={disabled}
                     onClick={() => handlePickOutcome(opt.value)}
                   >
-                    {opt.label}
-                  </Button>
+                    <span
+                      className={`pw-record-results-modal__outcome-icon pw-record-results-modal__outcome-icon--${meta.tone}`}
+                      aria-hidden
+                    >
+                      <i className={`bi ${meta.icon}`} />
+                    </span>
+                    <span className="pw-record-results-modal__outcome-copy">
+                      <span className="pw-record-results-modal__outcome-label">{opt.label}</span>
+                      <span className="pw-record-results-modal__outcome-desc">{meta.description}</span>
+                    </span>
+                    <i className="bi bi-chevron-right pw-record-results-modal__outcome-chevron" aria-hidden />
+                  </button>
                 )
               })}
             </div>
@@ -200,27 +316,71 @@ export default function PortalRecordResultsModal({
 
         {step === 'verify' ? (
           <>
-            <p className="small text-muted mb-3">
-              Verify each pre-existing New deficiency before continuing. Deficiencies you logged
-              this run do not need verification here.
+            <p className="pw-record-results-modal__lead">
+              Verify each pre-existing New deficiency before continuing. Deficiencies you logged this
+              run do not need verification here.
             </p>
-            <ul className="list-unstyled mb-0 pw-portal-def-list">
+
+            {pendingMeta ? (
+              <div
+                className={`pw-record-results-modal__pending-badge pw-record-results-modal__pending-badge--${pendingMeta.tone}`}
+              >
+                <i className={`bi ${pendingMeta.icon}`} aria-hidden />
+                <span>
+                  Selected:{' '}
+                  {CHOOSE_OUTCOMES.find((o) => o.value === pendingOutcome)?.label ?? pendingOutcome}
+                </span>
+              </div>
+            ) : null}
+
+            {verifyTotal > 0 ? (
+              <div className="pw-record-results-modal__verify-progress">
+                <span className="pw-record-results-modal__verify-count">
+                  {verifyRemaining > 0 ? `${verifyRemaining} remaining` : 'All verified'}
+                </span>
+                <div
+                  className="pw-record-results-modal__verify-bar"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={verifyTotal}
+                  aria-valuenow={verifyCompleted}
+                  aria-label="Deficiencies verified"
+                >
+                  <div
+                    className="pw-record-results-modal__verify-bar-fill"
+                    style={{
+                      width: `${verifyTotal === 0 ? 100 : (verifyCompleted / verifyTotal) * 100}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            ) : null}
+
+            <ul className="pw-record-results-modal__def-list">
               {newDeficienciesToVerify.map((def) => (
-                <li key={def.id} className="pw-portal-def-item d-flex justify-content-between gap-2">
-                  <div>
-                    <div className="fw-semibold">{def.title}</div>
-                    <div className="small text-muted">{severityLabel(def.severity)}</div>
+                <li key={def.id} className="pw-record-results-modal__def-item">
+                  <div className="pw-record-results-modal__def-copy">
+                    <div className="pw-record-results-modal__def-title">{def.title}</div>
+                    <span
+                      className={`pw-record-results-modal__severity pw-record-results-modal__severity--${severityTone(def.severity)}`}
+                    >
+                      {severityLabel(def.severity)}
+                    </span>
                   </div>
                   <Button
                     variant="outline-success"
                     size="sm"
+                    className="pw-record-results-modal__verify-btn"
                     disabled={verifyBusyId != null}
                     onClick={() => void handleVerify(def)}
                   >
                     {verifyBusyId === def.id ? (
                       <Spinner size="sm" animation="border" />
                     ) : (
-                      'Verify'
+                      <>
+                        <i className="bi bi-check-lg" aria-hidden />
+                        Verify
+                      </>
                     )}
                   </Button>
                 </li>
@@ -230,26 +390,53 @@ export default function PortalRecordResultsModal({
         ) : null}
 
         {step === 'confirm_none' ? (
-          <p className="mb-0">
-            No deficiencies are recorded for this visit (New or Verified). Confirm Passed with
-            problems with zero deficiencies?
-          </p>
-        ) : null}
+          <>
+            {pendingMeta ? (
+              <div
+                className={`pw-record-results-modal__pending-badge pw-record-results-modal__pending-badge--${pendingMeta.tone}`}
+              >
+                <i className={`bi ${pendingMeta.icon}`} aria-hidden />
+                <span>
+                  Selected:{' '}
+                  {CHOOSE_OUTCOMES.find((o) => o.value === pendingOutcome)?.label ?? pendingOutcome}
+                </span>
+              </div>
+            ) : null}
 
+            <div className="pw-record-results-modal__confirm-panel">
+              <div className="pw-record-results-modal__confirm-icon" aria-hidden>
+                <i className="bi bi-question-circle" />
+              </div>
+              <div>
+                <h3 className="pw-record-results-modal__confirm-title">Confirm zero deficiencies</h3>
+                <p className="pw-record-results-modal__confirm-text">
+                  No deficiencies are recorded for this visit (New or Verified). Confirm Passed with
+                  problems with zero deficiencies?
+                </p>
+              </div>
+            </div>
+          </>
+        ) : null}
       </Modal.Body>
-      <Modal.Footer>
+
+      <Modal.Footer className="pw-record-results-modal__footer">
         {step === 'choose' ? (
-          <Button variant="secondary" onClick={onHide}>
+          <Button variant="outline-secondary" className="pw-record-results-modal__footer-btn" onClick={onHide}>
             Cancel
           </Button>
         ) : null}
         {step === 'verify' ? (
           <>
-            <Button variant="secondary" onClick={() => setStep('choose')}>
+            <Button
+              variant="outline-secondary"
+              className="pw-record-results-modal__footer-btn"
+              onClick={() => setStep('choose')}
+            >
               Back
             </Button>
             <Button
               variant="primary"
+              className="pw-record-results-modal__footer-btn"
               disabled={newDeficienciesToVerify.length > 0 || verifyBusyId != null}
               onClick={handleVerifyContinue}
             >
@@ -259,11 +446,19 @@ export default function PortalRecordResultsModal({
         ) : null}
         {step === 'confirm_none' ? (
           <>
-            <Button variant="secondary" onClick={() => setStep('choose')}>
-              Cancel
+            <Button
+              variant="outline-secondary"
+              className="pw-record-results-modal__footer-btn"
+              onClick={() => setStep('choose')}
+            >
+              Back
             </Button>
-            <Button variant="warning" onClick={handleConfirmNone}>
-              Confirm
+            <Button
+              variant="warning"
+              className="pw-record-results-modal__footer-btn pw-record-results-modal__footer-btn--confirm"
+              onClick={handleConfirmNone}
+            >
+              Confirm outcome
             </Button>
           </>
         ) : null}

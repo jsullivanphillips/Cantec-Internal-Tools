@@ -179,7 +179,7 @@ Normalize `KEYS` text → match `keys.keycode` or unique barcode → set `key_id
 
 | Path | Module |
 |------|--------|
-| Route inspection CSV | `app/monthly/route_inspection_csv_import.py` → `POST .../runs/import_csv` |
+| Route inspection CSV | `app/monthly/route_inspection_csv_import.py` → `POST .../runs/import_csv` (optional multipart field ``sync_stop_order=1`` reorders stops from the ``#`` column) |
 | Master sheet bulk | `app/scripts/upload_monthly_sheet.py` |
 
 Import flow:
@@ -275,6 +275,7 @@ Each ``MonthlyRouteRun`` moves through explicit office and field phases. The API
 |-------|------------|--------------|
 | Draft | (run file may exist via ``opened_at``) | — |
 | Prepared | ``prepared_at`` | Office ``POST …/runs/prepare`` |
+| (back to draft/prep) | ``prepared_at`` cleared | Office ``POST …/runs/unprepare`` (only before ``started_at``) |
 | Field in progress | ``started_at`` | Portal ``POST …/runs`` (requires prepared) |
 | Awaiting office review | ``field_ended_at`` | Portal ``POST …/runs/end`` |
 | Ready to close | ``office_review_completed_at`` | Office ``POST …/runs/review_complete`` |
@@ -410,7 +411,7 @@ Migration `z5a6b7c8d9e0` adds:
 | `monthly_stop_clock_event` | Multiple clock-in/out pairs per `MonthlyTestingSiteMonth` |
 | `monthly_testing_site_month.test_outcome` | `all_good`, `passed_with_problems`, `failed`, `skipped` |
 | `monthly_testing_site_month.skip_category` / `skip_note` | Structured skip (replaces free-text-only `skip_reason` for new work) |
-| `monthly_testing_site_month.confirmed_no_deficiencies` | Processor flag when Passed with problems has zero deficiencies |
+| `monthly_testing_site_month.confirmed_no_deficiencies` | Processor flag when Passed with problems has zero deficiencies; cleared when a deficiency is logged on a later visit |
 | `monthly_route_test_history.billing_status` | Per **location** per month: `bill`, `do_not_bill`, `unset`, `legacy` |
 | `monthly_testing_site_deficiency` | App-only deficiencies per testing site (persist across runs; `created_run_id`) |
 
@@ -448,14 +449,14 @@ Legacy `result_status` / `sheet_time_in_raw` / `sheet_time_out_raw` remain for C
 | Band | When | Actions |
 |------|------|---------|
 | A | Not clocked in here; visit incomplete | Clock in, Skip |
-| B | Open clock on this stop | Record results, Clock out, Cancel clock-in, Add deficiency, Skip, Reset* |
+| B | Open clock on this stop | Record results, Clock out, Replace item (placeholder), Add deficiency, Skip, Reset* |
 | C | `test_outcome` set and no open clock | Clock in again, Reset* |
 
-\*Reset only when `has_run_changes`; confirm dialog.
+\*Reset when `has_run_changes` or an open clock is on this stop (visible immediately after clock-in via optimistic projection); confirm dialog.
 
 **APIs used by the portal UI (not legacy PATCH `time_in`/`time_out` on the dock):**
 
-- `POST .../clock_events/clock_in` / `clock_out` / `cancel_clock_in` (removes open clock-in only when the stop has no other run data). **Cancel clock-in** in the dock uses full **reset** when a test outcome, deficiencies, or other run changes exist so the stop returns to a clean pending state.
+- `POST .../clock_events/clock_in` / `clock_out` / `cancel_clock_in` (API remains for sync/undo paths). **Reset** in the dock (`POST .../reset`) clears clock events, results, and deficiencies logged this run when `has_run_changes`.
 - `PUT .../test_outcome` (four outcomes + structured skip)
 - Deficiency CRUD + `POST .../verify`
 - `POST .../reset` per stop
@@ -493,7 +494,9 @@ Technician workflow actions are **optimistic**: the UI updates immediately, then
 
 **Refresh:** `mergeWorkflowQueueIntoPayload` overlays the workflow queue on GET/SSE merges so stale server data cannot reopen a site the technician already clocked out of. Remote refresh is suppressed while the workflow queue is non-empty.
 
-**Errors:** `open_clock_in_conflict` on `clock_in` retries with backoff when the queue shows an earlier `clock_out` or `transition_clock` for another site (transient lag). `no_open_clock` on `clock_out` retries when the client still shows an open clock on that stop; otherwise idempotent drop. Real conflicts (second device, wrong site) still alert after retry cap.
+**End field run:** `POST …/runs/end` waits for the portal field PATCH queue and `portalWorkflowSyncQueue` to drain for that route/month before calling the server, so a pending clock-out (or other workflow action) is not rejected with `field_ended_locked` after the run is marked ended.
+
+**Errors:** `open_clock_in_conflict` on `clock_in` retries with backoff when the queue shows an earlier `clock_out` or `transition_clock` for another site (transient lag). `no_open_clock` on `clock_out` retries when the client still shows an open clock on that stop; otherwise idempotent drop. `cancel_clock_in` **supersedes** a pending queued `clock_in` that has not run yet (drops the clock-in item instead of calling the server); when `clock_in` is already at the head of the queue, cancel is chained after it completes. `no_open_clock` on `cancel_clock_in` retries briefly so cancel is not dropped while the preceding clock-in commit is still visible. Real conflicts (second device, wrong site) still alert after retry cap.
 
 **Atomic move:** `POST .../worksheet/transition_clock` (`transition_clock_between_stops` in `portal_workflow.py`) closes the open clock on `from_testing_site_id` and clocks in on `to_testing_site_id` in one transaction. The portal uses this only when the user taps **Clock in** on a stop while another stop still has an open clock (explicit site-to-site move). **Record results** saves the outcome, clocks out the current stop if needed, and **selects** the next incomplete stop—it does not clock in there automatically.
 
@@ -511,7 +514,7 @@ Technician workflow actions are **optimistic**: the UI updates immediately, then
 
 Body: `{ "billing_status": "bill" | "do_not_bill" | "unset" }`. Allowed only after technicians **end field** on the run (`office_may_edit_billing`; `409` + `code: billing_before_field_end` while field work is open). Rejects when the row is `legacy` (`code: billing_legacy_locked`). `csv_import` runs: billing controls disabled in UI (read-only).
 
-**Run review UI:** Outcome headlines via `portalOutcomeDisplay` / legacy labels; filters by outcome + Updated; `confirmed_no_deficiencies` pill on Passed-with-problems cards. **Bill / Do not bill** toggles and the billing column appear only after field end; while technicians are still on the run, office can review outcomes and deficiencies without billing controls (auto-default billing still updates in the background when outcomes change).
+**Run review UI:** Two tabs on run details after prep — **Run review** (prep-style read-only table: one row per stop; **Location & result** combines address, multi-site label, and outcome badge; Access, Monitoring, Deficiencies, comment columns, optional **Billing** with `rowSpan` per address) and **Field changes** (sites with audit edits only; prep-style table with **Before** / **After** rows per stop and changed fields in the same columns as prep—Panel under Access). Run review does **not** show removed values or before→after diffs (those appear only on Field changes). **New** comment text on run review is highlighted in red via stop payload `new_comment_fields` (derived from audit `comment_added` / empty→non-empty field edits after `started_at`). The **Deficiencies** column lists only deficiencies **reported on this run** (`created_run_id`) or **verified during this field visit** (`status=verified` with `updated_at` between `started_at` and `field_ended_at`); carry-over **New** items from prior runs are hidden there but still drive ``needs_attention``. KPI chips still filter the run-review list by outcome (no separate filter bar). Outcome headlines via `portalOutcomeDisplay` / legacy labels; `confirmed_no_deficiencies` pill when the flag is set and the stop has no run-scoped active deficiencies. **Bill / Do not bill** toggles and the billing column appear only after field end; while technicians are still on the run, office can review outcomes and deficiencies without billing controls (auto-default billing still updates in the background when outcomes change).
 
 ---
 

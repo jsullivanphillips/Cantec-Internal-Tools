@@ -55,6 +55,7 @@
   --rdp-col-procedures: 11.5rem;
   --rdp-col-location-comments: 11.5rem;
   --rdp-col-deficiencies: 9.5rem;
+  --rdp-sticky-address-left: calc(var(--rdp-col-stop) + var(--rdp-col-highlight));
   --rdp-table-w: calc(
     var(--rdp-col-stop) +
     var(--rdp-col-highlight) +
@@ -201,7 +202,7 @@
 }
 
 .monthly-run-detail-page .run-details-prepare-sticky-address {
-  left: calc(var(--rdp-col-stop) + var(--rdp-col-highlight));
+  left: var(--rdp-sticky-address-left);
   width: var(--rdp-col-address);
   min-width: var(--rdp-col-address);
 }
@@ -503,4 +504,196 @@
 .monthly-run-detail-page .run-details-prepare-edit-btn:focus-visible {
   outline: 2px solid rgba(13, 110, 253, 0.45);
   outline-offset: 1px;
+}
+
+/* Field changes tab: prep-style before/after row pairs */
+.monthly-run-detail-page .run-details-field-changes-shell {
+  --rdp-col-version: 4.5rem;
+  --rdp-sticky-address-left: calc(var(--rdp-col-stop) + var(--rdp-col-version));
+  margin-top: 0;
+}
+
+.monthly-run-detail-page .run-details-field-changes-table.table tbody tr:nth-child(even) td,
+.monthly-run-detail-page .run-details-field-changes-table.table tbody tr:nth-child(odd) td {
+  background-color: transparent;
+}
+
+.monthly-run-detail-page .run-details-field-changes-table .run-details-field-change-col-version {
+  width: 4.5rem;
+  min-width: 4.5rem;
+}
+
+.monthly-run-detail-page .run-details-field-changes-table thead .run-details-field-change-version,
+.monthly-run-detail-page .run-details-field-changes-table tbody .run-details-field-change-version {
+  background: var(--ml-surface-muted, #f8fafc);
+}
+
+.monthly-run-detail-page .run-details-field-change-version__label {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--ml-muted, #64748b);
+  line-height: 1.15;
+}
+
+.monthly-run-detail-page .run-details-field-change-value--muted {
+  color: var(--ml-muted-strong, #64748b);
+  text-decoration: line-through;
+  text-decoration-color: rgba(100, 116, 139, 0.45);
+}
+
+.monthly-run-detail-page .run-details-field-changes-table tbody tr.run-details-field-change-pair--even td {
+  background-color: var(--ml-surface, #fff);
+}
+
+.monthly-run-detail-page .run-details-field-changes-table tbody tr.run-details-field-change-pair--odd td {
+  background-color: var(--ml-surface-muted, rgba(15, 23, 42, 0.035));
+}
+
+.monthly-run-detail-page .run-details-field-changes-table tbody tr.run-details-field-change-row--before td {
+  border-bottom-color: transparent;
+  padding-bottom: 0.25rem;
+}
+
+.monthly-run-detail-page .run-details-field-changes-table tbody tr.run-details-field-change-row--after td {
+  padding-top: 0.25rem;
+}
+
+.monthly-run-detail-page
+  .run-details-field-changes-table.table
+  tbody
+  tr.run-details-field-change-row--after:last-child
+  td {
+  border-bottom: none;
+}
+
+.monthly-run-detail-page .run-details-field-changes-table tbody tr.run-details-field-change-pair--even .run-details-prepare-sticky-order,
+.monthly-run-detail-page .run-details-field-changes-table tbody tr.run-details-field-change-pair--even .run-details-prepare-sticky-address {
+  background-color: var(--ml-surface, #fff);
+}
+
+.monthly-run-detail-page .run-details-field-changes-table tbody tr.run-details-field-change-pair--odd .run-details-prepare-sticky-order,
+.monthly-run-detail-page .run-details-field-changes-table tbody tr.run-details-field-change-pair--odd .run-details-prepare-sticky-address {
+  background-color: var(--ml-surface-muted, rgba(15, 23, 42, 0.035));
+}
+
+/* Run review tab: prep-style read-only table (no highlight column; billing in # column) */
+.monthly-run-detail-page .run-details-review-table-shell {
+  --rdp-sticky-address-left: var(--rdp-col-stop);
+  --rdp-table-w: calc(
+    var(--rdp-col-stop) +
+    var(--rdp-col-address) +
+    var(--rdp-col-access) +
+    var(--rdp-col-monitoring) +
+    var(--rdp-col-deficiencies) +
+    var(--rdp-col-run-comments) +
+    var(--rdp-col-procedures) +
+    var(--rdp-col-location-comments)
+  );
+}
+
+.monthly-run-detail-page .run-details-review-table-shell--billing {
+  --rdp-col-stop: 5.25rem;
+}
+
+.monthly-run-detail-page .run-details-review-stop-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.4rem;
+}
+
+.monthly-run-detail-page .run-details-review-stop-cell .run-details-prepare-stop-num {
+  align-self: center;
+}
+
+.monthly-run-detail-page .run-details-review-table .run-location-card__billing-control--vertical {
+  width: 100%;
+}
+
+.monthly-run-detail-page .run-details-review-table .run-location-card__billing-segment--vertical {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.monthly-run-detail-page .run-details-review-table .run-location-card__billing-segment--vertical .btn {
+  width: 100%;
+  padding-left: 0.2rem;
+  padding-right: 0.2rem;
+  font-size: 0.62rem;
+  line-height: 1.15;
+  white-space: normal;
+}
+
+.monthly-run-detail-page .run-details-review-table .run-location-card__billing-segment--vertical .btn + .btn {
+  margin-left: 0;
+  margin-top: 0.2rem;
+}
+
+.monthly-run-detail-page .run-details-review-table .run-location-card__billing-readonly {
+  align-self: center;
+}
+
+/* Read-only stack cells: wrap long values (e.g. monitoring notes) inside fixed columns */
+.monthly-run-detail-page .run-details-review-table .run-details-prepare-stack-cell {
+  overflow: hidden;
+}
+
+.monthly-run-detail-page .run-details-review-table .run-details-prepare-stack__value .run-details-prepare-display {
+  display: block;
+  max-width: 100%;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  overflow: visible;
+  text-overflow: unset;
+}
+
+.monthly-run-detail-page .run-details-review-comment--new {
+  color: var(--bs-danger, #dc3545);
+}
+
+.monthly-run-detail-page .run-details-review-location-result {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+}
+
+.monthly-run-detail-page .run-details-review-location-result__outcome-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.monthly-run-detail-page .run-details-review-location-result__outcome-btn:hover .run-details-review-location-result__outcome {
+  text-decoration: underline;
+}
+
+.monthly-run-detail-page .run-details-review-table tbody tr.run-details-review-table-row--odd td {
+  background-color: var(--ml-surface-muted, rgba(15, 23, 42, 0.035));
+}
+
+.monthly-run-detail-page .run-details-review-table tbody tr.run-details-review-table-row--even td {
+  background-color: var(--ml-card, #ffffff);
+}
+
+.monthly-run-detail-page .run-details-review-table tbody tr.run-details-review-table-row--odd .run-details-prepare-sticky-order,
+.monthly-run-detail-page .run-details-review-table tbody tr.run-details-review-table-row--odd .run-details-prepare-sticky-address {
+  background-color: var(--ml-surface-muted, rgba(15, 23, 42, 0.035));
+}
+
+.monthly-run-detail-page .run-details-review-table tbody tr.run-details-review-table-row--even .run-details-prepare-sticky-order,
+.monthly-run-detail-page .run-details-review-table tbody tr.run-details-review-table-row--even .run-details-prepare-sticky-address {
+  background-color: var(--ml-card, #ffffff);
 }

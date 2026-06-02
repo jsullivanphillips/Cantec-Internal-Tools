@@ -123,12 +123,95 @@ def _build_csv(*, address_header: str, tech_notes_header: str) -> bytes:
     return ("\r\n".join(rows) + "\r\n").encode("utf-8")
 
 
-def _post_csv(client, route_id: int, csv_bytes: bytes, *, filename: str = "R8.csv"):
+def _post_csv(
+    client,
+    route_id: int,
+    csv_bytes: bytes,
+    *,
+    filename: str = "R8.csv",
+    sync_stop_order: bool = False,
+):
+    data: dict[str, object] = {"file": (io.BytesIO(csv_bytes), filename)}
+    if sync_stop_order:
+        data["sync_stop_order"] = "1"
     return client.post(
         f"/api/monthly_routes/routes/{route_id}/runs/import_csv",
-        data={"file": (io.BytesIO(csv_bytes), filename)},
+        data=data,
         content_type="multipart/form-data",
     )
+
+
+def test_import_sync_stop_order_reorders_route_and_history(import_client):
+    from app.monthly.route_inspection_csv_import import run_route_inspection_csv_import
+    from app.monthly.runs import get_or_create_monthly_route_run
+
+    client, app = import_client
+    with app.app_context():
+        route_id, loc1, loc2 = _seed_route8_with_two_stops()
+        loc1_row = db.session.get(MonthlyRouteLocation, loc1)
+        loc2_row = db.session.get(MonthlyRouteLocation, loc2)
+        loc1_row.route_stop_order = 99
+        loc2_row.route_stop_order = 1
+        db.session.commit()
+        route = db.session.get(MonthlyRoute, route_id)
+        month_first = date(2026, 4, 1)
+        run = get_or_create_monthly_route_run(route_id, month_first, source="csv_import")
+        csv_bytes = _build_csv(
+            address_header="Address",
+            tech_notes_header="Tech Comments & Notes",
+        )
+        result = run_route_inspection_csv_import(
+            csv_bytes=csv_bytes,
+            run=run,
+            route=route,
+            month_date=month_first,
+            sync_stop_order=True,
+        )
+        db.session.commit()
+        assert result.stop_order_applied == 2
+        loc1_after = db.session.get(MonthlyRouteLocation, loc1)
+        loc2_after = db.session.get(MonthlyRouteLocation, loc2)
+        assert loc1_after.route_stop_order == 0
+        assert loc2_after.route_stop_order == 1
+        h1 = MonthlyRouteTestHistory.query.filter_by(
+            location_id=loc1, month_date=month_first
+        ).one()
+        h2 = MonthlyRouteTestHistory.query.filter_by(
+            location_id=loc2, month_date=month_first
+        ).one()
+        assert h1.session_route_stop_order == 0
+        assert h2.session_route_stop_order == 1
+
+
+def test_import_without_sync_stop_order_leaves_route_stop_order(import_client):
+    from app.monthly.route_inspection_csv_import import run_route_inspection_csv_import
+    from app.monthly.runs import get_or_create_monthly_route_run
+
+    client, app = import_client
+    with app.app_context():
+        route_id, loc1, loc2 = _seed_route8_with_two_stops()
+        loc1_row = db.session.get(MonthlyRouteLocation, loc1)
+        loc2_row = db.session.get(MonthlyRouteLocation, loc2)
+        loc1_row.route_stop_order = 99
+        loc2_row.route_stop_order = 1
+        db.session.commit()
+        route = db.session.get(MonthlyRoute, route_id)
+        month_first = date(2026, 4, 1)
+        run = get_or_create_monthly_route_run(route_id, month_first, source="csv_import")
+        result = run_route_inspection_csv_import(
+            csv_bytes=_build_csv(
+                address_header="Address",
+                tech_notes_header="Tech Comments & Notes",
+            ),
+            run=run,
+            route=route,
+            month_date=month_first,
+            sync_stop_order=False,
+        )
+        db.session.commit()
+        assert result.stop_order_applied == 0
+        assert db.session.get(MonthlyRouteLocation, loc1).route_stop_order == 99
+        assert db.session.get(MonthlyRouteLocation, loc2).route_stop_order == 1
 
 
 def test_import_creates_run_and_snapshots(import_client):

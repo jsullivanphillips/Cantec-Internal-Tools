@@ -31,6 +31,7 @@ import {
   portalNavStopStatusClass,
   portalOutcomeDisplay,
   portalStatusPillClass,
+  portalStopCanReset,
   portalStopDockBand,
   optimisticClockOutPatch,
   optimisticOutcomePatch,
@@ -176,6 +177,7 @@ export default function TechnicianPortalWorksheetPage() {
   const {
     payload,
     stops,
+    projectedStops,
     error,
     monthOk,
     monthHeading,
@@ -222,33 +224,33 @@ export default function TechnicianPortalWorksheetPage() {
   const [fieldEditActions, setFieldEditActions] = useState<PortalFieldEditActions | null>(null)
 
   useEffect(() => {
-    if (!stops.length) {
+    if (!projectedStops.length) {
       setActiveId(null)
       return
     }
-    if (activeId != null && stops.some((s) => s.testing_site_id === activeId)) return
-    const firstOpen = stops.find((s) => stopDisplayStatus(s) === 'pending')
-    setActiveId((firstOpen ?? stops[0]).testing_site_id)
-  }, [stops, activeId])
+    if (activeId != null && projectedStops.some((s) => s.testing_site_id === activeId)) return
+    const firstOpen = projectedStops.find((s) => stopDisplayStatus(s) === 'pending')
+    setActiveId((firstOpen ?? projectedStops[0]).testing_site_id)
+  }, [projectedStops, activeId])
 
   const active = useMemo(
-    () => stops.find((s) => s.testing_site_id === activeId) ?? stops[0] ?? null,
-    [stops, activeId],
+    () => projectedStops.find((s) => s.testing_site_id === activeId) ?? projectedStops[0] ?? null,
+    [projectedStops, activeId],
   )
 
   const runMonthIso = payload?.month_date ?? monthQuery
 
   const progress = useMemo(() => {
-    const tested = stops.filter((s) => stopDisplayStatus(s) === 'tested').length
-    const skipped = stops.filter((s) => stopDisplayStatus(s) === 'skipped').length
-    const annual = stops.filter(
+    const tested = projectedStops.filter((s) => stopDisplayStatus(s) === 'tested').length
+    const skipped = projectedStops.filter((s) => stopDisplayStatus(s) === 'skipped').length
+    const annual = projectedStops.filter(
       (s) =>
         isAnnualForMonth(s.annual_month, runMonthIso) ||
         (stopDisplayStatus(s) === 'skipped' && worksheetStopSkipIsAnnual(s)),
     ).length
-    const open = stops.length - tested - skipped
-    return { tested, skipped, annual, open, total: stops.length }
-  }, [stops, runMonthIso])
+    const open = projectedStops.length - tested - skipped
+    return { tested, skipped, annual, open, total: projectedStops.length }
+  }, [projectedStops, runMonthIso])
 
   const workflowReadOnly = Boolean(
     active &&
@@ -324,12 +326,12 @@ export default function TechnicianPortalWorksheetPage() {
       }
 
       if (!portalStopHasOpenClock(afterStop)) {
-        const idx = stops.findIndex((s) => s.testing_site_id === active.testing_site_id)
-        const next = stops.slice(idx + 1).find((s) => !portalStopVisitComplete(s))
+        const idx = projectedStops.findIndex((s) => s.testing_site_id === active.testing_site_id)
+        const next = projectedStops.slice(idx + 1).find((s) => !portalStopVisitComplete(s))
         if (next) setActiveId(next.testing_site_id)
       }
     },
-    [active, workflowActions, stops, resultsForClockOut],
+    [active, workflowActions, projectedStops, resultsForClockOut],
   )
 
   const handleClockOut = useCallback(() => {
@@ -340,28 +342,6 @@ export default function TechnicianPortalWorksheetPage() {
       return
     }
     void workflowActions.clockOut(active)
-  }, [active, workflowReadOnly, workflowActions])
-
-  const handleCancelClockIn = useCallback(() => {
-    if (!active || workflowReadOnly) return
-    const undoFullVisit =
-      portalStopHasTestOutcome(active) ||
-      Boolean(active.has_run_changes) ||
-      (Array.isArray(active.deficiencies) && active.deficiencies.length > 0)
-    if (
-      !window.confirm(
-        undoFullVisit
-          ? `Cancel clock-in for stop #${active.stop_number}? This clears clock events, results, and deficiencies logged this run.`
-          : `Cancel clock-in for stop #${active.stop_number}? This removes the open clock-in only.`,
-      )
-    ) {
-      return
-    }
-    if (undoFullVisit) {
-      void workflowActions.resetStop(active)
-    } else {
-      void workflowActions.cancelClockIn(active)
-    }
   }, [active, workflowReadOnly, workflowActions])
 
   const handleRecordResultsOpen = useCallback(() => {
@@ -395,11 +375,11 @@ export default function TechnicianPortalWorksheetPage() {
         void workflowActions.clockOut(projected)
       }
     },
-    [active, workflowReadOnly, workflowActions, stops],
+    [active, workflowReadOnly, workflowActions, projectedStops],
   )
 
   const handleReset = useCallback(() => {
-    if (!active || workflowReadOnly || !active.has_run_changes) return
+    if (!active || workflowReadOnly || !portalStopCanReset(active)) return
     if (
       !window.confirm(
         `Reset stop #${active.stop_number}? This clears clock events, results, and deficiencies logged this run.`,
@@ -625,11 +605,11 @@ export default function TechnicianPortalWorksheetPage() {
             Clock out
           </Button>
           <Button
-            variant="outline-secondary"
-            className="pw-mock-dock-btn pw-mock-dock-normal-btn"
-            onClick={handleCancelClockIn}
+            variant="primary"
+            className="pw-mock-dock-btn pw-mock-dock-normal-btn pw-mock-dock-placeholder-btn"
+            disabled
           >
-            Cancel clock-in
+            Replace item
           </Button>
           <Button
             variant="outline-danger"
@@ -645,7 +625,7 @@ export default function TechnicianPortalWorksheetPage() {
           >
             Skip
           </Button>
-          {active.has_run_changes ? (
+          {portalStopCanReset(active) ? (
             <Button
               variant="outline-secondary"
               className="pw-mock-dock-btn pw-mock-dock-normal-btn"
@@ -667,7 +647,7 @@ export default function TechnicianPortalWorksheetPage() {
         >
           Clock in again
         </Button>
-        {active.has_run_changes ? (
+        {portalStopCanReset(active) ? (
           <Button
             variant="outline-secondary"
             className="pw-mock-dock-btn pw-mock-dock-normal-btn"
@@ -869,7 +849,7 @@ export default function TechnicianPortalWorksheetPage() {
                 navItemsExpanded ? ' pw-mock-sidenav-list--expanded' : ' pw-mock-sidenav-list--collapsed'
               }`}
             >
-              {stops.map((s) => renderNavStop(s))}
+              {projectedStops.map((s) => renderNavStop(s))}
             </div>
             <button
               type="button"
@@ -1101,12 +1081,8 @@ export default function TechnicianPortalWorksheetPage() {
             show={resultsModalOpen}
             stop={active}
             runId={payload?.run?.id ?? null}
+            recordAndClockOut={resultsForClockOut}
             workflowActions={workflowActions}
-            title={
-              resultsForClockOut
-                ? `Clock out — record results (stop #${active.stop_number})`
-                : undefined
-            }
             onHide={() => {
               setResultsModalOpen(false)
               setResultsForClockOut(false)

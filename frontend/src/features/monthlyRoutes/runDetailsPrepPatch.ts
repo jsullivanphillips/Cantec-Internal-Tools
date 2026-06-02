@@ -1,8 +1,10 @@
 import type {
   MonthlyRunDetailDeficiencySummary,
   MonthlyRunDetailLocationStop,
+  TechnicianWorksheetRun,
   TechnicianWorksheetStop,
 } from './monthlyRoutesShared'
+import { runReviewDeficiencySummaries } from './runDetailsDeficiencyDisplay'
 
 export type PrepStopPatchChanges = Record<string, string | number | boolean | null>
 
@@ -176,10 +178,13 @@ function deficiencySummariesFromWorksheetStop(
 /** Merge deficiency API responses without touching unrelated prep fields. */
 export function deficiencyPatchFromWorksheetStop(
   stop: TechnicianWorksheetStop,
+  run?: TechnicianWorksheetRun | null,
 ): Partial<MonthlyRunDetailLocationStop> {
   const patch: Partial<MonthlyRunDetailLocationStop> = {}
   if (stop.deficiencies !== undefined) {
-    patch.deficiency_summaries = deficiencySummariesFromWorksheetStop(stop)
+    const summaries = deficiencySummariesFromWorksheetStop(stop)
+    patch.deficiency_summaries = runReviewDeficiencySummaries(summaries, run ?? null)
+    patch.has_active_deficiencies = patch.deficiency_summaries.length > 0
   }
   if (stop.confirmed_no_deficiencies !== undefined) {
     patch.confirmed_no_deficiencies = stop.confirmed_no_deficiencies

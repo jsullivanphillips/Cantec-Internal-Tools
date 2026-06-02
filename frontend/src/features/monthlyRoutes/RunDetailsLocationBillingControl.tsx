@@ -19,6 +19,7 @@ type Props = {
   billingStatus: string | null
   readOnly?: boolean
   error?: string | null
+  layout?: 'horizontal' | 'vertical'
   onChange: (status: Extract<OfficeBillingStatus, 'bill' | 'do_not_bill' | 'unset'>) => void
 }
 
@@ -26,6 +27,7 @@ export default function RunDetailsLocationBillingControl({
   billingStatus,
   readOnly = false,
   error = null,
+  layout = 'horizontal',
   onChange,
 }: Props) {
   const status = (billingStatus || '').trim().toLowerCase()
@@ -42,10 +44,15 @@ export default function RunDetailsLocationBillingControl({
     )
   }
 
+  const vertical = layout === 'vertical'
+
   return (
-    <div className="run-location-card__billing-control">
+    <div
+      className={`run-location-card__billing-control${vertical ? ' run-location-card__billing-control--vertical' : ''}`}
+    >
       <ButtonGroup
-        className={`run-location-card__billing-segment${isUnset ? ' run-location-card__billing-segment--unset' : ''}`}
+        vertical={vertical}
+        className={`run-location-card__billing-segment${isUnset ? ' run-location-card__billing-segment--unset' : ''}${vertical ? ' run-location-card__billing-segment--vertical' : ''}`}
         role="group"
         aria-label={isUnset ? 'Choose billing for this location' : 'Billing status'}
       >

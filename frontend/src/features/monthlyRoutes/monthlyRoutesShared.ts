@@ -402,6 +402,8 @@ export type MonthlyRunDetailLocationStop = {
   review_kind: 'with_changes' | 'tested_only'
   deficiency_summaries: MonthlyRunDetailDeficiencySummary[]
   has_active_deficiencies: boolean
+  /** Comment fields newly added on this field run (run_comments, etc.). */
+  new_comment_fields?: string[]
 }
 
 export type MonthlyRunDetailLocation = {

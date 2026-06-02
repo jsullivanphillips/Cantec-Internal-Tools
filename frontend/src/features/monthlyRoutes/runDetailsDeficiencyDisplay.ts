@@ -1,4 +1,7 @@
-import type { MonthlyRunDetailDeficiencySummary } from './monthlyRoutesShared'
+import type {
+  MonthlyRunDetailDeficiencySummary,
+  TechnicianWorksheetRun,
+} from './monthlyRoutesShared'
 
 export function deficiencySeverityVariant(severity: string | null | undefined): string {
   const s = (severity || '').trim().toLowerCase()
@@ -63,4 +66,53 @@ export function openDeficiencySummaries(
   return (deficiencies ?? []).filter((def) =>
     OPEN_DEFICIENCY_STATUSES.has((def.status || '').trim().toLowerCase()),
   )
+}
+
+function parseRunTimestamp(iso: string | null | undefined): number | null {
+  if (!iso) return null
+  const ms = Date.parse(iso)
+  return Number.isNaN(ms) ? null : ms
+}
+
+/** Reported on this run, or verified during this field visit (matches office run-details API). */
+export function deficiencyOnRunForReview(
+  def: MonthlyRunDetailDeficiencySummary,
+  run: TechnicianWorksheetRun | null | undefined,
+): boolean {
+  if (!run?.started_at) return false
+  const status = (def.status || '').trim().toLowerCase()
+  if (!OPEN_DEFICIENCY_STATUSES.has(status)) return false
+  const runId = run.id
+  const createdRunId = def.created_run_id ?? null
+  if (createdRunId === runId) return true
+  if (status !== 'verified') return false
+  const startedMs = parseRunTimestamp(run.started_at)
+  const updatedMs = parseRunTimestamp(def.updated_at)
+  if (startedMs == null || updatedMs == null || updatedMs < startedMs) return false
+  const endedMs = parseRunTimestamp(run.field_ended_at)
+  if (endedMs != null && updatedMs > endedMs) return false
+  return true
+}
+
+/** Deficiencies column on run review (after field has started). */
+export function runReviewDeficiencySummaries(
+  deficiencies: MonthlyRunDetailDeficiencySummary[] | null | undefined,
+  run: TechnicianWorksheetRun | null | undefined,
+): MonthlyRunDetailDeficiencySummary[] {
+  const open = openDeficiencySummaries(deficiencies)
+  if (!run?.started_at) return open
+  return open.filter((def) => deficiencyOnRunForReview(def, run))
+}
+
+/** Passed with problems + explicit no-deficiency confirm, and no active deficiencies on the stop. */
+export function stopShowsNoDeficienciesConfirmedPill(
+  stop: {
+    test_outcome?: string | null
+    confirmed_no_deficiencies?: boolean
+  },
+  activeDeficiencyCount = 0,
+): boolean {
+  if ((stop.test_outcome || '').trim().toLowerCase() !== 'passed_with_problems') return false
+  if (!stop.confirmed_no_deficiencies) return false
+  return activeDeficiencyCount === 0
 }

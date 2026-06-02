@@ -199,6 +199,16 @@ def test_run_details_locations_deficiency_summaries(run_details_client):
         sync_testing_sites_from_legacy(loc)
         ts_id = int(MonthlyTestingSite.query.one().id)
         db.session.add(
+            MonthlyTestingSiteMonth(
+                id=92002,
+                monthly_testing_site_id=ts_id,
+                month_date=date(2026, 5, 1),
+                test_monthly_route_id=1,
+                test_outcome="passed_with_problems",
+                confirmed_no_deficiencies=True,
+            )
+        )
+        db.session.add(
             MonthlyTestingSiteDeficiency(
                 id=99001,
                 monthly_testing_site_id=ts_id,
@@ -217,7 +227,145 @@ def test_run_details_locations_deficiency_summaries(run_details_client):
     assert stop["has_active_deficiencies"] is True
     assert len(stop["deficiency_summaries"]) == 1
     assert stop["deficiency_summaries"][0]["title"] == "Bad battery"
+    assert stop["confirmed_no_deficiencies"] is False
     assert entry["attention_flags"]["has_active_deficiencies"] is True
+
+
+def test_run_details_deficiency_summaries_scoped_to_field_run(run_details_client):
+    client, app = run_details_client
+    with app.app_context():
+        _seed_basic_route_data()
+        loc = db.session.get(MonthlyRouteLocation, 101)
+        assert loc is not None
+        sync_testing_sites_from_legacy(loc)
+        ts_id = int(MonthlyTestingSite.query.one().id)
+        db.session.add(
+            MonthlyTestingSiteMonth(
+                id=92002,
+                monthly_testing_site_id=ts_id,
+                month_date=date(2026, 5, 1),
+                test_monthly_route_id=1,
+                test_outcome="passed_with_problems",
+            )
+        )
+        db.session.add(
+            MonthlyTestingSiteDeficiency(
+                id=99001,
+                monthly_testing_site_id=ts_id,
+                created_run_id=9001,
+                title="Reported this run",
+                severity="deficient",
+                status="new",
+            )
+        )
+        db.session.add(
+            MonthlyTestingSiteDeficiency(
+                id=99002,
+                monthly_testing_site_id=ts_id,
+                created_run_id=8000,
+                title="Carry-over new",
+                severity="deficient",
+                status="new",
+            )
+        )
+        db.session.add(
+            MonthlyTestingSiteDeficiency(
+                id=99003,
+                monthly_testing_site_id=ts_id,
+                created_run_id=8000,
+                title="Verified on visit",
+                severity="deficient",
+                status="verified",
+                updated_at=datetime(2026, 5, 2, 10, 0, tzinfo=PACIFIC_TZ),
+            )
+        )
+        db.session.add(
+            MonthlyTestingSiteDeficiency(
+                id=99004,
+                monthly_testing_site_id=ts_id,
+                created_run_id=8000,
+                title="Verified before run",
+                severity="deficient",
+                status="verified",
+                updated_at=datetime(2026, 5, 1, 10, 0, tzinfo=PACIFIC_TZ),
+            )
+        )
+        db.session.commit()
+
+    res = client.get(BASE_URL)
+    assert res.status_code == 200
+    stop = next(
+        loc
+        for loc in res.get_json()["locations"]
+        if int(loc["location_id"]) == 101
+    )["stops"][0]
+    titles = {row["title"] for row in stop["deficiency_summaries"]}
+    assert titles == {"Reported this run", "Verified on visit"}
+    assert stop["has_active_deficiencies"] is True
+    assert res.get_json()["locations"][0]["attention_flags"]["needs_attention"] is True
+
+
+def test_run_details_new_comment_fields_on_stop(run_details_client):
+    """Office review flags newly added comment fields for red highlight."""
+    client, app = run_details_client
+    with app.app_context():
+        _, _, hist, run = _seed_basic_route_data()
+        loc = db.session.get(MonthlyRouteLocation, 101)
+        assert loc is not None
+        sync_testing_sites_from_legacy(loc)
+        ts_id = int(MonthlyTestingSite.query.one().id)
+        field_time = datetime(2026, 5, 2, 10, 0, tzinfo=PACIFIC_TZ)
+        db.session.add(
+            MonthlyTestingSiteMonth(
+                id=92003,
+                monthly_testing_site_id=ts_id,
+                month_date=date(2026, 5, 1),
+                test_monthly_route_id=1,
+                run_comments="Technician noted smoke smell",
+                testing_procedures="Check panel",
+            )
+        )
+        db.session.add(
+            MonthlyRouteWorksheetAuditEvent(
+                id=88001,
+                monthly_route_id=1,
+                location_id=101,
+                history_row_id=int(hist.id),
+                month_date=date(2026, 5, 1),
+                field_name="testing_procedures",
+                old_value="",
+                new_value="Check panel",
+                source="technician_app",
+                changed_at=field_time,
+            )
+        )
+        db.session.add(
+            MonthlyRouteWorksheetAuditEvent(
+                id=88002,
+                monthly_route_id=1,
+                location_id=101,
+                history_row_id=int(hist.id),
+                month_date=date(2026, 5, 1),
+                field_name="inspection_tech_notes",
+                old_value="Old office note",
+                new_value="",
+                source="technician_app",
+                changed_at=field_time,
+            )
+        )
+        db.session.commit()
+        assert run.started_at is not None
+
+    res = client.get(BASE_URL)
+    assert res.status_code == 200
+    stop = next(
+        loc
+        for loc in res.get_json()["locations"]
+        if int(loc["location_id"]) == 101
+    )["stops"][0]
+    assert "run_comments" in stop["new_comment_fields"]
+    assert "testing_procedures" in stop["new_comment_fields"]
+    assert "inspection_tech_notes" not in stop["new_comment_fields"]
 
 
 def test_run_details_worksheet_stop_for_site_modal(run_details_client):
@@ -420,6 +568,84 @@ def test_run_details_notable_stops_includes_run_comments_only(run_details_client
     assert len(notable) == 1
     assert notable[0]["location_id"] == 101
     assert notable[0]["run_comments"] == "Found bad battery"
+
+
+def test_run_details_field_changes_omit_office_prep_audits(run_details_client):
+    """Field-changes card shows only post-field-start technician deltas, not office prep."""
+    client, app = run_details_client
+    with app.app_context():
+        _, _, hist, run = _seed_basic_route_data()
+        started = run.started_at
+        assert started is not None
+        prep_time = datetime(2026, 5, 1, 10, 0, tzinfo=PACIFIC_TZ)
+        field_time = datetime(2026, 5, 2, 9, 0, tzinfo=PACIFIC_TZ)
+        db.session.add_all(
+            [
+                MonthlyRouteWorksheetAuditEvent(
+                    id=1,
+                    monthly_route_id=1,
+                    location_id=101,
+                    history_row_id=int(hist.id),
+                    month_date=date(2026, 5, 1),
+                    field_name="testing_procedures",
+                    old_value="ok",
+                    new_value=None,
+                    source="office_manual",
+                    changed_at=prep_time,
+                ),
+                MonthlyRouteWorksheetAuditEvent(
+                    id=2,
+                    monthly_route_id=1,
+                    location_id=101,
+                    history_row_id=int(hist.id),
+                    month_date=date(2026, 5, 1),
+                    field_name="office_attention",
+                    old_value=False,
+                    new_value=True,
+                    source="technician_app",
+                    changed_at=prep_time,
+                ),
+                MonthlyRouteWorksheetAuditEvent(
+                    id=3,
+                    monthly_route_id=1,
+                    location_id=101,
+                    history_row_id=int(hist.id),
+                    month_date=date(2026, 5, 1),
+                    field_name="inspection_tech_notes",
+                    old_value="TEST COMMENT JSP",
+                    new_value=None,
+                    source="technician_app",
+                    changed_at=prep_time,
+                ),
+                MonthlyRouteWorksheetAuditEvent(
+                    id=4,
+                    monthly_route_id=1,
+                    location_id=101,
+                    history_row_id=int(hist.id),
+                    month_date=date(2026, 5, 1),
+                    field_name="ring",
+                    old_value="Ring A",
+                    new_value="Ring B",
+                    source="technician_app",
+                    changed_at=field_time,
+                ),
+            ]
+        )
+        db.session.commit()
+
+    base = client.get(BASE_URL)
+    assert base.status_code == 200
+    stop = base.get_json()["locations"][0]["stops"][0]
+    assert stop.get("has_field_edits") is True
+    detail = client.get(
+        f"/api/monthly_routes/routes/1/run_details/review/stops/{stop['testing_site_id']}?month=2026-05-01"
+    )
+    assert detail.status_code == 200
+    changes = detail.get_json()["changes"]
+    labels = {c["label"] for c in changes}
+    assert labels == {"Ring"}
+    assert "Testing procedures" not in labels
+    assert "Location comments" not in labels
 
 
 def test_get_run_details_field_changes_after_patch(run_details_client):

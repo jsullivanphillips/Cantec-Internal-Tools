@@ -114,6 +114,13 @@ export function runInOfficePrepPhase(run: TechnicianWorksheetRun | null | undefi
   return true
 }
 
+/** Office may undo prepare while technicians have not started field work. */
+export function canOfficeReturnRunToPrep(run: TechnicianWorksheetRun | null | undefined): boolean {
+  if (!run || runExplicitlyCompleted(run)) return false
+  if (!hasTs(run.prepared_at)) return false
+  return !hasTs(run.started_at)
+}
+
 export function routeMonthRunStatusLabel(
   runSummary: { workflow_stage?: string; workflow_stage_label?: string } | null | undefined,
   hasSheetHistory: boolean,

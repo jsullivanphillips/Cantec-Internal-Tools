@@ -9,22 +9,24 @@ import type {
 import type { NotableChangeItem, NotableStopChangeCard } from './notableStopChanges'
 import RunReviewOutcomeLabel from './RunReviewOutcomeLabel'
 import { runReviewResultHeadlineClass } from './notableStopChanges'
+import { stopShowsNoDeficienciesConfirmedPill } from './runDetailsDeficiencyDisplay'
 import { apiJson } from '../../lib/apiClient'
 
 export function RunDetailsStopTestBlock({
   card,
   showSiteLabel,
   onOpen,
+  activeDeficiencyCount = 0,
 }: {
   card: NotableStopChangeCard
   showSiteLabel: boolean
   onOpen?: () => void
+  activeDeficiencyCount?: number
 }) {
   const { resultHeadline, stop, siteLabel, siteIndex, siteCount, stopNumber } = card
   const monthIso = stop.month_date
   const resultClass = runReviewResultHeadlineClass(stop, monthIso)
-  const showNoDefPill =
-    stop.test_outcome === 'passed_with_problems' && stop.confirmed_no_deficiencies === true
+  const showNoDefPill = stopShowsNoDeficienciesConfirmedPill(stop, activeDeficiencyCount)
   const showSiteMeta = showSiteLabel && siteCount > 1
 
   if (!resultHeadline && !showNoDefPill && !showSiteMeta && !onOpen) return null
@@ -127,20 +129,24 @@ export function RunDetailsStopFollowUpBlock({
   routeId,
   monthDate,
   showSiteLabel,
+  showFieldChanges = true,
   onDetailLoaded,
 }: {
   card: NotableStopChangeCard
   routeId: number
   monthDate: string
   showSiteLabel: boolean
+  /** When false, only job comments are shown (run review table). */
+  showFieldChanges?: boolean
   onDetailLoaded: (testingSiteId: number, changes: NotableChangeItem[]) => void
 }) {
   const { changes, stopNumber, stop, siteLabel, siteIndex, siteCount } = card
   const bodyId = useId()
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState<string | null>(null)
-  const needsDetailFetch = card.hasFieldEdits === true && changes.length === 0
-  const hasChangeDetails = changes.length > 0 || needsDetailFetch
+  const needsDetailFetch =
+    showFieldChanges && card.hasFieldEdits === true && changes.length === 0
+  const hasChangeDetails = showFieldChanges && (changes.length > 0 || needsDetailFetch)
   const runComment = (stop.run_comments || '').trim()
   const showSiteMeta = showSiteLabel && siteCount > 1
 
@@ -165,7 +171,7 @@ export function RunDetailsStopFollowUpBlock({
     if (needsDetailFetch) void loadDetail()
   }, [needsDetailFetch, loadDetail])
 
-  const hasContent = runComment.length > 0 || hasChangeDetails || showSiteMeta
+  const hasContent = runComment.length > 0 || hasChangeDetails
 
   if (!hasContent) return null
 

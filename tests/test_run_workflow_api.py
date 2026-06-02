@@ -83,6 +83,47 @@ def _seed_route() -> None:
     sync_testing_sites_from_legacy(loc)
 
 
+def test_office_unprepare_before_field_start(workflow_client):
+    client, app = workflow_client
+    with app.app_context():
+        _seed_route()
+    office_prepare_run(client)
+    with app.app_context():
+        run = MonthlyRouteRun.query.filter_by(monthly_route_id=1, month_date=date(2026, 5, 1)).one()
+        assert run.prepared_at is not None
+
+    unprepare = client.post(
+        "/api/monthly_routes/routes/1/runs/unprepare",
+        json={"month_date": "2026-05-01"},
+    )
+    assert unprepare.status_code == 200
+    body = unprepare.get_json()["run"]
+    assert body.get("prepared_at") is None
+    assert body.get("workflow_stage") == "draft"
+
+    blocked = client.post("/api/technician_portal/routes/1/runs")
+    assert blocked.status_code == 409
+    assert blocked.get_json().get("code") == "run_not_prepared"
+
+
+def test_office_unprepare_rejected_after_field_start(workflow_client, monkeypatch):
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
+
+    client, app = workflow_client
+    with app.app_context():
+        _seed_route()
+    portal_start_run(client)
+
+    res = client.post(
+        "/api/monthly_routes/routes/1/runs/unprepare",
+        json={"month_date": "2026-05-01"},
+    )
+    assert res.status_code == 409
+    assert res.get_json().get("code") == "run_field_started"
+
+
 def test_portal_start_blocked_without_prepare(workflow_client, monkeypatch):
     from app.routes import monthly_routes as mr_mod
 

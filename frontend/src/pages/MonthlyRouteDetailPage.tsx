@@ -332,6 +332,11 @@ type UploadRunResponse = {
   locations_updated: number
   history_upserts: number
   rows_without_history_signal: number
+  existing_status_preserved?: number
+  sync_stop_order?: boolean
+  stop_order_applied?: number
+  stop_order_skipped_not_on_sheet_route?: number
+  session_stop_order_applied?: number
   issues: UploadRunIssue[]
 }
 
@@ -351,6 +356,7 @@ function UploadRunFromCsvModal({
   routeLabel,
 }: UploadRunFromCsvModalProps) {
   const [file, setFile] = useState<File | null>(null)
+  const [syncStopOrder, setSyncStopOrder] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<UploadRunResponse | null>(null)
@@ -360,6 +366,7 @@ function UploadRunFromCsvModal({
   useEffect(() => {
     if (!show) {
       setFile(null)
+      setSyncStopOrder(false)
       setSubmitting(false)
       setError(null)
       setResult(null)
@@ -377,6 +384,9 @@ function UploadRunFromCsvModal({
     try {
       const fd = new FormData()
       fd.append('file', file)
+      if (syncStopOrder) {
+        fd.append('sync_stop_order', '1')
+      }
       const res = await apiPostFormData<UploadRunResponse>(
         `/api/monthly_routes/routes/${routeId}/runs/import_csv`,
         fd
@@ -393,7 +403,7 @@ function UploadRunFromCsvModal({
     } finally {
       setSubmitting(false)
     }
-  }, [file, routeId])
+  }, [file, routeId, syncStopOrder])
 
   const formattedMonth = result?.month_date
     ? formatMonthHeading(result.month_date)
@@ -432,6 +442,31 @@ function UploadRunFromCsvModal({
                 <div className="h4 mb-0 tabular-nums">{result.issues.length}</div>
               </Col>
             </Row>
+            {result.sync_stop_order ? (
+              <p className="small text-muted mb-3">
+                Stop order updated for{' '}
+                <strong className="tabular-nums">{result.stop_order_applied ?? 0}</strong> location
+                {(result.stop_order_applied ?? 0) === 1 ? '' : 's'} on this route
+                {(result.session_stop_order_applied ?? 0) > 0 ? (
+                  <>
+                    {' '}
+                    (<strong className="tabular-nums">{result.session_stop_order_applied}</strong>{' '}
+                    worksheet stop
+                    {(result.session_stop_order_applied ?? 0) === 1 ? '' : 's'} reordered for this
+                    month)
+                  </>
+                ) : null}
+                .
+                {(result.stop_order_skipped_not_on_sheet_route ?? 0) > 0 ? (
+                  <>
+                    {' '}
+                    {result.stop_order_skipped_not_on_sheet_route} CSV row
+                    {(result.stop_order_skipped_not_on_sheet_route ?? 0) === 1 ? ' was' : 's were'}{' '}
+                    skipped because the site is not assigned to this route.
+                  </>
+                ) : null}
+              </p>
+            ) : null}
             {result.issues.length > 0 ? (
               <div className="mb-3">
                 <Button
@@ -503,6 +538,19 @@ function UploadRunFromCsvModal({
                 Page route: <strong>R{routeNumber}</strong> — {routeLabel}
               </Form.Text>
             </Form.Group>
+            <Form.Check
+              type="checkbox"
+              id="upload-run-csv-sync-stop-order"
+              className="mb-3"
+              label="Reorder stops to match CSV (# column)"
+              checked={syncStopOrder}
+              disabled={submitting}
+              onChange={(e) => setSyncStopOrder(e.target.checked)}
+            />
+            <Form.Text className="text-muted d-block mb-3" style={{ marginTop: '-0.5rem' }}>
+              Updates route stop order for sites already on this route and applies the sheet order to
+              this month&apos;s run. Leave unchecked to refresh stop data without changing order.
+            </Form.Text>
             {error ? <Alert variant="danger">{error}</Alert> : null}
           </>
         )}

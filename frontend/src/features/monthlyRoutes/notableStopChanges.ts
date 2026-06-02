@@ -398,6 +398,15 @@ export function cardHasFieldEdits(card: NotableStopChangeCard): boolean {
   return card.hasFieldEdits === true
 }
 
+/** Audit deltas for site/panel/access fields (excludes job comment and result). */
+export function auditedFieldChangeItems(changes: NotableChangeItem[]): NotableChangeItem[] {
+  return changes.filter(
+    (item) =>
+      (item.kind === 'field' || item.kind === 'field_added' || item.kind === 'field_removed') &&
+      !COMMENT_CHANGE_LABELS.has(item.label),
+  )
+}
+
 export function cardNeedsReview(card: NotableStopChangeCard, monthDate: string): boolean {
   if (cardIsTestedOnly(card)) return false
   return cardHasFieldEdits(card) || isNonAnnualSkippedStop(card.stop, monthDate)

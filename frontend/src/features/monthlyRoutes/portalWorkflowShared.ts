@@ -101,6 +101,26 @@ export function portalStopVisitComplete(stop: TechnicianWorksheetStop): boolean 
   return portalStopHasTestOutcome(stop) && !portalStopHasOpenClock(stop)
 }
 
+/** True when the dock may offer Reset (optimistic or server run data on this stop). */
+export function portalStopCanReset(stop: TechnicianWorksheetStop): boolean {
+  return Boolean(stop.has_run_changes) || portalStopHasOpenClock(stop)
+}
+
+export function optimisticResetStopPatch(): Partial<TechnicianWorksheetStop> {
+  return {
+    test_outcome: null,
+    skip_category: null,
+    skip_note: null,
+    clock_events: [],
+    deficiencies: [],
+    time_in: null,
+    time_out: null,
+    result_status: null,
+    skip_reason: null,
+    has_run_changes: false,
+  }
+}
+
 export function portalStopDockBand(
   stop: TechnicianWorksheetStop,
   _clockedInElsewhere: boolean,
@@ -135,6 +155,7 @@ export function optimisticClockInPatch(
     ],
     time_in: timeIn,
     time_out: null,
+    has_run_changes: true,
   }
 }
 
@@ -151,6 +172,7 @@ export function optimisticClockOutPatch(
   return {
     clock_events: events.length ? events : stop.clock_events,
     time_out: timeOut,
+    has_run_changes: true,
   }
 }
 
@@ -355,10 +377,10 @@ export function optimisticCreateDeficiencyPatch(
   const patch: Partial<TechnicianWorksheetStop> = {
     deficiencies: [...(stop.deficiencies ?? []), row],
     has_run_changes: true,
+    confirmed_no_deficiencies: false,
   }
   if (norm(stop.test_outcome).toLowerCase() === 'all_good') {
     patch.test_outcome = 'passed_with_problems'
-    patch.confirmed_no_deficiencies = false
   }
   return patch
 }

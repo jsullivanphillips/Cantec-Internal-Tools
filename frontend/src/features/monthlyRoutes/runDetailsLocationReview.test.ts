@@ -2,11 +2,18 @@ import { describe, expect, it } from 'vitest'
 import type { MonthlyRunDetailLocation, TechnicianWorksheetStop } from './monthlyRoutesShared'
 import {
   computeRunDetailsPrepSummary,
+  countSubmittedLocations,
+  countRunDetailFieldEditLocations,
+  filterRunDetailFieldEditLocations,
   filterRunDetailLocations,
+  flattenRunDetailReviewRows,
+  stopHasNewCommentField,
+  locationHasAllStopsSubmitted,
   locationIdentityTone,
   patchRunDetailLocationBilling,
   patchRunDetailPreRunMessage,
   patchRunDetailLocationStop,
+  stopHasSubmittedTestResult,
 } from './runDetailsLocationReview'
 import { runReviewOutcomeBadgeClass, runReviewOutcomeIconKind } from './officeRunReviewShared'
 
@@ -338,5 +345,150 @@ describe('filterRunDetailLocations all_good', () => {
     })
     const filtered = filterRunDetailLocations([failed, pwp, allGood], 'all_good', MONTH)
     expect(filtered.map((l) => l.location_id)).toEqual([203])
+  })
+})
+
+describe('submitted filter', () => {
+  it('stopHasSubmittedTestResult accepts portal test_outcome', () => {
+    const stop = worksheetStop({ test_outcome: 'all_good', result_status: null })
+    expect(stopHasSubmittedTestResult(stop)).toBe(true)
+  })
+
+  it('stopHasSubmittedTestResult accepts legacy tested/skipped', () => {
+    expect(stopHasSubmittedTestResult(worksheetStop({ result_status: 'tested' }))).toBe(true)
+    expect(stopHasSubmittedTestResult(worksheetStop({ result_status: 'skipped' }))).toBe(true)
+  })
+
+  it('stopHasSubmittedTestResult rejects pending and annual-month-only', () => {
+    expect(stopHasSubmittedTestResult(worksheetStop())).toBe(false)
+    expect(
+      stopHasSubmittedTestResult(worksheetStop({ annual_month: 'May', result_status: null })),
+    ).toBe(false)
+  })
+
+  it('includes single-stop location with test_outcome under submitted filter', () => {
+    const loc = baseLocation()
+    expect(locationHasAllStopsSubmitted(loc)).toBe(true)
+    expect(filterRunDetailLocations([loc], 'submitted', MONTH)).toHaveLength(1)
+    expect(countSubmittedLocations([loc])).toBe(1)
+  })
+
+  it('excludes multi-stop location when any stop is still pending', () => {
+    const loc = baseLocation({
+      stops: [
+        { ...baseLocation().stops[0], testing_site_id: 1, test_outcome: 'all_good' },
+        {
+          ...baseLocation().stops[0],
+          testing_site_id: 2,
+          test_outcome: null,
+          result_status: null,
+        },
+      ],
+    })
+    expect(locationHasAllStopsSubmitted(loc)).toBe(false)
+    expect(filterRunDetailLocations([loc], 'submitted', MONTH)).toHaveLength(0)
+  })
+
+  it('includes multi-stop location when every stop has submitted results', () => {
+    const loc = baseLocation({
+      stops: [
+        { ...baseLocation().stops[0], testing_site_id: 1, test_outcome: 'all_good' },
+        {
+          ...baseLocation().stops[0],
+          testing_site_id: 2,
+          test_outcome: 'skipped',
+          skip_category: 'other',
+        },
+      ],
+    })
+    expect(locationHasAllStopsSubmitted(loc)).toBe(true)
+    expect(filterRunDetailLocations([loc], 'submitted', MONTH)).toHaveLength(1)
+  })
+
+  it('includes legacy tested stop without test_outcome', () => {
+    const loc = baseLocation({
+      stops: [{ ...baseLocation().stops[0], result_status: 'tested', test_outcome: null }],
+    })
+    expect(filterRunDetailLocations([loc], 'submitted', MONTH)).toHaveLength(1)
+  })
+
+  it('excludes annual-month-only stop without outcome', () => {
+    const loc = baseLocation({
+      stops: [
+        {
+          ...baseLocation().stops[0],
+          annual_month: 'May',
+          result_status: null,
+          test_outcome: null,
+        },
+      ],
+    })
+    expect(filterRunDetailLocations([loc], 'submitted', MONTH)).toHaveLength(0)
+  })
+})
+
+describe('stopHasNewCommentField', () => {
+  it('returns true when field is listed in new_comment_fields', () => {
+    const stop = {
+      ...baseLocation().stops[0],
+      new_comment_fields: ['run_comments', 'testing_procedures'],
+    }
+    expect(stopHasNewCommentField(stop, 'run_comments')).toBe(true)
+    expect(stopHasNewCommentField(stop, 'testing_procedures')).toBe(true)
+    expect(stopHasNewCommentField(stop, 'inspection_tech_notes')).toBe(false)
+  })
+
+  it('returns false when new_comment_fields is missing or empty', () => {
+    const stop = baseLocation().stops[0]
+    expect(stopHasNewCommentField(stop, 'run_comments')).toBe(false)
+  })
+})
+
+describe('flattenRunDetailReviewRows', () => {
+  it('flattens stops in route order with billing on each row', () => {
+    const locations = [
+      baseLocation({
+        location_id: 101,
+        first_stop_number: 1,
+        billing_status: 'bill',
+        stops: [
+          { ...baseLocation().stops[0], testing_site_id: 1, stop_number: 1 },
+          { ...baseLocation().stops[0], testing_site_id: 2, stop_number: 2, label: 'Annex' },
+        ],
+      }),
+      baseLocation({
+        location_id: 102,
+        location_label: '456 Oak',
+        first_stop_number: 3,
+        billing_status: 'unset',
+        stops: [{ ...baseLocation().stops[0], testing_site_id: 3, stop_number: 3, location_id: 102 }],
+      }),
+    ]
+    const rows = flattenRunDetailReviewRows(locations)
+    expect(rows).toHaveLength(3)
+    expect(rows[0].locationId).toBe(101)
+    expect(rows[0].billingStatus).toBe('bill')
+    expect(rows[0].siteCount).toBe(2)
+    expect(rows[2].locationId).toBe(102)
+    expect(rows[2].stop.stop_number).toBe(3)
+  })
+})
+
+describe('filterRunDetailFieldEditLocations', () => {
+  it('returns only locations flagged with field edits', () => {
+    const withEdits = baseLocation({
+      attention_flags: {
+        billing_unset: false,
+        has_field_edits: true,
+        has_active_deficiencies: false,
+        has_job_comment: false,
+        needs_attention: false,
+      },
+    })
+    const plain = baseLocation({ location_id: 102, location_label: '456 Oak' })
+    const filtered = filterRunDetailFieldEditLocations([plain, withEdits])
+    expect(filtered).toHaveLength(1)
+    expect(filtered[0].location_id).toBe(101)
+    expect(countRunDetailFieldEditLocations([plain, withEdits])).toBe(1)
   })
 })

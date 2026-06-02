@@ -92,4 +92,27 @@ describe('classifyWorkflowError', () => {
     )
     expect(disposition).toBe('retry')
   })
+
+  it('retries cancel_clock_in on no_open_clock before giving up', () => {
+    const stop = { ...baseStop(1), clock_events: [] }
+    const disposition = classifyWorkflowError(
+      { code: 'no_open_clock' },
+      'cancel_clock_in',
+      {
+        item: {
+          id: '1',
+          action: 'cancel_clock_in',
+          routeId: 7,
+          monthIso: '2026-05-01',
+          testingSiteId: 1,
+          payload: {},
+          attempts: 1,
+          nextAttemptAt: 0,
+          enqueuedAt: 2,
+        },
+        stops: [stop],
+      },
+    )
+    expect(disposition).toBe('retry')
+  })
 })

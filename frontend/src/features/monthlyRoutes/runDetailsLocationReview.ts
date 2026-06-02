@@ -19,10 +19,33 @@ import {
   stopPortalOutcome,
 } from './officeRunReviewShared'
 import { officeStopStatus } from './officeWorksheetTableShared'
-import type { PortalTestOutcome } from './portalWorkflowShared'
+import { portalStopHasTestOutcome, type PortalTestOutcome } from './portalWorkflowShared'
 import { openDeficiencySummaries } from './runDetailsDeficiencyDisplay'
 
-export type RunLocationReviewFilter = RunReviewFilter | 'needs_attention' | 'billing_unset'
+export type RunLocationReviewFilter =
+  | RunReviewFilter
+  | 'needs_attention'
+  | 'billing_unset'
+  | 'submitted'
+
+/** Stop has a portal test_outcome or legacy tested/skipped result_status. */
+export function stopHasSubmittedTestResult(stop: TechnicianWorksheetStop): boolean {
+  if (portalStopHasTestOutcome(stop)) return true
+  const rs = (stop.result_status || '').trim().toLowerCase()
+  return rs === 'tested' || rs === 'skipped'
+}
+
+/** Location appears in the submitted filter when every stop has submitted results. */
+export function locationHasAllStopsSubmitted(location: MonthlyRunDetailLocation): boolean {
+  if (location.stops.length === 0) return false
+  return location.stops.every((stop) =>
+    stopHasSubmittedTestResult(locationStopAsWorksheetStop(stop, location.location_label)),
+  )
+}
+
+export function countSubmittedLocations(locations: MonthlyRunDetailLocation[]): number {
+  return locations.filter(locationHasAllStopsSubmitted).length
+}
 
 export function mapReviewSummaryPayload(summary: RunReviewSummaryPayload): RunReviewSummary {
   return {
@@ -120,6 +143,20 @@ export type RunDetailPrepRow = {
   siteCount: number
 }
 
+export type RunDetailReviewRow = RunDetailPrepRow & {
+  locationId: number
+  billingStatus: string | null
+}
+
+export type RunDetailNewCommentField = 'run_comments' | 'inspection_tech_notes' | 'testing_procedures'
+
+export function stopHasNewCommentField(
+  stop: MonthlyRunDetailLocationStop,
+  field: RunDetailNewCommentField,
+): boolean {
+  return (stop.new_comment_fields ?? []).includes(field)
+}
+
 export type RunDetailsPrepSummary = {
   stopCount: number
   locationCount: number
@@ -183,6 +220,33 @@ export function flattenRunDetailPrepRows(locations: MonthlyRunDetailLocation[]):
     if (na !== nb) return na - nb
     return a.stop.testing_site_id - b.stop.testing_site_id
   })
+  return rows
+}
+
+export function flattenRunDetailReviewRows(
+  locations: MonthlyRunDetailLocation[],
+): RunDetailReviewRow[] {
+  const rows: RunDetailReviewRow[] = []
+  const sortedLocations = [...locations].sort(
+    (a, b) =>
+      (a.first_stop_number || 0) - (b.first_stop_number || 0) ||
+      a.location_id - b.location_id,
+  )
+  for (const location of sortedLocations) {
+    const siteCount = location.stops.length
+    const stops = [...location.stops].sort(
+      (a, b) => (a.stop_number || 0) - (b.stop_number || 0) || a.testing_site_id - b.testing_site_id,
+    )
+    for (const stop of stops) {
+      rows.push({
+        stop,
+        locationLabel: location.location_label,
+        siteCount,
+        locationId: location.location_id,
+        billingStatus: location.billing_status,
+      })
+    }
+  }
   return rows
 }
 
@@ -315,6 +379,7 @@ export function locationMatchesFilter(
 ): boolean {
   if (filter === 'needs_attention') return location.attention_flags.needs_attention
   if (filter === 'billing_unset') return location.attention_flags.billing_unset
+  if (filter === 'submitted') return locationHasAllStopsSubmitted(location)
   if (filter === 'all') return true
   if (filter === 'updated') return location.attention_flags.has_field_edits
   return location.stops.some((stop) => {
@@ -330,6 +395,18 @@ export function filterRunDetailLocations(
 ): MonthlyRunDetailLocation[] {
   if (filter === 'all') return locations
   return locations.filter((loc) => locationMatchesFilter(loc, filter, monthDate))
+}
+
+export type RunDetailReviewSectionTab = 'run_review' | 'field_changes'
+
+export function filterRunDetailFieldEditLocations(
+  locations: MonthlyRunDetailLocation[],
+): MonthlyRunDetailLocation[] {
+  return locations.filter((loc) => loc.attention_flags.has_field_edits)
+}
+
+export function countRunDetailFieldEditLocations(locations: MonthlyRunDetailLocation[]): number {
+  return filterRunDetailFieldEditLocations(locations).length
 }
 
 export type RunDetailsProgressMetrics = {

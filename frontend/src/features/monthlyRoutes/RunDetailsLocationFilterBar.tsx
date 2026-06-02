@@ -3,9 +3,10 @@ import type { RunLocationReviewFilter } from './runDetailsLocationReview'
 
 const FILTER_OPTIONS: {
   filter: RunLocationReviewFilter
-  countKey: keyof RunReviewSummary | 'needsAttention' | 'billingUnset' | null
+  countKey: keyof RunReviewSummary | 'needsAttention' | 'billingUnset' | 'submittedCount' | null
 }[] = [
   { filter: 'all', countKey: null },
+  { filter: 'submitted', countKey: 'submittedCount' },
   { filter: 'needs_attention', countKey: 'needsAttention' },
   { filter: 'billing_unset', countKey: 'billingUnset' },
   { filter: 'all_good', countKey: 'allGoodCount' },
@@ -17,6 +18,7 @@ const FILTER_OPTIONS: {
 
 const FILTER_LABELS: Record<RunLocationReviewFilter, string> = {
   all: 'All',
+  submitted: 'Submitted',
   needs_attention: 'Needs attention',
   billing_unset: 'Billing unset',
   all_good: 'All good',
@@ -32,22 +34,30 @@ export default function RunDetailsLocationFilterBar({
   summary,
   needsAttentionCount,
   billingUnsetCount,
+  submittedCount,
   showBillingFilters = true,
+  showSubmittedFilter = false,
 }: {
   filter: RunLocationReviewFilter
   onFilterChange: (filter: RunLocationReviewFilter) => void
   summary: RunReviewSummary
   needsAttentionCount: number
   billingUnsetCount: number
+  submittedCount: number
   /** Hide billing-unset filter while field work is still open. */
   showBillingFilters?: boolean
+  /** Show submitted filter while technicians are actively logging. */
+  showSubmittedFilter?: boolean
 }) {
-  const options = showBillingFilters
-    ? FILTER_OPTIONS
-    : FILTER_OPTIONS.filter((opt) => opt.filter !== 'billing_unset')
+  const options = FILTER_OPTIONS.filter((opt) => {
+    if (opt.filter === 'billing_unset' && !showBillingFilters) return false
+    if (opt.filter === 'submitted' && !showSubmittedFilter) return false
+    return true
+  })
   function countFor(opt: (typeof FILTER_OPTIONS)[number]): number | null {
     if (opt.countKey === 'needsAttention') return needsAttentionCount
     if (opt.countKey === 'billingUnset') return billingUnsetCount
+    if (opt.countKey === 'submittedCount') return submittedCount
     if (!opt.countKey) return null
     return summary[opt.countKey]
   }

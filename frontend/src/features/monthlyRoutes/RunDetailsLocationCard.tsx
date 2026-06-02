@@ -27,6 +27,10 @@ import {
   RUN_LOCATION_EXPAND_EVENT,
 } from './runDetailsLocationReview'
 import { canOfficeEditBilling } from './runWorkflowShared'
+import {
+  runReviewDeficiencySummaries,
+  stopShowsNoDeficienciesConfirmedPill,
+} from './runDetailsDeficiencyDisplay'
 import { apiJson } from '../../lib/apiClient'
 
 function formatBillingPatchError(err: unknown): string {
@@ -61,8 +65,20 @@ function stopNumberColumnLabel(location: MonthlyRunDetailLocation): {
   return { primary: '—', secondary: null }
 }
 
-function locationHasDeficiencies(location: MonthlyRunDetailLocation): boolean {
-  return location.stops.some((stop) => stop.deficiency_summaries.length > 0)
+function locationHasDeficiencies(
+  location: MonthlyRunDetailLocation,
+  run: TechnicianWorksheetRun | null,
+): boolean {
+  return location.stops.some(
+    (stop) => runReviewDeficiencySummaries(stop.deficiency_summaries, run).length > 0,
+  )
+}
+
+function stopReviewDeficiencies(
+  stop: MonthlyRunDetailLocation['stops'][number],
+  run: TechnicianWorksheetRun | null,
+) {
+  return runReviewDeficiencySummaries(stop.deficiency_summaries, run)
 }
 
 export default function RunDetailsLocationCard({
@@ -111,7 +127,10 @@ export default function RunDetailsLocationCard({
     [location, monthDate],
   )
   const stopLabel = useMemo(() => stopNumberColumnLabel(location), [location])
-  const hasDeficiencies = useMemo(() => locationHasDeficiencies(location), [location])
+  const hasDeficiencies = useMemo(
+    () => locationHasDeficiencies(location, run),
+    [location, run],
+  )
 
   useEffect(() => {
     if (forceExpanded) setChangesExpanded(true)
@@ -166,8 +185,7 @@ export default function RunDetailsLocationCard({
     [routeId, monthDate, location.location_id, location.billing_status, onBillingPatched],
   )
 
-  const showChangesToggle =
-    compact && (flags.has_job_comment || flags.has_field_edits || runCompleted)
+  const showChangesToggle = compact && (flags.has_job_comment || runCompleted)
 
   const changesColVisible = changesExpanded || !compact || forceExpanded
 
@@ -246,11 +264,14 @@ export default function RunDetailsLocationCard({
           </Link>
           {multiStop ? (
             <div className="run-location-card__test-stops">
-              {stopCards.map((card) => (
+              {stopCards.map((card, idx) => (
                 <RunDetailsStopTestBlock
                   key={card.stop.testing_site_id}
                   card={card}
                   showSiteLabel
+                  activeDeficiencyCount={
+                    stopReviewDeficiencies(location.stops[idx], run).length
+                  }
                   onOpen={() => openSiteModal(card.stop.testing_site_id)}
                 />
               ))}
@@ -266,8 +287,11 @@ export default function RunDetailsLocationCard({
                   className="run-location-card__outcome"
                 />
               ) : null}
-              {stopCards[0]?.stop.test_outcome === 'passed_with_problems' &&
-              stopCards[0]?.stop.confirmed_no_deficiencies ? (
+              {stopCards[0] &&
+              stopShowsNoDeficienciesConfirmedPill(
+                stopCards[0].stop,
+                stopReviewDeficiencies(location.stops[0], run).length,
+              ) ? (
                 <span className="run-details-stop-row__no-def-pill">No deficiencies confirmed</span>
               ) : null}
             </>
@@ -295,7 +319,7 @@ export default function RunDetailsLocationCard({
                 <RunDetailsStopDeficienciesBlock
                   key={card.stop.testing_site_id}
                   card={card}
-                  deficiencies={location.stops[idx]?.deficiency_summaries ?? []}
+                  deficiencies={stopReviewDeficiencies(location.stops[idx], run)}
                   showSiteLabel={multiStop}
                   locationLabel={location.location_label}
                   routeId={routeId}
@@ -318,7 +342,7 @@ export default function RunDetailsLocationCard({
             >
               <i className={`bi ${changesColVisible ? 'bi-chevron-up' : 'bi-chevron-down'}`} aria-hidden />
               <span className="visually-hidden">
-                {changesColVisible ? 'Collapse comments and changes' : 'Expand comments and changes'}
+                {changesColVisible ? 'Collapse job comments' : 'Expand job comments'}
               </span>
             </button>
           ) : null}
@@ -332,6 +356,7 @@ export default function RunDetailsLocationCard({
                     routeId={routeId}
                     monthDate={monthDate}
                     showSiteLabel={multiStop}
+                    showFieldChanges={false}
                     onDetailLoaded={onDetailLoaded}
                   />
                 ))}

@@ -128,6 +128,20 @@ def mark_run_prepared(run: MonthlyRouteRun, *, username: str, now) -> None:
         run.prepared_by = username
 
 
+def office_may_unprepare_run(run: MonthlyRouteRun | None) -> bool:
+    """Office may return a prepared run to prep before technicians start field work."""
+    if run is None or run_explicitly_completed(run):
+        return False
+    if run.prepared_at is None:
+        return False
+    return run.started_at is None
+
+
+def clear_run_prepared(run: MonthlyRouteRun) -> None:
+    run.prepared_at = None
+    run.prepared_by = None
+
+
 def mark_field_ended(run: MonthlyRouteRun, *, now) -> None:
     if run.field_ended_at is None:
         run.field_ended_at = now

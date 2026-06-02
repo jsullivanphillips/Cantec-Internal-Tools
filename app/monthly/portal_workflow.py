@@ -596,6 +596,57 @@ def list_deficiencies_for_site(
     return [serialize_deficiency(d) for d in rows]
 
 
+def _deficiency_visible_on_run_review(
+    row: MonthlyTestingSiteDeficiency,
+    run: MonthlyRouteRun | None,
+) -> bool:
+    """Deficiencies reported on this run, or verified during this field visit."""
+    if run is None:
+        return False
+    status = (row.status or "").strip().lower()
+    if status not in DEFICIENCY_CARD_STATUSES:
+        return False
+    run_id = int(run.id)
+    created_run_id = int(row.created_run_id) if row.created_run_id is not None else None
+    if created_run_id == run_id:
+        return True
+    if status != "verified":
+        return False
+    started_at = run.started_at
+    if started_at is None:
+        return False
+    updated_at = row.updated_at
+    if updated_at is None:
+        return False
+    if updated_at < started_at:
+        return False
+    field_ended_at = run.field_ended_at
+    if field_ended_at is not None and updated_at > field_ended_at:
+        return False
+    return True
+
+
+def list_deficiencies_for_run_review(
+    testing_site_id: int,
+    run: MonthlyRouteRun | None,
+) -> list[dict[str, object]]:
+    """Open deficiencies tied to this field run (reported or verified on the visit)."""
+    if run is None:
+        return []
+    rows = (
+        MonthlyTestingSiteDeficiency.query.filter_by(
+            monthly_testing_site_id=int(testing_site_id),
+        )
+        .order_by(MonthlyTestingSiteDeficiency.created_at.asc())
+        .all()
+    )
+    return [
+        serialize_deficiency(d)
+        for d in rows
+        if _deficiency_visible_on_run_review(d, run)
+    ]
+
+
 def create_deficiency(
     testing_site_id: int,
     run_id: int | None,

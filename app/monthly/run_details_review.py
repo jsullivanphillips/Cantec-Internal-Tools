@@ -7,12 +7,15 @@ from zoneinfo import ZoneInfo
 
 from app.db_models import (
     MonthlyRouteLocation,
+    MonthlyRouteRun,
     MonthlyRouteTestHistory,
     MonthlyRouteWorksheetAuditEvent,
     db,
 )
 from app.monthly.worksheet_stops import (
     RUN_DETAILS_EXCLUDED_AUDIT_FIELDS,
+    RUN_DETAILS_OFFICE_ONLY_AUDIT_FIELDS,
+    RUN_DETAILS_OFFICE_PREP_AUDIT_SOURCES,
     _is_annual_for_month,
     _normalize_text,
     _run_details_counts_from_stops,
@@ -65,14 +68,49 @@ _CHANGE_LABEL_ORDER: tuple[str, ...] = (
 )
 
 
-def run_details_audit_location_ids(route_id: int, month_first: date) -> set[int]:
+def _run_details_excluded_audit_field_names() -> frozenset[str]:
+    return RUN_DETAILS_EXCLUDED_AUDIT_FIELDS | RUN_DETAILS_OFFICE_ONLY_AUDIT_FIELDS
+
+
+def _run_for_route_month(route_id: int, month_first: date) -> MonthlyRouteRun | None:
+    return MonthlyRouteRun.query.filter_by(
+        monthly_route_id=route_id,
+        month_date=month_first,
+    ).one_or_none()
+
+
+def _run_details_audit_events_query(
+    route_id: int,
+    month_first: date,
+    *,
+    run: MonthlyRouteRun | None = None,
+    location_id: int | None = None,
+):
+    excluded_fields = _run_details_excluded_audit_field_names()
+    q = MonthlyRouteWorksheetAuditEvent.query.filter(
+        MonthlyRouteWorksheetAuditEvent.monthly_route_id == route_id,
+        MonthlyRouteWorksheetAuditEvent.month_date == month_first,
+        MonthlyRouteWorksheetAuditEvent.field_name.notin_(excluded_fields),
+        MonthlyRouteWorksheetAuditEvent.source.notin_(RUN_DETAILS_OFFICE_PREP_AUDIT_SOURCES),
+    )
+    if location_id is not None:
+        q = q.filter(MonthlyRouteWorksheetAuditEvent.location_id == int(location_id))
+    if run is not None and run.started_at is not None:
+        q = q.filter(MonthlyRouteWorksheetAuditEvent.changed_at >= run.started_at)
+    return q
+
+
+def run_details_audit_location_ids(
+    route_id: int,
+    month_first: date,
+    *,
+    run: MonthlyRouteRun | None = None,
+) -> set[int]:
+    if run is None:
+        run = _run_for_route_month(route_id, month_first)
     rows = (
-        db.session.query(MonthlyRouteWorksheetAuditEvent.location_id)
-        .filter(
-            MonthlyRouteWorksheetAuditEvent.monthly_route_id == route_id,
-            MonthlyRouteWorksheetAuditEvent.month_date == month_first,
-            MonthlyRouteWorksheetAuditEvent.field_name.notin_(RUN_DETAILS_EXCLUDED_AUDIT_FIELDS),
-        )
+        _run_details_audit_events_query(route_id, month_first, run=run)
+        .with_entities(MonthlyRouteWorksheetAuditEvent.location_id)
         .distinct()
         .all()
     )
@@ -114,14 +152,18 @@ def _field_changes_for_location(
     route_id: int,
     month_first: date,
     location_id: int,
+    *,
+    run: MonthlyRouteRun | None = None,
 ) -> list[dict[str, object]]:
+    if run is None:
+        run = _run_for_route_month(route_id, month_first)
     rows = (
-        MonthlyRouteWorksheetAuditEvent.query.filter_by(
-            monthly_route_id=route_id,
-            month_date=month_first,
+        _run_details_audit_events_query(
+            route_id,
+            month_first,
+            run=run,
             location_id=int(location_id),
         )
-        .filter(MonthlyRouteWorksheetAuditEvent.field_name.notin_(RUN_DETAILS_EXCLUDED_AUDIT_FIELDS))
         .order_by(MonthlyRouteWorksheetAuditEvent.changed_at.desc())
         .all()
     )
@@ -280,6 +322,8 @@ def _billing_locations_from_notable_stops(
 def run_details_base_payload_extras(
     route_id: int,
     month_first: date,
+    *,
+    run: MonthlyRouteRun | None = None,
 ) -> tuple[
     dict[str, int],
     list[dict[str, object]],
@@ -288,10 +332,12 @@ def run_details_base_payload_extras(
     dict[str, int],
 ]:
     """Single lean stop load for counts, billing, locations, and review summary."""
+    if run is None:
+        run = _run_for_route_month(route_id, month_first)
     lean_stops = _lean_stops_for_route_month(route_id, month_first)
     counts = _run_details_counts_from_stops(lean_stops)
     locations, review_summary = run_details_locations_payload(
-        route_id, month_first, all_stops=lean_stops
+        route_id, month_first, all_stops=lean_stops, run=run
     )
     billing = [
         {
@@ -370,7 +416,8 @@ def _serialize_review_stop_summary(
         "skip_note": stop.get("skip_note"),
         "annual_month": stop.get("annual_month"),
         "run_comments": stop.get("run_comments"),
-        "confirmed_no_deficiencies": bool(stop.get("confirmed_no_deficiencies")),
+        "confirmed_no_deficiencies": bool(stop.get("confirmed_no_deficiencies"))
+        and not _stop_has_any_open_deficiencies(int(stop["testing_site_id"])),
         "billing_status": stop.get("billing_status"),
         "has_field_edits": lid in audit_loc_ids,
         "review_kind": _review_kind(stop, month_first, audit_loc_ids),
@@ -415,7 +462,8 @@ def _summarize_review_stops(
 
 
 def run_details_review_payload(route_id: int, month_first: date) -> dict[str, object]:
-    audit_loc_ids = run_details_audit_location_ids(route_id, month_first)
+    run = _run_for_route_month(route_id, month_first)
+    audit_loc_ids = run_details_audit_location_ids(route_id, month_first, run=run)
     notable = _notable_lean_stops(route_id, month_first, audit_loc_ids)
     notable.sort(
         key=lambda s: (
@@ -499,14 +547,76 @@ def _build_stop_change_items(
     return [c for c in items if c.get("id") != "status"]
 
 
-def _deficiency_summaries_for_stop(testing_site_id: int) -> list[dict[str, object]]:
-    from app.monthly.portal_workflow import list_deficiencies_for_site
+_NEW_COMMENT_LABEL_TO_FIELD: dict[str, str] = {
+    "Job comment": "run_comments",
+    "Location comments": "inspection_tech_notes",
+    "Testing procedures": "testing_procedures",
+}
 
+
+def _new_comment_fields_for_stop(
+    stop: dict[str, object],
+    month_first: date,
+    route_id: int,
+    *,
+    run: MonthlyRouteRun | None = None,
+) -> list[str]:
+    """Comment fields newly added on this field run (for office review red highlight)."""
+    if run is None or run.started_at is None:
+        return []
+    lid = int(stop["location_id"])
+    field_changes = _field_changes_for_location(route_id, month_first, lid, run=run)
+    changes = _build_stop_change_items(stop, month_first, field_changes)
+    fields: list[str] = []
+    seen: set[str] = set()
+    for item in changes:
+        label = str(item.get("label") or "")
+        field_key = _NEW_COMMENT_LABEL_TO_FIELD.get(label)
+        if not field_key or field_key in seen:
+            continue
+        kind = str(item.get("kind") or "")
+        if kind in {"comment_added", "field_added"}:
+            seen.add(field_key)
+            fields.append(field_key)
+            continue
+        if kind == "field":
+            before = item.get("before")
+            after = item.get("after")
+            empty_before = before is None or _is_empty_display_value(str(before))
+            empty_after = after is None or _is_empty_display_value(str(after))
+            if empty_before and not empty_after:
+                seen.add(field_key)
+                fields.append(field_key)
+    return fields
+
+
+def _deficiency_summaries_for_stop(
+    testing_site_id: int,
+    *,
+    run: MonthlyRouteRun | None = None,
+) -> list[dict[str, object]]:
+    from app.monthly.portal_workflow import (
+        list_deficiencies_for_run_review,
+        list_deficiencies_for_site,
+    )
+
+    if run is not None and run.started_at is not None:
+        return list_deficiencies_for_run_review(int(testing_site_id), run)
     return list_deficiencies_for_site(int(testing_site_id))
 
 
-def _stop_has_active_deficiencies(stop: dict[str, object]) -> bool:
-    return len(_deficiency_summaries_for_stop(int(stop["testing_site_id"]))) > 0
+def _stop_has_active_deficiencies(
+    stop: dict[str, object],
+    *,
+    run: MonthlyRouteRun | None = None,
+) -> bool:
+    return len(_deficiency_summaries_for_stop(int(stop["testing_site_id"]), run=run)) > 0
+
+
+def _stop_has_any_open_deficiencies(testing_site_id: int) -> bool:
+    from app.monthly.portal_workflow import list_deficiencies_for_site
+
+    return len(list_deficiencies_for_site(int(testing_site_id))) > 0
 
 
 def _stop_needs_attention(
@@ -514,10 +624,11 @@ def _stop_needs_attention(
     month_first: date,
     *,
     billing_unset: bool,
+    run: MonthlyRouteRun | None = None,
 ) -> bool:
     if billing_unset:
         return True
-    if _stop_has_active_deficiencies(stop):
+    if _stop_has_any_open_deficiencies(int(stop["testing_site_id"])):
         return True
     outcome = _worksheet_stop_portal_outcome(stop)
     if outcome in {"failed", "passed_with_problems"}:
@@ -532,9 +643,15 @@ def _serialize_location_stop(
     stop: dict[str, object],
     month_first: date,
     audit_loc_ids: set[int],
+    route_id: int,
+    *,
+    run: MonthlyRouteRun | None = None,
 ) -> dict[str, object]:
     lid = int(stop["location_id"])
-    deficiencies = _deficiency_summaries_for_stop(int(stop["testing_site_id"]))
+    deficiencies = _deficiency_summaries_for_stop(int(stop["testing_site_id"]), run=run)
+    new_comment_fields = _new_comment_fields_for_stop(
+        stop, month_first, route_id, run=run
+    )
     return {
         "testing_site_id": int(stop["testing_site_id"]),
         "location_id": lid,
@@ -560,12 +677,14 @@ def _serialize_location_stop(
         "office_attention": bool(stop.get("office_attention")),
         "testing_procedures": stop.get("testing_procedures"),
         "inspection_tech_notes": stop.get("inspection_tech_notes"),
-        "confirmed_no_deficiencies": bool(stop.get("confirmed_no_deficiencies")),
+        "confirmed_no_deficiencies": bool(stop.get("confirmed_no_deficiencies"))
+        and len(deficiencies) == 0,
         "billing_status": stop.get("billing_status"),
         "has_field_edits": lid in audit_loc_ids,
         "review_kind": _review_kind(stop, month_first, audit_loc_ids),
         "deficiency_summaries": deficiencies,
         "has_active_deficiencies": len(deficiencies) > 0,
+        "new_comment_fields": new_comment_fields,
     }
 
 
@@ -579,21 +698,27 @@ def _billing_status_for_location(
 
 
 def _location_attention_flags(
-    stops: list[dict[str, object]],
+    raw_stops: list[dict[str, object]],
+    stop_payloads: list[dict[str, object]],
     month_first: date,
     audit_loc_ids: set[int],
     billing_status: str | None,
+    *,
+    run: MonthlyRouteRun | None = None,
 ) -> dict[str, bool]:
-    lid = int(stops[0]["location_id"]) if stops else 0
+    lid = int(raw_stops[0]["location_id"]) if raw_stops else 0
     billing_norm = (billing_status or "").strip().lower()
     billing_unset = billing_norm in {"", "unset"} or billing_status is None
     has_field_edits = lid in audit_loc_ids
-    has_active_deficiencies = any(_stop_has_active_deficiencies(s) for s in stops)
-    has_job_comment = any(_stop_has_run_comments(s) for s in stops)
-    needs_attention = billing_unset or has_active_deficiencies
+    has_active_deficiencies = any(s.get("has_active_deficiencies") for s in stop_payloads)
+    has_any_open_deficiencies = any(
+        _stop_has_any_open_deficiencies(int(s["testing_site_id"])) for s in raw_stops
+    )
+    has_job_comment = any(_stop_has_run_comments(s) for s in raw_stops)
+    needs_attention = billing_unset or has_any_open_deficiencies
     if not needs_attention:
         needs_attention = any(
-            _stop_needs_attention(s, month_first, billing_unset=False) for s in stops
+            _stop_needs_attention(s, month_first, billing_unset=False, run=run) for s in raw_stops
         )
     return {
         "billing_unset": billing_unset,
@@ -609,9 +734,12 @@ def run_details_locations_payload(
     month_first: date,
     *,
     all_stops: list[dict[str, object]] | None = None,
+    run: MonthlyRouteRun | None = None,
 ) -> tuple[list[dict[str, object]], dict[str, int]]:
     """All worksheet stops grouped by location for unified run-details UI."""
-    audit_loc_ids = run_details_audit_location_ids(route_id, month_first)
+    if run is None:
+        run = _run_for_route_month(route_id, month_first)
+    audit_loc_ids = run_details_audit_location_ids(route_id, month_first, run=run)
     if all_stops is None:
         all_stops = _lean_stops_for_route_month(route_id, month_first)
     if not all_stops:
@@ -648,7 +776,8 @@ def run_details_locations_payload(
             )
         )
         stop_payloads = [
-            _serialize_location_stop(s, month_first, audit_loc_ids) for s in raw_stops
+            _serialize_location_stop(s, month_first, audit_loc_ids, route_id, run=run)
+            for s in raw_stops
         ]
         all_summaries.extend(stop_payloads)
         stop_numbers = [int(s["stop_number"]) for s in stop_payloads if s.get("stop_number")]
@@ -664,9 +793,11 @@ def run_details_locations_payload(
                 "last_stop_number": last_stop,
                 "attention_flags": _location_attention_flags(
                     raw_stops,
+                    stop_payloads,
                     month_first,
                     audit_loc_ids,
                     billing,
+                    run=run,
                 ),
                 "stops": stop_payloads,
             }
@@ -687,13 +818,13 @@ def run_details_stop_review_detail(
     month_first: date,
     testing_site_id: int,
 ) -> dict[str, object] | None:
-    audit_loc_ids = run_details_audit_location_ids(route_id, month_first)
+    run = _run_for_route_month(route_id, month_first)
     all_stops = _lean_stops_for_route_month(route_id, month_first)
     stop = next((s for s in all_stops if int(s["testing_site_id"]) == int(testing_site_id)), None)
     if stop is None:
         return None
     lid = int(stop["location_id"])
-    field_changes = _field_changes_for_location(route_id, month_first, lid)
+    field_changes = _field_changes_for_location(route_id, month_first, lid, run=run)
     changes = _build_stop_change_items(stop, month_first, field_changes)
     return {
         "testing_site_id": int(testing_site_id),

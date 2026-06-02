@@ -12,6 +12,7 @@ import {
   optimisticOutcomePatch,
   optimisticUpdateDeficiencyPatch,
   optimisticVerifyDeficiencyPatch,
+  optimisticResetStopPatch,
   portalHhmmNow,
   type PortalSkipCategory,
   type PortalTestOutcome,
@@ -81,16 +82,7 @@ export function applyWorkflowActionToStop(
     case 'reset_stop':
       return {
         ...stop,
-        test_outcome: null,
-        skip_category: null,
-        skip_note: null,
-        clock_events: [],
-        deficiencies: [],
-        time_in: null,
-        time_out: null,
-        result_status: null,
-        skip_reason: null,
-        has_run_changes: false,
+        ...optimisticResetStopPatch(),
       }
     default:
       return stop

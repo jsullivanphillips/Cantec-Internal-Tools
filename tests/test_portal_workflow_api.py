@@ -440,8 +440,17 @@ def test_test_outcome_validation_rules(portal_client, monkeypatch):
     )
     assert pwp_confirmed.status_code == 200
 
-    all_good_after_reset = client.put(base, json={"test_outcome": "all_good"})
-    assert all_good_after_reset.status_code == 200
+    created = client.post(
+        f"/api/monthly_routes/routes/{route_id}/worksheet/stops/{ts_a}/deficiencies"
+        f"?month={month}&tech_portal=1",
+        json={"title": "Bell not sounding", "severity": "deficient", "status": "new"},
+    )
+    assert created.status_code == 201
+    stop_payload = created.get_json().get("stop") or {}
+    assert stop_payload.get("confirmed_no_deficiencies") is False
+
+    all_good_blocked = client.put(base, json={"test_outcome": "all_good"})
+    assert all_good_blocked.status_code == 400
 
 
 def test_csv_import_run_is_portal_read_only(portal_client, monkeypatch):

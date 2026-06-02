@@ -487,6 +487,42 @@ def ensure_worksheet_stops_for_route_month(
     db.session.flush()
 
 
+def apply_session_stop_order_from_history_for_route_month(
+    route_id: int,
+    month_first: date,
+) -> int:
+    """Copy ``session_route_stop_order`` from history onto all worksheet stops at each location."""
+    locs = _route_locations(route_id)
+    if not locs:
+        return 0
+    loc_ids = [int(loc.id) for loc in locs]
+    hist_by_loc = _history_for_locations(loc_ids, month_first)
+    updated = 0
+    for loc in locs:
+        hist = hist_by_loc.get(int(loc.id))
+        if hist is None or hist.session_route_stop_order is None:
+            continue
+        order = int(hist.session_route_stop_order)
+        ts_rows = sync_testing_sites_from_legacy(loc)
+        if not ts_rows:
+            continue
+        ts_ids = [int(t.id) for t in ts_rows]
+        rows = (
+            db.session.query(MonthlyTestingSiteMonth)
+            .filter(
+                MonthlyTestingSiteMonth.month_date == month_first,
+                MonthlyTestingSiteMonth.monthly_testing_site_id.in_(ts_ids),
+            )
+            .all()
+        )
+        for row in rows:
+            if row.session_route_stop_order != order:
+                row.session_route_stop_order = order
+                updated += 1
+    db.session.flush()
+    return updated
+
+
 def _mtsm_has_field_progress(mtsm: MonthlyTestingSiteMonth) -> bool:
     from app.db_models import MonthlyStopClockEvent
 
@@ -1870,3 +1906,7 @@ RUN_DETAILS_EXCLUDED_AUDIT_FIELDS = frozenset({
     "reset_run",
     "stop_reset",
 })
+
+# Prep-only fields and sources omitted from the field-changes card (technician deltas only).
+RUN_DETAILS_OFFICE_ONLY_AUDIT_FIELDS = frozenset({"office_attention"})
+RUN_DETAILS_OFFICE_PREP_AUDIT_SOURCES = frozenset({"office_manual", "office"})

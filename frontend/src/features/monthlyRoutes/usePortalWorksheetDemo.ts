@@ -153,6 +153,7 @@ export function usePortalWorksheetDemo(monthIso: string) {
   return {
     payload,
     stops,
+    projectedStops: stops,
     loading: false,
     initialLoading: false,
     hasLoadedOnce: true,

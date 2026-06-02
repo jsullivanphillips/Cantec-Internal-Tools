@@ -32,6 +32,7 @@ import {
 } from './worksheetOfflineStore'
 import { apiJson, authFailureRedirectPath, isAbortError } from '../../lib/apiClient'
 import { runPortalWorkflowSyncQueue } from './portalWorkflowSync'
+import { waitForPortalRouteSyncIdle } from './flushPortalRouteSync'
 import {
   projectedClockInBlockedForStop,
   projectedOpenClockStop,
@@ -349,6 +350,15 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
     void runWorkflowSyncQueueRef.current()
   }
 
+  const waitForPortalSyncIdle = useCallback(async (): Promise<boolean> => {
+    return waitForPortalRouteSyncIdle(routeId, monthIso, {
+      runFieldSyncQueue: () => runSyncQueueRef.current(),
+      runWorkflowSyncQueue: () => runWorkflowSyncQueueRef.current(),
+      isFieldSyncing: () => syncingRef.current,
+      isWorkflowSyncing: () => workflowSyncingRef.current,
+    })
+  }, [routeId, monthIso])
+
   const workflowActions = usePortalWorkflowActions({
     routeId,
     monthIso,
@@ -414,6 +424,13 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
     if (!run?.started_at || worksheetRunExplicitlyCompleted(run) || runFieldEnded(run)) return
     setRunLifecycleBusy(true)
     try {
+      const syncIdle = await waitForPortalSyncIdle()
+      if (!syncIdle) {
+        window.alert(
+          'Worksheet changes are still syncing. Wait a moment for pending actions to finish, then try again.',
+        )
+        return
+      }
       const body = await apiJson<{ run: TechnicianWorksheetRun }>(
         `/api/technician_portal/routes/${routeId}/runs/end`,
         {
@@ -428,7 +445,7 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
     } finally {
       setRunLifecycleBusy(false)
     }
-  }, [routeId, monthOk, payload?.run, applyServerRunToPayload])
+  }, [routeId, monthOk, payload?.run, applyServerRunToPayload, waitForPortalSyncIdle])
 
   const onPortalReopenField = useCallback(async () => {
     if (Number.isNaN(routeId) || !monthOk || payload?.run == null) return
@@ -604,6 +621,7 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
   return {
     payload,
     stops,
+    projectedStops,
     loading,
     initialLoading,
     hasLoadedOnce,

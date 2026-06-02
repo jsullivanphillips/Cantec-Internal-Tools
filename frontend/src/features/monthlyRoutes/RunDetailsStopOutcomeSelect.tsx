@@ -276,11 +276,6 @@ export default function RunDetailsStopOutcomeSelect({
         show={resultsModalOpen}
         stop={localStop}
         runId={run?.id ?? null}
-        title={
-          pendingOutcome
-            ? `Set result — stop #${localStop.stop_number}`
-            : `Record results — stop #${localStop.stop_number}`
-        }
         initialOutcome={pendingOutcome}
         workflowActions={workflowActions}
         onHide={handleResultsHide}

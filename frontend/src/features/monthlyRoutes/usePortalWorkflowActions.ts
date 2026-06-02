@@ -7,6 +7,7 @@ import {
   optimisticClockOutPatch,
   optimisticCreateDeficiencyPatch,
   optimisticOutcomePatch,
+  optimisticResetStopPatch,
   optimisticUpdateDeficiencyPatch,
   optimisticVerifyDeficiencyPatch,
   portalHhmmNow,
@@ -14,13 +15,20 @@ import {
   type PortalTestOutcome,
 } from './portalWorkflowShared'
 import type { PortalWorksheetSyncState } from './usePortalWorksheet'
-import { waitForWorkflowQueueItem } from './portalWorkflowQueueWaiters'
+import { waitForWorkflowQueueItem, resolveWorkflowQueueItem } from './portalWorkflowQueueWaiters'
 import {
   enqueuePortalWorkflowAction,
   hasPendingWorkflowForRouteMonth,
   saveWorksheetCache,
+  saveWorkflowSyncQueue,
   type PortalWorkflowAction,
 } from './worksheetOfflineStore'
+import {
+  cancelClockInRevertPatch,
+  pendingClockInForStop,
+  routeWorkflowQueueItems,
+  isPendingClockInQueueHead,
+} from './portalCancelClockIn'
 
 function extendSuppressWhileWorkflowPending(
   ref: MutableRefObject<number>,
@@ -142,9 +150,55 @@ export function usePortalWorkflowActions({
 
   const cancelClockIn = useCallback(
     async (stop: TechnicianWorksheetStop) => {
+      const queue = routeWorkflowQueueItems(routeId, monthIso)
+      const pendingClockIn = pendingClockInForStop(queue, stop.testing_site_id)
+
+      if (pendingClockIn) {
+        const revertPatch = cancelClockInRevertPatch(stop, pendingClockIn)
+
+        if (isPendingClockInQueueHead(queue, pendingClockIn)) {
+          patchStopLocal(stop.testing_site_id, revertPatch)
+
+          const cancelItem = enqueuePortalWorkflowAction({
+            action: 'cancel_clock_in',
+            routeId,
+            monthIso,
+            testingSiteId: stop.testing_site_id,
+            payload: {},
+          })
+
+          if (!navigator.onLine) {
+            setSyncState('saved_offline')
+          }
+          extendSuppressWhileWorkflowPending(suppressRemoteRefreshUntilRef, routeId, monthIso)
+          triggerSyncRef.current()
+
+          const clockInResult = await waitForWorkflowQueueItem(pendingClockIn.id)
+          if (!clockInResult.ok) {
+            return { ok: false }
+          }
+          return waitForWorkflowQueueItem(cancelItem.id)
+        }
+
+        saveWorkflowSyncQueue(queue.filter((q) => q.id !== pendingClockIn.id))
+        resolveWorkflowQueueItem(pendingClockIn.id, { ok: true })
+        patchStopLocal(stop.testing_site_id, revertPatch)
+        extendSuppressWhileWorkflowPending(suppressRemoteRefreshUntilRef, routeId, monthIso)
+        triggerSyncRef.current()
+        return { ok: true }
+      }
+
       return runAction(stop, 'cancel_clock_in', {}, optimisticCancelClockInPatch(stop))
     },
-    [runAction],
+    [
+      routeId,
+      monthIso,
+      patchStopLocal,
+      runAction,
+      setSyncState,
+      suppressRemoteRefreshUntilRef,
+      triggerSyncRef,
+    ],
   )
 
   const transitionClock = useCallback(
@@ -251,25 +305,55 @@ export function usePortalWorkflowActions({
   )
 
   const resetStop = useCallback(
-    async (stop: TechnicianWorksheetStop) =>
-      runAction(
-        stop,
-        'reset_stop',
-        {},
-        {
-        test_outcome: null,
-        skip_category: null,
-        skip_note: null,
-        clock_events: [],
-        deficiencies: [],
-        time_in: null,
-        time_out: null,
-        result_status: null,
-        skip_reason: null,
-        has_run_changes: false,
-      },
-      ),
-    [runAction],
+    async (stop: TechnicianWorksheetStop) => {
+      const resetPatch = optimisticResetStopPatch()
+      const queue = routeWorkflowQueueItems(routeId, monthIso)
+      const pendingClockIn = pendingClockInForStop(queue, stop.testing_site_id)
+
+      if (pendingClockIn) {
+        if (isPendingClockInQueueHead(queue, pendingClockIn)) {
+          patchStopLocal(stop.testing_site_id, resetPatch)
+
+          const resetItem = enqueuePortalWorkflowAction({
+            action: 'reset_stop',
+            routeId,
+            monthIso,
+            testingSiteId: stop.testing_site_id,
+            payload: {},
+          })
+
+          if (!navigator.onLine) {
+            setSyncState('saved_offline')
+          }
+          extendSuppressWhileWorkflowPending(suppressRemoteRefreshUntilRef, routeId, monthIso)
+          triggerSyncRef.current()
+
+          const clockInResult = await waitForWorkflowQueueItem(pendingClockIn.id)
+          if (!clockInResult.ok) {
+            return { ok: false }
+          }
+          return waitForWorkflowQueueItem(resetItem.id)
+        }
+
+        saveWorkflowSyncQueue(queue.filter((q) => q.id !== pendingClockIn.id))
+        resolveWorkflowQueueItem(pendingClockIn.id, { ok: true })
+        patchStopLocal(stop.testing_site_id, resetPatch)
+        extendSuppressWhileWorkflowPending(suppressRemoteRefreshUntilRef, routeId, monthIso)
+        triggerSyncRef.current()
+        return { ok: true }
+      }
+
+      return runAction(stop, 'reset_stop', {}, resetPatch)
+    },
+    [
+      routeId,
+      monthIso,
+      patchStopLocal,
+      runAction,
+      setSyncState,
+      suppressRemoteRefreshUntilRef,
+      triggerSyncRef,
+    ],
   )
 
   const refreshDeficiencies = useCallback(

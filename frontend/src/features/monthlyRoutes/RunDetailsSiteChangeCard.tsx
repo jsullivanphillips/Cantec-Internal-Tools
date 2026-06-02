@@ -11,6 +11,7 @@ import {
   runReviewResultHeadlineClass,
   runReviewStopDomId,
 } from './notableStopChanges'
+import { stopShowsNoDeficienciesConfirmedPill } from './runDetailsDeficiencyDisplay'
 import type { MonthlyRunDetailReviewStopDetailPayload } from './monthlyRoutesShared'
 import { apiJson } from '../../lib/apiClient'
 
@@ -32,8 +33,7 @@ function RunReviewSiteHeaderSummary({
   const resultClass = runReviewResultHeadlineClass(stop, monthDate)
   const billingStatus = (stop.billing_status || '').trim()
   const showBillingBadge = siteIndex === 1 && billingStatus.length > 0
-  const showNoDefPill =
-    stop.test_outcome === 'passed_with_problems' && stop.confirmed_no_deficiencies === true
+  const showNoDefPill = stopShowsNoDeficienciesConfirmedPill(stop)
 
   const summaryRow = (
     <>
