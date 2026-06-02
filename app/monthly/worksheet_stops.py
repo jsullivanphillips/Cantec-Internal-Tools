@@ -144,6 +144,20 @@ def _next_sqlite_bigint_id(model) -> int | None:
     return int(db.session.query(func.coalesce(func.max(model.id), 0)).scalar() or 0) + 1
 
 
+class WorksheetAuditEventIdAllocator:
+    """Explicit PKs for SQLite tests only; PostgreSQL uses the table sequence."""
+
+    def __init__(self) -> None:
+        self._next = _next_sqlite_bigint_id(MonthlyRouteWorksheetAuditEvent)
+
+    def id_kwargs(self) -> dict[str, int]:
+        if self._next is None:
+            return {}
+        assigned = {"id": self._next}
+        self._next += 1
+        return assigned
+
+
 def worksheet_stop_open_clock_in(mtsm: MonthlyTestingSiteMonth) -> bool:
     rs = (mtsm.result_status or "").strip().lower()
     if rs in ("tested", "skipped"):

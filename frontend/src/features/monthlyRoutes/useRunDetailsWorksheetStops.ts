@@ -4,8 +4,17 @@ import type { TechnicianWorksheetStop } from './monthlyRoutesShared'
 
 const stopsCache = new Map<string, TechnicianWorksheetStop>()
 
-function stopCacheKey(routeId: number, monthDate: string, testingSiteId: number): string {
+export function stopCacheKey(routeId: number, monthDate: string, testingSiteId: number): string {
   return `${routeId}:${monthDate}:${testingSiteId}`
+}
+
+/** Keep modal stop cache aligned with run-details payload merges. */
+export function syncRunDetailsStopCache(
+  routeId: number,
+  monthDate: string,
+  stop: TechnicianWorksheetStop,
+): void {
+  stopsCache.set(stopCacheKey(routeId, monthDate, stop.testing_site_id), stop)
 }
 
 type LoadStopOptions = {

@@ -15,6 +15,37 @@ function activateField(onActivate: (key: string | null) => void, fieldKey: strin
   if (!disabled) onActivate(fieldKey)
 }
 
+/** Save draft when another cell is activated (single activeKey for the whole prep table). */
+function useCommitDraftWhenEditingCloses(
+  editing: boolean,
+  draft: string,
+  value: string,
+  onCommit: (next: string) => void,
+  setDraft: (next: string) => void,
+) {
+  const wasEditingRef = useRef(false)
+  const skipCloseCommitRef = useRef(false)
+
+  useEffect(() => {
+    if (wasEditingRef.current && !editing) {
+      if (!skipCloseCommitRef.current && draft !== value) {
+        onCommit(draft)
+      }
+      skipCloseCommitRef.current = false
+    }
+    if (!editing) {
+      setDraft(value)
+    }
+    wasEditingRef.current = editing
+  }, [editing, draft, value, onCommit, setDraft])
+
+  const markExplicitClose = useCallback(() => {
+    skipCloseCommitRef.current = true
+  }, [])
+
+  return markExplicitClose
+}
+
 function fieldKeyDown(
   e: KeyboardEvent<HTMLElement>,
   disabled: boolean,
@@ -75,7 +106,7 @@ export function PrepCompactField({
   fieldKey,
   label,
   value,
-  disabled,
+  disabled = false,
   saving,
   activeKey,
   onActivate,
@@ -86,7 +117,7 @@ export function PrepCompactField({
   fieldKey: string
   label: string
   value: string
-  disabled: boolean
+  disabled?: boolean
   saving?: boolean
   activeKey: string | null
   onActivate: (key: string | null) => void
@@ -100,10 +131,7 @@ export function PrepCompactField({
   const display = worksheetReadOnlyDisplay(value)
   const empty = display === '—'
   const [draft, setDraft] = useState(value)
-
-  useEffect(() => {
-    if (!editing) setDraft(value)
-  }, [value, editing])
+  const markExplicitClose = useCommitDraftWhenEditingCloses(editing, draft, value, onCommit, setDraft)
 
   useEffect(() => {
     if (!editing) return
@@ -112,14 +140,16 @@ export function PrepCompactField({
   }, [editing, multiline])
 
   const cancel = useCallback(() => {
+    markExplicitClose()
     setDraft(value)
     onActivate(null)
-  }, [onActivate, value])
+  }, [markExplicitClose, onActivate, value])
 
   const save = useCallback(() => {
+    markExplicitClose()
     if (draft !== value) onCommit(draft)
     onActivate(null)
-  }, [draft, onActivate, onCommit, value])
+  }, [draft, markExplicitClose, onActivate, onCommit, value])
 
   if (!editing) {
     return (
@@ -194,7 +224,7 @@ export function PrepCompactField({
 export function PrepLongTextCell({
   fieldKey,
   value,
-  disabled,
+  disabled = false,
   saving,
   activeKey,
   onActivate,
@@ -203,7 +233,7 @@ export function PrepLongTextCell({
 }: {
   fieldKey: string
   value: string
-  disabled: boolean
+  disabled?: boolean
   saving?: boolean
   activeKey: string | null
   onActivate: (key: string | null) => void
@@ -217,10 +247,7 @@ export function PrepLongTextCell({
   const empty = !trimmed
   const display = empty ? (emptyPlaceholder?.trim() || '—') : trimmed
   const [draft, setDraft] = useState(value)
-
-  useEffect(() => {
-    if (!editing) setDraft(value)
-  }, [value, editing])
+  const markExplicitClose = useCommitDraftWhenEditingCloses(editing, draft, value, onCommit, setDraft)
 
   useEffect(() => {
     if (!editing) return
@@ -233,14 +260,16 @@ export function PrepLongTextCell({
   }, [editing])
 
   const cancel = useCallback(() => {
+    markExplicitClose()
     setDraft(value)
     onActivate(null)
-  }, [onActivate, value])
+  }, [markExplicitClose, onActivate, value])
 
   const save = useCallback(() => {
+    markExplicitClose()
     if (draft !== value) onCommit(draft)
     onActivate(null)
-  }, [draft, onActivate, onCommit, value])
+  }, [draft, markExplicitClose, onActivate, onCommit, value])
 
   if (!editing) {
     return (
@@ -300,7 +329,7 @@ export function PrepCompanyField({
   companyName,
   companies,
   companiesLoading,
-  disabled,
+  disabled = false,
   saving,
   activeKey,
   onActivate,
@@ -313,7 +342,7 @@ export function PrepCompanyField({
   companyName: string
   companies: MonitoringCompanySummary[]
   companiesLoading: boolean
-  disabled: boolean
+  disabled?: boolean
   saving?: boolean
   activeKey: string | null
   onActivate: (key: string | null) => void

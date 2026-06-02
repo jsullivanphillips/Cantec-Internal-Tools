@@ -10,7 +10,12 @@ import {
   RunDetailsStopTestBlock,
 } from './RunDetailsStopReviewRow'
 import type { OfficeBillingStatus } from './officeRunReviewShared'
-import type { MonthlyRunDetailLocation, TechnicianWorksheetRun } from './monthlyRoutesShared'
+import type {
+  MonthlyRunDetailLocation,
+  TechnicianWorksheetRun,
+  TechnicianWorksheetStop,
+} from './monthlyRoutesShared'
+import type { RunDetailsStopPatchApi } from './useRunDetailsStopPatch'
 import type { NotableChangeItem } from './notableStopChanges'
 import { mergeStopDetailChanges } from './notableStopChanges'
 import {
@@ -70,7 +75,8 @@ export default function RunDetailsLocationCard({
   changeDetailsByStopId,
   onDetailLoaded,
   onBillingPatched,
-  onPrepSaved,
+  stopPatch,
+  onStopMergedFromWorksheet,
   onDeficiencyUpdated,
 }: {
   location: MonthlyRunDetailLocation
@@ -82,7 +88,8 @@ export default function RunDetailsLocationCard({
   changeDetailsByStopId: Record<number, NotableChangeItem[]>
   onDetailLoaded: (testingSiteId: number, changes: NotableChangeItem[]) => void
   onBillingPatched: (locationId: number, billingStatus: string) => void
-  onPrepSaved: () => Promise<void>
+  stopPatch: RunDetailsStopPatchApi
+  onStopMergedFromWorksheet: (stop: TechnicianWorksheetStop, scope?: 'full' | 'deficiency') => void
   onDeficiencyUpdated?: () => void | Promise<void>
 }) {
   const readOnly = (run?.source || '').trim().toLowerCase() === 'csv_import'
@@ -332,9 +339,8 @@ export default function RunDetailsLocationCard({
               {runCompleted ? (
                 <RunDetailsLocationPrepPanel
                   location={location}
-                  routeId={routeId}
                   monthDate={monthDate}
-                  onSaved={onPrepSaved}
+                  stopPatch={stopPatch}
                 />
               ) : null}
             </div>
@@ -349,7 +355,8 @@ export default function RunDetailsLocationCard({
         monthDate={monthDate}
         run={run}
         onHide={() => setSiteModalStopId(null)}
-        onStopUpdated={onPrepSaved}
+        stopPatch={stopPatch}
+        onStopMergedFromWorksheet={onStopMergedFromWorksheet}
       />
     </article>
   )

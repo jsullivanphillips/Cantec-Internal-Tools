@@ -1,38 +1,19 @@
-import { useCallback, useState } from 'react'
 import { Alert, Button, Form, Spinner } from 'react-bootstrap'
 import type { MonthlyRunDetailLocation } from './monthlyRoutesShared'
 import { annualMonthHint } from './annualMonthHint'
-import { patchRunDetailsStop } from './patchRunDetailsStop'
+import { rollbackPatchForChanges } from './runDetailsPrepPatch'
+import type { RunDetailsStopPatchApi } from './useRunDetailsStopPatch'
 
 export default function RunDetailsLocationPrepPanel({
   location,
-  routeId,
   monthDate,
-  onSaved,
+  stopPatch,
 }: {
   location: MonthlyRunDetailLocation
-  routeId: number
   monthDate: string
-  onSaved: () => Promise<void>
+  stopPatch: RunDetailsStopPatchApi
 }) {
-  const [busySiteId, setBusySiteId] = useState<number | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  const patchStop = useCallback(
-    async (testingSiteId: number, changes: Record<string, string | null>) => {
-      setBusySiteId(testingSiteId)
-      setError(null)
-      try {
-        await patchRunDetailsStop(routeId, monthDate, testingSiteId, changes)
-        await onSaved()
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Could not save.')
-      } finally {
-        setBusySiteId(null)
-      }
-    },
-    [routeId, monthDate, onSaved],
-  )
+  const { patchStop, isFieldSaving, error } = stopPatch
 
   return (
     <div className="run-location-card__prep" aria-label="Prepare for next month">
@@ -43,11 +24,15 @@ export default function RunDetailsLocationPrepPanel({
         </Alert>
       ) : null}
       {location.stops.map((stop) => {
-        const busy = busySiteId === stop.testing_site_id
         const runComment = (stop.run_comments || '').trim()
         const annualHintText = annualMonthHint(stop, location.location_label, monthDate)
+        const sid = stop.testing_site_id
+        const annualBusy = isFieldSaving(sid, `prep-${sid}-annual`)
+        const proceduresBusy = isFieldSaving(sid, `prep-${sid}-procedures`)
+        const locNotesBusy = isFieldSaving(sid, `prep-${sid}-loc-notes`)
+        const runCommentsBusy = isFieldSaving(sid, `prep-${sid}-run-comments`)
         return (
-          <div key={stop.testing_site_id} className="run-location-card__prep-stop">
+          <div key={sid} className="run-location-card__prep-stop">
             {location.stops.length > 1 ? (
               <div className="run-location-card__prep-stop-label text-muted small">
                 {(stop.label || '').trim() || `Stop ${stop.stop_number}`}
@@ -64,12 +49,17 @@ export default function RunDetailsLocationPrepPanel({
                 size="sm"
                 className="run-location-card__prep-input"
                 defaultValue={stop.annual_month || ''}
-                disabled={busy}
+                disabled={annualBusy}
                 onBlur={(e) => {
                   const next = e.target.value.trim()
                   const prev = (stop.annual_month || '').trim()
                   if (next !== prev) {
-                    void patchStop(stop.testing_site_id, { annual_month: next || null })
+                    void patchStop(
+                      sid,
+                      `prep-${sid}-annual`,
+                      { annual_month: next || null },
+                      rollbackPatchForChanges(stop, { annual_month: next || null }),
+                    )
                   }
                 }}
               />
@@ -82,11 +72,16 @@ export default function RunDetailsLocationPrepPanel({
                 size="sm"
                 className="run-location-card__prep-input"
                 defaultValue={stop.testing_procedures || ''}
-                disabled={busy}
+                disabled={proceduresBusy}
                 onBlur={(e) => {
                   const next = e.target.value
                   if (next !== (stop.testing_procedures || '')) {
-                    void patchStop(stop.testing_site_id, { testing_procedures: next })
+                    void patchStop(
+                      sid,
+                      `prep-${sid}-procedures`,
+                      { testing_procedures: next },
+                      rollbackPatchForChanges(stop, { testing_procedures: next }),
+                    )
                   }
                 }}
               />
@@ -99,11 +94,16 @@ export default function RunDetailsLocationPrepPanel({
                 size="sm"
                 className="run-location-card__prep-input"
                 defaultValue={stop.inspection_tech_notes || ''}
-                disabled={busy}
+                disabled={locNotesBusy}
                 onBlur={(e) => {
                   const next = e.target.value
                   if (next !== (stop.inspection_tech_notes || '')) {
-                    void patchStop(stop.testing_site_id, { inspection_tech_notes: next })
+                    void patchStop(
+                      sid,
+                      `prep-${sid}-loc-notes`,
+                      { inspection_tech_notes: next },
+                      rollbackPatchForChanges(stop, { inspection_tech_notes: next }),
+                    )
                   }
                 }}
               />
@@ -118,10 +118,21 @@ export default function RunDetailsLocationPrepPanel({
                 <Button
                   size="sm"
                   variant="outline-secondary"
-                  disabled={busy}
-                  onClick={() => void patchStop(stop.testing_site_id, { run_comments: '' })}
+                  disabled={runCommentsBusy}
+                  onClick={() =>
+                    void patchStop(
+                      sid,
+                      `prep-${sid}-run-comments`,
+                      { run_comments: '' },
+                      rollbackPatchForChanges(stop, { run_comments: '' }),
+                    )
+                  }
                 >
-                  {busy ? <Spinner animation="border" size="sm" aria-hidden /> : 'Clear job comment'}
+                  {runCommentsBusy ? (
+                    <Spinner animation="border" size="sm" aria-hidden />
+                  ) : (
+                    'Clear job comment'
+                  )}
                 </Button>
               </div>
             ) : null}

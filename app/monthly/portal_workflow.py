@@ -20,6 +20,7 @@ from app.db_models import (
     db,
 )
 from app.monthly.worksheet_stops import (
+    WorksheetAuditEventIdAllocator,
     _next_sqlite_bigint_id,
     is_primary_stop,
     load_stop_for_patch,
@@ -759,13 +760,12 @@ def reset_stop_on_run(
     if is_primary_stop(ts, loc):
         sync_primary_history_from_stop(mtsm, loc, route_id, month_first)
 
-    current = db.session.query(func.coalesce(func.max(MonthlyRouteWorksheetAuditEvent.id), 0)).scalar()
-    next_audit_id = int(current or 0) + 1
+    audit_ids = WorksheetAuditEventIdAllocator()
     hist = _location_history(int(loc.id), month_first)
     if hist is not None:
         db.session.add(
             MonthlyRouteWorksheetAuditEvent(
-                id=next_audit_id,
+                **audit_ids.id_kwargs(),
                 monthly_route_id=route_id,
                 location_id=int(loc.id),
                 history_row_id=int(hist.id),

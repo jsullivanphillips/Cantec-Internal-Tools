@@ -1364,12 +1364,6 @@ def _patch_will_start_open_clock_in(
     return True
 
 
-def _next_worksheet_audit_event_id() -> int:
-    """SQLite test DB does not auto-generate BIGINT PK reliably; assign defensively."""
-    current = db.session.query(func.coalesce(func.max(MonthlyRouteWorksheetAuditEvent.id), 0)).scalar()
-    return int(current or 0) + 1
-
-
 def _serialize_testing_session_payload(route_id: int, month_first: date) -> dict[str, object] | None:
     mr = _get_monthly_route(route_id)
     if mr is None:
@@ -2644,7 +2638,9 @@ def patch_monthly_route_worksheet_row(route_id: int, location_id: int):
     actor_name = actor_username
     source = _normalize_ws_text(payload.get("source")) or "technician_app"
     client_mutated_at = _parse_iso_dt(payload.get("client_mutated_at"))
-    next_audit_id = _next_worksheet_audit_event_id()
+    from app.monthly.worksheet_stops import WorksheetAuditEventIdAllocator
+
+    audit_ids = WorksheetAuditEventIdAllocator()
 
     changed_any = False
     mirrored_history_changes: dict[str, object] = {}
@@ -2660,7 +2656,7 @@ def patch_monthly_route_worksheet_row(route_id: int, location_id: int):
             mirrored_history_changes[field_name] = new_val
         db.session.add(
             MonthlyRouteWorksheetAuditEvent(
-                id=next_audit_id,
+                **audit_ids.id_kwargs(),
                 monthly_route_id=route_id,
                 location_id=location_id,
                 history_row_id=row.id,
@@ -2675,7 +2671,6 @@ def patch_monthly_route_worksheet_row(route_id: int, location_id: int):
                 changed_at_client=client_mutated_at,
             )
         )
-        next_audit_id += 1
         changed_any = True
 
     # Mirror snapshot edits onto ``MonthlyRouteLocation`` only when the patched
@@ -2721,6 +2716,7 @@ def patch_monthly_route_worksheet_stop(route_id: int, testing_site_id: int):
     from app.monthly.worksheet_stops import (
         STOP_PATCH_FIELD_MAP,
         STOP_PATCH_HISTORY_AUDIT_ATTR,
+        WorksheetAuditEventIdAllocator,
         apply_worksheet_stop_field_change,
         ensure_worksheet_stops_for_route_month,
         find_open_clock_in_stop_on_route,
@@ -2729,7 +2725,7 @@ def patch_monthly_route_worksheet_stop(route_id: int, testing_site_id: int):
         patch_will_start_open_clock_in,
         serialize_worksheet_stop,
         sync_primary_history_from_stop,
-        worksheet_stops_for_route_month,
+        worksheet_stop_number_for_site,
     )
 
     month_raw = (request.args.get("month") or "").strip()
@@ -2833,18 +2829,16 @@ def patch_monthly_route_worksheet_stop(route_id: int, testing_site_id: int):
             client_mutation_id=client_mutation_id
         ).first()
         if existing_mutation is not None:
+            office_prep = _office_staff_worksheet_patch()
             stop_payload = serialize_worksheet_stop(
                 ts,
                 loc,
                 mtsm,
                 route_id=route_id,
                 month_first=month_first,
-                stop_number=0,
+                stop_number=worksheet_stop_number_for_site(route_id, month_first, testing_site_id),
+                include_portal_extras=not office_prep,
             )
-            for idx, s in enumerate(worksheet_stops_for_route_month(route_id, month_first), start=1):
-                if int(s["testing_site_id"]) == int(testing_site_id):
-                    stop_payload["stop_number"] = idx
-                    break
             return jsonify({"ok": True, "deduped": True, "stop": stop_payload})
 
     known_fields = set(STOP_PATCH_FIELD_MAP.keys())
@@ -2919,7 +2913,7 @@ def patch_monthly_route_worksheet_stop(route_id: int, testing_site_id: int):
     actor_name = actor_username
     source = _normalize_ws_text(payload.get("source")) or "technician_app"
     client_mutated_at = _parse_iso_dt(payload.get("client_mutated_at"))
-    next_audit_id = _next_worksheet_audit_event_id()
+    audit_ids = WorksheetAuditEventIdAllocator()
 
     audit_old_values: dict[str, object] = {
         field_name: getattr(mtsm, STOP_PATCH_FIELD_MAP[field_name])
@@ -3010,7 +3004,7 @@ def patch_monthly_route_worksheet_stop(route_id: int, testing_site_id: int):
                 continue
             db.session.add(
                 MonthlyRouteWorksheetAuditEvent(
-                    id=next_audit_id,
+                    **audit_ids.id_kwargs(),
                     monthly_route_id=route_id,
                     location_id=int(loc.id),
                     history_row_id=int(hist.id),
@@ -3025,7 +3019,6 @@ def patch_monthly_route_worksheet_stop(route_id: int, testing_site_id: int):
                     changed_at_client=client_mutated_at,
                 )
             )
-            next_audit_id += 1
 
     snapshot_patch_keys = set(STOP_PATCH_FIELD_MAP.keys()) - {
         "result_status",
@@ -3033,6 +3026,7 @@ def patch_monthly_route_worksheet_stop(route_id: int, testing_site_id: int):
         "time_in",
         "time_out",
         "run_comments",
+        "office_attention",
     }
     snapshot_changed = changed_any and bool(snapshot_patch_keys.intersection(changes_eff))
 
@@ -3057,19 +3051,17 @@ def patch_monthly_route_worksheet_stop(route_id: int, testing_site_id: int):
 
     db.session.refresh(mtsm)
     db.session.refresh(ts)
+    office_prep = _office_staff_worksheet_patch()
     stop_payload = serialize_worksheet_stop(
         ts,
         loc,
         mtsm,
         route_id=route_id,
         month_first=month_first,
-        stop_number=0,
+        stop_number=worksheet_stop_number_for_site(route_id, month_first, testing_site_id),
         run=run_for_month,
+        include_portal_extras=not office_prep,
     )
-    for idx, s in enumerate(worksheet_stops_for_route_month(route_id, month_first), start=1):
-        if int(s["testing_site_id"]) == int(testing_site_id):
-            stop_payload["stop_number"] = idx
-            break
     return jsonify({"ok": True, "stop": stop_payload})
 
 

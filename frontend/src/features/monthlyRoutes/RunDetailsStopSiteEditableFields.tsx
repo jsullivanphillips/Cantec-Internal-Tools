@@ -9,7 +9,9 @@ import {
   officeUpdateDeficiency,
   officeVerifyDeficiency,
 } from './officeStopSiteApi'
-import { patchRunDetailsStop } from './patchRunDetailsStop'
+import { rollbackPatchForChanges } from './runDetailsPrepPatch'
+import type { PrepStopPatchChanges } from './runDetailsPrepPatch'
+import type { RunDetailsStopPatchApi } from './useRunDetailsStopPatch'
 import type { MonitoringCompanySummary, TechnicianWorksheetStop } from './monthlyRoutesShared'
 import type { PortalDeficiencySummary } from './portalWorkflowShared'
 import { useMonitoringCompanies } from './useMonitoringCompanies'
@@ -21,7 +23,8 @@ type Props = {
   monthDate: string
   runId: number | null
   readOnly: boolean
-  onStopPatched: (stop: TechnicianWorksheetStop) => void | Promise<void>
+  stopPatch: RunDetailsStopPatchApi
+  onStopMergedFromWorksheet: (stop: TechnicianWorksheetStop, scope?: 'full' | 'deficiency') => void
 }
 
 export default function RunDetailsStopSiteEditableFields({
@@ -30,7 +33,8 @@ export default function RunDetailsStopSiteEditableFields({
   monthDate,
   runId,
   readOnly,
-  onStopPatched,
+  stopPatch,
+  onStopMergedFromWorksheet,
 }: Props) {
   const { companies: monitoringCompanies, loading: monitoringCompaniesLoading, appendCompany } =
     useMonitoringCompanies()
@@ -47,24 +51,32 @@ export default function RunDetailsStopSiteEditableFields({
     setSaveError(null)
   }, [stop.testing_site_id])
 
+  const { patchStop: patchStopFields, setError: setStopPatchError } = stopPatch
+
   const patchStop = useCallback(
-    async (changes: WorksheetStopChangeSet) => {
+    async (fieldKey: string, changes: WorksheetStopChangeSet) => {
       setSaveError(null)
+      setStopPatchError(null)
+      const prepChanges = changes as PrepStopPatchChanges
       try {
-        const updated = await patchRunDetailsStop(routeId, monthDate, stop.testing_site_id, changes)
-        await onStopPatched(updated)
+        await patchStopFields(
+          stop.testing_site_id,
+          fieldKey,
+          prepChanges,
+          rollbackPatchForChanges(stop, prepChanges),
+        )
       } catch (e) {
         setSaveError(e instanceof Error ? e.message : 'Could not save.')
         throw e
       }
     },
-    [routeId, monthDate, stop.testing_site_id, onStopPatched],
+    [stop, patchStopFields, setStopPatchError],
   )
 
   const saveField = useCallback(
     (field: keyof WorksheetStopChangeSet) => async (text: string) => {
       if (readOnly) return
-      await patchStop({ [field]: text.length > 0 ? text : null })
+      await patchStop(`modal-${String(field)}`, { [field]: text.length > 0 ? text : null })
     },
     [patchStop, readOnly],
   )
@@ -74,7 +86,7 @@ export default function RunDetailsStopSiteEditableFields({
       if (readOnly) return
       const selected =
         companyId != null ? monitoringCompanies.find((row) => row.id === companyId) ?? null : null
-      await patchStop({
+      await patchStop('modal-monitoring_company_id', {
         monitoring_company_id: companyId,
         monitoring_company: selected?.name?.trim() || null,
       })
@@ -101,10 +113,10 @@ export default function RunDetailsStopSiteEditableFields({
   }
 
   const applyDeficiencyStop = useCallback(
-    async (updated: TechnicianWorksheetStop) => {
-      await onStopPatched(updated)
+    (updated: TechnicianWorksheetStop) => {
+      onStopMergedFromWorksheet(updated, 'deficiency')
     },
-    [onStopPatched],
+    [onStopMergedFromWorksheet],
   )
 
   const openDeficiencyAdd = useCallback(() => {

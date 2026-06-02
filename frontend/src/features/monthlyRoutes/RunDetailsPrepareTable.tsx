@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useState } from 'react'
 import { Alert, Form, Table } from 'react-bootstrap'
 import { Link } from 'react-router-dom'
 import { annualMonthHint, stopAnnualDueThisMonth } from './annualMonthHint'
@@ -10,66 +10,28 @@ import {
 } from './RunDetailsPrepareFields'
 import RunDetailsDeficiencyList from './RunDetailsDeficiencyList'
 import { openDeficiencySummaries } from './runDetailsDeficiencyDisplay'
-import { patchRunDetailsStop } from './patchRunDetailsStop'
 import type { RunDetailPrepRow } from './runDetailsLocationReview'
-import {
-  prepChangesToStopPatch,
-  prepPatchFromWorksheetStop,
-  type PrepStopPatchChanges,
-} from './runDetailsPrepPatch'
-import type { MonthlyRunDetailLocationStop } from './monthlyRoutesShared'
+import type { RunDetailsStopPatchApi } from './useRunDetailsStopPatch'
 import { useMonitoringCompanies } from './useMonitoringCompanies'
-
-type SavingState = { siteId: number; fieldKey: string } | null
 
 export default function RunDetailsPrepareTable({
   rows,
   routeId,
   monthDate,
-  onStopPatched,
+  stopPatch,
   onDeficiencyUpdated,
 }: {
   rows: RunDetailPrepRow[]
   routeId: number
   monthDate: string
-  onStopPatched: (testingSiteId: number, patch: Partial<MonthlyRunDetailLocationStop>) => void
+  stopPatch: RunDetailsStopPatchApi
   onDeficiencyUpdated?: () => void | Promise<void>
 }) {
-  const [saving, setSaving] = useState<SavingState>(null)
   const [activeFieldKey, setActiveFieldKey] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const { patchStop, error, isFieldSaving } = stopPatch
   const { companies, loading: companiesLoading, refresh, appendCompany } = useMonitoringCompanies()
 
-  const patchStop = useCallback(
-    async (
-      testingSiteId: number,
-      fieldKey: string,
-      changes: PrepStopPatchChanges,
-      rollback: Partial<MonthlyRunDetailLocationStop>,
-    ) => {
-      const changeKeys = Object.keys(changes)
-      const optimistic = prepChangesToStopPatch(changes)
-      onStopPatched(testingSiteId, optimistic)
-      setSaving({ siteId: testingSiteId, fieldKey })
-      setError(null)
-      try {
-        const stop = await patchRunDetailsStop(routeId, monthDate, testingSiteId, changes)
-        onStopPatched(testingSiteId, prepPatchFromWorksheetStop(stop, changeKeys))
-      } catch (e) {
-        onStopPatched(testingSiteId, rollback)
-        setError(e instanceof Error ? e.message : 'Could not save.')
-      } finally {
-        setSaving(null)
-      }
-    },
-    [routeId, monthDate, onStopPatched],
-  )
-
   const fieldKey = (testingSiteId: number, suffix: string) => `${testingSiteId}-${suffix}`
-
-  const isRowSaving = (siteId: number) => saving?.siteId === siteId
-  const isFieldSaving = (siteId: number, key: string) =>
-    saving?.siteId === siteId && saving?.fieldKey === key
 
   if (rows.length === 0) {
     return <p className="monthly-run-detail-empty mb-0">No stops on this route yet.</p>
@@ -110,7 +72,6 @@ export default function RunDetailsPrepareTable({
         <tbody>
           {rows.map(({ stop, locationLabel, siteCount }) => {
             const sid = stop.testing_site_id
-            const rowBusy = isRowSaving(sid)
             const siteLabel = (stop.label || '').trim() || 'Primary testing location'
             const companyId = stop.monitoring_company_id ?? null
             const companyName =
@@ -143,13 +104,13 @@ export default function RunDetailsPrepareTable({
                     type="checkbox"
                     aria-label={`Highlight stop ${stop.stop_number} for technicians`}
                     checked={attention}
-                    disabled={rowBusy}
+                    disabled={isFieldSaving(sid, fk('highlight'))}
                     onChange={(e) =>
                       void patchStop(
                         sid,
                         fk('highlight'),
                         { office_attention: e.target.checked },
-                        { office_attention: attention },
+                        { office_attention: !e.target.checked },
                       )
                     }
                   />
@@ -175,7 +136,6 @@ export default function RunDetailsPrepareTable({
                       fieldKey={fk('ring')}
                       label="Ring"
                       value={stop.ring || ''}
-                      disabled={rowBusy}
                       saving={isFieldSaving(sid, fk('ring'))}
                       activeKey={activeFieldKey}
                       onActivate={setActiveFieldKey}
@@ -187,7 +147,6 @@ export default function RunDetailsPrepareTable({
                       fieldKey={fk('key')}
                       label="Key"
                       value={stop.key_number || ''}
-                      disabled={rowBusy}
                       saving={isFieldSaving(sid, fk('key'))}
                       activeKey={activeFieldKey}
                       onActivate={setActiveFieldKey}
@@ -204,7 +163,6 @@ export default function RunDetailsPrepareTable({
                       fieldKey={fk('door')}
                       label="Door"
                       value={stop.door_code || ''}
-                      disabled={rowBusy}
                       saving={isFieldSaving(sid, fk('door'))}
                       activeKey={activeFieldKey}
                       onActivate={setActiveFieldKey}
@@ -221,7 +179,6 @@ export default function RunDetailsPrepareTable({
                       fieldKey={fk('annual')}
                       label="Annual month"
                       value={stop.annual_month || ''}
-                      disabled={rowBusy}
                       saving={isFieldSaving(sid, fk('annual'))}
                       activeKey={activeFieldKey}
                       onActivate={setActiveFieldKey}
@@ -246,7 +203,6 @@ export default function RunDetailsPrepareTable({
                       companyName={companyName}
                       companies={companies}
                       companiesLoading={companiesLoading}
-                      disabled={rowBusy}
                       saving={isFieldSaving(sid, fk('company'))}
                       activeKey={activeFieldKey}
                       onActivate={setActiveFieldKey}
@@ -271,7 +227,6 @@ export default function RunDetailsPrepareTable({
                       fieldKey={fk('account')}
                       label="Account #"
                       value={stop.monitoring_account_number || ''}
-                      disabled={rowBusy}
                       saving={isFieldSaving(sid, fk('account'))}
                       activeKey={activeFieldKey}
                       onActivate={setActiveFieldKey}
@@ -288,7 +243,6 @@ export default function RunDetailsPrepareTable({
                       fieldKey={fk('mon-notes')}
                       label="Notes"
                       value={stop.monitoring_notes || ''}
-                      disabled={rowBusy}
                       saving={isFieldSaving(sid, fk('mon-notes'))}
                       activeKey={activeFieldKey}
                       onActivate={setActiveFieldKey}
@@ -323,7 +277,6 @@ export default function RunDetailsPrepareTable({
                   <PrepLongTextCell
                     fieldKey={fk('run-comments')}
                     value={stop.run_comments || ''}
-                    disabled={rowBusy}
                     saving={isFieldSaving(sid, fk('run-comments'))}
                     activeKey={activeFieldKey}
                     onActivate={setActiveFieldKey}
@@ -341,7 +294,6 @@ export default function RunDetailsPrepareTable({
                   <PrepLongTextCell
                     fieldKey={fk('procedures')}
                     value={stop.testing_procedures || ''}
-                    disabled={rowBusy}
                     saving={isFieldSaving(sid, fk('procedures'))}
                     activeKey={activeFieldKey}
                     onActivate={setActiveFieldKey}
@@ -359,7 +311,6 @@ export default function RunDetailsPrepareTable({
                   <PrepLongTextCell
                     fieldKey={fk('loc-notes')}
                     value={stop.inspection_tech_notes || ''}
-                    disabled={rowBusy}
                     saving={isFieldSaving(sid, fk('loc-notes'))}
                     activeKey={activeFieldKey}
                     onActivate={setActiveFieldKey}

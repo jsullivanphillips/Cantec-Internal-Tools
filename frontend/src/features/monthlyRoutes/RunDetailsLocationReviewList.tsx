@@ -8,7 +8,6 @@ import RunDetailsPrepareTable from './RunDetailsPrepareTable'
 
 import type {
   MonthlyRunDetailLocation,
-  MonthlyRunDetailLocationStop,
   TechnicianWorksheetRun,
 } from './monthlyRoutesShared'
 import type { NotableChangeItem, RunReviewSummary } from './notableStopChanges'
@@ -22,7 +21,8 @@ import {
   type RunLocationReviewFilter,
 } from './runDetailsLocationReview'
 import { canOfficeEditBilling, runInOfficePrepPhase, worksheetRunFieldInProgress } from './runWorkflowShared'
-import type { RunReviewSummaryPayload } from './monthlyRoutesShared'
+import type { RunReviewSummaryPayload, TechnicianWorksheetStop } from './monthlyRoutesShared'
+import type { RunDetailsStopPatchApi } from './useRunDetailsStopPatch'
 
 export default function RunDetailsLocationReviewList({
   locations,
@@ -34,7 +34,8 @@ export default function RunDetailsLocationReviewList({
   filter,
   onFilterChange,
   onBillingPatched,
-  onStopPatched,
+  stopPatch,
+  onStopMergedFromWorksheet,
   onDeficiencyUpdated,
 }: {
   locations: MonthlyRunDetailLocation[]
@@ -46,7 +47,8 @@ export default function RunDetailsLocationReviewList({
   filter: RunLocationReviewFilter
   onFilterChange: (filter: RunLocationReviewFilter) => void
   onBillingPatched: (locationId: number, billingStatus: string) => void
-  onStopPatched: (testingSiteId: number, patch: Partial<MonthlyRunDetailLocationStop>) => void
+  stopPatch: RunDetailsStopPatchApi
+  onStopMergedFromWorksheet: (stop: TechnicianWorksheetStop, scope?: 'full' | 'deficiency') => void
   onDeficiencyUpdated?: () => void | Promise<void>
 }) {
   const [changeDetailsByStopId, setChangeDetailsByStopId] = useState<Record<number, NotableChangeItem[]>>(
@@ -144,7 +146,7 @@ export default function RunDetailsLocationReviewList({
               rows={prepRows}
               routeId={routeId}
               monthDate={monthDate}
-              onStopPatched={onStopPatched}
+              stopPatch={stopPatch}
               onDeficiencyUpdated={onDeficiencyUpdated}
             />
           )}
@@ -212,7 +214,8 @@ export default function RunDetailsLocationReviewList({
                 changeDetailsByStopId={changeDetailsByStopId}
                 onDetailLoaded={onDetailLoaded}
                 onBillingPatched={onBillingPatched}
-                onPrepSaved={onPrepSaved}
+                stopPatch={stopPatch}
+                onStopMergedFromWorksheet={onStopMergedFromWorksheet}
                 onDeficiencyUpdated={onDeficiencyUpdated}
               />
             </li>

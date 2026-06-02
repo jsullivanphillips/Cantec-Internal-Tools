@@ -13,6 +13,7 @@ import {
   runDetailsStopHeaderBandClass,
 } from './runDetailsStopSiteDisplay'
 import { useRunDetailsWorksheetStops } from './useRunDetailsWorksheetStops'
+import type { RunDetailsStopPatchApi } from './useRunDetailsStopPatch'
 import type { TechnicianWorksheetRun, TechnicianWorksheetStop } from './monthlyRoutesShared'
 import { worksheetRunExplicitlyCompleted } from './monthlyRoutesShared'
 import { portalOutcomeDisplay, portalStopHasTestOutcome } from './portalWorkflowShared'
@@ -24,7 +25,8 @@ type Props = {
   monthDate: string
   run: TechnicianWorksheetRun | null
   onHide: () => void
-  onStopUpdated?: () => void | Promise<void>
+  stopPatch: RunDetailsStopPatchApi
+  onStopMergedFromWorksheet: (stop: TechnicianWorksheetStop, scope?: 'full' | 'deficiency') => void
 }
 
 export default function RunDetailsStopSiteModal({
@@ -34,7 +36,8 @@ export default function RunDetailsStopSiteModal({
   monthDate,
   run,
   onHide,
-  onStopUpdated,
+  stopPatch,
+  onStopMergedFromWorksheet,
 }: Props) {
   const { ensureStopLoaded, getStop, replaceStop, loading, loadingId, error } =
     useRunDetailsWorksheetStops(routeId, monthDate)
@@ -60,11 +63,11 @@ export default function RunDetailsStopSiteModal({
   const refreshing = loading && testingSiteId != null && loadingId === testingSiteId && stop != null
 
   const handleStopPatched = useCallback(
-    async (updated: TechnicianWorksheetStop) => {
+    (updated: TechnicianWorksheetStop) => {
       replaceStop(updated)
-      await onStopUpdated?.()
+      onStopMergedFromWorksheet(updated)
     },
-    [replaceStop, onStopUpdated],
+    [replaceStop, onStopMergedFromWorksheet],
   )
 
   return (
@@ -145,7 +148,8 @@ export default function RunDetailsStopSiteModal({
               monthDate={monthDate}
               runId={run?.id ?? null}
               readOnly={readOnly}
-              onStopPatched={handleStopPatched}
+              stopPatch={stopPatch}
+              onStopMergedFromWorksheet={handleStopPatched}
             />
           </div>
         )}

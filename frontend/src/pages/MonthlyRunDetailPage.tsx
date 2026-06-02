@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Badge, Button, Modal, Spinner } from 'react-bootstrap'
 import { Link, useParams } from 'react-router-dom'
 import RunDetailsLocationReviewList from '../features/monthlyRoutes/RunDetailsLocationReviewList'
@@ -14,7 +14,14 @@ import {
   type MonthlyRunDetailPayload,
   type MonthlySpecialistTechRow,
   type TechnicianWorksheetRun,
+  type TechnicianWorksheetStop,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
+import {
+  deficiencyPatchFromWorksheetStop,
+  detailPatchFromWorksheetStop,
+} from '../features/monthlyRoutes/runDetailsPrepPatch'
+import { syncRunDetailsStopCache } from '../features/monthlyRoutes/useRunDetailsWorksheetStops'
+import { useRunDetailsStopPatch } from '../features/monthlyRoutes/useRunDetailsStopPatch'
 import {
   canOfficeCompleteRun,
   deriveRunWorkflowStage,
@@ -98,6 +105,7 @@ export default function MonthlyRunDetailPage() {
   const [resetRunModalOpen, setResetRunModalOpen] = useState(false)
   const [resetRunBusy, setResetRunBusy] = useState(false)
   const [reviewFilter, setReviewFilter] = useState<RunLocationReviewFilter>('all')
+  const pendingRunDetailsReloadRef = useRef(false)
 
   const loadRunDetails = useCallback(async (signal?: AbortSignal) => {
     if (!Number.isFinite(idNum) || !monthOk) return
@@ -158,23 +166,81 @@ export default function MonthlyRunDetailPage() {
     })
   }, [])
 
+  const locationsRef = useRef<MonthlyRunDetailPayload['locations']>(undefined)
+
   const onStopPatched = useCallback(
     (testingSiteId: number, patch: Partial<MonthlyRunDetailLocationStop>) => {
       setPayload((prev) => {
         if (!prev?.locations?.length) return prev
-        return {
-          ...prev,
-          locations: patchRunDetailLocationStop(
-            prev.locations,
-            testingSiteId,
-            prev.month_date,
-            patch,
-          ),
-        }
+        const locations = patchRunDetailLocationStop(
+          prev.locations,
+          testingSiteId,
+          prev.month_date,
+          patch,
+        )
+        locationsRef.current = locations
+        return { ...prev, locations }
       })
     },
     [],
   )
+
+  useEffect(() => {
+    locationsRef.current = payload?.locations
+  }, [payload?.locations])
+
+  const getStopSnapshot = useCallback((testingSiteId: number) => {
+    for (const loc of locationsRef.current ?? []) {
+      const stop = loc.stops.find((row) => row.testing_site_id === testingSiteId)
+      if (stop) return stop
+    }
+    return undefined
+  }, [])
+
+  const onWorksheetStopSynced = useCallback(
+    (stop: TechnicianWorksheetStop) => {
+      if (!Number.isFinite(idNum) || !monthOk) return
+      syncRunDetailsStopCache(idNum, monthQuery, stop)
+    },
+    [idNum, monthOk, monthQuery],
+  )
+
+  const onStopMergedFromWorksheet = useCallback(
+    (stop: TechnicianWorksheetStop, scope: 'full' | 'deficiency' = 'full') => {
+      if (!Number.isFinite(idNum) || !monthOk) return
+      syncRunDetailsStopCache(idNum, monthQuery, stop)
+      const patch =
+        scope === 'deficiency'
+          ? deficiencyPatchFromWorksheetStop(stop)
+          : detailPatchFromWorksheetStop(stop)
+      onStopPatched(stop.testing_site_id, patch)
+    },
+    [idNum, monthOk, monthQuery, onStopPatched],
+  )
+
+  const stopPatch = useRunDetailsStopPatch({
+    routeId: idNum,
+    monthDate: monthQuery,
+    onStopPatched,
+    onWorksheetStopSynced,
+    getStopSnapshot,
+  })
+
+  const { hasPendingPatches } = stopPatch
+
+  const onDeficiencyUpdated = useCallback(async () => {
+    if (hasPendingPatches) {
+      pendingRunDetailsReloadRef.current = true
+      return
+    }
+    await loadRunDetails()
+  }, [hasPendingPatches, loadRunDetails])
+
+  useEffect(() => {
+    if (hasPendingPatches || !pendingRunDetailsReloadRef.current) return
+    pendingRunDetailsReloadRef.current = false
+    void loadRunDetails()
+  }, [hasPendingPatches, loadRunDetails])
 
   const onMarkPrepared = useCallback(async () => {
     if (!Number.isFinite(idNum) || !monthOk) return
@@ -643,8 +709,9 @@ export default function MonthlyRunDetailPage() {
             filter={reviewFilter}
             onFilterChange={setReviewFilter}
             onBillingPatched={onBillingPatched}
-            onStopPatched={onStopPatched}
-            onDeficiencyUpdated={loadRunDetails}
+            stopPatch={stopPatch}
+            onStopMergedFromWorksheet={onStopMergedFromWorksheet}
+            onDeficiencyUpdated={onDeficiencyUpdated}
           />
         ) : (
           <section id="run-review-section" className="monthly-location-detail-surface p-3">
