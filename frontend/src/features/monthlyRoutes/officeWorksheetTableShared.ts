@@ -78,10 +78,14 @@ export function officeStopStatus(stop: TechnicianWorksheetStop, monthDate: strin
   return 'pending'
 }
 
-export function officeStopStatusLabel(status: OfficeStopStatus): string {
+export function officeStopStatusLabel(
+  status: OfficeStopStatus,
+  options?: { closedRun?: boolean },
+): string {
   if (status === 'tested') return 'Tested'
   if (status === 'skipped') return 'Skipped'
   if (status === 'annual') return 'Annual'
+  if (options?.closedRun) return 'No Results Submitted'
   return 'Pending'
 }
 

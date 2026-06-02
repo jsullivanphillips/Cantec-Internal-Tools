@@ -17,7 +17,7 @@ const PerformanceSummaryPage = lazy(() => import('./pages/PerformanceSummaryPage
 const MonthlyRoutesOverviewPage = lazy(() => import('./pages/MonthlyRoutesOverviewPage'))
 const MonthlyRoutesPage = lazy(() => import('./pages/MonthlyRoutesPage'))
 const MonthlyRouteDetailPage = lazy(() => import('./pages/MonthlyRouteDetailPage'))
-const MonthlyRunDetailPage = lazy(() => import('./pages/MonthlyRunDetailPage'))
+const MonthlyRoutePaperworkPage = lazy(() => import('./pages/MonthlyRoutePaperworkPage'))
 const TechnicianWorksheetPage = lazy(() => import('./pages/TechnicianWorksheetPage'))
 const MonthlyLocationDetailPage = lazy(() => import('./pages/MonthlyLocationDetailPage'))
 const MonthlyRoutesMapPage = lazy(() => import('./pages/MonthlyRoutesMapPage'))
@@ -46,16 +46,24 @@ function RedirectPortalWorksheetMockup() {
   )
 }
 
-/** Old session-ledger URLs forward to run details. */
-function RedirectMonthlySessionToRunDetails() {
+function paperworkUrl(routeId: string, monthIso?: string | null): string {
+  const base = `/monthlies/routes/${routeId}/paperwork`
+  if (!monthIso?.trim()) return base
+  return `${base}?month=${encodeURIComponent(monthIso.trim())}`
+}
+
+/** Old session-ledger URLs forward to Paperwork. */
+function RedirectMonthlySessionToPaperwork() {
   const { routeId, monthIso } = useParams<{ routeId: string; monthIso: string }>()
   if (!routeId?.trim() || !monthIso?.trim()) return <Navigate to="/monthlies/routes" replace />
-  return (
-    <Navigate
-      to={`/monthlies/routes/${routeId}/runs/${encodeURIComponent(monthIso)}`}
-      replace
-    />
-  )
+  return <Navigate to={paperworkUrl(routeId, monthIso)} replace />
+}
+
+/** Legacy run-details URLs forward to Paperwork. */
+function RedirectMonthlyRunToPaperwork() {
+  const { routeId, monthIso } = useParams<{ routeId: string; monthIso: string }>()
+  if (!routeId?.trim() || !monthIso?.trim()) return <Navigate to="/monthlies/routes" replace />
+  return <Navigate to={paperworkUrl(routeId, monthIso)} replace />
 }
 
 export const router = createBrowserRouter([
@@ -104,8 +112,9 @@ export const router = createBrowserRouter([
       { path: 'monthlies/routes', element: <MonthlyRoutesOverviewPage /> },
       { path: 'monthlies/locations', element: <MonthlyRoutesPage /> },
       { path: 'monthlies/routes/:routeId', element: <MonthlyRouteDetailPage /> },
-      { path: 'monthlies/routes/:routeId/sessions/:monthIso', element: <RedirectMonthlySessionToRunDetails /> },
-      { path: 'monthlies/routes/:routeId/runs/:monthIso', element: <MonthlyRunDetailPage /> },
+      { path: 'monthlies/routes/:routeId/paperwork', element: <MonthlyRoutePaperworkPage /> },
+      { path: 'monthlies/routes/:routeId/sessions/:monthIso', element: <RedirectMonthlySessionToPaperwork /> },
+      { path: 'monthlies/routes/:routeId/runs/:monthIso', element: <RedirectMonthlyRunToPaperwork /> },
       { path: 'monthlies/routes/:routeId/worksheet/:monthIso', element: <TechnicianWorksheetPage /> },
       { path: 'monthlies/locations/:locationId', element: <MonthlyLocationDetailPage /> },
       { path: 'monthlies/map', element: <MonthlyRoutesMapPage /> },

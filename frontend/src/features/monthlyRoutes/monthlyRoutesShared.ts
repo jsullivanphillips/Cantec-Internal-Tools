@@ -368,6 +368,8 @@ export type MonthlyRunDetailLocationAttentionFlags = {
   has_field_edits: boolean
   has_active_deficiencies: boolean
   has_job_comment: boolean
+  has_office_job_comment?: boolean
+  open_tickets?: number
   needs_attention: boolean
 }
 
@@ -393,7 +395,14 @@ export type MonthlyRunDetailLocationStop = {
   monitoring_notes?: string | null
   monitoring_company_record?: MonitoringCompanySummary | null
   run_comments: string | null
+  office_job_comment?: string | null
   office_attention?: boolean
+  prior_month_out_of_order?: boolean
+  /** Planned stop # on the prior month route when ``prior_month_out_of_order`` is set. */
+  prior_month_expected_stop_number?: number | null
+  /** Office dismissed the prior-month out-of-order prep hint. */
+  prior_month_out_of_order_dismissed?: boolean
+  prior_month_field_edits?: boolean
   testing_procedures: string | null
   inspection_tech_notes: string | null
   confirmed_no_deficiencies?: boolean
@@ -465,10 +474,17 @@ export type MonthlyRunDetailReviewStopDetailPayload = {
   changes: RunReviewStopDetailChange[]
 }
 
+export type MonthlyRunDetailFieldSubmissionMeta = {
+  available: boolean
+  captured_at: string | null
+  field_work_reopened: boolean
+}
+
 export type MonthlyRunDetailPayload = {
   route: MonthlyRouteSummary
   month_date: string
   run: TechnicianWorksheetRun | null
+  field_submission?: MonthlyRunDetailFieldSubmissionMeta
   counts: MonthlyRunDetailCounts
   specialists_month: MonthlyRouteSpecialistMonthPayload | null
   billing_locations: MonthlyRunDetailBillingLocation[]
@@ -612,8 +628,13 @@ export type TechnicianWorksheetStop = {
   inspection_tech_notes: string | null
   /** This-run-only notes; not carried to the next month. */
   run_comments: string | null
+  /** Comment fields newly added on this field run (exact history / review highlight). */
+  new_comment_fields?: string[]
+  /** Office instruction for technicians on this run month (read-only in portal). */
+  office_job_comment?: string | null
   /** Office flagged this stop until a test outcome is recorded. */
   office_attention?: boolean
+  prior_month_out_of_order_dismissed?: boolean
   time_in: string | null
   time_out: string | null
   route_stop_order: number | null

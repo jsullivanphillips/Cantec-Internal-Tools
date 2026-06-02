@@ -21,10 +21,24 @@ from app.db_models import (
     MonthlyRoute,
     MonthlyRouteLocation,
     MonthlyRouteRun,
+    MonthlyRouteRunFieldSubmission,
     MonthlyRouteTestHistory,
     MonthlyRouteWorksheetAuditEvent,
+    MonthlySite,
+    MonthlyStopClockEvent,
+    MonthlyTestingSite,
+    MonthlyTestingSiteDeficiency,
+    MonthlyTestingSiteMonth,
     db,
 )
+
+
+@pytest.fixture(autouse=True)
+def pin_pacific_current_month_for_csv_tests(monkeypatch):
+    """April 2026 CSV fixtures match the pinned current month unless a test overrides."""
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 4, 1))
 
 
 @pytest.fixture
@@ -44,8 +58,14 @@ def import_client(monkeypatch):
                 MonitoringCompany.__table__,
                 MonthlyRouteLocation.__table__,
                 MonthlyRouteRun.__table__,
+                MonthlyRouteRunFieldSubmission.__table__,
                 MonthlyRouteTestHistory.__table__,
                 MonthlyRouteWorksheetAuditEvent.__table__,
+                MonthlySite.__table__,
+                MonthlyTestingSite.__table__,
+                MonthlyTestingSiteMonth.__table__,
+                MonthlyStopClockEvent.__table__,
+                MonthlyTestingSiteDeficiency.__table__,
             ],
         )
         with app.test_client() as client:
@@ -57,7 +77,13 @@ def import_client(monkeypatch):
         db.metadata.drop_all(
             db.engine,
             tables=[
+                MonthlyTestingSiteMonth.__table__,
+                MonthlyTestingSiteDeficiency.__table__,
+                MonthlyStopClockEvent.__table__,
+                MonthlyTestingSite.__table__,
+                MonthlySite.__table__,
                 MonthlyRouteWorksheetAuditEvent.__table__,
+                MonthlyRouteRunFieldSubmission.__table__,
                 MonthlyRouteTestHistory.__table__,
                 MonthlyRouteRun.__table__,
                 MonthlyRouteLocation.__table__,
@@ -374,6 +400,143 @@ def test_import_csv_allowed_after_staff_reopen(import_client):
 
     res2 = _post_csv(client, route_id, csv_bytes)
     assert res2.status_code == 200, res2.get_data(as_text=True)
+
+
+def test_historical_csv_import_closes_run(import_client, monkeypatch):
+    """Prior-month CSV upload marks paperwork completed without manual office close."""
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 6, 1))
+
+    client, app = import_client
+    with app.app_context():
+        route_id, _, _ = _seed_route8_with_two_stops()
+
+    csv_bytes = _build_csv(
+        address_header="Address",
+        tech_notes_header="Tech Comments & Notes",
+    )
+    res = _post_csv(client, route_id, csv_bytes)
+    assert res.status_code == 200, res.get_data(as_text=True)
+    body = res.get_json()
+    assert body.get("historical_run_closed") is True
+    run = body["run"]
+    assert run.get("completed_at") is not None
+    assert run.get("workflow_stage") == "completed"
+    assert run.get("office_review_completed_at") is not None
+    assert run.get("field_ended_at") is not None
+
+
+def test_csv_import_syncs_tested_outcome_after_run_prepared(import_client):
+    """Prepared worksheet rows must pick up CSV sheet times as tested."""
+    client, app = import_client
+    with app.app_context():
+        route_id, loc1, _loc2 = _seed_route8_with_two_stops()
+
+    prep = client.post(
+        f"/api/monthly_routes/routes/{route_id}/runs/prepare",
+        json={"month_date": "2026-04-01"},
+        content_type="application/json",
+    )
+    assert prep.status_code == 200, prep.get_data(as_text=True)
+
+    csv_bytes = _build_csv(
+        address_header="Address",
+        tech_notes_header="Tech Comments & Notes",
+    )
+    res = _post_csv(client, route_id, csv_bytes)
+    assert res.status_code == 200, res.get_data(as_text=True)
+
+    with app.app_context():
+        mtsm_rows = MonthlyTestingSiteMonth.query.filter_by(month_date=date(2026, 4, 1)).all()
+        assert len(mtsm_rows) >= 1
+        by_loc: dict[int, MonthlyTestingSiteMonth] = {}
+        for row in mtsm_rows:
+            ts = db.session.get(MonthlyTestingSite, int(row.monthly_testing_site_id))
+            site = db.session.get(MonthlySite, int(ts.monthly_site_id))
+            by_loc[int(site.legacy_monthly_route_location_id)] = row
+        row_loc1 = by_loc[loc1]
+        assert row_loc1.result_status == "tested"
+        assert row_loc1.sheet_time_in_raw == "8:30am"
+        assert row_loc1.sheet_time_out_raw == "9:15am"
+
+
+def test_historical_csv_field_submission_includes_tested_times(import_client, monkeypatch):
+    """Exact-history snapshot should show tested + clock times after historical CSV import."""
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 6, 1))
+
+    client, app = import_client
+    with app.app_context():
+        route_id, loc1, _loc2 = _seed_route8_with_two_stops()
+
+    prep = client.post(
+        f"/api/monthly_routes/routes/{route_id}/runs/prepare",
+        json={"month_date": "2026-04-01"},
+        content_type="application/json",
+    )
+    assert prep.status_code == 200, prep.get_data(as_text=True)
+
+    csv_bytes = _build_csv(
+        address_header="Address",
+        tech_notes_header="Tech Comments & Notes",
+    )
+    res = _post_csv(client, route_id, csv_bytes)
+    assert res.status_code == 200, res.get_data(as_text=True)
+
+    hist_res = client.get(
+        f"/api/monthly_routes/routes/{route_id}/run_details/field_submission?month=2026-04-01"
+    )
+    assert hist_res.status_code == 200, hist_res.get_data(as_text=True)
+    payload = hist_res.get_json()
+    stops = payload.get("stops") or []
+    loc1_stop = next(s for s in stops if int(s.get("location_id") or 0) == loc1)
+    assert loc1_stop.get("result_status") == "tested"
+    assert loc1_stop.get("time_in") == "8:30am"
+    assert loc1_stop.get("time_out") == "9:15am"
+
+
+def test_historical_csv_reimport_after_reopen_closes_again(import_client, monkeypatch):
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 6, 1))
+
+    client, app = import_client
+    with app.app_context():
+        route_id, _, _ = _seed_route8_with_two_stops()
+        db.session.add(
+            MonthlyRouteRun(
+                id=7203,
+                monthly_route_id=route_id,
+                month_date=date(2026, 4, 1),
+                status="completed",
+                completed_at=datetime(2026, 4, 15, 12, 0, tzinfo=timezone.utc),
+                source="csv_import",
+            )
+        )
+        db.session.commit()
+
+    csv_bytes = _build_csv(
+        address_header="Address",
+        tech_notes_header="Tech Comments & Notes",
+    )
+    assert _post_csv(client, route_id, csv_bytes).status_code == 409
+
+    reopen = client.post(
+        f"/api/monthly_routes/routes/{route_id}/runs/reopen",
+        json={"month_date": "2026-04-01"},
+        content_type="application/json",
+    )
+    assert reopen.status_code == 200, reopen.get_data(as_text=True)
+
+    res2 = _post_csv(client, route_id, csv_bytes)
+    assert res2.status_code == 200, res2.get_data(as_text=True)
+    body = res2.get_json()
+    assert body.get("historical_run_closed") is True
+    run = body["run"]
+    assert run.get("completed_at") is not None
+    assert run.get("workflow_stage") == "completed"
 
 
 def test_import_second_csv_same_month_is_idempotent(import_client):

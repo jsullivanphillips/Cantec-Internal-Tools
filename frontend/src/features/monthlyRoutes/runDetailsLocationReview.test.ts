@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { MonthlyRunDetailLocation, TechnicianWorksheetStop } from './monthlyRoutesShared'
+import type { MonthlyRunDetailLocation, MonthlyRunDetailPayload, MonthlyRouteDetailPayload, TechnicianWorksheetStop } from './monthlyRoutesShared'
 import {
   computeRunDetailsPrepSummary,
   countSubmittedLocations,
@@ -7,10 +7,16 @@ import {
   filterRunDetailFieldEditLocations,
   filterRunDetailLocations,
   flattenRunDetailReviewRows,
+  orderedLocationIdsFromPrepRows,
+  priorMonthOutOfOrderHint,
+  reorderPrepRowsByLocationIds,
+  renumberPrepRowStopNumbers,
   stopHasNewCommentField,
   locationHasAllStopsSubmitted,
   locationIdentityTone,
   patchRunDetailLocationBilling,
+  patchRunDetailPayloadRun,
+  patchRouteMetaRunMonth,
   patchRunDetailPreRunMessage,
   patchRunDetailLocationStop,
   stopHasSubmittedTestResult,
@@ -227,6 +233,75 @@ describe('patchRunDetailPreRunMessage', () => {
     }
     expect(patchRunDetailPreRunMessage(run, '  hello  ').pre_run_message).toBe('hello')
     expect(patchRunDetailPreRunMessage(run, '   ').pre_run_message).toBeNull()
+  })
+})
+
+describe('patchRunDetailPayloadRun', () => {
+  it('replaces run without touching locations', () => {
+    const run = {
+      id: 1,
+      monthly_route_id: 1,
+      month_date: MONTH,
+      status: 'open',
+      opened_at: null,
+      started_at: null,
+      completed_at: null,
+      source: 'office_manual',
+      is_historical: false,
+      pre_run_message: null,
+    }
+    const payload = {
+      route: { id: 1, name: 'R1' },
+      month_date: MONTH,
+      run,
+      counts: {},
+      specialists_month: null,
+      billing_locations: [],
+      review_meta: {},
+      locations: [],
+    } as MonthlyRunDetailPayload
+    const updatedRun = {
+      ...run,
+      status: 'completed' as const,
+      completed_at: '2026-01-16T12:00:00Z',
+    }
+    const next = patchRunDetailPayloadRun(payload, updatedRun)
+    expect(next.run).toEqual(updatedRun)
+    expect(next.locations).toBe(payload.locations)
+  })
+})
+
+describe('patchRouteMetaRunMonth', () => {
+  it('updates runs_by_month for the selected month', () => {
+    const run = {
+      id: 9,
+      monthly_route_id: 1,
+      month_date: MONTH,
+      status: 'completed',
+      opened_at: null,
+      started_at: '2026-05-02T10:00:00Z',
+      completed_at: '2026-05-03T18:00:00Z',
+      source: 'office_manual',
+      is_historical: false,
+      workflow_stage: 'completed',
+      workflow_stage_label: 'Completed',
+    }
+    const routeMeta = {
+      id: 1,
+      name: 'Route A',
+      runs_by_month: {},
+    } as MonthlyRouteDetailPayload
+    const next = patchRouteMetaRunMonth(routeMeta, MONTH, run)
+    expect(next?.runs_by_month[MONTH]).toEqual({
+      run_id: 9,
+      source: 'office_manual',
+      status: 'completed',
+      opened_at: null,
+      started_at: '2026-05-02T10:00:00Z',
+      completed_at: '2026-05-03T18:00:00Z',
+      workflow_stage: 'completed',
+      workflow_stage_label: 'Completed',
+    })
   })
 })
 
@@ -490,5 +565,37 @@ describe('filterRunDetailFieldEditLocations', () => {
     expect(filtered).toHaveLength(1)
     expect(filtered[0].location_id).toBe(101)
     expect(countRunDetailFieldEditLocations([plain, withEdits])).toBe(1)
+  })
+})
+
+describe('prep route order helpers', () => {
+  it('reorders prep rows by location and renumbers stops', () => {
+    const rows = [
+      { stop: { testing_site_id: 1, location_id: 101, stop_number: 1 }, locationLabel: 'A', siteCount: 1 },
+      { stop: { testing_site_id: 2, location_id: 102, stop_number: 2 }, locationLabel: 'B', siteCount: 1 },
+      { stop: { testing_site_id: 3, location_id: 103, stop_number: 3 }, locationLabel: 'C', siteCount: 1 },
+    ] as import('./runDetailsLocationReview').RunDetailPrepRow[]
+
+    const reordered = renumberPrepRowStopNumbers(reorderPrepRowsByLocationIds(rows, [103, 101, 102]))
+    expect(reordered.map((row) => row.stop.location_id)).toEqual([103, 101, 102])
+    expect(reordered.map((row) => row.stop.stop_number)).toEqual([1, 2, 3])
+  })
+
+  it('builds out-of-order hint with expected stop number', () => {
+    expect(
+      priorMonthOutOfOrderHint({
+        prior_month_out_of_order: true,
+        prior_month_expected_stop_number: 3,
+      }),
+    ).toEqual({
+      title: 'Out of order last run',
+      detail: 'Was stop #3 on last run',
+    })
+    expect(
+      priorMonthOutOfOrderHint({
+        prior_month_out_of_order: false,
+        prior_month_expected_stop_number: 3,
+      }),
+    ).toBeNull()
   })
 })

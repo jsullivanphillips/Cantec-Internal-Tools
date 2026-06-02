@@ -283,6 +283,22 @@ def _fill_snapshot_gaps_from_history(
         base["facp"] = panel
 
 
+def _apply_history_outcome_to_base(
+    base: dict[str, object],
+    hist: MonthlyRouteTestHistory,
+) -> None:
+    """Copy sheet-derived visit outcome from history onto a primary stop-month row."""
+    if hist.result_status is None:
+        return
+    base["result_status"] = hist.result_status
+    base["skip_reason"] = hist.skip_reason
+    base["sheet_time_in_raw"] = hist.sheet_time_in_raw
+    base["sheet_time_out_raw"] = hist.sheet_time_out_raw
+    base["source_value_raw"] = hist.source_value_raw
+    if hist.session_route_stop_order is not None:
+        base["session_route_stop_order"] = hist.session_route_stop_order
+
+
 def seed_stop_month_fields(
     ts: MonthlyTestingSite,
     loc: MonthlyRouteLocation,
@@ -294,6 +310,7 @@ def seed_stop_month_fields(
     primary: bool,
     location_hist: MonthlyRouteTestHistory | None,
     existing_row: MonthlyTestingSiteMonth | None = None,
+    include_history_gap_fill: bool = True,
 ) -> dict[str, object]:
     """Build insert/update payload for ``MonthlyTestingSiteMonth``."""
     if existing_row is not None:
@@ -308,20 +325,16 @@ def seed_stop_month_fields(
         base = merge_template_with_prior_fallback(template, prior)
         base.update(_cleared_outcome_fields())
         base["run_comments"] = None
+        base["office_job_comment"] = None
         base["office_attention"] = False
-        if primary:
+        base["prior_month_out_of_order_dismissed"] = False
+        if primary and include_history_gap_fill:
             hist_seed = location_hist or _prior_history_for_location(int(loc.id), month_first)
             if hist_seed is not None:
                 _fill_snapshot_gaps_from_history(base, hist_seed)
 
-    if existing_row is None and primary and location_hist is not None:
-        base["result_status"] = location_hist.result_status
-        base["skip_reason"] = location_hist.skip_reason
-        base["sheet_time_in_raw"] = location_hist.sheet_time_in_raw
-        base["sheet_time_out_raw"] = location_hist.sheet_time_out_raw
-        base["source_value_raw"] = location_hist.source_value_raw
-        if location_hist.session_route_stop_order is not None:
-            base["session_route_stop_order"] = location_hist.session_route_stop_order
+    if primary and location_hist is not None:
+        _apply_history_outcome_to_base(base, location_hist)
     elif not primary:
         base["result_status"] = None
         base["skip_reason"] = None
@@ -334,8 +347,13 @@ def seed_stop_month_fields(
     base["run_id"] = run_id
     if existing_row is not None:
         base["office_attention"] = bool(existing_row.office_attention)
+        base["prior_month_out_of_order_dismissed"] = bool(
+            existing_row.prior_month_out_of_order_dismissed
+        )
     elif "office_attention" not in base:
         base["office_attention"] = False
+    if "prior_month_out_of_order_dismissed" not in base:
+        base["prior_month_out_of_order_dismissed"] = False
     return base
 
 
@@ -786,7 +804,9 @@ def serialize_worksheet_stop(
     procedures = None
     tech_notes = None
     run_comments = None
+    office_job_comment = None
     office_attention = False
+    prior_month_out_of_order_dismissed = False
     result_status = None
     skip_reason = None
     time_in = None
@@ -803,7 +823,9 @@ def serialize_worksheet_stop(
         procedures = mtsm.testing_procedures
         tech_notes = mtsm.inspection_tech_notes
         run_comments = mtsm.run_comments
+        office_job_comment = mtsm.office_job_comment
         office_attention = bool(mtsm.office_attention)
+        prior_month_out_of_order_dismissed = bool(mtsm.prior_month_out_of_order_dismissed)
         result_status = mtsm.result_status
         skip_reason = mtsm.skip_reason
         test_outcome = mtsm.test_outcome
@@ -839,7 +861,9 @@ def serialize_worksheet_stop(
         procedures = preview.get("testing_procedures")
         tech_notes = preview.get("inspection_tech_notes")
         run_comments = None
+        office_job_comment = None
         office_attention = False
+        prior_month_out_of_order_dismissed = False
         pmc = _normalize_text(preview.get("property_management_company"))
         building = _normalize_text(preview.get("building_name"))
         panel_loc = preview.get("panel_location")
@@ -887,7 +911,9 @@ def serialize_worksheet_stop(
         "testing_procedures": procedures,
         "inspection_tech_notes": tech_notes,
         "run_comments": run_comments,
+        "office_job_comment": office_job_comment,
         "office_attention": office_attention,
+        "prior_month_out_of_order_dismissed": prior_month_out_of_order_dismissed,
         "time_in": time_in,
         "time_out": time_out,
         "route_stop_order": library_order,
@@ -1492,10 +1518,8 @@ def sync_primary_history_from_stop(
     hist.sheet_time_in_raw = mtsm.sheet_time_in_raw
     hist.sheet_time_out_raw = mtsm.sheet_time_out_raw
     hist.session_route_stop_order = mtsm.session_route_stop_order
-    if mtsm.testing_procedures is not None:
-        hist.testing_procedures = mtsm.testing_procedures
-    if mtsm.inspection_tech_notes is not None:
-        hist.inspection_tech_notes = mtsm.inspection_tech_notes
+    hist.testing_procedures = mtsm.testing_procedures
+    hist.inspection_tech_notes = mtsm.inspection_tech_notes
     if mtsm.ring is not None:
         hist.ring = mtsm.ring
     if mtsm.key_number is not None:
@@ -1581,6 +1605,106 @@ def _is_latest_run_for_location(location_id: int, month_first: date) -> bool:
         .scalar()
     )
     return latest is None or month_first >= latest
+
+
+def regenerate_prep_stops_from_latest_data(
+    route_id: int,
+    month_first: date,
+    run: MonthlyRouteRun,
+) -> int:
+    """Office prep: overwrite stop-month snapshots from library master + prior run month.
+
+    Preserves ``office_attention`` flags. Does not copy prior-month history gaps when a
+    prior ``MonthlyTestingSiteMonth`` row exists (avoids resurrecting cleared notes).
+    """
+    locs = _route_locations(route_id)
+    if not locs:
+        return 0
+    loc_ids = [int(loc.id) for loc in locs]
+    hist_by_loc = _history_for_locations(loc_ids, month_first)
+    run_id = int(run.id)
+
+    all_ts_ids: list[int] = []
+    loc_ts: dict[int, list[MonthlyTestingSite]] = {}
+    for loc in locs:
+        site = ensure_monthly_site_for_location(loc)
+        ts_rows = sync_testing_sites_from_legacy(loc)
+        if not ts_rows:
+            ts_rows = (
+                MonthlyTestingSite.query.filter_by(monthly_site_id=int(site.id))
+                .order_by(MonthlyTestingSite.sort_order.asc(), MonthlyTestingSite.id.asc())
+                .all()
+            )
+        loc_ts[int(loc.id)] = ts_rows
+        all_ts_ids.extend(int(t.id) for t in ts_rows)
+
+    prior_by_ts = _prior_mtsm_by_testing_site(all_ts_ids, month_first)
+    existing = {
+        int(r.monthly_testing_site_id): r
+        for r in db.session.query(MonthlyTestingSiteMonth)
+        .filter(
+            MonthlyTestingSiteMonth.month_date == month_first,
+            MonthlyTestingSiteMonth.monthly_testing_site_id.in_(all_ts_ids),
+        )
+        .all()
+    } if all_ts_ids else {}
+
+    regenerated = 0
+    for loc in locs:
+        ts_list = loc_ts.get(int(loc.id), [])
+        if not ts_list:
+            continue
+        primary = primary_testing_site(ts_list)
+        loc_hist = hist_by_loc.get(int(loc.id))
+        for ts in ts_list:
+            ts_id = int(ts.id)
+            is_primary = primary is not None and int(primary.id) == ts_id
+            prior = prior_by_ts.get(ts_id)
+            row = existing.get(ts_id)
+            office_attention = bool(row.office_attention) if row is not None else False
+            prior_month_out_of_order_dismissed = (
+                bool(row.prior_month_out_of_order_dismissed) if row is not None else False
+            )
+            fresh = seed_stop_month_fields(
+                ts,
+                loc,
+                prior,
+                route_id=route_id,
+                run_id=run_id,
+                month_first=month_first,
+                primary=is_primary,
+                location_hist=loc_hist if is_primary else None,
+                existing_row=None,
+                include_history_gap_fill=prior is None,
+            )
+            fresh["office_attention"] = office_attention
+            fresh["prior_month_out_of_order_dismissed"] = prior_month_out_of_order_dismissed
+            if row is None:
+                fields = dict(fresh)
+                fields["monthly_testing_site_id"] = ts_id
+                nid = _next_sqlite_bigint_id(MonthlyTestingSiteMonth)
+                if nid is not None:
+                    fields["id"] = nid
+                try:
+                    with db.session.begin_nested():
+                        db.session.add(MonthlyTestingSiteMonth(**fields))
+                    regenerated += 1
+                    continue
+                except IntegrityError:
+                    row = (
+                        MonthlyTestingSiteMonth.query.filter_by(
+                            monthly_testing_site_id=ts_id,
+                            month_date=month_first,
+                        ).one_or_none()
+                    )
+            if row is None:
+                continue
+            _apply_fresh_stop_month_fields(row, fresh, route_id=route_id, run_id=run_id)
+            regenerated += 1
+            if is_primary:
+                sync_primary_history_from_stop(row, loc, route_id, month_first)
+    db.session.flush()
+    return regenerated
 
 
 def _reseed_stop_month_rows_from_master(
@@ -1787,7 +1911,9 @@ STOP_PATCH_FIELD_MAP: dict[str, str] = {
     "testing_procedures": "testing_procedures",
     "inspection_tech_notes": "inspection_tech_notes",
     "run_comments": "run_comments",
+    "office_job_comment": "office_job_comment",
     "office_attention": "office_attention",
+    "prior_month_out_of_order_dismissed": "prior_month_out_of_order_dismissed",
     "time_in": "sheet_time_in_raw",
     "time_out": "sheet_time_out_raw",
     "annual_month": "annual_month",
@@ -1870,6 +1996,18 @@ def apply_worksheet_stop_field_change(
         mtsm.office_attention = new_bool
         return True, None
 
+    if field_name == "prior_month_out_of_order_dismissed":
+        if raw_value in (None, "", False, 0, "0", "false", "False"):
+            new_bool = False
+        elif raw_value in (True, 1, "1", "true", "True"):
+            new_bool = True
+        else:
+            new_bool = bool(raw_value)
+        if bool(mtsm.prior_month_out_of_order_dismissed) == new_bool:
+            return False, None
+        mtsm.prior_month_out_of_order_dismissed = new_bool
+        return True, None
+
     new_val = _normalize_text(raw_value)
     old_val = getattr(mtsm, attr_name)
     if old_val == new_val:
@@ -1908,5 +2046,9 @@ RUN_DETAILS_EXCLUDED_AUDIT_FIELDS = frozenset({
 })
 
 # Prep-only fields and sources omitted from the field-changes card (technician deltas only).
-RUN_DETAILS_OFFICE_ONLY_AUDIT_FIELDS = frozenset({"office_attention"})
+RUN_DETAILS_OFFICE_ONLY_AUDIT_FIELDS = frozenset({
+    "office_attention",
+    "office_job_comment",
+    "prior_month_out_of_order_dismissed",
+})
 RUN_DETAILS_OFFICE_PREP_AUDIT_SOURCES = frozenset({"office_manual", "office"})

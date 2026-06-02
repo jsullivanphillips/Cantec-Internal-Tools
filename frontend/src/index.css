@@ -272,6 +272,85 @@ body.portal-worksheet-body-lock {
   padding-top: 0.25rem;
 }
 
+.monthly-route-paperwork-entry {
+  padding-top: 0.65rem;
+  padding-bottom: 0.65rem;
+  font-weight: 600;
+}
+
+.paperwork-run-selector {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem 1rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--ml-border);
+  border-radius: var(--ml-radius-lg);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: var(--ml-shadow-card);
+}
+
+.paperwork-run-selector--single {
+  gap: 0.35rem;
+}
+
+.paperwork-run-selector__label {
+  color: var(--ml-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.paperwork-run-selector__select {
+  max-width: 22rem;
+}
+
+.monthly-paperwork-view-badge {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+/* Paperwork — equal spacing between breadcrumb, month selector, hero, and content cards */
+.monthly-paperwork-page .monthly-route-detail-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.monthly-paperwork-page .monthly-route-detail-container > .monthly-run-detail-breadcrumb {
+  margin-bottom: 0;
+}
+
+.monthly-paperwork-page .monthly-route-detail-container > .paperwork-run-selector {
+  margin-bottom: 0;
+}
+
+.monthly-paperwork-page .monthly-route-detail-container > .run-details-pre-run-message {
+  margin-bottom: 0;
+}
+
+.monthly-paperwork-page .monthly-route-detail-container > .monthly-run-detail-locations,
+.monthly-paperwork-page .monthly-route-detail-container > .monthly-location-detail-surface {
+  margin-bottom: 0;
+}
+
+.monthly-paperwork-page .monthly-run-detail-locations {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.monthly-paperwork-page .monthly-run-detail-locations > .monthly-run-detail-progress {
+  margin: 0;
+}
+
+.monthly-paperwork-page .monthly-run-detail-locations > .monthly-run-detail-section__title {
+  margin-bottom: 0;
+}
+
 .monthly-location-back-link {
   display: inline-flex;
   align-items: center;
@@ -3556,6 +3635,10 @@ body.portal-worksheet-body-lock {
   font-size: 0.85rem;
 }
 
+.monthly-run-detail-loading-label {
+  margin-bottom: 0.85rem;
+}
+
 .monthly-run-detail-hero__route-ref {
   font-weight: 600;
   color: var(--ml-muted-strong);
@@ -3671,6 +3754,22 @@ body.portal-worksheet-body-lock {
 
 .monthly-run-detail-progress__item--warn strong {
   color: #b45309;
+}
+
+.monthly-run-detail-progress__item--all-good strong {
+  color: #047857;
+}
+
+.monthly-run-detail-progress__item--passed-problems strong {
+  color: #db2777;
+}
+
+.monthly-run-detail-progress__item--failed strong {
+  color: #dc2626;
+}
+
+.monthly-run-detail-progress__item--skipped strong {
+  color: #64748b;
 }
 
 .run-location-card-list {
@@ -4430,6 +4529,21 @@ body.portal-worksheet-body-lock {
 .run-details-deficiency-modal__body {
   padding: 1.1rem 1.25rem 1.25rem;
   background: #fff;
+  position: relative;
+}
+
+.run-details-deficiency-modal__saving-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  background: rgba(255, 255, 255, 0.82);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--ml-muted-strong, #334155);
 }
 
 .run-details-deficiency-modal__context {

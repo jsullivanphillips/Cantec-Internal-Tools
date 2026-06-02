@@ -15,12 +15,11 @@ import {
   useMemo,
   useState,
   type CSSProperties,
-  type KeyboardEvent,
   type ReactNode,
 } from 'react'
 import { Chart } from 'react-chartjs-2'
 import { Accordion, Alert, Badge, Button, Card, Col, Form, Modal, Row, Spinner, Table } from 'react-bootstrap'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import MonthlyLibraryCommentsPanel from '../features/monthlyRoutes/MonthlyLibraryCommentsPanel'
 import MonthlyRouteMapCard from '../features/monthlyRoutes/MonthlyRouteMapCard'
 import {
@@ -28,23 +27,14 @@ import {
   toMonthKey,
   type MonthlyLocationComment,
   type MonthlyRouteDetailPayload,
-  type MonthlyRouteSpecialistMonthPayload,
   type MonthlyRouteSpecialistsPayload,
   type MonthlyRouteSummary,
   type MonthlySpecialistTechRow,
   type RouteLocationListItem,
   type RouteLocationTestingSiteListItem,
-  type RouteTestingSkippedSite,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
 import { apiJson, apiPostFormData, isAbortError } from '../lib/apiClient'
 import { formatCurrencyCad } from '../lib/formatCurrencyCad'
-import { routeMonthRunStatusLabel } from '../features/monthlyRoutes/runWorkflowShared'
-
-function englishOrdinal(n: number): string {
-  if (11 <= (n % 100) && (n % 100) <= 13) return `${n}th`
-  const suffix = { 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] ?? 'th'
-  return `${n}${suffix}`
-}
 
 function formatMonthHeading(monthIso: string): string {
   const [y, m] = monthIso.split('-').map(Number)
@@ -54,28 +44,6 @@ function formatMonthHeading(monthIso: string): string {
     year: 'numeric',
     timeZone: 'UTC',
   }).format(new Date(Date.UTC(y, m - 1, 1)))
-}
-
-/** ``YYYY-MM-DD`` from API is a Pacific calendar date; format without TZ shifting the day. */
-function formatStoredPacificCalendarDate(iso: string | null | undefined): string | null {
-  if (!iso || typeof iso !== 'string') return null
-  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/)
-  if (!m) return null
-  const y = Number(m[1])
-  const mo = Number(m[2])
-  const d = Number(m[3])
-  if (!y || !mo || !d) return null
-  const dt = new Date(Date.UTC(y, mo - 1, d))
-  const monthYear = new Intl.DateTimeFormat('en-CA', {
-    month: 'long',
-    year: 'numeric',
-    timeZone: 'UTC',
-  }).format(dt)
-  const weekday = new Intl.DateTimeFormat('en-CA', {
-    weekday: 'long',
-    timeZone: 'UTC',
-  }).format(dt)
-  return `${monthYear}, ${weekday} the ${englishOrdinal(d)}`
 }
 
 function monthIsoKeysForCalendarYear(year: number): string[] {
@@ -122,52 +90,6 @@ function specialistBadgeTier(jobs: number) {
 
 function normalizedTechName(name: string): string {
   return name.trim().toLowerCase()
-}
-
-function formatSpecialistsForMonth(payload: MonthlyRouteSpecialistMonthPayload | undefined): string {
-  const list = payload?.top_technicians
-  if (!list?.length) return '—'
-  return list.map((t) => specialistTechLabel(t)).join(', ')
-}
-
-function coerceSkippedSites(value: unknown): RouteTestingSkippedSite[] {
-  if (!Array.isArray(value)) return []
-  const out: RouteTestingSkippedSite[] = []
-  for (const item of value) {
-    if (!item || typeof item !== 'object') continue
-    const rec = item as Record<string, unknown>
-    const id = Number(rec.id)
-    const label = typeof rec.label === 'string' ? rec.label : ''
-    if (!Number.isFinite(id)) continue
-
-    const row: RouteTestingSkippedSite = {
-      id,
-      label: label.trim() || `Location ${id}`,
-    }
-    if ('skip_reason' in rec) {
-      const sr = rec.skip_reason
-      if (sr === null || sr === undefined) row.skip_reason = null
-      else if (typeof sr === 'string') row.skip_reason = sr.trim() || null
-      else row.skip_reason = null
-    }
-    out.push(row)
-  }
-  return out
-}
-
-function activateSkipCellKeyboard(e: KeyboardEvent<HTMLTableCellElement>, action: () => void) {
-  if (e.key === 'Enter' || e.key === ' ') {
-    e.preventDefault()
-    action()
-  }
-}
-
-function skipReasonTableCell(site: RouteTestingSkippedSite) {
-  const r = site.skip_reason
-  if (r === undefined || r === null || !r.trim()) {
-    return <span className="text-muted">—</span>
-  }
-  return <span className="text-break">{r}</span>
 }
 
 function siteStatusBadgeVariant(status: string): string {
@@ -299,12 +221,6 @@ function SortableRouteSiteRow({
       })}
     </>
   )
-}
-
-type SkipSitesModalState = {
-  kind: 'non_annual' | 'annual'
-  monthIso: string
-  sites: RouteTestingSkippedSite[]
 }
 
 /** Issue surfaced by the route-inspection CSV importer for a single CSV row. */
@@ -563,10 +479,10 @@ function UploadRunFromCsvModal({
             </Button>
             {monthIso ? (
               <Link
-                to={`/monthlies/routes/${routeId}/runs/${monthIso}`}
+                to={`/monthlies/routes/${routeId}/paperwork?month=${encodeURIComponent(monthIso)}`}
                 className="btn btn-primary"
               >
-                View run details
+                View paperwork
               </Link>
             ) : null}
           </>
@@ -660,14 +576,12 @@ function RouteYearToolbar({
 
 export default function MonthlyRouteDetailPage() {
   const { routeId } = useParams<{ routeId: string }>()
-  const nav = useNavigate()
   const idNum = routeId ? parseInt(routeId, 10) : NaN
 
   const [route, setRoute] = useState<MonthlyRouteSummary | null>(null)
   const [specialists, setSpecialists] = useState<MonthlyRouteSpecialistsPayload | null>(null)
   const [comments, setComments] = useState<MonthlyLocationComment[]>([])
   const [testingByMonth, setTestingByMonth] = useState<MonthlyRouteDetailPayload['testing_by_month']>({})
-  const [runsByMonth, setRunsByMonth] = useState<MonthlyRouteDetailPayload['runs_by_month']>({})
   const [specialistsByMonth, setSpecialistsByMonth] = useState<MonthlyRouteDetailPayload['specialists_by_month']>(
     {}
   )
@@ -676,29 +590,10 @@ export default function MonthlyRouteDetailPage() {
   const [sessionUsername, setSessionUsername] = useState<string | null>(null)
   const [activeTechNames, setActiveTechNames] = useState<Set<string> | null>(null)
   const [historyViewYear, setHistoryViewYear] = useState<number | null>(null)
-  const [skipSitesModal, setSkipSitesModal] = useState<SkipSitesModalState | null>(null)
   const [uploadRunOpen, setUploadRunOpen] = useState(false)
   const [orderedSites, setOrderedSites] = useState<RouteLocationListItem[]>([])
   const [orderSaving, setOrderSaving] = useState(false)
   const [orderError, setOrderError] = useState<string | null>(null)
-
-  const openRunDetails = useCallback(
-    (monthIso: string) => {
-      if (Number.isNaN(idNum)) return
-      nav(`/monthlies/routes/${idNum}/runs/${encodeURIComponent(monthIso)}`)
-    },
-    [idNum, nav],
-  )
-
-  const activateRunDetailsRowKeyboard = useCallback(
-    (e: KeyboardEvent<HTMLTableRowElement>, monthIso: string) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault()
-        openRunDetails(monthIso)
-      }
-    },
-    [openRunDetails],
-  )
 
   const load = useCallback(
     async (signal?: AbortSignal) => {
@@ -714,7 +609,6 @@ export default function MonthlyRouteDetailPage() {
         setSpecialists(data.specialists ?? null)
         setComments(data.comments || [])
         setTestingByMonth(data.testing_by_month || {})
-        setRunsByMonth(data.runs_by_month || {})
         setSpecialistsByMonth(data.specialists_by_month || {})
         setOrderedSites(data.locations ?? [])
         setOrderError(null)
@@ -725,7 +619,6 @@ export default function MonthlyRouteDetailPage() {
         setSpecialists(null)
         setComments([])
         setTestingByMonth({})
-        setRunsByMonth({})
         setSpecialistsByMonth({})
         setOrderedSites([])
       } finally {
@@ -1042,7 +935,15 @@ export default function MonthlyRouteDetailPage() {
           </div>
         </section>
 
-        <Accordion defaultActiveKey={['history']} alwaysOpen className="monthly-location-detail-accordion monthly-route-detail-accordion">
+        <Link
+          to={`/monthlies/routes/${idNum}/paperwork`}
+          className="btn btn-primary w-100 monthly-route-paperwork-entry mb-3"
+        >
+          <i className="bi bi-folder2-open me-2" aria-hidden />
+          Paperwork
+        </Link>
+
+        <Accordion defaultActiveKey={['map']} alwaysOpen className="monthly-location-detail-accordion monthly-route-detail-accordion">
         <Accordion.Item
           eventKey="map"
           className="monthly-location-testing-history-card monthly-route-detail-section monthly-location-detail-surface"
@@ -1060,279 +961,6 @@ export default function MonthlyRouteDetailPage() {
               stops={orderedSites}
               orderSignature={routeMapOrderSignature}
             />
-          </Accordion.Body>
-        </Accordion.Item>
-
-        <Accordion.Item
-          eventKey="history"
-          className="monthly-location-testing-history-card monthly-route-detail-section monthly-location-detail-surface"
-        >
-          <Accordion.Header className="monthly-location-testing-history-card-header">
-            <RouteSectionHeader
-              icon="bi-calendar2-check"
-              title="Runs"
-              badge={effectiveHistoryYear != null ? effectiveHistoryYear : 'No data'}
-            />
-          </Accordion.Header>
-          <Accordion.Body className="monthly-location-testing-history-body">
-            {testingHistoryYears.length === 0 ? (
-              <div className="monthly-location-empty-state">
-                No testing history or ServiceTrade specialist-by-month data for this route yet.
-              </div>
-            ) : (
-              <>
-                <RouteYearToolbar
-                  year={effectiveHistoryYear}
-                  yearIndex={testingHistoryYearIndex}
-                  years={testingHistoryYears}
-                  onChangeYear={setHistoryViewYear}
-                />
-                <div className="monthly-route-detail-table-shell">
-                <Table
-                  size="sm"
-                  className="monthly-route-detail-table monthly-route-detail-runs-table mb-0 small"
-                  style={{ tableLayout: 'fixed' }}
-                >
-                  <colgroup>
-                    <col />
-                    <col style={{ width: '8.5rem' }} />
-                    <col style={{ width: '8rem' }} />
-                    <col style={{ width: '6rem' }} />
-                    <col style={{ width: '7.25rem' }} />
-                    <col />
-                  </colgroup>
-                  <thead>
-                    <tr>
-                      <th
-                        title="ServiceTrade appointment / completion date (Pacific). Falls back to sheet month when unavailable."
-                      >
-                        Test date
-                      </th>
-                      <th className="text-center text-nowrap px-2 align-bottom">Status</th>
-                      <th
-                        className="text-center tabular-nums px-2 align-bottom"
-                        style={{ whiteSpace: 'normal', lineHeight: 1.25, fontWeight: 600 }}
-                        title="Imported sheet: sites tested that month."
-                      >
-                        # sites tested
-                      </th>
-                      <th
-                        className="text-center tabular-nums px-2 align-bottom"
-                        style={{ whiteSpace: 'normal', lineHeight: 1.25, fontWeight: 600 }}
-                        title="Skipped sites excluding annual (sheet skip_reason ≠ annual)"
-                      >
-                        # skipped
-                      </th>
-                      <th
-                        className="text-center tabular-nums px-2 align-bottom"
-                        style={{ whiteSpace: 'normal', lineHeight: 1.25, fontWeight: 600 }}
-                        title="Skipped — annual (sheet ANNUAL)"
-                      >
-                        # skipped annual
-                      </th>
-                      <th>Technicians on route</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {effectiveHistoryYear != null
-                      ? monthIsoKeysForCalendarYear(effectiveHistoryYear).map((monthIso) => {
-                          const cell = testingByMonth[monthIso]
-                          const hasSheetHistoryForMonth = cell !== undefined
-                          const runSummary = runsByMonth[monthIso]
-                          const runStatusLabel = routeMonthRunStatusLabel(
-                            runSummary,
-                            hasSheetHistoryForMonth,
-                          )
-                          const sitesTested =
-                            cell && typeof cell.sites_tested_count === 'number'
-                              ? cell.sites_tested_count
-                              : 0
-                          const skippedNonAnnual =
-                            cell && typeof cell.skipped_non_annual_count === 'number'
-                              ? cell.skipped_non_annual_count
-                              : 0
-                          const skippedAnnual =
-                            cell && typeof cell.skipped_annual_count === 'number'
-                              ? cell.skipped_annual_count
-                              : 0
-                          const sheetCountsNoData = (
-                            <em className="text-muted fst-italic">No data</em>
-                          )
-                          const specCell = specialistsByMonth[monthIso]
-                          const techsLabel = formatSpecialistsForMonth(specCell)
-                          const routeTestLabel = formatStoredPacificCalendarDate(specCell?.route_tested_on ?? null)
-                          const openSkippedNonAnnualModal = () =>
-                            setSkipSitesModal({
-                              kind: 'non_annual',
-                              monthIso,
-                              sites: coerceSkippedSites(cell?.skipped_non_annual_sites),
-                            })
-                          const openSkippedAnnualModal = () =>
-                            setSkipSitesModal({
-                              kind: 'annual',
-                              monthIso,
-                              sites: coerceSkippedSites(cell?.skipped_annual_sites),
-                            })
-                          return (
-                            <tr
-                              key={monthIso}
-                              className="monthly-route-detail-runs-row"
-                              role="link"
-                              tabIndex={0}
-                              aria-label={`Open run details for ${formatMonthHeading(monthIso)} — ${runStatusLabel}`}
-                              onClick={() => openRunDetails(monthIso)}
-                              onKeyDown={(e) => activateRunDetailsRowKeyboard(e, monthIso)}
-                            >
-                              <td
-                                title={
-                                  routeTestLabel
-                                    ? `Sheet month: ${formatMonthHeading(monthIso)}`
-                                    : undefined
-                                }
-                              >
-                                {routeTestLabel ?? formatMonthHeading(monthIso)}
-                              </td>
-                              <td className="text-center align-middle px-2 small">
-                                {runStatusLabel}
-                              </td>
-                              <td className="text-center align-bottom tabular-nums px-2">
-                                {hasSheetHistoryForMonth ? sitesTested : sheetCountsNoData}
-                              </td>
-                              <td
-                                className={`text-center align-bottom tabular-nums px-2${
-                                  hasSheetHistoryForMonth && skippedNonAnnual > 0
-                                    ? ' monthly-route-detail-skip-cell-interactive'
-                                    : ''
-                                }`}
-                                {...(hasSheetHistoryForMonth && skippedNonAnnual > 0
-                                  ? {
-                                      role: 'button' as const,
-                                      tabIndex: 0,
-                                      'aria-label': `List sites skipped (${skippedNonAnnual}) for ${formatMonthHeading(monthIso)}`,
-                                      onClick: (e) => {
-                                        e.stopPropagation()
-                                        openSkippedNonAnnualModal()
-                                      },
-                                      onKeyDown: (e: KeyboardEvent<HTMLTableCellElement>) => {
-                                        e.stopPropagation()
-                                        activateSkipCellKeyboard(e, openSkippedNonAnnualModal)
-                                      },
-                                    }
-                                  : {})}
-                              >
-                                {!hasSheetHistoryForMonth ? (
-                                  sheetCountsNoData
-                                ) : skippedNonAnnual > 0 ? (
-                                  <span className="tabular-nums text-decoration-underline link-underline-opacity-50">
-                                    {skippedNonAnnual}
-                                  </span>
-                                ) : (
-                                  skippedNonAnnual
-                                )}
-                              </td>
-                              <td
-                                className={`text-center align-bottom tabular-nums px-2${
-                                  hasSheetHistoryForMonth && skippedAnnual > 0
-                                    ? ' monthly-route-detail-skip-cell-interactive'
-                                    : ''
-                                }`}
-                                {...(hasSheetHistoryForMonth && skippedAnnual > 0
-                                  ? {
-                                      role: 'button' as const,
-                                      tabIndex: 0,
-                                      'aria-label': `List annual skips (${skippedAnnual}) for ${formatMonthHeading(monthIso)}`,
-                                      onClick: (e) => {
-                                        e.stopPropagation()
-                                        openSkippedAnnualModal()
-                                      },
-                                      onKeyDown: (e: KeyboardEvent<HTMLTableCellElement>) => {
-                                        e.stopPropagation()
-                                        activateSkipCellKeyboard(e, openSkippedAnnualModal)
-                                      },
-                                    }
-                                  : {})}
-                              >
-                                {!hasSheetHistoryForMonth ? (
-                                  sheetCountsNoData
-                                ) : skippedAnnual > 0 ? (
-                                  <span className="tabular-nums text-decoration-underline link-underline-opacity-50">
-                                    {skippedAnnual}
-                                  </span>
-                                ) : (
-                                  skippedAnnual
-                                )}
-                              </td>
-                              <td className="text-break align-middle">
-                                {techsLabel === '—' ? (
-                                  <span className="text-muted">—</span>
-                                ) : (
-                                  <span title={techsLabel}>{techsLabel}</span>
-                                )}
-                              </td>
-                            </tr>
-                          )
-                        })
-                      : null}
-                  </tbody>
-                </Table>
-                </div>
-                <Modal show={skipSitesModal != null} onHide={() => setSkipSitesModal(null)} centered scrollable>
-                  <Modal.Header closeButton>
-                    <Modal.Title className="h6 mb-0">
-                      {skipSitesModal
-                        ? `${formatMonthHeading(skipSitesModal.monthIso)} · ${
-                            skipSitesModal.kind === 'annual' ? 'Skipped — annual' : 'Skipped (non-annual)'
-                          }`
-                        : ''}
-                    </Modal.Title>
-                  </Modal.Header>
-                  <Modal.Body className="small">
-                    {skipSitesModal && skipSitesModal.sites.length === 0 ? (
-                      <p className="text-muted mb-0">No site addresses were returned for this breakdown.</p>
-                    ) : skipSitesModal?.kind === 'non_annual' ? (
-                      <Table responsive size="sm" bordered className="mb-0">
-                        <thead>
-                          <tr>
-                            <th>Site</th>
-                            <th>Skip reason</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {skipSitesModal.sites.map((s) => (
-                            <tr key={`non-annual-${skipSitesModal.monthIso}-${s.id}`}>
-                              <td className="align-middle">
-                                <Link
-                                  className="link-primary text-break"
-                                  to={`/monthlies/locations/${s.id}`}
-                                  onClick={() => setSkipSitesModal(null)}
-                                >
-                                  {s.label}
-                                </Link>
-                              </td>
-                              <td className="align-middle">{skipReasonTableCell(s)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </Table>
-                    ) : skipSitesModal ? (
-                      <ul className="list-unstyled mb-0 d-flex flex-column gap-2">
-                        {skipSitesModal.sites.map((s) => (
-                          <li key={`annual-${skipSitesModal.monthIso}-${s.id}`}>
-                            <Link
-                              className="link-primary text-break"
-                              to={`/monthlies/locations/${s.id}`}
-                              onClick={() => setSkipSitesModal(null)}
-                            >
-                              {s.label}
-                            </Link>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : null}
-                  </Modal.Body>
-                </Modal>
-              </>
-            )}
           </Accordion.Body>
         </Accordion.Item>
 

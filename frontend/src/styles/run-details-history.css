@@ -1,0 +1,445 @@
+/* Exact history — compact enterprise worksheet snapshot on Paperwork */
+
+.monthly-run-detail-page .run-details-history-section {
+  --tw-office-col-stop: 2rem;
+  --tw-office-col-address: 11.5rem;
+  --tw-office-col-result: 7.75rem;
+  --tw-office-col-access: 8.25rem;
+  --tw-office-col-panel: 8.25rem;
+  --tw-office-col-monitoring: 7.5rem;
+  --tw-office-col-procedures: 10rem;
+  --tw-office-col-location-comments: 10rem;
+  --tw-office-col-run-comments: 10rem;
+  --tw-office-table-w: calc(
+    var(--tw-office-col-stop) +
+    var(--tw-office-col-address) +
+    var(--tw-office-col-result) +
+    var(--tw-office-col-access) +
+    var(--tw-office-col-panel) +
+    var(--tw-office-col-monitoring) +
+    var(--tw-office-col-procedures) +
+    var(--tw-office-col-location-comments) +
+    var(--tw-office-col-run-comments)
+  );
+}
+
+.monthly-run-detail-page .run-details-history-shell {
+  border: 1px solid var(--ml-border, #dbe3ef);
+  border-radius: var(--ml-radius-md, 0.65rem);
+  background: var(--ml-card, #ffffff);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  overflow: hidden;
+}
+
+.monthly-run-detail-page .run-details-history-shell__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem 1rem;
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid var(--ml-border-soft, #e2e8f0);
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+}
+
+.monthly-run-detail-page .run-details-history-shell__title-block {
+  min-width: 0;
+}
+
+.monthly-run-detail-page .run-details-history-shell__eyebrow {
+  margin: 0;
+  color: var(--ml-muted, #64748b);
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.monthly-run-detail-page .run-details-history-shell__title {
+  margin: 0.08rem 0 0;
+  color: var(--ml-text, #0f172a);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.monthly-run-detail-page .run-details-history-shell__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem 0.65rem;
+  color: var(--ml-muted, #64748b);
+  font-size: 0.625rem;
+  line-height: 1.3;
+}
+
+.monthly-run-detail-page .run-details-history-shell__meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.monthly-run-detail-page .run-details-history-shell__meta-item strong {
+  color: var(--ml-text, #334155);
+  font-weight: 700;
+}
+
+.monthly-run-detail-page .run-details-history-shell__badge {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--ml-border-soft, #e2e8f0);
+  border-radius: 999px;
+  padding: 0.12rem 0.45rem;
+  background: #ffffff;
+  color: var(--ml-muted-strong, #475569);
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.monthly-run-detail-page .run-details-history-shell__badge--warn {
+  border-color: #fcd34d;
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.monthly-run-detail-page .run-details-history-shell__notice {
+  margin: 0;
+  padding: 0.45rem 0.75rem;
+  border-bottom: 1px solid var(--ml-border-soft, #e2e8f0);
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 0.625rem;
+  line-height: 1.35;
+}
+
+.monthly-run-detail-page .run-details-history-shell__empty {
+  margin: 0;
+  padding: 1.25rem 0.75rem;
+  color: var(--ml-muted, #64748b);
+  font-size: 0.75rem;
+  text-align: center;
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-table-card--embedded {
+  width: 100%;
+  min-width: 0;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-table-wrap {
+  overflow-x: auto;
+  overflow-y: visible;
+  max-height: none;
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-stop-table {
+  width: max(var(--tw-office-table-w), 100%);
+  min-width: var(--tw-office-table-w);
+  margin-bottom: 0;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+  font-size: 0.625rem;
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-stop-table .tw-office-col-stop {
+  width: var(--tw-office-col-stop);
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-stop-table .tw-office-col-address {
+  width: var(--tw-office-col-address);
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-stop-table .tw-office-col-result {
+  width: var(--tw-office-col-result);
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-stop-table .tw-office-col-access {
+  width: var(--tw-office-col-access);
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-stop-table .tw-office-col-panel {
+  width: var(--tw-office-col-panel);
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-stop-table .tw-office-col-monitoring {
+  width: var(--tw-office-col-monitoring);
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-stop-table .tw-office-col-procedures {
+  width: var(--tw-office-col-procedures);
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-stop-table .tw-office-col-location-comments {
+  width: var(--tw-office-col-location-comments);
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-stop-table .tw-office-col-run-comments {
+  width: var(--tw-office-col-run-comments);
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-stop-table th,
+.monthly-run-detail-page .run-details-history-section .tw-office-stop-table td {
+  box-sizing: border-box;
+  border-color: var(--ml-border-soft, #e2e8f0);
+  vertical-align: top;
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-stop-table th {
+  padding: 0.28rem 0.35rem;
+  background: var(--ml-surface-muted, #eef2f7);
+  color: var(--ml-muted-strong, #475569);
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--ml-border, #dbe3ef);
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-stop-table td {
+  padding: 0.28rem 0.35rem;
+  background: #ffffff;
+  color: var(--ml-text, #1f2937);
+  line-height: 1.25;
+  border-bottom: 1px solid var(--ml-border-soft, #e2e8f0);
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-stop-table tbody tr:nth-child(even) td {
+  background: #f8fafc;
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-stop-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-sticky {
+  position: sticky;
+  z-index: 2;
+  background: #ffffff;
+  box-shadow: 1px 0 0 var(--ml-border-soft, #e2e8f0);
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-stop-table thead .tw-office-sticky {
+  z-index: 3;
+  background: var(--ml-surface-muted, #eef2f7);
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-stop-table tbody tr:nth-child(even) .tw-office-sticky {
+  background: #f8fafc;
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-sticky-order {
+  left: 0;
+  width: var(--tw-office-col-stop);
+  min-width: var(--tw-office-col-stop);
+  text-align: center;
+  font-weight: 700;
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-sticky-address {
+  left: var(--tw-office-col-stop);
+  width: var(--tw-office-col-address);
+  min-width: var(--tw-office-col-address);
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-sticky-result {
+  left: calc(var(--tw-office-col-stop) + var(--tw-office-col-address));
+  width: var(--tw-office-col-result);
+  min-width: var(--tw-office-col-result);
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-sticky-order--neutral,
+.monthly-run-detail-page .run-details-history-section .tw-office-table-row--continuation .tw-office-sticky-order--neutral {
+  background: #eef2f7 !important;
+  color: #64748b !important;
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-table-row--continuation td {
+  background: #fbfdff;
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-table-row--continuation .tw-office-sticky {
+  background: #fbfdff;
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-table-row--continuation:nth-child(even) td,
+.monthly-run-detail-page .run-details-history-section .tw-office-table-row--continuation:nth-child(even) .tw-office-sticky {
+  background: #f4f7fb;
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-location-link {
+  display: inline;
+  color: #1e4976;
+  font-size: 0.625rem;
+  font-weight: 700;
+  line-height: 1.25;
+  text-decoration: none;
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-location-link:hover {
+  color: #0d6efd;
+  text-decoration: underline;
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-address-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.04rem;
+  margin-top: 0.12rem;
+  color: var(--ml-muted, #64748b);
+  font-size: 0.5625rem;
+  line-height: 1.2;
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-address-count,
+.monthly-run-detail-page .run-details-history-section .tw-office-site-subline,
+.monthly-run-detail-page .run-details-history-section .tw-office-result-detail,
+.monthly-run-detail-page .run-details-history-section .tw-office-address-continuation {
+  color: var(--ml-muted, #64748b);
+  font-size: 0.5625rem;
+  line-height: 1.2;
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-address-count {
+  margin-top: 0.12rem;
+  font-weight: 600;
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-address-continuation {
+  font-style: italic;
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-site-cell {
+  margin-top: 0.2rem;
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-site-label {
+  color: var(--ml-text, #334155);
+  font-size: 0.625rem;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-result-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  align-items: flex-start;
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-status-pill {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 0.1rem 0.38rem;
+  font-size: 0.5625rem;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-status-pill--tested {
+  border-color: #86efac;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-status-pill--skipped {
+  border-color: #fcd34d;
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-status-pill--annual {
+  border-color: #fdba74;
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-status-pill--pending {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+  color: #64748b;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.15;
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-detail-cell {
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-long-text {
+  max-height: 3.25rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-size: 0.625rem;
+  line-height: 1.25;
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-compact-field-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.12rem 0.35rem;
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-access-cell .tw-office-compact-field-list {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-compact-field--wide {
+  grid-column: 1 / -1;
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-compact-field {
+  min-width: 0;
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-compact-label {
+  display: inline;
+  margin-right: 0.15rem;
+  color: var(--ml-muted, #64748b);
+  font-size: 0.5rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-compact-value {
+  color: var(--ml-text, #1f2937);
+  font-size: 0.625rem;
+  line-height: 1.2;
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-compact-field--empty .tw-office-compact-value {
+  color: #94a3b8;
+  font-style: italic;
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-field-change {
+  color: var(--ml-text, #1f2937);
+  font-size: 0.625rem;
+  font-weight: 500;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.monthly-run-detail-page .run-details-history-section .tw-office-long-text--new,
+.monthly-run-detail-page .run-details-history-section .tw-office-long-text-new {
+  color: var(--bs-danger, #dc3545);
+  font-weight: 500;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

@@ -7,6 +7,7 @@ import './index.css'
 import './styles/base.css'
 import './styles/legacy-global.css'
 import './styles/run-details-prepare.css'
+import './styles/run-details-history.css'
 import { router } from './router'
 import { registerCharts } from './lib/chartRegister'
 

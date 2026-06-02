@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
-import { Form, Table } from 'react-bootstrap'
+import { Table } from 'react-bootstrap'
 import { Link } from 'react-router-dom'
+import LocationTicketsModal from './LocationTicketsModal'
 import RunDetailsDeficiencyList from './RunDetailsDeficiencyList'
 import RunDetailsLocationBillingControl from './RunDetailsLocationBillingControl'
 import RunDetailsStopSiteModal from './RunDetailsStopSiteModal'
@@ -11,7 +12,6 @@ import {
   ReviewReadonlyStackField,
 } from './RunDetailsReviewReadonlyFields'
 import {
-  filterRunDetailPrepRows,
   flattenRunDetailReviewRows,
   locationStopAsWorksheetStop,
   type RunDetailReviewRow,
@@ -22,6 +22,7 @@ import {
   type OfficeBillingStatus,
 } from './officeRunReviewShared'
 import type {
+  MonthlyRunDetailDeficiencySummary,
   MonthlyRunDetailLocation,
   TechnicianWorksheetRun,
   TechnicianWorksheetStop,
@@ -57,11 +58,13 @@ function ReviewLocationResultCell({
   monthDate,
   run,
   onOpenSite,
+  onOpenTickets,
 }: {
   row: RunDetailReviewRow
   monthDate: string
   run: TechnicianWorksheetRun | null
   onOpenSite: (testingSiteId: number) => void
+  onOpenTickets?: (locationId: number, locationLabel: string) => void
 }) {
   const { stop, locationLabel, siteCount } = row
   const ws = locationStopAsWorksheetStop(stop, locationLabel)
@@ -108,6 +111,15 @@ function ReviewLocationResultCell({
           <span className="run-details-stop-row__no-def-pill">No deficiencies confirmed</span>
         ) : null}
       </button>
+      {onOpenTickets ? (
+        <button
+          type="button"
+          className="btn btn-link btn-sm p-0 mt-1 run-details-review-tickets-link"
+          onClick={() => onOpenTickets(row.locationId, locationLabel)}
+        >
+          Tickets{row.openTickets > 0 ? ` (${row.openTickets} open)` : ''}
+        </button>
+      ) : null}
     </div>
   )
 }
@@ -122,6 +134,8 @@ export default function RunDetailsReviewTable({
   stopPatch,
   onStopMergedFromWorksheet,
   onDeficiencyUpdated,
+  onTicketsChanged,
+  jobItemsByLocationId = {},
 }: {
   locations: MonthlyRunDetailLocation[]
   monthDate: string
@@ -131,16 +145,23 @@ export default function RunDetailsReviewTable({
   onBillingPatched: (locationId: number, billingStatus: string) => void
   stopPatch: RunDetailsStopPatchApi
   onStopMergedFromWorksheet: (stop: TechnicianWorksheetStop, scope?: 'full' | 'deficiency') => void
-  onDeficiencyUpdated?: () => void | Promise<void>
+  onDeficiencyUpdated?: (
+    testingSiteId: number,
+    updated: MonthlyRunDetailDeficiencySummary,
+  ) => void | Promise<void>
+  onTicketsChanged?: () => void
+  jobItemsByLocationId?: Record<number, { description: string; quantity: number }[]>
 }) {
-  const [search, setSearch] = useState('')
   const [siteModalStopId, setSiteModalStopId] = useState<number | null>(null)
+  const [ticketModal, setTicketModal] = useState<{
+    locationId: number
+    locationLabel: string
+  } | null>(null)
   const [billingErrors, setBillingErrors] = useState<Record<number, string>>({})
 
   const readOnly = (run?.source || '').trim().toLowerCase() === 'csv_import'
 
-  const allRows = useMemo(() => flattenRunDetailReviewRows(locations), [locations])
-  const rows = useMemo(() => filterRunDetailPrepRows(allRows, search), [allRows, search])
+  const rows = useMemo(() => flattenRunDetailReviewRows(locations), [locations])
 
   const billingRowMeta = useMemo(() => {
     const meta = new Map<number, { isFirst: boolean; rowSpan: number }>()
@@ -195,7 +216,7 @@ export default function RunDetailsReviewTable({
     [routeId, monthDate, onBillingPatched],
   )
 
-  if (allRows.length === 0) {
+  if (rows.length === 0) {
     return <p className="monthly-run-detail-empty mb-0">No stops on this run.</p>
   }
 
@@ -207,19 +228,6 @@ export default function RunDetailsReviewTable({
       <div
         className={`run-details-prepare-table-shell run-details-review-table-shell${showBillingColumn ? ' run-details-review-table-shell--billing' : ''}`}
       >
-        {locations.length > 3 ? (
-          <div className="run-details-prep-search mb-3">
-            <Form.Control
-              size="sm"
-              type="search"
-              className="run-details-prep-search__input"
-              placeholder="Search address or stop #…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              aria-label="Search review stops"
-            />
-          </div>
-        ) : null}
         <Table size="sm" className="run-details-prepare-table run-details-review-table mb-0">
           <colgroup>
             <col className="run-details-prepare-col-stop" />
@@ -249,9 +257,7 @@ export default function RunDetailsReviewTable({
             {rows.length === 0 ? (
               <tr>
                 <td colSpan={8}>
-                  <p className="monthly-run-detail-empty mb-0">
-                    {search.trim() ? 'No stops match this search.' : 'No stops on this run.'}
-                  </p>
+                  <p className="monthly-run-detail-empty mb-0">No stops on this run.</p>
                 </td>
               </tr>
             ) : (
@@ -303,7 +309,22 @@ export default function RunDetailsReviewTable({
                         monthDate={monthDate}
                         run={run}
                         onOpenSite={setSiteModalStopId}
+                        onOpenTickets={
+                          isFirstAtLocation
+                            ? (locId, label) => setTicketModal({ locationId: locId, locationLabel: label })
+                            : undefined
+                        }
                       />
+                      {isFirstAtLocation && (jobItemsByLocationId[locationId]?.length ?? 0) > 0 ? (
+                        <ul className="list-unstyled small text-muted mb-0 mt-1 run-details-review-job-items">
+                          {jobItemsByLocationId[locationId].map((item, idx) => (
+                            <li key={`${locationId}-item-${idx}`}>
+                              {item.description}
+                              {item.quantity !== 1 ? ` (×${item.quantity})` : ''}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
                     </td>
                     <td className="align-top run-details-prepare-stack-cell">
                       <div className="run-details-prepare-stack">
@@ -382,6 +403,17 @@ export default function RunDetailsReviewTable({
         stopPatch={stopPatch}
         onStopMergedFromWorksheet={onStopMergedFromWorksheet}
       />
+      {ticketModal ? (
+        <LocationTicketsModal
+          show
+          routeId={routeId}
+          locationId={ticketModal.locationId}
+          locationLabel={ticketModal.locationLabel}
+          monthDate={monthDate}
+          onHide={() => setTicketModal(null)}
+          onTicketsChanged={onTicketsChanged}
+        />
+      ) : null}
     </>
   )
 }

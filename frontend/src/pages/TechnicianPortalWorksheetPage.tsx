@@ -24,6 +24,7 @@ import PortalSkipModal from '../features/monthlyRoutes/PortalSkipModal'
 import PortalRecordResultsModal, {
   type RecordResultsCompletePayload,
 } from '../features/monthlyRoutes/PortalRecordResultsModal'
+import PortalReplaceItemModal from '../features/monthlyRoutes/PortalReplaceItemModal'
 import PortalDeficienciesCard from '../features/monthlyRoutes/PortalDeficienciesCard'
 import PortalDeficiencyModal from '../features/monthlyRoutes/PortalDeficiencyModal'
 import {
@@ -218,6 +219,7 @@ export default function TechnicianPortalWorksheetPage() {
   const [resultsModalOpen, setResultsModalOpen] = useState(false)
   const [resultsForClockOut, setResultsForClockOut] = useState(false)
   const [defModalOpen, setDefModalOpen] = useState(false)
+  const [replaceItemModalOpen, setReplaceItemModalOpen] = useState(false)
   const [defModalMode, setDefModalMode] = useState<'add' | 'edit'>('add')
   const [editingDeficiency, setEditingDeficiency] = useState<PortalDeficiencySummary | null>(null)
   const [editingField, setEditingField] = useState<string | null>(null)
@@ -275,12 +277,14 @@ export default function TechnicianPortalWorksheetPage() {
       skipModalOpen ||
         resultsModalOpen ||
         defModalOpen ||
+        replaceItemModalOpen ||
         editingField != null,
     )
   }, [
     skipModalOpen,
     resultsModalOpen,
     defModalOpen,
+    replaceItemModalOpen,
     editingField,
     setInteractiveBusy,
   ])
@@ -606,8 +610,8 @@ export default function TechnicianPortalWorksheetPage() {
           </Button>
           <Button
             variant="primary"
-            className="pw-mock-dock-btn pw-mock-dock-normal-btn pw-mock-dock-placeholder-btn"
-            disabled
+            className="pw-mock-dock-btn pw-mock-dock-normal-btn"
+            onClick={() => setReplaceItemModalOpen(true)}
           >
             Replace item
           </Button>
@@ -1016,6 +1020,17 @@ export default function TechnicianPortalWorksheetPage() {
                 />
                 <div className="pw-mock-field-group">
                   <div className="pw-mock-field-group-title">Comments</div>
+                  {(active.office_job_comment || '').trim() ? (
+                    <PortalEditableFieldRow
+                      fieldKey="office_job_comment"
+                      label="Office job comment"
+                      value={active.office_job_comment ?? ''}
+                      multiline
+                      onSave={async () => {}}
+                      {...fieldEditProps}
+                      readOnly
+                    />
+                  ) : null}
                   <PortalEditableFieldRow
                     fieldKey="testing_procedures"
                     label="Testing procedures"
@@ -1095,6 +1110,13 @@ export default function TechnicianPortalWorksheetPage() {
             deficiency={editingDeficiency}
             onHide={() => setDefModalOpen(false)}
             onSave={handleDeficiencySave}
+          />
+          <PortalReplaceItemModal
+            show={replaceItemModalOpen}
+            routeId={idNum}
+            monthDate={runMonthIso}
+            testingSiteId={active.testing_site_id}
+            onHide={() => setReplaceItemModalOpen(false)}
           />
         </>
       ) : null}

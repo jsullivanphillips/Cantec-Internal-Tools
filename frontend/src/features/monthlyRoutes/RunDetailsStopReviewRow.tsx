@@ -90,7 +90,10 @@ export function RunDetailsStopDeficienciesBlock({
   routeId: number
   monthDate: string
   readOnly?: boolean
-  onDeficiencyUpdated?: () => void | Promise<void>
+  onDeficiencyUpdated?: (
+    testingSiteId: number,
+    updated: MonthlyRunDetailDeficiencySummary,
+  ) => void | Promise<void>
 }) {
   const { siteLabel, siteIndex, siteCount, stopNumber } = card
   const showSiteMeta = showSiteLabel && siteCount > 1

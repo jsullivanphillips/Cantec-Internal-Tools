@@ -1,21 +1,30 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Badge, Button, Modal, Spinner } from 'react-bootstrap'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import PaperworkRunSelector from '../features/monthlyRoutes/PaperworkRunSelector'
 import RunDetailsLocationReviewList from '../features/monthlyRoutes/RunDetailsLocationReviewList'
 import RunDetailsPreRunMessageCard from '../features/monthlyRoutes/RunDetailsPreRunMessageCard'
 import RunWorkflowStepper from '../features/monthlyRoutes/RunWorkflowStepper'
-import type { RunReviewFilter } from '../features/monthlyRoutes/notableStopChanges'
 import {
+  monthFirstIsoPacificToday,
   parseYearMonth,
-  runOfficeStatusPillLabel,
-  worksheetOfficeRunActivity,
   worksheetRunExplicitlyCompleted,
+  type MonthlyRunDetailDeficiencySummary,
+  type MonthlyRouteDetailPayload,
   type MonthlyRunDetailLocationStop,
   type MonthlyRunDetailPayload,
   type MonthlySpecialistTechRow,
   type TechnicianWorksheetRun,
   type TechnicianWorksheetStop,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
+import {
+  computeSelectablePaperworkMonths,
+  derivePaperworkViewMode,
+  FUTURE_MONTH_PREP_BLOCKED_MESSAGE,
+  isFutureMonthPrepBlocked,
+  paperworkViewModeLabel,
+  resolvePaperworkMonthQuery,
+} from '../features/monthlyRoutes/paperworkViewMode'
 import {
   deficiencyPatchFromWorksheetStop,
   detailPatchFromWorksheetStop,
@@ -25,27 +34,22 @@ import { useRunDetailsStopPatch } from '../features/monthlyRoutes/useRunDetailsS
 import {
   canOfficeCompleteRun,
   canOfficeReturnRunToPrep,
-  deriveRunWorkflowStage,
   runFieldEnded,
-  runInOfficePrepPhase,
   runIsPrepared,
 } from '../features/monthlyRoutes/runWorkflowShared'
 import {
-  computeRunDetailsPrepSummary,
-  dispatchRunLocationExpand,
-  filterRunDetailLocations,
+  patchRunDetailStopDeficiency,
+} from '../features/monthlyRoutes/runDetailsPrepPatch'
+import {
   patchRunDetailLocationBilling,
+  patchRunDetailPayloadRun,
+  patchRouteMetaRunMonth,
   patchRunDetailPreRunMessage,
   patchRunDetailLocationStop,
-  runLocationReviewDomId,
-  type RunDetailReviewSectionTab,
-  type RunLocationReviewFilter,
 } from '../features/monthlyRoutes/runDetailsLocationReview'
 import { clearWorksheetCache } from '../features/monthlyRoutes/worksheetOfflineStore'
 import { apiJson, isAbortError } from '../lib/apiClient'
 import MonthlyRunDetailPageSkeleton from './MonthlyRunDetailPageSkeleton'
-
-const MONTH_FIRST_RE = /^\d{4}-\d{2}-01$/
 
 function formatMonthHeading(monthFirstIso: string): string {
   const ym = parseYearMonth(monthFirstIso)
@@ -57,14 +61,13 @@ function formatMonthHeading(monthFirstIso: string): string {
   }).format(new Date(Date.UTC(ym.year, ym.month - 1, 1)))
 }
 
-function formatRunTimestamp(iso: string | null | undefined): string | null {
-  if (!iso) return null
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return null
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(d)
+function formatPaperworkLoadError(err: unknown): string {
+  if (err instanceof Error && err.message.trim()) return err.message
+  if (typeof err === 'object' && err != null && 'error' in err) {
+    const message = (err as { error?: unknown }).error
+    if (typeof message === 'string' && message.trim()) return message
+  }
+  return 'Failed to load paperwork.'
 }
 
 function specialistTechLabel(t: MonthlySpecialistTechRow): string {
@@ -77,27 +80,15 @@ function completedByTechniciansPillLabel(techs: MonthlySpecialistTechRow[]): str
   return `Completed by ${names.join(', ')}`
 }
 
-function runActivityVariant(activity: ReturnType<typeof worksheetOfficeRunActivity>): string {
-  switch (activity) {
-    case 'completed':
-      return 'success'
-    case 'active':
-      return 'primary'
-    default:
-      return 'secondary'
-  }
-}
-
-function toLocationFilter(filter: RunReviewFilter): RunLocationReviewFilter {
-  return filter
-}
-
-export default function MonthlyRunDetailPage() {
-  const { routeId, monthIso } = useParams<{ routeId: string; monthIso: string }>()
+export default function MonthlyRoutePaperworkPage() {
+  const { routeId } = useParams<{ routeId: string }>()
+  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
   const idNum = routeId ? parseInt(routeId, 10) : NaN
-  const monthQuery = (monthIso || '').trim()
-  const monthOk = MONTH_FIRST_RE.test(monthQuery) && parseYearMonth(monthQuery) != null
+  const currentMonthIso = monthFirstIsoPacificToday()
 
+  const [routeMeta, setRouteMeta] = useState<MonthlyRouteDetailPayload | null>(null)
+  const [routeMetaLoading, setRouteMetaLoading] = useState(true)
   const [payload, setPayload] = useState<MonthlyRunDetailPayload | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -106,12 +97,78 @@ export default function MonthlyRunDetailPage() {
   >(null)
   const [resetRunModalOpen, setResetRunModalOpen] = useState(false)
   const [resetRunBusy, setResetRunBusy] = useState(false)
-  const [reviewFilter, setReviewFilter] = useState<RunLocationReviewFilter>('all')
-  const [reviewSectionTab, setReviewSectionTab] = useState<RunDetailReviewSectionTab>('run_review')
+  const [historyStops, setHistoryStops] = useState<TechnicianWorksheetStop[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyMeta, setHistoryMeta] = useState<{
+    capturedAt: string | null
+    fieldWorkReopened: boolean
+  }>({ capturedAt: null, fieldWorkReopened: false })
+  const [jobItemsByLocationId, setJobItemsByLocationId] = useState<
+    Record<number, { description: string; quantity: number }[]>
+  >({})
   const pendingRunDetailsReloadRef = useRef(false)
 
+  const selectableMonths = useMemo(
+    () => computeSelectablePaperworkMonths(routeMeta?.runs_by_month ?? {}, currentMonthIso),
+    [routeMeta?.runs_by_month, currentMonthIso],
+  )
+
+  const monthQuery = useMemo(
+    () => resolvePaperworkMonthQuery(searchParams.get('month'), currentMonthIso, selectableMonths),
+    [searchParams, currentMonthIso, selectableMonths],
+  )
+
+  const paperworkViewMode = useMemo(
+    () => derivePaperworkViewMode(payload?.run ?? null, monthQuery, currentMonthIso),
+    [payload?.run, monthQuery, currentMonthIso],
+  )
+
+  const futurePrepBlocked = useMemo(
+    () => isFutureMonthPrepBlocked(monthQuery, currentMonthIso, routeMeta?.runs_by_month ?? {}),
+    [monthQuery, currentMonthIso, routeMeta?.runs_by_month],
+  )
+
+  const syncMonthInUrl = useCallback(
+    (nextMonth: string) => {
+      if (!Number.isFinite(idNum)) return
+      const params = new URLSearchParams()
+      if (nextMonth !== currentMonthIso) {
+        params.set('month', nextMonth)
+      }
+      const search = params.toString()
+      navigate(
+        { pathname: `/monthlies/routes/${idNum}/paperwork`, search: search ? `?${search}` : '' },
+        { replace: true },
+      )
+    },
+    [idNum, currentMonthIso, navigate],
+  )
+
+  useEffect(() => {
+    const param = searchParams.get('month')
+    if (param && param !== monthQuery) {
+      syncMonthInUrl(monthQuery)
+    }
+  }, [searchParams, monthQuery, syncMonthInUrl])
+
+  const loadRouteMeta = useCallback(async (signal?: AbortSignal) => {
+    if (!Number.isFinite(idNum)) return
+    setRouteMetaLoading(true)
+    try {
+      const data = await apiJson<MonthlyRouteDetailPayload>(`/api/monthly_routes/routes/${idNum}`, {
+        signal,
+      })
+      setRouteMeta(data)
+    } catch (e) {
+      if (isAbortError(e)) return
+      setRouteMeta(null)
+    } finally {
+      if (!signal?.aborted) setRouteMetaLoading(false)
+    }
+  }, [idNum])
+
   const loadRunDetails = useCallback(async (signal?: AbortSignal) => {
-    if (!Number.isFinite(idNum) || !monthOk) return
+    if (!Number.isFinite(idNum)) return
     const qs = new URLSearchParams({ month: monthQuery })
     const data = await apiJson<MonthlyRunDetailPayload>(
       `/api/monthly_routes/routes/${idNum}/run_details?${qs.toString()}`,
@@ -119,12 +176,19 @@ export default function MonthlyRunDetailPage() {
     )
     setPayload(data)
     setError(null)
-  }, [idNum, monthOk, monthQuery])
+  }, [idNum, monthQuery])
 
   useEffect(() => {
-    if (!Number.isFinite(idNum) || !monthOk) {
+    if (!Number.isFinite(idNum)) return
+    const ac = new AbortController()
+    void loadRouteMeta(ac.signal)
+    return () => ac.abort()
+  }, [idNum, loadRouteMeta])
+
+  useEffect(() => {
+    if (!Number.isFinite(idNum)) {
       setLoading(false)
-      setError('Invalid route or month.')
+      setError('Invalid route.')
       return
     }
     const ac = new AbortController()
@@ -135,14 +199,94 @@ export default function MonthlyRunDetailPage() {
         await loadRunDetails(ac.signal)
       } catch (e) {
         if (isAbortError(e)) return
-        setError(e instanceof Error ? e.message : 'Failed to load run details.')
+        setError(formatPaperworkLoadError(e))
         setPayload(null)
       } finally {
         if (!ac.signal.aborted) setLoading(false)
       }
     })()
     return () => ac.abort()
-  }, [idNum, monthOk, loadRunDetails])
+  }, [idNum, loadRunDetails])
+
+  const loadFieldSubmission = useCallback(async (signal?: AbortSignal) => {
+    if (!Number.isFinite(idNum)) return
+    const qs = new URLSearchParams({ month: monthQuery })
+    setHistoryLoading(true)
+    try {
+      const data = await apiJson<{
+        stops: TechnicianWorksheetStop[]
+        captured_at: string | null
+        field_work_reopened: boolean
+      }>(`/api/monthly_routes/routes/${idNum}/run_details/field_submission?${qs.toString()}`, {
+        signal,
+      })
+      if (signal?.aborted) return
+      setHistoryStops(data.stops ?? [])
+      setHistoryMeta({
+        capturedAt: data.captured_at,
+        fieldWorkReopened: Boolean(data.field_work_reopened),
+      })
+    } catch (e) {
+      if (isAbortError(e)) return
+      setHistoryStops([])
+      setHistoryMeta({ capturedAt: null, fieldWorkReopened: false })
+    } finally {
+      if (!signal?.aborted) setHistoryLoading(false)
+    }
+  }, [idNum, monthQuery])
+
+  const applyWorkflowRunUpdate = useCallback(
+    (run: TechnicianWorksheetRun) => {
+      setPayload((prev) => (prev ? patchRunDetailPayloadRun(prev, run) : prev))
+      setRouteMeta((prev) => patchRouteMetaRunMonth(prev, monthQuery, run))
+    },
+    [monthQuery],
+  )
+
+  const loadJobItems = useCallback(async () => {
+    if (!Number.isFinite(idNum)) return
+    const qs = new URLSearchParams({ month: monthQuery })
+    try {
+      const data = await apiJson<{
+        items: {
+          location_id: number
+          description: string
+          quantity: number
+        }[]
+      }>(`/api/monthly_routes/routes/${idNum}/run_job_items?${qs.toString()}`)
+      const byLoc: Record<number, { description: string; quantity: number }[]> = {}
+      for (const item of data.items ?? []) {
+        const lid = item.location_id
+        if (!byLoc[lid]) byLoc[lid] = []
+        byLoc[lid].push({ description: item.description, quantity: item.quantity })
+      }
+      setJobItemsByLocationId(byLoc)
+    } catch {
+      setJobItemsByLocationId({})
+    }
+  }, [idNum, monthQuery])
+
+  useEffect(() => {
+    if (paperworkViewMode !== 'exact_history') {
+      setHistoryStops([])
+      setHistoryMeta({ capturedAt: null, fieldWorkReopened: false })
+      setHistoryLoading(false)
+      return
+    }
+    setHistoryStops([])
+    setHistoryMeta({ capturedAt: null, fieldWorkReopened: false })
+    const ac = new AbortController()
+    void loadFieldSubmission(ac.signal)
+    return () => ac.abort()
+  }, [paperworkViewMode, loadFieldSubmission])
+
+  useEffect(() => {
+    if (paperworkViewMode === 'run_review' && runFieldEnded(payload?.run ?? null)) {
+      void loadJobItems()
+    } else {
+      setJobItemsByLocationId({})
+    }
+  }, [paperworkViewMode, payload?.run, loadJobItems])
 
   const onBillingPatched = useCallback((locationId: number, billingStatus: string) => {
     setPayload((prev) => {
@@ -202,15 +346,15 @@ export default function MonthlyRunDetailPage() {
 
   const onWorksheetStopSynced = useCallback(
     (stop: TechnicianWorksheetStop) => {
-      if (!Number.isFinite(idNum) || !monthOk) return
+      if (!Number.isFinite(idNum)) return
       syncRunDetailsStopCache(idNum, monthQuery, stop)
     },
-    [idNum, monthOk, monthQuery],
+    [idNum, monthQuery],
   )
 
   const onStopMergedFromWorksheet = useCallback(
     (stop: TechnicianWorksheetStop, scope: 'full' | 'deficiency' = 'full') => {
-      if (!Number.isFinite(idNum) || !monthOk) return
+      if (!Number.isFinite(idNum)) return
       syncRunDetailsStopCache(idNum, monthQuery, stop)
       const patch =
         scope === 'deficiency'
@@ -218,7 +362,7 @@ export default function MonthlyRunDetailPage() {
           : detailPatchFromWorksheetStop(stop)
       onStopPatched(stop.testing_site_id, patch)
     },
-    [idNum, monthOk, monthQuery, onStopPatched, payload?.run],
+    [idNum, monthQuery, onStopPatched, payload?.run],
   )
 
   const stopPatch = useRunDetailsStopPatch({
@@ -231,13 +375,23 @@ export default function MonthlyRunDetailPage() {
 
   const { hasPendingPatches } = stopPatch
 
-  const onDeficiencyUpdated = useCallback(async () => {
-    if (hasPendingPatches) {
-      pendingRunDetailsReloadRef.current = true
-      return
-    }
-    await loadRunDetails()
-  }, [hasPendingPatches, loadRunDetails])
+  const onDeficiencyUpdated = useCallback(
+    async (testingSiteId: number, updated: MonthlyRunDetailDeficiencySummary) => {
+      setPayload((prev) => {
+        if (!prev?.locations?.length) return prev
+        return {
+          ...prev,
+          locations: patchRunDetailStopDeficiency(
+            prev.locations,
+            testingSiteId,
+            prev.month_date,
+            updated,
+          ),
+        }
+      })
+    },
+    [],
+  )
 
   useEffect(() => {
     if (hasPendingPatches || !pendingRunDetailsReloadRef.current) return
@@ -246,7 +400,7 @@ export default function MonthlyRunDetailPage() {
   }, [hasPendingPatches, loadRunDetails])
 
   const onMarkPrepared = useCallback(async () => {
-    if (!Number.isFinite(idNum) || !monthOk) return
+    if (!Number.isFinite(idNum)) return
     if (runLifecycleAction != null) return
     setRunLifecycleAction('prepare')
     try {
@@ -260,15 +414,20 @@ export default function MonthlyRunDetailPage() {
       )
       clearWorksheetCache(idNum, monthQuery)
       await loadRunDetails()
-    } catch {
-      window.alert('Could not mark route prepared. Try again.')
+      await loadRouteMeta()
+    } catch (e) {
+      const msg =
+        typeof e === 'object' && e != null && 'error' in (e as Record<string, unknown>)
+          ? String((e as { error?: unknown }).error)
+          : 'Could not mark route prepared. Try again.'
+      window.alert(msg)
     } finally {
       setRunLifecycleAction(null)
     }
-  }, [idNum, monthOk, monthQuery, loadRunDetails, runLifecycleAction])
+  }, [idNum, monthQuery, loadRunDetails, loadRouteMeta, runLifecycleAction])
 
   const onReturnToPrep = useCallback(async () => {
-    if (!Number.isFinite(idNum) || !monthOk || !payload?.run) return
+    if (!Number.isFinite(idNum) || !payload?.run) return
     if (runLifecycleAction != null) return
     if (
       !window.confirm(
@@ -279,7 +438,7 @@ export default function MonthlyRunDetailPage() {
     }
     setRunLifecycleAction('unprepare')
     try {
-      await apiJson<{ run: TechnicianWorksheetRun }>(
+      const data = await apiJson<{ run: TechnicianWorksheetRun }>(
         `/api/monthly_routes/routes/${idNum}/runs/unprepare`,
         {
           method: 'POST',
@@ -288,7 +447,7 @@ export default function MonthlyRunDetailPage() {
         },
       )
       clearWorksheetCache(idNum, monthQuery)
-      await loadRunDetails()
+      applyWorkflowRunUpdate(data.run)
     } catch (e) {
       const msg =
         typeof e === 'object' && e != null && 'error' in (e as Record<string, unknown>)
@@ -298,14 +457,14 @@ export default function MonthlyRunDetailPage() {
     } finally {
       setRunLifecycleAction(null)
     }
-  }, [idNum, monthOk, monthQuery, payload?.run, loadRunDetails, runLifecycleAction])
+  }, [idNum, monthQuery, payload?.run, applyWorkflowRunUpdate, runLifecycleAction])
 
   const onMarkReviewComplete = useCallback(async () => {
-    if (!Number.isFinite(idNum) || !monthOk || !payload?.run) return
+    if (!Number.isFinite(idNum) || !payload?.run) return
     if (runLifecycleAction != null) return
     setRunLifecycleAction('review_complete')
     try {
-      await apiJson<{ run: TechnicianWorksheetRun }>(
+      const data = await apiJson<{ run: TechnicianWorksheetRun }>(
         `/api/monthly_routes/routes/${idNum}/runs/review_complete`,
         {
           method: 'POST',
@@ -314,21 +473,21 @@ export default function MonthlyRunDetailPage() {
         },
       )
       clearWorksheetCache(idNum, monthQuery)
-      await loadRunDetails()
+      applyWorkflowRunUpdate(data.run)
     } catch {
       window.alert('Could not mark review complete. Try again.')
     } finally {
       setRunLifecycleAction(null)
     }
-  }, [idNum, monthOk, monthQuery, payload?.run, loadRunDetails, runLifecycleAction])
+  }, [idNum, monthQuery, payload?.run, applyWorkflowRunUpdate, runLifecycleAction])
 
   const onCompleteJob = useCallback(async () => {
-    if (!Number.isFinite(idNum) || !monthOk || !payload?.run) return
+    if (!Number.isFinite(idNum) || !payload?.run) return
     if (worksheetRunExplicitlyCompleted(payload.run)) return
     if (runLifecycleAction != null) return
     setRunLifecycleAction('complete')
     try {
-      await apiJson<{ run: TechnicianWorksheetRun }>(
+      const data = await apiJson<{ run: TechnicianWorksheetRun }>(
         `/api/monthly_routes/routes/${idNum}/runs/complete`,
         {
           method: 'POST',
@@ -337,21 +496,21 @@ export default function MonthlyRunDetailPage() {
         },
       )
       clearWorksheetCache(idNum, monthQuery)
-      await loadRunDetails()
+      applyWorkflowRunUpdate(data.run)
     } catch {
       window.alert('Could not complete job. Try again.')
     } finally {
       setRunLifecycleAction(null)
     }
-  }, [idNum, monthOk, monthQuery, payload?.run, loadRunDetails, runLifecycleAction])
+  }, [idNum, monthQuery, payload?.run, applyWorkflowRunUpdate, runLifecycleAction])
 
   const onReopenJob = useCallback(async () => {
-    if (!Number.isFinite(idNum) || !monthOk || !payload?.run) return
+    if (!Number.isFinite(idNum) || !payload?.run) return
     if (!worksheetRunExplicitlyCompleted(payload.run)) return
     if (runLifecycleAction != null) return
     setRunLifecycleAction('reopen')
     try {
-      await apiJson<{ run: TechnicianWorksheetRun }>(
+      const data = await apiJson<{ run: TechnicianWorksheetRun }>(
         `/api/monthly_routes/routes/${idNum}/runs/reopen`,
         {
           method: 'POST',
@@ -360,16 +519,16 @@ export default function MonthlyRunDetailPage() {
         },
       )
       clearWorksheetCache(idNum, monthQuery)
-      await loadRunDetails()
+      applyWorkflowRunUpdate(data.run)
     } catch {
       window.alert('Could not reopen job. Try again.')
     } finally {
       setRunLifecycleAction(null)
     }
-  }, [idNum, monthOk, monthQuery, payload?.run, loadRunDetails, runLifecycleAction])
+  }, [idNum, monthQuery, payload?.run, applyWorkflowRunUpdate, runLifecycleAction])
 
   const onConfirmResetRun = useCallback(async () => {
-    if (!Number.isFinite(idNum) || !monthOk || payload?.run == null) return
+    if (!Number.isFinite(idNum) || payload?.run == null) return
     if (worksheetRunExplicitlyCompleted(payload.run)) return
     setResetRunBusy(true)
     try {
@@ -385,6 +544,7 @@ export default function MonthlyRunDetailPage() {
       clearWorksheetCache(idNum, monthQuery)
       setResetRunModalOpen(false)
       await loadRunDetails()
+      await loadRouteMeta()
     } catch (e) {
       const msg =
         typeof e === 'object' && e != null && 'error' in (e as Record<string, unknown>)
@@ -394,48 +554,25 @@ export default function MonthlyRunDetailPage() {
     } finally {
       setResetRunBusy(false)
     }
-  }, [idNum, monthOk, monthQuery, payload?.run, loadRunDetails])
+  }, [idNum, monthQuery, payload?.run, loadRunDetails, loadRouteMeta])
 
-  const worksheetTo = `/monthlies/routes/${idNum}/worksheet/${encodeURIComponent(monthQuery)}`
   const routeTo = `/monthlies/routes/${idNum}`
 
-  const runActivity = useMemo(
-    () => worksheetOfficeRunActivity(payload?.run ?? null),
-    [payload?.run],
-  )
-
   const locations = payload?.locations ?? []
-  const prepPhase = runInOfficePrepPhase(payload?.run ?? null)
-  const prepSummary = useMemo(() => computeRunDetailsPrepSummary(locations), [locations])
+  const prepPhase = paperworkViewMode === 'preparation'
 
-  const focusRunReview = useCallback(
-    (nextFilter?: RunReviewFilter) => {
-      setReviewSectionTab('run_review')
-      const filter: RunLocationReviewFilter =
-        nextFilter != null ? toLocationFilter(nextFilter) : 'all'
-      setReviewFilter(filter)
-      const monthDate = payload?.month_date ?? monthQuery
-      const matched = filterRunDetailLocations(locations, filter, monthDate)
-      const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-      window.requestAnimationFrame(() => {
-        document.getElementById('run-review-section')?.scrollIntoView({
-          behavior: reduceMotion ? 'auto' : 'smooth',
-          block: 'start',
-        })
-        const first = matched[0]
-        if (first) {
-          dispatchRunLocationExpand(runLocationReviewDomId(first.location_id))
-        }
-      })
+  const onMonthChange = useCallback(
+    (nextMonth: string) => {
+      syncMonthInUrl(nextMonth)
     },
-    [locations, monthQuery, payload?.month_date],
+    [syncMonthInUrl],
   )
 
-  if (!Number.isFinite(idNum) || !monthOk) {
+  if (!Number.isFinite(idNum)) {
     return (
       <div className="monthly-route-detail-page">
         <div className="monthly-route-detail-container container py-4">
-          <Alert variant="warning">Invalid route or month.</Alert>
+          <Alert variant="warning">Invalid route.</Alert>
           <Link to="/monthlies/routes">Back to Monthly Routes</Link>
         </div>
       </div>
@@ -443,14 +580,18 @@ export default function MonthlyRunDetailPage() {
   }
 
   if (loading) {
-    return <MonthlyRunDetailPageSkeleton />
+    return (
+      <MonthlyRunDetailPageSkeleton
+        label={`Loading paperwork for ${formatMonthHeading(monthQuery)}…`}
+      />
+    )
   }
 
   if (error || !payload) {
     return (
       <div className="monthly-route-detail-page">
         <div className="monthly-route-detail-container container py-4">
-          <Alert variant="danger">{error || 'Run not found.'}</Alert>
+          <Alert variant="danger">{error || 'Paperwork not found.'}</Alert>
           <Link to={routeTo}>Back to route</Link>
         </div>
       </div>
@@ -459,12 +600,13 @@ export default function MonthlyRunDetailPage() {
 
   const { route, counts, specialists_month, run } = payload
   const monthHeading = formatMonthHeading(payload.month_date)
+  const viewLabel = paperworkViewModeLabel(paperworkViewMode)
   const completedByLabel = completedByTechniciansPillLabel(
     specialists_month?.top_technicians ?? [],
   )
   const runCompleted = worksheetRunExplicitlyCompleted(run)
-  const workflowStage = deriveRunWorkflowStage(run)
-  const showMarkPrepared = !runCompleted && (run == null || !runIsPrepared(run))
+  const showMarkPrepared =
+    !runCompleted && (run == null || !runIsPrepared(run)) && !futurePrepBlocked
   const showReturnToPrep = run != null && canOfficeReturnRunToPrep(run)
   const showMarkReviewComplete =
     run != null && !runCompleted && runFieldEnded(run) && !run?.office_review_completed_at
@@ -474,7 +616,7 @@ export default function MonthlyRunDetailPage() {
   const lifecycleBusy = runLifecycleAction != null
 
   return (
-    <div className="monthly-route-detail-page monthly-run-detail-page">
+    <div className="monthly-route-detail-page monthly-run-detail-page monthly-paperwork-page">
       <div className="monthly-route-detail-container">
         <nav className="monthly-run-detail-breadcrumb" aria-label="Breadcrumb">
           <Link to="/monthlies/routes" className="monthly-location-back-link">
@@ -488,55 +630,34 @@ export default function MonthlyRunDetailPage() {
           </Link>
         </nav>
 
+        <PaperworkRunSelector
+          months={selectableMonths}
+          selectedMonthIso={monthQuery}
+          currentMonthIso={currentMonthIso}
+          onChange={onMonthChange}
+        />
+
         <section className="monthly-route-detail-hero monthly-location-detail-surface monthly-run-detail-hero">
           <div className="monthly-route-detail-hero__copy">
-            <div className="monthly-location-detail-eyebrow">Run details</div>
+            <div className="monthly-location-detail-eyebrow">Paperwork</div>
             <h1 className="monthly-location-detail-title">
               {monthHeading}
               <span className="monthly-run-detail-hero__route-ref"> · {route.label}</span>
             </h1>
+            <Badge bg="primary" className="monthly-paperwork-view-badge mb-2">
+              Viewing: {viewLabel}
+            </Badge>
             <RunWorkflowStepper run={run} className="monthly-run-detail-workflow mb-3" />
-            <div className="monthly-route-detail-hero__meta">
-              <Badge bg={runActivityVariant(runActivity)} className="monthly-route-pill">
-                {runOfficeStatusPillLabel(runActivity, payload.month_date, route, undefined, run)}
-              </Badge>
-              {run?.source ? (
-                <Badge bg="light" text="dark" className="monthly-route-pill">
-                  Source: {run.source}
-                </Badge>
-              ) : null}
-              {formatRunTimestamp(run?.started_at) ? (
-                <Badge bg="light" text="dark" className="monthly-route-pill">
-                  Field started {formatRunTimestamp(run?.started_at)}
-                </Badge>
-              ) : null}
-              {formatRunTimestamp(run?.field_ended_at) ? (
-                <Badge bg="light" text="dark" className="monthly-route-pill">
-                  Field ended {formatRunTimestamp(run?.field_ended_at)}
-                </Badge>
-              ) : null}
-              {formatRunTimestamp(run?.office_review_completed_at) ? (
-                <Badge bg="light" text="dark" className="monthly-route-pill">
-                  Review done {formatRunTimestamp(run?.office_review_completed_at)}
-                </Badge>
-              ) : null}
-              {formatRunTimestamp(run?.completed_at) ? (
-                <Badge bg="light" text="dark" className="monthly-route-pill">
-                  Closed {formatRunTimestamp(run?.completed_at)}
-                </Badge>
-              ) : null}
-            </div>
-            {workflowStage === 'awaiting_office_review' ? (
+            {run == null && paperworkViewMode === 'preparation' ? (
               <p className="small text-muted mb-0 mt-2">
-                Technicians finished field work. Set billing and follow-ups in the review section below,
-                then mark review complete.
+                No run file yet for this month. Review stops below, then mark prepared when
+                technicians may start field work.
               </p>
             ) : null}
-            {run == null ? (
-              <p className="small text-muted mb-0 mt-2">
-                No run file yet for this month. Review stops below, then mark prepared when technicians may
-                start field work.
-              </p>
+            {futurePrepBlocked && paperworkViewMode === 'preparation' ? (
+              <Alert variant="warning" className="py-2 small mb-0 mt-2">
+                {FUTURE_MONTH_PREP_BLOCKED_MESSAGE}
+              </Alert>
             ) : null}
           </div>
           <div className="monthly-route-detail-hero__right">
@@ -642,13 +763,6 @@ export default function MonthlyRunDetailPage() {
                   Reset run
                 </Button>
               ) : null}
-              <Link
-                to={worksheetTo}
-                className="btn btn-outline-primary btn-sm monthly-location-detail-action"
-              >
-                <i className="bi bi-table" aria-hidden />
-                Open technician worksheet
-              </Link>
             </div>
             {completedByLabel ? (
               <div
@@ -664,93 +778,12 @@ export default function MonthlyRunDetailPage() {
         </section>
 
         {prepPhase ? (
-          <div className="monthly-run-detail-prep-summary" aria-label="Prep summary">
-            <div className="monthly-run-detail-kpi monthly-location-detail-surface">
-              <div className="monthly-run-detail-kpi__value tabular-nums">{prepSummary.stopCount}</div>
-              <div className="monthly-run-detail-kpi__label">
-                {prepSummary.stopCount === 1 ? 'Stop' : 'Stops'}
-              </div>
-            </div>
-            <div className="monthly-run-detail-kpi monthly-location-detail-surface">
-              <div className="monthly-run-detail-kpi__value tabular-nums">{prepSummary.locationCount}</div>
-              <div className="monthly-run-detail-kpi__label">
-                {prepSummary.locationCount === 1 ? 'Location' : 'Locations'}
-              </div>
-            </div>
-            {prepSummary.multiSiteLocationCount > 0 ? (
-              <div className="monthly-run-detail-kpi monthly-location-detail-surface">
-                <div className="monthly-run-detail-kpi__value tabular-nums">
-                  {prepSummary.multiSiteLocationCount}
-                </div>
-                <div className="monthly-run-detail-kpi__label">Multi-site</div>
-              </div>
-            ) : null}
-            <div className="monthly-run-detail-kpi monthly-location-detail-surface">
-              <div className="monthly-run-detail-kpi__value tabular-nums">
-                {prepSummary.openDeficiencyCount}
-              </div>
-              <div className="monthly-run-detail-kpi__label">Open deficiencies</div>
-            </div>
-          </div>
-        ) : (
-          <div className="monthly-run-detail-kpis" aria-label="Run outcome counts">
-            {(
-              [
-                {
-                  key: 'all_good' as const,
-                  count: counts.all_good_count,
-                  label: 'All good',
-                  modifier: 'all-good',
-                },
-                {
-                  key: 'passed_with_problems' as const,
-                  count: counts.passed_with_problems_count,
-                  label: 'Passed w/ problems',
-                  modifier: 'passed-problems',
-                },
-                {
-                  key: 'failed' as const,
-                  count: counts.failed_count,
-                  label: 'Failed',
-                  modifier: 'failed',
-                },
-                {
-                  key: 'skipped' as const,
-                  count: counts.skipped_count,
-                  label: 'Skipped',
-                  modifier: 'skipped',
-                },
-              ] as const
-            ).map(({ key, count, label, modifier }) =>
-              count > 0 ? (
-                <button
-                  key={key}
-                  type="button"
-                  className={`monthly-run-detail-kpi monthly-location-detail-surface monthly-run-detail-kpi--interactive monthly-run-detail-kpi--${modifier}`}
-                  onClick={() => focusRunReview(key)}
-                >
-                  <div className="monthly-run-detail-kpi__value tabular-nums">{count}</div>
-                  <div className="monthly-run-detail-kpi__label">{label}</div>
-                </button>
-              ) : (
-                <div
-                  key={key}
-                  className={`monthly-run-detail-kpi monthly-location-detail-surface monthly-run-detail-kpi--${modifier}`}
-                >
-                  <div className="monthly-run-detail-kpi__value tabular-nums">{count}</div>
-                  <div className="monthly-run-detail-kpi__label">{label}</div>
-                </div>
-              ),
-            )}
-          </div>
-        )}
-
-        {prepPhase ? (
           <RunDetailsPreRunMessageCard
             routeId={idNum}
             monthDate={payload.month_date}
             run={run}
             onPreRunMessagePatched={onPreRunMessagePatched}
+            prepEditsDisabled={futurePrepBlocked}
           />
         ) : null}
 
@@ -761,13 +794,33 @@ export default function MonthlyRunDetailPage() {
             routeId={idNum}
             run={run}
             runCompleted={runCompleted}
-            filter={reviewFilter}
-            sectionTab={reviewSectionTab}
-            onSectionTabChange={setReviewSectionTab}
             onBillingPatched={onBillingPatched}
             stopPatch={stopPatch}
             onStopMergedFromWorksheet={onStopMergedFromWorksheet}
             onDeficiencyUpdated={onDeficiencyUpdated}
+            historyStops={historyStops}
+            historyLoading={historyLoading}
+            historyCapturedAt={historyMeta.capturedAt}
+            historyFieldWorkReopened={historyMeta.fieldWorkReopened}
+            onTicketsChanged={() => void loadRunDetails()}
+            jobItemsByLocationId={jobItemsByLocationId}
+            paperworkViewMode={paperworkViewMode}
+            prepEditsDisabled={futurePrepBlocked}
+            onRouteOrderChanged={() => void loadRunDetails()}
+            onPrepStopsRegenerated={async () => {
+              clearWorksheetCache(idNum, monthQuery)
+              await loadRunDetails()
+            }}
+            outcomeCounts={
+              paperworkViewMode === 'run_review'
+                ? {
+                    all_good_count: counts.all_good_count,
+                    passed_with_problems_count: counts.passed_with_problems_count,
+                    failed_count: counts.failed_count,
+                    skipped_count: counts.skipped_count,
+                  }
+                : undefined
+            }
           />
         ) : (
           <section id="run-review-section" className="monthly-location-detail-surface p-3">
@@ -789,9 +842,9 @@ export default function MonthlyRunDetailPage() {
         <Modal.Body>
           <p className="mb-2">
             This clears everything recorded during this run for this month: tested/skipped outcomes,
-            clock events, times, run comments, field edits (panel, annual month, access codes, etc.), billing
-            status on each site, and the sites-with-updates change log. Worksheet rows are restored
-            from the library master.
+            clock events, times, run comments, field edits (panel, annual month, access codes, etc.),
+            billing status on each site, and the sites-with-updates change log. Worksheet rows are
+            restored from the library master.
           </p>
           <p className="mb-0 small text-muted">
             If the job was marked complete, use <strong>Reopen job</strong> first.

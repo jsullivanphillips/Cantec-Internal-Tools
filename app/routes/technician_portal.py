@@ -508,9 +508,18 @@ def portal_end_current_month_run(route_id: int):
             409,
         )
     if run.field_ended_at is not None:
+        from app.monthly.field_submission import ensure_field_submission_for_run
+
+        ensure_field_submission_for_run(run)
+        db.session.add(run)
+        db.session.commit()
         return jsonify({"ok": True, "run": _serialize_run(run)})
 
-    mark_field_ended(run, now=datetime.now(PACIFIC_TZ))
+    now = datetime.now(PACIFIC_TZ)
+    mark_field_ended(run, now=now)
+    from app.monthly.field_submission import capture_field_submission_for_run
+
+    capture_field_submission_for_run(run, captured_at=now)
     db.session.add(run)
     db.session.commit()
     return jsonify({"ok": True, "run": _serialize_run(run)})

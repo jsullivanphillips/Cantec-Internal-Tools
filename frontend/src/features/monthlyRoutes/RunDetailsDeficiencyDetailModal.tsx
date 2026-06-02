@@ -158,8 +158,8 @@ export default function RunDetailsDeficiencyDetailModal({
           }),
         },
       )
-      setEditing(false)
       await onSaved?.(data.deficiency)
+      onHide()
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : 'Failed to save deficiency.')
     } finally {
@@ -167,14 +167,19 @@ export default function RunDetailsDeficiencyDetailModal({
     }
   }
 
+  const handleModalHide = () => {
+    onHide()
+  }
+
   return (
     <Modal
       show={show}
-      onHide={onHide}
+      onHide={handleModalHide}
       centered
       size="lg"
       className="run-details-deficiency-modal"
       contentClassName="run-details-deficiency-modal__content border-0"
+      keyboard={!saving}
     >
       <div className="run-details-deficiency-modal__header">
         <h2 className="run-details-deficiency-modal__title">
@@ -194,9 +199,8 @@ export default function RunDetailsDeficiencyDetailModal({
           <button
             type="button"
             className="run-details-deficiency-modal__close btn btn-link"
-            onClick={onHide}
+            onClick={handleModalHide}
             aria-label="Close"
-            disabled={saving}
           >
             <i className="bi bi-x-lg" aria-hidden />
           </button>
@@ -204,6 +208,16 @@ export default function RunDetailsDeficiencyDetailModal({
       </div>
 
       <Modal.Body className="run-details-deficiency-modal__body">
+        {saving ? (
+          <div
+            className="run-details-deficiency-modal__saving-overlay"
+            aria-live="polite"
+            aria-busy="true"
+          >
+            <Spinner animation="border" size="sm" className="me-2" aria-hidden />
+            Saving changes…
+          </div>
+        ) : null}
         {contextParts.length > 0 ? (
           <p className="run-details-deficiency-modal__context">{contextParts.join(' · ')}</p>
         ) : null}

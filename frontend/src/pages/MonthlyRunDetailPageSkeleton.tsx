@@ -17,12 +17,16 @@ function SkeletonBar({
 }
 
 /** Skeleton layout matching run details (hero, KPIs, notable worksheet accordion). */
-export default function MonthlyRunDetailPageSkeleton() {
+export default function MonthlyRunDetailPageSkeleton({
+  label = 'Loading run details',
+}: {
+  label?: string
+}) {
   return (
     <div
       className="monthly-route-detail-page monthly-run-detail-page home-skeleton"
       aria-busy="true"
-      aria-label="Loading run details"
+      aria-label={label}
     >
       <div className="monthly-route-detail-container">
         <nav className="monthly-run-detail-breadcrumb" aria-hidden>
@@ -30,6 +34,8 @@ export default function MonthlyRunDetailPageSkeleton() {
           <span className="monthly-run-detail-breadcrumb__sep">/</span>
           <SkeletonBar width="5rem" height={14} />
         </nav>
+
+        <p className="monthly-run-detail-loading-label text-muted small mb-0">{label}</p>
 
         <section className="monthly-route-detail-hero monthly-location-detail-surface monthly-run-detail-hero">
           <div className="monthly-route-detail-hero__copy">

@@ -29,7 +29,10 @@ export default function RunDetailsDeficiencyList({
   monthDate: string
   testingSiteId: number
   readOnly?: boolean
-  onDeficiencyUpdated?: () => void | Promise<void>
+  onDeficiencyUpdated?: (
+    testingSiteId: number,
+    updated: MonthlyRunDetailDeficiencySummary,
+  ) => void | Promise<void>
   compact?: boolean
   className?: string
 }) {
@@ -91,8 +94,8 @@ export default function RunDetailsDeficiencyList({
         readOnly={readOnly}
         onHide={() => setSelected(null)}
         onSaved={async (updated) => {
-          setSelected(updated)
-          await onDeficiencyUpdated?.()
+          await onDeficiencyUpdated?.(testingSiteId, updated)
+          setSelected(null)
         }}
       />
     </>

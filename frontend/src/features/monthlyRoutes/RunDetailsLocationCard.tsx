@@ -11,6 +11,7 @@ import {
 } from './RunDetailsStopReviewRow'
 import type { OfficeBillingStatus } from './officeRunReviewShared'
 import type {
+  MonthlyRunDetailDeficiencySummary,
   MonthlyRunDetailLocation,
   TechnicianWorksheetRun,
   TechnicianWorksheetStop,
@@ -106,7 +107,10 @@ export default function RunDetailsLocationCard({
   onBillingPatched: (locationId: number, billingStatus: string) => void
   stopPatch: RunDetailsStopPatchApi
   onStopMergedFromWorksheet: (stop: TechnicianWorksheetStop, scope?: 'full' | 'deficiency') => void
-  onDeficiencyUpdated?: () => void | Promise<void>
+  onDeficiencyUpdated?: (
+    testingSiteId: number,
+    updated: MonthlyRunDetailDeficiencySummary,
+  ) => void | Promise<void>
 }) {
   const readOnly = (run?.source || '').trim().toLowerCase() === 'csv_import'
   const showBilling = canOfficeEditBilling(run) && !runCompleted

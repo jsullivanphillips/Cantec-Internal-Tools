@@ -1,6 +1,8 @@
 import type {
   MonthlyRunDetailLocation,
   MonthlyRunDetailLocationStop,
+  MonthlyRunDetailPayload,
+  MonthlyRouteDetailPayload,
   RunReviewSummaryPayload,
   TechnicianWorksheetRun,
   TechnicianWorksheetStop,
@@ -146,12 +148,17 @@ export type RunDetailPrepRow = {
 export type RunDetailReviewRow = RunDetailPrepRow & {
   locationId: number
   billingStatus: string | null
+  openTickets: number
 }
 
 export type RunDetailNewCommentField = 'run_comments' | 'inspection_tech_notes' | 'testing_procedures'
 
+type StopWithNewCommentFields = {
+  new_comment_fields?: string[]
+}
+
 export function stopHasNewCommentField(
-  stop: MonthlyRunDetailLocationStop,
+  stop: StopWithNewCommentFields,
   field: RunDetailNewCommentField,
 ): boolean {
   return (stop.new_comment_fields ?? []).includes(field)
@@ -185,10 +192,10 @@ export function computeRunDetailsPrepSummary(
   }
 }
 
-export function filterRunDetailPrepRows(
-  rows: RunDetailPrepRow[],
+export function filterRunDetailPrepRows<T extends RunDetailPrepRow>(
+  rows: T[],
   searchQuery: string,
-): RunDetailPrepRow[] {
+): T[] {
   const q = searchQuery.trim().toLowerCase()
   if (!q) return rows
   return rows.filter(({ stop, locationLabel }) => {
@@ -223,6 +230,65 @@ export function flattenRunDetailPrepRows(locations: MonthlyRunDetailLocation[]):
   return rows
 }
 
+export function orderedLocationIdsFromPrepRows(rows: RunDetailPrepRow[]): number[] {
+  const seen = new Set<number>()
+  const ids: number[] = []
+  for (const row of rows) {
+    const locationId = row.stop.location_id
+    if (!seen.has(locationId)) {
+      seen.add(locationId)
+      ids.push(locationId)
+    }
+  }
+  return ids
+}
+
+export function reorderPrepRowsByLocationIds(
+  rows: RunDetailPrepRow[],
+  orderedLocationIds: number[],
+): RunDetailPrepRow[] {
+  const byLocation = new Map<number, RunDetailPrepRow[]>()
+  for (const row of rows) {
+    const locationId = row.stop.location_id
+    const bucket = byLocation.get(locationId)
+    if (bucket) bucket.push(row)
+    else byLocation.set(locationId, [row])
+  }
+  const reordered: RunDetailPrepRow[] = []
+  for (const locationId of orderedLocationIds) {
+    reordered.push(...(byLocation.get(locationId) ?? []))
+  }
+  return reordered
+}
+
+export function renumberPrepRowStopNumbers(rows: RunDetailPrepRow[]): RunDetailPrepRow[] {
+  let stopNumber = 1
+  return rows.map((row) => ({
+    ...row,
+    stop: {
+      ...row.stop,
+      stop_number: stopNumber++,
+    },
+  }))
+}
+
+export function priorMonthOutOfOrderHint(
+  stop: Pick<
+    MonthlyRunDetailLocationStop,
+    'prior_month_out_of_order' | 'prior_month_expected_stop_number'
+  >,
+): { title: string; detail: string | null } | null {
+  if (!stop.prior_month_out_of_order) return null
+  const expected = stop.prior_month_expected_stop_number
+  return {
+    title: 'Out of order last run',
+    detail:
+      expected != null && expected > 0
+        ? `Was stop #${expected} on last run`
+        : null,
+  }
+}
+
 export function flattenRunDetailReviewRows(
   locations: MonthlyRunDetailLocation[],
 ): RunDetailReviewRow[] {
@@ -244,6 +310,7 @@ export function flattenRunDetailReviewRows(
         siteCount,
         locationId: location.location_id,
         billingStatus: location.billing_status,
+        openTickets: location.attention_flags.open_tickets ?? 0,
       })
     }
   }
@@ -397,7 +464,7 @@ export function filterRunDetailLocations(
   return locations.filter((loc) => locationMatchesFilter(loc, filter, monthDate))
 }
 
-export type RunDetailReviewSectionTab = 'run_review' | 'field_changes'
+export type RunDetailReviewSectionTab = 'run_history' | 'run_review' | 'field_changes'
 
 export function filterRunDetailFieldEditLocations(
   locations: MonthlyRunDetailLocation[],
@@ -527,6 +594,47 @@ export function patchRunDetailPreRunMessage(
 ): TechnicianWorksheetRun {
   const text = (preRunMessage ?? '').trim()
   return { ...run, pre_run_message: text.length > 0 ? text : null }
+}
+
+/** Merge a workflow lifecycle response onto the run-details payload (no refetch). */
+export function patchRunDetailPayloadRun(
+  payload: MonthlyRunDetailPayload,
+  run: TechnicianWorksheetRun,
+): MonthlyRunDetailPayload {
+  return {
+    ...payload,
+    run,
+    field_submission: {
+      available: payload.field_submission?.available ?? false,
+      captured_at: payload.field_submission?.captured_at ?? null,
+      field_work_reopened: payload.field_submission?.field_work_reopened ?? false,
+    },
+  }
+}
+
+/** Update ``runs_by_month`` after a workflow action without refetching route detail. */
+export function patchRouteMetaRunMonth(
+  routeMeta: MonthlyRouteDetailPayload | null,
+  monthIso: string,
+  run: TechnicianWorksheetRun,
+): MonthlyRouteDetailPayload | null {
+  if (!routeMeta) return routeMeta
+  return {
+    ...routeMeta,
+    runs_by_month: {
+      ...routeMeta.runs_by_month,
+      [monthIso]: {
+        run_id: run.id,
+        source: run.source,
+        status: run.status,
+        opened_at: run.opened_at,
+        started_at: run.started_at,
+        completed_at: run.completed_at,
+        workflow_stage: run.workflow_stage,
+        workflow_stage_label: run.workflow_stage_label,
+      },
+    },
+  }
 }
 
 /** Optimistic update for one stop; recomputes location attention flags (e.g. job comment). */

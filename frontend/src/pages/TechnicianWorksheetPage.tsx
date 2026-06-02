@@ -1355,7 +1355,7 @@ export default function TechnicianWorksheetPage() {
                       : Number.isNaN(idNum)
                         ? '/monthlies/routes'
                         : monthOk
-                          ? `/monthlies/routes/${idNum}/runs/${encodeURIComponent(monthQuery)}`
+                          ? `/monthlies/routes/${idNum}/paperwork?month=${encodeURIComponent(monthQuery)}`
                           : `/monthlies/routes/${idNum}`
                   }
                   className="btn btn-link text-primary p-0 d-inline-flex align-items-center justify-content-center tw-worksheet-back-btn"

@@ -3,10 +3,13 @@ import {
   deficiencyPatchFromWorksheetStop,
   detailPatchFromWorksheetStop,
   enrichmentPatchFromWorksheetStop,
+  patchRunDetailStopDeficiency,
+  prepChangesToStopPatch,
   prepPatchFromWorksheetStop,
   rollbackPatchForChanges,
   syncPrepChangesForApi,
 } from './runDetailsPrepPatch'
+import type { MonthlyRunDetailLocation } from './monthlyRoutesShared'
 import { isStopPatchGenerationCurrent } from './useRunDetailsStopPatch'
 import type { TechnicianWorksheetStop } from './monthlyRoutesShared'
 
@@ -89,6 +92,18 @@ describe('syncPrepChangesForApi', () => {
   })
 })
 
+describe('prepChangesToStopPatch', () => {
+  it('clears out-of-order hint when dismissed', () => {
+    expect(
+      prepChangesToStopPatch({ prior_month_out_of_order_dismissed: true }),
+    ).toEqual({
+      prior_month_out_of_order_dismissed: true,
+      prior_month_out_of_order: false,
+      prior_month_expected_stop_number: null,
+    })
+  })
+})
+
 describe('enrichmentPatchFromWorksheetStop', () => {
   it('only adds monitoring labels when company id changed', () => {
     const stop = sampleWorksheetStop({
@@ -98,6 +113,59 @@ describe('enrichmentPatchFromWorksheetStop', () => {
     const patch = enrichmentPatchFromWorksheetStop(stop, ['monitoring_company_id'])
     expect(patch.monitoring_company).toBe('Acme')
     expect(patch.run_comments).toBeUndefined()
+  })
+})
+
+describe('patchRunDetailStopDeficiency', () => {
+  it('updates status and drops invalid from open prep list', () => {
+    const locations = [
+      {
+        location_id: 101,
+        location_label: '123 Main',
+        billing_status: null,
+        first_stop_number: 1,
+        last_stop_number: 1,
+        attention_flags: {
+          has_field_edits: false,
+          has_active_deficiencies: true,
+          has_any_open_deficiencies: true,
+          has_job_comment: false,
+          billing_unset: false,
+          needs_attention: false,
+        },
+        stops: [
+          {
+            testing_site_id: 12,
+            location_id: 101,
+            stop_number: 1,
+            deficiency_summaries: [
+              {
+                id: 5,
+                monthly_testing_site_id: 12,
+                created_run_id: null,
+                title: 'Bell',
+                severity: 'deficient',
+                status: 'new',
+                description: null,
+              },
+            ],
+            has_active_deficiencies: true,
+          },
+        ],
+      },
+    ] as unknown as MonthlyRunDetailLocation[]
+    const updated = {
+      id: 5,
+      monthly_testing_site_id: 12,
+      created_run_id: null,
+      title: 'Bell',
+      severity: 'deficient',
+      status: 'invalid',
+      description: null,
+    }
+    const next = patchRunDetailStopDeficiency(locations, 12, '2026-06-01', updated)
+    expect(next[0].stops[0].deficiency_summaries?.[0].status).toBe('invalid')
+    expect(next[0].stops[0].has_active_deficiencies).toBe(false)
   })
 })
 

@@ -29,6 +29,7 @@ import {
   type OfficeWorksheetChangeColumnVisibility,
 } from './officeWorksheetTableShared'
 import { stopMonitoringDisplay } from './stopMonitoringDisplay'
+import { stopHasNewCommentField, type RunDetailNewCommentField } from './runDetailsLocationReview'
 
 function officeCellClassName(updated: boolean | undefined, extra = ''): string {
   const base = `tw-office-detail-cell${extra ? ` ${extra}` : ''}`
@@ -62,10 +63,16 @@ function OfficeCompactField({
   )
 }
 
-function OfficeStatusPill({ status }: { status: OfficeStopStatus }) {
+function OfficeStatusPill({
+  status,
+  closedRun,
+}: {
+  status: OfficeStopStatus
+  closedRun?: boolean
+}) {
   return (
     <span className={`tw-office-status-pill tw-office-status-pill--${status}`}>
-      {officeStopStatusLabel(status)}
+      {officeStopStatusLabel(status, { closedRun })}
     </span>
   )
 }
@@ -108,26 +115,38 @@ function OfficeLongTextCell({
   fieldKey,
   fieldChangesByLocation,
   highlightUpdatedCells,
+  highlightNewComments,
 }: {
   stop: TechnicianWorksheetStop
   locationId: number
-  fieldKey: 'testing_procedures' | 'inspection_tech_notes' | 'run_comments'
+  fieldKey: RunDetailNewCommentField
   fieldChangesByLocation?: Map<number, OfficeFieldChange[]>
   highlightUpdatedCells?: boolean
+  highlightNewComments?: boolean
 }) {
   const change = auditChangeForLongTextField(locationId, fieldKey, fieldChangesByLocation)
   const showPresentRunComment =
     fieldKey === 'run_comments' && highlightUpdatedCells && stopHasRunComments(stop) && change == null
+  const highlightNew =
+    highlightNewComments &&
+    stopHasNewCommentField(stop, fieldKey) &&
+    worksheetReadOnlyDisplay(stop[fieldKey]) !== '—'
+  
+  let inner: ReactNode
   if (change && !highlightUpdatedCells) {
-    return <span className="tw-office-field-change">{renderFieldChangeInline(change)}</span>
+    inner = <span className="tw-office-field-change">{renderFieldChangeInline(change)}</span>
+  } else if (change && highlightUpdatedCells) {
+    inner = <span className="tw-office-cell-updated-value">{renderFieldChangeInline(change)}</span>
+  } else if (showPresentRunComment) {
+    inner = <span className="tw-office-cell-updated-value">{worksheetReadOnlyDisplay(stop.run_comments)}</span>
+  } else {
+    inner = <>{worksheetReadOnlyDisplay(stop[fieldKey])}</>
   }
-  if (change && highlightUpdatedCells) {
-    return <span className="tw-office-cell-updated-value">{renderFieldChangeInline(change)}</span>
+
+  if (highlightNew) {
+    return <span className="tw-office-long-text-new">{inner}</span>
   }
-  if (showPresentRunComment) {
-    return <span className="tw-office-cell-updated-value">{worksheetReadOnlyDisplay(stop.run_comments)}</span>
-  }
-  return <>{worksheetReadOnlyDisplay(stop[fieldKey])}</>
+  return inner
 }
 
 function OfficeStopTableRow({
@@ -139,6 +158,8 @@ function OfficeStopTableRow({
   columns,
   neutralStopNumbers,
   highlightUpdatedCells,
+  highlightNewComments,
+  closedRun,
 }: {
   group: OfficeStopGroup
   stop: TechnicianWorksheetStop
@@ -148,6 +169,8 @@ function OfficeStopTableRow({
   columns: OfficeWorksheetChangeColumnVisibility
   neutralStopNumbers?: boolean
   highlightUpdatedCells?: boolean
+  highlightNewComments?: boolean
+  closedRun?: boolean
 }) {
   const status = officeStopStatus(stop, monthDate)
   const skipReasonDisplayBlock = worksheetSkipReasonDisplayBlock(stop.skip_reason)
@@ -255,7 +278,7 @@ function OfficeStopTableRow({
       </td>
       <td className={officeCellClassName(resultUpdated, 'tw-office-sticky tw-office-sticky-result')}>
         <div className="tw-office-result-cell">
-          <OfficeStatusPill status={status} />
+          <OfficeStatusPill status={status} closedRun={closedRun} />
           {resultDetailLines.map((line, index) => (
             <div key={`${index}:${line}`} className="tw-office-result-detail">
               {line}
@@ -335,35 +358,65 @@ function OfficeStopTableRow({
         </td>
       ) : null}
       {columns.procedures ? (
-        <td className={officeCellClassName(proceduresUpdated, 'tw-office-long-text')}>
+        <td
+          className={officeCellClassName(
+            proceduresUpdated,
+            `tw-office-long-text${
+              highlightNewComments && stopHasNewCommentField(stop, 'testing_procedures')
+                ? ' tw-office-long-text--new'
+                : ''
+            }`,
+          )}
+        >
           <OfficeLongTextCell
             stop={stop}
             locationId={lid}
             fieldKey="testing_procedures"
             fieldChangesByLocation={fieldChangesByLocation}
             highlightUpdatedCells={highlightUpdatedCells}
+            highlightNewComments={highlightNewComments}
           />
         </td>
       ) : null}
       {columns.locationComments ? (
-        <td className={officeCellClassName(locationCommentsUpdated, 'tw-office-long-text')}>
+        <td
+          className={officeCellClassName(
+            locationCommentsUpdated,
+            `tw-office-long-text${
+              highlightNewComments && stopHasNewCommentField(stop, 'inspection_tech_notes')
+                ? ' tw-office-long-text--new'
+                : ''
+            }`,
+          )}
+        >
           <OfficeLongTextCell
             stop={stop}
             locationId={lid}
             fieldKey="inspection_tech_notes"
             fieldChangesByLocation={fieldChangesByLocation}
             highlightUpdatedCells={highlightUpdatedCells}
+            highlightNewComments={highlightNewComments}
           />
         </td>
       ) : null}
       {columns.runComments ? (
-        <td className={officeCellClassName(runCommentsUpdated, 'tw-office-long-text')}>
+        <td
+          className={officeCellClassName(
+            runCommentsUpdated,
+            `tw-office-long-text${
+              highlightNewComments && stopHasNewCommentField(stop, 'run_comments')
+                ? ' tw-office-long-text--new'
+                : ''
+            }`,
+          )}
+        >
           <OfficeLongTextCell
             stop={stop}
             locationId={lid}
             fieldKey="run_comments"
             fieldChangesByLocation={fieldChangesByLocation}
             highlightUpdatedCells={highlightUpdatedCells}
+            highlightNewComments={highlightNewComments}
           />
         </td>
       ) : null}
@@ -385,6 +438,10 @@ export type OfficeWorksheetReadOnlyTableProps = {
   highlightUpdatedCells?: boolean
   /** Hide access/panel/monitoring/text columns with no audited changes on any location. */
   hideEmptyChangeColumns?: boolean
+  /** Red highlight for comment fields newly added on this field run (exact history). */
+  highlightNewComments?: boolean
+  /** Completed run — pending stops show "No Results Submitted". */
+  closedRun?: boolean
 }
 
 export default function OfficeWorksheetReadOnlyTable({
@@ -396,6 +453,8 @@ export default function OfficeWorksheetReadOnlyTable({
   neutralStopNumbers = false,
   highlightUpdatedCells = false,
   hideEmptyChangeColumns = false,
+  highlightNewComments = false,
+  closedRun = false,
 }: OfficeWorksheetReadOnlyTableProps) {
   const headerScrollRef = useRef<HTMLDivElement | null>(null)
   const tableScrollRef = useRef<HTMLDivElement | null>(null)
@@ -434,6 +493,8 @@ export default function OfficeWorksheetReadOnlyTable({
         columns={changeColumns}
         neutralStopNumbers={neutralStopNumbers}
         highlightUpdatedCells={highlightUpdatedCells}
+        highlightNewComments={highlightNewComments}
+        closedRun={closedRun}
       />
     )),
   )

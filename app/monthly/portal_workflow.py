@@ -633,18 +633,61 @@ def list_deficiencies_for_run_review(
     """Open deficiencies tied to this field run (reported or verified on the visit)."""
     if run is None:
         return []
+    return batch_deficiency_summaries_for_testing_sites([int(testing_site_id)], run=run).get(
+        int(testing_site_id),
+        [],
+    )
+
+
+def batch_deficiency_summaries_for_testing_sites(
+    testing_site_ids: list[int],
+    *,
+    run: MonthlyRouteRun | None = None,
+) -> dict[int, list[dict[str, object]]]:
+    """Load card-visible deficiencies for many stops in one query."""
+    if not testing_site_ids:
+        return {}
+    ids = [int(i) for i in testing_site_ids]
     rows = (
-        MonthlyTestingSiteDeficiency.query.filter_by(
-            monthly_testing_site_id=int(testing_site_id),
+        MonthlyTestingSiteDeficiency.query.filter(
+            MonthlyTestingSiteDeficiency.monthly_testing_site_id.in_(ids),
+            MonthlyTestingSiteDeficiency.status.in_(tuple(DEFICIENCY_CARD_STATUSES)),
         )
-        .order_by(MonthlyTestingSiteDeficiency.created_at.asc())
+        .order_by(
+            MonthlyTestingSiteDeficiency.monthly_testing_site_id.asc(),
+            MonthlyTestingSiteDeficiency.created_at.asc(),
+        )
         .all()
     )
-    return [
-        serialize_deficiency(d)
-        for d in rows
-        if _deficiency_visible_on_run_review(d, run)
-    ]
+    grouped: dict[int, list[MonthlyTestingSiteDeficiency]] = {}
+    for row in rows:
+        grouped.setdefault(int(row.monthly_testing_site_id), []).append(row)
+    run_scoped = run is not None and run.started_at is not None
+    out: dict[int, list[dict[str, object]]] = {}
+    for ts_id in ids:
+        site_rows = grouped.get(ts_id, [])
+        if run_scoped:
+            site_rows = [row for row in site_rows if _deficiency_visible_on_run_review(row, run)]
+        out[ts_id] = [serialize_deficiency(row) for row in site_rows]
+    return out
+
+
+def batch_site_has_open_deficiencies(testing_site_ids: list[int]) -> dict[int, bool]:
+    """True when a stop has any card-visible deficiency (site-wide, not run-scoped)."""
+    if not testing_site_ids:
+        return {}
+    ids = [int(i) for i in testing_site_ids]
+    rows = (
+        db.session.query(MonthlyTestingSiteDeficiency.monthly_testing_site_id)
+        .filter(
+            MonthlyTestingSiteDeficiency.monthly_testing_site_id.in_(ids),
+            MonthlyTestingSiteDeficiency.status.in_(tuple(DEFICIENCY_CARD_STATUSES)),
+        )
+        .distinct()
+        .all()
+    )
+    open_ids = {int(r[0]) for r in rows}
+    return {ts_id: ts_id in open_ids for ts_id in ids}
 
 
 def create_deficiency(

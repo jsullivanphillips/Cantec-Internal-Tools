@@ -88,6 +88,27 @@ def _run_cli(
         update_route_display_name=update_route_display_name,
     )
 
+    if not dry_run:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        from app.monthly.field_submission import capture_field_submission_for_run
+        from app.monthly.run_workflow import (
+            close_historical_run_from_csv_import,
+            is_historical_run_month,
+        )
+
+        if is_historical_run_month(month_date):
+            now = datetime.now(ZoneInfo("America/Vancouver"))
+            close_historical_run_from_csv_import(
+                run,
+                username="csv_import",
+                now=now,
+            )
+            capture_field_submission_for_run(run, captured_at=now)
+            db.session.commit()
+            print("[inspection-csv] Historical month — run marked completed.", flush=True)
+
     print(
         f"[inspection-csv] route_number={result.route_number} route_id={result.route_id} "
         f"month_date={month_date.isoformat()} run_id={result.run_id} "

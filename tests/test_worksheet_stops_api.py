@@ -1150,3 +1150,150 @@ def test_patch_office_attention_office_prep_only(stops_client, monkeypatch):
     )
     assert locked.status_code == 409
     assert locked.get_json().get("code") == "run_prep_locked"
+
+
+def test_patch_prior_month_out_of_order_dismissed_office_prep_only(stops_client, monkeypatch):
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
+
+    client, app = stops_client
+    with app.app_context():
+        _seed_route_with_two_stops()
+        ts_id = int(MonthlyTestingSite.query.order_by(MonthlyTestingSite.id.asc()).first().id)
+        run = MonthlyRouteRun(
+            id=5011,
+            monthly_route_id=1,
+            month_date=date(2026, 5, 1),
+            status="open",
+            source="office_manual",
+        )
+        db.session.add(run)
+        db.session.commit()
+        from app.monthly.worksheet_stops import ensure_worksheet_stops_for_route_month
+
+        ensure_worksheet_stops_for_route_month(1, date(2026, 5, 1), run)
+        db.session.commit()
+
+    with client.session_transaction() as sess:
+        sess["authenticated"] = True
+
+    qs = "month=2026-05-01"
+    ok = client.patch(
+        f"/api/monthly_routes/routes/1/worksheet/stops/{ts_id}?{qs}",
+        json={"changes": {"prior_month_out_of_order_dismissed": True}},
+    )
+    assert ok.status_code == 200
+    assert ok.get_json()["stop"]["prior_month_out_of_order_dismissed"] is True
+
+    portal = client.patch(
+        f"/api/monthly_routes/routes/1/worksheet/stops/{ts_id}?{qs}&tech_portal=1",
+        json={"changes": {"prior_month_out_of_order_dismissed": True}},
+    )
+    assert portal.status_code == 403
+    assert portal.get_json().get("code") == "prior_month_out_of_order_dismissed_office_only"
+
+
+def test_regenerate_prep_stops_overwrites_stale_notes_without_history_backfill(stops_client, monkeypatch):
+    """Office prep regenerate uses prior stop-month snapshots, not stale history gap-fill."""
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 6, 1))
+
+    client, app = stops_client
+    with app.app_context():
+        route_id, ts_id, _ = _seed_route_with_two_stops()
+        ts = db.session.get(MonthlyTestingSite, ts_id)
+        assert ts is not None
+        ts.inspection_tech_notes = None
+        ts.testing_procedures = None
+        db.session.add(
+            MonthlyRouteTestHistory(
+                id=94001,
+                location_id=101,
+                month_date=date(2026, 5, 1),
+                inspection_tech_notes="Old history notes",
+                testing_procedures="Old history procedures",
+                test_monthly_route_id=route_id,
+            )
+        )
+        db.session.add(
+            MonthlyTestingSiteMonth(
+                id=94010,
+                monthly_testing_site_id=ts_id,
+                month_date=date(2026, 5, 1),
+                test_monthly_route_id=route_id,
+                inspection_tech_notes=None,
+                testing_procedures="May procedures",
+            )
+        )
+        run = MonthlyRouteRun(
+            id=94020,
+            monthly_route_id=route_id,
+            month_date=date(2026, 6, 1),
+            status="open",
+            source="office_manual",
+        )
+        db.session.add(run)
+        db.session.add(
+            MonthlyTestingSiteMonth(
+                id=94011,
+                monthly_testing_site_id=ts_id,
+                month_date=date(2026, 6, 1),
+                test_monthly_route_id=route_id,
+                run_id=94020,
+                inspection_tech_notes="Stale resurrected notes",
+                testing_procedures="Stale procedures",
+                office_attention=True,
+            )
+        )
+        db.session.commit()
+
+    with client.session_transaction() as sess:
+        sess["authenticated"] = True
+
+    res = client.post(
+        "/api/monthly_routes/routes/1/runs/regenerate_prep_stops",
+        json={"month_date": "2026-06-01"},
+    )
+    assert res.status_code == 200
+    assert res.get_json()["stops_regenerated"] >= 1
+
+    with app.app_context():
+        june = MonthlyTestingSiteMonth.query.filter_by(
+            monthly_testing_site_id=ts_id,
+            month_date=date(2026, 6, 1),
+        ).one()
+        assert june.inspection_tech_notes is None
+        assert june.testing_procedures == "May procedures"
+        assert june.office_attention is True
+
+
+def test_regenerate_prep_stops_blocked_after_field_work_starts(stops_client, monkeypatch):
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 6, 1))
+
+    client, app = stops_client
+    with app.app_context():
+        route_id, _, _ = _seed_route_with_two_stops()
+        run = MonthlyRouteRun(
+            id=94030,
+            monthly_route_id=route_id,
+            month_date=date(2026, 6, 1),
+            started_at=datetime(2026, 6, 2, 8, 0, tzinfo=PACIFIC_TZ),
+            status="open",
+            source="technician_app",
+        )
+        db.session.add(run)
+        db.session.commit()
+
+    with client.session_transaction() as sess:
+        sess["authenticated"] = True
+
+    res = client.post(
+        f"/api/monthly_routes/routes/{route_id}/runs/regenerate_prep_stops",
+        json={"month_date": "2026-06-01"},
+    )
+    assert res.status_code == 409
+    assert res.get_json().get("code") == "run_prep_locked"

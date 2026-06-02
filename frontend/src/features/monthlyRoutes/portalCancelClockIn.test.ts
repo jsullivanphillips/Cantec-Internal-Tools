@@ -34,6 +34,9 @@ function baseStop(id: number): TechnicianWorksheetStop {
     run_comments: null,
     time_in: null,
     time_out: null,
+    route_stop_order: id,
+    session_route_stop_order: id,
+    version_updated_at: null,
     result_status: null,
     skip_reason: null,
   }

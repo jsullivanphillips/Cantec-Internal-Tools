@@ -1071,6 +1071,20 @@ def _reject_patch_if_portal_run_completed(
     )
 
 
+def _reject_if_future_month_prep_blocked(
+    route_id: int,
+    month_first: date,
+) -> tuple[object, int] | None:
+    """Office cannot prep a future month until the Pacific current month run is closed."""
+    from app.monthly.run_workflow import office_future_month_prep_blocked_reason
+
+    blocked = office_future_month_prep_blocked_reason(route_id, month_first)
+    if blocked is None:
+        return None
+    message, code = blocked
+    return jsonify({"error": message, "code": code}), 409
+
+
 def _reject_patch_if_portal_field_ended(
     run: MonthlyRouteRun | None,
 ) -> tuple[object, int] | None:
@@ -2001,6 +2015,21 @@ def _collapse_worksheet_audit_changes_for_display(
     return collapse_worksheet_audit_changes_for_display(changes)
 
 
+def _field_submission_meta(run: MonthlyRouteRun | None) -> dict[str, object]:
+    if run is None:
+        return {"available": False, "captured_at": None, "field_work_reopened": False}
+    from app.monthly.field_submission import get_field_submission_for_run
+
+    submission = get_field_submission_for_run(int(run.id))
+    if submission is None:
+        return {"available": False, "captured_at": None, "field_work_reopened": False}
+    return {
+        "available": True,
+        "captured_at": submission.captured_at.isoformat() if submission.captured_at else None,
+        "field_work_reopened": run.field_ended_at is None,
+    }
+
+
 def _serialize_monthly_run_details_payload(
     route_id: int, month_first: date
 ) -> dict[str, object] | None:
@@ -2046,6 +2075,7 @@ def _serialize_monthly_run_details_payload(
         "route": _serialize_monthly_route_entity(mr, location_count=location_count),
         "month_date": month_first.isoformat(),
         "run": _serialize_run(run),
+        "field_submission": _field_submission_meta(run),
         "counts": counts,
         "specialists_month": specialists_month,
         "billing_locations": billing_locations,
@@ -2068,6 +2098,243 @@ def get_monthly_route_run_details(route_id: int):
     if payload is None:
         return jsonify({"error": "Route not found"}), 404
     return jsonify(payload)
+
+
+@monthly_routes_bp.get("/api/monthly_routes/routes/<int:route_id>/run_details/field_submission")
+def get_monthly_route_field_submission(route_id: int):
+    """Frozen technician worksheet at the latest portal field end."""
+    month_first = _parse_run_details_month_arg()
+    if month_first is None:
+        return jsonify({"error": "Invalid or missing month query param (use YYYY-MM-DD, first of month)"}), 400
+    if _get_monthly_route(route_id) is None:
+        return jsonify({"error": "Route not found"}), 404
+    run = MonthlyRouteRun.query.filter_by(
+        monthly_route_id=route_id,
+        month_date=month_first,
+    ).one_or_none()
+    if run is None:
+        return _run_details_run_not_found_response()
+    from app.monthly.field_submission import (
+        ensure_field_submission_for_run,
+        get_field_submission_for_run,
+        serialize_field_submission_payload,
+    )
+
+    had_submission = get_field_submission_for_run(int(run.id)) is not None
+    submission = ensure_field_submission_for_run(run)
+    if submission is not None and not had_submission:
+        db.session.commit()
+    payload = serialize_field_submission_payload(run, submission, month_first=month_first)
+    if payload is None:
+        return jsonify({"error": "No field submission for this run yet.", "code": "no_submission"}), 404
+    return jsonify(payload)
+
+
+@monthly_routes_bp.get(
+    "/api/monthly_routes/routes/<int:route_id>/locations/<int:location_id>/tickets"
+)
+def get_monthly_location_tickets(route_id: int, location_id: int):
+    """List tickets for a billing location."""
+    if _get_monthly_route(route_id) is None:
+        return jsonify({"error": "Route not found"}), 404
+    loc = MonthlyRouteLocation.query.filter_by(id=location_id, monthly_route_id=route_id).one_or_none()
+    if loc is None:
+        return jsonify({"error": "Location not found on this route"}), 404
+    from app.monthly.location_tickets import list_tickets_for_location
+
+    return jsonify({"location_id": location_id, "tickets": list_tickets_for_location(location_id)})
+
+
+@monthly_routes_bp.post(
+    "/api/monthly_routes/routes/<int:route_id>/locations/<int:location_id>/tickets"
+)
+def post_monthly_location_ticket(route_id: int, location_id: int):
+    """Create a ticket for a billing location."""
+    username = session.get("username")
+    if not username:
+        return jsonify({"error": "Session username required"}), 401
+    if _get_monthly_route(route_id) is None:
+        return jsonify({"error": "Route not found"}), 404
+    loc = MonthlyRouteLocation.query.filter_by(id=location_id, monthly_route_id=route_id).one_or_none()
+    if loc is None:
+        return jsonify({"error": "Location not found on this route"}), 404
+    data = request.get_json(silent=True) or {}
+    title = (data.get("title") or "").strip()
+    if not title:
+        return jsonify({"error": "title is required"}), 400
+    month_first = _parse_month(data.get("month_date"))
+    month_date = date(month_first.year, month_first.month, 1) if month_first else None
+    run = None
+    if month_date is not None:
+        run = MonthlyRouteRun.query.filter_by(
+            monthly_route_id=route_id,
+            month_date=month_date,
+        ).one_or_none()
+    from app.monthly.location_tickets import create_location_ticket, serialize_ticket
+
+    try:
+        ticket = create_location_ticket(
+            location_id,
+            title=title,
+            body=data.get("body"),
+            username=str(username),
+            run=run,
+            month_first=month_date,
+        )
+        db.session.commit()
+    except ValueError as exc:
+        db.session.rollback()
+        if str(exc) == "location_not_found":
+            return jsonify({"error": "Location not found"}), 404
+        raise
+    return jsonify({"ok": True, "ticket": serialize_ticket(ticket)}), 201
+
+
+@monthly_routes_bp.patch("/api/monthly_routes/tickets/<int:ticket_id>")
+def patch_monthly_location_ticket(ticket_id: int):
+    """Update ticket status, title, or body."""
+    username = session.get("username")
+    if not username:
+        return jsonify({"error": "Session username required"}), 401
+    from app.db_models import MonthlyLocationTicket
+    from app.monthly.location_tickets import serialize_ticket, update_location_ticket
+
+    ticket = db.session.get(MonthlyLocationTicket, ticket_id)
+    if ticket is None:
+        return jsonify({"error": "Ticket not found"}), 404
+    data = request.get_json(silent=True) or {}
+    try:
+        update_location_ticket(
+            ticket,
+            username=str(username),
+            status=data.get("status"),
+            title=data.get("title"),
+            body=data.get("body"),
+            note=data.get("note"),
+        )
+        db.session.commit()
+    except ValueError as exc:
+        db.session.rollback()
+        if str(exc) == "invalid_status":
+            return jsonify({"error": "Invalid ticket status", "code": "invalid_status"}), 400
+        raise
+    return jsonify({"ok": True, "ticket": serialize_ticket(ticket)})
+
+
+@monthly_routes_bp.get("/api/monthly_routes/tickets/<int:ticket_id>/events")
+def get_monthly_location_ticket_events(ticket_id: int):
+    from app.db_models import MonthlyLocationTicket
+    from app.monthly.location_tickets import ticket_events_for_ticket
+
+    ticket = db.session.get(MonthlyLocationTicket, ticket_id)
+    if ticket is None:
+        return jsonify({"error": "Ticket not found"}), 404
+    return jsonify({"ticket_id": ticket_id, "events": ticket_events_for_ticket(ticket_id)})
+
+
+@monthly_routes_bp.get("/api/monthly_routes/routes/<int:route_id>/run_job_items")
+def get_monthly_run_job_items(route_id: int):
+    month_first = _parse_run_details_month_arg()
+    if month_first is None:
+        return jsonify({"error": "Invalid or missing month query param"}), 400
+    run = MonthlyRouteRun.query.filter_by(
+        monthly_route_id=route_id,
+        month_date=month_first,
+    ).one_or_none()
+    if run is None:
+        return _run_details_run_not_found_response()
+    from app.db_models import MonthlyRunJobItem
+
+    rows = (
+        MonthlyRunJobItem.query.filter_by(run_id=int(run.id))
+        .order_by(MonthlyRunJobItem.recorded_at.asc(), MonthlyRunJobItem.id.asc())
+        .all()
+    )
+    items = [
+        {
+            "id": int(r.id),
+            "run_id": int(r.run_id),
+            "location_id": int(r.monthly_route_location_id),
+            "testing_site_id": int(r.monthly_testing_site_id)
+            if r.monthly_testing_site_id is not None
+            else None,
+            "description": r.description,
+            "quantity": float(r.quantity) if r.quantity is not None else 1,
+            "recorded_by": r.recorded_by,
+            "recorded_at": r.recorded_at.isoformat() if r.recorded_at else None,
+        }
+        for r in rows
+    ]
+    return jsonify({"run_id": int(run.id), "month_date": month_first.isoformat(), "items": items})
+
+
+@monthly_routes_bp.post(
+    "/api/monthly_routes/routes/<int:route_id>/worksheet/stops/<int:testing_site_id>/job_items"
+)
+def post_monthly_run_job_item(route_id: int, testing_site_id: int):
+    """Log a replace/add item during field work (portal or office)."""
+    month_raw = (request.args.get("month") or "").strip()
+    month_dt = _parse_month(month_raw)
+    if month_dt is None:
+        return jsonify({"error": "Invalid or missing month query param"}), 400
+    month_first = date(month_dt.year, month_dt.month, 1)
+    run = MonthlyRouteRun.query.filter_by(
+        monthly_route_id=route_id,
+        month_date=month_first,
+    ).one_or_none()
+    if run is None:
+        return jsonify({"error": "No run for this month"}), 404
+    from app.monthly.run_workflow import portal_may_edit_run
+
+    if not portal_may_edit_run(run) and not _office_staff_worksheet_patch():
+        return jsonify({"error": "Run is not open for field edits", "code": "run_locked"}), 409
+    data = request.get_json(silent=True) or {}
+    description = (data.get("description") or "").strip()
+    if not description:
+        return jsonify({"error": "description is required"}), 400
+    from app.db_models import MonthlyRunJobItem, MonthlySite, MonthlyTestingSite
+
+    ts = db.session.get(MonthlyTestingSite, testing_site_id)
+    if ts is None:
+        return jsonify({"error": "Testing site not found"}), 404
+    site = db.session.get(MonthlySite, int(ts.monthly_site_id))
+    if site is None or site.legacy_monthly_route_location_id is None:
+        return jsonify({"error": "Location not found for stop"}), 404
+    loc_id = int(site.legacy_monthly_route_location_id)
+    qty_raw = data.get("quantity", 1)
+    try:
+        quantity = float(qty_raw)
+    except (TypeError, ValueError):
+        return jsonify({"error": "quantity must be a number"}), 400
+    recorded_by = (
+        session.get("portal_tech_name")
+        or session.get("username")
+        or "unknown"
+    )
+    item = MonthlyRunJobItem(
+        run_id=int(run.id),
+        monthly_route_location_id=loc_id,
+        monthly_testing_site_id=int(testing_site_id),
+        description=description,
+        quantity=quantity,
+        recorded_by=str(recorded_by),
+    )
+    db.session.add(item)
+    db.session.commit()
+    return jsonify(
+        {
+            "ok": True,
+            "item": {
+                "id": int(item.id),
+                "location_id": loc_id,
+                "testing_site_id": int(testing_site_id),
+                "description": item.description,
+                "quantity": float(item.quantity),
+                "recorded_by": item.recorded_by,
+                "recorded_at": item.recorded_at.isoformat() if item.recorded_at else None,
+            },
+        }
+    ), 201
 
 
 def _parse_run_details_month_arg() -> date | None:
@@ -2748,6 +3015,14 @@ def patch_monthly_route_worksheet_stop(route_id: int, testing_site_id: int):
         month_date=month_first,
     ).one_or_none()
 
+    if _office_staff_worksheet_patch():
+        from app.monthly.run_workflow import run_in_office_prep_phase
+
+        if run_for_month is None or run_in_office_prep_phase(run_for_month):
+            blocked = _reject_if_future_month_prep_blocked(route_id, month_first)
+            if blocked is not None:
+                return blocked
+
     mtsm, ts, loc = load_stop_for_patch(route_id, testing_site_id, month_first)
     if ts is None or loc is None:
         return jsonify({"error": "Testing site not found"}), 404
@@ -2849,15 +3124,24 @@ def patch_monthly_route_worksheet_stop(route_id: int, testing_site_id: int):
     if unknown:
         return jsonify({"error": f"Unsupported worksheet fields: {', '.join(sorted(unknown))}"}), 400
 
-    if "office_attention" in changes:
+    if "office_attention" in changes or "office_job_comment" in changes or "prior_month_out_of_order_dismissed" in changes:
         from app.monthly.run_workflow import run_in_office_prep_phase
 
         if not _office_staff_worksheet_patch():
+            code = (
+                "office_job_comment_office_only"
+                if "office_job_comment" in changes
+                else (
+                    "prior_month_out_of_order_dismissed_office_only"
+                    if "prior_month_out_of_order_dismissed" in changes
+                    else "office_attention_office_only"
+                )
+            )
             return (
                 jsonify(
                     {
-                        "error": "Only office staff can set site highlights.",
-                        "code": "office_attention_office_only",
+                        "error": "Only office staff can edit office prep fields on stops.",
+                        "code": code,
                     }
                 ),
                 403,
@@ -2866,7 +3150,7 @@ def patch_monthly_route_worksheet_stop(route_id: int, testing_site_id: int):
             return (
                 jsonify(
                     {
-                        "error": "Site highlights can only be edited before field work starts.",
+                        "error": "Office prep fields can only be edited before field work starts.",
                         "code": "run_prep_locked",
                     }
                 ),
@@ -3033,7 +3317,9 @@ def patch_monthly_route_worksheet_stop(route_id: int, testing_site_id: int):
         "time_in",
         "time_out",
         "run_comments",
+        "office_job_comment",
         "office_attention",
+        "prior_month_out_of_order_dismissed",
     }
     snapshot_changed = changed_any and bool(snapshot_patch_keys.intersection(changes_eff))
 
@@ -3840,6 +4126,24 @@ def import_route_run_csv(route_id: int):
             int(route.id),
             month_first,
         )
+
+    from app.monthly.field_submission import capture_field_submission_for_run
+    from app.monthly.run_workflow import (
+        close_historical_run_from_csv_import,
+        is_historical_run_month,
+    )
+
+    historical_closed = False
+    if is_historical_run_month(month_first):
+        now = datetime.now(PACIFIC_TZ)
+        close_historical_run_from_csv_import(
+            run,
+            username=str(session.get("username") or "csv_import"),
+            now=now,
+        )
+        capture_field_submission_for_run(run, captured_at=now)
+        historical_closed = True
+
     db.session.commit()
 
     return jsonify(
@@ -3848,6 +4152,7 @@ def import_route_run_csv(route_id: int):
             "route": _serialize_monthly_route_entity(route),
             "month_date": month_first.isoformat(),
             "run": _serialize_run(run),
+            "historical_run_closed": historical_closed,
             "sheet_label": result.sheet_label,
             "locations_updated": result.locations_updated,
             "history_upserts": result.history_upserts,
@@ -3921,6 +4226,10 @@ def post_monthly_route_run_prepare(route_id: int):
             409,
         )
 
+    blocked = _reject_if_future_month_prep_blocked(route_id, month_first)
+    if blocked is not None:
+        return blocked
+
     from app.monthly.run_workflow import mark_run_prepared
 
     now = datetime.now(PACIFIC_TZ)
@@ -3931,6 +4240,78 @@ def post_monthly_route_run_prepare(route_id: int):
     db.session.add(run)
     db.session.commit()
     return jsonify({"ok": True, "run": _serialize_run(run)})
+
+
+@monthly_routes_bp.post("/api/monthly_routes/routes/<int:route_id>/runs/regenerate_prep_stops")
+def post_monthly_route_regenerate_prep_stops(route_id: int):
+    """Office prep: re-seed stop-month snapshots from library master and prior run month."""
+    if not session.get("authenticated"):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json(silent=True) or {}
+    month_first = _parse_month(data.get("month_date"))
+    if month_first is None:
+        return jsonify({"error": "month_date required (YYYY-MM-01)"}), 400
+    if _get_monthly_route(route_id) is None:
+        return jsonify({"error": "Route not found"}), 404
+
+    run = MonthlyRouteRun.query.filter_by(
+        monthly_route_id=route_id,
+        month_date=month_first,
+    ).one_or_none()
+    if run is None:
+        from app.monthly.runs import get_or_create_monthly_route_run
+
+        run = get_or_create_monthly_route_run(
+            route_id,
+            month_first,
+            source="office_manual",
+        )
+        db.session.flush()
+
+    if _run_explicitly_completed(run):
+        return (
+            jsonify(
+                {
+                    "error": "This run is completed; reopen it before regenerating prep stops.",
+                    "code": "run_completed",
+                }
+            ),
+            409,
+        )
+
+    from app.monthly.run_workflow import run_in_office_prep_phase
+
+    if not run_in_office_prep_phase(run):
+        return (
+            jsonify(
+                {
+                    "error": "Prep stops can only be regenerated before field work starts.",
+                    "code": "run_prep_locked",
+                }
+            ),
+            409,
+        )
+
+    blocked = _reject_if_future_month_prep_blocked(route_id, month_first)
+    if blocked is not None:
+        return blocked
+
+    from app.monthly.worksheet_stops import (
+        ensure_worksheet_stops_for_route_month,
+        regenerate_prep_stops_from_latest_data,
+    )
+
+    ensure_worksheet_stops_for_route_month(route_id, month_first, run)
+    stops_regenerated = regenerate_prep_stops_from_latest_data(route_id, month_first, run)
+    db.session.commit()
+    return jsonify(
+        {
+            "ok": True,
+            "stops_regenerated": stops_regenerated,
+            "run": _serialize_run(run),
+        }
+    )
 
 
 @monthly_routes_bp.post("/api/monthly_routes/routes/<int:route_id>/runs/unprepare")
@@ -4026,6 +4407,10 @@ def patch_monthly_route_run(route_id: int):
             409,
         )
 
+    blocked = _reject_if_future_month_prep_blocked(route_id, month_first)
+    if blocked is not None:
+        return blocked
+
     raw = data.get("pre_run_message")
     if raw is None:
         run.pre_run_message = None
@@ -4065,10 +4450,26 @@ def post_monthly_route_run_review_complete(route_id: int):
             409,
         )
 
-    from app.monthly.run_workflow import mark_office_review_complete
+    from app.monthly.run_workflow import count_unset_billing_for_route_month, mark_office_review_complete
+
+    unset_billing = count_unset_billing_for_route_month(route_id, month_first)
+    if unset_billing > 0:
+        return (
+            jsonify(
+                {
+                    "error": f"{unset_billing} location(s) still have billing unset. Set bill or do not bill for each site before marking review complete.",
+                    "code": "billing_unset_locations",
+                    "unset_count": unset_billing,
+                }
+            ),
+            409,
+        )
 
     now = datetime.now(PACIFIC_TZ)
     mark_office_review_complete(run, username=str(username), now=now)
+    from app.monthly.field_submission import ensure_field_submission_for_run
+
+    ensure_field_submission_for_run(run)
     db.session.add(run)
     db.session.commit()
     return jsonify({"ok": True, "run": _serialize_run(run)})
@@ -4109,6 +4510,9 @@ def post_monthly_route_run_complete(route_id: int):
     now = datetime.now(PACIFIC_TZ)
     run.status = "completed"
     run.completed_at = now
+    from app.monthly.field_submission import ensure_field_submission_for_run
+
+    ensure_field_submission_for_run(run)
     db.session.add(run)
     db.session.commit()
     body: dict[str, object] = {"ok": True, "run": _serialize_run(run)}

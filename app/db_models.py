@@ -725,9 +725,47 @@ class MonthlyRouteRun(db.Model):
         back_populates="run",
         foreign_keys="MonthlyRouteTestHistory.run_id",
     )
+    field_submission = db.relationship(
+        "MonthlyRouteRunFieldSubmission",
+        back_populates="run",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
 
     def __repr__(self):
         return f"<MonthlyRouteRun route={self.monthly_route_id} month={self.month_date}>"
+
+
+class MonthlyRouteRunFieldSubmission(db.Model):
+    """Frozen technician worksheet at the latest portal field end (one row per run)."""
+
+    __tablename__ = "monthly_route_run_field_submission"
+    __table_args__ = (
+        db.UniqueConstraint("run_id", name="uq_monthly_route_run_field_submission_run_id"),
+    )
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    run_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monthly_route_run.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    captured_at = db.Column(db.DateTime(timezone=True), nullable=False)
+    payload_json = db.Column(db.JSON, nullable=False)
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        nullable=False,
+    )
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        onupdate=db.func.now(),
+        nullable=False,
+    )
+
+    run = db.relationship("MonthlyRouteRun", back_populates="field_submission")
 
 
 class MonthlyRouteSpecialistMonth(db.Model):
@@ -1187,8 +1225,12 @@ class MonthlyTestingSiteMonth(db.Model):
     inspection_tech_notes = db.Column(db.Text, nullable=True)
     #: This-run-only notes (portal); never seeded from prior month or mirrored to library master.
     run_comments = db.Column(db.Text, nullable=True)
+    #: Office-only instruction for technicians on this run month (prep); shown in portal when set.
+    office_job_comment = db.Column(db.Text, nullable=True)
     #: Office flagged this stop for technician attention until a test outcome is recorded.
     office_attention = db.Column(db.Boolean, nullable=False, default=False)
+    #: Office dismissed the prior-month out-of-order prep hint for this stop-month row.
+    prior_month_out_of_order_dismissed = db.Column(db.Boolean, nullable=False, default=False)
     sheet_time_in_raw = db.Column(db.String(64), nullable=True)
     sheet_time_out_raw = db.Column(db.String(64), nullable=True)
     #: Portal test result: all_good, passed_with_problems, failed, skipped.
@@ -1605,6 +1647,123 @@ class MonthlyRouteLocationComment(db.Model):
     )
 
     location = db.relationship("MonthlyRouteLocation", back_populates="comments")
+
+
+LOCATION_TICKET_STATUSES = ("open", "email_sent", "resolved")
+
+
+class MonthlyLocationTicket(db.Model):
+    """Office follow-up task for a billing location (keys, monitoring email, etc.)."""
+
+    __tablename__ = "monthly_location_ticket"
+    __table_args__ = (
+        db.Index("ix_monthly_location_ticket_location_id", "monthly_route_location_id"),
+        db.Index("ix_monthly_location_ticket_status", "status"),
+    )
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    monthly_route_location_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monthly_route_location.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    run_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monthly_route_run.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    month_date = db.Column(db.Date, nullable=True)
+    title = db.Column(db.String(255), nullable=False)
+    body = db.Column(db.Text, nullable=True)
+    status = db.Column(db.String(32), nullable=False, server_default="open")
+    created_by = db.Column(db.String(128), nullable=True)
+    resolved_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        nullable=False,
+    )
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        onupdate=db.func.now(),
+        nullable=False,
+    )
+
+    location = db.relationship("MonthlyRouteLocation", backref=db.backref("tickets", lazy="dynamic"))
+    run = db.relationship("MonthlyRouteRun")
+    events = db.relationship(
+        "MonthlyLocationTicketEvent",
+        back_populates="ticket",
+        cascade="all, delete-orphan",
+        order_by="MonthlyLocationTicketEvent.created_at",
+    )
+
+
+class MonthlyLocationTicketEvent(db.Model):
+    """Status transition log for a location ticket."""
+
+    __tablename__ = "monthly_location_ticket_event"
+    __table_args__ = (
+        db.Index("ix_monthly_location_ticket_event_ticket_id", "ticket_id"),
+    )
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    ticket_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monthly_location_ticket.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    from_status = db.Column(db.String(32), nullable=True)
+    to_status = db.Column(db.String(32), nullable=False)
+    note = db.Column(db.Text, nullable=True)
+    created_by = db.Column(db.String(128), nullable=True)
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        nullable=False,
+    )
+
+    ticket = db.relationship("MonthlyLocationTicket", back_populates="events")
+
+
+class MonthlyRunJobItem(db.Model):
+    """Items added or replaced during a monthly run (internal log; not ServiceTrade)."""
+
+    __tablename__ = "monthly_run_job_item"
+    __table_args__ = (
+        db.Index("ix_monthly_run_job_item_run_id", "run_id"),
+        db.Index("ix_monthly_run_job_item_location_id", "monthly_route_location_id"),
+    )
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    run_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monthly_route_run.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    monthly_route_location_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monthly_route_location.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    monthly_testing_site_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monthly_testing_site.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    description = db.Column(db.Text, nullable=False)
+    quantity = db.Column(db.Numeric(10, 2), nullable=False, default=1)
+    recorded_by = db.Column(db.String(255), nullable=True)
+    recorded_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        nullable=False,
+    )
+
+    run = db.relationship("MonthlyRouteRun", backref=db.backref("job_items", lazy="dynamic"))
+    location = db.relationship("MonthlyRouteLocation")
+    testing_site = db.relationship("MonthlyTestingSite")
 
 
 class MonthlyRouteComment(db.Model):

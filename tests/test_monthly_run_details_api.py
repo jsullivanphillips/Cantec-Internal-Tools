@@ -1293,3 +1293,57 @@ def test_patch_location_billing_status_invalid(run_details_client):
     )
     assert res.status_code == 400
     assert res.get_json()["code"] == "billing_legacy_locked"
+
+
+def test_run_details_locations_use_bounded_query_count(run_details_client):
+    """Regression: run_details must batch enrichments instead of per-stop queries."""
+    from sqlalchemy import event
+    from sqlalchemy.engine import Engine
+
+    client, app = run_details_client
+    with app.app_context():
+        route, _loc, _hist, run = _seed_basic_route_data()
+        for idx in range(2, 12):
+            lid = 100 + idx
+            db.session.add(
+                MonthlyRouteLocation(
+                    id=lid,
+                    address=f"{idx} Batch St",
+                    address_normalized=f"{idx} batch st",
+                    property_management_company="Acme",
+                    property_management_company_normalized="acme",
+                    building=None,
+                    building_normalized="",
+                    status_normalized="active",
+                    status_raw="Active",
+                    monthly_route_id=int(route.id),
+                    route_stop_order=idx,
+                )
+            )
+            db.session.add(
+                MonthlyRouteTestHistory(
+                    id=8000 + idx,
+                    location_id=lid,
+                    month_date=date(2026, 5, 1),
+                    result_status="tested",
+                    test_monthly_route_id=int(route.id),
+                    run_id=int(run.id),
+                )
+            )
+        db.session.commit()
+
+    query_count = 0
+
+    def _count_query(*_args, **_kwargs) -> None:
+        nonlocal query_count
+        query_count += 1
+
+    event.listen(Engine, "before_cursor_execute", _count_query)
+    try:
+        res = client.get(BASE_URL)
+    finally:
+        event.remove(Engine, "before_cursor_execute", _count_query)
+
+    assert res.status_code == 200
+    assert len(res.get_json()["locations"]) >= 10
+    assert query_count < 200, f"run_details issued {query_count} SQL queries"

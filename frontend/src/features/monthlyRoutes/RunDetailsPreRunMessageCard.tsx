@@ -14,11 +14,13 @@ export default function RunDetailsPreRunMessageCard({
   monthDate,
   run,
   onPreRunMessagePatched,
+  prepEditsDisabled = false,
 }: {
   routeId: number
   monthDate: string
   run: TechnicianWorksheetRun | null
   onPreRunMessagePatched: (preRunMessage: string | null) => void
+  prepEditsDisabled?: boolean
 }) {
   const [activeFieldKey, setActiveFieldKey] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -63,7 +65,7 @@ export default function RunDetailsPreRunMessageCard({
 
   return (
     <section
-      className="monthly-location-detail-surface run-details-pre-run-message mb-4"
+      className="monthly-location-detail-surface run-details-pre-run-message"
       aria-label="Pre-run message for technicians"
     >
       <div className="run-details-pre-run-message__header">
@@ -77,7 +79,7 @@ export default function RunDetailsPreRunMessageCard({
       <PrepLongTextCell
         fieldKey={FIELD_KEY}
         value={value}
-        disabled={saving}
+        disabled={saving || prepEditsDisabled}
         saving={saving}
         activeKey={activeFieldKey}
         onActivate={setActiveFieldKey}

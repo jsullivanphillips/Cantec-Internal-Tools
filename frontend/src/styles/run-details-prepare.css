@@ -13,6 +13,13 @@
   margin-bottom: 0.35rem;
 }
 
+.monthly-run-detail-page .run-details-prep-section__header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
 .monthly-run-detail-page .run-details-prep-search__input {
   max-width: 18rem;
 }
@@ -230,6 +237,60 @@
 .monthly-run-detail-page .run-details-prepare-table.table tbody tr.run-details-prepare-row--annual .run-details-prepare-stop-num {
   background: #fb923c;
   color: #c2410c;
+}
+
+.monthly-run-detail-page .run-details-prepare-table--reorderable {
+  --rdp-col-stop: 4.5rem;
+}
+
+.monthly-run-detail-page .run-details-prepare-stop-order-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.monthly-run-detail-page .run-details-prepare-drag-handle {
+  line-height: 1;
+}
+
+.monthly-run-detail-page .run-details-prep-badge--out-of-order {
+  align-items: flex-start;
+  gap: 0.35rem;
+  padding: 0.35rem 0.4rem 0.35rem 0.45rem;
+  text-align: left;
+}
+
+.monthly-run-detail-page .run-details-prep-badge--out-of-order .run-details-prep-badge__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.monthly-run-detail-page .run-details-prep-badge--out-of-order .run-details-prep-badge__title {
+  display: block;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.monthly-run-detail-page .run-details-prep-badge__dismiss {
+  flex-shrink: 0;
+  margin: 0.05rem 0 0;
+  padding: 0.2rem;
+  opacity: 0.65;
+}
+
+.monthly-run-detail-page .run-details-prep-badge__dismiss:hover {
+  opacity: 1;
+}
+
+.monthly-run-detail-page .run-details-prep-badge__dismiss:disabled {
+  opacity: 0.35;
+}
+
+.monthly-run-detail-page .run-details-prep-badge__detail {
+  display: block;
+  margin-top: 0.15rem;
+  font-weight: 500;
 }
 
 .monthly-run-detail-page .run-details-prepare-stop-num {
@@ -696,4 +757,110 @@
 .monthly-run-detail-page .run-details-review-table tbody tr.run-details-review-table-row--even .run-details-prepare-sticky-order,
 .monthly-run-detail-page .run-details-review-table tbody tr.run-details-review-table-row--even .run-details-prepare-sticky-address {
   background-color: var(--ml-card, #ffffff);
+}
+
+/* Run prep tab: narrower stop #, wider access, denser typography */
+.monthly-run-detail-page .run-details-prep-section .run-details-prepare-table-shell {
+  --rdp-col-stop: 2rem;
+  --rdp-col-access: 13.25rem;
+  --rdp-sticky-address-left: var(--rdp-col-stop);
+  --rdp-table-w: calc(
+    var(--rdp-col-stop) +
+    var(--rdp-col-address) +
+    var(--rdp-col-access) +
+    var(--rdp-col-monitoring) +
+    var(--rdp-col-run-comments) +
+    var(--rdp-col-procedures) +
+    var(--rdp-col-location-comments) +
+    var(--rdp-col-deficiencies)
+  );
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prepare-table--reorderable {
+  --rdp-col-stop: 3.5rem;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prepare-table.table {
+  font-size: 0.75rem;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prepare-table.table thead th {
+  padding: 0.4rem 0.5rem;
+  font-size: 0.625rem;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prepare-table.table tbody td {
+  padding: 0.45rem 0.5rem;
+  line-height: 1.3;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prepare-longtext-cell > .run-details-prepare-cell-surface {
+  padding: 0.35rem 0.45rem;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prepare-stop-num {
+  min-width: 1.35rem;
+  padding: 0.1rem 0.25rem;
+  font-size: 0.6875rem;
+}
+
+.monthly-run-detail-page .run-details-prep-badge {
+  max-width: 100%;
+  white-space: normal;
+  text-align: left;
+  font-size: 0.65rem;
+  line-height: 1.25;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prep-badge {
+  font-size: 0.6rem;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prepare-stack__label {
+  font-size: 0.625rem;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prepare-field-hint {
+  font-size: 0.625rem;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prepare-display {
+  font-size: 0.75rem;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prepare-cell-view {
+  font-size: 0.75rem;
+  line-height: 1.25;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prepare-cell-editor,
+.monthly-run-detail-page .run-details-prep-section .run-details-prepare-editor.form-control,
+.monthly-run-detail-page .run-details-prep-section .run-details-prepare-editor.form-select {
+  font-size: 0.75rem;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-deficiency-empty {
+  font-size: 0.75rem;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-deficiency-cards--compact .run-details-deficiency-card__title {
+  font-size: 0.6875rem;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-deficiency-cards--compact .run-details-deficiency-card__badges .badge {
+  font-size: 0.5625rem;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-deficiency-cards--compact .run-details-deficiency-card__preview {
+  font-size: 0.625rem;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-deficiency-cards--compact .run-details-deficiency-card__hint {
+  font-size: 0.6rem;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prepare-edit-btn {
+  font-size: 0.6875rem;
+  min-height: 1.6rem;
+  padding: 0.25rem 0.45rem;
 }

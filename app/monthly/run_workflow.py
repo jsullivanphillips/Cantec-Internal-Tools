@@ -187,3 +187,59 @@ def count_unset_billing_for_route_month(route_id: int, month_first: date) -> int
             MonthlyRouteTestHistory.billing_status == "unset",
         ).count()
     )
+
+
+def is_historical_run_month(
+    month_first: date,
+    *,
+    current_month_first: date | None = None,
+) -> bool:
+    """True when ``month_first`` is strictly before the Pacific calendar current month."""
+    if current_month_first is None:
+        from app.routes.monthly_routes import _current_pacific_month_first
+
+        current_month_first = _current_pacific_month_first()
+    return month_first < current_month_first
+
+
+def close_historical_run_from_csv_import(
+    run: MonthlyRouteRun,
+    *,
+    username: str,
+    now,
+) -> None:
+    """Mark paperwork closed after importing a prior-month technician CSV."""
+    if run.started_at is None:
+        run.started_at = now
+    mark_field_ended(run, now=now)
+    mark_office_review_complete(run, username=username, now=now)
+    run.status = "completed"
+    run.completed_at = now
+
+
+def office_future_month_prep_blocked_reason(
+    route_id: int,
+    month_first: date,
+) -> tuple[str, str] | None:
+    """Block office prep for a future calendar month until the current month run is closed.
+
+    Returns ``(message, code)`` when blocked, else ``None``.
+    """
+    from app.db_models import MonthlyRouteRun
+    from app.routes.monthly_routes import _current_pacific_month_first
+
+    current_month = _current_pacific_month_first()
+    if month_first <= current_month:
+        return None
+
+    current_run = MonthlyRouteRun.query.filter_by(
+        monthly_route_id=int(route_id),
+        month_date=current_month,
+    ).one_or_none()
+    if run_explicitly_completed(current_run):
+        return None
+
+    return (
+        "Close the current month's paperwork before preparing a future month.",
+        "current_month_not_closed",
+    )

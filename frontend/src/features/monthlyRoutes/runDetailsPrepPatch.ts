@@ -1,10 +1,12 @@
 import type {
   MonthlyRunDetailDeficiencySummary,
+  MonthlyRunDetailLocation,
   MonthlyRunDetailLocationStop,
   TechnicianWorksheetRun,
   TechnicianWorksheetStop,
 } from './monthlyRoutesShared'
-import { runReviewDeficiencySummaries } from './runDetailsDeficiencyDisplay'
+import { openDeficiencySummaries, runReviewDeficiencySummaries } from './runDetailsDeficiencyDisplay'
+import { patchRunDetailLocationStop } from './runDetailsLocationReview'
 
 export type PrepStopPatchChanges = Record<string, string | number | boolean | null>
 
@@ -20,6 +22,9 @@ export function prepChangesToStopPatch(changes: PrepStopPatchChanges): Partial<M
   if ('run_comments' in changes) {
     patch.run_comments = normNullableText(changes.run_comments)
   }
+  if ('office_job_comment' in changes) {
+    patch.office_job_comment = normNullableText(changes.office_job_comment)
+  }
   if ('testing_procedures' in changes) {
     patch.testing_procedures = changes.testing_procedures == null ? null : String(changes.testing_procedures)
   }
@@ -32,6 +37,11 @@ export function prepChangesToStopPatch(changes: PrepStopPatchChanges): Partial<M
   }
   if ('office_attention' in changes) {
     patch.office_attention = Boolean(changes.office_attention)
+  }
+  if ('prior_month_out_of_order_dismissed' in changes && changes.prior_month_out_of_order_dismissed) {
+    patch.prior_month_out_of_order_dismissed = true
+    patch.prior_month_out_of_order = false
+    patch.prior_month_expected_stop_number = null
   }
   if ('ring' in changes) patch.ring = normNullableText(changes.ring)
   if ('key_number' in changes) patch.key_number = normNullableText(changes.key_number)
@@ -58,6 +68,7 @@ export function prepPatchFromWorksheetStop(
   const keys = new Set(changeKeys)
   const patch: Partial<MonthlyRunDetailLocationStop> = {}
   if (keys.has('run_comments')) patch.run_comments = stop.run_comments
+  if (keys.has('office_job_comment')) patch.office_job_comment = stop.office_job_comment ?? null
   if (keys.has('testing_procedures')) patch.testing_procedures = stop.testing_procedures
   if (keys.has('inspection_tech_notes')) patch.inspection_tech_notes = stop.inspection_tech_notes
   if (keys.has('annual_month')) patch.annual_month = stop.annual_month
@@ -81,10 +92,14 @@ export function prepPatchFromWorksheetStop(
 type PrepRollbackStop = Pick<
   MonthlyRunDetailLocationStop,
   | 'run_comments'
+  | 'office_job_comment'
   | 'testing_procedures'
   | 'inspection_tech_notes'
   | 'annual_month'
   | 'office_attention'
+  | 'prior_month_out_of_order'
+  | 'prior_month_expected_stop_number'
+  | 'prior_month_out_of_order_dismissed'
   | 'ring'
   | 'key_number'
   | 'door_code'
@@ -101,12 +116,20 @@ export function rollbackPatchForChanges(
 ): Partial<MonthlyRunDetailLocationStop> {
   const rollback: Partial<MonthlyRunDetailLocationStop> = {}
   if ('run_comments' in changes) rollback.run_comments = stop.run_comments ?? null
+  if ('office_job_comment' in changes) {
+    rollback.office_job_comment = stop.office_job_comment ?? null
+  }
   if ('testing_procedures' in changes) rollback.testing_procedures = stop.testing_procedures ?? null
   if ('inspection_tech_notes' in changes) {
     rollback.inspection_tech_notes = stop.inspection_tech_notes ?? null
   }
   if ('annual_month' in changes) rollback.annual_month = stop.annual_month ?? null
   if ('office_attention' in changes) rollback.office_attention = Boolean(stop.office_attention)
+  if ('prior_month_out_of_order_dismissed' in changes) {
+    rollback.prior_month_out_of_order_dismissed = Boolean(stop.prior_month_out_of_order_dismissed)
+    rollback.prior_month_out_of_order = Boolean(stop.prior_month_out_of_order)
+    rollback.prior_month_expected_stop_number = stop.prior_month_expected_stop_number ?? null
+  }
   if ('ring' in changes) rollback.ring = stop.ring ?? null
   if ('key_number' in changes) rollback.key_number = stop.key_number ?? null
   if ('door_code' in changes) rollback.door_code = stop.door_code ?? null
@@ -175,6 +198,40 @@ function deficiencySummariesFromWorksheetStop(
   }))
 }
 
+/** Merge one saved deficiency onto a run-details stop row (prep / review lists). */
+export function deficiencySummaryPatchOnStop(
+  stop: MonthlyRunDetailLocationStop,
+  updated: MonthlyRunDetailDeficiencySummary,
+): Partial<MonthlyRunDetailLocationStop> {
+  const summaries = (stop.deficiency_summaries ?? []).map((def) =>
+    def.id === updated.id ? updated : def,
+  )
+  return {
+    deficiency_summaries: summaries,
+    has_active_deficiencies: openDeficiencySummaries(summaries).length > 0,
+  }
+}
+
+export function patchRunDetailStopDeficiency(
+  locations: MonthlyRunDetailLocation[],
+  testingSiteId: number,
+  monthDate: string,
+  updated: MonthlyRunDetailDeficiencySummary,
+): MonthlyRunDetailLocation[] {
+  for (const loc of locations) {
+    const hit = loc.stops.find((s) => s.testing_site_id === testingSiteId)
+    if (hit) {
+      return patchRunDetailLocationStop(
+        locations,
+        testingSiteId,
+        monthDate,
+        deficiencySummaryPatchOnStop(hit, updated),
+      )
+    }
+  }
+  return locations
+}
+
 /** Merge deficiency API responses without touching unrelated prep fields. */
 export function deficiencyPatchFromWorksheetStop(
   stop: TechnicianWorksheetStop,
@@ -198,6 +255,7 @@ export function detailPatchFromWorksheetStop(
 ): Partial<MonthlyRunDetailLocationStop> {
   return {
     run_comments: stop.run_comments,
+    office_job_comment: stop.office_job_comment ?? null,
     testing_procedures: stop.testing_procedures,
     inspection_tech_notes: stop.inspection_tech_notes,
     annual_month: stop.annual_month,

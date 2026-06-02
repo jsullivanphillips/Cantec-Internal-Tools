@@ -14,6 +14,7 @@ from app.db_models import (
     MonthlyRoute,
     MonthlyRouteLocation,
     MonthlyRouteRun,
+    MonthlyRouteRunFieldSubmission,
     MonthlyRouteTestHistory,
     MonthlyRouteWorksheetAuditEvent,
     MonthlySite,
@@ -43,6 +44,7 @@ def workflow_client(monkeypatch):
         MonthlyRoute.__table__,
         MonthlyRouteLocation.__table__,
         MonthlyRouteRun.__table__,
+        MonthlyRouteRunFieldSubmission.__table__,
         MonthlyRouteTestHistory.__table__,
         MonthlyRouteWorksheetAuditEvent.__table__,
         MonthlySite.__table__,
@@ -136,6 +138,48 @@ def test_portal_start_blocked_without_prepare(workflow_client, monkeypatch):
     res = client.post("/api/technician_portal/routes/1/runs")
     assert res.status_code == 409
     assert res.get_json().get("code") == "run_not_prepared"
+
+
+def test_prepare_future_month_blocked_until_current_closed(workflow_client, monkeypatch):
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 6, 1))
+
+    client, app = workflow_client
+    with app.app_context():
+        _seed_route()
+        seed_prepared_started_run(1, date(2026, 6, 1), field_ended=True)
+
+    res = client.post(
+        "/api/monthly_routes/routes/1/runs/prepare",
+        json={"month_date": "2026-07-01"},
+    )
+    assert res.status_code == 409
+    assert res.get_json().get("code") == "current_month_not_closed"
+
+
+def test_prepare_future_month_allowed_when_current_closed(workflow_client, monkeypatch):
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 6, 1))
+
+    client, app = workflow_client
+    with app.app_context():
+        _seed_route()
+        seed_prepared_started_run(
+            1,
+            date(2026, 6, 1),
+            field_ended=True,
+            review_complete=True,
+            completed=True,
+        )
+
+    res = client.post(
+        "/api/monthly_routes/routes/1/runs/prepare",
+        json={"month_date": "2026-07-01"},
+    )
+    assert res.status_code == 200
+    assert res.get_json()["run"]["workflow_stage"] == "prepared"
 
 
 def test_field_end_and_reopen_field(workflow_client, monkeypatch):
