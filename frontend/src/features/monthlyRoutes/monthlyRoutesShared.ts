@@ -393,6 +393,7 @@ export type MonthlyRunDetailLocationStop = {
   monitoring_notes?: string | null
   monitoring_company_record?: MonitoringCompanySummary | null
   run_comments: string | null
+  office_attention?: boolean
   testing_procedures: string | null
   inspection_tech_notes: string | null
   confirmed_no_deficiencies?: boolean
@@ -526,6 +527,8 @@ export type TechnicianWorksheetRun = {
   office_review_completed_by?: string | null
   /** ISO timestamp when the run was marked completed (office / workflow). */
   completed_at: string | null
+  /** Office prep note for technicians on the route hub (this run only). */
+  pre_run_message?: string | null
   /** Where the run was created: ``technician_app``, ``csv_import``, ``office_manual``. */
   source: string
   /** Server-derived workflow stage id (see ``runWorkflowShared``). */
@@ -607,6 +610,8 @@ export type TechnicianWorksheetStop = {
   inspection_tech_notes: string | null
   /** This-run-only notes; not carried to the next month. */
   run_comments: string | null
+  /** Office flagged this stop until a test outcome is recorded. */
+  office_attention?: boolean
   time_in: string | null
   time_out: string | null
   route_stop_order: number | null

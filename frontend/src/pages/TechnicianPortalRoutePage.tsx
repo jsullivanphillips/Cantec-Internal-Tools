@@ -231,6 +231,14 @@ export default function TechnicianPortalRoutePage() {
                   <div>Open run for {monthLabel}</div>
                   <div className="small fw-normal opacity-75">{formatRunSubtitle(data.current_month_run)}</div>
                 </Button>
+                {(data.current_month_run.pre_run_message ?? '').trim().length > 0 ? (
+                  <Alert variant="info" className="mt-3 mb-0 small tw-portal-pre-run-message">
+                    <div className="fw-semibold mb-1">Note from office</div>
+                    <div style={{ whiteSpace: 'pre-wrap' }}>
+                      {(data.current_month_run.pre_run_message ?? '').trim()}
+                    </div>
+                  </Alert>
+                ) : null}
                 {showEndRun ? (
                   <Button
                     variant="outline-success"

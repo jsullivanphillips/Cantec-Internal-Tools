@@ -419,6 +419,10 @@ export function portalStopVisualTone(
   return 'pending'
 }
 
+export function portalStopOfficeAttentionActive(stop: TechnicianWorksheetStop): boolean {
+  return Boolean(stop.office_attention) && !portalStopHasTestOutcome(stop)
+}
+
 export function portalHeaderBandClass(stop: TechnicianWorksheetStop, runMonthIso: string): string {
   const tone = portalStopVisualTone(stop, runMonthIso)
   if (tone === 'all_good') return 'pw-mock-header--tested'
@@ -427,6 +431,7 @@ export function portalHeaderBandClass(stop: TechnicianWorksheetStop, runMonthIso
   if (tone === 'skipped') return 'pw-mock-header--skipped'
   if (tone === 'annual') return 'pw-mock-header--annual'
   if (tone === 'in_progress') return 'pw-mock-header--progress'
+  if (portalStopOfficeAttentionActive(stop)) return 'pw-mock-header--office-attention'
   return ''
 }
 
@@ -438,6 +443,7 @@ export function portalNavStopStatusClass(stop: TechnicianWorksheetStop, runMonth
   if (tone === 'failed') return 'pw-mock-nav-stop--failed'
   if (tone === 'skipped') return 'pw-mock-nav-stop--skipped'
   if (tone === 'annual') return 'pw-mock-nav-stop--annual'
+  if (portalStopOfficeAttentionActive(stop)) return 'pw-mock-nav-stop--office-attention'
   return ''
 }
 

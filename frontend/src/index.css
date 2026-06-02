@@ -8350,6 +8350,12 @@ body {
   border-color: var(--pw-annual-border);
 }
 
+.pw-mock-nav-stop--collapsed.pw-mock-nav-stop--office-attention {
+  background: #f3e8ff;
+  color: #6b21a8;
+  border-color: #d8b4fe;
+}
+
 .pw-mock-nav-stop--collapsed.pw-mock-nav-stop--active {
   border-color: var(--pw-selected-border);
   box-shadow:
@@ -8415,6 +8421,17 @@ body {
   background: var(--pw-annual-soft);
   border-color: var(--pw-annual-border);
   color: var(--pw-annual-text);
+}
+
+.pw-mock-nav-stop--expanded.pw-mock-nav-stop--office-attention {
+  background: #f3e8ff;
+  border-color: #d8b4fe;
+  color: #6b21a8;
+}
+
+.pw-mock-nav-stop--expanded.pw-mock-nav-stop--office-attention .pw-mock-nav-stop-label,
+.pw-mock-nav-stop--expanded.pw-mock-nav-stop--office-attention .pw-mock-nav-stop-line {
+  color: #6b21a8;
 }
 
 .pw-mock-nav-stop--expanded.pw-mock-nav-stop--active {
@@ -8555,6 +8572,14 @@ body {
 
 .pw-mock-header--annual::before {
   background: var(--pw-annual);
+}
+
+.pw-mock-header--office-attention {
+  background: var(--pw-card);
+}
+
+.pw-mock-header--office-attention::before {
+  background: #9333ea;
 }
 
 .pw-mock-header--progress {

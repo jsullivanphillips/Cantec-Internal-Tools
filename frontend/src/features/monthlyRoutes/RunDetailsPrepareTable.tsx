@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { Alert, Table } from 'react-bootstrap'
+import { Alert, Form, Table } from 'react-bootstrap'
 import { Link } from 'react-router-dom'
 import { annualMonthHint, stopAnnualDueThisMonth } from './annualMonthHint'
 import { monitoringCompanyDisplayName } from './MonitoringCompanySelect'
@@ -12,6 +12,12 @@ import RunDetailsDeficiencyList from './RunDetailsDeficiencyList'
 import { openDeficiencySummaries } from './runDetailsDeficiencyDisplay'
 import { patchRunDetailsStop } from './patchRunDetailsStop'
 import type { RunDetailPrepRow } from './runDetailsLocationReview'
+import {
+  prepChangesToStopPatch,
+  prepPatchFromWorksheetStop,
+  type PrepStopPatchChanges,
+} from './runDetailsPrepPatch'
+import type { MonthlyRunDetailLocationStop } from './monthlyRoutesShared'
 import { useMonitoringCompanies } from './useMonitoringCompanies'
 
 type SavingState = { siteId: number; fieldKey: string } | null
@@ -20,13 +26,13 @@ export default function RunDetailsPrepareTable({
   rows,
   routeId,
   monthDate,
-  onSaved,
+  onStopPatched,
   onDeficiencyUpdated,
 }: {
   rows: RunDetailPrepRow[]
   routeId: number
   monthDate: string
-  onSaved: () => Promise<void>
+  onStopPatched: (testingSiteId: number, patch: Partial<MonthlyRunDetailLocationStop>) => void
   onDeficiencyUpdated?: () => void | Promise<void>
 }) {
   const [saving, setSaving] = useState<SavingState>(null)
@@ -35,19 +41,28 @@ export default function RunDetailsPrepareTable({
   const { companies, loading: companiesLoading, refresh, appendCompany } = useMonitoringCompanies()
 
   const patchStop = useCallback(
-    async (testingSiteId: number, fieldKey: string, changes: Record<string, string | number | null>) => {
+    async (
+      testingSiteId: number,
+      fieldKey: string,
+      changes: PrepStopPatchChanges,
+      rollback: Partial<MonthlyRunDetailLocationStop>,
+    ) => {
+      const changeKeys = Object.keys(changes)
+      const optimistic = prepChangesToStopPatch(changes)
+      onStopPatched(testingSiteId, optimistic)
       setSaving({ siteId: testingSiteId, fieldKey })
       setError(null)
       try {
-        await patchRunDetailsStop(routeId, monthDate, testingSiteId, changes)
-        await onSaved()
+        const stop = await patchRunDetailsStop(routeId, monthDate, testingSiteId, changes)
+        onStopPatched(testingSiteId, prepPatchFromWorksheetStop(stop, changeKeys))
       } catch (e) {
+        onStopPatched(testingSiteId, rollback)
         setError(e instanceof Error ? e.message : 'Could not save.')
       } finally {
         setSaving(null)
       }
     },
-    [routeId, monthDate, onSaved],
+    [routeId, monthDate, onStopPatched],
   )
 
   const fieldKey = (testingSiteId: number, suffix: string) => `${testingSiteId}-${suffix}`
@@ -70,6 +85,7 @@ export default function RunDetailsPrepareTable({
       <Table size="sm" className="run-details-prepare-table mb-0">
         <colgroup>
           <col className="run-details-prepare-col-stop" />
+          <col className="run-details-prepare-col-highlight" />
           <col className="run-details-prepare-col-address" />
           <col className="run-details-prepare-col-access" />
           <col className="run-details-prepare-col-monitoring" />
@@ -81,6 +97,7 @@ export default function RunDetailsPrepareTable({
         <thead>
           <tr>
             <th className="run-details-prepare-sticky-order">#</th>
+            <th className="run-details-prepare-col-highlight">Highlight</th>
             <th className="run-details-prepare-sticky-address">Address</th>
             <th>Access</th>
             <th>Monitoring</th>
@@ -106,13 +123,36 @@ export default function RunDetailsPrepareTable({
 
             const fk = (suffix: string) => fieldKey(sid, suffix)
 
+            const attention = Boolean(stop.office_attention)
+
             return (
               <tr
                 key={sid}
-                className={annualDue ? 'run-details-prepare-row--annual' : undefined}
+                className={[
+                  annualDue ? 'run-details-prepare-row--annual' : '',
+                  attention ? 'run-details-prepare-row--attention' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ') || undefined}
               >
                 <td className="run-details-prepare-sticky-order tabular-nums align-top">
                   <span className="run-details-prepare-stop-num">{stop.stop_number}</span>
+                </td>
+                <td className="align-top text-center run-details-prepare-col-highlight">
+                  <Form.Check
+                    type="checkbox"
+                    aria-label={`Highlight stop ${stop.stop_number} for technicians`}
+                    checked={attention}
+                    disabled={rowBusy}
+                    onChange={(e) =>
+                      void patchStop(
+                        sid,
+                        fk('highlight'),
+                        { office_attention: e.target.checked },
+                        { office_attention: attention },
+                      )
+                    }
+                  />
                 </td>
                 <td className="run-details-prepare-sticky-address align-top">
                   <Link
@@ -139,43 +179,60 @@ export default function RunDetailsPrepareTable({
                       saving={isFieldSaving(sid, fk('ring'))}
                       activeKey={activeFieldKey}
                       onActivate={setActiveFieldKey}
-                      onCommit={(next) => void patchStop(sid, fk('ring'), { ring: next.trim() || null })}
+                      onCommit={(next) =>
+                        void patchStop(sid, fk('ring'), { ring: next.trim() || null }, { ring: stop.ring })
+                      }
                     />
                     <PrepCompactField
                       fieldKey={fk('key')}
-                      label="Key #"
+                      label="Key"
                       value={stop.key_number || ''}
                       disabled={rowBusy}
                       saving={isFieldSaving(sid, fk('key'))}
                       activeKey={activeFieldKey}
                       onActivate={setActiveFieldKey}
                       onCommit={(next) =>
-                        void patchStop(sid, fk('key'), { key_number: next.trim() || null })
+                        void patchStop(
+                          sid,
+                          fk('key'),
+                          { key_number: next.trim() || null },
+                          { key_number: stop.key_number },
+                        )
                       }
                     />
                     <PrepCompactField
-                      fieldKey={fk('door-code')}
-                      label="Door code"
+                      fieldKey={fk('door')}
+                      label="Door"
                       value={stop.door_code || ''}
                       disabled={rowBusy}
-                      saving={isFieldSaving(sid, fk('door-code'))}
+                      saving={isFieldSaving(sid, fk('door'))}
                       activeKey={activeFieldKey}
                       onActivate={setActiveFieldKey}
                       onCommit={(next) =>
-                        void patchStop(sid, fk('door-code'), { door_code: next.trim() || null })
+                        void patchStop(
+                          sid,
+                          fk('door'),
+                          { door_code: next.trim() || null },
+                          { door_code: stop.door_code },
+                        )
                       }
                     />
                     <PrepCompactField
                       fieldKey={fk('annual')}
                       label="Annual month"
                       value={stop.annual_month || ''}
-                      hint={annualMonthHint(stop, locationLabel, monthDate)}
                       disabled={rowBusy}
                       saving={isFieldSaving(sid, fk('annual'))}
                       activeKey={activeFieldKey}
                       onActivate={setActiveFieldKey}
+                      hint={annualMonthHint(stop, locationLabel, monthDate) ?? undefined}
                       onCommit={(next) =>
-                        void patchStop(sid, fk('annual'), { annual_month: next.trim() || null })
+                        void patchStop(
+                          sid,
+                          fk('annual'),
+                          { annual_month: next.trim() || null },
+                          { annual_month: stop.annual_month },
+                        )
                       }
                     />
                   </div>
@@ -193,7 +250,18 @@ export default function RunDetailsPrepareTable({
                       saving={isFieldSaving(sid, fk('company'))}
                       activeKey={activeFieldKey}
                       onActivate={setActiveFieldKey}
-                      onCommit={(nextId) => void patchStop(sid, fk('company'), { monitoring_company_id: nextId })}
+                      onCommit={(nextId) =>
+                        void patchStop(
+                          sid,
+                          fk('company'),
+                          { monitoring_company_id: nextId },
+                          {
+                            monitoring_company_id: stop.monitoring_company_id,
+                            monitoring_company: stop.monitoring_company,
+                            monitoring_company_record: stop.monitoring_company_record,
+                          },
+                        )
+                      }
                       onCompanyCreated={(company) => {
                         appendCompany(company)
                         void refresh()
@@ -208,9 +276,12 @@ export default function RunDetailsPrepareTable({
                       activeKey={activeFieldKey}
                       onActivate={setActiveFieldKey}
                       onCommit={(next) =>
-                        void patchStop(sid, fk('account'), {
-                          monitoring_account_number: next.trim() || null,
-                        })
+                        void patchStop(
+                          sid,
+                          fk('account'),
+                          { monitoring_account_number: next.trim() || null },
+                          { monitoring_account_number: stop.monitoring_account_number },
+                        )
                       }
                     />
                     <PrepCompactField
@@ -223,7 +294,12 @@ export default function RunDetailsPrepareTable({
                       onActivate={setActiveFieldKey}
                       multiline
                       onCommit={(next) =>
-                        void patchStop(sid, fk('mon-notes'), { monitoring_notes: next.trim() || null })
+                        void patchStop(
+                          sid,
+                          fk('mon-notes'),
+                          { monitoring_notes: next.trim() || null },
+                          { monitoring_notes: stop.monitoring_notes },
+                        )
                       }
                     />
                   </div>
@@ -251,7 +327,14 @@ export default function RunDetailsPrepareTable({
                     saving={isFieldSaving(sid, fk('run-comments'))}
                     activeKey={activeFieldKey}
                     onActivate={setActiveFieldKey}
-                    onCommit={(next) => void patchStop(sid, fk('run-comments'), { run_comments: next })}
+                    onCommit={(next) =>
+                      void patchStop(
+                        sid,
+                        fk('run-comments'),
+                        { run_comments: next },
+                        { run_comments: stop.run_comments },
+                      )
+                    }
                   />
                 </td>
                 <td className="align-top run-details-prepare-longtext-cell">
@@ -263,7 +346,12 @@ export default function RunDetailsPrepareTable({
                     activeKey={activeFieldKey}
                     onActivate={setActiveFieldKey}
                     onCommit={(next) =>
-                      void patchStop(sid, fk('procedures'), { testing_procedures: next })
+                      void patchStop(
+                        sid,
+                        fk('procedures'),
+                        { testing_procedures: next },
+                        { testing_procedures: stop.testing_procedures },
+                      )
                     }
                   />
                 </td>
@@ -276,7 +364,12 @@ export default function RunDetailsPrepareTable({
                     activeKey={activeFieldKey}
                     onActivate={setActiveFieldKey}
                     onCommit={(next) =>
-                      void patchStop(sid, fk('loc-notes'), { inspection_tech_notes: next })
+                      void patchStop(
+                        sid,
+                        fk('loc-notes'),
+                        { inspection_tech_notes: next },
+                        { inspection_tech_notes: stop.inspection_tech_notes },
+                      )
                     }
                   />
                 </td>

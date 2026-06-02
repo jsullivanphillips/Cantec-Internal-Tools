@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Alert, Badge, Button, Modal, Spinner } from 'react-bootstrap'
 import { Link, useParams } from 'react-router-dom'
 import RunDetailsLocationReviewList from '../features/monthlyRoutes/RunDetailsLocationReviewList'
+import RunDetailsPreRunMessageCard from '../features/monthlyRoutes/RunDetailsPreRunMessageCard'
 import RunWorkflowStepper from '../features/monthlyRoutes/RunWorkflowStepper'
 import type { RunReviewFilter } from '../features/monthlyRoutes/notableStopChanges'
 import {
@@ -9,6 +10,7 @@ import {
   runOfficeStatusPillLabel,
   worksheetOfficeRunActivity,
   worksheetRunExplicitlyCompleted,
+  type MonthlyRunDetailLocationStop,
   type MonthlyRunDetailPayload,
   type MonthlySpecialistTechRow,
   type TechnicianWorksheetRun,
@@ -25,6 +27,8 @@ import {
   dispatchRunLocationExpand,
   filterRunDetailLocations,
   patchRunDetailLocationBilling,
+  patchRunDetailPreRunMessage,
+  patchRunDetailLocationStop,
   runLocationReviewDomId,
   type RunLocationReviewFilter,
 } from '../features/monthlyRoutes/runDetailsLocationReview'
@@ -143,6 +147,34 @@ export default function MonthlyRunDetailPage() {
       }
     })
   }, [])
+
+  const onPreRunMessagePatched = useCallback((preRunMessage: string | null) => {
+    setPayload((prev) => {
+      if (!prev?.run) return prev
+      return {
+        ...prev,
+        run: patchRunDetailPreRunMessage(prev.run, preRunMessage),
+      }
+    })
+  }, [])
+
+  const onStopPatched = useCallback(
+    (testingSiteId: number, patch: Partial<MonthlyRunDetailLocationStop>) => {
+      setPayload((prev) => {
+        if (!prev?.locations?.length) return prev
+        return {
+          ...prev,
+          locations: patchRunDetailLocationStop(
+            prev.locations,
+            testingSiteId,
+            prev.month_date,
+            patch,
+          ),
+        }
+      })
+    },
+    [],
+  )
 
   const onMarkPrepared = useCallback(async () => {
     if (!Number.isFinite(idNum) || !monthOk) return
@@ -591,6 +623,15 @@ export default function MonthlyRunDetailPage() {
           </div>
         )}
 
+        {prepPhase ? (
+          <RunDetailsPreRunMessageCard
+            routeId={idNum}
+            monthDate={payload.month_date}
+            run={run}
+            onPreRunMessagePatched={onPreRunMessagePatched}
+          />
+        ) : null}
+
         {locations.length > 0 ? (
           <RunDetailsLocationReviewList
             locations={locations}
@@ -602,7 +643,7 @@ export default function MonthlyRunDetailPage() {
             filter={reviewFilter}
             onFilterChange={setReviewFilter}
             onBillingPatched={onBillingPatched}
-            onPrepSaved={loadRunDetails}
+            onStopPatched={onStopPatched}
             onDeficiencyUpdated={loadRunDetails}
           />
         ) : (

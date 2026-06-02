@@ -703,6 +703,8 @@ class MonthlyRouteRun(db.Model):
     office_review_completed_by = db.Column(db.String(128), nullable=True)
     #: Run marked completed (office ``POST …/runs/complete``).
     completed_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    #: Office prep note shown to technicians on the route hub before/during the run.
+    pre_run_message = db.Column(db.Text, nullable=True)
     status = db.Column(db.String(16), nullable=False, server_default="open")
     source = db.Column(db.String(32), nullable=False, server_default="technician_app")
     created_at = db.Column(
@@ -1185,6 +1187,8 @@ class MonthlyTestingSiteMonth(db.Model):
     inspection_tech_notes = db.Column(db.Text, nullable=True)
     #: This-run-only notes (portal); never seeded from prior month or mirrored to library master.
     run_comments = db.Column(db.Text, nullable=True)
+    #: Office flagged this stop for technician attention until a test outcome is recorded.
+    office_attention = db.Column(db.Boolean, nullable=False, default=False)
     sheet_time_in_raw = db.Column(db.String(64), nullable=True)
     sheet_time_out_raw = db.Column(db.String(64), nullable=True)
     #: Portal test result: all_good, passed_with_problems, failed, skipped.

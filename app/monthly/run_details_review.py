@@ -557,6 +557,7 @@ def _serialize_location_stop(
         "monitoring_notes": stop.get("monitoring_notes"),
         "monitoring_company_record": stop.get("monitoring_company_record"),
         "run_comments": stop.get("run_comments"),
+        "office_attention": bool(stop.get("office_attention")),
         "testing_procedures": stop.get("testing_procedures"),
         "inspection_tech_notes": stop.get("inspection_tech_notes"),
         "confirmed_no_deficiencies": bool(stop.get("confirmed_no_deficiencies")),

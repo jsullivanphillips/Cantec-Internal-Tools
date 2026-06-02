@@ -5,6 +5,8 @@ import {
   filterRunDetailLocations,
   locationIdentityTone,
   patchRunDetailLocationBilling,
+  patchRunDetailPreRunMessage,
+  patchRunDetailLocationStop,
 } from './runDetailsLocationReview'
 import { runReviewOutcomeBadgeClass, runReviewOutcomeIconKind } from './officeRunReviewShared'
 
@@ -199,6 +201,42 @@ describe('patchRunDetailLocationBilling', () => {
     const locations = [baseLocation(), other]
     const next = patchRunDetailLocationBilling(locations, 101, 'do_not_bill', MONTH)
     expect(next[1].billing_status).toBe('unset')
+  })
+})
+
+describe('patchRunDetailPreRunMessage', () => {
+  it('normalizes empty text to null', () => {
+    const run = {
+      id: 1,
+      monthly_route_id: 1,
+      month_date: MONTH,
+      status: 'open',
+      opened_at: null,
+      started_at: null,
+      completed_at: null,
+      source: 'office_manual',
+      is_historical: false,
+      pre_run_message: 'old',
+    }
+    expect(patchRunDetailPreRunMessage(run, '  hello  ').pre_run_message).toBe('hello')
+    expect(patchRunDetailPreRunMessage(run, '   ').pre_run_message).toBeNull()
+  })
+})
+
+describe('patchRunDetailLocationStop', () => {
+  it('updates office_attention on the matching stop only', () => {
+    const locations = [baseLocation()]
+    const next = patchRunDetailLocationStop(locations, 1, MONTH, { office_attention: true })
+    expect(next[0].stops[0].office_attention).toBe(true)
+  })
+
+  it('recomputes has_job_comment when run_comments changes', () => {
+    const locations = [baseLocation()]
+    const next = patchRunDetailLocationStop(locations, 1, MONTH, {
+      run_comments: 'Battery bad',
+    })
+    expect(next[0].stops[0].run_comments).toBe('Battery bad')
+    expect(next[0].attention_flags.has_job_comment).toBe(true)
   })
 })
 

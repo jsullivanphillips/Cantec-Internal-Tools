@@ -1402,6 +1402,31 @@ def test_portal_route_summary(portal_only_client, monkeypatch):
     assert body["prior_runs"][0]["month_date"] == "2026-04-01"
 
 
+def test_portal_route_summary_includes_pre_run_message(portal_only_client, monkeypatch):
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
+
+    client, app = portal_only_client
+    with app.app_context():
+        route = MonthlyRoute(id=1, route_number=16, weekday_iso=0, week_occurrence=1)
+        run = MonthlyRouteRun(
+            id=9002,
+            monthly_route_id=1,
+            month_date=date(2026, 5, 1),
+            status="open",
+            source="office_manual",
+            pre_run_message="Do not skip 99 Oak",
+        )
+        db.session.add_all([route, run])
+        db.session.commit()
+
+    res = client.get("/api/technician_portal/routes/1/portal_route_summary")
+    assert res.status_code == 200
+    body = res.get_json()
+    assert body["current_month_run"]["pre_run_message"] == "Do not skip 99 Oak"
+
+
 def test_hybrid_staff_portal_uses_tech_portal_param_for_lazy_worksheet(monkeypatch, hybrid_portal_staff_client):
     """``/tech/`` worksheet reads must pass ``tech_portal=1`` or staff GET behaves like staff materialization."""
     from app.routes import monthly_routes as mr_mod

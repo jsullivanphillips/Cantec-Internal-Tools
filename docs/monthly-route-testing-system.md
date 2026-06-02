@@ -290,6 +290,13 @@ Each ``MonthlyRouteRun`` moves through explicit office and field phases. The API
 | Office tested/skipped outcomes | ``field_ended_at`` set, not office-completed |
 | Office billing (run details) | Same as outcomes |
 | CSV import replace month | Run not office-completed; import sets ``prepared_at`` |
+| Pre-run message (``PATCH …/runs``) | ``run_in_office_prep_phase`` (before ``started_at``) |
+| Site highlight flag (``office_attention`` on stop PATCH) | Same as pre-run message; portal cannot set |
+
+**Prep messaging (office → field):**
+
+- ``MonthlyRouteRun.pre_run_message`` — shown on the technician route hub below **Open run**; cleared on run reset.
+- ``MonthlyTestingSiteMonth.office_attention`` — purple stop styling on the portal worksheet until any ``test_outcome`` is recorded; pair with **Job comment** (`run_comments`) when needed.
 
 Logic: ``app/monthly/run_workflow.py``. UI stepper: ``RunWorkflowStepper.tsx``.
 

@@ -294,6 +294,7 @@ def seed_stop_month_fields(
         base = merge_template_with_prior_fallback(template, prior)
         base.update(_cleared_outcome_fields())
         base["run_comments"] = None
+        base["office_attention"] = False
         if primary:
             hist_seed = location_hist or _prior_history_for_location(int(loc.id), month_first)
             if hist_seed is not None:
@@ -317,6 +318,10 @@ def seed_stop_month_fields(
     base["month_date"] = month_first
     base["test_monthly_route_id"] = route_id
     base["run_id"] = run_id
+    if existing_row is not None:
+        base["office_attention"] = bool(existing_row.office_attention)
+    elif "office_attention" not in base:
+        base["office_attention"] = False
     return base
 
 
@@ -731,6 +736,7 @@ def serialize_worksheet_stop(
     procedures = None
     tech_notes = None
     run_comments = None
+    office_attention = False
     result_status = None
     skip_reason = None
     time_in = None
@@ -747,6 +753,7 @@ def serialize_worksheet_stop(
         procedures = mtsm.testing_procedures
         tech_notes = mtsm.inspection_tech_notes
         run_comments = mtsm.run_comments
+        office_attention = bool(mtsm.office_attention)
         result_status = mtsm.result_status
         skip_reason = mtsm.skip_reason
         test_outcome = mtsm.test_outcome
@@ -782,6 +789,7 @@ def serialize_worksheet_stop(
         procedures = preview.get("testing_procedures")
         tech_notes = preview.get("inspection_tech_notes")
         run_comments = None
+        office_attention = False
         pmc = _normalize_text(preview.get("property_management_company"))
         building = _normalize_text(preview.get("building_name"))
         panel_loc = preview.get("panel_location")
@@ -829,6 +837,7 @@ def serialize_worksheet_stop(
         "testing_procedures": procedures,
         "inspection_tech_notes": tech_notes,
         "run_comments": run_comments,
+        "office_attention": office_attention,
         "time_in": time_in,
         "time_out": time_out,
         "route_stop_order": library_order,
@@ -1694,6 +1703,7 @@ STOP_PATCH_FIELD_MAP: dict[str, str] = {
     "testing_procedures": "testing_procedures",
     "inspection_tech_notes": "inspection_tech_notes",
     "run_comments": "run_comments",
+    "office_attention": "office_attention",
     "time_in": "sheet_time_in_raw",
     "time_out": "sheet_time_out_raw",
     "annual_month": "annual_month",
@@ -1762,6 +1772,18 @@ def apply_worksheet_stop_field_change(
             return False, None
         mtsm.panel = new_val
         mtsm.facp = new_val
+        return True, None
+
+    if field_name == "office_attention":
+        if raw_value in (None, "", False, 0, "0", "false", "False"):
+            new_bool = False
+        elif raw_value in (True, 1, "1", "true", "True"):
+            new_bool = True
+        else:
+            new_bool = bool(raw_value)
+        if bool(mtsm.office_attention) == new_bool:
+            return False, None
+        mtsm.office_attention = new_bool
         return True, None
 
     new_val = _normalize_text(raw_value)

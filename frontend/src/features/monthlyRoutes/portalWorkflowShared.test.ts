@@ -12,6 +12,7 @@ import {
   portalStopNewDeficiencies,
   portalStopNewDeficienciesFromPriorRuns,
   portalHeaderBandClass,
+  portalNavStopStatusClass,
   portalStatusPillClass,
   portalStopVisitComplete,
   portalStopVisualTone,
@@ -195,5 +196,17 @@ describe('portalSkipReasonDetail', () => {
     const annualDue = baseStop({ annual_month: 'May' })
     expect(portalStopVisualTone(annualDue, '2026-05-01')).toBe('annual')
     expect(portalStatusPillClass(annualDue, '2026-05-01')).toBe('pending')
+  })
+})
+
+describe('portalStopOfficeAttention', () => {
+  it('shows purple nav class until a test outcome is recorded', () => {
+    const flagged = baseStop({ office_attention: true })
+    expect(portalNavStopStatusClass(flagged, '2026-05-01')).toBe('pw-mock-nav-stop--office-attention')
+    expect(portalHeaderBandClass(flagged, '2026-05-01')).toBe('pw-mock-header--office-attention')
+
+    const done = baseStop({ office_attention: true, test_outcome: 'skipped' })
+    expect(portalNavStopStatusClass(done, '2026-05-01')).toBe('pw-mock-nav-stop--skipped')
+    expect(portalHeaderBandClass(done, '2026-05-01')).toBe('pw-mock-header--skipped')
   })
 })

@@ -5,7 +5,7 @@ import {
   type WorksheetStopChangeSet,
 } from './worksheetOfflineStore'
 
-export type RunDetailsStopPatchChanges = Record<string, string | number | null>
+export type RunDetailsStopPatchChanges = Record<string, string | number | boolean | null>
 
 export async function patchRunDetailsStop(
   routeId: number,

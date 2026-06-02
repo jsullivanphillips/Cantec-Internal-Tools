@@ -199,6 +199,7 @@ export function PrepLongTextCell({
   activeKey,
   onActivate,
   onCommit,
+  emptyPlaceholder,
 }: {
   fieldKey: string
   value: string
@@ -207,12 +208,14 @@ export function PrepLongTextCell({
   activeKey: string | null
   onActivate: (key: string | null) => void
   onCommit: (next: string) => void
+  /** When set, shown in read mode (and on the editor) instead of an em dash when empty. */
+  emptyPlaceholder?: string
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const editing = activeKey === fieldKey
   const trimmed = (value || '').trim()
-  const display = trimmed || '—'
   const empty = !trimmed
+  const display = empty ? (emptyPlaceholder?.trim() || '—') : trimmed
   const [draft, setDraft] = useState(value)
 
   useEffect(() => {
@@ -271,6 +274,7 @@ export function PrepLongTextCell({
         className="run-details-prepare-cell-editor form-control form-control-sm"
         rows={3}
         value={draft}
+        placeholder={emptyPlaceholder}
         disabled={disabled || saving}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => {

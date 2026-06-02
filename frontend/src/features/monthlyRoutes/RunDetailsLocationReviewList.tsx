@@ -6,7 +6,11 @@ import RunDetailsLocationColumnHeader from './RunDetailsLocationColumnHeader'
 import RunDetailsLocationFilterBar from './RunDetailsLocationFilterBar'
 import RunDetailsPrepareTable from './RunDetailsPrepareTable'
 
-import type { MonthlyRunDetailLocation, TechnicianWorksheetRun } from './monthlyRoutesShared'
+import type {
+  MonthlyRunDetailLocation,
+  MonthlyRunDetailLocationStop,
+  TechnicianWorksheetRun,
+} from './monthlyRoutesShared'
 import type { NotableChangeItem, RunReviewSummary } from './notableStopChanges'
 import {
   computeRunDetailsPrepSummary,
@@ -30,7 +34,7 @@ export default function RunDetailsLocationReviewList({
   filter,
   onFilterChange,
   onBillingPatched,
-  onPrepSaved,
+  onStopPatched,
   onDeficiencyUpdated,
 }: {
   locations: MonthlyRunDetailLocation[]
@@ -42,7 +46,7 @@ export default function RunDetailsLocationReviewList({
   filter: RunLocationReviewFilter
   onFilterChange: (filter: RunLocationReviewFilter) => void
   onBillingPatched: (locationId: number, billingStatus: string) => void
-  onPrepSaved: () => Promise<void>
+  onStopPatched: (testingSiteId: number, patch: Partial<MonthlyRunDetailLocationStop>) => void
   onDeficiencyUpdated?: () => void | Promise<void>
 }) {
   const [changeDetailsByStopId, setChangeDetailsByStopId] = useState<Record<number, NotableChangeItem[]>>(
@@ -140,7 +144,7 @@ export default function RunDetailsLocationReviewList({
               rows={prepRows}
               routeId={routeId}
               monthDate={monthDate}
-              onSaved={onPrepSaved}
+              onStopPatched={onStopPatched}
               onDeficiencyUpdated={onDeficiencyUpdated}
             />
           )}

@@ -2,6 +2,7 @@ import type {
   MonthlyRunDetailLocation,
   MonthlyRunDetailLocationStop,
   RunReviewSummaryPayload,
+  TechnicianWorksheetRun,
   TechnicianWorksheetStop,
 } from './monthlyRoutesShared'
 import type { NotableStopChangeCard, RunReviewFilter, RunReviewSummary } from './notableStopChanges'
@@ -440,6 +441,45 @@ export function recomputeLocationAttentionFlags(
     has_job_comment,
     needs_attention,
   }
+}
+
+/** Optimistic update for ``MonthlyRouteRun.pre_run_message``. */
+export function patchRunDetailPreRunMessage(
+  run: TechnicianWorksheetRun,
+  preRunMessage: string | null,
+): TechnicianWorksheetRun {
+  const text = (preRunMessage ?? '').trim()
+  return { ...run, pre_run_message: text.length > 0 ? text : null }
+}
+
+/** Optimistic update for one stop; recomputes location attention flags (e.g. job comment). */
+export function patchRunDetailLocationStop(
+  locations: MonthlyRunDetailLocation[],
+  testingSiteId: number,
+  monthDate: string,
+  patch: Partial<MonthlyRunDetailLocationStop>,
+): MonthlyRunDetailLocation[] {
+  return locations.map((loc) => {
+    if (!loc.stops.some((stop) => stop.testing_site_id === testingSiteId)) return loc
+    const stops = loc.stops.map((stop) =>
+      stop.testing_site_id === testingSiteId ? { ...stop, ...patch } : stop,
+    )
+    const next = { ...loc, stops }
+    return {
+      ...next,
+      attention_flags: recomputeLocationAttentionFlags(next, monthDate, loc.billing_status),
+    }
+  })
+}
+
+/** @deprecated Use ``patchRunDetailLocationStop`` */
+export function patchRunDetailStopFields(
+  locations: MonthlyRunDetailLocation[],
+  testingSiteId: number,
+  patch: Partial<MonthlyRunDetailLocationStop>,
+): MonthlyRunDetailLocation[] {
+  const monthDate = locations[0]?.stops[0]?.month_date ?? ''
+  return patchRunDetailLocationStop(locations, testingSiteId, monthDate, patch)
 }
 
 /** Apply a billing PATCH result to the run-details locations list without refetching. */

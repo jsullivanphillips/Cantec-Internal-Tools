@@ -1054,3 +1054,57 @@ def test_patch_monitoring_company_id_and_account(stops_client, monkeypatch):
         assert ts is not None
         assert ts.monitoring_company_id == mc_id
         assert ts.monitoring_account_number == "ACCT-42"
+
+
+def test_patch_office_attention_office_prep_only(stops_client, monkeypatch):
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
+
+    client, app = stops_client
+    with app.app_context():
+        _seed_route_with_two_stops()
+        ts_id = int(MonthlyTestingSite.query.order_by(MonthlyTestingSite.id.asc()).first().id)
+        run = MonthlyRouteRun(
+            id=5010,
+            monthly_route_id=1,
+            month_date=date(2026, 5, 1),
+            status="open",
+            source="office_manual",
+        )
+        db.session.add(run)
+        db.session.commit()
+        from app.monthly.worksheet_stops import ensure_worksheet_stops_for_route_month
+
+        ensure_worksheet_stops_for_route_month(1, date(2026, 5, 1), run)
+        db.session.commit()
+
+    with client.session_transaction() as sess:
+        sess["authenticated"] = True
+
+    qs = "month=2026-05-01"
+    ok = client.patch(
+        f"/api/monthly_routes/routes/1/worksheet/stops/{ts_id}?{qs}",
+        json={"changes": {"office_attention": True}},
+    )
+    assert ok.status_code == 200
+    assert ok.get_json()["stop"]["office_attention"] is True
+
+    portal = client.patch(
+        f"/api/monthly_routes/routes/1/worksheet/stops/{ts_id}?{qs}&tech_portal=1",
+        json={"changes": {"office_attention": False}},
+    )
+    assert portal.status_code == 403
+    assert portal.get_json().get("code") == "office_attention_office_only"
+
+    with app.app_context():
+        run.started_at = datetime(2026, 5, 2, 8, 0, tzinfo=PACIFIC_TZ)
+        db.session.add(run)
+        db.session.commit()
+
+    locked = client.patch(
+        f"/api/monthly_routes/routes/1/worksheet/stops/{ts_id}?{qs}",
+        json={"changes": {"office_attention": False}},
+    )
+    assert locked.status_code == 409
+    assert locked.get_json().get("code") == "run_prep_locked"

@@ -24,8 +24,30 @@
   margin-bottom: 1rem;
 }
 
+.monthly-run-detail-page .run-details-pre-run-message {
+  padding: 1rem 1.15rem;
+}
+
+.monthly-run-detail-page .run-details-pre-run-message .run-details-prepare-cell-surface {
+  min-height: 2.75rem;
+}
+
+.monthly-run-detail-page .run-details-pre-run-message .run-details-prepare-cell-view {
+  white-space: pre-wrap;
+}
+
+.monthly-run-detail-page .run-details-pre-run-message__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35rem 1rem;
+  margin-bottom: 0.35rem;
+}
+
 .monthly-run-detail-page .run-details-prepare-table-shell {
   --rdp-col-stop: 2.75rem;
+  --rdp-col-highlight: 3.25rem;
   --rdp-col-address: 13rem;
   --rdp-col-access: 10.5rem;
   --rdp-col-monitoring: 10.5rem;
@@ -35,6 +57,7 @@
   --rdp-col-deficiencies: 9.5rem;
   --rdp-table-w: calc(
     var(--rdp-col-stop) +
+    var(--rdp-col-highlight) +
     var(--rdp-col-address) +
     var(--rdp-col-access) +
     var(--rdp-col-monitoring) +
@@ -61,6 +84,10 @@
 
 .monthly-run-detail-page .run-details-prepare-table .run-details-prepare-col-stop {
   width: var(--rdp-col-stop);
+}
+
+.monthly-run-detail-page .run-details-prepare-table .run-details-prepare-col-highlight {
+  width: var(--rdp-col-highlight);
 }
 
 .monthly-run-detail-page .run-details-prepare-table .run-details-prepare-col-address {
@@ -126,6 +153,10 @@
   background: #fed7aa;
 }
 
+.monthly-run-detail-page .run-details-prepare-table.table tbody tr.run-details-prepare-row--attention td {
+  background: #f3e8ff;
+}
+
 .monthly-run-detail-page .run-details-prepare-table.table tbody tr:last-child td {
   border-bottom: none;
 }
@@ -170,7 +201,7 @@
 }
 
 .monthly-run-detail-page .run-details-prepare-sticky-address {
-  left: var(--rdp-col-stop);
+  left: calc(var(--rdp-col-stop) + var(--rdp-col-highlight));
   width: var(--rdp-col-address);
   min-width: var(--rdp-col-address);
 }
@@ -188,6 +219,11 @@
 .monthly-run-detail-page .run-details-prepare-table.table tbody tr.run-details-prepare-row--annual .run-details-prepare-sticky-order,
 .monthly-run-detail-page .run-details-prepare-table.table tbody tr.run-details-prepare-row--annual .run-details-prepare-sticky-address {
   background: #fed7aa;
+}
+
+.monthly-run-detail-page .run-details-prepare-table.table tbody tr.run-details-prepare-row--attention .run-details-prepare-sticky-order,
+.monthly-run-detail-page .run-details-prepare-table.table tbody tr.run-details-prepare-row--attention .run-details-prepare-sticky-address {
+  background: #f3e8ff;
 }
 
 .monthly-run-detail-page .run-details-prepare-table.table tbody tr.run-details-prepare-row--annual .run-details-prepare-stop-num {

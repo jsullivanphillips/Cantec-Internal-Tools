@@ -1200,6 +1200,7 @@ def _serialize_run(run: MonthlyRouteRun | None) -> dict[str, object] | None:
         "completed_at": run.completed_at.isoformat() if run.completed_at else None,
         "source": run.source,
         "is_historical": bool(is_historical),
+        "pre_run_message": _normalize_ws_text(run.pre_run_message),
     }
     base.update(serialize_run_workflow_fields(run))
     return base
@@ -2851,6 +2852,30 @@ def patch_monthly_route_worksheet_stop(route_id: int, testing_site_id: int):
     if unknown:
         return jsonify({"error": f"Unsupported worksheet fields: {', '.join(sorted(unknown))}"}), 400
 
+    if "office_attention" in changes:
+        from app.monthly.run_workflow import run_in_office_prep_phase
+
+        if not _office_staff_worksheet_patch():
+            return (
+                jsonify(
+                    {
+                        "error": "Only office staff can set site highlights.",
+                        "code": "office_attention_office_only",
+                    }
+                ),
+                403,
+            )
+        if not run_in_office_prep_phase(run_for_month):
+            return (
+                jsonify(
+                    {
+                        "error": "Site highlights can only be edited before field work starts.",
+                        "code": "run_prep_locked",
+                    }
+                ),
+                409,
+            )
+
     changes_eff: dict[str, object] = dict(changes)
     clocking_in = "time_in" in changes_eff and _normalize_ws_text(changes_eff.get("time_in")) is not None
     if clocking_in:
@@ -3605,6 +3630,7 @@ def post_monthly_route_worksheet_reset_run(route_id: int):
         from app.monthly.run_workflow import clear_workflow_on_reset
 
         clear_workflow_on_reset(run)
+        run.pre_run_message = None
 
     from app.monthly.worksheet_stops import reset_worksheet_run_for_route_month
 
@@ -3880,6 +3906,68 @@ def post_monthly_route_run_prepare(route_id: int):
     from app.monthly.worksheet_stops import ensure_worksheet_stops_for_route_month
 
     ensure_worksheet_stops_for_route_month(route_id, month_first, run)
+    db.session.add(run)
+    db.session.commit()
+    return jsonify({"ok": True, "run": _serialize_run(run)})
+
+
+@monthly_routes_bp.patch("/api/monthly_routes/routes/<int:route_id>/runs")
+def patch_monthly_route_run(route_id: int):
+    """Office: set/clear pre-run message for technicians (prep phase only)."""
+    if not session.get("authenticated"):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json(silent=True) or {}
+    if "pre_run_message" not in data:
+        return jsonify({"error": "pre_run_message required"}), 400
+    month_first = _parse_month(data.get("month_date"))
+    if month_first is None:
+        return jsonify({"error": "month_date required (YYYY-MM-01)"}), 400
+    if _get_monthly_route(route_id) is None:
+        return jsonify({"error": "Route not found"}), 404
+
+    run = MonthlyRouteRun.query.filter_by(
+        monthly_route_id=route_id,
+        month_date=month_first,
+    ).one_or_none()
+    if run is None:
+        from app.monthly.runs import get_or_create_monthly_route_run
+
+        run = get_or_create_monthly_route_run(
+            route_id,
+            month_first,
+            source="office_manual",
+        )
+
+    from app.monthly.run_workflow import run_explicitly_completed, run_in_office_prep_phase
+
+    if run_explicitly_completed(run):
+        return (
+            jsonify(
+                {
+                    "error": "This run is completed; reopen it before editing the pre-run message.",
+                    "code": "run_completed",
+                }
+            ),
+            409,
+        )
+    if not run_in_office_prep_phase(run):
+        return (
+            jsonify(
+                {
+                    "error": "Pre-run message can only be edited before field work starts.",
+                    "code": "run_prep_locked",
+                }
+            ),
+            409,
+        )
+
+    raw = data.get("pre_run_message")
+    if raw is None:
+        run.pre_run_message = None
+    else:
+        text = str(raw).strip()
+        run.pre_run_message = text or None
     db.session.add(run)
     db.session.commit()
     return jsonify({"ok": True, "run": _serialize_run(run)})
