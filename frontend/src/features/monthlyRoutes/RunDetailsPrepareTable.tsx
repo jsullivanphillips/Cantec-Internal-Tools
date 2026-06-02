@@ -38,6 +38,8 @@ import type { RunDetailsStopPatchApi } from './useRunDetailsStopPatch'
 import { useMonitoringCompanies } from './useMonitoringCompanies'
 import { apiJson } from '../../lib/apiClient'
 
+type PrepDragHandleProps = Pick<ReturnType<typeof useSortable>, 'attributes' | 'listeners'>
+
 function prepRowClassName(annualDue: boolean, highlighted: boolean): string | undefined {
   return (
     [
@@ -60,10 +62,7 @@ function PrepStopOrderCell({
   showDragHandle: boolean
   orderSaving: boolean
   locationLabel: string
-  dragHandleProps?: {
-    attributes: Record<string, unknown>
-    listeners: Record<string, unknown> | undefined
-  }
+  dragHandleProps?: PrepDragHandleProps
 }) {
   return (
     <div className="run-details-prepare-stop-order-cell">
@@ -99,10 +98,7 @@ function SortableLocationPrepRows({
     options: {
       isPrimaryForLocation: boolean
       showDragHandle: boolean
-      dragHandleProps?: {
-        attributes: Record<string, unknown>
-        listeners: Record<string, unknown> | undefined
-      }
+      dragHandleProps?: PrepDragHandleProps
       setNodeRef?: (element: HTMLElement | null) => void
       style?: CSSProperties
     },
@@ -256,10 +252,7 @@ export default function RunDetailsPrepareTable({
       options: {
         isPrimaryForLocation: boolean
         showDragHandle: boolean
-        dragHandleProps?: {
-          attributes: Record<string, unknown>
-          listeners: Record<string, unknown> | undefined
-        }
+        dragHandleProps?: PrepDragHandleProps
         setNodeRef?: (element: HTMLElement | null) => void
         style?: CSSProperties
       },

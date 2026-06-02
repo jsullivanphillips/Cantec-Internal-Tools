@@ -88,7 +88,7 @@ export default function MonthlyRoutePaperworkPage() {
   const currentMonthIso = monthFirstIsoPacificToday()
 
   const [routeMeta, setRouteMeta] = useState<MonthlyRouteDetailPayload | null>(null)
-  const [routeMetaLoading, setRouteMetaLoading] = useState(true)
+  const [, setRouteMetaLoading] = useState(true)
   const [payload, setPayload] = useState<MonthlyRunDetailPayload | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)

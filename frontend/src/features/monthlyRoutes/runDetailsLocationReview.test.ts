@@ -7,7 +7,6 @@ import {
   filterRunDetailFieldEditLocations,
   filterRunDetailLocations,
   flattenRunDetailReviewRows,
-  orderedLocationIdsFromPrepRows,
   priorMonthOutOfOrderHint,
   reorderPrepRowsByLocationIds,
   renumberPrepRowStopNumbers,
@@ -259,7 +258,7 @@ describe('patchRunDetailPayloadRun', () => {
       billing_locations: [],
       review_meta: {},
       locations: [],
-    } as MonthlyRunDetailPayload
+    } as unknown as MonthlyRunDetailPayload
     const updatedRun = {
       ...run,
       status: 'completed' as const,
@@ -290,7 +289,7 @@ describe('patchRouteMetaRunMonth', () => {
       id: 1,
       name: 'Route A',
       runs_by_month: {},
-    } as MonthlyRouteDetailPayload
+    } as unknown as MonthlyRouteDetailPayload
     const next = patchRouteMetaRunMonth(routeMeta, MONTH, run)
     expect(next?.runs_by_month[MONTH]).toEqual({
       run_id: 9,
