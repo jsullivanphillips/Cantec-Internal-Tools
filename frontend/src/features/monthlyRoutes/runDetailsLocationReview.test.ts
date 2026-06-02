@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { MonthlyRunDetailLocation } from './monthlyRoutesShared'
+import type { MonthlyRunDetailLocation, TechnicianWorksheetStop } from './monthlyRoutesShared'
 import {
   computeRunDetailsPrepSummary,
   filterRunDetailLocations,
@@ -9,6 +9,39 @@ import {
 import { runReviewOutcomeBadgeClass, runReviewOutcomeIconKind } from './officeRunReviewShared'
 
 const MONTH = '2026-05-01'
+
+function worksheetStop(overrides: Partial<TechnicianWorksheetStop> = {}): TechnicianWorksheetStop {
+  return {
+    testing_site_id: 1,
+    location_id: 101,
+    history_month_row_id: 1,
+    month_date: MONTH,
+    display_address: '123 Main St',
+    building_name: null,
+    property_management_company: null,
+    label: null,
+    panel: null,
+    panel_location: null,
+    door_code: null,
+    ring: null,
+    key_number: null,
+    annual_month: null,
+    monitoring_company: null,
+    monitoring_notes: null,
+    result_status: null,
+    skip_reason: null,
+    testing_procedures: null,
+    inspection_tech_notes: null,
+    run_comments: null,
+    time_in: null,
+    time_out: null,
+    route_stop_order: null,
+    session_route_stop_order: null,
+    stop_number: 1,
+    version_updated_at: null,
+    ...overrides,
+  }
+}
 
 function baseLocation(overrides: Partial<MonthlyRunDetailLocation> = {}): MonthlyRunDetailLocation {
   return {
@@ -194,54 +227,31 @@ describe('locationIdentityTone', () => {
         },
       ],
     })
-    const ws = {
-      ...location.stops[0],
-      building_name: null,
-      property_management_company: null,
-      ring: null,
-      key_number: null,
-      door_code: null,
-      panel: null,
-      panel_location: null,
-      monitoring_company: null,
-      monitoring_notes: null,
-      time_in: null,
-      time_out: null,
-      skip_category: null,
-      skip_note: null,
-    }
+    const stop = location.stops[0]
+    const ws = worksheetStop({
+      testing_site_id: stop.testing_site_id,
+      location_id: stop.location_id,
+      stop_number: stop.stop_number,
+      display_address: stop.display_address,
+      label: stop.label,
+      month_date: stop.month_date,
+      result_status: stop.result_status,
+      test_outcome: stop.test_outcome,
+      skip_reason: stop.skip_reason ?? null,
+      annual_month: stop.annual_month,
+      run_comments: stop.run_comments,
+      testing_procedures: stop.testing_procedures,
+      inspection_tech_notes: stop.inspection_tech_notes,
+      skip_category: stop.skip_category ?? null,
+      skip_note: stop.skip_note ?? null,
+    })
     expect(locationIdentityTone(location, MONTH)).toBe('annual')
     expect(runReviewOutcomeBadgeClass(ws, MONTH)).toBe('run-detail-site-card__badge--annual')
     expect(runReviewOutcomeIconKind(ws, MONTH)).toBe('annual')
   })
 
   it('maps portal outcomes to run-review icon kinds', () => {
-    const base = {
-      testing_site_id: 1,
-      location_id: 101,
-      stop_number: 1,
-      display_address: '123 Main St',
-      month_date: MONTH,
-      result_status: 'tested' as const,
-      annual_month: null,
-      run_comments: null,
-      testing_procedures: null,
-      inspection_tech_notes: null,
-      building_name: null,
-      property_management_company: null,
-      ring: null,
-      key_number: null,
-      door_code: null,
-      panel: null,
-      panel_location: null,
-      monitoring_company: null,
-      monitoring_notes: null,
-      time_in: null,
-      time_out: null,
-      skip_reason: null,
-      skip_category: null,
-      skip_note: null,
-    }
+    const base = worksheetStop({ result_status: 'tested' })
     expect(runReviewOutcomeIconKind({ ...base, test_outcome: 'all_good' }, MONTH)).toBe('all_good')
     expect(runReviewOutcomeIconKind({ ...base, test_outcome: 'failed' }, MONTH)).toBe('failed')
     expect(
