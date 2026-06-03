@@ -67,7 +67,6 @@ export default function RunDetailsLocationReviewList({
   historyCapturedAt = null,
   historyFieldWorkReopened = false,
   onTicketsChanged,
-  jobItemsByLocationId = {},
   paperworkViewMode,
   prepEditsDisabled = false,
   outcomeCounts,
@@ -93,7 +92,6 @@ export default function RunDetailsLocationReviewList({
   historyCapturedAt?: string | null
   historyFieldWorkReopened?: boolean
   onTicketsChanged?: () => void
-  jobItemsByLocationId?: Record<number, { description: string; quantity: number }[]>
   /** When set, renders a single locked view (Paperwork) with no tab bar. */
   paperworkViewMode?: PaperworkViewMode
   /** Block prep edits until the Pacific current month run is closed (future months). */
@@ -322,7 +320,6 @@ export default function RunDetailsLocationReviewList({
           onStopMergedFromWorksheet={onStopMergedFromWorksheet}
           onDeficiencyUpdated={onDeficiencyUpdated}
           onTicketsChanged={onTicketsChanged}
-          jobItemsByLocationId={jobItemsByLocationId}
         />
       ) : showFieldChanges ? (
         <RunDetailsFieldChangesTable

@@ -51,12 +51,10 @@ import {
 } from '../features/monthlyRoutes/runDetailsLocationReview'
 import {
   getCachedFieldSubmission,
-  getCachedJobItems,
   getCachedRunDetails,
   invalidatePaperworkRouteMonth,
   invalidatePaperworkSecondaryCaches,
   setCachedFieldSubmission,
-  setCachedJobItems,
   setCachedRunDetails,
 } from '../features/monthlyRoutes/paperworkRouteCache'
 import {
@@ -123,9 +121,6 @@ export default function MonthlyRoutePaperworkPage() {
     capturedAt: string | null
     fieldWorkReopened: boolean
   }>({ capturedAt: null, fieldWorkReopened: false })
-  const [jobItemsByLocationId, setJobItemsByLocationId] = useState<
-    Record<number, { description: string; quantity: number }[]>
-  >({})
   const pendingRunDetailsReloadRef = useRef(false)
   /** Bumped to drop stale ``run_details`` responses (cache-first load vs reopen/reset). */
   const runDetailsFetchSeqRef = useRef(0)
@@ -405,35 +400,6 @@ export default function MonthlyRoutePaperworkPage() {
     [monthQuery, idNum],
   )
 
-  const loadJobItems = useCallback(
-    async (options?: { background?: boolean }) => {
-      if (!Number.isFinite(idNum)) return
-      const qs = new URLSearchParams({ month: monthQuery })
-      try {
-        const data = await apiJson<{
-          items: {
-            location_id: number
-            description: string
-            quantity: number
-          }[]
-        }>(`/api/monthly_routes/routes/${idNum}/run_job_items?${qs.toString()}`)
-        const byLoc: Record<number, { description: string; quantity: number }[]> = {}
-        for (const item of data.items ?? []) {
-          const lid = item.location_id
-          if (!byLoc[lid]) byLoc[lid] = []
-          byLoc[lid].push({ description: item.description, quantity: item.quantity })
-        }
-        setCachedJobItems(idNum, monthQuery, byLoc)
-        setJobItemsByLocationId(byLoc)
-      } catch {
-        if (!options?.background) {
-          setJobItemsByLocationId({})
-        }
-      }
-    },
-    [idNum, monthQuery],
-  )
-
   useEffect(() => {
     if (paperworkViewMode !== 'exact_history') {
       setHistoryStops([])
@@ -460,18 +426,6 @@ export default function MonthlyRoutePaperworkPage() {
     void loadFieldSubmission(ac.signal, { background: cached != null })
     return () => ac.abort()
   }, [paperworkViewMode, loadFieldSubmission, loading, idNum, monthQuery])
-
-  useEffect(() => {
-    if (paperworkViewMode === 'run_review' && runFieldEnded(payload?.run ?? null)) {
-      const cached = Number.isFinite(idNum) ? getCachedJobItems(idNum, monthQuery) : null
-      if (cached) {
-        setJobItemsByLocationId(cached)
-      }
-      void loadJobItems({ background: cached != null })
-    } else {
-      setJobItemsByLocationId({})
-    }
-  }, [paperworkViewMode, payload?.run, loadJobItems, idNum, monthQuery])
 
   const onBillingPatched = useCallback((locationId: number, billingStatus: string) => {
     setPayload((prev) => {
@@ -996,7 +950,6 @@ export default function MonthlyRoutePaperworkPage() {
             historyCapturedAt={historyMeta.capturedAt}
             historyFieldWorkReopened={historyMeta.fieldWorkReopened}
             onTicketsChanged={() => void loadRunDetails(undefined, { background: true })}
-            jobItemsByLocationId={jobItemsByLocationId}
             paperworkViewMode={paperworkViewMode}
             prepEditsDisabled={futurePrepBlocked}
             onRouteOrderChanged={(orderedLocationIds) => void onRouteOrderChanged(orderedLocationIds)}

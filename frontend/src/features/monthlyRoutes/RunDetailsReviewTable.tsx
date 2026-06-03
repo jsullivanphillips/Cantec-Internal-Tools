@@ -135,7 +135,6 @@ export default function RunDetailsReviewTable({
   onStopMergedFromWorksheet,
   onDeficiencyUpdated,
   onTicketsChanged,
-  jobItemsByLocationId = {},
 }: {
   locations: MonthlyRunDetailLocation[]
   monthDate: string
@@ -150,7 +149,6 @@ export default function RunDetailsReviewTable({
     updated: MonthlyRunDetailDeficiencySummary,
   ) => void | Promise<void>
   onTicketsChanged?: () => void
-  jobItemsByLocationId?: Record<number, { description: string; quantity: number }[]>
 }) {
   const [siteModalStopId, setSiteModalStopId] = useState<number | null>(null)
   const [ticketModal, setTicketModal] = useState<{
@@ -315,16 +313,6 @@ export default function RunDetailsReviewTable({
                             : undefined
                         }
                       />
-                      {isFirstAtLocation && (jobItemsByLocationId[locationId]?.length ?? 0) > 0 ? (
-                        <ul className="list-unstyled small text-muted mb-0 mt-1 run-details-review-job-items">
-                          {jobItemsByLocationId[locationId].map((item, idx) => (
-                            <li key={`${locationId}-item-${idx}`}>
-                              {item.description}
-                              {item.quantity !== 1 ? ` (×${item.quantity})` : ''}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : null}
                     </td>
                     <td className="align-top run-details-prepare-stack-cell">
                       <div className="run-details-prepare-stack">

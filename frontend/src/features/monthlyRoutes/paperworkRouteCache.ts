@@ -9,17 +9,12 @@ export type PaperworkFieldSubmissionCache = {
   fieldWorkReopened: boolean
 }
 
-export type PaperworkJobItemRow = { description: string; quantity: number }
-
-export type PaperworkJobItemsCache = Record<number, PaperworkJobItemRow[]>
-
 function cacheKey(routeId: number, monthIso: string): string {
   return `${routeId}::${monthIso}`
 }
 
 const runDetailsByKey = new Map<string, MonthlyRunDetailPayload>()
 const fieldSubmissionByKey = new Map<string, PaperworkFieldSubmissionCache>()
-const jobItemsByKey = new Map<string, PaperworkJobItemsCache>()
 
 export function getCachedRunDetails(
   routeId: number,
@@ -53,31 +48,17 @@ export function setCachedFieldSubmission(
   fieldSubmissionByKey.set(cacheKey(routeId, monthIso), entry)
 }
 
-export function getCachedJobItems(routeId: number, monthIso: string): PaperworkJobItemsCache | null {
-  return jobItemsByKey.get(cacheKey(routeId, monthIso)) ?? null
-}
-
-export function setCachedJobItems(
-  routeId: number,
-  monthIso: string,
-  items: PaperworkJobItemsCache,
-): void {
-  jobItemsByKey.set(cacheKey(routeId, monthIso), items)
-}
-
 /** Drop cached paperwork for one route month (after lifecycle or reset). */
 export function invalidatePaperworkRouteMonth(routeId: number, monthIso: string): void {
   const key = cacheKey(routeId, monthIso)
   runDetailsByKey.delete(key)
   fieldSubmissionByKey.delete(key)
-  jobItemsByKey.delete(key)
 }
 
-/** Drop exact-history and run-review secondary payloads; run_details may stay patched in place. */
+/** Drop exact-history secondary payload; run_details may stay patched in place. */
 export function invalidatePaperworkSecondaryCaches(routeId: number, monthIso: string): void {
   const key = cacheKey(routeId, monthIso)
   fieldSubmissionByKey.delete(key)
-  jobItemsByKey.delete(key)
 }
 
 /** Drop all cached paperwork payloads for one route (after library master edits). */
@@ -89,14 +70,10 @@ export function invalidatePaperworkCacheForRoute(routeId: number): void {
   for (const key of [...fieldSubmissionByKey.keys()]) {
     if (key.startsWith(prefix)) fieldSubmissionByKey.delete(key)
   }
-  for (const key of [...jobItemsByKey.keys()]) {
-    if (key.startsWith(prefix)) jobItemsByKey.delete(key)
-  }
 }
 
 /** Test helper — not used in production UI. */
 export function clearPaperworkRouteCache(): void {
   runDetailsByKey.clear()
   fieldSubmissionByKey.clear()
-  jobItemsByKey.clear()
 }

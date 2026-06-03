@@ -25,7 +25,6 @@ import PortalEndRunModals from '../features/monthlyRoutes/PortalEndRunModals'
 import PortalRecordResultsModal, {
   type RecordResultsCompletePayload,
 } from '../features/monthlyRoutes/PortalRecordResultsModal'
-import PortalReplaceItemModal from '../features/monthlyRoutes/PortalReplaceItemModal'
 import PortalDeficienciesCard from '../features/monthlyRoutes/PortalDeficienciesCard'
 import PortalDeficiencyModal from '../features/monthlyRoutes/PortalDeficiencyModal'
 import {
@@ -226,7 +225,6 @@ export default function TechnicianPortalWorksheetPage() {
   const [resultsModalOpen, setResultsModalOpen] = useState(false)
   const [resultsForClockOut, setResultsForClockOut] = useState(false)
   const [defModalOpen, setDefModalOpen] = useState(false)
-  const [replaceItemModalOpen, setReplaceItemModalOpen] = useState(false)
   const [defModalMode, setDefModalMode] = useState<'add' | 'edit'>('add')
   const [editingDeficiency, setEditingDeficiency] = useState<PortalDeficiencySummary | null>(null)
   const [editingField, setEditingField] = useState<string | null>(null)
@@ -284,14 +282,12 @@ export default function TechnicianPortalWorksheetPage() {
       skipModalOpen ||
         resultsModalOpen ||
         defModalOpen ||
-        replaceItemModalOpen ||
         editingField != null,
     )
   }, [
     skipModalOpen,
     resultsModalOpen,
     defModalOpen,
-    replaceItemModalOpen,
     editingField,
     setInteractiveBusy,
   ])
@@ -614,13 +610,6 @@ export default function TechnicianPortalWorksheetPage() {
             onClick={handleClockOut}
           >
             Clock out
-          </Button>
-          <Button
-            variant="primary"
-            className="pw-mock-dock-btn pw-mock-dock-normal-btn"
-            onClick={() => setReplaceItemModalOpen(true)}
-          >
-            Replace item
           </Button>
           <Button
             variant="outline-danger"
@@ -1131,13 +1120,6 @@ export default function TechnicianPortalWorksheetPage() {
             deficiency={editingDeficiency}
             onHide={() => setDefModalOpen(false)}
             onSave={handleDeficiencySave}
-          />
-          <PortalReplaceItemModal
-            show={replaceItemModalOpen}
-            routeId={idNum}
-            monthDate={runMonthIso}
-            testingSiteId={active.testing_site_id}
-            onHide={() => setReplaceItemModalOpen(false)}
           />
         </>
       ) : null}

@@ -143,8 +143,8 @@ Delegates most mutations to `monthly_routes`, then augments with v2:
 
 **Paperwork loading:**
 
-- **Month switching (client cache):** The Paperwork page keeps an in-memory cache per route/month for `run_details`, exact-history field submission, and run-review job items. Revisiting a month shows the cached payload immediately (no full-page skeleton) and revalidates in the background with a subtle “Refreshing…” indicator beside the month selector. First visit to a month still shows the skeleton until `run_details` returns. Lifecycle actions (mark prepared, reset run) invalidate that month’s cache; workflow transitions (complete, reopen, review complete) invalidate secondary caches and patch run header in place. Library master edits invalidate paperwork cache for the route. `fetchPaperworkRunDetails` in `paperworkRoutePrefetch.ts` dedupes in-flight `GET …/run_details` per route/month (page load, prefetch, and master-sync refresh share one request). A monotonic fetch sequence drops stale responses (e.g. **Reopen job** before cache revalidation finishes).
-- **Adjacent prefetch:** While viewing a month, the SPA prefetches the previous and next selectable months in the background (plus any month hovered in the dropdown). Exact-history months also prefetch field submission; post-field-end run review prefetches job items.
+- **Month switching (client cache):** The Paperwork page keeps an in-memory cache per route/month for `run_details` and exact-history field submission. Revisiting a month shows the cached payload immediately (no full-page skeleton) and revalidates in the background with a subtle “Refreshing…” indicator beside the month selector. First visit to a month still shows the skeleton until `run_details` returns. Lifecycle actions (mark prepared, reset run) invalidate that month’s cache; workflow transitions (complete, reopen, review complete) invalidate secondary caches and patch run header in place. Library master edits invalidate paperwork cache for the route. `fetchPaperworkRunDetails` in `paperworkRoutePrefetch.ts` dedupes in-flight `GET …/run_details` per route/month (page load, prefetch, and master-sync refresh share one request). A monotonic fetch sequence drops stale responses (e.g. **Reopen job** before cache revalidation finishes).
+- **Adjacent prefetch:** While viewing a month, the SPA prefetches the previous and next selectable months in the background (plus any month hovered in the dropdown). Exact-history months also prefetch field submission.
 - **Exact history:** After `run_details` loads, `GET .../run_details/field_submission` loads frozen stops (cached the same way on repeat visits).
 
 1. **Base** — ``GET .../run_details?month=`` returns route header, run lifecycle, KPI ``counts``, ``locations[]`` (all worksheet stops grouped by billing location with ``attention_flags`` and per-stop ``deficiency_summaries`` — same fields as portal worksheet deficiencies, for office review cards/modal), ``review_summary``, plus legacy ``billing_locations`` / ``review_meta`` for compatibility. Enrichment (deficiencies, open tickets, audit field changes) is loaded in batched queries per route-month, not per stop.
@@ -466,7 +466,7 @@ Legacy `result_status` / `sheet_time_in_raw` / `sheet_time_out_raw` remain for C
 | Band | When | Actions |
 |------|------|---------|
 | A | Not clocked in here; visit incomplete | Clock in, Skip |
-| B | Open clock on this stop | Record results, Clock out, Replace item (placeholder), Add deficiency, Skip, Reset* |
+| B | Open clock on this stop | Record results, Clock out, Add deficiency, Skip, Reset* |
 | C | `test_outcome` set and no open clock | Clock in again, Reset* |
 
 \*Reset when `has_run_changes` or an open clock is on this stop (visible immediately after clock-in via optimistic projection); confirm dialog.
@@ -538,13 +538,11 @@ Annual-month sites (for the run’s calendar month) are excluded from the untest
 
 Body: `{ "billing_status": "bill" | "do_not_bill" | "unset" }`. Allowed only after technicians **end field** on the run (`office_may_edit_billing`; `409` + `code: billing_before_field_end` while field work is open). Rejects when the row is `legacy` (`code: billing_legacy_locked`). `csv_import` runs: billing controls disabled in UI (read-only).
 
-**Paperwork UI:** Single locked view per run phase (see §5.2). **Run preparation** (before `started_at`) uses **Office job comment** (`office_job_comment` on `MonthlyTestingSiteMonth`) instead of the legacy Highlight checkbox; non-empty office comments highlight the prep row purple and appear read-only in the technician portal. **Run review** shows live outcomes, billing, tickets, and job items logged this run. **Exact history** shows the frozen technician submission from `GET .../run_details/field_submission` (empty state when no snapshot exists). **Field changes** is not a Paperwork tab in this iteration. **Mark review complete** requires every billing location to be `bill` or `do_not_bill` (not `unset`).
+**Paperwork UI:** Single locked view per run phase (see §5.2). **Run preparation** (before `started_at`) uses **Office job comment** (`office_job_comment` on `MonthlyTestingSiteMonth`) instead of the legacy Highlight checkbox; non-empty office comments highlight the prep row purple and appear read-only in the technician portal. **Run review** shows live outcomes, billing, tickets, and deficiencies. **Exact history** shows the frozen technician submission from `GET .../run_details/field_submission` (empty state when no snapshot exists). **Field changes** is not a Paperwork tab in this iteration. **Mark review complete** requires every billing location to be `bill` or `do_not_bill` (not `unset`).
 
 **Field submission:** `POST .../runs/end` (portal) upserts `monthly_route_run_field_submission` — one JSON payload per run, overwritten on each field end. Reopening field work does not delete the snapshot until the next end. If field work ended without a snapshot (legacy runs, idempotent portal end), office review/close and `GET .../field_submission` backfill from live worksheet stops using `field_ended_at` as the capture time. After field end, `GET .../worksheet` for that month serves the frozen submission stops (same order and values as Exact history) until field work is reopened.
 
 **Tickets:** Per billing location — `GET/POST .../locations/<id>/tickets`, `PATCH /api/monthly_routes/tickets/<id>` (status: `open` → `email_sent` → `resolved`).
-
-**Replace item:** `POST .../worksheet/stops/<id>/job_items?month=` logs rows in `monthly_run_job_item` (internal only; no ServiceTrade write).
 
 **Run prep edits:** Office prep field saves use optimistic UI; the server accepts optional ``stop_number`` on worksheet stop PATCH to avoid re-sorting the route, materializes missing stop-month rows when ``run_details`` loads (prep phase, without re-seeding existing rows), and returns a lightweight PATCH payload during prep.
 
@@ -562,11 +560,9 @@ Body: `{ "billing_status": "bill" | "do_not_bill" | "unset" }`. Allowed only aft
 
 3. **Portal identity** — Phase 2 tech picker sets `portal_tech_id` / `portal_tech_name` on workflow APIs; field PATCH audit may still show `technician_app` until fully aligned.
 
-4. **ServiceTrade job items** — Replace item is logged internally only; no ST line-item sync yet.
+4. **Documentation** — This file is the architecture reference; `README.md` only documents the technician portal env var.
 
-5. **Documentation** — This file is the architecture reference; `README.md` only documents the technician portal env var.
-
-6. **In-flight changes (git)** — Modified: `monthly_sites_sync.py`, `monthly_sites.py`, `monthly_sites` routes, v2 migrations, backfill/wipe scripts, v2/bridge tests.
+5. **In-flight changes (git)** — Modified: `monthly_sites_sync.py`, `monthly_sites.py`, `monthly_sites` routes, v2 migrations, backfill/wipe scripts, v2/bridge tests.
 
 ---
 

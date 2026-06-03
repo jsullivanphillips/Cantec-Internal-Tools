@@ -1727,45 +1727,6 @@ class MonthlyLocationTicketEvent(db.Model):
     ticket = db.relationship("MonthlyLocationTicket", back_populates="events")
 
 
-class MonthlyRunJobItem(db.Model):
-    """Items added or replaced during a monthly run (internal log; not ServiceTrade)."""
-
-    __tablename__ = "monthly_run_job_item"
-    __table_args__ = (
-        db.Index("ix_monthly_run_job_item_run_id", "run_id"),
-        db.Index("ix_monthly_run_job_item_location_id", "monthly_route_location_id"),
-    )
-
-    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
-    run_id = db.Column(
-        db.BigInteger,
-        db.ForeignKey("monthly_route_run.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    monthly_route_location_id = db.Column(
-        db.BigInteger,
-        db.ForeignKey("monthly_route_location.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    monthly_testing_site_id = db.Column(
-        db.BigInteger,
-        db.ForeignKey("monthly_testing_site.id", ondelete="SET NULL"),
-        nullable=True,
-    )
-    description = db.Column(db.Text, nullable=False)
-    quantity = db.Column(db.Numeric(10, 2), nullable=False, default=1)
-    recorded_by = db.Column(db.String(255), nullable=True)
-    recorded_at = db.Column(
-        db.DateTime(timezone=True),
-        server_default=db.func.now(),
-        nullable=False,
-    )
-
-    run = db.relationship("MonthlyRouteRun", backref=db.backref("job_items", lazy="dynamic"))
-    location = db.relationship("MonthlyRouteLocation")
-    testing_site = db.relationship("MonthlyTestingSite")
-
-
 class MonthlyRouteComment(db.Model):
     """Staff-authored notes on a monthly calendar route (library route entity)."""
 

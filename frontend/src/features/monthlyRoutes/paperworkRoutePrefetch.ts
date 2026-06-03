@@ -4,13 +4,10 @@ import { derivePaperworkViewMode } from './paperworkViewMode'
 import type { PaperworkFieldSubmissionCache } from './paperworkRouteCache'
 import {
   getCachedFieldSubmission,
-  getCachedJobItems,
   getCachedRunDetails,
   setCachedFieldSubmission,
-  setCachedJobItems,
   setCachedRunDetails,
 } from './paperworkRouteCache'
-import { runFieldEnded } from './runWorkflowShared'
 
 function prefetchKey(routeId: number, monthIso: string): string {
   return `${routeId}::${monthIso}`
@@ -23,7 +20,6 @@ type RunDetailsInflight = {
 
 const inFlightRunDetails = new Map<string, RunDetailsInflight>()
 const inFlightFieldSubmission = new Set<string>()
-const inFlightJobItems = new Set<string>()
 
 /** Shared GET ``run_details`` — one in-flight request per route/month (page load + prefetch). */
 export function fetchPaperworkRunDetails(
@@ -137,32 +133,6 @@ async function prefetchPaperworkFieldSubmission(routeId: number, monthIso: strin
   }
 }
 
-async function prefetchPaperworkJobItems(routeId: number, monthIso: string): Promise<void> {
-  if (getCachedJobItems(routeId, monthIso)) return
-
-  const key = prefetchKey(routeId, monthIso)
-  if (inFlightJobItems.has(key)) return
-
-  inFlightJobItems.add(key)
-  try {
-    const qs = new URLSearchParams({ month: monthIso })
-    const data = await apiJson<{
-      items: { location_id: number; description: string; quantity: number }[]
-    }>(`/api/monthly_routes/routes/${routeId}/run_job_items?${qs.toString()}`)
-    const byLoc: Record<number, { description: string; quantity: number }[]> = {}
-    for (const item of data.items ?? []) {
-      const lid = item.location_id
-      if (!byLoc[lid]) byLoc[lid] = []
-      byLoc[lid].push({ description: item.description, quantity: item.quantity })
-    }
-    setCachedJobItems(routeId, monthIso, byLoc)
-  } catch {
-    // Prefetch failures are silent.
-  } finally {
-    inFlightJobItems.delete(key)
-  }
-}
-
 export async function prefetchPaperworkSecondary(
   routeId: number,
   monthIso: string,
@@ -172,10 +142,6 @@ export async function prefetchPaperworkSecondary(
   const viewMode = derivePaperworkViewMode(payload.run, monthIso, currentMonthIso)
   if (viewMode === 'exact_history') {
     await prefetchPaperworkFieldSubmission(routeId, monthIso)
-    return
-  }
-  if (viewMode === 'run_review' && runFieldEnded(payload.run)) {
-    await prefetchPaperworkJobItems(routeId, monthIso)
   }
 }
 
@@ -213,5 +179,4 @@ export function clearPaperworkPrefetchInFlight(): void {
   }
   inFlightRunDetails.clear()
   inFlightFieldSubmission.clear()
-  inFlightJobItems.clear()
 }

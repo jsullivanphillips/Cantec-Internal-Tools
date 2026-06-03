@@ -744,6 +744,32 @@
   text-decoration: underline;
 }
 
+/* Run review: gap between body rows only (not above thead) */
+.monthly-run-detail-page .run-details-review-table.table {
+  --rd-review-row-gap: 0.5rem;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.monthly-run-detail-page .run-details-review-table.table tbody tr.run-details-review-table-row td {
+  padding-top: 0.7rem;
+  padding-bottom: 0.7rem;
+  border-bottom: none;
+}
+
+.monthly-run-detail-page
+  .run-details-review-table.table
+  tbody
+  tr.run-details-review-table-row
+  + tr.run-details-review-table-row
+  td {
+  padding-top: calc(0.7rem + var(--rd-review-row-gap));
+}
+
+.monthly-run-detail-page .run-details-review-table.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
 .monthly-run-detail-page .run-details-review-table tbody tr.run-details-review-table-row--odd td {
   background-color: var(--ml-surface-muted, rgba(15, 23, 42, 0.035));
 }

@@ -3,12 +3,10 @@ import type { MonthlyRunDetailPayload } from './monthlyRoutesShared'
 import {
   clearPaperworkRouteCache,
   getCachedFieldSubmission,
-  getCachedJobItems,
   getCachedRunDetails,
   invalidatePaperworkRouteMonth,
   invalidatePaperworkCacheForRoute,
   setCachedFieldSubmission,
-  setCachedJobItems,
   setCachedRunDetails,
 } from './paperworkRouteCache'
 
@@ -57,16 +55,14 @@ describe('paperworkRouteCache', () => {
     expect(getCachedRunDetails(ROUTE_ID, JUNE)).toBeNull()
   })
 
-  it('stores field submission and job items separately', () => {
+  it('stores field submission separately from run details', () => {
     setCachedFieldSubmission(ROUTE_ID, MAY, {
       stops: [],
       capturedAt: '2026-05-31T00:00:00Z',
       fieldWorkReopened: false,
     })
-    setCachedJobItems(ROUTE_ID, MAY, { 1: [{ description: 'Test', quantity: 1 }] })
 
     expect(getCachedFieldSubmission(ROUTE_ID, MAY)?.capturedAt).toBe('2026-05-31T00:00:00Z')
-    expect(getCachedJobItems(ROUTE_ID, MAY)?.[1]).toHaveLength(1)
   })
 
   it('invalidatePaperworkRouteMonth clears all caches for that month', () => {
@@ -76,13 +72,11 @@ describe('paperworkRouteCache', () => {
       capturedAt: null,
       fieldWorkReopened: false,
     })
-    setCachedJobItems(ROUTE_ID, JUNE, {})
 
     invalidatePaperworkRouteMonth(ROUTE_ID, JUNE)
 
     expect(getCachedRunDetails(ROUTE_ID, JUNE)).toBeNull()
     expect(getCachedFieldSubmission(ROUTE_ID, JUNE)).toBeNull()
-    expect(getCachedJobItems(ROUTE_ID, JUNE)).toBeNull()
   })
 
   it('invalidatePaperworkCacheForRoute clears every month for the route', () => {
