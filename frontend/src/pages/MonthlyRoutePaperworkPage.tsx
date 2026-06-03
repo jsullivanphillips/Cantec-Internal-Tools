@@ -239,9 +239,10 @@ export default function MonthlyRoutePaperworkPage() {
         const data = await fetchPaperworkRunDetails(idNum, monthQuery, { force: true })
         if (fetchSeq !== runDetailsFetchSeqRef.current) return
         if (data) {
-          const locations = runDetailLocationOrderMatches(data.locations, orderedLocationIds)
-            ? data.locations
-            : reorderRunDetailLocations(data.locations, orderedLocationIds)
+          const serverLocations = data.locations ?? []
+          const locations = runDetailLocationOrderMatches(serverLocations, orderedLocationIds)
+            ? serverLocations
+            : reorderRunDetailLocations(serverLocations, orderedLocationIds)
           const merged = { ...data, locations }
           setPayload(merged)
           setError(null)
