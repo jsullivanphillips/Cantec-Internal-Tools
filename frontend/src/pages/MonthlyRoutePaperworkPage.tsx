@@ -123,6 +123,8 @@ export default function MonthlyRoutePaperworkPage() {
     Record<number, { description: string; quantity: number }[]>
   >({})
   const pendingRunDetailsReloadRef = useRef(false)
+  /** Bumped to drop stale ``run_details`` responses (cache-first load vs reopen/reset). */
+  const runDetailsFetchSeqRef = useRef(0)
 
   const selectableMonths = useMemo(
     () => computeSelectablePaperworkMonths(routeMeta?.runs_by_month ?? {}, currentMonthIso),
@@ -183,9 +185,14 @@ export default function MonthlyRoutePaperworkPage() {
     }
   }, [idNum])
 
+  const invalidateInFlightRunDetails = useCallback(() => {
+    runDetailsFetchSeqRef.current += 1
+  }, [])
+
   const loadRunDetails = useCallback(
     async (signal?: AbortSignal, options?: { background?: boolean }) => {
       if (!Number.isFinite(idNum)) return
+      const fetchSeq = ++runDetailsFetchSeqRef.current
       const qs = new URLSearchParams({ month: monthQuery })
       try {
         const data = await apiJson<MonthlyRunDetailPayload>(
@@ -193,12 +200,14 @@ export default function MonthlyRoutePaperworkPage() {
           { signal },
         )
         if (signal?.aborted) return
+        if (fetchSeq !== runDetailsFetchSeqRef.current) return
         setCachedRunDetails(idNum, monthQuery, data)
         setPayload(data)
         setError(null)
         return data
       } catch (e) {
         if (isAbortError(e)) return
+        if (fetchSeq !== runDetailsFetchSeqRef.current) return
         if (!options?.background) throw e
       }
     },
@@ -219,6 +228,8 @@ export default function MonthlyRoutePaperworkPage() {
       setError('Invalid route.')
       return
     }
+
+    invalidateInFlightRunDetails()
 
     const cached = getCachedRunDetails(idNum, monthQuery)
     const hasCache = cached != null
@@ -253,7 +264,7 @@ export default function MonthlyRoutePaperworkPage() {
       }
     })()
     return () => ac.abort()
-  }, [idNum, monthQuery, loadRunDetails])
+  }, [idNum, monthQuery, loadRunDetails, invalidateInFlightRunDetails])
 
   useEffect(() => {
     if (!payload || !Number.isFinite(idNum)) return
@@ -325,13 +336,14 @@ export default function MonthlyRoutePaperworkPage() {
 
   const applyWorkflowRunUpdate = useCallback(
     (run: TechnicianWorksheetRun) => {
+      invalidateInFlightRunDetails()
       setPayload((prev) => (prev ? patchRunDetailPayloadRun(prev, run) : prev))
       setRouteMeta((prev) => patchRouteMetaRunMonth(prev, monthQuery, run))
       if (Number.isFinite(idNum)) {
         invalidatePaperworkSecondaryCaches(idNum, monthQuery)
       }
     },
-    [monthQuery, idNum],
+    [monthQuery, idNum, invalidateInFlightRunDetails],
   )
 
   const loadJobItems = useCallback(
@@ -528,6 +540,7 @@ export default function MonthlyRoutePaperworkPage() {
       )
       clearWorksheetCache(idNum, monthQuery)
       invalidatePaperworkRouteMonth(idNum, monthQuery)
+      invalidateInFlightRunDetails()
       await loadRunDetails()
       await loadRouteMeta()
     } catch (e) {
@@ -539,7 +552,7 @@ export default function MonthlyRoutePaperworkPage() {
     } finally {
       setRunLifecycleAction(null)
     }
-  }, [idNum, monthQuery, loadRunDetails, loadRouteMeta, runLifecycleAction])
+  }, [idNum, monthQuery, loadRunDetails, loadRouteMeta, runLifecycleAction, invalidateInFlightRunDetails])
 
   const onReturnToPrep = useCallback(async () => {
     if (!Number.isFinite(idNum) || !payload?.run) return
@@ -658,6 +671,7 @@ export default function MonthlyRoutePaperworkPage() {
       )
       clearWorksheetCache(idNum, monthQuery)
       invalidatePaperworkRouteMonth(idNum, monthQuery)
+      invalidateInFlightRunDetails()
       setResetRunModalOpen(false)
       await loadRunDetails()
       await loadRouteMeta()
@@ -670,7 +684,7 @@ export default function MonthlyRoutePaperworkPage() {
     } finally {
       setResetRunBusy(false)
     }
-  }, [idNum, monthQuery, payload?.run, loadRunDetails, loadRouteMeta])
+  }, [idNum, monthQuery, payload?.run, loadRunDetails, loadRouteMeta, invalidateInFlightRunDetails])
 
   const routeTo = `/monthlies/routes/${idNum}`
 

@@ -72,6 +72,8 @@ describe('projectedOpenClockStops', () => {
         monthIso: MONTH,
         testingSiteId: 42,
         payload: { time_out: '10:00 AM' },
+        attempts: 0,
+        nextAttemptAt: 0,
         enqueuedAt: 1,
       },
     ]
