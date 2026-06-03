@@ -272,6 +272,56 @@ def test_billing_unset_when_all_skipped(portal_client, monkeypatch):
         assert get_location_billing_status(loc_id, date(2026, 5, 1)) == "unset"
 
 
+def test_reset_clears_outcome_and_legacy_result_status(portal_client, monkeypatch):
+    """Per-stop reset must clear dual-written result_status, not only test_outcome."""
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
+
+    client, app = portal_client
+    with app.app_context():
+        route_id, loc_id, ts_a, _ts_b = _seed_route_with_two_stops()
+
+    _start_run(client)
+    month = "2026-05-01"
+    base = f"/api/monthly_routes/routes/{route_id}/worksheet/stops/{ts_a}"
+
+    assert (
+        client.post(f"{base}/clock_events/clock_in?month={month}&tech_portal=1", json={"time_in": "9:00 AM"}).status_code
+        == 200
+    )
+    assert (
+        client.put(
+            f"{base}/test_outcome?month={month}&tech_portal=1",
+            json={"test_outcome": "all_good"},
+        ).status_code
+        == 200
+    )
+    assert (
+        client.post(
+            f"{base}/clock_events/clock_out?month={month}&tech_portal=1",
+            json={"time_out": "9:30 AM"},
+        ).status_code
+        == 200
+    )
+
+    reset = client.post(f"{base}/reset?month={month}&tech_portal=1")
+    assert reset.status_code == 200
+    stop = reset.get_json()["stop"]
+    assert not (stop.get("test_outcome") or "").strip()
+    assert not (stop.get("result_status") or "").strip()
+    assert not stop.get("clock_events")
+    assert stop.get("has_run_changes") is False
+    assert stop.get("is_legacy_outcome") is False
+
+    with app.app_context():
+        mtsm = MonthlyTestingSiteMonth.query.filter_by(monthly_testing_site_id=ts_a).one()
+        assert mtsm.test_outcome is None
+        assert mtsm.result_status is None
+        hist = MonthlyRouteTestHistory.query.filter_by(location_id=loc_id).one()
+        assert hist.result_status is None
+
+
 def test_deficiency_verify_and_reset(portal_client, monkeypatch):
     from app.routes import monthly_routes as mr_mod
 

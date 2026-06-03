@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
 from sqlalchemy import func
@@ -541,6 +542,64 @@ def apply_session_stop_order_from_history_for_route_month(
                 row.session_route_stop_order = order
                 updated += 1
     db.session.flush()
+    return updated
+
+
+def dismiss_prior_month_out_of_order_for_testing_sites(
+    route_id: int,
+    month_first: date,
+    testing_site_ids: Iterable[int],
+) -> int:
+    """Persist office resolution of prior-month out-of-order prep hints."""
+    ids = {int(tid) for tid in testing_site_ids}
+    if not ids:
+        return 0
+    rows = (
+        MonthlyTestingSiteMonth.query.filter(
+            MonthlyTestingSiteMonth.month_date == month_first,
+            MonthlyTestingSiteMonth.test_monthly_route_id == int(route_id),
+            MonthlyTestingSiteMonth.monthly_testing_site_id.in_(ids),
+        )
+        .all()
+    )
+    updated = 0
+    for row in rows:
+        if not bool(row.prior_month_out_of_order_dismissed):
+            row.prior_month_out_of_order_dismissed = True
+            updated += 1
+    if updated:
+        db.session.flush()
+    return updated
+
+
+def sync_session_route_stop_order_from_library_route(route_id: int) -> int:
+    """After library ``route_stop_order`` changes, align worksheet session order on that route."""
+    locs = _route_locations(route_id)
+    if not locs:
+        return 0
+    ts_by_loc = _testing_sites_by_location_bulk(locs)
+    updated = 0
+    for loc in locs:
+        if loc.route_stop_order is None:
+            continue
+        order = int(loc.route_stop_order)
+        ts_rows = ts_by_loc.get(int(loc.id), [])
+        if not ts_rows:
+            continue
+        ts_ids = [int(t.id) for t in ts_rows]
+        rows = (
+            MonthlyTestingSiteMonth.query.filter(
+                MonthlyTestingSiteMonth.monthly_testing_site_id.in_(ts_ids),
+                MonthlyTestingSiteMonth.test_monthly_route_id == int(route_id),
+            )
+            .all()
+        )
+        for row in rows:
+            if row.session_route_stop_order != order:
+                row.session_route_stop_order = order
+                updated += 1
+    if updated:
+        db.session.flush()
     return updated
 
 

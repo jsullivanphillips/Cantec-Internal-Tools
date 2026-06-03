@@ -29,11 +29,11 @@ const STAGE_LABELS: Record<RunWorkflowStage, string> = {
 }
 
 export const RUN_WORKFLOW_STEP_LABELS: readonly string[] = [
-  'Prepare',
-  'Field start',
-  'Field end',
-  'Office review',
-  'Close',
+  'Preparation',
+  'Ready',
+  'Active',
+  'Review',
+  'Complete',
 ]
 
 function hasTs(value: string | null | undefined): boolean {

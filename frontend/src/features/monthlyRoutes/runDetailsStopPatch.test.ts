@@ -99,7 +99,7 @@ describe('prepChangesToStopPatch', () => {
     ).toEqual({
       prior_month_out_of_order_dismissed: true,
       prior_month_out_of_order: false,
-      prior_month_expected_stop_number: null,
+      prior_month_tested_after_address: null,
     })
   })
 })

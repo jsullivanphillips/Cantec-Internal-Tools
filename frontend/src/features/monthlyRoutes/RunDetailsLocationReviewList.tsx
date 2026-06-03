@@ -99,7 +99,7 @@ export default function RunDetailsLocationReviewList({
   /** Block prep edits until the Pacific current month run is closed (future months). */
   prepEditsDisabled?: boolean
   outcomeCounts?: RunReviewOutcomeCounts
-  onRouteOrderChanged?: () => void | Promise<void>
+  onRouteOrderChanged?: (orderedLocationIds: number[]) => void | Promise<void>
 }) {
   const [prepSearch, setPrepSearch] = useState('')
 

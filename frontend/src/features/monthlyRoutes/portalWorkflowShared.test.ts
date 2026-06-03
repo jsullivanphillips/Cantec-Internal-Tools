@@ -201,6 +201,18 @@ describe('portalSkipReasonDetail', () => {
   })
 })
 
+describe('portalStopVisualTone', () => {
+  it('ignores stray result_status unless is_legacy_outcome', () => {
+    const stop = baseStop({ result_status: 'tested' })
+    expect(portalStopVisualTone(stop, '2026-05-01')).toBe('pending')
+    expect(portalNavStopStatusClass(stop, '2026-05-01')).toBe('')
+
+    const legacy = baseStop({ result_status: 'tested', is_legacy_outcome: true })
+    expect(portalStopVisualTone(legacy, '2026-05-01')).toBe('all_good')
+    expect(portalNavStopStatusClass(legacy, '2026-05-01')).toBe('pw-mock-nav-stop--tested')
+  })
+})
+
 describe('portalStopCanReset', () => {
   it('is true immediately after optimistic clock-in', () => {
     const stop = baseStop()

@@ -28,7 +28,6 @@ import RunDetailsDeficiencyList from './RunDetailsDeficiencyList'
 import { openDeficiencySummaries } from './runDetailsDeficiencyDisplay'
 import {
   orderedLocationIdsFromPrepRows,
-  priorMonthOutOfOrderHint,
   reorderPrepRowsByLocationIds,
   renumberPrepRowStopNumbers,
   type RunDetailPrepRow,
@@ -154,7 +153,7 @@ export default function RunDetailsPrepareTable({
   ) => void | Promise<void>
   prepEditsDisabled?: boolean
   reorderDisabled?: boolean
-  onRouteOrderChanged?: () => void | Promise<void>
+  onRouteOrderChanged?: (orderedLocationIds: number[]) => void | Promise<void>
 }) {
   const [activeFieldKey, setActiveFieldKey] = useState<string | null>(null)
   const [optimisticRows, setOptimisticRows] = useState<RunDetailPrepRow[] | null>(null)
@@ -168,7 +167,19 @@ export default function RunDetailsPrepareTable({
   useEffect(() => {
     setOptimisticRows(null)
     setOrderError(null)
-  }, [rows])
+  }, [routeId, monthDate])
+
+  useEffect(() => {
+    if (optimisticRows == null || orderSaving) return
+    const serverIds = orderedLocationIdsFromPrepRows(rows)
+    const optIds = orderedLocationIdsFromPrepRows(optimisticRows)
+    if (
+      serverIds.length === optIds.length &&
+      serverIds.every((id, index) => id === optIds[index])
+    ) {
+      setOptimisticRows(null)
+    }
+  }, [rows, optimisticRows, orderSaving])
 
   const displayRows = optimisticRows ?? rows
 
@@ -212,7 +223,7 @@ export default function RunDetailsPrepareTable({
             body: JSON.stringify({ ordered_location_ids: orderedLocationIds }),
           },
         )
-        await onRouteOrderChanged?.()
+        await onRouteOrderChanged?.(orderedLocationIds)
       } catch {
         setOrderError('Unable to save stop order.')
         setOptimisticRows(null)
@@ -268,7 +279,6 @@ export default function RunDetailsPrepareTable({
       const openDeficiencies = openDeficiencySummaries(stop.deficiency_summaries)
       const multiSite = siteCount > 1
       const annualDue = stopAnnualDueThisMonth(stop, locationLabel, monthDate)
-      const outOfOrderHint = priorMonthOutOfOrderHint(stop)
       const fk = (suffix: string) => fieldKey(sid, suffix)
       const patchStop = patchStopForRow(stop.stop_number)
       const officeComment = (stop.office_job_comment || '').trim()
@@ -297,39 +307,6 @@ export default function RunDetailsPrepareTable({
             >
               {locationLabel}
             </Link>
-            {options.isPrimaryForLocation && outOfOrderHint ? (
-              <span className="badge bg-warning text-dark mt-1 d-flex run-details-prep-badge run-details-prep-badge--out-of-order">
-                <span className="run-details-prep-badge__body">
-                  <span className="run-details-prep-badge__title">{outOfOrderHint.title}</span>
-                  {outOfOrderHint.detail ? (
-                    <span className="run-details-prep-badge__detail">{outOfOrderHint.detail}</span>
-                  ) : null}
-                </span>
-                {!prepEditsDisabled ? (
-                  <button
-                    type="button"
-                    className="run-details-prep-badge__dismiss btn-close btn-close-sm"
-                    aria-label="Dismiss out-of-order hint"
-                    disabled={isFieldSaving(sid, fk('dismiss-oof'))}
-                    onClick={(event) => {
-                      event.preventDefault()
-                      event.stopPropagation()
-                      void patchStop(
-                        sid,
-                        fk('dismiss-oof'),
-                        { prior_month_out_of_order_dismissed: true },
-                        {
-                          prior_month_out_of_order: true,
-                          prior_month_expected_stop_number:
-                            stop.prior_month_expected_stop_number ?? null,
-                          prior_month_out_of_order_dismissed: false,
-                        },
-                      )
-                    }}
-                  />
-                ) : null}
-              </span>
-            ) : null}
             {options.isPrimaryForLocation && stop.prior_month_field_edits ? (
               <span className="badge bg-light text-dark border mt-1 d-block run-details-prep-badge">
                 Edited last month

@@ -7,9 +7,10 @@ import {
   filterRunDetailFieldEditLocations,
   filterRunDetailLocations,
   flattenRunDetailReviewRows,
-  priorMonthOutOfOrderHint,
   reorderPrepRowsByLocationIds,
+  reorderRunDetailLocations,
   renumberPrepRowStopNumbers,
+  runDetailLocationOrderMatches,
   stopHasNewCommentField,
   locationHasAllStopsSubmitted,
   locationIdentityTone,
@@ -580,21 +581,29 @@ describe('prep route order helpers', () => {
     expect(reordered.map((row) => row.stop.stop_number)).toEqual([1, 2, 3])
   })
 
-  it('builds out-of-order hint with expected stop number', () => {
-    expect(
-      priorMonthOutOfOrderHint({
-        prior_month_out_of_order: true,
-        prior_month_expected_stop_number: 3,
+  it('reorders run-details locations and renumbers stops', () => {
+    const locations = [
+      baseLocation({ location_id: 101, first_stop_number: 1, last_stop_number: 1 }),
+      baseLocation({
+        location_id: 102,
+        location_label: '456 Oak',
+        first_stop_number: 2,
+        last_stop_number: 2,
+        stops: [
+          {
+            ...baseLocation().stops[0],
+            testing_site_id: 2,
+            location_id: 102,
+            stop_number: 2,
+            display_address: '456 Oak',
+          },
+        ],
       }),
-    ).toEqual({
-      title: 'Out of order last run',
-      detail: 'Was stop #3 on last run',
-    })
-    expect(
-      priorMonthOutOfOrderHint({
-        prior_month_out_of_order: false,
-        prior_month_expected_stop_number: 3,
-      }),
-    ).toBeNull()
+    ]
+    const reordered = reorderRunDetailLocations(locations, [102, 101])
+    expect(reordered.map((loc) => loc.location_id)).toEqual([102, 101])
+    expect(reordered[0].stops[0].stop_number).toBe(1)
+    expect(reordered[1].stops[0].stop_number).toBe(2)
+    expect(runDetailLocationOrderMatches(reordered, [102, 101])).toBe(true)
   })
 })

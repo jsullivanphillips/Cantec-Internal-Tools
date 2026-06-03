@@ -120,7 +120,8 @@ Delegates most mutations to `monthly_routes`, then augments with v2:
 
 | Endpoint | Notes |
 |----------|--------|
-| `GET /api/monthly_sites/library` | Lightweight list: slim month cells, batched v2 key rollup (no sync-on-read); detail GET includes `testing_sites[]` |
+| `GET /api/monthly_sites/library` | Lightweight list: slim month cells, batched v2 key rollup (no sync-on-read); detail GET includes `testing_sites[]` and `route_options[]` for assignment dropdowns |
+| `PATCH /api/monthly_sites/library/<id>` | Update library fields including `test_day` (empty clears route assignment) |
 | `PATCH /api/monthly_sites/testing_sites/<id>` | Edit stop; dual-writes keys to legacy |
 | `POST .../library/<id>/testing_sites` | Add stop |
 | `DELETE .../testing_sites/<id>` | Delete stop (not last) |
@@ -142,7 +143,7 @@ Delegates most mutations to `monthly_routes`, then augments with v2:
 
 **Paperwork loading:**
 
-- **Month switching (client cache):** The Paperwork page keeps an in-memory cache per route/month for `run_details`, exact-history field submission, and run-review job items. Revisiting a month shows the cached payload immediately (no full-page skeleton) and revalidates in the background with a subtle “Refreshing…” indicator beside the month selector. First visit to a month still shows the skeleton until `run_details` returns. Lifecycle actions (mark prepared, reset run) invalidate that month’s cache; workflow transitions (complete, reopen, review complete) invalidate secondary caches and patch run header in place. Library master edits invalidate paperwork cache for the route. In-flight `run_details` fetches use a monotonic sequence so a slow background refresh cannot overwrite a newer local state (e.g. **Reopen job** before cache revalidation finishes).
+- **Month switching (client cache):** The Paperwork page keeps an in-memory cache per route/month for `run_details`, exact-history field submission, and run-review job items. Revisiting a month shows the cached payload immediately (no full-page skeleton) and revalidates in the background with a subtle “Refreshing…” indicator beside the month selector. First visit to a month still shows the skeleton until `run_details` returns. Lifecycle actions (mark prepared, reset run) invalidate that month’s cache; workflow transitions (complete, reopen, review complete) invalidate secondary caches and patch run header in place. Library master edits invalidate paperwork cache for the route. `fetchPaperworkRunDetails` in `paperworkRoutePrefetch.ts` dedupes in-flight `GET …/run_details` per route/month (page load, prefetch, and master-sync refresh share one request). A monotonic fetch sequence drops stale responses (e.g. **Reopen job** before cache revalidation finishes).
 - **Adjacent prefetch:** While viewing a month, the SPA prefetches the previous and next selectable months in the background (plus any month hovered in the dropdown). Exact-history months also prefetch field submission; post-field-end run review prefetches job items.
 - **Exact history:** After `run_details` loads, `GET .../run_details/field_submission` loads frozen stops (cached the same way on repeat visits).
 
@@ -250,7 +251,7 @@ Many earlier migrations scaffolded routes, runs, history, inspection fields, coo
 | `frontend/src/pages/MonthlyRouteDetailPage.tsx` | Route detail; Paperwork entry button |
 | `frontend/src/pages/MonthlyRoutePaperworkPage.tsx` | Office Paperwork (prep / review / exact history) |
 | `frontend/src/pages/MonthlyRoutesMapPage.tsx` | Map view |
-| `frontend/src/pages/MonthlyLocationDetailPage.tsx` | Location detail |
+| `frontend/src/pages/MonthlyLocationDetailPage.tsx` | Location detail (edit status, route assignment, testing sites) |
 | `frontend/src/pages/TechnicianWorksheetPage.tsx` | Office/staff worksheet table + SSE |
 | `frontend/src/pages/TechnicianPortalWorksheetPage.tsx` | Portal worksheet (one stop at a time, v2 `stops[]`) |
 | `frontend/src/features/monthlyRoutes/usePortalWorksheet.ts` | Portal load/sync/SSE/run lifecycle hook |
@@ -475,7 +476,7 @@ Legacy `result_status` / `sheet_time_in_raw` / `sheet_time_out_raw` remain for C
 - `POST .../clock_events/clock_in` / `clock_out` / `cancel_clock_in` (API remains for sync/undo paths). **Reset** in the dock (`POST .../reset`) clears clock events, results, and deficiencies logged this run when `has_run_changes`.
 - `PUT .../test_outcome` (four outcomes + structured skip)
 - Deficiency CRUD + `POST .../verify`
-- `POST .../reset` per stop
+- `POST .../reset` per stop (clears `test_outcome`, legacy `result_status` / sheet times, clock events, and run-scoped deficiencies)
 
 Field edits (procedures, panel, comments, etc.) still use `PATCH .../worksheet/stops/:id`. Workflow mutations queue in `localStorage` key `portalWorkflowSyncQueue` (separate from field PATCH queue).
 
@@ -547,7 +548,9 @@ Body: `{ "billing_status": "bill" | "do_not_bill" | "unset" }`. Allowed only aft
 
 **Run prep edits:** Office prep field saves use optimistic UI; the server accepts optional ``stop_number`` on worksheet stop PATCH to avoid re-sorting the route, materializes missing stop-month rows when ``run_details`` loads (prep phase, without re-seeding existing rows), and returns a lightweight PATCH payload during prep.
 
-**Prep insights:** Prior-month visit order flags (`prior_month_out_of_order`, with `prior_month_expected_stop_number` on the prep address badge; office can dismiss the badge via **×**, persisted as `prior_month_out_of_order_dismissed` on the stop-month row) and field-edit hints on prep rows via `app/monthly/prep_insights.py`. Run preparation lets office staff drag locations by the `#` column grip to persist `route_stop_order` (`PUT /api/monthly_routes/routes/:id/location_order`).
+**Prep location order:** Dragging locations on the prep table updates library ``route_stop_order`` via ``PUT …/location_order`` and syncs ``session_route_stop_order`` on worksheet rows so refetches match the new order.
+
+**Prep insights:** **Edited last month** badge on prep rows when the prior month run had audit field edits (`prior_month_field_edits` via `app/monthly/prep_insights.py`). Prior-month visit-order / new-to-route prep badges are disabled for now.
 
 ---
 
@@ -555,7 +558,7 @@ Body: `{ "billing_status": "bill" | "do_not_bill" | "unset" }`. Allowed only aft
 
 1. **Worksheet grain** — Portal field worksheet uses **one stop per testing site** (`MonthlyTestingSiteMonth`). Legacy office worksheet page (`TechnicianWorksheetPage`) is superseded by **Exact history** on Paperwork for stop-grain read-only view.
 
-2. **Dual schema cutover incomplete** — Legacy `MonthlyRouteLocation` still owns library billing fields (address, status, route assignment, spreadsheet notes). V2 `MonthlyTestingSite` owns per-stop display fields (ring, keys, panel, procedures, price). **Location detail + edit modal** (`MonthlyLocationDetailPage`, `MonthlyLocationLibraryModal`) read/write v2 stops via `GET/PATCH /api/monthly_sites/testing_sites/:id`; primary stop edits dual-write back to legacy for sheet parity.
+2. **Dual schema cutover incomplete** — Legacy `MonthlyRouteLocation` still owns library billing fields (address, status, route assignment, spreadsheet notes). V2 `MonthlyTestingSite` owns per-stop display fields (ring, keys, panel, procedures, price). **Location detail + edit modal** (`MonthlyLocationDetailPage`, `MonthlyLocationLibraryModal`) read/write v2 stops via `GET/PATCH /api/monthly_sites/testing_sites/:id`; primary stop edits dual-write back to legacy for sheet parity. **Location detail** also edits route assignment via **Edit route** (`PATCH` `test_day`, including empty for unassigned).
 
 3. **Portal identity** — Phase 2 tech picker sets `portal_tech_id` / `portal_tech_name` on workflow APIs; field PATCH audit may still show `technician_app` until fully aligned.
 

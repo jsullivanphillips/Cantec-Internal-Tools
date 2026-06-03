@@ -560,6 +560,98 @@ def test_get_worksheet_orders_by_session_route_stop_order(worksheet_client):
     assert body["rows"][1]["session_route_stop_order"] == 1
 
 
+def test_sync_session_route_stop_order_from_library_route(worksheet_client):
+    """Library ``route_stop_order`` must drive worksheet session order (prep drag / refetch)."""
+    _client, app = worksheet_client
+    with app.app_context():
+        from app.monthly.worksheet_stops import (
+            sync_session_route_stop_order_from_library_route,
+            worksheet_stops_for_route_month,
+        )
+        route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
+        loc_a = MonthlyRouteLocation(
+            id=101,
+            address="AAA First St",
+            address_normalized="aaa first st",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
+            building=None,
+            building_normalized="",
+            status_normalized="active",
+            status_raw="Active",
+            monthly_route_id=1,
+            route_stop_order=0,
+        )
+        loc_b = MonthlyRouteLocation(
+            id=102,
+            address="BBB Second St",
+            address_normalized="bbb second st",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
+            building=None,
+            building_normalized="",
+            status_normalized="active",
+            status_raw="Active",
+            monthly_route_id=1,
+            route_stop_order=1,
+        )
+        run = MonthlyRouteRun(
+            id=5200,
+            monthly_route_id=1,
+            month_date=date(2026, 5, 1),
+            status="scheduled",
+            source="office_manual",
+        )
+        db.session.add_all([route, loc_a, loc_b, run])
+        db.session.commit()
+        sync_testing_sites_from_legacy(loc_a)
+        sync_testing_sites_from_legacy(loc_b)
+        ts_a = (
+            MonthlyTestingSite.query.join(MonthlySite)
+            .filter(MonthlySite.legacy_monthly_route_location_id == 101)
+            .one()
+        )
+        ts_b = (
+            MonthlyTestingSite.query.join(MonthlySite)
+            .filter(MonthlySite.legacy_monthly_route_location_id == 102)
+            .one()
+        )
+        db.session.add_all(
+            [
+                MonthlyTestingSiteMonth(
+                    id=5201,
+                    monthly_testing_site_id=int(ts_a.id),
+                    month_date=date(2026, 5, 1),
+                    test_monthly_route_id=1,
+                    run_id=5200,
+                    session_route_stop_order=1,
+                ),
+                MonthlyTestingSiteMonth(
+                    id=5202,
+                    monthly_testing_site_id=int(ts_b.id),
+                    month_date=date(2026, 5, 1),
+                    test_monthly_route_id=1,
+                    run_id=5200,
+                    session_route_stop_order=0,
+                ),
+            ]
+        )
+        db.session.commit()
+
+        loc_a.route_stop_order = 0
+        loc_b.route_stop_order = 1
+        db.session.flush()
+        updated = sync_session_route_stop_order_from_library_route(1)
+        assert updated == 2
+
+        stops = worksheet_stops_for_route_month(1, date(2026, 5, 1), include_portal_extras=False)
+        assert [int(s["location_id"]) for s in stops] == [101, 102]
+        mtsm_a = db.session.get(MonthlyTestingSiteMonth, 5201)
+        mtsm_b = db.session.get(MonthlyTestingSiteMonth, 5202)
+        assert mtsm_a.session_route_stop_order == 0
+        assert mtsm_b.session_route_stop_order == 1
+
+
 def test_patch_worksheet_row_clear_skipped_resets_outcome(worksheet_client):
     client, app = worksheet_client
     with app.app_context():

@@ -310,6 +310,11 @@ export default function MonthlyLocationDetailPage() {
   const [statusDraft, setStatusDraft] = useState('')
   const [statusSaving, setStatusSaving] = useState(false)
   const [statusSaveError, setStatusSaveError] = useState<string | null>(null)
+  const [routeOptions, setRouteOptions] = useState<string[]>([])
+  const [showRouteModal, setShowRouteModal] = useState(false)
+  const [routeDraft, setRouteDraft] = useState('')
+  const [routeSaving, setRouteSaving] = useState(false)
+  const [routeSaveError, setRouteSaveError] = useState<string | null>(null)
   const [sessionUsername, setSessionUsername] = useState<string | null>(null)
   const [addingTestingSite, setAddingTestingSite] = useState(false)
   const [addTestingSiteError, setAddTestingSiteError] = useState<string | null>(null)
@@ -336,11 +341,13 @@ export default function MonthlyLocationDetailPage() {
         if (signal?.aborted) return
         setLocation(data.location)
         setComments(data.comments || [])
+        setRouteOptions(data.route_options ?? [])
       } catch (e) {
         if (isAbortError(e)) return
         setError('Unable to load this location.')
         setLocation(null)
         setComments([])
+        setRouteOptions([])
       } finally {
         if (!signal?.aborted) setLoading(false)
       }
@@ -702,6 +709,48 @@ export default function MonthlyLocationDetailPage() {
     }
   }, [location, statusDraft])
 
+  const openRouteModal = useCallback(() => {
+    if (!location) return
+    setRouteDraft(location.test_day || '')
+    setRouteSaveError(null)
+    setShowRouteModal(true)
+  }, [location])
+
+  const closeRouteModal = useCallback(() => {
+    if (routeSaving) return
+    setShowRouteModal(false)
+    setRouteSaveError(null)
+  }, [routeSaving])
+
+  const saveRouteEdit = useCallback(async () => {
+    if (!location) return
+    const prevRouteId = location.monthly_route?.id ?? location.monthly_route_id ?? null
+    setRouteSaving(true)
+    setRouteSaveError(null)
+    try {
+      const res = await apiJson<{ location: LibraryLocation }>(
+        `/api/monthly_sites/library/${location.id}`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({ test_day: routeDraft }),
+        }
+      )
+      setLocation(res.location)
+      setShowRouteModal(false)
+      const newRouteId = res.location.monthly_route?.id ?? res.location.monthly_route_id ?? null
+      if (prevRouteId != null) notifyPaperworkMasterSiteUpdated(prevRouteId)
+      if (newRouteId != null && newRouteId !== prevRouteId) {
+        notifyPaperworkMasterSiteUpdated(newRouteId)
+      }
+    } catch (e) {
+      const msg =
+        typeof e === 'object' && e && 'error' in e ? String((e as { error: unknown }).error) : null
+      setRouteSaveError(msg || 'Unable to save route assignment.')
+    } finally {
+      setRouteSaving(false)
+    }
+  }, [location, routeDraft])
+
   useEffect(() => {
     if (!historyEdit || historySaving) return
     const onKey = (e: globalThis.KeyboardEvent) => {
@@ -740,6 +789,7 @@ export default function MonthlyLocationDetailPage() {
   }
 
   const routeLabel = libraryRouteDisplay(location)
+  const routeLabelText = routeLabel.trim() || 'Unassigned'
   const routeDetailId = location.monthly_route?.id ?? location.monthly_route_id ?? null
   const testingSites = sortedTestingSites(location)
   const primaryStop = testingSites[0]
@@ -760,12 +810,12 @@ export default function MonthlyLocationDetailPage() {
       keyText || '—'
     )
   const routeValue =
-    routeDetailId != null && routeLabel !== '—' ? (
+    routeDetailId != null && routeLabel.trim() ? (
       <Link to={`/monthlies/routes/${routeDetailId}`} className="fw-semibold text-decoration-none">
-        {routeLabel}
+        {routeLabelText}
       </Link>
     ) : (
-      <span className="fw-semibold">{routeLabel}</span>
+      <span className="fw-semibold">{routeLabelText}</span>
     )
   const propertyManagementLabel =
     primaryStop?.property_management_company?.trim() ||
@@ -808,16 +858,28 @@ export default function MonthlyLocationDetailPage() {
             <h1 className="monthly-location-detail-title">{title}</h1>
             <div className="monthly-location-detail-subtitle">{propertyManagementLabel}</div>
           </div>
-          <Button
-            type="button"
-            variant="outline-primary"
-            size="sm"
-            className="monthly-location-detail-action"
-            onClick={openStatusModal}
-          >
-            <i className="bi bi-sliders" aria-hidden />
-            Edit status
-          </Button>
+          <div className="d-flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline-primary"
+              size="sm"
+              className="monthly-location-detail-action"
+              onClick={openRouteModal}
+            >
+              <i className="bi bi-signpost-split" aria-hidden />
+              Edit route
+            </Button>
+            <Button
+              type="button"
+              variant="outline-primary"
+              size="sm"
+              className="monthly-location-detail-action"
+              onClick={openStatusModal}
+            >
+              <i className="bi bi-sliders" aria-hidden />
+              Edit status
+            </Button>
+          </div>
         </section>
 
         <div className="monthly-location-metric-grid" aria-label="Location summary">
@@ -879,6 +941,45 @@ export default function MonthlyLocationDetailPage() {
             </Button>
             <Button type="button" variant="primary" disabled={statusSaving} onClick={() => void saveStatusEdit()}>
               {statusSaving ? 'Saving…' : 'Save status'}
+            </Button>
+          </Modal.Footer>
+        </Modal>
+
+        <Modal show={showRouteModal} onHide={closeRouteModal} centered size="sm">
+          <Modal.Header closeButton={!routeSaving}>
+            <Modal.Title>Edit route</Modal.Title>
+          </Modal.Header>
+          <Modal.Body>
+            {routeSaveError ? (
+              <Alert variant="danger" className="py-2 small">
+                {routeSaveError}
+              </Alert>
+            ) : null}
+            <Form.Group>
+              <Form.Label>Route assignment</Form.Label>
+              <Form.Select
+                value={routeDraft}
+                disabled={routeSaving}
+                onChange={(e) => setRouteDraft(e.target.value)}
+              >
+                <option value="">Unassigned</option>
+                {routeOptions.map((route) => (
+                  <option key={route} value={route}>
+                    {route}
+                  </option>
+                ))}
+                {!routeOptions.includes(routeDraft) && routeDraft ? (
+                  <option value={routeDraft}>{routeDraft}</option>
+                ) : null}
+              </Form.Select>
+            </Form.Group>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button type="button" variant="outline-secondary" disabled={routeSaving} onClick={closeRouteModal}>
+              Cancel
+            </Button>
+            <Button type="button" variant="primary" disabled={routeSaving} onClick={() => void saveRouteEdit()}>
+              {routeSaving ? 'Saving…' : 'Save route'}
             </Button>
           </Modal.Footer>
         </Modal>

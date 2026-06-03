@@ -56,9 +56,11 @@ function stopDisplayStatus(stop: TechnicianWorksheetStop): StopDisplayStatus {
     if (outcome === 'skipped') return 'skipped'
     return 'tested'
   }
-  const rs = (stop.result_status || '').trim().toLowerCase()
-  if (rs === 'tested') return 'tested'
-  if (rs === 'skipped') return 'skipped'
+  if (stop.is_legacy_outcome) {
+    const rs = (stop.result_status || '').trim().toLowerCase()
+    if (rs === 'tested') return 'tested'
+    if (rs === 'skipped') return 'skipped'
+  }
   if (worksheetStopIsOpenClockIn(stop)) return 'in_progress'
   return 'pending'
 }

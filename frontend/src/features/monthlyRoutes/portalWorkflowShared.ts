@@ -118,6 +118,8 @@ export function optimisticResetStopPatch(): Partial<TechnicianWorksheetStop> {
     result_status: null,
     skip_reason: null,
     has_run_changes: false,
+    is_legacy_outcome: false,
+    confirmed_no_deficiencies: false,
   }
 }
 
@@ -433,9 +435,11 @@ export function portalStopVisualTone(
     if (outcome === 'failed') return 'failed'
     return 'all_good'
   }
-  const rs = norm(stop.result_status).toLowerCase()
-  if (rs === 'tested') return 'all_good'
-  if (rs === 'skipped') return worksheetStopSkipIsAnnual(stop) ? 'annual' : 'skipped'
+  if (stop.is_legacy_outcome) {
+    const rs = norm(stop.result_status).toLowerCase()
+    if (rs === 'tested') return 'all_good'
+    if (rs === 'skipped') return worksheetStopSkipIsAnnual(stop) ? 'annual' : 'skipped'
+  }
   if (worksheetStopIsOpenClockIn(stop)) return 'in_progress'
   if (isAnnualForMonth(stop.annual_month, runMonthIso)) return 'annual'
   return 'pending'

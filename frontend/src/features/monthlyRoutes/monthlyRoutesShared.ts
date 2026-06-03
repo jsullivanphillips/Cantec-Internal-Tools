@@ -178,6 +178,8 @@ export type MonthlyLocationComment = {
 export type MonthlyLocationDetailPayload = {
   location: LibraryLocation
   comments: MonthlyLocationComment[]
+  /** Distinct ``test_day`` values for route assignment dropdowns. */
+  route_options?: string[]
 }
 
 /** One site listed under route monthly skip breakdown (detail API). */
@@ -398,11 +400,13 @@ export type MonthlyRunDetailLocationStop = {
   office_job_comment?: string | null
   office_attention?: boolean
   prior_month_out_of_order?: boolean
-  /** Planned stop # on the prior month route when ``prior_month_out_of_order`` is set. */
-  prior_month_expected_stop_number?: number | null
+  /** Address visited immediately before this stop on the prior month field run. */
+  prior_month_tested_after_address?: string | null
   /** Office dismissed the prior-month out-of-order prep hint. */
   prior_month_out_of_order_dismissed?: boolean
   prior_month_field_edits?: boolean
+  /** Testing site was not on this route's prior-month worksheet. */
+  prior_month_new_to_route?: boolean
   testing_procedures: string | null
   inspection_tech_notes: string | null
   confirmed_no_deficiencies?: boolean

@@ -272,20 +272,163 @@ export function renumberPrepRowStopNumbers(rows: RunDetailPrepRow[]): RunDetailP
   }))
 }
 
+/** Reorder run-details location groups after ``PUT …/location_order`` (library stop order). */
+export function reorderRunDetailLocations(
+  locations: MonthlyRunDetailLocation[],
+  orderedLocationIds: number[],
+): MonthlyRunDetailLocation[] {
+  const byId = new Map(locations.map((loc) => [loc.location_id, loc]))
+  let stopNumber = 1
+  const out: MonthlyRunDetailLocation[] = []
+  for (const locationId of orderedLocationIds) {
+    const loc = byId.get(locationId)
+    if (!loc) continue
+    const stops = loc.stops.map((stop) => ({
+      ...stop,
+      stop_number: stopNumber++,
+    }))
+    const first = stops[0]?.stop_number ?? 0
+    const last = stops[stops.length - 1]?.stop_number ?? first
+    out.push({
+      ...loc,
+      stops,
+      first_stop_number: first,
+      last_stop_number: last,
+    })
+  }
+  return out
+}
+
+export function runDetailLocationOrderMatches(
+  locations: MonthlyRunDetailLocation[],
+  orderedLocationIds: number[],
+): boolean {
+  const current: number[] = []
+  const seen = new Set<number>()
+  for (const loc of locations) {
+    if (!seen.has(loc.location_id)) {
+      seen.add(loc.location_id)
+      current.push(loc.location_id)
+    }
+  }
+  return (
+    current.length === orderedLocationIds.length &&
+    current.every((id, index) => id === orderedLocationIds[index])
+  )
+}
+
+function normalizePrepAddressLabel(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
+/** Testing site ids whose out-of-order pill is satisfied by the new library order. */
+export function testingSiteIdsToDismissOutOfOrderAfterReorder(
+  rows: RunDetailPrepRow[],
+  orderedLocationIds: number[],
+): number[] {
+  if (orderedLocationIds.length < 2) return []
+
+  const labelByLocationId = new Map<number, string>()
+  for (const row of rows) {
+    const locationId = row.stop.location_id
+    if (!labelByLocationId.has(locationId)) {
+      labelByLocationId.set(locationId, normalizePrepAddressLabel(row.locationLabel))
+    }
+  }
+  const indexByLocationId = new Map(
+    orderedLocationIds.map((locationId, index) => [locationId, index]),
+  )
+
+  const toDismiss: number[] = []
+  for (const row of rows) {
+    const stop = row.stop
+    if (!stop.prior_month_out_of_order || stop.prior_month_out_of_order_dismissed) continue
+    const afterAddr = normalizePrepAddressLabel(stop.prior_month_tested_after_address || '')
+    if (!afterAddr) continue
+
+    const myIndex = indexByLocationId.get(stop.location_id)
+    if (myIndex === undefined || myIndex < 1) continue
+
+    let prevLocationId: number | null = null
+    for (const [locationId, label] of labelByLocationId) {
+      if (label === afterAddr) {
+        prevLocationId = locationId
+        break
+      }
+    }
+    if (prevLocationId === null) continue
+
+    const prevIndex = indexByLocationId.get(prevLocationId)
+    if (prevIndex !== undefined && myIndex === prevIndex + 1) {
+      toDismiss.push(stop.testing_site_id)
+    }
+  }
+  return toDismiss
+}
+
+export function applyOutOfOrderDismissalsToPrepRows(
+  rows: RunDetailPrepRow[],
+  orderedLocationIds: number[],
+): RunDetailPrepRow[] {
+  const dismissIds = new Set(testingSiteIdsToDismissOutOfOrderAfterReorder(rows, orderedLocationIds))
+  if (dismissIds.size === 0) return rows
+  return rows.map((row) => {
+    if (!dismissIds.has(row.stop.testing_site_id)) return row
+    return {
+      ...row,
+      stop: {
+        ...row.stop,
+        prior_month_out_of_order: false,
+        prior_month_tested_after_address: null,
+        prior_month_out_of_order_dismissed: true,
+      },
+    }
+  })
+}
+
+export function clearResolvedOutOfOrderHintsOnLocations(
+  locations: MonthlyRunDetailLocation[],
+  orderedLocationIds: number[],
+): MonthlyRunDetailLocation[] {
+  const rows = flattenRunDetailPrepRows(locations)
+  const dismissIds = new Set(testingSiteIdsToDismissOutOfOrderAfterReorder(rows, orderedLocationIds))
+  if (dismissIds.size === 0) return locations
+  return locations.map((location) => ({
+    ...location,
+    stops: location.stops.map((stop) =>
+      dismissIds.has(stop.testing_site_id)
+        ? {
+            ...stop,
+            prior_month_out_of_order: false,
+            prior_month_tested_after_address: null,
+            prior_month_out_of_order_dismissed: true,
+          }
+        : stop,
+    ),
+  }))
+}
+
 export function priorMonthOutOfOrderHint(
   stop: Pick<
     MonthlyRunDetailLocationStop,
-    'prior_month_out_of_order' | 'prior_month_expected_stop_number'
+    'prior_month_out_of_order' | 'prior_month_tested_after_address'
   >,
 ): { title: string; detail: string | null } | null {
   if (!stop.prior_month_out_of_order) return null
-  const expected = stop.prior_month_expected_stop_number
+  const testedAfter = (stop.prior_month_tested_after_address || '').trim()
   return {
     title: 'Out of order last run',
-    detail:
-      expected != null && expected > 0
-        ? `Was stop #${expected} on last run`
-        : null,
+    detail: testedAfter ? `Was tested after ${testedAfter} last month` : null,
+  }
+}
+
+export function priorMonthNewToRouteHint(
+  stop: Pick<MonthlyRunDetailLocationStop, 'prior_month_new_to_route'>,
+): { title: string; detail: string | null } | null {
+  if (!stop.prior_month_new_to_route) return null
+  return {
+    title: 'New to route',
+    detail: 'Not on last month\'s route',
   }
 }
 

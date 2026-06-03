@@ -41,7 +41,7 @@ export function prepChangesToStopPatch(changes: PrepStopPatchChanges): Partial<M
   if ('prior_month_out_of_order_dismissed' in changes && changes.prior_month_out_of_order_dismissed) {
     patch.prior_month_out_of_order_dismissed = true
     patch.prior_month_out_of_order = false
-    patch.prior_month_expected_stop_number = null
+    patch.prior_month_tested_after_address = null
   }
   if ('ring' in changes) patch.ring = normNullableText(changes.ring)
   if ('key_number' in changes) patch.key_number = normNullableText(changes.key_number)
@@ -98,7 +98,7 @@ type PrepRollbackStop = Pick<
   | 'annual_month'
   | 'office_attention'
   | 'prior_month_out_of_order'
-  | 'prior_month_expected_stop_number'
+  | 'prior_month_tested_after_address'
   | 'prior_month_out_of_order_dismissed'
   | 'ring'
   | 'key_number'
@@ -128,7 +128,7 @@ export function rollbackPatchForChanges(
   if ('prior_month_out_of_order_dismissed' in changes) {
     rollback.prior_month_out_of_order_dismissed = Boolean(stop.prior_month_out_of_order_dismissed)
     rollback.prior_month_out_of_order = Boolean(stop.prior_month_out_of_order)
-    rollback.prior_month_expected_stop_number = stop.prior_month_expected_stop_number ?? null
+    rollback.prior_month_tested_after_address = stop.prior_month_tested_after_address ?? null
   }
   if ('ring' in changes) rollback.ring = stop.ring ?? null
   if ('key_number' in changes) rollback.key_number = stop.key_number ?? null

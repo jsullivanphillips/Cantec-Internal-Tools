@@ -24,6 +24,7 @@ export default function RunWorkflowStepper({ run, className }: Props) {
         {RUN_WORKFLOW_STEP_LABELS.map((label, index) => {
           const done = index < activeIndex || stage === 'completed'
           const current = index === activeIndex && stage !== 'completed'
+          const activePhase = label === 'Active' && current
           return (
             <li
               key={label}
@@ -31,6 +32,7 @@ export default function RunWorkflowStepper({ run, className }: Props) {
                 'run-workflow-stepper__step',
                 done ? 'run-workflow-stepper__step--done' : '',
                 current ? 'run-workflow-stepper__step--current' : '',
+                activePhase ? 'run-workflow-stepper__step--active-phase' : '',
               ]
                 .filter(Boolean)
                 .join(' ')}

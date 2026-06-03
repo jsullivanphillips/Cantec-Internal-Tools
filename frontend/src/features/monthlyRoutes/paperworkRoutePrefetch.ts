@@ -1,4 +1,4 @@
-import { apiJson } from '../../lib/apiClient'
+import { apiJson, isAbortError } from '../../lib/apiClient'
 import type { MonthlyRunDetailPayload } from './monthlyRoutesShared'
 import { derivePaperworkViewMode } from './paperworkViewMode'
 import type { PaperworkFieldSubmissionCache } from './paperworkRouteCache'
@@ -16,9 +16,74 @@ function prefetchKey(routeId: number, monthIso: string): string {
   return `${routeId}::${monthIso}`
 }
 
-const inFlightRunDetails = new Set<string>()
+type RunDetailsInflight = {
+  promise: Promise<MonthlyRunDetailPayload | null>
+  abortController: AbortController
+}
+
+const inFlightRunDetails = new Map<string, RunDetailsInflight>()
 const inFlightFieldSubmission = new Set<string>()
 const inFlightJobItems = new Set<string>()
+
+/** Shared GET ``run_details`` — one in-flight request per route/month (page load + prefetch). */
+export function fetchPaperworkRunDetails(
+  routeId: number,
+  monthIso: string,
+  options?: { signal?: AbortSignal; force?: boolean },
+): Promise<MonthlyRunDetailPayload | null> {
+  const key = prefetchKey(routeId, monthIso)
+  if (options?.force) {
+    abortPaperworkRunDetailsFetch(routeId, monthIso)
+  } else {
+    const existing = inFlightRunDetails.get(key)
+    if (existing) {
+      return existing.promise
+    }
+  }
+
+  const abortController = new AbortController()
+  if (options?.signal) {
+    if (options.signal.aborted) {
+      abortController.abort()
+    } else {
+      options.signal.addEventListener('abort', () => abortController.abort(), { once: true })
+    }
+  }
+
+  let releaseInflight = true
+  const promise = (async (): Promise<MonthlyRunDetailPayload | null> => {
+    try {
+      const qs = new URLSearchParams({ month: monthIso })
+      const data = await apiJson<MonthlyRunDetailPayload>(
+        `/api/monthly_routes/routes/${routeId}/run_details?${qs.toString()}`,
+        { signal: abortController.signal },
+      )
+      if (abortController.signal.aborted) return null
+      if (data.month_date !== monthIso) return null
+      setCachedRunDetails(routeId, monthIso, data)
+      return data
+    } catch (e) {
+      if (isAbortError(e)) return null
+      throw e
+    } finally {
+      if (releaseInflight) {
+        inFlightRunDetails.delete(key)
+      }
+    }
+  })()
+
+  inFlightRunDetails.set(key, { promise, abortController })
+  return promise
+}
+
+export function abortPaperworkRunDetailsFetch(routeId: number, monthIso: string): void {
+  const key = prefetchKey(routeId, monthIso)
+  const entry = inFlightRunDetails.get(key)
+  if (entry) {
+    entry.abortController.abort()
+    inFlightRunDetails.delete(key)
+  }
+}
 
 export function adjacentSelectableMonths(
   monthIso: string,
@@ -39,23 +104,10 @@ export async function prefetchPaperworkRunDetails(
 ): Promise<MonthlyRunDetailPayload | null> {
   const cached = getCachedRunDetails(routeId, monthIso)
   if (cached) return cached
-
-  const key = prefetchKey(routeId, monthIso)
-  if (inFlightRunDetails.has(key)) return null
-
-  inFlightRunDetails.add(key)
   try {
-    const qs = new URLSearchParams({ month: monthIso })
-    const data = await apiJson<MonthlyRunDetailPayload>(
-      `/api/monthly_routes/routes/${routeId}/run_details?${qs.toString()}`,
-    )
-    if (data.month_date !== monthIso) return null
-    setCachedRunDetails(routeId, monthIso, data)
-    return data
+    return await fetchPaperworkRunDetails(routeId, monthIso)
   } catch {
     return null
-  } finally {
-    inFlightRunDetails.delete(key)
   }
 }
 
@@ -156,6 +208,9 @@ export function prefetchAdjacentPaperworkMonths(
 
 /** Test helper — not used in production UI. */
 export function clearPaperworkPrefetchInFlight(): void {
+  for (const entry of inFlightRunDetails.values()) {
+    entry.abortController.abort()
+  }
   inFlightRunDetails.clear()
   inFlightFieldSubmission.clear()
   inFlightJobItems.clear()

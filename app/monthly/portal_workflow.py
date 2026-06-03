@@ -21,6 +21,7 @@ from app.db_models import (
 )
 from app.monthly.worksheet_stops import (
     WorksheetAuditEventIdAllocator,
+    _cleared_outcome_fields,
     _next_sqlite_bigint_id,
     is_primary_stop,
     load_stop_for_patch,
@@ -846,10 +847,10 @@ def reset_stop_on_run(
             continue
         setattr(mtsm, key, val)
 
-    mtsm.test_outcome = None
-    mtsm.skip_category = None
-    mtsm.skip_note = None
-    mtsm.confirmed_no_deficiencies = False
+    # seed_stop_month_fields may copy sheet/history outcomes onto primary stops; reset must clear them.
+    for key, val in _cleared_outcome_fields().items():
+        setattr(mtsm, key, val)
+    sync_legacy_times_from_clock_events(mtsm)
 
     if is_primary_stop(ts, loc):
         sync_primary_history_from_stop(mtsm, loc, route_id, month_first)

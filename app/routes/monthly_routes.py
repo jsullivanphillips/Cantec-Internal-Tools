@@ -290,6 +290,19 @@ def _serialize_monthly_route_entity(
     return out
 
 
+def _library_route_test_day_options() -> list[str]:
+    """Distinct non-empty ``test_day`` values for library route assignment dropdowns."""
+    rows = (
+        MonthlyRouteLocation.query.with_entities(MonthlyRouteLocation.test_day)
+        .filter(MonthlyRouteLocation.test_day.isnot(None))
+        .filter(MonthlyRouteLocation.test_day != "")
+        .distinct()
+        .order_by(MonthlyRouteLocation.test_day.asc())
+        .all()
+    )
+    return [value for (value,) in rows]
+
+
 def _meta_monthly_routes_bundle() -> tuple[list[dict[str, object]], dict[int, int]]:
     """All route entities plus location counts keyed by ``monthly_route.id``."""
     mr_rows = MonthlyRoute.query.order_by(MonthlyRoute.route_number.asc()).all()
@@ -1766,14 +1779,7 @@ def monthly_routes_library(*, list_view: bool | None = None):
 
     location_ids = [l.id for l in locations]
     if not location_ids:
-        route_options_query = (
-            MonthlyRouteLocation.query.with_entities(MonthlyRouteLocation.test_day)
-            .filter(MonthlyRouteLocation.test_day.isnot(None))
-            .filter(MonthlyRouteLocation.test_day != "")
-            .distinct()
-            .order_by(MonthlyRouteLocation.test_day.asc())
-        )
-        route_options = [value for (value,) in route_options_query.all()]
+        route_options = _library_route_test_day_options()
         return jsonify(
             {
                 "locations": [],
@@ -1823,14 +1829,7 @@ def monthly_routes_library(*, list_view: bool | None = None):
             _serialize_location_row(loc, by_location.get(loc.id, {}), list_view=list_view)
         )
 
-    route_options_query = (
-        MonthlyRouteLocation.query.with_entities(MonthlyRouteLocation.test_day)
-        .filter(MonthlyRouteLocation.test_day.isnot(None))
-        .filter(MonthlyRouteLocation.test_day != "")
-        .distinct()
-        .order_by(MonthlyRouteLocation.test_day.asc())
-    )
-    route_options = [value for (value,) in route_options_query.all()]
+    route_options = _library_route_test_day_options()
 
     return jsonify(
         {
@@ -1870,6 +1869,7 @@ def get_monthly_route_location(location_id: int):
         {
             "location": _serialize_location_row(loc, months_by_location),
             "comments": comments_payload,
+            "route_options": _library_route_test_day_options(),
         }
     )
 
@@ -4674,6 +4674,10 @@ def put_monthly_route_location_order(route_id: int):
         loc.route_stop_order = idx
 
     invalidate_monthly_route_path(route_id)
+
+    from app.monthly.worksheet_stops import sync_session_route_stop_order_from_library_route
+
+    sync_session_route_stop_order_from_library_route(route_id)
     db.session.commit()
 
     route_locations = (

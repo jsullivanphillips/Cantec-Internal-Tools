@@ -725,12 +725,13 @@ def _serialize_location_stop(
         "office_job_comment": stop.get("office_job_comment"),
         "office_attention": bool(stop.get("office_attention")),
         "prior_month_out_of_order": bool(stop.get("prior_month_out_of_order")),
-        "prior_month_expected_stop_number": (
-            int(stop["prior_month_expected_stop_number"])
-            if stop.get("prior_month_expected_stop_number") is not None
+        "prior_month_tested_after_address": (
+            str(stop["prior_month_tested_after_address"]).strip()
+            if stop.get("prior_month_tested_after_address")
             else None
         ),
         "prior_month_field_edits": bool(stop.get("prior_month_field_edits")),
+        "prior_month_new_to_route": bool(stop.get("prior_month_new_to_route")),
         "testing_procedures": stop.get("testing_procedures"),
         "inspection_tech_notes": stop.get("inspection_tech_notes"),
         "confirmed_no_deficiencies": bool(stop.get("confirmed_no_deficiencies"))
@@ -820,36 +821,23 @@ def run_details_locations_payload(
         empty_summary = _summarize_review_stops([], month_first)
         return [], empty_summary
 
-    from app.monthly.prep_insights import prior_month_prep_hints
+    from app.monthly.prep_insights import prior_month_field_edit_count_by_location
     from app.monthly.run_workflow import run_in_office_prep_phase
 
-    out_of_order_ids: set[int] = set()
-    out_of_order_expected: dict[int, int] = {}
     prior_edit_locs: set[int] = set()
     if run_in_office_prep_phase(run):
-        out_of_order_ids, out_of_order_expected, prior_edit_locs = prior_month_prep_hints(
-            route_id,
-            month_first,
+        prior_edit_locs = set(
+            prior_month_field_edit_count_by_location(route_id, month_first).keys()
         )
 
-    enriched_stops: list[dict[str, object]] = []
-    for stop in all_stops:
-        s = dict(stop)
-        tid = int(s["testing_site_id"])
-        lid = int(s["location_id"])
-        if out_of_order_ids:
-            dismissed = bool(s.get("prior_month_out_of_order_dismissed"))
-            if tid in out_of_order_ids and not dismissed:
-                s["prior_month_out_of_order"] = True
-                expected = out_of_order_expected.get(tid)
-                if expected is not None:
-                    s["prior_month_expected_stop_number"] = int(expected)
-            else:
-                s["prior_month_out_of_order"] = False
-        if prior_edit_locs:
+    if prior_edit_locs:
+        enriched_stops: list[dict[str, object]] = []
+        for stop in all_stops:
+            s = dict(stop)
+            lid = int(s["location_id"])
             s["prior_month_field_edits"] = lid in prior_edit_locs
-        enriched_stops.append(s)
-    all_stops = enriched_stops
+            enriched_stops.append(s)
+        all_stops = enriched_stops
 
     loc_ids = sorted({int(s["location_id"]) for s in all_stops})
     ts_ids = [int(s["testing_site_id"]) for s in all_stops]

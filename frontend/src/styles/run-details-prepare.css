@@ -254,19 +254,22 @@
   line-height: 1;
 }
 
-.monthly-run-detail-page .run-details-prep-badge--out-of-order {
+.monthly-run-detail-page .run-details-prep-badge--out-of-order,
+.monthly-run-detail-page .run-details-prep-badge--new-to-route {
   align-items: flex-start;
   gap: 0.35rem;
   padding: 0.35rem 0.4rem 0.35rem 0.45rem;
   text-align: left;
 }
 
-.monthly-run-detail-page .run-details-prep-badge--out-of-order .run-details-prep-badge__body {
+.monthly-run-detail-page .run-details-prep-badge--out-of-order .run-details-prep-badge__body,
+.monthly-run-detail-page .run-details-prep-badge--new-to-route .run-details-prep-badge__body {
   flex: 1;
   min-width: 0;
 }
 
-.monthly-run-detail-page .run-details-prep-badge--out-of-order .run-details-prep-badge__title {
+.monthly-run-detail-page .run-details-prep-badge--out-of-order .run-details-prep-badge__title,
+.monthly-run-detail-page .run-details-prep-badge--new-to-route .run-details-prep-badge__title {
   display: block;
   font-weight: 700;
   line-height: 1.2;

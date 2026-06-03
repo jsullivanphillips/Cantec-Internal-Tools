@@ -46,6 +46,8 @@ import {
   patchRouteMetaRunMonth,
   patchRunDetailPreRunMessage,
   patchRunDetailLocationStop,
+  reorderRunDetailLocations,
+  runDetailLocationOrderMatches,
 } from '../features/monthlyRoutes/runDetailsLocationReview'
 import {
   getCachedFieldSubmission,
@@ -58,6 +60,8 @@ import {
   setCachedRunDetails,
 } from '../features/monthlyRoutes/paperworkRouteCache'
 import {
+  abortPaperworkRunDetailsFetch,
+  fetchPaperworkRunDetails,
   prefetchAdjacentPaperworkMonths,
   prefetchPaperworkMonth,
 } from '../features/monthlyRoutes/paperworkRoutePrefetch'
@@ -125,6 +129,7 @@ export default function MonthlyRoutePaperworkPage() {
   const pendingRunDetailsReloadRef = useRef(false)
   /** Bumped to drop stale ``run_details`` responses (cache-first load vs reopen/reset). */
   const runDetailsFetchSeqRef = useRef(0)
+  const runDetailsLoadKeyRef = useRef<string | null>(null)
 
   const selectableMonths = useMemo(
     () => computeSelectablePaperworkMonths(routeMeta?.runs_by_month ?? {}, currentMonthIso),
@@ -185,23 +190,21 @@ export default function MonthlyRoutePaperworkPage() {
     }
   }, [idNum])
 
-  const invalidateInFlightRunDetails = useCallback(() => {
-    runDetailsFetchSeqRef.current += 1
-  }, [])
-
   const loadRunDetails = useCallback(
-    async (signal?: AbortSignal, options?: { background?: boolean }) => {
+    async (
+      signal?: AbortSignal,
+      options?: { background?: boolean; force?: boolean },
+    ) => {
       if (!Number.isFinite(idNum)) return
       const fetchSeq = ++runDetailsFetchSeqRef.current
-      const qs = new URLSearchParams({ month: monthQuery })
       try {
-        const data = await apiJson<MonthlyRunDetailPayload>(
-          `/api/monthly_routes/routes/${idNum}/run_details?${qs.toString()}`,
-          { signal },
-        )
+        const data = await fetchPaperworkRunDetails(idNum, monthQuery, {
+          signal,
+          force: options?.force,
+        })
         if (signal?.aborted) return
         if (fetchSeq !== runDetailsFetchSeqRef.current) return
-        setCachedRunDetails(idNum, monthQuery, data)
+        if (!data) return
         setPayload(data)
         setError(null)
         return data
@@ -209,6 +212,47 @@ export default function MonthlyRoutePaperworkPage() {
         if (isAbortError(e)) return
         if (fetchSeq !== runDetailsFetchSeqRef.current) return
         if (!options?.background) throw e
+      }
+    },
+    [idNum, monthQuery],
+  )
+
+  const onRouteOrderChanged = useCallback(
+    async (orderedLocationIds: number[]) => {
+      if (!Number.isFinite(idNum)) return
+      setPayload((prev) => {
+        if (!prev?.locations?.length) return prev
+        if (runDetailLocationOrderMatches(prev.locations, orderedLocationIds)) {
+          return prev
+        }
+        const next = {
+          ...prev,
+          locations: reorderRunDetailLocations(prev.locations, orderedLocationIds),
+        }
+        setCachedRunDetails(idNum, monthQuery, next)
+        return next
+      })
+      runDetailsFetchSeqRef.current += 1
+      const fetchSeq = runDetailsFetchSeqRef.current
+      setRefreshing(true)
+      try {
+        const data = await fetchPaperworkRunDetails(idNum, monthQuery, { force: true })
+        if (fetchSeq !== runDetailsFetchSeqRef.current) return
+        if (data) {
+          const locations = runDetailLocationOrderMatches(data.locations, orderedLocationIds)
+            ? data.locations
+            : reorderRunDetailLocations(data.locations, orderedLocationIds)
+          const merged = { ...data, locations }
+          setPayload(merged)
+          setError(null)
+          setCachedRunDetails(idNum, monthQuery, merged)
+        }
+      } catch {
+        // Optimistic order already applied; background refresh is best-effort.
+      } finally {
+        if (fetchSeq === runDetailsFetchSeqRef.current) {
+          setRefreshing(false)
+        }
       }
     },
     [idNum, monthQuery],
@@ -229,7 +273,18 @@ export default function MonthlyRoutePaperworkPage() {
       return
     }
 
-    invalidateInFlightRunDetails()
+    const loadKey = `${idNum}:${monthQuery}`
+    if (runDetailsLoadKeyRef.current !== loadKey) {
+      if (runDetailsLoadKeyRef.current) {
+        const [prevId, prevMonth] = runDetailsLoadKeyRef.current.split(':')
+        if (prevId && prevMonth) {
+          abortPaperworkRunDetailsFetch(Number(prevId), prevMonth)
+        }
+      }
+      runDetailsLoadKeyRef.current = loadKey
+      runDetailsFetchSeqRef.current += 1
+    }
+    const fetchSeq = runDetailsFetchSeqRef.current
 
     const cached = getCachedRunDetails(idNum, monthQuery)
     const hasCache = cached != null
@@ -246,25 +301,28 @@ export default function MonthlyRoutePaperworkPage() {
       setError(null)
     }
 
-    const ac = new AbortController()
     void (async () => {
       try {
-        await loadRunDetails(ac.signal, { background: hasCache })
+        const data = await fetchPaperworkRunDetails(idNum, monthQuery)
+        if (fetchSeq !== runDetailsFetchSeqRef.current) return
+        if (data) {
+          setPayload(data)
+          setError(null)
+        }
       } catch (e) {
-        if (isAbortError(e)) return
+        if (fetchSeq !== runDetailsFetchSeqRef.current) return
         if (!hasCache) {
           setError(formatPaperworkLoadError(e))
           setPayload(null)
         }
       } finally {
-        if (!ac.signal.aborted) {
+        if (fetchSeq === runDetailsFetchSeqRef.current) {
           setLoading(false)
           setRefreshing(false)
         }
       }
     })()
-    return () => ac.abort()
-  }, [idNum, monthQuery, loadRunDetails, invalidateInFlightRunDetails])
+  }, [idNum, monthQuery])
 
   useEffect(() => {
     if (!payload || !Number.isFinite(idNum)) return
@@ -336,14 +394,14 @@ export default function MonthlyRoutePaperworkPage() {
 
   const applyWorkflowRunUpdate = useCallback(
     (run: TechnicianWorksheetRun) => {
-      invalidateInFlightRunDetails()
+      runDetailsFetchSeqRef.current += 1
       setPayload((prev) => (prev ? patchRunDetailPayloadRun(prev, run) : prev))
       setRouteMeta((prev) => patchRouteMetaRunMonth(prev, monthQuery, run))
       if (Number.isFinite(idNum)) {
         invalidatePaperworkSecondaryCaches(idNum, monthQuery)
       }
     },
-    [monthQuery, idNum, invalidateInFlightRunDetails],
+    [monthQuery, idNum],
   )
 
   const loadJobItems = useCallback(
@@ -540,7 +598,8 @@ export default function MonthlyRoutePaperworkPage() {
       )
       clearWorksheetCache(idNum, monthQuery)
       invalidatePaperworkRouteMonth(idNum, monthQuery)
-      invalidateInFlightRunDetails()
+      runDetailsFetchSeqRef.current += 1
+      abortPaperworkRunDetailsFetch(idNum, monthQuery)
       await loadRunDetails()
       await loadRouteMeta()
     } catch (e) {
@@ -552,7 +611,7 @@ export default function MonthlyRoutePaperworkPage() {
     } finally {
       setRunLifecycleAction(null)
     }
-  }, [idNum, monthQuery, loadRunDetails, loadRouteMeta, runLifecycleAction, invalidateInFlightRunDetails])
+  }, [idNum, monthQuery, loadRunDetails, loadRouteMeta, runLifecycleAction])
 
   const onReturnToPrep = useCallback(async () => {
     if (!Number.isFinite(idNum) || !payload?.run) return
@@ -671,7 +730,8 @@ export default function MonthlyRoutePaperworkPage() {
       )
       clearWorksheetCache(idNum, monthQuery)
       invalidatePaperworkRouteMonth(idNum, monthQuery)
-      invalidateInFlightRunDetails()
+      runDetailsFetchSeqRef.current += 1
+      abortPaperworkRunDetailsFetch(idNum, monthQuery)
       setResetRunModalOpen(false)
       await loadRunDetails()
       await loadRouteMeta()
@@ -684,7 +744,7 @@ export default function MonthlyRoutePaperworkPage() {
     } finally {
       setResetRunBusy(false)
     }
-  }, [idNum, monthQuery, payload?.run, loadRunDetails, loadRouteMeta, invalidateInFlightRunDetails])
+  }, [idNum, monthQuery, payload?.run, loadRunDetails, loadRouteMeta])
 
   const routeTo = `/monthlies/routes/${idNum}`
 
@@ -938,7 +998,7 @@ export default function MonthlyRoutePaperworkPage() {
             jobItemsByLocationId={jobItemsByLocationId}
             paperworkViewMode={paperworkViewMode}
             prepEditsDisabled={futurePrepBlocked}
-            onRouteOrderChanged={() => void loadRunDetails(undefined, { background: true })}
+            onRouteOrderChanged={(orderedLocationIds) => void onRouteOrderChanged(orderedLocationIds)}
             outcomeCounts={
               paperworkViewMode === 'run_review'
                 ? {
