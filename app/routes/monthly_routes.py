@@ -2067,6 +2067,15 @@ def _serialize_monthly_run_details_payload(
 
     from app.monthly.run_details_review import run_details_base_payload_extras
 
+    if run is not None:
+        from app.monthly.run_workflow import run_in_office_prep_phase
+
+        if run_in_office_prep_phase(run):
+            from app.monthly.worksheet_stops import ensure_worksheet_stops_for_route_month
+
+            ensure_worksheet_stops_for_route_month(route_id, month_first, run)
+            db.session.flush()
+
     counts, billing_locations, review_meta, locations, review_summary = run_details_base_payload_extras(
         route_id, month_first, run=run
     )
@@ -2986,6 +2995,21 @@ def patch_monthly_route_worksheet_row(route_id: int, location_id: int):
     return jsonify({"ok": True, "row": _worksheet_row_from_history(row, loc, route_id=route_id)})
 
 
+def _patch_stop_number_hint(payload: dict) -> int | None:
+    """Optional 1-based stop # from the client (run-details row) to skip route-wide resort on PATCH."""
+    raw = payload.get("stop_number")
+    if isinstance(raw, bool):
+        return None
+    if isinstance(raw, int) and int(raw) > 0:
+        return int(raw)
+    if isinstance(raw, float) and int(raw) > 0:
+        return int(raw)
+    if isinstance(raw, str) and raw.strip().isdigit():
+        n = int(raw.strip())
+        return n if n > 0 else None
+    return None
+
+
 @monthly_routes_bp.patch(
     "/api/monthly_routes/routes/<int:route_id>/worksheet/stops/<int:testing_site_id>"
 )
@@ -3001,9 +3025,10 @@ def patch_monthly_route_worksheet_stop(route_id: int, testing_site_id: int):
         is_primary_stop,
         load_stop_for_patch,
         patch_will_start_open_clock_in,
+        resolve_worksheet_stop_number,
         serialize_worksheet_stop,
+        serialize_worksheet_stop_office_prep_patch,
         sync_primary_history_from_stop,
-        worksheet_stop_number_for_site,
     )
 
     month_raw = (request.args.get("month") or "").strip()
@@ -3115,16 +3140,29 @@ def patch_monthly_route_worksheet_stop(route_id: int, testing_site_id: int):
             client_mutation_id=client_mutation_id
         ).first()
         if existing_mutation is not None:
+            from app.monthly.run_workflow import run_in_office_prep_phase
+
             office_prep = _office_staff_worksheet_patch()
-            stop_payload = serialize_worksheet_stop(
-                ts,
-                loc,
-                mtsm,
-                route_id=route_id,
-                month_first=month_first,
-                stop_number=worksheet_stop_number_for_site(route_id, month_first, testing_site_id),
-                include_portal_extras=not office_prep,
+            stop_num = resolve_worksheet_stop_number(
+                route_id,
+                month_first,
+                testing_site_id,
+                hint=_patch_stop_number_hint(payload),
             )
+            if office_prep and run_in_office_prep_phase(run_for_month):
+                stop_payload = serialize_worksheet_stop_office_prep_patch(
+                    ts, loc, mtsm, month_first=month_first, stop_number=stop_num
+                )
+            else:
+                stop_payload = serialize_worksheet_stop(
+                    ts,
+                    loc,
+                    mtsm,
+                    route_id=route_id,
+                    month_first=month_first,
+                    stop_number=stop_num,
+                    include_portal_extras=not office_prep,
+                )
             return jsonify({"ok": True, "deduped": True, "stop": stop_payload})
 
     known_fields = set(STOP_PATCH_FIELD_MAP.keys())
@@ -3242,9 +3280,26 @@ def patch_monthly_route_worksheet_stop(route_id: int, testing_site_id: int):
     if (mtsm.result_status or "").strip().lower() != "skipped":
         mtsm.skip_reason = None
 
+    from app.monthly.worksheet_stops import _OFFICE_PREP_ONLY_PATCH_FIELDS
+
+    office_prep_phase = (
+        _office_staff_worksheet_patch()
+        and run_in_office_prep_phase(run_for_month)
+    )
+    change_keys = set(changes_eff.keys())
+    office_only_patch = bool(change_keys) and change_keys.issubset(_OFFICE_PREP_ONLY_PATCH_FIELDS)
+
     hist: MonthlyRouteTestHistory | None = None
     if is_primary_stop(ts, loc):
-        hist = sync_primary_history_from_stop(mtsm, loc, route_id, month_first)
+        hist = (
+            MonthlyRouteTestHistory.query.filter_by(
+                location_id=int(loc.id),
+                month_date=month_first,
+            )
+            .one_or_none()
+        )
+        if hist is None or not (office_prep_phase and office_only_patch):
+            hist = sync_primary_history_from_stop(mtsm, loc, route_id, month_first)
     else:
         hist = (
             MonthlyRouteTestHistory.query.filter_by(
@@ -3353,16 +3408,27 @@ def patch_monthly_route_worksheet_stop(route_id: int, testing_site_id: int):
     db.session.refresh(mtsm)
     db.session.refresh(ts)
     office_prep = _office_staff_worksheet_patch()
-    stop_payload = serialize_worksheet_stop(
-        ts,
-        loc,
-        mtsm,
-        route_id=route_id,
-        month_first=month_first,
-        stop_number=worksheet_stop_number_for_site(route_id, month_first, testing_site_id),
-        run=run_for_month,
-        include_portal_extras=not office_prep,
+    stop_num = resolve_worksheet_stop_number(
+        route_id,
+        month_first,
+        testing_site_id,
+        hint=_patch_stop_number_hint(payload),
     )
+    if office_prep and run_in_office_prep_phase(run_for_month):
+        stop_payload = serialize_worksheet_stop_office_prep_patch(
+            ts, loc, mtsm, month_first=month_first, stop_number=stop_num
+        )
+    else:
+        stop_payload = serialize_worksheet_stop(
+            ts,
+            loc,
+            mtsm,
+            route_id=route_id,
+            month_first=month_first,
+            stop_number=stop_num,
+            run=run_for_month,
+            include_portal_extras=not office_prep,
+        )
     return jsonify({"ok": True, "stop": stop_payload})
 
 

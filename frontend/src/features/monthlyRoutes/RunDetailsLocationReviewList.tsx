@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 
-import { Button, Form, Modal, Spinner } from 'react-bootstrap'
+import { Form, Spinner } from 'react-bootstrap'
 
 import RunDetailsFieldChangesTable from './RunDetailsFieldChangesTable'
 import RunDetailsHistoryTable from './RunDetailsHistoryTable'
@@ -30,7 +30,6 @@ import type { RunDetailsStopPatchApi } from './useRunDetailsStopPatch'
 import type { TechnicianWorksheetStop } from './monthlyRoutesShared'
 
 import type { PaperworkViewMode } from './paperworkViewMode'
-import { apiJson } from '../../lib/apiClient'
 
 export type RunReviewOutcomeCounts = {
   all_good_count: number
@@ -73,7 +72,6 @@ export default function RunDetailsLocationReviewList({
   prepEditsDisabled = false,
   outcomeCounts,
   onRouteOrderChanged,
-  onPrepStopsRegenerated,
 }: {
   locations: MonthlyRunDetailLocation[]
   monthDate: string
@@ -102,11 +100,8 @@ export default function RunDetailsLocationReviewList({
   prepEditsDisabled?: boolean
   outcomeCounts?: RunReviewOutcomeCounts
   onRouteOrderChanged?: () => void | Promise<void>
-  onPrepStopsRegenerated?: () => void | Promise<void>
 }) {
   const [prepSearch, setPrepSearch] = useState('')
-  const [regenerateModalOpen, setRegenerateModalOpen] = useState(false)
-  const [regenerateBusy, setRegenerateBusy] = useState(false)
 
   const prepPhase = paperworkViewMode === 'preparation' || runInOfficePrepPhase(run)
   const showBillingColumn = canOfficeEditBilling(run) && !runCompleted
@@ -142,31 +137,6 @@ export default function RunDetailsLocationReviewList({
         : sectionTab ?? 'run_review'
 
   if (prepPhase) {
-    const onConfirmRegeneratePrepStops = async () => {
-      if (regenerateBusy || prepEditsDisabled) return
-      setRegenerateBusy(true)
-      try {
-        await apiJson<{ ok: boolean; stops_regenerated: number }>(
-          `/api/monthly_routes/routes/${routeId}/runs/regenerate_prep_stops`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ month_date: monthDate }),
-          },
-        )
-        setRegenerateModalOpen(false)
-        await onPrepStopsRegenerated?.()
-      } catch (e) {
-        const msg =
-          typeof e === 'object' && e != null && 'error' in (e as Record<string, unknown>)
-            ? String((e as { error?: unknown }).error)
-            : 'Could not regenerate prep stops.'
-        window.alert(msg)
-      } finally {
-        setRegenerateBusy(false)
-      }
-    }
-
     return (
       <section
         id="run-review-section"
@@ -176,19 +146,9 @@ export default function RunDetailsLocationReviewList({
         <div className="monthly-location-detail-surface run-details-prep-section">
           <div className="run-details-prep-section__header">
             <h2 className="monthly-run-detail-section__title mb-0">Run preparation</h2>
-            <div className="run-details-prep-section__header-actions">
-              <Button
-                size="sm"
-                variant="outline-secondary"
-                disabled={prepEditsDisabled || regenerateBusy}
-                onClick={() => setRegenerateModalOpen(true)}
-              >
-                Regenerate from latest data
-              </Button>
-              <span className="monthly-run-detail-section__meta text-muted small tabular-nums">
-                {prepSummary.stopCount} {prepSummary.stopCount === 1 ? 'stop' : 'stops'}
-              </span>
-            </div>
+            <span className="monthly-run-detail-section__meta text-muted small tabular-nums">
+              {prepSummary.stopCount} {prepSummary.stopCount === 1 ? 'stop' : 'stops'}
+            </span>
           </div>
           <p className="monthly-run-detail-section__meta text-muted small mb-3">
             Click a field to edit. Use Save or Cancel before moving to another field.
@@ -223,54 +183,6 @@ export default function RunDetailsLocationReviewList({
             />
           )}
         </div>
-        <Modal
-          show={regenerateModalOpen}
-          onHide={() => {
-            if (!regenerateBusy) setRegenerateModalOpen(false)
-          }}
-          centered
-          backdrop={regenerateBusy ? 'static' : true}
-        >
-          <Modal.Header closeButton={!regenerateBusy}>
-            <Modal.Title as="h3" className="h6 mb-0">
-              Regenerate prep stops?
-            </Modal.Title>
-          </Modal.Header>
-          <Modal.Body className="small">
-            <p className="mb-2">
-              Reload procedures, location comments, and other snapshot fields from the site library and
-              last month&apos;s prep. This overwrites values currently shown in the prep table.
-            </p>
-            <p className="mb-0 text-muted">
-              Highlight flags are kept. Job comments for this month stay as they are.
-            </p>
-          </Modal.Body>
-          <Modal.Footer>
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={regenerateBusy}
-              onClick={() => setRegenerateModalOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              size="sm"
-              disabled={regenerateBusy}
-              onClick={() => void onConfirmRegeneratePrepStops()}
-            >
-              {regenerateBusy ? (
-                <>
-                  <Spinner animation="border" size="sm" className="me-1" aria-hidden />
-                  Regenerating…
-                </>
-              ) : (
-                'Regenerate stops'
-              )}
-            </Button>
-          </Modal.Footer>
-        </Modal>
       </section>
     )
   }

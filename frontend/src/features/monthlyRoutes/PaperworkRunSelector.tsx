@@ -1,4 +1,4 @@
-import { Form } from 'react-bootstrap'
+import { Form, Spinner } from 'react-bootstrap'
 import { parseYearMonth } from './monthlyRoutesShared'
 import { routeMonthRunStatusLabel } from './runWorkflowShared'
 import type { SelectablePaperworkMonth } from './paperworkViewMode'
@@ -13,22 +13,38 @@ function formatMonthLabel(monthIso: string): string {
   }).format(new Date(Date.UTC(ym.year, ym.month - 1, 1)))
 }
 
+function RefreshingIndicator() {
+  return (
+    <div className="paperwork-run-selector__refreshing" aria-live="polite">
+      <Spinner animation="border" size="sm" aria-hidden />
+      Refreshing…
+    </div>
+  )
+}
+
 export default function PaperworkRunSelector({
   months,
   selectedMonthIso,
   currentMonthIso,
+  refreshing = false,
   onChange,
+  onMonthHover,
 }: {
   months: SelectablePaperworkMonth[]
   selectedMonthIso: string
   currentMonthIso: string
+  refreshing?: boolean
   onChange: (monthIso: string) => void
+  onMonthHover?: (monthIso: string) => void
 }) {
   if (months.length <= 1) {
     return (
       <div className="paperwork-run-selector paperwork-run-selector--single">
         <span className="paperwork-run-selector__label text-muted small">Run month</span>
-        <span className="paperwork-run-selector__value fw-semibold">{formatMonthLabel(selectedMonthIso)}</span>
+        <span className="paperwork-run-selector__value fw-semibold">
+          {formatMonthLabel(selectedMonthIso)}
+        </span>
+        {refreshing ? <RefreshingIndicator /> : null}
       </div>
     )
   }
@@ -55,7 +71,11 @@ export default function PaperworkRunSelector({
           const suffix =
             monthIso === currentMonthIso ? ' (current)' : monthIso > currentMonthIso ? ' (next)' : ''
           return (
-            <option key={monthIso} value={monthIso}>
+            <option
+              key={monthIso}
+              value={monthIso}
+              onMouseEnter={() => onMonthHover?.(monthIso)}
+            >
               {formatMonthLabel(monthIso)}
               {suffix}
               {runSummary ? ` — ${statusLabel}` : ''}
@@ -63,6 +83,7 @@ export default function PaperworkRunSelector({
           )
         })}
       </Form.Select>
+      {refreshing ? <RefreshingIndicator /> : null}
     </div>
   )
 }

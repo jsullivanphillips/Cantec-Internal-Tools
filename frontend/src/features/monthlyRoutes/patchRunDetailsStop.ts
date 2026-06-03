@@ -12,7 +12,7 @@ export async function patchRunDetailsStop(
   monthDate: string,
   testingSiteId: number,
   changes: WorksheetStopChangeSet | RunDetailsStopPatchChanges,
-  options?: { clientMutationId?: string },
+  options?: { clientMutationId?: string; stopNumber?: number },
 ): Promise<TechnicianWorksheetStop> {
   const syncChanges = worksheetStopChangesForSync(
     changes as WorksheetStopChangeSet,
@@ -28,6 +28,9 @@ export async function patchRunDetailsStop(
       body: JSON.stringify({
         client_mutation_id: clientMutationId,
         changes: syncChanges,
+        ...(options?.stopNumber != null && options.stopNumber > 0
+          ? { stop_number: options.stopNumber }
+          : {}),
       }),
     },
   )

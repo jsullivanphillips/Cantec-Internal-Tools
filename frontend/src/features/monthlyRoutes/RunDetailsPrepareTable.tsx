@@ -160,7 +160,7 @@ export default function RunDetailsPrepareTable({
   const [optimisticRows, setOptimisticRows] = useState<RunDetailPrepRow[] | null>(null)
   const [orderSaving, setOrderSaving] = useState(false)
   const [orderError, setOrderError] = useState<string | null>(null)
-  const { patchStop, error, isFieldSaving } = stopPatch
+  const { patchStopForRow, error, isFieldSaving } = stopPatch
   const { companies, loading: companiesLoading, refresh, appendCompany } = useMonitoringCompanies()
 
   const reorderEnabled = !prepEditsDisabled && !reorderDisabled
@@ -270,6 +270,7 @@ export default function RunDetailsPrepareTable({
       const annualDue = stopAnnualDueThisMonth(stop, locationLabel, monthDate)
       const outOfOrderHint = priorMonthOutOfOrderHint(stop)
       const fk = (suffix: string) => fieldKey(sid, suffix)
+      const patchStop = patchStopForRow(stop.stop_number)
       const officeComment = (stop.office_job_comment || '').trim()
       const highlighted = officeComment.length > 0
 
@@ -558,7 +559,7 @@ export default function RunDetailsPrepareTable({
       monthDate,
       onDeficiencyUpdated,
       orderSaving,
-      patchStop,
+      patchStopForRow,
       prepEditsDisabled,
       refresh,
       routeId,

@@ -21,6 +21,7 @@ import type { WorksheetStopChangeSet } from '../features/monthlyRoutes/worksheet
 import PortalWorksheetSkeleton from './PortalWorksheetSkeleton'
 import PortalClockEventsCard from '../features/monthlyRoutes/PortalClockEventsCard'
 import PortalSkipModal from '../features/monthlyRoutes/PortalSkipModal'
+import PortalEndRunModals from '../features/monthlyRoutes/PortalEndRunModals'
 import PortalRecordResultsModal, {
   type RecordResultsCompletePayload,
 } from '../features/monthlyRoutes/PortalRecordResultsModal'
@@ -189,10 +190,14 @@ export default function TechnicianPortalWorksheetPage() {
     showEndRun,
     showReopenField,
     onPortalStartRun,
-    onPortalEndRun,
+    requestPortalEndRun,
     onPortalReopenField,
+    endRunModal,
+    dismissEndRunModal,
+    confirmSkipUntestedAndEndRun,
     portalStartingRun,
     runLifecycleBusy,
+    runLifecycleMessage,
     isCurrentMonth,
     viewingHistoricalRun,
     hasRunFile,
@@ -723,7 +728,21 @@ export default function TechnicianPortalWorksheetPage() {
     <div className="portal-worksheet-mockup">
       <PortalBlockingOverlay
         show={portalStartingRun || runLifecycleBusy}
-        message={portalStartingRun ? 'Starting run…' : 'Updating run…'}
+        message={
+          portalStartingRun
+            ? 'Starting run…'
+            : runLifecycleMessage ?? 'Updating run…'
+        }
+      />
+      <PortalEndRunModals
+        modal={endRunModal}
+        onDismiss={dismissEndRunModal}
+        onGoToClockedInStop={(testingSiteId) => {
+          setActiveId(testingSiteId)
+          dismissEndRunModal()
+        }}
+        onConfirmSkipUntestedAndEnd={() => void confirmSkipUntestedAndEndRun()}
+        endRunBusy={runLifecycleBusy}
       />
       <header className="pw-mock-chrome">
         <div className="pw-mock-chrome-top">
@@ -761,7 +780,7 @@ export default function TechnicianPortalWorksheetPage() {
                 variant="outline-success"
                 className="pw-mock-chrome-run-action"
                 disabled={runLifecycleBusy || portalStartingRun}
-                onClick={() => void onPortalEndRun()}
+                onClick={() => void requestPortalEndRun()}
               >
                 {runLifecycleBusy && !portalStartingRun ? (
                   <>

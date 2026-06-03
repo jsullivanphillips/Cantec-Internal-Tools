@@ -498,10 +498,13 @@ def ensure_worksheet_stops_for_route_month(
                         ).one_or_none()
                     )
             if row is not None:
-                for key, val in fields.items():
-                    if key in ("month_date", "monthly_testing_site_id"):
-                        continue
-                    setattr(row, key, val)
+                # Row already exists — only link route metadata. Do not re-seed snapshot
+                # fields on read (run_details prep load); that overwrote office prep edits.
+                if row.run_id is None and run_id is not None:
+                    row.run_id = run_id
+                if row.test_monthly_route_id is None:
+                    row.test_monthly_route_id = route_id
+                continue
     db.session.flush()
 
 
@@ -1148,15 +1151,77 @@ def worksheet_stop_number_for_site(
     route_id: int,
     month_first: date,
     testing_site_id: int,
+    *,
+    pairs: list[tuple[MonthlyTestingSiteMonth | None, MonthlyTestingSite, MonthlyRouteLocation]]
+    | None = None,
 ) -> int:
     """1-based route stop number without building the full worksheet payload."""
-    for idx, (_mtsm, ts, _loc) in enumerate(
-        _worksheet_stop_pairs_for_route_month(route_id, month_first),
-        start=1,
-    ):
+    if pairs is None:
+        pairs = _worksheet_stop_pairs_for_route_month(route_id, month_first)
+    for idx, (_mtsm, ts, _loc) in enumerate(pairs, start=1):
         if int(ts.id) == int(testing_site_id):
             return idx
     return 0
+
+
+def resolve_worksheet_stop_number(
+    route_id: int,
+    month_first: date,
+    testing_site_id: int,
+    *,
+    hint: int | None = None,
+) -> int:
+    """Use client ``stop_number`` when valid to avoid re-sorting the whole route on PATCH."""
+    if isinstance(hint, int) and int(hint) > 0:
+        return int(hint)
+    return worksheet_stop_number_for_site(route_id, month_first, testing_site_id)
+
+
+_OFFICE_PREP_ONLY_PATCH_FIELDS = frozenset({
+    "office_job_comment",
+    "office_attention",
+    "prior_month_out_of_order_dismissed",
+})
+
+
+def serialize_worksheet_stop_office_prep_patch(
+    ts: MonthlyTestingSite,
+    loc: MonthlyRouteLocation,
+    mtsm: MonthlyTestingSiteMonth,
+    *,
+    month_first: date,
+    stop_number: int,
+) -> dict[str, object]:
+    """Minimal worksheet stop JSON for office run-prep PATCH (no portal extras / master merge)."""
+    company, mon_notes, mcid, mon_acct, mc = _monitoring_labels(mtsm, ts, loc)
+    panel = _normalize_text(mtsm.panel) or _normalize_text(mtsm.facp)
+    return {
+        "testing_site_id": int(ts.id),
+        "location_id": int(loc.id),
+        "month_date": month_first.isoformat(),
+        "display_address": _display_address(loc, int(loc.id)),
+        "building_name": _normalize_text(mtsm.building_name),
+        "property_management_company": _normalize_text(mtsm.property_management_company),
+        "label": _normalize_text(ts.label),
+        "panel": panel,
+        "panel_location": mtsm.panel_location,
+        "door_code": mtsm.door_code,
+        "ring": mtsm.ring,
+        "key_number": mtsm.key_number,
+        "annual_month": mtsm.annual_month,
+        "monitoring_company": company,
+        "monitoring_company_id": mcid,
+        "monitoring_company_record": serialize_monitoring_company(mc),
+        "monitoring_account_number": mon_acct,
+        "monitoring_notes": mon_notes,
+        "testing_procedures": mtsm.testing_procedures,
+        "inspection_tech_notes": mtsm.inspection_tech_notes,
+        "run_comments": mtsm.run_comments,
+        "office_job_comment": mtsm.office_job_comment,
+        "office_attention": bool(mtsm.office_attention),
+        "prior_month_out_of_order_dismissed": bool(mtsm.prior_month_out_of_order_dismissed),
+        "stop_number": int(stop_number),
+    }
 
 
 def worksheet_stops_for_route_month(

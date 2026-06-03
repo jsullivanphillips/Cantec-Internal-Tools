@@ -21,6 +21,7 @@ import { Accordion, Alert, Badge, Button, Form, Modal, Spinner } from 'react-boo
 import { Link, useParams } from 'react-router-dom'
 import MonthlyLibraryCommentsPanel from '../features/monthlyRoutes/MonthlyLibraryCommentsPanel'
 import TestingSiteFieldsSection from '../features/monthlyRoutes/TestingSiteFieldsSection'
+import { notifyPaperworkMasterSiteUpdated } from '../features/monthlyRoutes/paperworkMasterSync'
 import {
   STATUS_OPTIONS,
   isMonthlyTestingHistoryEditable,
@@ -485,6 +486,9 @@ export default function MonthlyLocationDetailPage() {
           pricedSites.length > 0
             ? pricedSites.reduce((sum, site) => sum + (site.price_per_month ?? 0), 0)
             : null
+
+        const routeId = prev.monthly_route?.id ?? prev.monthly_route_id ?? null
+        if (routeId != null) notifyPaperworkMasterSiteUpdated(routeId)
 
         return {
           ...prev,

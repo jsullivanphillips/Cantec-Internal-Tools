@@ -47,6 +47,16 @@ export function isFutureMonthPrepBlocked(
 export const FUTURE_MONTH_PREP_BLOCKED_MESSAGE =
   "Close the current month's paperwork before preparing a future month."
 
+/** Ignore a run header left over from another month while ``run_details`` is reloading. */
+export function runForPaperworkMonth(
+  run: TechnicianWorksheetRun | null | undefined,
+  monthIso: string,
+): TechnicianWorksheetRun | null {
+  if (!run) return null
+  if ((run.month_date ?? '').trim() !== monthIso.trim()) return null
+  return run
+}
+
 /**
  * Locked view for Paperwork — derived from run phase and calendar month.
  */
@@ -58,10 +68,11 @@ export function derivePaperworkViewMode(
   if (isMonthBefore(monthIso, currentMonthIso)) {
     return 'exact_history'
   }
-  if (run && worksheetRunExplicitlyCompleted(run)) {
+  const monthRun = runForPaperworkMonth(run, monthIso)
+  if (monthRun && worksheetRunExplicitlyCompleted(monthRun)) {
     return 'exact_history'
   }
-  if (runInOfficePrepPhase(run)) {
+  if (runInOfficePrepPhase(monthRun)) {
     return 'preparation'
   }
   return 'run_review'

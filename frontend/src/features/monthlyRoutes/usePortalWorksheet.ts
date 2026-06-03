@@ -39,6 +39,10 @@ import {
   projectStopsWithWorkflowQueue,
 } from './portalRouteProjection'
 import { usePortalWorkflowActions } from './usePortalWorkflowActions'
+import {
+  evaluatePortalEndRunPreflight,
+  type PortalEndRunModalState,
+} from './portalEndRunPreflight'
 
 const MONTH_FIRST_RE = /^\d{4}-\d{2}-01$/
 
@@ -75,6 +79,8 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
   const [error, setError] = useState<string | null>(null)
   const [portalStartingRun, setPortalStartingRun] = useState(false)
   const [runLifecycleBusy, setRunLifecycleBusy] = useState(false)
+  const [runLifecycleMessage, setRunLifecycleMessage] = useState<string | null>(null)
+  const [endRunModal, setEndRunModal] = useState<PortalEndRunModalState | null>(null)
   const [syncState, setSyncState] = useState<PortalWorksheetSyncState>('synced')
   const [syncMessage, setSyncMessage] = useState<string | null>(null)
   const syncingRef = useRef(false)
@@ -418,19 +424,8 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
     }
   }, [routeId, payload?.run, applyServerRunToPayload, viewingHistoricalRun])
 
-  const onPortalEndRun = useCallback(async () => {
-    if (Number.isNaN(routeId) || !monthOk) return
-    const run = payload?.run
-    if (!run?.started_at || worksheetRunExplicitlyCompleted(run) || runFieldEnded(run)) return
-    setRunLifecycleBusy(true)
+  const postPortalEndRun = useCallback(async (): Promise<boolean> => {
     try {
-      const syncIdle = await waitForPortalSyncIdle()
-      if (!syncIdle) {
-        window.alert(
-          'Worksheet changes are still syncing. Wait a moment for pending actions to finish, then try again.',
-        )
-        return
-      }
       const body = await apiJson<{ run: TechnicianWorksheetRun }>(
         `/api/technician_portal/routes/${routeId}/runs/end`,
         {
@@ -440,12 +435,95 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
         },
       )
       applyServerRunToPayload(body.run)
+      setEndRunModal(null)
+      return true
     } catch {
       window.alert('Could not end run. Try again.')
+      return false
+    }
+  }, [routeId, applyServerRunToPayload])
+
+  const requestPortalEndRun = useCallback(async () => {
+    if (Number.isNaN(routeId) || !monthOk) return
+    const run = payload?.run
+    if (!run?.started_at || worksheetRunExplicitlyCompleted(run) || runFieldEnded(run)) return
+    const runMonthIso = payload?.month_date ?? monthIso
+    setRunLifecycleBusy(true)
+    setRunLifecycleMessage('Checking worksheet…')
+    try {
+      const syncIdle = await waitForPortalSyncIdle()
+      if (!syncIdle) {
+        window.alert(
+          'Worksheet changes are still syncing. Wait a moment for pending actions to finish, then try again.',
+        )
+        return
+      }
+      const preflight = evaluatePortalEndRunPreflight(projectedStops, runMonthIso)
+      if (preflight) {
+        setEndRunModal(preflight)
+        return
+      }
+      setRunLifecycleMessage('Ending field run…')
+      await postPortalEndRun()
     } finally {
       setRunLifecycleBusy(false)
+      setRunLifecycleMessage(null)
     }
-  }, [routeId, monthOk, payload?.run, applyServerRunToPayload, waitForPortalSyncIdle])
+  }, [
+    routeId,
+    monthOk,
+    monthIso,
+    payload?.run,
+    payload?.month_date,
+    projectedStops,
+    waitForPortalSyncIdle,
+    postPortalEndRun,
+  ])
+
+  const dismissEndRunModal = useCallback(() => {
+    if (runLifecycleBusy) return
+    setEndRunModal(null)
+  }, [runLifecycleBusy])
+
+  const confirmSkipUntestedAndEndRun = useCallback(async () => {
+    if (Number.isNaN(routeId) || !monthOk) return
+    if (endRunModal?.kind !== 'untested') return
+    const run = payload?.run
+    if (!run?.started_at || worksheetRunExplicitlyCompleted(run) || runFieldEnded(run)) return
+
+    setRunLifecycleBusy(true)
+    setRunLifecycleMessage('Skipping remaining stops…')
+    try {
+      for (const stop of endRunModal.stops) {
+        await workflowActions.setTestOutcome(stop, 'skipped', {
+          skipCategory: 'lack_of_time',
+          skipNote: '',
+        })
+      }
+      const syncIdle = await waitForPortalSyncIdle()
+      if (!syncIdle) {
+        window.alert(
+          'Worksheet changes are still syncing. Wait a moment for pending actions to finish, then try again.',
+        )
+        return
+      }
+      setRunLifecycleMessage('Ending field run…')
+      await postPortalEndRun()
+    } finally {
+      setRunLifecycleBusy(false)
+      setRunLifecycleMessage(null)
+    }
+  }, [
+    routeId,
+    monthOk,
+    endRunModal,
+    payload?.run,
+    workflowActions,
+    waitForPortalSyncIdle,
+    postPortalEndRun,
+  ])
+
+  const onPortalEndRun = requestPortalEndRun
 
   const onPortalReopenField = useCallback(async () => {
     if (Number.isNaN(routeId) || !monthOk || payload?.run == null) return
@@ -468,7 +546,7 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
     }
   }, [routeId, monthOk, payload?.run, applyServerRunToPayload])
 
-  const onPortalCompleteRun = onPortalEndRun
+  const onPortalCompleteRun = requestPortalEndRun
   const onPortalReopenRun = onPortalReopenField
 
   const applyRemoteWorksheetRefresh = useCallback(() => {
@@ -638,7 +716,12 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
     queueStopChanges,
     onPortalStartRun,
     onPortalEndRun,
+    requestPortalEndRun,
     onPortalCompleteRun,
+    endRunModal,
+    dismissEndRunModal,
+    confirmSkipUntestedAndEndRun,
+    runLifecycleMessage,
     onPortalReopenField,
     onPortalReopenRun,
     runStarted,

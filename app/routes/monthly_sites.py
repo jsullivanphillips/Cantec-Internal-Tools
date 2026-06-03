@@ -458,8 +458,12 @@ def monthly_sites_patch_testing_site(testing_site_id: int):
     _push_testing_site_keys_to_legacy_if_needed(ts)
     loc = ts.monthly_site.legacy_location if ts.monthly_site else None
     if loc is not None:
-        from app.monthly.monthly_sites_sync import push_primary_testing_site_display_to_legacy
+        from app.monthly.monthly_sites_sync import (
+            push_primary_testing_site_display_to_legacy,
+            sync_open_prep_mtsm_rows_from_master,
+        )
 
+        sync_open_prep_mtsm_rows_from_master(ts, loc)
         push_primary_testing_site_display_to_legacy(loc, ts)
 
     db.session.commit()

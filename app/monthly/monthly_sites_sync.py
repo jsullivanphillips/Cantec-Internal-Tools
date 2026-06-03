@@ -11,8 +11,10 @@ from sqlalchemy.orm import joinedload, selectinload
 from app.db_models import (
     MonitoringCompany,
     MonthlyRouteLocation,
+    MonthlyRouteRun,
     MonthlySite,
     MonthlyTestingSite,
+    MonthlyTestingSiteMonth,
     db,
 )
 
@@ -295,3 +297,72 @@ def push_legacy_keys_to_primary_testing_site(loc: MonthlyRouteLocation) -> None:
     primary.key_id = loc.key_id
     primary.keys = loc.keys
     primary.barcode = loc.barcode
+
+
+def mirror_master_to_mtsm_snapshot(
+    ts: MonthlyTestingSite,
+    loc: MonthlyRouteLocation,
+    mtsm: MonthlyTestingSiteMonth,
+) -> bool:
+    """Copy library master snapshot fields onto a stop-month row.
+
+    Reverse of ``mirror_mtsm_snapshot_to_primary_master`` — keeps open prep paperwork aligned
+    with site details edits without requiring Regenerate from latest data.
+    """
+    from app.monthly.site_field_template import master_template_fields
+
+    template = master_template_fields(ts, loc)
+    changed = False
+
+    def _set(attr: str, value: object) -> None:
+        nonlocal changed
+        if getattr(mtsm, attr) != value:
+            setattr(mtsm, attr, value)
+            changed = True
+
+    _set("annual_month", template.get("annual_month"))
+    _set("property_management_company", template.get("property_management_company"))
+    _set("building_name", template.get("building_name"))
+    _set("panel_location", template.get("panel_location"))
+    _set("door_code", template.get("door_code"))
+    _set("ring", template.get("ring"))
+    _set("key_number", template.get("key_number"))
+    panel = template.get("panel") or template.get("facp")
+    _set("panel", panel)
+    _set("facp", panel)
+    _set("testing_procedures", template.get("testing_procedures"))
+    _set("inspection_tech_notes", template.get("inspection_tech_notes"))
+    _set("monitoring_notes", template.get("monitoring_notes"))
+    _set("monitoring_account_number", template.get("monitoring_account_number"))
+    _set("monitoring_company_id", template.get("monitoring_company_id"))
+    _set("monitoring_company_name", template.get("monitoring_company_name"))
+    return changed
+
+
+def sync_open_prep_mtsm_rows_from_master(
+    ts: MonthlyTestingSite,
+    loc: MonthlyRouteLocation | None,
+) -> int:
+    """After a library master edit, refresh open prep ``MonthlyTestingSiteMonth`` rows."""
+    if loc is None or loc.monthly_route_id is None:
+        return 0
+
+    from app.monthly.run_workflow import run_in_office_prep_phase
+
+    route_id = int(loc.monthly_route_id)
+    mtsm_rows = (
+        MonthlyTestingSiteMonth.query.filter_by(monthly_testing_site_id=int(ts.id))
+        .filter(MonthlyTestingSiteMonth.test_monthly_route_id == route_id)
+        .all()
+    )
+    synced = 0
+    for mtsm in mtsm_rows:
+        run = MonthlyRouteRun.query.filter_by(
+            monthly_route_id=route_id,
+            month_date=mtsm.month_date,
+        ).one_or_none()
+        if run is not None and not run_in_office_prep_phase(run):
+            continue
+        mirror_master_to_mtsm_snapshot(ts, loc, mtsm)
+        synced += 1
+    return synced

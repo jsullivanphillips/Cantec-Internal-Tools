@@ -280,7 +280,7 @@ body.portal-worksheet-body-lock {
 
 .paperwork-run-selector {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 0.65rem 1rem;
   margin-bottom: 1rem;
@@ -292,7 +292,7 @@ body.portal-worksheet-body-lock {
 }
 
 .paperwork-run-selector--single {
-  gap: 0.35rem;
+  gap: 0.35rem 1rem;
 }
 
 .paperwork-run-selector__label {
@@ -301,10 +301,24 @@ body.portal-worksheet-body-lock {
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+  flex-shrink: 0;
 }
 
 .paperwork-run-selector__select {
+  flex: 0 1 auto;
   max-width: 22rem;
+  min-width: 0;
+}
+
+.paperwork-run-selector__refreshing {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  color: var(--bs-secondary-color);
+  white-space: nowrap;
 }
 
 .monthly-paperwork-view-badge {

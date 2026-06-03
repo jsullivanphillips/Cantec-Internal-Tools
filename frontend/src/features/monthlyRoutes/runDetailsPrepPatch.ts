@@ -174,6 +174,9 @@ export function enrichmentPatchFromWorksheetStop(
     patch.monitoring_company = stop.monitoring_company ?? null
     patch.monitoring_company_record = stop.monitoring_company_record ?? null
   }
+  if (keys.has('monitoring_notes')) {
+    patch.monitoring_notes = stop.monitoring_notes ?? null
+  }
   return patch
 }
 

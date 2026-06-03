@@ -678,6 +678,61 @@ def test_worksheet_stop_display_uses_run_month_notes_not_library_master(stops_cl
     assert primary["inspection_tech_notes"] == "April notes"
 
 
+def test_ensure_worksheet_stops_preserves_prep_monitoring_notes(stops_client, monkeypatch):
+    """run_details prep load must not re-seed existing stop-month rows and wipe edits."""
+    from app.monthly.worksheet_stops import ensure_worksheet_stops_for_route_month
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 6, 1))
+
+    client, app = stops_client
+    with app.app_context():
+        route_id, ts_id, _ = _seed_route_with_two_stops()
+        run = MonthlyRouteRun(
+            id=5021,
+            monthly_route_id=route_id,
+            month_date=date(2026, 7, 1),
+            status="open",
+            source="office_manual",
+        )
+        db.session.add(run)
+        db.session.add(
+            MonthlyTestingSiteMonth(
+                id=92011,
+                monthly_testing_site_id=ts_id,
+                month_date=date(2026, 7, 1),
+                test_monthly_route_id=route_id,
+                run_id=5021,
+                monitoring_notes="Old monitoring notes",
+            )
+        )
+        db.session.commit()
+
+    qs = "month=2026-07-01"
+    patch = client.patch(
+        f"/api/monthly_routes/routes/{route_id}/worksheet/stops/{ts_id}?{qs}",
+        json={"changes": {"monitoring_notes": "Updated monitoring notes"}},
+    )
+    assert patch.status_code == 200
+
+    with app.app_context():
+        run = MonthlyRouteRun.query.filter_by(
+            monthly_route_id=route_id,
+            month_date=date(2026, 7, 1),
+        ).one()
+        ensure_worksheet_stops_for_route_month(route_id, date(2026, 7, 1), run)
+        db.session.commit()
+        mtsm = db.session.get(MonthlyTestingSiteMonth, 92011)
+        assert mtsm.monitoring_notes == "Updated monitoring notes"
+
+    get_res = client.get(f"/api/monthly_routes/routes/{route_id}/run_details?month=2026-07-01")
+    assert get_res.status_code == 200
+    body = get_res.get_json()
+    stops = body["locations"][0]["stops"]
+    hit = next(s for s in stops if int(s["testing_site_id"]) == ts_id)
+    assert hit["monitoring_notes"] == "Updated monitoring notes"
+
+
 def test_refresh_worksheet_stops_preserves_office_prep_fields(stops_client, monkeypatch):
     """Portal ``refresh_paperwork`` must not wipe office-edited stop-month snapshot fields."""
     from app.monthly.worksheet_stops import refresh_worksheet_stops_for_route_month
@@ -1297,3 +1352,85 @@ def test_regenerate_prep_stops_blocked_after_field_work_starts(stops_client, mon
     )
     assert res.status_code == 409
     assert res.get_json().get("code") == "run_prep_locked"
+
+
+def test_library_patch_syncs_open_prep_mtsm_from_master(stops_client):
+    """Site details master edit should refresh open prep stop-month snapshots."""
+    client, app = stops_client
+    with app.app_context():
+        route_id, ts_id, _ = _seed_route_with_two_stops()
+        run = MonthlyRouteRun(
+            id=95001,
+            monthly_route_id=route_id,
+            month_date=date(2026, 7, 1),
+            status="open",
+            source="technician_app",
+            prepared_at=datetime(2026, 7, 1, 9, 0, tzinfo=PACIFIC_TZ),
+        )
+        mtsm = MonthlyTestingSiteMonth(
+            id=95010,
+            monthly_testing_site_id=ts_id,
+            month_date=date(2026, 7, 1),
+            run_id=95001,
+            test_monthly_route_id=route_id,
+            monitoring_notes="Stale prep notes",
+            testing_procedures="Old procedures",
+        )
+        db.session.add_all([run, mtsm])
+        db.session.commit()
+
+    with client.session_transaction() as sess:
+        sess["authenticated"] = True
+
+    resp = client.patch(
+        f"/api/monthly_sites/testing_sites/{ts_id}",
+        json={
+            "monitoring_notes": "Updated from library",
+            "testing_procedures": "New procedures",
+        },
+    )
+    assert resp.status_code == 200
+
+    with app.app_context():
+        refreshed = db.session.get(MonthlyTestingSiteMonth, 95010)
+        assert refreshed is not None
+        assert refreshed.monitoring_notes == "Updated from library"
+        assert refreshed.testing_procedures == "New procedures"
+
+
+def test_library_patch_skips_mtsm_after_field_work_starts(stops_client):
+    client, app = stops_client
+    with app.app_context():
+        route_id, ts_id, _ = _seed_route_with_two_stops()
+        run = MonthlyRouteRun(
+            id=95002,
+            monthly_route_id=route_id,
+            month_date=date(2026, 7, 1),
+            status="open",
+            source="technician_app",
+            started_at=datetime(2026, 7, 2, 8, 0, tzinfo=PACIFIC_TZ),
+        )
+        mtsm = MonthlyTestingSiteMonth(
+            id=95011,
+            monthly_testing_site_id=ts_id,
+            month_date=date(2026, 7, 1),
+            run_id=95002,
+            test_monthly_route_id=route_id,
+            monitoring_notes="Frozen during field work",
+        )
+        db.session.add_all([run, mtsm])
+        db.session.commit()
+
+    with client.session_transaction() as sess:
+        sess["authenticated"] = True
+
+    resp = client.patch(
+        f"/api/monthly_sites/testing_sites/{ts_id}",
+        json={"monitoring_notes": "Should not overwrite active run"},
+    )
+    assert resp.status_code == 200
+
+    with app.app_context():
+        refreshed = db.session.get(MonthlyTestingSiteMonth, 95011)
+        assert refreshed is not None
+        assert refreshed.monitoring_notes == "Frozen during field work"

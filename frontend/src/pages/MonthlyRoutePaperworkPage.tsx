@@ -47,6 +47,21 @@ import {
   patchRunDetailPreRunMessage,
   patchRunDetailLocationStop,
 } from '../features/monthlyRoutes/runDetailsLocationReview'
+import {
+  getCachedFieldSubmission,
+  getCachedJobItems,
+  getCachedRunDetails,
+  invalidatePaperworkRouteMonth,
+  invalidatePaperworkSecondaryCaches,
+  setCachedFieldSubmission,
+  setCachedJobItems,
+  setCachedRunDetails,
+} from '../features/monthlyRoutes/paperworkRouteCache'
+import {
+  prefetchAdjacentPaperworkMonths,
+  prefetchPaperworkMonth,
+} from '../features/monthlyRoutes/paperworkRoutePrefetch'
+import { subscribePaperworkMasterSync } from '../features/monthlyRoutes/paperworkMasterSync'
 import { clearWorksheetCache } from '../features/monthlyRoutes/worksheetOfflineStore'
 import { apiJson, isAbortError } from '../lib/apiClient'
 import MonthlyRunDetailPageSkeleton from './MonthlyRunDetailPageSkeleton'
@@ -91,6 +106,7 @@ export default function MonthlyRoutePaperworkPage() {
   const [, setRouteMetaLoading] = useState(true)
   const [payload, setPayload] = useState<MonthlyRunDetailPayload | null>(null)
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [runLifecycleAction, setRunLifecycleAction] = useState<
     'prepare' | 'unprepare' | 'review_complete' | 'complete' | 'reopen' | null
@@ -167,16 +183,27 @@ export default function MonthlyRoutePaperworkPage() {
     }
   }, [idNum])
 
-  const loadRunDetails = useCallback(async (signal?: AbortSignal) => {
-    if (!Number.isFinite(idNum)) return
-    const qs = new URLSearchParams({ month: monthQuery })
-    const data = await apiJson<MonthlyRunDetailPayload>(
-      `/api/monthly_routes/routes/${idNum}/run_details?${qs.toString()}`,
-      { signal },
-    )
-    setPayload(data)
-    setError(null)
-  }, [idNum, monthQuery])
+  const loadRunDetails = useCallback(
+    async (signal?: AbortSignal, options?: { background?: boolean }) => {
+      if (!Number.isFinite(idNum)) return
+      const qs = new URLSearchParams({ month: monthQuery })
+      try {
+        const data = await apiJson<MonthlyRunDetailPayload>(
+          `/api/monthly_routes/routes/${idNum}/run_details?${qs.toString()}`,
+          { signal },
+        )
+        if (signal?.aborted) return
+        setCachedRunDetails(idNum, monthQuery, data)
+        setPayload(data)
+        setError(null)
+        return data
+      } catch (e) {
+        if (isAbortError(e)) return
+        if (!options?.background) throw e
+      }
+    },
+    [idNum, monthQuery],
+  )
 
   useEffect(() => {
     if (!Number.isFinite(idNum)) return
@@ -188,83 +215,153 @@ export default function MonthlyRoutePaperworkPage() {
   useEffect(() => {
     if (!Number.isFinite(idNum)) {
       setLoading(false)
+      setRefreshing(false)
       setError('Invalid route.')
       return
     }
+
+    const cached = getCachedRunDetails(idNum, monthQuery)
+    const hasCache = cached != null
+
+    if (hasCache) {
+      setPayload(cached)
+      setLoading(false)
+      setError(null)
+      setRefreshing(true)
+    } else {
+      setPayload(null)
+      setLoading(true)
+      setRefreshing(false)
+      setError(null)
+    }
+
     const ac = new AbortController()
-    setLoading(true)
-    setError(null)
     void (async () => {
       try {
-        await loadRunDetails(ac.signal)
+        await loadRunDetails(ac.signal, { background: hasCache })
       } catch (e) {
         if (isAbortError(e)) return
-        setError(formatPaperworkLoadError(e))
-        setPayload(null)
+        if (!hasCache) {
+          setError(formatPaperworkLoadError(e))
+          setPayload(null)
+        }
       } finally {
-        if (!ac.signal.aborted) setLoading(false)
+        if (!ac.signal.aborted) {
+          setLoading(false)
+          setRefreshing(false)
+        }
       }
     })()
     return () => ac.abort()
+  }, [idNum, monthQuery, loadRunDetails])
+
+  useEffect(() => {
+    if (!payload || !Number.isFinite(idNum)) return
+    if (payload.month_date !== monthQuery) return
+    setCachedRunDetails(idNum, monthQuery, payload)
+  }, [payload, idNum, monthQuery])
+
+  useEffect(() => {
+    if (!Number.isFinite(idNum) || loading || !payload) return
+    if (payload.month_date !== monthQuery) return
+    prefetchAdjacentPaperworkMonths(idNum, monthQuery, selectableMonths, currentMonthIso)
+  }, [idNum, loading, payload, monthQuery, selectableMonths, currentMonthIso])
+
+  const onMonthHover = useCallback(
+    (hoverMonthIso: string) => {
+      if (!Number.isFinite(idNum) || hoverMonthIso === monthQuery) return
+      prefetchPaperworkMonth(idNum, hoverMonthIso, currentMonthIso)
+    },
+    [idNum, monthQuery, currentMonthIso],
+  )
+
+  useEffect(() => {
+    if (!Number.isFinite(idNum)) return
+    return subscribePaperworkMasterSync(idNum, () => {
+      setRefreshing(true)
+      void loadRunDetails(undefined, { background: true }).finally(() => setRefreshing(false))
+    })
   }, [idNum, loadRunDetails])
 
-  const loadFieldSubmission = useCallback(async (signal?: AbortSignal) => {
-    if (!Number.isFinite(idNum)) return
-    const qs = new URLSearchParams({ month: monthQuery })
-    setHistoryLoading(true)
-    try {
-      const data = await apiJson<{
-        stops: TechnicianWorksheetStop[]
-        captured_at: string | null
-        field_work_reopened: boolean
-      }>(`/api/monthly_routes/routes/${idNum}/run_details/field_submission?${qs.toString()}`, {
-        signal,
-      })
-      if (signal?.aborted) return
-      setHistoryStops(data.stops ?? [])
-      setHistoryMeta({
-        capturedAt: data.captured_at,
-        fieldWorkReopened: Boolean(data.field_work_reopened),
-      })
-    } catch (e) {
-      if (isAbortError(e)) return
-      setHistoryStops([])
-      setHistoryMeta({ capturedAt: null, fieldWorkReopened: false })
-    } finally {
-      if (!signal?.aborted) setHistoryLoading(false)
-    }
-  }, [idNum, monthQuery])
+  const loadFieldSubmission = useCallback(
+    async (signal?: AbortSignal, options?: { background?: boolean }) => {
+      if (!Number.isFinite(idNum)) return
+      const qs = new URLSearchParams({ month: monthQuery })
+      if (!options?.background) {
+        setHistoryLoading(true)
+      }
+      try {
+        const data = await apiJson<{
+          stops: TechnicianWorksheetStop[]
+          captured_at: string | null
+          field_work_reopened: boolean
+        }>(`/api/monthly_routes/routes/${idNum}/run_details/field_submission?${qs.toString()}`, {
+          signal,
+        })
+        if (signal?.aborted) return
+        const entry = {
+          stops: data.stops ?? [],
+          capturedAt: data.captured_at,
+          fieldWorkReopened: Boolean(data.field_work_reopened),
+        }
+        setCachedFieldSubmission(idNum, monthQuery, entry)
+        setHistoryStops(entry.stops)
+        setHistoryMeta({
+          capturedAt: entry.capturedAt,
+          fieldWorkReopened: entry.fieldWorkReopened,
+        })
+      } catch (e) {
+        if (isAbortError(e)) return
+        if (!options?.background) {
+          setHistoryStops([])
+          setHistoryMeta({ capturedAt: null, fieldWorkReopened: false })
+        }
+      } finally {
+        if (!signal?.aborted) setHistoryLoading(false)
+      }
+    },
+    [idNum, monthQuery],
+  )
 
   const applyWorkflowRunUpdate = useCallback(
     (run: TechnicianWorksheetRun) => {
       setPayload((prev) => (prev ? patchRunDetailPayloadRun(prev, run) : prev))
       setRouteMeta((prev) => patchRouteMetaRunMonth(prev, monthQuery, run))
+      if (Number.isFinite(idNum)) {
+        invalidatePaperworkSecondaryCaches(idNum, monthQuery)
+      }
     },
-    [monthQuery],
+    [monthQuery, idNum],
   )
 
-  const loadJobItems = useCallback(async () => {
-    if (!Number.isFinite(idNum)) return
-    const qs = new URLSearchParams({ month: monthQuery })
-    try {
-      const data = await apiJson<{
-        items: {
-          location_id: number
-          description: string
-          quantity: number
-        }[]
-      }>(`/api/monthly_routes/routes/${idNum}/run_job_items?${qs.toString()}`)
-      const byLoc: Record<number, { description: string; quantity: number }[]> = {}
-      for (const item of data.items ?? []) {
-        const lid = item.location_id
-        if (!byLoc[lid]) byLoc[lid] = []
-        byLoc[lid].push({ description: item.description, quantity: item.quantity })
+  const loadJobItems = useCallback(
+    async (options?: { background?: boolean }) => {
+      if (!Number.isFinite(idNum)) return
+      const qs = new URLSearchParams({ month: monthQuery })
+      try {
+        const data = await apiJson<{
+          items: {
+            location_id: number
+            description: string
+            quantity: number
+          }[]
+        }>(`/api/monthly_routes/routes/${idNum}/run_job_items?${qs.toString()}`)
+        const byLoc: Record<number, { description: string; quantity: number }[]> = {}
+        for (const item of data.items ?? []) {
+          const lid = item.location_id
+          if (!byLoc[lid]) byLoc[lid] = []
+          byLoc[lid].push({ description: item.description, quantity: item.quantity })
+        }
+        setCachedJobItems(idNum, monthQuery, byLoc)
+        setJobItemsByLocationId(byLoc)
+      } catch {
+        if (!options?.background) {
+          setJobItemsByLocationId({})
+        }
       }
-      setJobItemsByLocationId(byLoc)
-    } catch {
-      setJobItemsByLocationId({})
-    }
-  }, [idNum, monthQuery])
+    },
+    [idNum, monthQuery],
+  )
 
   useEffect(() => {
     if (paperworkViewMode !== 'exact_history') {
@@ -273,20 +370,37 @@ export default function MonthlyRoutePaperworkPage() {
       setHistoryLoading(false)
       return
     }
-    setHistoryStops([])
-    setHistoryMeta({ capturedAt: null, fieldWorkReopened: false })
+    if (loading) return
+
+    const cached = Number.isFinite(idNum) ? getCachedFieldSubmission(idNum, monthQuery) : null
+    if (cached) {
+      setHistoryStops(cached.stops)
+      setHistoryMeta({
+        capturedAt: cached.capturedAt,
+        fieldWorkReopened: cached.fieldWorkReopened,
+      })
+      setHistoryLoading(false)
+    } else {
+      setHistoryStops([])
+      setHistoryMeta({ capturedAt: null, fieldWorkReopened: false })
+    }
+
     const ac = new AbortController()
-    void loadFieldSubmission(ac.signal)
+    void loadFieldSubmission(ac.signal, { background: cached != null })
     return () => ac.abort()
-  }, [paperworkViewMode, loadFieldSubmission])
+  }, [paperworkViewMode, loadFieldSubmission, loading, idNum, monthQuery])
 
   useEffect(() => {
     if (paperworkViewMode === 'run_review' && runFieldEnded(payload?.run ?? null)) {
-      void loadJobItems()
+      const cached = Number.isFinite(idNum) ? getCachedJobItems(idNum, monthQuery) : null
+      if (cached) {
+        setJobItemsByLocationId(cached)
+      }
+      void loadJobItems({ background: cached != null })
     } else {
       setJobItemsByLocationId({})
     }
-  }, [paperworkViewMode, payload?.run, loadJobItems])
+  }, [paperworkViewMode, payload?.run, loadJobItems, idNum, monthQuery])
 
   const onBillingPatched = useCallback((locationId: number, billingStatus: string) => {
     setPayload((prev) => {
@@ -396,7 +510,7 @@ export default function MonthlyRoutePaperworkPage() {
   useEffect(() => {
     if (hasPendingPatches || !pendingRunDetailsReloadRef.current) return
     pendingRunDetailsReloadRef.current = false
-    void loadRunDetails()
+    void loadRunDetails(undefined, { background: true })
   }, [hasPendingPatches, loadRunDetails])
 
   const onMarkPrepared = useCallback(async () => {
@@ -413,6 +527,7 @@ export default function MonthlyRoutePaperworkPage() {
         },
       )
       clearWorksheetCache(idNum, monthQuery)
+      invalidatePaperworkRouteMonth(idNum, monthQuery)
       await loadRunDetails()
       await loadRouteMeta()
     } catch (e) {
@@ -542,6 +657,7 @@ export default function MonthlyRoutePaperworkPage() {
         },
       )
       clearWorksheetCache(idNum, monthQuery)
+      invalidatePaperworkRouteMonth(idNum, monthQuery)
       setResetRunModalOpen(false)
       await loadRunDetails()
       await loadRouteMeta()
@@ -579,7 +695,7 @@ export default function MonthlyRoutePaperworkPage() {
     )
   }
 
-  if (loading) {
+  if (loading && !payload) {
     return (
       <MonthlyRunDetailPageSkeleton
         label={`Loading paperwork for ${formatMonthHeading(monthQuery)}…`}
@@ -634,7 +750,9 @@ export default function MonthlyRoutePaperworkPage() {
           months={selectableMonths}
           selectedMonthIso={monthQuery}
           currentMonthIso={currentMonthIso}
+          refreshing={refreshing}
           onChange={onMonthChange}
+          onMonthHover={onMonthHover}
         />
 
         <section className="monthly-route-detail-hero monthly-location-detail-surface monthly-run-detail-hero">
@@ -802,15 +920,11 @@ export default function MonthlyRoutePaperworkPage() {
             historyLoading={historyLoading}
             historyCapturedAt={historyMeta.capturedAt}
             historyFieldWorkReopened={historyMeta.fieldWorkReopened}
-            onTicketsChanged={() => void loadRunDetails()}
+            onTicketsChanged={() => void loadRunDetails(undefined, { background: true })}
             jobItemsByLocationId={jobItemsByLocationId}
             paperworkViewMode={paperworkViewMode}
             prepEditsDisabled={futurePrepBlocked}
-            onRouteOrderChanged={() => void loadRunDetails()}
-            onPrepStopsRegenerated={async () => {
-              clearWorksheetCache(idNum, monthQuery)
-              await loadRunDetails()
-            }}
+            onRouteOrderChanged={() => void loadRunDetails(undefined, { background: true })}
             outcomeCounts={
               paperworkViewMode === 'run_review'
                 ? {

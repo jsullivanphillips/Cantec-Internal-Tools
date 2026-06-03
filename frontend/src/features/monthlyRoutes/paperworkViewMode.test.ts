@@ -70,6 +70,20 @@ describe('derivePaperworkViewMode', () => {
     expect(derivePaperworkViewMode(null, '2026-07-01', CURRENT)).toBe('preparation')
   })
 
+  it('ignores a completed run from another month while switching months', () => {
+    expect(
+      derivePaperworkViewMode(
+        run({
+          month_date: '2026-06-01',
+          completed_at: '2026-06-15T00:00:00Z',
+          status: 'completed',
+        }),
+        '2026-07-01',
+        CURRENT,
+      ),
+    ).toBe('preparation')
+  })
+
   it('returns run_review for field-in-progress current month', () => {
     expect(
       derivePaperworkViewMode(run({ started_at: '2026-06-02T00:00:00Z' }), CURRENT, CURRENT),

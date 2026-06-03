@@ -146,9 +146,12 @@ export function usePortalWorksheetDemo(monthIso: string) {
   const showReopenRun = false
   const runPrepared = true
   const runEnded = false
-  const onPortalEndRun = onPortalCompleteRun
+  const requestPortalEndRun = onPortalCompleteRun
+  const onPortalEndRun = requestPortalEndRun
   const onPortalReopenField = onPortalReopenRun
   const readOnlyWorksheet = showStopWorkspace && !canEditStops
+  const dismissEndRunModal = useCallback(() => {}, [])
+  const confirmSkipUntestedAndEndRun = useCallback(async () => {}, [])
 
   return {
     payload,
@@ -170,7 +173,12 @@ export function usePortalWorksheetDemo(monthIso: string) {
     queueStopChanges,
     onPortalStartRun,
     onPortalEndRun,
+    requestPortalEndRun,
     onPortalCompleteRun,
+    endRunModal: null,
+    dismissEndRunModal,
+    confirmSkipUntestedAndEndRun,
+    runLifecycleMessage: null,
     onPortalReopenField,
     onPortalReopenRun,
     runStarted,

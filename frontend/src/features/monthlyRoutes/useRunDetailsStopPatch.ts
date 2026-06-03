@@ -80,6 +80,7 @@ export function useRunDetailsStopPatch({
       fieldKey: string,
       changes: PrepStopPatchChanges,
       rollback: Partial<MonthlyRunDetailLocationStop>,
+      stopNumber?: number,
     ) => {
       const normalizedChanges = syncPrepChangesForApi(changes)
       const changeKeys = Object.keys(normalizedChanges)
@@ -105,6 +106,7 @@ export function useRunDetailsStopPatch({
         try {
           const stop = await patchRunDetailsStop(routeId, monthDate, testingSiteId, normalizedChanges, {
             clientMutationId,
+            stopNumber,
           })
           if (!isStopPatchGenerationCurrent(generationRef.current, testingSiteId, nextGen)) {
             onWorksheetStopSynced?.(stop)
@@ -144,7 +146,21 @@ export function useRunDetailsStopPatch({
       fieldKey: string,
       changes: PrepStopPatchChanges,
       rollback: Partial<MonthlyRunDetailLocationStop>,
-    ) => patchStop(stop.testing_site_id, fieldKey, changes, rollback),
+    ) => patchStop(stop.testing_site_id, fieldKey, changes, rollback, stop.stop_number),
+    [patchStop],
+  )
+
+  const patchStopForRow = useCallback(
+    (stopNumber?: number) => {
+      return (
+        testingSiteId: number,
+        fieldKey: string,
+        changes: PrepStopPatchChanges,
+        rollback: Partial<MonthlyRunDetailLocationStop>,
+      ) => {
+        void patchStop(testingSiteId, fieldKey, changes, rollback, stopNumber)
+      }
+    },
     [patchStop],
   )
 
@@ -160,6 +176,7 @@ export function useRunDetailsStopPatch({
 
   return {
     patchStop,
+    patchStopForRow,
     patchStopFields,
     saving,
     error,
@@ -173,6 +190,7 @@ export function useRunDetailsStopPatch({
 export type RunDetailsStopPatchApi = Pick<
   ReturnType<typeof useRunDetailsStopPatch>,
   | 'patchStop'
+  | 'patchStopForRow'
   | 'patchStopFields'
   | 'error'
   | 'setError'
