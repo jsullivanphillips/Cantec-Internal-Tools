@@ -188,6 +188,33 @@ export function groupOfficeWorksheetStops(stops: TechnicianWorksheetStop[]): Off
   return Array.from(groupsByLocation.values())
 }
 
+/** Group stops in frozen submission array order (only merge consecutive same-address rows). */
+export function groupOfficeWorksheetStopsInSubmissionOrder(
+  stops: TechnicianWorksheetStop[],
+): OfficeStopGroup[] {
+  const groups: OfficeStopGroup[] = []
+  for (const stop of stops) {
+    const last = groups.length > 0 ? groups[groups.length - 1] : null
+    if (last && last.locationId === stop.location_id) {
+      last.buildingName = officeFirstDisplayValue(last.buildingName, stop.building_name)
+      last.propertyManagementCompany = officeFirstDisplayValue(
+        last.propertyManagementCompany,
+        stop.property_management_company,
+      )
+      last.stops.push(stop)
+      continue
+    }
+    groups.push({
+      locationId: stop.location_id,
+      displayAddress: stop.display_address,
+      buildingName: officeFirstDisplayValue(stop.building_name),
+      propertyManagementCompany: officeFirstDisplayValue(stop.property_management_company),
+      stops: [stop],
+    })
+  }
+  return groups
+}
+
 export function fieldChangesForLocation(
   locationId: number,
   fieldChangesByLocation?: Map<number, OfficeFieldChange[]>,

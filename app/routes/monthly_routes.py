@@ -2575,12 +2575,20 @@ def _attach_worksheet_stops(
             monthly_route_id=route_id,
             month_date=month_first,
         ).one_or_none()
-        if run_orm is not None:
-            _sync_worksheet_stops_for_route_month(route_id, month_first, run_orm)
-        stops = worksheet_stops_for_route_month(route_id, month_first)
-        if not stops and (payload.get("rows") or []):
-            stops = worksheet_stops_from_attributed_history(route_id, month_first)
-        payload["stops"] = stops
+        from app.monthly.field_submission import worksheet_stops_from_field_submission_if_frozen
+
+        frozen_stops = (
+            worksheet_stops_from_field_submission_if_frozen(run_orm) if run_orm is not None else None
+        )
+        if frozen_stops is not None:
+            payload["stops"] = frozen_stops
+        else:
+            if run_orm is not None:
+                _sync_worksheet_stops_for_route_month(route_id, month_first, run_orm)
+            stops = worksheet_stops_for_route_month(route_id, month_first)
+            if not stops and (payload.get("rows") or []):
+                stops = worksheet_stops_from_attributed_history(route_id, month_first)
+            payload["stops"] = stops
     return payload
 
 

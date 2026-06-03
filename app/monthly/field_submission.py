@@ -92,6 +92,30 @@ def capture_field_submission_for_run(run: MonthlyRouteRun, *, captured_at: datet
     return row
 
 
+def worksheet_stops_from_field_submission_if_frozen(
+    run: MonthlyRouteRun,
+) -> list[dict[str, object]] | None:
+    """Return frozen portal worksheet stops when field work has ended and a snapshot exists.
+
+    Used for historical iPad browse and any read-only worksheet surface so stop order and
+    field values match the captured submission, not the live route library order.
+    """
+    if run.field_ended_at is None:
+        return None
+    submission = get_field_submission_for_run(int(run.id))
+    if submission is None:
+        return None
+    payload = submission.payload_json if isinstance(submission.payload_json, dict) else {}
+    raw_stops = payload.get("stops")
+    if not isinstance(raw_stops, list) or not raw_stops:
+        return None
+    stops: list[dict[str, object]] = []
+    for raw in raw_stops:
+        if isinstance(raw, dict):
+            stops.append(dict(raw))
+    return stops or None
+
+
 def get_field_submission_for_run(run_id: int) -> MonthlyRouteRunFieldSubmission | None:
     try:
         return MonthlyRouteRunFieldSubmission.query.filter_by(run_id=int(run_id)).one_or_none()

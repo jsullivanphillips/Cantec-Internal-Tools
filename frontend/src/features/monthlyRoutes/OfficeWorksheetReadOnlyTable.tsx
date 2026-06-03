@@ -6,6 +6,7 @@ import {
   auditChangeForCompactLabel,
   auditChangeForLongTextField,
   groupOfficeWorksheetStops,
+  groupOfficeWorksheetStopsInSubmissionOrder,
   officeAccessCellUpdated,
   notableStopInclusionReasons,
   officeAddressCellUpdated,
@@ -442,6 +443,8 @@ export type OfficeWorksheetReadOnlyTableProps = {
   highlightNewComments?: boolean
   /** Completed run — pending stops show "No Results Submitted". */
   closedRun?: boolean
+  /** Exact history: keep API stop order; only group consecutive rows at the same address. */
+  preserveSubmissionStopOrder?: boolean
 }
 
 export default function OfficeWorksheetReadOnlyTable({
@@ -455,10 +458,17 @@ export default function OfficeWorksheetReadOnlyTable({
   hideEmptyChangeColumns = false,
   highlightNewComments = false,
   closedRun = false,
+  preserveSubmissionStopOrder = false,
 }: OfficeWorksheetReadOnlyTableProps) {
   const headerScrollRef = useRef<HTMLDivElement | null>(null)
   const tableScrollRef = useRef<HTMLDivElement | null>(null)
-  const groups = useMemo(() => groupOfficeWorksheetStops(stops), [stops])
+  const groups = useMemo(
+    () =>
+      preserveSubmissionStopOrder
+        ? groupOfficeWorksheetStopsInSubmissionOrder(stops)
+        : groupOfficeWorksheetStops(stops),
+    [stops, preserveSubmissionStopOrder],
+  )
 
   const changeColumns = useMemo(() => {
     if (!hideEmptyChangeColumns) return OFFICE_WORKSHEET_ALL_CHANGE_COLUMNS_VISIBLE

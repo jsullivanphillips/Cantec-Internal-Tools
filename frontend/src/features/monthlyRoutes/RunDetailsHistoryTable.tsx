@@ -61,6 +61,7 @@ export default function RunDetailsHistoryTable({
           monthDate={monthDate}
           layout="embedded"
           neutralStopNumbers
+          preserveSubmissionStopOrder
           highlightUpdatedCells={false}
           hideEmptyChangeColumns={false}
           highlightNewComments
