@@ -58,11 +58,12 @@ export function stopMonitoringDisplay(stop: StopMonitoringSource): StopMonitorin
 
 export function stopMonitoringSummaryLabel(stop: StopMonitoringSource): string {
   const display = stopMonitoringDisplay(stop)
-  if (display.company === '—' && display.account === '—') return 'No Monitoring'
-  const parts = [display.company !== '—' ? display.company : null, display.account !== '—' ? `#${display.account}` : null]
-    .filter(Boolean)
-    .join(' · ')
-  return parts ? `MONITORING: ${parts}` : 'No Monitoring'
+  const parts = [
+    display.company !== '—' ? display.company : null,
+    display.account !== '—' ? `#${display.account}` : null,
+    ...display.phones,
+  ].filter(Boolean)
+  return parts.length > 0 ? `MONITORING: ${parts.join(' · ')}` : 'No Monitoring'
 }
 
 export function stopHasMonitoring(stop: StopMonitoringSource): boolean {

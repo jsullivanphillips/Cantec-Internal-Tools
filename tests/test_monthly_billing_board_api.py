@@ -12,6 +12,7 @@ from app.db_models import (
     MonthlyLocationQuarterBilled,
     MonthlyRoute,
     MonthlyRouteLocation,
+    MonthlyRouteRun,
     MonthlyRouteTestHistory,
     MonthlySite,
     MonthlyTestingSite,
@@ -35,6 +36,7 @@ def billing_board_client(monkeypatch):
     tables = [
         MonthlyRoute.__table__,
         MonthlyRouteLocation.__table__,
+        MonthlyRouteRun.__table__,
         MonthlyRouteTestHistory.__table__,
         MonthlySite.__table__,
         MonthlyTestingSite.__table__,
@@ -234,3 +236,141 @@ def test_billing_board_search_route_token_suffix_only(billing_board_client):
     data = r.get_json()
     assert data["pagination"]["total"] == 1
     assert data["locations"][0]["location_id"] == 201
+
+
+def test_billing_board_do_not_bill_includes_skip_reason_category(billing_board_client):
+    client, _app = billing_board_client
+    route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
+    loc = MonthlyRouteLocation(
+        id=301,
+        address="Annual Skip St",
+        address_normalized="annual skip st",
+        property_management_company="",
+        property_management_company_normalized="",
+        building=None,
+        building_normalized="",
+        status_normalized="active",
+        status_raw="Active",
+        monthly_route_id=1,
+        test_day="Tuesday",
+        annual_month="May",
+    )
+    hist = MonthlyRouteTestHistory(
+        id=5002,
+        location_id=301,
+        month_date=date(2026, 5, 1),
+        result_status="skipped",
+        skip_reason="annual",
+        test_monthly_route_id=1,
+        billing_status="do_not_bill",
+    )
+    db.session.add_all([route, loc, hist])
+    db.session.commit()
+    sync_testing_sites_from_legacy(loc)
+    site = MonthlySite.query.filter_by(legacy_monthly_route_location_id=301).one()
+    ts = MonthlyTestingSite.query.filter_by(monthly_site_id=site.id).one()
+    mtsm = MonthlyTestingSiteMonth(
+        id=93002,
+        monthly_testing_site_id=ts.id,
+        month_date=date(2026, 5, 1),
+        test_monthly_route_id=1,
+        test_outcome="skipped",
+        result_status="skipped",
+        skip_category="testing_not_required",
+        skip_reason="testing_not_required",
+    )
+    db.session.add(mtsm)
+    db.session.commit()
+
+    r = client.get("/api/monthly_routes/billing_board?anchor_month=2026-05-01&q=annual")
+    assert r.status_code == 200
+    row = r.get_json()["locations"][0]
+    may = row["months"]["2026-05-01"]
+    assert may["billing_status"] == "do_not_bill"
+    assert may["skip_reason_category"] == "Annual"
+
+
+def test_billing_board_unset_before_field_end_reports_field_work_ended_false(billing_board_client):
+    client, _app = billing_board_client
+    route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
+    loc = MonthlyRouteLocation(
+        id=401,
+        address="Open Run St",
+        address_normalized="open run st",
+        property_management_company="",
+        property_management_company_normalized="",
+        building=None,
+        building_normalized="",
+        status_normalized="active",
+        status_raw="Active",
+        monthly_route_id=1,
+        test_day="Tuesday",
+    )
+    run = MonthlyRouteRun(
+        id=9001,
+        monthly_route_id=1,
+        month_date=date(2026, 5, 1),
+        started_at=datetime(2026, 5, 2, 9, 0, tzinfo=PACIFIC_TZ),
+        field_ended_at=None,
+        status="open",
+        source="technician_app",
+    )
+    hist = MonthlyRouteTestHistory(
+        id=5003,
+        location_id=401,
+        month_date=date(2026, 5, 1),
+        result_status=None,
+        test_monthly_route_id=1,
+        billing_status="unset",
+    )
+    db.session.add_all([route, loc, run, hist])
+    db.session.commit()
+
+    r = client.get("/api/monthly_routes/billing_board?anchor_month=2026-05-01&q=open")
+    assert r.status_code == 200
+    may = r.get_json()["locations"][0]["months"]["2026-05-01"]
+    assert may["billing_status"] == "unset"
+    assert may["field_work_ended"] is False
+
+
+def test_billing_board_unset_after_field_end_reports_field_work_ended_true(billing_board_client):
+    client, _app = billing_board_client
+    route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
+    loc = MonthlyRouteLocation(
+        id=402,
+        address="Ended Run St",
+        address_normalized="ended run st",
+        property_management_company="",
+        property_management_company_normalized="",
+        building=None,
+        building_normalized="",
+        status_normalized="active",
+        status_raw="Active",
+        monthly_route_id=1,
+        test_day="Tuesday",
+    )
+    run = MonthlyRouteRun(
+        id=9002,
+        monthly_route_id=1,
+        month_date=date(2026, 5, 1),
+        started_at=datetime(2026, 5, 2, 9, 0, tzinfo=PACIFIC_TZ),
+        field_ended_at=datetime(2026, 5, 2, 17, 0, tzinfo=PACIFIC_TZ),
+        status="open",
+        source="technician_app",
+    )
+    hist = MonthlyRouteTestHistory(
+        id=5004,
+        location_id=402,
+        month_date=date(2026, 5, 1),
+        result_status="tested",
+        test_monthly_route_id=1,
+        billing_status="unset",
+    )
+    db.session.add_all([route, loc, run, hist])
+    db.session.commit()
+
+    r = client.get("/api/monthly_routes/billing_board?anchor_month=2026-05-01&q=ended")
+    assert r.status_code == 200
+    may = r.get_json()["locations"][0]["months"]["2026-05-01"]
+    assert may["billing_status"] == "unset"
+    assert may["field_work_ended"] is True

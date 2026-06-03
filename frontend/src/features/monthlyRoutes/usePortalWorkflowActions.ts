@@ -109,7 +109,10 @@ export function usePortalWorkflowActions({
         routeId,
         monthIso,
         testingSiteId: stop.testing_site_id,
-        payload,
+        payload: {
+          ...payload,
+          stop_number: stop.stop_number,
+        },
       })
 
       if (!navigator.onLine) {
@@ -220,6 +223,8 @@ export function usePortalWorkflowActions({
           to_testing_site_id: toStop.testing_site_id,
           time_out: timeOut,
           time_in: timeIn,
+          from_stop_number: fromStop.stop_number,
+          to_stop_number: toStop.stop_number,
         },
       })
 

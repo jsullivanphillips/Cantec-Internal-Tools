@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { TechnicianWorksheetStop } from './monthlyRoutesShared'
-import { reconcileStopWithServer } from './worksheetOfflineStore'
+import { preserveWorksheetStopOrderFields, reconcileStopWithServer } from './worksheetOfflineStore'
 
 function stop(id: number, patch: Partial<TechnicianWorksheetStop> = {}): TechnicianWorksheetStop {
   return {
@@ -50,5 +50,29 @@ describe('reconcileStopWithServer', () => {
     const merged = reconcileStopWithServer(local, remote)
     expect(merged.test_outcome).toBe('all_good')
     expect(merged.clock_events?.[0]?.time_out).toBe('9:30 AM')
+  })
+
+  it('preserves local stop_number when server response recalculates order', () => {
+    const local = stop(28, { stop_number: 2, session_route_stop_order: 2 })
+    const remote = stop(28, {
+      stop_number: 28,
+      session_route_stop_order: 28,
+      test_outcome: 'all_good',
+      result_status: 'tested',
+    })
+    const merged = reconcileStopWithServer(local, remote)
+    expect(merged.stop_number).toBe(2)
+    expect(merged.session_route_stop_order).toBe(2)
+    expect(merged.test_outcome).toBe('all_good')
+  })
+})
+
+describe('preserveWorksheetStopOrderFields', () => {
+  it('keeps local stop_number on workflow merge', () => {
+    const local = stop(28, { stop_number: 2 })
+    const remote = stop(28, { stop_number: 28, time_in: '9:00 AM' })
+    const merged = preserveWorksheetStopOrderFields(local, remote)
+    expect(merged.stop_number).toBe(2)
+    expect(merged.time_in).toBe('9:00 AM')
   })
 })

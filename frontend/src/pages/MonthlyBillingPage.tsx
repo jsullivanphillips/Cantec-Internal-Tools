@@ -1,4 +1,3 @@
-import type { CSSProperties } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Badge, Button, Card, Form, OverlayTrigger, Spinner, Table, Tooltip } from 'react-bootstrap'
 import { Link } from 'react-router-dom'
@@ -9,27 +8,15 @@ import {
   formatMonthHeader,
   patchQuarterBilled,
   quarterTitle,
+  billingBoardShowUnsetDash,
   type BillingBoardLocationRow,
   type BillingBoardPayload,
 } from '../features/monthlyRoutes/monthlyBillingBoard'
-import { billingBoardLocationSubline } from '../features/monthlyRoutes/testingSiteDisplay'
+import { billingBoardLocationSubline, billingBoardLocationTitle } from '../features/monthlyRoutes/testingSiteDisplay'
 import { monthFirstIsoPacificToday, parseYearMonth, toMonthKey } from '../features/monthlyRoutes/monthlyRoutesShared'
 import { isAbortError } from '../lib/apiClient'
 
 const PAGE_SIZE = 50
-
-const TABLE_WRAP_STYLE: CSSProperties = {
-  maxHeight: '70vh',
-  overflowY: 'auto',
-  overflowX: 'auto',
-}
-
-const STICKY_HEADER_STYLE: CSSProperties = {
-  position: 'sticky',
-  top: 0,
-  zIndex: 5,
-  backgroundColor: '#fff',
-}
 
 function anchorMonthOptions(countBack = 18, countForward = 3): string[] {
   const anchor = parseYearMonth(monthFirstIsoPacificToday())
@@ -55,7 +42,11 @@ function BillingRouteCell({ row }: { row: BillingBoardLocationRow }) {
   const routeId = row.monthly_route_id
   if (routeId != null && label !== '—') {
     return (
-      <Link to={`/monthlies/routes/${routeId}`} className="fw-semibold text-decoration-none">
+      <Link
+        to={`/monthlies/routes/${routeId}`}
+        className="fw-semibold text-decoration-none"
+        onClick={(e) => e.stopPropagation()}
+      >
         {label}
       </Link>
     )
@@ -65,14 +56,26 @@ function BillingRouteCell({ row }: { row: BillingBoardLocationRow }) {
 
 function BillingMonthCell({
   cell,
+  monthIso,
 }: {
   cell: BillingBoardLocationRow['months'][string] | undefined
+  monthIso: string
 }) {
   const billing = cell?.billing_status ?? 'unset'
+  if (billingBoardShowUnsetDash(cell, monthIso)) {
+    return <span className="text-muted">—</span>
+  }
+  const skipCategory =
+    billing === 'do_not_bill' ? cell?.skip_reason_category?.trim() || null : null
   return (
-    <Badge bg={billingStatusVariant(billing)} className="text-wrap small">
-      {billingStatusLabel(billing)}
-    </Badge>
+    <div className="d-flex flex-column align-items-center gap-1">
+      <Badge bg={billingStatusVariant(billing)} className="text-wrap small">
+        {billingStatusLabel(billing)}
+      </Badge>
+      {skipCategory ? (
+        <span className="small text-muted text-wrap">{skipCategory}</span>
+      ) : null}
+    </div>
   )
 }
 
@@ -83,13 +86,12 @@ function BillingBoardTableSkeleton({ monthDates }: { monthDates: string[] }) {
   return (
     <div
       className="monthly-billing-table-skeleton"
-      style={TABLE_WRAP_STYLE}
       aria-busy="true"
       aria-label="Loading billing locations"
     >
       <Table responsive className="mb-0 align-middle">
         <thead>
-          <tr style={STICKY_HEADER_STYLE}>
+          <tr>
             <th style={{ minWidth: '14rem' }}>Address</th>
             <th style={{ minWidth: '5rem' }}>Route</th>
             {monthDates.length > 0
@@ -160,6 +162,7 @@ export default function MonthlyBillingPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busyLocationId, setBusyLocationId] = useState<number | null>(null)
+  const [trackedLocationId, setTrackedLocationId] = useState<number | null>(null)
   const loadSeqRef = useRef(0)
 
   const load = useCallback(async () => {
@@ -203,6 +206,10 @@ export default function MonthlyBillingPage() {
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    setTrackedLocationId(null)
+  }, [page, anchorMonth, query, routeFilter, billAnyMonth, unsetAnyMonth, notBilledQuarter, failedAnyMonth])
 
   const routeOptions = payload?.meta.routes ?? []
   const monthDates = payload?.month_dates ?? []
@@ -413,10 +420,9 @@ export default function MonthlyBillingPage() {
               {loading ? (
                 <BillingBoardTableSkeleton monthDates={monthDates} />
               ) : (
-                <div style={TABLE_WRAP_STYLE}>
-                  <Table responsive hover className="mb-0 align-middle">
-                    <thead>
-                      <tr style={STICKY_HEADER_STYLE}>
+                <Table responsive hover className="mb-0 align-middle">
+                  <thead>
+                    <tr>
                         <th style={{ minWidth: '14rem' }}>Address</th>
                         <th style={{ minWidth: '5rem' }}>Route</th>
                         {monthDates.map((monthIso) => (
@@ -452,7 +458,10 @@ export default function MonthlyBillingPage() {
                               size="sm"
                               variant={row.quarter_billed ? 'success' : 'outline-primary'}
                               disabled={busyLocationId === row.location_id}
-                              onClick={() => void toggleBilled(row)}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                void toggleBilled(row)
+                              }}
                             >
                               {busyLocationId === row.location_id ? (
                                 <Spinner animation="border" size="sm" aria-label="Saving" />
@@ -463,14 +472,25 @@ export default function MonthlyBillingPage() {
                               )}
                             </Button>
                           )
+                          const tracked = trackedLocationId === row.location_id
                           return (
-                            <tr key={row.location_id}>
+                            <tr
+                              key={row.location_id}
+                              className={`monthly-billing-row${tracked ? ' monthly-billing-row--tracked' : ''}`}
+                              onClick={() =>
+                                setTrackedLocationId((prev) =>
+                                  prev === row.location_id ? null : row.location_id,
+                                )
+                              }
+                              aria-selected={tracked}
+                            >
                               <td>
                                 <Link
                                   to={`/monthlies/locations/${row.location_id}`}
                                   className="fw-semibold text-decoration-none"
+                                  onClick={(e) => e.stopPropagation()}
                                 >
-                                  {row.location_label}
+                                  {billingBoardLocationTitle(row)}
                                 </Link>
                                 {billingBoardLocationSubline(row) ? (
                                   <div className="small text-muted">
@@ -488,7 +508,7 @@ export default function MonthlyBillingPage() {
                               </td>
                               {monthDates.map((monthIso) => (
                                 <td key={monthIso} className="text-center">
-                                  <BillingMonthCell cell={row.months[monthIso]} />
+                                  <BillingMonthCell cell={row.months[monthIso]} monthIso={monthIso} />
                                 </td>
                               ))}
                               <td className="text-center">
@@ -502,7 +522,6 @@ export default function MonthlyBillingPage() {
                       )}
                     </tbody>
                   </Table>
-                </div>
               )}
             </>
           )}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   billingBoardLocationSubline,
+  billingBoardLocationTitle,
   shortStreetAddress,
   testingSiteOfBillingSubline,
   testingSitePrimaryLabel,
@@ -14,6 +15,26 @@ describe('testingSiteDisplay', () => {
     ).toBe('1080 Cypress Rd')
     expect(shortStreetAddress('2471 Sidney Ave')).toBe('2471 Sidney Ave')
     expect(shortStreetAddress('800 Johnson Street')).toBe('800 Johnson St')
+  })
+
+  it('billingBoardLocationTitle keeps unabbreviated street line', () => {
+    expect(
+      billingBoardLocationTitle({
+        location_label: '9851 Seaport Place, Sidney, British Columbia V8L 0A5, Canada',
+      }),
+    ).toBe('9851 Seaport Place')
+  })
+
+  it('billingBoardLocationSubline shortens multi-site labels', () => {
+    expect(
+      billingBoardLocationSubline({
+        location_label: '2471 Sidney Ave, Victoria, BC',
+        testing_site_labels: [
+          '2471 Sidney Ave, Victoria, BC',
+          '9838 Second Street, Victoria, BC',
+        ],
+      }),
+    ).toBe('2471 Sidney Ave · 9838 Second Street')
   })
 
   it('compact primary label shortens billing address for single-site stops', () => {

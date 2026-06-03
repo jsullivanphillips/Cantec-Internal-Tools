@@ -1146,8 +1146,8 @@ def _portal_workflow_stop_context(route_id: int, testing_site_id: int, month_fir
     from app.monthly.worksheet_stops import (
         ensure_worksheet_stops_for_route_month,
         load_stop_for_patch,
+        resolve_worksheet_stop_number,
         serialize_worksheet_stop,
-        worksheet_stop_number_for_site,
     )
 
     run_for_month = MonthlyRouteRun.query.filter_by(
@@ -1175,8 +1175,13 @@ def _portal_workflow_stop_context(route_id: int, testing_site_id: int, month_fir
         if block is not None:
             return None, block
 
-    def _stop_payload() -> dict[str, object]:
-        stop_num = worksheet_stop_number_for_site(route_id, month_first, testing_site_id)
+    def _stop_payload(stop_number_hint: int | None = None) -> dict[str, object]:
+        stop_num = resolve_worksheet_stop_number(
+            route_id,
+            month_first,
+            testing_site_id,
+            hint=stop_number_hint,
+        )
         return serialize_worksheet_stop(
             ts,
             loc,
@@ -3595,7 +3600,7 @@ def post_worksheet_stop_clock_in(route_id: int, testing_site_id: int):
     if is_primary_stop(ts, loc):
         sync_primary_history_from_stop(mtsm, loc, route_id, month_first)
     db.session.commit()
-    return jsonify({"ok": True, "clock_event": {"id": int(ev.id), "time_in": ev.time_in_raw}, "stop": ctx["stop_payload"]()})
+    return jsonify({"ok": True, "clock_event": {"id": int(ev.id), "time_in": ev.time_in_raw}, "stop": ctx["stop_payload"](_patch_stop_number_hint(payload))})
 
 
 @monthly_routes_bp.post(
@@ -3631,7 +3636,7 @@ def post_worksheet_stop_clock_out(route_id: int, testing_site_id: int):
         {
             "ok": True,
             "clock_event": {"id": int(ev.id), "time_out": ev.time_out_raw},
-            "stop": ctx["stop_payload"](),
+            "stop": ctx["stop_payload"](_patch_stop_number_hint(payload)),
         }
     )
 
@@ -3650,6 +3655,7 @@ def post_worksheet_stop_cancel_clock_in(route_id: int, testing_site_id: int):
     from app.monthly.portal_workflow import cancel_clock_in_stop
     from app.monthly.worksheet_stops import is_primary_stop, sync_primary_history_from_stop
 
+    payload = request.get_json(silent=True) or {}
     try:
         cancel_clock_in_stop(ctx["mtsm"])
     except ValueError as exc:
@@ -3661,7 +3667,7 @@ def post_worksheet_stop_cancel_clock_in(route_id: int, testing_site_id: int):
     if is_primary_stop(ctx["ts"], ctx["loc"]):
         sync_primary_history_from_stop(ctx["mtsm"], ctx["loc"], route_id, month_first)
     db.session.commit()
-    return jsonify({"ok": True, "stop": ctx["stop_payload"]()})
+    return jsonify({"ok": True, "stop": ctx["stop_payload"](_patch_stop_number_hint(payload))})
 
 
 @monthly_routes_bp.post(
@@ -3675,9 +3681,9 @@ def post_worksheet_transition_clock(route_id: int):
     from app.monthly.portal_workflow import transition_clock_between_stops
     from app.monthly.worksheet_stops import (
         is_primary_stop,
+        resolve_worksheet_stop_number,
         serialize_worksheet_stop,
         sync_primary_history_from_stop,
-        worksheet_stop_number_for_site,
     )
 
     run_for_month = MonthlyRouteRun.query.filter_by(
@@ -3753,7 +3759,12 @@ def post_worksheet_transition_clock(route_id: int):
         from_mtsm,
         route_id=route_id,
         month_first=month_first,
-        stop_number=worksheet_stop_number_for_site(route_id, month_first, int(from_site)),
+        stop_number=resolve_worksheet_stop_number(
+            route_id,
+            month_first,
+            int(from_site),
+            hint=_patch_stop_number_hint({"stop_number": payload.get("from_stop_number")}),
+        ),
         run=run_for_month,
     )
     to_stop = serialize_worksheet_stop(
@@ -3762,7 +3773,12 @@ def post_worksheet_transition_clock(route_id: int):
         to_mtsm,
         route_id=route_id,
         month_first=month_first,
-        stop_number=worksheet_stop_number_for_site(route_id, month_first, int(to_site)),
+        stop_number=resolve_worksheet_stop_number(
+            route_id,
+            month_first,
+            int(to_site),
+            hint=_patch_stop_number_hint({"stop_number": payload.get("to_stop_number")}),
+        ),
         run=run_for_month,
     )
     return jsonify({"ok": True, "from_stop": from_stop, "to_stop": to_stop})
@@ -3819,7 +3835,7 @@ def put_worksheet_stop_test_outcome(route_id: int, testing_site_id: int):
             if is_primary_stop(ctx["ts"], ctx["loc"]):
                 sync_primary_history_from_stop(ctx["mtsm"], ctx["loc"], route_id, month_first)
             db.session.commit()
-            return jsonify({"ok": True, "stop": ctx["stop_payload"]()})
+            return jsonify({"ok": True, "stop": ctx["stop_payload"](_patch_stop_number_hint(payload))})
         return jsonify({"error": "test_outcome is required"}), 400
 
     try:
@@ -3856,7 +3872,7 @@ def put_worksheet_stop_test_outcome(route_id: int, testing_site_id: int):
     if is_primary_stop(ctx["ts"], ctx["loc"]):
         sync_primary_history_from_stop(ctx["mtsm"], ctx["loc"], route_id, month_first)
     db.session.commit()
-    return jsonify({"ok": True, "stop": ctx["stop_payload"]()})
+    return jsonify({"ok": True, "stop": ctx["stop_payload"](_patch_stop_number_hint(payload))})
 
 
 @monthly_routes_bp.get(
@@ -3925,7 +3941,7 @@ def post_worksheet_stop_deficiency(route_id: int, testing_site_id: int):
     db.session.commit()
     from app.monthly.portal_workflow import serialize_deficiency
 
-    return jsonify({"ok": True, "deficiency": serialize_deficiency(row), "stop": ctx["stop_payload"]()}), 201
+    return jsonify({"ok": True, "deficiency": serialize_deficiency(row), "stop": ctx["stop_payload"](_patch_stop_number_hint(payload))}), 201
 
 
 @monthly_routes_bp.patch(
@@ -3965,7 +3981,7 @@ def patch_worksheet_stop_deficiency(route_id: int, testing_site_id: int, deficie
         return jsonify({"error": "Invalid severity or status"}), 400
 
     db.session.commit()
-    return jsonify({"ok": True, "deficiency": serialize_deficiency(row), "stop": ctx["stop_payload"]()})
+    return jsonify({"ok": True, "deficiency": serialize_deficiency(row), "stop": ctx["stop_payload"](_patch_stop_number_hint(payload))})
 
 
 @monthly_routes_bp.post(
@@ -3998,7 +4014,7 @@ def post_worksheet_stop_deficiency_verify(route_id: int, testing_site_id: int, d
         note=_normalize_ws_text(payload.get("note")),
     )
     db.session.commit()
-    return jsonify({"ok": True, "deficiency": serialize_deficiency(row), "stop": ctx["stop_payload"]()})
+    return jsonify({"ok": True, "deficiency": serialize_deficiency(row), "stop": ctx["stop_payload"](_patch_stop_number_hint(payload))})
 
 
 @monthly_routes_bp.post(
@@ -4014,6 +4030,7 @@ def post_worksheet_stop_reset(route_id: int, testing_site_id: int):
 
     from app.monthly.portal_workflow import reset_stop_on_run
 
+    payload = request.get_json(silent=True) or {}
     reset_stop_on_run(
         route_id,
         month_first,
@@ -4023,7 +4040,7 @@ def post_worksheet_stop_reset(route_id: int, testing_site_id: int):
         ctx["run"],
     )
     db.session.commit()
-    return jsonify({"ok": True, "stop": ctx["stop_payload"]()})
+    return jsonify({"ok": True, "stop": ctx["stop_payload"](_patch_stop_number_hint(payload))})
 
 
 @monthly_routes_bp.post("/api/monthly_routes/routes/<int:route_id>/worksheet/reset_run")

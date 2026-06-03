@@ -19,12 +19,13 @@ import {
   loadSyncQueue,
   loadWorksheetCache,
   loadWorkflowSyncQueue,
+  mergeWorkflowQueueIntoPayload,
+  preserveWorksheetStopOrderFields,
   saveWorkflowSyncQueue,
   saveWorksheetCache,
   type PortalWorkflowQueueItem,
 } from './worksheetOfflineStore'
 import { resolveWorkflowQueueItem } from './portalWorkflowQueueWaiters'
-import { mergeWorkflowQueueIntoPayload } from './worksheetOfflineStore'
 
 export type PortalWorkflowDrainContext = {
   routeId: number
@@ -128,6 +129,9 @@ function mergeStopIntoPayload(
         time_in: prevStop.time_in,
         time_out: prevStop.time_out,
       }
+    }
+    if (prevStop) {
+      mergedStop = preserveWorksheetStopOrderFields(prevStop, mergedStop)
     }
     const nextStops = prev.stops.map((s) =>
       s.testing_site_id === stop.testing_site_id ? mergedStop : s,

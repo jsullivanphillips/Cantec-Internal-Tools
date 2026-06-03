@@ -67,7 +67,7 @@ import {
 type StopDisplayStatus = 'pending' | 'in_progress' | 'tested' | 'skipped'
 
 const NAV_EXPAND_TRANSITION_MS = 220
-const PORTAL_WORKSHEET_PHONE_ASPECT_MEDIA = '(max-aspect-ratio: 1/1)'
+const PORTAL_WORKSHEET_PHONE_LAYOUT_MEDIA = '(max-width: 767.98px)'
 
 function stopDisplayStatus(stop: TechnicianWorksheetStop): StopDisplayStatus {
   if (portalStopHasTestOutcome(stop)) {
@@ -241,8 +241,8 @@ export default function TechnicianPortalWorksheetPage() {
   const [activeId, setActiveId] = useState<number | null>(null)
   const [navExpanded, setNavExpanded] = useState(false)
   const [navItemsExpanded, setNavItemsExpanded] = useState(false)
-  const [phoneAspect, setPhoneAspect] = useState(
-    () => typeof window !== 'undefined' && window.matchMedia(PORTAL_WORKSHEET_PHONE_ASPECT_MEDIA).matches,
+  const [phoneLayout, setPhoneLayout] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia(PORTAL_WORKSHEET_PHONE_LAYOUT_MEDIA).matches,
   )
   const [skipModalOpen, setSkipModalOpen] = useState(false)
   const [resultsModalOpen, setResultsModalOpen] = useState(false)
@@ -301,7 +301,7 @@ export default function TechnicianPortalWorksheetPage() {
 
   const renderMonitoringCallButton = useCallback(
     (stop: TechnicianWorksheetStop, extraClassName = '') => {
-      if (!phoneAspect) return null
+      if (!phoneLayout) return null
       const phone = stopMonitoringCallPhone(stop)
       if (!phone) return null
       const telHref = monitoringPhoneTelHref(phone)
@@ -317,7 +317,7 @@ export default function TechnicianPortalWorksheetPage() {
         </a>
       )
     },
-    [phoneAspect],
+    [phoneLayout],
   )
 
   const renderMapsPinButton = useCallback(
@@ -636,19 +636,19 @@ export default function TechnicianPortalWorksheetPage() {
   }, [navExpanded])
 
   useEffect(() => {
-    const mediaQuery = window.matchMedia(PORTAL_WORKSHEET_PHONE_ASPECT_MEDIA)
-    const syncPhoneAspect = () => setPhoneAspect(mediaQuery.matches)
-    syncPhoneAspect()
-    mediaQuery.addEventListener('change', syncPhoneAspect)
-    return () => mediaQuery.removeEventListener('change', syncPhoneAspect)
+    const mediaQuery = window.matchMedia(PORTAL_WORKSHEET_PHONE_LAYOUT_MEDIA)
+    const syncPhoneLayout = () => setPhoneLayout(mediaQuery.matches)
+    syncPhoneLayout()
+    mediaQuery.addEventListener('change', syncPhoneLayout)
+    return () => mediaQuery.removeEventListener('change', syncPhoneLayout)
   }, [])
 
   const selectStop = useCallback(
     (testingSiteId: number) => {
       setActiveId(testingSiteId)
-      if (phoneAspect) setNavExpanded(false)
+      if (phoneLayout) setNavExpanded(false)
     },
-    [phoneAspect],
+    [phoneLayout],
   )
 
   const renderNavStop = (stop: TechnicianWorksheetStop) => {
@@ -665,9 +665,10 @@ export default function TechnicianPortalWorksheetPage() {
     const { siteCount, siteIndex } = testingSitePositionAtLocation(stop, projectedStops)
     const collapsedTitleParts = [
       `#${stop.stop_number} — ${testingSitePrimaryLabel(stop, { siteCount, siteIndex, compact: true })}`,
-      hasMonitoring
+      hasMonitoring || monitoring.phones.length > 0
         ? [
             monitoring.company !== '—' ? monitoring.company : null,
+            ...monitoring.phones,
             monitoring.account !== '—' ? `Acct ${monitoring.account}` : null,
           ]
             .filter(Boolean)
@@ -703,7 +704,7 @@ export default function TechnicianPortalWorksheetPage() {
             {testingSitePrimaryLabel(stop, { siteCount, siteIndex, compact: true })}
           </span>
           <span className="pw-mock-nav-stop-detail">
-            {hasMonitoring ? (
+            {hasMonitoring || monitoring.phones.length > 0 ? (
               <>
                 {monitoring.company !== '—' ? (
                   <span className="pw-mock-nav-stop-line">
@@ -711,6 +712,12 @@ export default function TechnicianPortalWorksheetPage() {
                     {monitoring.company}
                   </span>
                 ) : null}
+                {monitoring.phones.map((phone) => (
+                  <span key={phone} className="pw-mock-nav-stop-line">
+                    <span className="pw-mock-nav-stop-label">Phone</span>
+                    {phone}
+                  </span>
+                ))}
                 {monitoring.account !== '—' ? (
                   <span className="pw-mock-nav-stop-line">
                     <span className="pw-mock-nav-stop-label">Acct</span>

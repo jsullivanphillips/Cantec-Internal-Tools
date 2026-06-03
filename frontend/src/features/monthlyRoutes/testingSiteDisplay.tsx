@@ -184,15 +184,33 @@ export function testingSitePositionAtLocation<
   return { siteCount, siteIndex: found >= 0 ? found : 0 }
 }
 
+/** First comma-separated segment of a geocoded address (``9851 Seaport Place``). */
+export function streetLineFromAddress(raw: string | null | undefined): string {
+  const trimmed = normalizeText(raw)
+  if (!trimmed) return trimmed
+  return trimmed.includes(',') ? (trimmed.split(',')[0]?.trim() ?? trimmed) : trimmed
+}
+
+/** Billing board row title: street line only. */
+export function billingBoardLocationTitle(row: {
+  location_label?: string | null
+  display_address?: string | null
+}): string {
+  const raw = normalizeText(row.location_label) || normalizeText(row.display_address)
+  return streetLineFromAddress(raw) || 'Testing location'
+}
+
 export function billingBoardLocationSubline(row: {
   testing_site_labels?: string[] | null
   display_address?: string | null
   location_label?: string | null
 }): string | null {
   const labels = (row.testing_site_labels ?? []).map((label) => label.trim()).filter(Boolean)
-  if (labels.length > 1) return labels.join(' · ')
-  const billing = normalizeText(row.display_address)
-  const title = normalizeText(row.location_label)
+  if (labels.length > 1) {
+    return labels.map((label) => streetLineFromAddress(label)).join(' · ')
+  }
+  const billing = streetLineFromAddress(row.display_address)
+  const title = streetLineFromAddress(row.location_label)
   if (billing && title && billing.toLowerCase() !== title.toLowerCase()) return billing
   return null
 }

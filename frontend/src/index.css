@@ -233,9 +233,7 @@ body.portal-worksheet-body-lock {
   min-height: 100%;
   margin-top: -0.75rem;
   padding: 0 1rem 2.25rem;
-  background:
-    radial-gradient(circle at top left, rgba(37, 99, 235, 0.08), transparent 34rem),
-    var(--ml-page);
+  background: var(--ml-page);
   color: var(--ml-text);
 }
 
@@ -3345,6 +3343,18 @@ body.portal-worksheet-body-lock {
 
 .monthly-page .monthly-results-card {
   border: 1px solid #e7eaf0;
+}
+
+.monthly-page .monthly-billing-row {
+  cursor: pointer;
+}
+
+.monthly-page .monthly-billing-row--tracked > td {
+  background-color: #fff3cd;
+}
+
+.monthly-page .table-hover > tbody > .monthly-billing-row--tracked:hover > td {
+  background-color: #ffe69c;
 }
 
 .monthly-route-card {
@@ -8676,6 +8686,20 @@ body {
   outline-offset: 2px;
 }
 
+.pw-mock-nav-stop-map.pw-mock-nav-stop--active {
+  background: var(--pw-progress-soft);
+  border-color: var(--pw-progress-soft);
+  color: #1e40af;
+  box-shadow: none;
+}
+
+.pw-mock-nav-stop-map.pw-mock-nav-stop-call.pw-mock-nav-stop--active {
+  background: var(--pw-tested-soft);
+  border-color: #bbf7d0;
+  color: #047857;
+  box-shadow: none;
+}
+
 .pw-mock-nav-stop-row .pw-mock-nav-stop--expanded {
   flex: 1;
   min-width: 0;
@@ -10203,8 +10227,8 @@ body {
   }
 }
 
-/* Portrait / phone aspect: expanded stop nav covers the worksheet body. */
-@media (max-aspect-ratio: 1/1) {
+/* Phone-width viewports only (below iPad); expanded stop nav covers the worksheet body. */
+@media (max-width: 767.98px) {
   .pw-mock-body {
     position: relative;
   }

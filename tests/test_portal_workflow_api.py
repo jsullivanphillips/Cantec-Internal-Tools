@@ -136,9 +136,10 @@ def test_clock_in_conflict_and_workflow(portal_client, monkeypatch):
     cin_a = client.post(
         f"/api/monthly_routes/routes/{route_id}/worksheet/stops/{ts_a}/clock_events/clock_in"
         f"?month={month}&tech_portal=1",
-        json={"time_in": "9:00 AM"},
+        json={"time_in": "9:00 AM", "stop_number": 1},
     )
     assert cin_a.status_code == 200
+    assert cin_a.get_json()["stop"]["stop_number"] == 1
 
     cancel_a = client.post(
         f"/api/monthly_routes/routes/{route_id}/worksheet/stops/{ts_a}/clock_events/cancel_clock_in"
@@ -187,9 +188,10 @@ def test_clock_in_conflict_and_workflow(portal_client, monkeypatch):
     put_good = client.put(
         f"/api/monthly_routes/routes/{route_id}/worksheet/stops/{ts_a}/test_outcome"
         f"?month={month}&tech_portal=1",
-        json={"test_outcome": "all_good"},
+        json={"test_outcome": "all_good", "stop_number": 1},
     )
     assert put_good.status_code == 200
+    assert put_good.get_json()["stop"]["stop_number"] == 1
 
     with app.app_context():
         assert get_location_billing_status(101, date(2026, 5, 1)) == "bill"

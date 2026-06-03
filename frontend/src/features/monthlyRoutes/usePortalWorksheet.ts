@@ -265,14 +265,18 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
             }),
           },
         )
-        const mergedStop = applyServerStopWithPending(
-          res.stop,
-          item.routeId,
-          item.monthIso,
-          item.id,
-        )
+        let mergedStopForQueue: TechnicianWorksheetStop = res.stop
         setPayload((prev) => {
           if (!prev?.stops?.length) return prev
+          const prevStop = prev.stops.find((s) => s.testing_site_id === testingSiteId)
+          const mergedStop = applyServerStopWithPending(
+            res.stop,
+            item.routeId,
+            item.monthIso,
+            item.id,
+            prevStop,
+          )
+          mergedStopForQueue = mergedStop
           const nextStops = prev.stops.map((s) =>
             s.testing_site_id === testingSiteId ? mergedStop : s,
           )
@@ -287,7 +291,7 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
             q.routeId === item.routeId &&
             q.monthIso === item.monthIso &&
             q.testingSiteId === testingSiteId
-              ? { ...q, expectedUpdatedAt: mergedStop.version_updated_at }
+              ? { ...q, expectedUpdatedAt: mergedStopForQueue.version_updated_at }
               : q,
           )
       } catch (e) {

@@ -265,9 +265,29 @@ export function applyServerStopWithPending(
   routeId: number,
   monthIso: string,
   excludeItemId: string,
+  localStop?: TechnicianWorksheetStop,
 ): TechnicianWorksheetStop {
   const pending = collectPendingStopChanges(routeId, monthIso, serverStop.testing_site_id, excludeItemId)
-  return Object.keys(pending).length > 0 ? { ...serverStop, ...pending } : serverStop
+  const merged =
+    Object.keys(pending).length > 0 ? { ...serverStop, ...pending } : serverStop
+  return localStop ? preserveWorksheetStopOrderFields(localStop, merged) : merged
+}
+
+/** Keep route sheet stop # stable when workflow PATCH responses recalculate order. */
+export function preserveWorksheetStopOrderFields(
+  local: TechnicianWorksheetStop,
+  remote: TechnicianWorksheetStop,
+): TechnicianWorksheetStop {
+  const stopNumber =
+    Number.isFinite(local.stop_number) && local.stop_number > 0
+      ? local.stop_number
+      : remote.stop_number
+  return {
+    ...remote,
+    stop_number: stopNumber,
+    session_route_stop_order:
+      local.session_route_stop_order ?? remote.session_route_stop_order,
+  }
 }
 
 /** Apply pending portal workflow queue onto worksheet stops (intent over stale server). */
@@ -327,7 +347,7 @@ export function reconcileStopWithServer(
   remote: TechnicianWorksheetStop,
 ): TechnicianWorksheetStop {
   if (portalStopHasTestOutcome(local) && !portalStopHasTestOutcome(remote)) {
-    return {
+    return preserveWorksheetStopOrderFields(local, {
       ...remote,
       test_outcome: local.test_outcome,
       skip_category: local.skip_category,
@@ -339,21 +359,21 @@ export function reconcileStopWithServer(
       clock_events: local.clock_events,
       time_in: local.time_in,
       time_out: local.time_out,
-    }
+    })
   }
   if (
     portalStopVisitComplete(local) &&
     portalStopHasOpenClock(remote) &&
     !portalStopHasOpenClock(local)
   ) {
-    return {
+    return preserveWorksheetStopOrderFields(local, {
       ...remote,
       clock_events: local.clock_events,
       time_in: local.time_in,
       time_out: local.time_out,
-    }
+    })
   }
-  return remote
+  return preserveWorksheetStopOrderFields(local, remote)
 }
 
 /** Merge a background worksheet fetch into existing UI state without replacing the stop list order. */

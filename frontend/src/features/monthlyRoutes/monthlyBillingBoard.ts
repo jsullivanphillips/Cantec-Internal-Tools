@@ -3,6 +3,28 @@ import {
   billingStatusLabel,
   billingStatusVariant,
 } from './officeRunReviewShared'
+import {
+  compareYearMonth,
+  monthFirstIsoPacificToday,
+  parseYearMonth,
+} from './monthlyRoutesShared'
+
+export function isPastPacificMonth(monthFirstIso: string, reference: Date = new Date()): boolean {
+  const ym = parseYearMonth(monthFirstIso)
+  const currentYm = parseYearMonth(monthFirstIsoPacificToday(reference))
+  if (!ym || !currentYm) return false
+  return compareYearMonth(ym, currentYm) < 0
+}
+
+export function billingBoardShowUnsetDash(
+  cell: BillingBoardMonthCell | undefined,
+  monthFirstIso: string,
+  reference: Date = new Date(),
+): boolean {
+  const billing = cell?.billing_status ?? 'unset'
+  const fieldWorkEnded = cell?.field_work_ended ?? false
+  return billing === 'unset' && !fieldWorkEnded && !isPastPacificMonth(monthFirstIso, reference)
+}
 
 export type BillingBoardTestSummaryKey =
   | 'failed'
@@ -21,6 +43,10 @@ export type BillingBoardMonthCell = {
     testing_site_count: number
   }
   test_monthly_route_id: number | null
+  /** Human-readable skip category when billing is do not bill (e.g. Annual). */
+  skip_reason_category?: string | null
+  /** False while the route-month run is still in field work (billing not yet actionable). */
+  field_work_ended?: boolean
 }
 
 export type BillingBoardLocationRow = {

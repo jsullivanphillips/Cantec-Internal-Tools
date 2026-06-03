@@ -574,7 +574,7 @@ Body: `{ "billing_status": "bill" | "do_not_bill" | "unset" }`. Allowed only aft
 
 Query: `anchor_month=YYYY-MM-01` **or** `year` + `quarter` (1–4). Optional: `q` (address/PMC; route-like tokens match TEST DAY ``-R{n}`` suffix only), `route` (``R{n}`` route number or full TEST DAY token), `page`, `page_size` (max 200), `bill_any_month`, `unset_any_month`, `not_billed_quarter`, `failed_any_month`.
 
-GET returns active library locations with, for each month in that **calendar quarter**: processor ``billing_status`` from ``monthly_route_test_history`` (defaults to ``unset`` when no row), and a rolled-up **test summary** from ``monthly_testing_site_month`` (worst outcome across testing sites at the address). Also ``quarter_billed`` from ``monthly_location_quarter_billed``.
+GET returns active library locations with, for each month in that **calendar quarter**: processor ``billing_status`` from ``monthly_route_test_history`` (defaults to ``unset`` when no row), and a rolled-up **test summary** from ``monthly_testing_site_month`` (worst outcome across testing sites at the address). Each month cell also includes ``field_work_ended`` (whether technicians have ended field work on that route-month run). The billing board UI shows ``—`` instead of the Unset badge while ``billing_status`` is ``unset``, ``field_work_ended`` is false, and the month is still the current or a future Pacific calendar month; past months always show Unset. Also ``quarter_billed`` from ``monthly_location_quarter_billed``.
 
 PATCH body: `{ "billed": true | false }` — upserts or deletes one row per ``(location_id, year, quarter)`` with ``billed_at`` / ``billed_by_username``. This is **invoicing complete**, separate from processor Bill / Do not bill.
 

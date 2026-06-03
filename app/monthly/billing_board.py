@@ -13,12 +13,14 @@ from app.db_models import (
     MonthlyLocationQuarterBilled,
     MonthlyRoute,
     MonthlyRouteLocation,
+    MonthlyRouteRun,
     MonthlyRouteTestHistory,
     MonthlySite,
     MonthlyTestingSite,
     MonthlyTestingSiteMonth,
     db,
 )
+from app.monthly.run_workflow import run_field_ended
 from app.monthly.test_day import parse_test_day
 from app.monthly.monthly_sites_sync import rollup_price_per_month
 
@@ -33,6 +35,14 @@ _OUTCOME_PRIORITY: tuple[str, ...] = (
 )
 
 _PORTAL_OUTCOMES = frozenset({"all_good", "passed_with_problems", "failed", "skipped"})
+
+_SKIP_CATEGORY_LABELS: dict[str, str] = {
+    "access_issues": "Access issues",
+    "construction": "Construction",
+    "lack_of_time": "Lack of time",
+    "testing_not_required": "Testing not required",
+    "other": "Other",
+}
 
 _ROUTE_ONLY_RE = re.compile(r"^R?(\d+)$", re.IGNORECASE)
 
@@ -131,6 +141,85 @@ def _outcome_rank(key: str) -> int:
         return _OUTCOME_PRIORITY.index(key)
     except ValueError:
         return len(_OUTCOME_PRIORITY)
+
+
+def _skip_category_label(category: str | None) -> str | None:
+    key = (_normalize_text(category) or "").lower()
+    if not key:
+        return None
+    return _SKIP_CATEGORY_LABELS.get(key)
+
+
+def _legacy_skip_reason_category_label(skip_reason: str | None) -> str | None:
+    from app.monthly.worksheet_stops import _sheet_skip_reason_is_annual
+
+    if _sheet_skip_reason_is_annual(skip_reason):
+        return "Annual"
+    raw = _normalize_text(skip_reason)
+    if not raw:
+        return None
+    direct = _skip_category_label(raw)
+    if direct:
+        return direct
+    if ":" in raw:
+        prefix = raw.split(":", 1)[0].strip()
+        return _skip_category_label(prefix)
+    return None
+
+
+def _stop_skip_reason_category_label(
+    *,
+    test_outcome: str | None,
+    result_status: str | None,
+    skip_category: str | None,
+    skip_reason: str | None,
+    annual_month: str | None,
+    month_first: date,
+    loc_annual_month: str | None,
+) -> str | None:
+    from app.monthly.worksheet_stops import _is_annual_for_month
+
+    outcome = (_normalize_text(test_outcome) or "").lower()
+    rs = (_normalize_text(result_status) or "").lower()
+    annual = annual_month or loc_annual_month
+
+    if outcome == "skipped" or rs == "skipped":
+        if _legacy_skip_reason_category_label(skip_reason) == "Annual":
+            return "Annual"
+        if _is_annual_for_month(month_first, annual):
+            return "Annual"
+        cat_label = _skip_category_label(skip_category)
+        if cat_label:
+            return cat_label
+        return _legacy_skip_reason_category_label(skip_reason)
+
+    if _is_annual_for_month(month_first, annual):
+        return "Annual"
+    return None
+
+
+def _location_month_skip_reason_category(
+    *,
+    stops: list[dict[str, object]],
+    month_first: date,
+    loc_annual_month: str | None,
+) -> str | None:
+    labels: list[str] = []
+    for stop in stops:
+        label = _stop_skip_reason_category_label(
+            test_outcome=stop.get("test_outcome"),  # type: ignore[arg-type]
+            result_status=stop.get("result_status"),  # type: ignore[arg-type]
+            skip_category=stop.get("skip_category"),  # type: ignore[arg-type]
+            skip_reason=stop.get("skip_reason"),  # type: ignore[arg-type]
+            annual_month=stop.get("annual_month"),  # type: ignore[arg-type]
+            month_first=month_first,
+            loc_annual_month=loc_annual_month,
+        )
+        if label and label not in labels:
+            labels.append(label)
+    if not labels:
+        return None
+    return labels[0] if len(labels) == 1 else ", ".join(labels)
 
 
 def _rollup_test_summary(
@@ -264,8 +353,8 @@ def _billing_board_location_query(
 def _load_mtsm_by_location_month(
     location_ids: list[int],
     month_dates: list[date],
-) -> dict[tuple[int, date], list[tuple[str | None, str | None]]]:
-    """Map (location_id, month_date) -> list of (test_outcome, result_status) per testing site."""
+) -> dict[tuple[int, date], list[dict[str, object]]]:
+    """Map (location_id, month_date) -> per-testing-site month rows for billing display."""
     if not location_ids:
         return {}
     rows = (
@@ -274,6 +363,9 @@ def _load_mtsm_by_location_month(
             MonthlyTestingSiteMonth.month_date,
             MonthlyTestingSiteMonth.test_outcome,
             MonthlyTestingSiteMonth.result_status,
+            MonthlyTestingSiteMonth.skip_category,
+            MonthlyTestingSiteMonth.skip_reason,
+            MonthlyTestingSiteMonth.annual_month,
         )
         .join(MonthlyTestingSite, MonthlyTestingSite.monthly_site_id == MonthlySite.id)
         .join(
@@ -286,12 +378,50 @@ def _load_mtsm_by_location_month(
         )
         .all()
     )
-    out: dict[tuple[int, date], list[tuple[str | None, str | None]]] = {}
-    for lid, month_dt, outcome, rs in rows:
+    out: dict[tuple[int, date], list[dict[str, object]]] = {}
+    for lid, month_dt, outcome, rs, skip_category, skip_reason, annual_month in rows:
         if lid is None:
             continue
         key = (int(lid), month_dt)
-        out.setdefault(key, []).append((outcome, rs))
+        out.setdefault(key, []).append(
+            {
+                "test_outcome": outcome,
+                "result_status": rs,
+                "skip_category": skip_category,
+                "skip_reason": skip_reason,
+                "annual_month": annual_month,
+            }
+        )
+    return out
+
+
+def _resolve_route_id_for_run(
+    loc: MonthlyRouteLocation,
+    hist: MonthlyRouteTestHistory | None,
+) -> int | None:
+    if hist is not None and hist.test_monthly_route_id is not None:
+        return int(hist.test_monthly_route_id)
+    if loc.monthly_route_id is not None:
+        return int(loc.monthly_route_id)
+    return None
+
+
+def _load_runs_by_route_month(
+    pairs: set[tuple[int, date]],
+) -> dict[tuple[int, date], MonthlyRouteRun]:
+    if not pairs:
+        return {}
+    route_ids = {pair[0] for pair in pairs}
+    month_set = {pair[1] for pair in pairs}
+    rows = MonthlyRouteRun.query.filter(
+        MonthlyRouteRun.monthly_route_id.in_(route_ids),
+        MonthlyRouteRun.month_date.in_(month_set),
+    ).all()
+    out: dict[tuple[int, date], MonthlyRouteRun] = {}
+    for run in rows:
+        key = (int(run.monthly_route_id), run.month_date)
+        if key in pairs:
+            out[key] = run
     return out
 
 
@@ -299,7 +429,8 @@ def _serialize_board_row(
     loc: MonthlyRouteLocation,
     month_dates: list[date],
     hist_by_loc_month: dict[tuple[int, date], MonthlyRouteTestHistory],
-    mtsm_pairs: dict[tuple[int, date], list[tuple[str | None, str | None]]],
+    mtsm_pairs: dict[tuple[int, date], list[dict[str, object]]],
+    runs_by_route_month: dict[tuple[int, date], MonthlyRouteRun],
     billed_row: MonthlyLocationQuarterBilled | None,
 ) -> dict[str, object]:
     months_payload: dict[str, dict[str, object]] = {}
@@ -309,13 +440,22 @@ def _serialize_board_row(
         billing = _normalize_text(hist.billing_status) if hist is not None else None
         if billing is None:
             billing = "unset"
-        pairs = mtsm_pairs.get((lid, month_first), [])
-        if pairs:
-            test_outcomes = [p[0] for p in pairs]
-            result_statuses = [p[1] for p in pairs]
+        stops = mtsm_pairs.get((lid, month_first), [])
+        if stops:
+            test_outcomes = [s.get("test_outcome") for s in stops]  # type: ignore[misc]
+            result_statuses = [s.get("result_status") for s in stops]  # type: ignore[misc]
         elif hist is not None:
             test_outcomes = []
             result_statuses = [hist.result_status]
+            stops = [
+                {
+                    "test_outcome": None,
+                    "result_status": hist.result_status,
+                    "skip_category": None,
+                    "skip_reason": hist.skip_reason,
+                    "annual_month": hist.annual_month,
+                }
+            ]
         else:
             test_outcomes = []
             result_statuses = []
@@ -325,6 +465,19 @@ def _serialize_board_row(
             month_first=month_first,
             annual_month=loc.annual_month,
         )
+        skip_reason_category = None
+        if billing == "do_not_bill":
+            skip_reason_category = _location_month_skip_reason_category(
+                stops=stops,
+                month_first=month_first,
+                loc_annual_month=loc.annual_month,
+            )
+        route_id_for_run = _resolve_route_id_for_run(loc, hist)
+        run = (
+            runs_by_route_month.get((route_id_for_run, month_first))
+            if route_id_for_run is not None
+            else None
+        )
         months_payload[month_first.isoformat()] = {
             "billing_status": billing,
             "test_summary": test_summary,
@@ -333,6 +486,8 @@ def _serialize_board_row(
                 if hist is not None and hist.test_monthly_route_id is not None
                 else None
             ),
+            "skip_reason_category": skip_reason_category,
+            "field_work_ended": run_field_ended(run),
         }
 
     rollup: float | None = None
@@ -424,6 +579,16 @@ def load_billing_board(
 
     mtsm_pairs = _load_mtsm_by_location_month(location_ids, month_dates)
 
+    route_month_pairs: set[tuple[int, date]] = set()
+    for loc in locations:
+        lid = int(loc.id)
+        for month_first in month_dates:
+            hist = hist_by_loc_month.get((lid, month_first))
+            route_id = _resolve_route_id_for_run(loc, hist)
+            if route_id is not None:
+                route_month_pairs.add((route_id, month_first))
+    runs_by_route_month = _load_runs_by_route_month(route_month_pairs)
+
     billed_by_loc: dict[int, MonthlyLocationQuarterBilled] = {}
     if location_ids:
         for row in MonthlyLocationQuarterBilled.query.filter(
@@ -439,6 +604,7 @@ def load_billing_board(
             month_dates,
             hist_by_loc_month,
             mtsm_pairs,
+            runs_by_route_month,
             billed_by_loc.get(int(loc.id)),
         )
         for loc in locations
