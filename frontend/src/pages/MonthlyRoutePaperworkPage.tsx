@@ -35,6 +35,7 @@ import {
   canOfficeCompleteRun,
   canOfficeReturnRunToPrep,
   runFieldEnded,
+  runInOfficePrepPhase,
   runIsPrepared,
 } from '../features/monthlyRoutes/runWorkflowShared'
 import {
@@ -115,6 +116,7 @@ export default function MonthlyRoutePaperworkPage() {
   >(null)
   const [resetRunModalOpen, setResetRunModalOpen] = useState(false)
   const [resetRunBusy, setResetRunBusy] = useState(false)
+  const [regenerateLibraryBusy, setRegenerateLibraryBusy] = useState(false)
   const [historyStops, setHistoryStops] = useState<TechnicianWorksheetStop[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
   const [historyMeta, setHistoryMeta] = useState<{
@@ -715,6 +717,44 @@ export default function MonthlyRoutePaperworkPage() {
     }
   }, [idNum, monthQuery, payload?.run, loadRunDetails, loadRouteMeta])
 
+  const onRegenerateFromLibrary = useCallback(async () => {
+    if (!Number.isFinite(idNum)) return
+    if (regenerateLibraryBusy || runLifecycleAction != null) return
+    if (
+      !window.confirm(
+        'Reload panel, procedures, and other library fields into this month\'s paperwork? ' +
+          'Test outcomes, clock times, and run comments are kept. Office attention flags are kept.',
+      )
+    ) {
+      return
+    }
+    setRegenerateLibraryBusy(true)
+    try {
+      await apiJson<{ stops_regenerated: number; run: TechnicianWorksheetRun }>(
+        `/api/monthly_routes/routes/${idNum}/runs/regenerate_prep_stops`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ month_date: monthQuery }),
+        },
+      )
+      clearWorksheetCache(idNum, monthQuery)
+      invalidatePaperworkRouteMonth(idNum, monthQuery)
+      runDetailsFetchSeqRef.current += 1
+      abortPaperworkRunDetailsFetch(idNum, monthQuery)
+      await loadRunDetails()
+      await loadRouteMeta()
+    } catch (e) {
+      const msg =
+        typeof e === 'object' && e != null && 'error' in (e as Record<string, unknown>)
+          ? String((e as { error?: unknown }).error)
+          : 'Could not regenerate from library. Try again.'
+      window.alert(msg)
+    } finally {
+      setRegenerateLibraryBusy(false)
+    }
+  }, [idNum, monthQuery, loadRunDetails, loadRouteMeta, regenerateLibraryBusy, runLifecycleAction])
+
   const routeTo = `/monthlies/routes/${idNum}`
 
   const locations = payload?.locations ?? []
@@ -772,6 +812,8 @@ export default function MonthlyRoutePaperworkPage() {
   const showCompleteJob = run != null && !runCompleted && canOfficeCompleteRun(run)
   const showReopenJob = run != null && runCompleted
   const showResetRun = run != null && !runCompleted
+  const showRegenerateFromLibrary =
+    runInOfficePrepPhase(run) && !runCompleted && !futurePrepBlocked
   const lifecycleBusy = runLifecycleAction != null
 
   return (
@@ -910,6 +952,24 @@ export default function MonthlyRoutePaperworkPage() {
                     </>
                   ) : (
                     'Complete job'
+                  )}
+                </Button>
+              ) : null}
+              {showRegenerateFromLibrary ? (
+                <Button
+                  size="sm"
+                  variant="outline-secondary"
+                  className="monthly-location-detail-action"
+                  disabled={lifecycleBusy || regenerateLibraryBusy}
+                  onClick={() => void onRegenerateFromLibrary()}
+                >
+                  {regenerateLibraryBusy ? (
+                    <>
+                      <Spinner animation="border" size="sm" className="me-1" aria-hidden />
+                      Regenerating…
+                    </>
+                  ) : (
+                    'Regenerate from library'
                   )}
                 </Button>
               ) : null}

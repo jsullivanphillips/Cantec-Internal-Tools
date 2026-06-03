@@ -14,7 +14,13 @@ import { usePortalWorksheet } from '../features/monthlyRoutes/usePortalWorksheet
 import { usePortalWorksheetDemo } from '../features/monthlyRoutes/usePortalWorksheetDemo'
 import PortalEditableFieldRow, { type PortalFieldEditActions } from '../features/monthlyRoutes/PortalEditableFieldRow'
 import PortalMonitoringCompanyField from '../features/monthlyRoutes/PortalMonitoringCompanyField'
-import { stopMonitoringDisplay, stopMonitoringSummaryLabel, stopHasMonitoring } from '../features/monthlyRoutes/stopMonitoringDisplay'
+import {
+  stopMonitoringDisplay,
+  stopMonitoringSummaryLabel,
+  stopHasMonitoring,
+  stopMonitoringCallPhone,
+  monitoringPhoneTelHref,
+} from '../features/monthlyRoutes/stopMonitoringDisplay'
 import { useMonitoringCompanies } from '../features/monthlyRoutes/useMonitoringCompanies'
 import type { MonitoringCompanySummary } from '../features/monthlyRoutes/monthlyRoutesShared'
 import type { WorksheetStopChangeSet } from '../features/monthlyRoutes/worksheetOfflineStore'
@@ -61,6 +67,7 @@ import {
 type StopDisplayStatus = 'pending' | 'in_progress' | 'tested' | 'skipped'
 
 const NAV_EXPAND_TRANSITION_MS = 220
+const PORTAL_WORKSHEET_PHONE_ASPECT_MEDIA = '(max-aspect-ratio: 1/1)'
 
 function stopDisplayStatus(stop: TechnicianWorksheetStop): StopDisplayStatus {
   if (portalStopHasTestOutcome(stop)) {
@@ -234,6 +241,9 @@ export default function TechnicianPortalWorksheetPage() {
   const [activeId, setActiveId] = useState<number | null>(null)
   const [navExpanded, setNavExpanded] = useState(false)
   const [navItemsExpanded, setNavItemsExpanded] = useState(false)
+  const [phoneAspect, setPhoneAspect] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia(PORTAL_WORKSHEET_PHONE_ASPECT_MEDIA).matches,
+  )
   const [skipModalOpen, setSkipModalOpen] = useState(false)
   const [resultsModalOpen, setResultsModalOpen] = useState(false)
   const [resultsForClockOut, setResultsForClockOut] = useState(false)
@@ -289,6 +299,27 @@ export default function TechnicianPortalWorksheetPage() {
     [openMapsForStop],
   )
 
+  const renderMonitoringCallButton = useCallback(
+    (stop: TechnicianWorksheetStop, extraClassName = '') => {
+      if (!phoneAspect) return null
+      const phone = stopMonitoringCallPhone(stop)
+      if (!phone) return null
+      const telHref = monitoringPhoneTelHref(phone)
+      if (!telHref) return null
+      return (
+        <a
+          href={telHref}
+          className={`pw-mock-nav-stop-map pw-mock-nav-stop-call${extraClassName}`}
+          aria-label={`Call monitoring for stop ${stop.stop_number}`}
+          title={`Call monitoring: ${phone}`}
+        >
+          <i className="bi bi-telephone-fill" aria-hidden />
+        </a>
+      )
+    },
+    [phoneAspect],
+  )
+
   const renderMapsPinButton = useCallback(
     (stop: TechnicianWorksheetStop, extraClassName = '') => {
       if (!resolveStopMapsTarget(stop)) return null
@@ -310,24 +341,31 @@ export default function TechnicianPortalWorksheetPage() {
 
   const renderHeroDirectionsButton = useCallback(
     (stop: TechnicianWorksheetStop) => {
-      if (!resolveStopMapsTarget(stop)) return null
+      const mapsTarget = resolveStopMapsTarget(stop)
+      const monitoringCall = renderMonitoringCallButton(stop, ' pw-mock-header-directions-btn pw-mock-nav-stop--active')
+      if (!mapsTarget && !monitoringCall) return null
       return (
         <div className="pw-mock-header-directions">
-          <span className="pw-mock-header-directions-label">Directions</span>
-          <button
-            type="button"
-            className="pw-mock-nav-stop-map pw-mock-header-directions-btn"
-            aria-label={`Open directions for stop ${stop.stop_number}`}
-            title="Open in maps (right-click to change maps app)"
-            onClick={(event) => handleMapsPinClick(event, stop)}
-            onContextMenu={(event) => handleMapsPinContextMenu(event, stop)}
-          >
-            <i className="bi bi-geo-alt" aria-hidden />
-          </button>
+          {mapsTarget ? (
+            <>
+              <span className="pw-mock-header-directions-label">Directions</span>
+              <button
+                type="button"
+                className="pw-mock-nav-stop-map pw-mock-header-directions-btn"
+                aria-label={`Open directions for stop ${stop.stop_number}`}
+                title="Open in maps (right-click to change maps app)"
+                onClick={(event) => handleMapsPinClick(event, stop)}
+                onContextMenu={(event) => handleMapsPinContextMenu(event, stop)}
+              >
+                <i className="bi bi-geo-alt" aria-hidden />
+              </button>
+            </>
+          ) : null}
+          {monitoringCall}
         </div>
       )
     },
-    [handleMapsPinClick, handleMapsPinContextMenu],
+    [handleMapsPinClick, handleMapsPinContextMenu, renderMonitoringCallButton],
   )
 
   useEffect(() => {
@@ -597,6 +635,22 @@ export default function TechnicianPortalWorksheetPage() {
     return () => window.clearTimeout(timer)
   }, [navExpanded])
 
+  useEffect(() => {
+    const mediaQuery = window.matchMedia(PORTAL_WORKSHEET_PHONE_ASPECT_MEDIA)
+    const syncPhoneAspect = () => setPhoneAspect(mediaQuery.matches)
+    syncPhoneAspect()
+    mediaQuery.addEventListener('change', syncPhoneAspect)
+    return () => mediaQuery.removeEventListener('change', syncPhoneAspect)
+  }, [])
+
+  const selectStop = useCallback(
+    (testingSiteId: number) => {
+      setActiveId(testingSiteId)
+      if (phoneAspect) setNavExpanded(false)
+    },
+    [phoneAspect],
+  )
+
   const renderNavStop = (stop: TechnicianWorksheetStop) => {
     const isActive = stop.testing_site_id === activeId
     const statusClass = portalNavStopStatusClass(stop, runMonthIso)
@@ -627,7 +681,7 @@ export default function TechnicianPortalWorksheetPage() {
           key={stop.testing_site_id}
           type="button"
           className={`pw-mock-nav-stop pw-mock-nav-stop--collapsed${statusSuffix}${activeClass}`}
-          onClick={() => setActiveId(stop.testing_site_id)}
+          onClick={() => selectStop(stop.testing_site_id)}
           title={collapsedTitleParts.join(' · ')}
           aria-label={`Stop ${stop.stop_number}, ${clockedIn ? 'Clocked in' : statusLabel(displayStatus, stop)}`}
           aria-current={isActive ? 'true' : undefined}
@@ -642,7 +696,7 @@ export default function TechnicianPortalWorksheetPage() {
         <button
           type="button"
           className={`pw-mock-nav-stop pw-mock-nav-stop--expanded${statusSuffix}${activeClass}`}
-          onClick={() => setActiveId(stop.testing_site_id)}
+          onClick={() => selectStop(stop.testing_site_id)}
           aria-current={isActive ? 'true' : undefined}
         >
           <span className="pw-mock-nav-stop-address">
@@ -676,6 +730,7 @@ export default function TechnicianPortalWorksheetPage() {
           </span>
         </button>
         {resolveStopMapsTarget(stop) ? renderMapsPinButton(stop, activeClass) : null}
+        {renderMonitoringCallButton(stop, activeClass)}
       </div>
     )
   }

@@ -69,3 +69,14 @@ export function stopHasMonitoring(stop: StopMonitoringSource): boolean {
   const display = stopMonitoringDisplay(stop)
   return display.company !== '—' || display.account !== '—'
 }
+
+/** First callable monitoring line (primary phone, secondary, or legacy sheet phone). */
+export function stopMonitoringCallPhone(stop: StopMonitoringSource): string | null {
+  const phone = stopMonitoringDisplay(stop).phones[0]?.trim()
+  return phone || null
+}
+
+export function monitoringPhoneTelHref(phone: string): string {
+  const normalized = phone.replace(/[^\d+]/g, '')
+  return normalized ? `tel:${normalized}` : ''
+}
