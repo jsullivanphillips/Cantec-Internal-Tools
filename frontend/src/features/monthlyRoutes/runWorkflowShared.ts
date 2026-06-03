@@ -90,6 +90,14 @@ export function canOfficeEditBilling(run: TechnicianWorksheetRun | null | undefi
   return canOfficeEditOutcomes(run)
 }
 
+/** Paperwork run review: lock billing/outcomes when run is closed or field still open. */
+export function runDetailsOfficeReviewReadOnly(
+  run: TechnicianWorksheetRun | null | undefined,
+): boolean {
+  if (!run || runExplicitlyCompleted(run)) return true
+  return !canOfficeEditOutcomes(run)
+}
+
 export function canOfficeCompleteRun(run: TechnicianWorksheetRun | null | undefined): boolean {
   if (!run || runExplicitlyCompleted(run)) return false
   return hasTs(run.office_review_completed_at)

@@ -28,7 +28,8 @@ LIBRARY_TEXT_FIELDS = (
     "monitoring_notes",
 )
 
-# Run-month snapshot (``MonthlyTestingSiteMonth``)
+# Run-month snapshot (``MonthlyTestingSiteMonth``) — route CSV import maps sheet
+# columns onto these keys via ``upsert_stop_month_from_csv_import``.
 SNAPSHOT_STRING_FIELDS = (
     "annual_month",
     "property_management_company",

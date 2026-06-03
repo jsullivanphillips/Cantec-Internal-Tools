@@ -6,6 +6,7 @@ import RunDetailsDeficiencyList from './RunDetailsDeficiencyList'
 import RunDetailsLocationBillingControl from './RunDetailsLocationBillingControl'
 import RunDetailsStopSiteModal from './RunDetailsStopSiteModal'
 import RunReviewOutcomeLabel from './RunReviewOutcomeLabel'
+import RunDetailsStopOutcomeSelect from './RunDetailsStopOutcomeSelect'
 import { monitoringCompanyDisplayName } from './MonitoringCompanySelect'
 import {
   ReviewReadonlyCommentCell,
@@ -33,6 +34,7 @@ import {
 } from './runDetailsDeficiencyDisplay'
 import type { RunDetailsStopPatchApi } from './useRunDetailsStopPatch'
 import { apiJson } from '../../lib/apiClient'
+import { canOfficeEditOutcomes, runDetailsOfficeReviewReadOnly } from './runWorkflowShared'
 
 type BillingPatchResponse = {
   ok: boolean
@@ -56,13 +58,19 @@ function formatBillingPatchError(err: unknown): string {
 function ReviewLocationResultCell({
   row,
   monthDate,
+  routeId,
   run,
+  readOnly,
+  onStopUpdated,
   onOpenSite,
   onOpenTickets,
 }: {
   row: RunDetailReviewRow
   monthDate: string
+  routeId: number
   run: TechnicianWorksheetRun | null
+  readOnly: boolean
+  onStopUpdated: (stop: TechnicianWorksheetStop) => void | Promise<void>
   onOpenSite: (testingSiteId: number) => void
   onOpenTickets?: (locationId: number, locationLabel: string) => void
 }) {
@@ -74,6 +82,7 @@ function ReviewLocationResultCell({
   const multiSite = siteCount > 1
   const defCount = runReviewDeficiencySummaries(stop.deficiency_summaries, run).length
   const showNoDefPill = stopShowsNoDeficienciesConfirmedPill(stop, defCount)
+  const canEditOutcome = !readOnly && canOfficeEditOutcomes(run)
 
   return (
     <div className="run-details-review-location-result">
@@ -91,26 +100,49 @@ function ReviewLocationResultCell({
           {siteLabel !== 'Primary testing location' ? siteLabel : `Site ${stop.stop_number}`}
         </div>
       ) : null}
-      <button
-        type="button"
-        className="run-details-review-location-result__outcome-btn"
-        onClick={() => onOpenSite(stop.testing_site_id)}
-      >
-        {headline ? (
-          <RunReviewOutcomeLabel
+      {canEditOutcome ? (
+        <div className="run-details-review-location-result__outcome-edit">
+          <RunDetailsStopOutcomeSelect
             stop={ws}
+            run={run}
+            routeId={routeId}
             monthDate={monthDate}
-            headline={headline}
-            badgeClass={badgeClass}
-            className="run-details-review-location-result__outcome"
+            readOnly={readOnly}
+            onStopUpdated={onStopUpdated}
           />
-        ) : (
-          <span className="text-muted small">View site details</span>
-        )}
-        {showNoDefPill ? (
-          <span className="run-details-stop-row__no-def-pill">No deficiencies confirmed</span>
-        ) : null}
-      </button>
+          {showNoDefPill ? (
+            <span className="run-details-stop-row__no-def-pill">No deficiencies confirmed</span>
+          ) : null}
+          <button
+            type="button"
+            className="btn btn-link btn-sm p-0 run-details-review-location-result__details-link"
+            onClick={() => onOpenSite(stop.testing_site_id)}
+          >
+            Site details
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          className="run-details-review-location-result__outcome-btn"
+          onClick={() => onOpenSite(stop.testing_site_id)}
+        >
+          {headline ? (
+            <RunReviewOutcomeLabel
+              stop={ws}
+              monthDate={monthDate}
+              headline={headline}
+              badgeClass={badgeClass}
+              className="run-details-review-location-result__outcome"
+            />
+          ) : (
+            <span className="text-muted small">View site details</span>
+          )}
+          {showNoDefPill ? (
+            <span className="run-details-stop-row__no-def-pill">No deficiencies confirmed</span>
+          ) : null}
+        </button>
+      )}
       {onOpenTickets ? (
         <button
           type="button"
@@ -157,7 +189,7 @@ export default function RunDetailsReviewTable({
   } | null>(null)
   const [billingErrors, setBillingErrors] = useState<Record<number, string>>({})
 
-  const readOnly = (run?.source || '').trim().toLowerCase() === 'csv_import'
+  const readOnly = runDetailsOfficeReviewReadOnly(run)
 
   const rows = useMemo(() => flattenRunDetailReviewRows(locations), [locations])
 
@@ -305,7 +337,10 @@ export default function RunDetailsReviewTable({
                       <ReviewLocationResultCell
                         row={row}
                         monthDate={monthDate}
+                        routeId={routeId}
                         run={run}
+                        readOnly={readOnly}
+                        onStopUpdated={onStopMergedFromWorksheet}
                         onOpenSite={setSiteModalStopId}
                         onOpenTickets={
                           isFirstAtLocation

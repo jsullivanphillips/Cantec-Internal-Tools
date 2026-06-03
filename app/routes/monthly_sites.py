@@ -292,6 +292,13 @@ def monthly_sites_delete_location(location_id: int):
     return delete_monthly_route_location(location_id)
 
 
+@monthly_sites_bp.post("/api/monthly_sites/library/<int:location_id>/geocode")
+def monthly_sites_geocode_location(location_id: int):
+    from app.routes.monthly_routes import geocode_monthly_library_location
+
+    return geocode_monthly_library_location(location_id)
+
+
 @monthly_sites_bp.patch("/api/monthly_sites/library/<int:location_id>/placement")
 def monthly_sites_placement(location_id: int):
     from app.routes.monthly_routes import update_monthly_route_placement

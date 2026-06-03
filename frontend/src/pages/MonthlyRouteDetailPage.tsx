@@ -23,6 +23,7 @@ import { Link, useParams } from 'react-router-dom'
 import MonthlyLibraryCommentsPanel from '../features/monthlyRoutes/MonthlyLibraryCommentsPanel'
 import MonthlyRouteMapCard from '../features/monthlyRoutes/MonthlyRouteMapCard'
 import {
+  libraryLocationHasMapCoordinates,
   parseYearMonth,
   toMonthKey,
   type MonthlyLocationComment,
@@ -33,6 +34,7 @@ import {
   type RouteLocationListItem,
   type RouteLocationTestingSiteListItem,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
+import { testingSitePrimaryLabel } from '../features/monthlyRoutes/testingSiteDisplay'
 import { apiJson, apiPostFormData, isAbortError } from '../lib/apiClient'
 import { formatCurrencyCad } from '../lib/formatCurrencyCad'
 
@@ -130,10 +132,10 @@ function routeTestingSiteTitle(
   total: number,
   locLabel: string
 ): string {
-  const label = site.label?.trim()
-  if (label) return label
-  if (total === 1) return locLabel
-  return `Testing site ${index + 1}`
+  return testingSitePrimaryLabel(
+    { label: site.label, display_address: locLabel },
+    { siteCount: total, siteIndex: index },
+  )
 }
 
 function SortableRouteSiteRow({
@@ -212,9 +214,16 @@ function SortableRouteSiteRow({
               {annual ? <span className="text-body">{annual}</span> : <span className="text-muted">—</span>}
             </td>
             <td>
-              <Badge bg={siteStatusBadgeVariant(loc.status_normalized)} className="text-capitalize">
-                {(loc.status_normalized || '').replace(/_/g, ' ') || '—'}
-              </Badge>
+              <div className="d-flex flex-column align-items-start gap-1">
+                <Badge bg={siteStatusBadgeVariant(loc.status_normalized)} className="text-capitalize">
+                  {(loc.status_normalized || '').replace(/_/g, ' ') || '—'}
+                </Badge>
+                {isPrimaryRow && !libraryLocationHasMapCoordinates(loc) ? (
+                  <a href="#route-map" className="badge rounded-pill text-bg-warning text-decoration-none">
+                    No map pin
+                  </a>
+                ) : null}
+              </div>
             </td>
           </tr>
         )
@@ -275,6 +284,7 @@ function UploadRunFromCsvModal({
   const [syncStopOrder, setSyncStopOrder] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [blockedMonthIso, setBlockedMonthIso] = useState<string | null>(null)
   const [result, setResult] = useState<UploadRunResponse | null>(null)
   const [issuesExpanded, setIssuesExpanded] = useState(false)
 
@@ -285,6 +295,7 @@ function UploadRunFromCsvModal({
       setSyncStopOrder(false)
       setSubmitting(false)
       setError(null)
+      setBlockedMonthIso(null)
       setResult(null)
       setIssuesExpanded(false)
     }
@@ -297,6 +308,7 @@ function UploadRunFromCsvModal({
     }
     setSubmitting(true)
     setError(null)
+    setBlockedMonthIso(null)
     try {
       const fd = new FormData()
       fd.append('file', file)
@@ -309,13 +321,20 @@ function UploadRunFromCsvModal({
       )
       setResult(res)
     } catch (e) {
+      const body = typeof e === 'object' && e != null ? (e as Record<string, unknown>) : null
       const message =
-        typeof e === 'object' && e != null && 'error' in (e as Record<string, unknown>)
-          ? String((e as { error?: unknown }).error)
+        body && 'error' in body
+          ? String(body.error)
           : typeof e === 'string'
             ? e
             : 'Upload failed.'
       setError(message)
+      const code = body && typeof body.code === 'string' ? body.code : ''
+      const monthDate =
+        body && typeof body.month_date === 'string' ? body.month_date.trim() : ''
+      if (code === 'run_completed_csv_blocked' && monthDate) {
+        setBlockedMonthIso(monthDate)
+      }
     } finally {
       setSubmitting(false)
     }
@@ -434,9 +453,9 @@ function UploadRunFromCsvModal({
             <p className="text-muted mb-3">
               Upload the technician inspection sheet (the same CSV you use on the route).
               The page detects the route and month from the preamble; you'll get an error if the CSV is for a
-              different route. If this month's run has been marked{' '}
-              <span className="fw-semibold text-body">completed</span> on the worksheet, reopen it there before
-              uploading again—started-but-open runs can still be refreshed from CSV.
+              different route. If that month&apos;s run is marked{' '}
+              <span className="fw-semibold text-body">completed</span> on Paperwork, use{' '}
+              <span className="fw-semibold text-body">Reopen job</span> there before uploading again.
             </p>
             <Form.Group controlId="upload-run-csv-file" className="mb-3">
               <Form.Label>CSV file</Form.Label>
@@ -464,10 +483,25 @@ function UploadRunFromCsvModal({
               onChange={(e) => setSyncStopOrder(e.target.checked)}
             />
             <Form.Text className="text-muted d-block mb-3" style={{ marginTop: '-0.5rem' }}>
-              Updates route stop order for sites already on this route and applies the sheet order to
-              this month&apos;s run. Leave unchecked to refresh stop data without changing order.
+              Also updates library route stop order for sites already on this route. Run review always
+              follows the CSV # column; check this only when you want the permanent route roster to
+              match the sheet too.
             </Form.Text>
-            {error ? <Alert variant="danger">{error}</Alert> : null}
+            {error ? (
+              <Alert variant="danger">
+                <div>{error}</div>
+                {blockedMonthIso ? (
+                  <div className="mt-2">
+                    <Link
+                      to={`/monthlies/routes/${routeId}/paperwork?month=${encodeURIComponent(blockedMonthIso)}`}
+                      className="alert-link"
+                    >
+                      Open {formatMonthHeading(blockedMonthIso)} paperwork to reopen
+                    </Link>
+                  </div>
+                ) : null}
+              </Alert>
+            ) : null}
           </>
         )}
       </Modal.Body>
@@ -937,7 +971,7 @@ export default function MonthlyRouteDetailPage() {
 
         <Link
           to={`/monthlies/routes/${idNum}/paperwork`}
-          className="btn btn-primary w-100 monthly-route-paperwork-entry mb-3"
+          className="btn btn-primary w-100 monthly-route-paperwork-entry"
         >
           <i className="bi bi-folder2-open me-2" aria-hidden />
           Paperwork
@@ -946,6 +980,7 @@ export default function MonthlyRouteDetailPage() {
         <Accordion defaultActiveKey={['map']} alwaysOpen className="monthly-location-detail-accordion monthly-route-detail-accordion">
         <Accordion.Item
           eventKey="map"
+          id="route-map"
           className="monthly-location-testing-history-card monthly-route-detail-section monthly-location-detail-surface"
         >
           <Accordion.Header className="monthly-location-testing-history-card-header">

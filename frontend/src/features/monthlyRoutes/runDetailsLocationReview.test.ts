@@ -14,6 +14,7 @@ import {
   stopHasNewCommentField,
   locationHasAllStopsSubmitted,
   locationIdentityTone,
+  listAutoOfficeBillingUpdates,
   patchRunDetailLocationBilling,
   patchRunDetailPayloadRun,
   patchRouteMetaRunMonth,
@@ -214,6 +215,128 @@ describe('patchRunDetailLocationBilling', () => {
     const locations = [baseLocation(), other]
     const next = patchRunDetailLocationBilling(locations, 101, 'do_not_bill', MONTH)
     expect(next[1].billing_status).toBe('unset')
+  })
+})
+
+describe('listAutoOfficeBillingUpdates', () => {
+  it('bills all good, passed with problems, and legacy tested locations', () => {
+    expect(listAutoOfficeBillingUpdates([baseLocation()], MONTH)).toEqual([
+      { locationId: 101, billingStatus: 'bill' },
+    ])
+    expect(
+      listAutoOfficeBillingUpdates(
+        [
+          baseLocation({
+            stops: [
+              {
+                ...baseLocation().stops[0],
+                test_outcome: 'passed_with_problems',
+              },
+            ],
+          }),
+        ],
+        MONTH,
+      ),
+    ).toEqual([{ locationId: 101, billingStatus: 'bill' }])
+    expect(
+      listAutoOfficeBillingUpdates(
+        [
+          baseLocation({
+            stops: [
+              {
+                ...baseLocation().stops[0],
+                test_outcome: null,
+                result_status: 'tested',
+              },
+            ],
+          }),
+        ],
+        MONTH,
+      ),
+    ).toEqual([{ locationId: 101, billingStatus: 'bill' }])
+  })
+
+  it('sets do not bill when every stop is annual', () => {
+    expect(
+      listAutoOfficeBillingUpdates(
+        [
+          baseLocation({
+            stops: [
+              {
+                ...baseLocation().stops[0],
+                test_outcome: 'skipped',
+                skip_category: 'testing_not_required',
+                annual_month: 'May',
+              },
+            ],
+          }),
+        ],
+        MONTH,
+      ),
+    ).toEqual([{ locationId: 101, billingStatus: 'do_not_bill' }])
+  })
+
+  it('prefers bill when a location mixes annual and billable stops', () => {
+    expect(
+      listAutoOfficeBillingUpdates(
+        [
+          baseLocation({
+            last_stop_number: 2,
+            stops: [
+              {
+                ...baseLocation().stops[0],
+                testing_site_id: 1,
+                stop_number: 1,
+                test_outcome: 'all_good',
+              },
+              {
+                ...baseLocation().stops[0],
+                testing_site_id: 2,
+                stop_number: 2,
+                test_outcome: 'skipped',
+                skip_category: 'testing_not_required',
+                annual_month: 'May',
+              },
+            ],
+          }),
+        ],
+        MONTH,
+      ),
+    ).toEqual([{ locationId: 101, billingStatus: 'bill' }])
+  })
+
+  it('skips failed, non-annual skip, pending, legacy billing, and unchanged rows', () => {
+    expect(
+      listAutoOfficeBillingUpdates(
+        [
+          baseLocation({
+            stops: [{ ...baseLocation().stops[0], test_outcome: 'failed' }],
+          }),
+          baseLocation({
+            location_id: 102,
+            stops: [
+              {
+                ...baseLocation().stops[0],
+                location_id: 102,
+                test_outcome: 'skipped',
+                skip_category: 'access_issues',
+              },
+            ],
+          }),
+          baseLocation({
+            location_id: 103,
+            billing_status: 'bill',
+            stops: [{ ...baseLocation().stops[0], test_outcome: 'all_good' }],
+          }),
+          baseLocation({
+            location_id: 104,
+            billing_status: 'legacy',
+            stops: [{ ...baseLocation().stops[0], test_outcome: 'all_good' }],
+          }),
+        ],
+        MONTH,
+      ),
+    ).toEqual([])
   })
 })
 

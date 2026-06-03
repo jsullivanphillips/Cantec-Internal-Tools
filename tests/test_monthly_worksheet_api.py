@@ -221,6 +221,45 @@ def test_monthly_location_history_cell_includes_worksheet_link_route(worksheet_c
     assert cell["test_monthly_route"]["id"] == 1
 
 
+def test_library_location_month_billing_status_get_and_patch(worksheet_client):
+    client, app = worksheet_client
+    with app.app_context():
+        route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
+        loc = MonthlyRouteLocation(
+            id=101,
+            address="123 Test St",
+            address_normalized="123 test st",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
+            building=None,
+            building_normalized="",
+            status_normalized="active",
+            status_raw="Active",
+            monthly_route_id=1,
+        )
+        hist = MonthlyRouteTestHistory(
+            id=5001,
+            location_id=101,
+            month_date=date(2026, 3, 1),
+            result_status="tested",
+            test_monthly_route_id=1,
+            billing_status="unset",
+        )
+        db.session.add_all([route, loc, hist])
+        db.session.commit()
+
+    res = client.get("/api/monthly_sites/library/101")
+    assert res.status_code == 200
+    assert res.get_json()["location"]["months"]["2026-03-01"]["billing_status"] == "unset"
+
+    patch = client.patch(
+        "/api/monthly_sites/library/101",
+        json={"months": {"2026-03-01": {"billing_status": "bill"}}},
+    )
+    assert patch.status_code == 200
+    assert patch.get_json()["location"]["months"]["2026-03-01"]["billing_status"] == "bill"
+
+
 def test_worksheet_reset_run_clears_non_annual_preserves_annual(worksheet_client):
     client, app = worksheet_client
     with app.app_context():

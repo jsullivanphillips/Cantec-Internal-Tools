@@ -19,6 +19,7 @@ import {
   runReviewStopIsAnnualSkip,
   stopMatchesOutcomeFilter,
   stopPortalOutcome,
+  type OfficeBillingStatus,
 } from './officeRunReviewShared'
 import { officeStopStatus } from './officeWorksheetTableShared'
 import { portalStopHasTestOutcome, type PortalTestOutcome } from './portalWorkflowShared'
@@ -74,6 +75,8 @@ export function locationStopAsWorksheetStop(
     building_name: null,
     property_management_company: null,
     label: stop.label,
+    primary_label: stop.primary_label,
+    billing_address_subline: stop.billing_address_subline,
     panel: null,
     panel_location: null,
     door_code: stop.door_code ?? null,
@@ -826,4 +829,67 @@ export function patchRunDetailLocationBilling(
       attention_flags,
     }
   })
+}
+
+function normBillingStatus(value: string | null | undefined): string {
+  return (value ?? '').trim().toLowerCase()
+}
+
+/** All good, passed with problems, or legacy tested → bill on auto-set. */
+export function stopQualifiesForAutoBill(
+  stop: TechnicianWorksheetStop,
+  monthDate: string,
+): boolean {
+  const outcome = stopPortalOutcome(stop)
+  if (outcome === 'all_good' || outcome === 'passed_with_problems') return true
+  if (!outcome && officeStopStatus(stop, monthDate) === 'tested') return true
+  return false
+}
+
+/** Every testing site at the billing location is an annual skip / annual month. */
+export function locationQualifiesForAutoDoNotBill(
+  location: MonthlyRunDetailLocation,
+  monthDate: string,
+): boolean {
+  if (location.stops.length === 0) return false
+  return location.stops.every((stop) => {
+    const ws = locationStopAsWorksheetStop(stop, location.location_label)
+    return officeStopStatus(ws, monthDate) === 'annual'
+  })
+}
+
+/** Suggested processor billing for one location, or null when auto-set does not apply. */
+export function autoOfficeBillingStatusForLocation(
+  location: MonthlyRunDetailLocation,
+  monthDate: string,
+): Extract<OfficeBillingStatus, 'bill' | 'do_not_bill'> | null {
+  if (normBillingStatus(location.billing_status) === 'legacy') return null
+  if (location.stops.some((stop) => stopQualifiesForAutoBill(
+    locationStopAsWorksheetStop(stop, location.location_label),
+    monthDate,
+  ))) {
+    return 'bill'
+  }
+  if (locationQualifiesForAutoDoNotBill(location, monthDate)) return 'do_not_bill'
+  return null
+}
+
+export type AutoOfficeBillingUpdate = {
+  locationId: number
+  billingStatus: Extract<OfficeBillingStatus, 'bill' | 'do_not_bill'>
+}
+
+/** Locations whose billing would change under auto-set rules (skips unchanged rows). */
+export function listAutoOfficeBillingUpdates(
+  locations: MonthlyRunDetailLocation[],
+  monthDate: string,
+): AutoOfficeBillingUpdate[] {
+  const updates: AutoOfficeBillingUpdate[] = []
+  for (const loc of locations) {
+    const next = autoOfficeBillingStatusForLocation(loc, monthDate)
+    if (!next) continue
+    if (normBillingStatus(loc.billing_status) === next) continue
+    updates.push({ locationId: loc.location_id, billingStatus: next })
+  }
+  return updates
 }

@@ -59,17 +59,21 @@ export function runForPaperworkMonth(
 
 /**
  * Locked view for Paperwork — derived from run phase and calendar month.
+ *
+ * Exact history is reserved for office-completed runs (and past months with no
+ * run header yet). After **Reopen job**, the run returns to prep/review even
+ * when the calendar month is in the past.
  */
 export function derivePaperworkViewMode(
   run: TechnicianWorksheetRun | null | undefined,
   monthIso: string,
   currentMonthIso: string,
 ): PaperworkViewMode {
-  if (isMonthBefore(monthIso, currentMonthIso)) {
-    return 'exact_history'
-  }
   const monthRun = runForPaperworkMonth(run, monthIso)
   if (monthRun && worksheetRunExplicitlyCompleted(monthRun)) {
+    return 'exact_history'
+  }
+  if (isMonthBefore(monthIso, currentMonthIso) && monthRun == null) {
     return 'exact_history'
   }
   if (runInOfficePrepPhase(monthRun)) {
@@ -84,20 +88,14 @@ export type SelectablePaperworkMonth = {
 }
 
 /**
- * Past months with a run file, plus current and next calendar month.
+ * Every month with a run file, plus current and next calendar month (even before a run exists).
  */
 export function computeSelectablePaperworkMonths(
   runsByMonth: Record<string, RouteRunMonthSummary>,
   currentMonthIso: string,
 ): SelectablePaperworkMonth[] {
   const nextMonthIso = addCalendarMonths(currentMonthIso, 1)
-  const allowed = new Set<string>()
-
-  for (const monthIso of Object.keys(runsByMonth)) {
-    if (isMonthBefore(monthIso, currentMonthIso)) {
-      allowed.add(monthIso)
-    }
-  }
+  const allowed = new Set<string>(Object.keys(runsByMonth))
 
   allowed.add(currentMonthIso)
   if (nextMonthIso) {

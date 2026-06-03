@@ -1,5 +1,6 @@
 import { Button, Modal } from 'react-bootstrap'
 import type { TechnicianWorksheetStop } from './monthlyRoutesShared'
+import { testingSitePrimaryLabel } from './testingSiteDisplay'
 import type { PortalEndRunModalState } from './portalEndRunPreflight'
 
 type Props = {
@@ -12,7 +13,7 @@ type Props = {
 
 function stopSummaryLine(stop: TechnicianWorksheetStop): string {
   const num = stop.stop_number ?? '?'
-  const addr = (stop.display_address || stop.label || '').trim()
+  const addr = testingSitePrimaryLabel(stop)
   return addr ? `Stop #${num} — ${addr}` : `Stop #${num}`
 }
 

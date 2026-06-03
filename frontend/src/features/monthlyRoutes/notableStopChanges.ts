@@ -17,6 +17,7 @@ import {
   worksheetReadOnlyDisplay,
   type OfficeFieldChange,
 } from './officeWorksheetTableShared'
+import { testingSitePrimaryLabel } from './testingSiteDisplay'
 
 export type NotableChangeDisplayKind =
   | 'field'
@@ -190,7 +191,7 @@ export function collectNotableStopChanges(
       (x): x is NotableChangeItem => x != null,
     ),
   ]
-  const siteLabel = (stop.label || '').trim() || 'Primary testing location'
+  const siteLabel = testingSitePrimaryLabel(stop, { siteCount, siteIndex: siteIndex - 1 })
   const allChanges = sortChanges(items)
   const changes = allChanges.filter((item) => item.id !== 'status')
   const reviewKind: RunReviewCardKind =
@@ -231,6 +232,8 @@ export function reviewSummaryAsWorksheetStop(summary: RunReviewStopSummary): Tec
     building_name: null,
     property_management_company: null,
     label: summary.label,
+    primary_label: summary.primary_label,
+    billing_address_subline: summary.billing_address_subline,
     panel: null,
     panel_location: null,
     door_code: null,
@@ -278,7 +281,7 @@ export function buildNotableStopChangeCardsFromSummaries(
     const siteIndex =
       atLocation.findIndex((s) => s.testing_site_id === summary.testing_site_id) + 1
     const siteCount = locationCounts.get(summary.location_id) ?? 1
-    const siteLabel = (summary.label || '').trim() || 'Primary testing location'
+    const siteLabel = testingSitePrimaryLabel(stop, { siteCount, siteIndex: siteIndex - 1 })
     return {
       stop,
       stopNumber: summary.stop_number,

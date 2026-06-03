@@ -1,8 +1,13 @@
 /** Types and pure helpers shared by Monthly Routes library and map pages. */
 
+import { bcStatHolidayName, isBcStatHoliday, isoFromUtcDate } from './bcStatHolidays'
+
 export type MonthCell = {
-  result_status: string
+  /** ``null`` when a history row exists but testing has not been recorded yet. */
+  result_status: string | null
   skip_reason: string | null
+  /** Office processor billing decision when set on history row. */
+  billing_status?: string | null
   /** Monthly route when this month cell was saved (CSV / sheet capture); not necessarily ``monthly_route`` today. */
   test_monthly_route?: MonthlyRouteSummary | null
   /** Staff worksheet route id for this historical month, when it can be resolved. */
@@ -83,6 +88,7 @@ export type LibraryLocation = {
   property_management_company: string | null
   building: string | null
   notes: string | null
+  billing_comments?: string | null
   price_per_month: number | null
   area: string | null
   start_up_date: string | null
@@ -136,6 +142,10 @@ export type RouteLocationListItem = {
 export type MonthlyRouteCalculatedPathStop = {
   id: number
   label: string
+  primary_label?: string | null
+  billing_address_subline?: string | null
+  testing_site_count?: number
+  testing_site_labels?: string[] | null
   address: string | null
   display_address: string | null
   building: string | null
@@ -164,6 +174,36 @@ export type MonthlyRouteCalculatedPathPayload = {
   duration_seconds: number | null
   calculated_at: string | null
   error?: string
+}
+
+export type RouteGeocodeMissingRow = {
+  id: number
+  label: string
+  address: string
+  building: string | null
+}
+
+export type RouteGeocodeMissingResult = {
+  route_id: number
+  attempted: number
+  updated_count: number
+  updated: RouteGeocodeMissingRow[]
+  failed: RouteGeocodeMissingRow[]
+}
+
+export type LibraryLocationGeocodeResult = {
+  location: LibraryLocation
+  geocoded: boolean
+  already_had_coordinates?: boolean
+  error?: string
+}
+
+/** True when a library/route row has usable lat/lng for maps and directions. */
+export function libraryLocationHasMapCoordinates(loc: {
+  latitude?: number | null
+  longitude?: number | null
+}): boolean {
+  return normalizeMapCoordinates(loc.latitude, loc.longitude) != null
 }
 
 /** Comment row from ``GET /api/monthly_routes/library/:id`` (newest first); comments remain on legacy routes. */
@@ -262,6 +302,11 @@ export type MonthlyRouteOverviewPayload = {
 const ROUTE_CALENDAR_WEEKDAY_HEADERS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const
 
 export const MONTHLY_ROUTE_CALENDAR_WEEKDAY_HEADERS = ROUTE_CALENDAR_WEEKDAY_HEADERS
+
+/** Mon–Fri columns for the routes overview calendar (no weekend testing). */
+export const MONTHLY_ROUTE_OVERVIEW_WORKDAY_HEADERS = ROUTE_CALENDAR_WEEKDAY_HEADERS.slice(0, 5)
+
+export const MONTHLY_ROUTE_OVERVIEW_WORKDAY_COLUMN_COUNT = 5
 
 export const MONTHLY_ROUTE_CALENDAR_WEEK_COUNT = 4
 
@@ -381,6 +426,8 @@ export type MonthlyRunDetailLocationStop = {
   stop_number: number
   display_address: string
   label: string | null
+  primary_label?: string | null
+  billing_address_subline?: string | null
   month_date: string
   result_status: string | null
   test_outcome?: string | null
@@ -435,6 +482,8 @@ export type RunReviewStopSummary = {
   stop_number: number
   display_address: string
   label: string | null
+  primary_label?: string | null
+  billing_address_subline?: string | null
   month_date: string
   result_status: string | null
   test_outcome?: string | null
@@ -601,9 +650,13 @@ export type TechnicianWorksheetStop = {
   history_month_row_id: number
   month_date: string
   display_address: string
+  latitude?: number | null
+  longitude?: number | null
   building_name: string | null
   property_management_company: string | null
   label: string | null
+  primary_label?: string | null
+  billing_address_subline?: string | null
   panel: string | null
   panel_location: string | null
   door_code: string | null
@@ -736,6 +789,23 @@ export function monthlyRouteOccurrenceDateUtc(
  * strictly **before** today's date (local midnight). If no route is linked, uses calendar month
  * strictly before the current month (local).
  */
+/**
+ * Whether tested/billing status should appear on the location detail history grid.
+ * Past and current calendar months always show; among future months, only the next
+ * untested month (``nextUntestedMonthIso``) shows status.
+ */
+export function shouldShowTestingHistoryStatus(
+  monthFirstIso: string,
+  nextUntestedMonthIso: string | null,
+  reference: Date = new Date(),
+): boolean {
+  const ym = parseYearMonth(monthFirstIso)
+  const currentYm = parseYearMonth(monthFirstIsoPacificToday(reference))
+  if (!ym || !currentYm) return false
+  if (compareYearMonth(ym, currentYm) <= 0) return true
+  return nextUntestedMonthIso === monthFirstIso
+}
+
 export function isMonthlyTestingHistoryEditable(
   monthFirstIso: string,
   loc: LibraryLocation,
@@ -1134,16 +1204,199 @@ export function pacificCalendarDateIso(reference: Date = new Date()): string {
 }
 
 /** Scheduled route test day for ``monthFirstIso`` from ``week_occurrence`` / ``weekday_iso``. */
+export function dateIsoFromUtcOccurrence(occ: Date): string {
+  return isoFromUtcDate(occ)
+}
+
+/**
+ * Effective test day for a route in ``monthFirstIso``'s month: nominal nth-weekday date,
+ * bumped to the next same-weekday occurrence when that day is a BC stat holiday.
+ */
+export function effectiveRouteTestDayIso(
+  monthFirstIso: string,
+  route: MonthlyRouteSummary | null | undefined,
+): string | null {
+  if (!route || typeof route.weekday_iso !== 'number' || typeof route.week_occurrence !== 'number') {
+    return null
+  }
+  let occurrence = route.week_occurrence
+  while (occurrence >= 1 && occurrence <= 5) {
+    const occ = monthlyRouteOccurrenceDateUtc(monthFirstIso, {
+      ...route,
+      week_occurrence: occurrence,
+    })
+    if (!occ) return null
+    const iso = dateIsoFromUtcOccurrence(occ)
+    if (!isBcStatHoliday(iso)) return iso
+    occurrence += 1
+  }
+  return null
+}
+
+export function formatRouteTestDayLabel(iso: string): string {
+  const parts = iso.split('-').map(Number)
+  const y = parts[0]
+  const mo = parts[1]
+  const d = parts[2]
+  if (!y || !mo || !d) return iso
+  return new Intl.DateTimeFormat('en-CA', {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(Date.UTC(y, mo - 1, d)))
+}
+
+export function formatRouteOverviewMonthHeading(monthFirstIso: string): string {
+  const ym = parseYearMonth(monthFirstIso)
+  if (!ym) return monthFirstIso
+  return new Intl.DateTimeFormat('en-CA', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(Date.UTC(ym.year, ym.month - 1, 1)))
+}
+
+export type PacificMonthCalendarCell = {
+  iso: string
+  dayOfMonth: number
+  isToday: boolean
+  isHoliday: boolean
+  holidayName: string | null
+  isPadding: boolean
+}
+
+/** Monday-first Pacific calendar grid cells for the month containing ``monthFirstIso``. */
+export function buildPacificMonthCalendarGrid(
+  monthFirstIso: string,
+  reference: Date = new Date(),
+): PacificMonthCalendarCell[] {
+  const ym = parseYearMonth(monthFirstIso)
+  if (!ym) return []
+  const todayIso = pacificCalendarDateIso(reference)
+  const { year, month } = ym
+  const firstDowJs = new Date(Date.UTC(year, month - 1, 1)).getUTCDay()
+  const mondayFirstOffset = (firstDowJs + 6) % 7
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate()
+  const cells: PacificMonthCalendarCell[] = []
+
+  for (let i = 0; i < mondayFirstOffset; i++) {
+    cells.push({
+      iso: '',
+      dayOfMonth: 0,
+      isToday: false,
+      isHoliday: false,
+      holidayName: null,
+      isPadding: true,
+    })
+  }
+
+  for (let dom = 1; dom <= daysInMonth; dom++) {
+    const iso = `${year}-${String(month).padStart(2, '0')}-${String(dom).padStart(2, '0')}`
+    cells.push({
+      iso,
+      dayOfMonth: dom,
+      isToday: iso === todayIso,
+      isHoliday: isBcStatHoliday(iso),
+      holidayName: isBcStatHoliday(iso) ? bcStatHolidayName(iso, year) : null,
+      isPadding: false,
+    })
+  }
+
+  while (cells.length % 7 !== 0) {
+    cells.push({
+      iso: '',
+      dayOfMonth: 0,
+      isToday: false,
+      isHoliday: false,
+      holidayName: null,
+      isPadding: true,
+    })
+  }
+
+  return cells
+}
+
+function emptyPacificCalendarPaddingCell(): PacificMonthCalendarCell {
+  return {
+    iso: '',
+    dayOfMonth: 0,
+    isToday: false,
+    isHoliday: false,
+    holidayName: null,
+    isPadding: true,
+  }
+}
+
+function pacificMonthDayCell(
+  year: number,
+  month: number,
+  dom: number,
+  todayIso: string,
+): PacificMonthCalendarCell {
+  const iso = `${year}-${String(month).padStart(2, '0')}-${String(dom).padStart(2, '0')}`
+  return {
+    iso,
+    dayOfMonth: dom,
+    isToday: iso === todayIso,
+    isHoliday: isBcStatHoliday(iso),
+    holidayName: isBcStatHoliday(iso) ? bcStatHolidayName(iso, year) : null,
+    isPadding: false,
+  }
+}
+
+/** Monday–Friday grid for the routes overview (weekends omitted). */
+export function buildPacificWorkweekCalendarGrid(
+  monthFirstIso: string,
+  reference: Date = new Date(),
+): PacificMonthCalendarCell[] {
+  const ym = parseYearMonth(monthFirstIso)
+  if (!ym) return []
+  const todayIso = pacificCalendarDateIso(reference)
+  const { year, month } = ym
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate()
+  const cols = MONTHLY_ROUTE_OVERVIEW_WORKDAY_COLUMN_COUNT
+  const cells: PacificMonthCalendarCell[] = []
+  let row: PacificMonthCalendarCell[] = []
+
+  const flushRow = () => {
+    if (row.length === 0) return
+    while (row.length < cols) {
+      row.push(emptyPacificCalendarPaddingCell())
+    }
+    cells.push(...row)
+    row = []
+  }
+
+  for (let dom = 1; dom <= daysInMonth; dom++) {
+    const jsDow = new Date(Date.UTC(year, month - 1, dom)).getUTCDay()
+    const weekdayIso = jsDow === 0 ? 6 : jsDow - 1
+    if (weekdayIso > 4) continue
+
+    if (row.length === 0) {
+      for (let i = 0; i < weekdayIso; i++) {
+        row.push(emptyPacificCalendarPaddingCell())
+      }
+    } else if (weekdayIso === 0) {
+      flushRow()
+    }
+
+    row.push(pacificMonthDayCell(year, month, dom, todayIso))
+    if (row.length === cols) {
+      flushRow()
+    }
+  }
+
+  flushRow()
+  return cells
+}
+
 export function scheduledRouteTestDayIso(
   monthFirstIso: string,
   route: MonthlyRouteSummary | null | undefined,
 ): string | null {
-  const occ = monthlyRouteOccurrenceDateUtc(monthFirstIso, route)
-  if (!occ) return null
-  const y = occ.getUTCFullYear()
-  const mo = String(occ.getUTCMonth() + 1).padStart(2, '0')
-  const day = String(occ.getUTCDate()).padStart(2, '0')
-  return `${y}-${mo}-${day}`
+  return effectiveRouteTestDayIso(monthFirstIso, route)
 }
 
 export function isPacificTodayRouteScheduledTestDay(

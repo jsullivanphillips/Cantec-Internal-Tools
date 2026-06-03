@@ -29,6 +29,7 @@ import {
   type OfficeStopStatus,
   type OfficeWorksheetChangeColumnVisibility,
 } from './officeWorksheetTableShared'
+import { testingSitePrimaryLabel, worksheetStopDisplaySubline } from './testingSiteDisplay'
 import { stopMonitoringDisplay } from './stopMonitoringDisplay'
 import { stopHasNewCommentField, type RunDetailNewCommentField } from './runDetailsLocationReview'
 
@@ -182,7 +183,15 @@ function OfficeStopTableRow({
     !worksheetSkipReasonDuplicatesTimeInNote(skipReasonDisplayBlock, stop.result_status, displayTimeIn)
   const showWorksheetTimeOutLine =
     displayTimeOut.length > 0 && shouldShowWorksheetTimeOutRow(displayTimeIn, displayTimeOut)
-  const stopLabel = (stop.label || '').trim() || 'Primary testing location'
+  const stopLabel = testingSitePrimaryLabel(stop, {
+    siteCount: group.stops.length,
+    siteIndex: indexInGroup,
+  })
+  const stopSubline = worksheetStopDisplaySubline(stop, {
+    siteCount: group.stops.length,
+    siteIndex: indexInGroup,
+    primaryLabel: stopLabel,
+  })
   const isFirstInGroup = indexInGroup === 0
   const timeSummaryParts = [
     showWorksheetTimeInLine ? worksheetTimeInOutDisplayLine('in', displayTimeIn) : null,
@@ -269,11 +278,9 @@ function OfficeStopTableRow({
           <div className="tw-office-address-continuation">same address</div>
         )}
         <div className="tw-office-site-cell">
-          <div className="tw-office-site-label">{stopLabel}</div>
-          {group.stops.length > 1 ? (
-            <div className="tw-office-site-subline">
-              Site {indexInGroup + 1} of {group.stops.length}
-            </div>
+          <div className="tw-office-site-label fw-semibold">{stopLabel}</div>
+          {stopSubline ? (
+            <div className="tw-office-site-subline text-muted small">{stopSubline}</div>
           ) : null}
         </div>
       </td>

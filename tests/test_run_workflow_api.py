@@ -306,3 +306,69 @@ def test_office_test_outcome_set_and_clear(workflow_client, monkeypatch):
     )
     assert blocked.status_code == 409
     assert blocked.get_json().get("code") == "office_outcome_before_field_end"
+
+
+def test_csv_import_reopened_allows_office_billing_and_outcome(workflow_client, monkeypatch):
+    """CSV-import runs stay portal read-only but office may edit review fields after reopen."""
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 6, 1))
+
+    client, app = workflow_client
+    with app.app_context():
+        from app.monthly.worksheet_stops import ensure_worksheet_stops_for_route_month
+
+        _seed_route()
+        loc = db.session.get(MonthlyRouteLocation, 101)
+        assert loc is not None
+        sync_testing_sites_from_legacy(loc)
+        ts_id = int(MonthlyTestingSite.query.one().id)
+        now = datetime(2026, 5, 15, 12, 0, tzinfo=PACIFIC_TZ)
+        run = MonthlyRouteRun(
+            id=9001,
+            monthly_route_id=1,
+            month_date=date(2026, 5, 1),
+            opened_at=now,
+            prepared_at=now,
+            started_at=now,
+            field_ended_at=now,
+            status="completed",
+            completed_at=now,
+            source="csv_import",
+        )
+        db.session.add(run)
+        db.session.add(
+            MonthlyRouteTestHistory(
+                id=5001,
+                location_id=101,
+                month_date=date(2026, 5, 1),
+                test_monthly_route_id=1,
+                run_id=int(run.id),
+                result_status="tested",
+                billing_status="unset",
+            )
+        )
+        db.session.commit()
+        ensure_worksheet_stops_for_route_month(1, date(2026, 5, 1), run)
+        db.session.commit()
+
+    reopen = client.post(
+        "/api/monthly_routes/routes/1/runs/reopen",
+        json={"month_date": "2026-05-01"},
+    )
+    assert reopen.status_code == 200, reopen.get_data(as_text=True)
+    assert reopen.get_json()["run"]["completed_at"] is None
+
+    billing = client.patch(
+        "/api/monthly_routes/routes/1/locations/101/billing_status?month=2026-05-01",
+        json={"billing_status": "bill"},
+    )
+    assert billing.status_code == 200, billing.get_data(as_text=True)
+    assert billing.get_json()["billing_status"] == "bill"
+
+    outcome = client.put(
+        f"/api/monthly_routes/routes/1/worksheet/stops/{ts_id}/test_outcome?month=2026-05-01",
+        json={"test_outcome": "all_good"},
+    )
+    assert outcome.status_code == 200, outcome.get_data(as_text=True)
+    assert outcome.get_json()["stop"]["test_outcome"] == "all_good"

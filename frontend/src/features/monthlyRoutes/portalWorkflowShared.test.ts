@@ -13,6 +13,8 @@ import {
   portalStopNeedsNoDeficiencyConfirm,
   portalStopNewDeficiencies,
   portalStopNewDeficienciesFromPriorRuns,
+  officeOutcomeSelectValue,
+  OFFICE_OUTCOME_PENDING_VALUE,
   portalHeaderBandClass,
   portalNavStopStatusClass,
   portalStatusPillClass,
@@ -210,6 +212,30 @@ describe('portalStopVisualTone', () => {
     const legacy = baseStop({ result_status: 'tested', is_legacy_outcome: true })
     expect(portalStopVisualTone(legacy, '2026-05-01')).toBe('all_good')
     expect(portalNavStopStatusClass(legacy, '2026-05-01')).toBe('pw-mock-nav-stop--tested')
+  })
+})
+
+describe('officeOutcomeSelectValue', () => {
+  it('maps legacy tested/skipped result_status when test_outcome is unset', () => {
+    expect(
+      officeOutcomeSelectValue(baseStop({ result_status: 'tested', is_legacy_outcome: true })),
+    ).toBe('all_good')
+    expect(
+      officeOutcomeSelectValue(baseStop({ result_status: 'skipped', is_legacy_outcome: true })),
+    ).toBe('skipped')
+    expect(officeOutcomeSelectValue(baseStop({ result_status: 'tested' }))).toBe('all_good')
+  })
+
+  it('prefers portal test_outcome over legacy result_status', () => {
+    expect(
+      officeOutcomeSelectValue(
+        baseStop({ test_outcome: 'failed', result_status: 'tested', is_legacy_outcome: false }),
+      ),
+    ).toBe('failed')
+  })
+
+  it('returns pending when no outcome is recorded', () => {
+    expect(officeOutcomeSelectValue(baseStop())).toBe(OFFICE_OUTCOME_PENDING_VALUE)
   })
 })
 

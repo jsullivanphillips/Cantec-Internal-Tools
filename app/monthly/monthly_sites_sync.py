@@ -105,10 +105,11 @@ def sync_testing_sites_from_legacy(loc: MonthlyRouteLocation) -> list[MonthlyTes
     if existing:
         return existing
 
+    billing_label = ((loc.display_address or loc.address or "").strip()) or None
     ts_kw = dict(
         monthly_site_id=int(site.id),
         sort_order=0,
-        label=None,
+        label=billing_label,
         **testing_site_master_fields_from_legacy(loc),
     )
     tid = _next_sqlite_bigint_id(MonthlyTestingSite)
@@ -222,6 +223,29 @@ def push_primary_testing_site_display_to_legacy(loc: MonthlyRouteLocation, ts: M
     loc.testing_procedures = ts.testing_procedures
     loc.inspection_tech_notes = ts.inspection_tech_notes
     loc.monitoring_company_id = ts.monitoring_company_id
+
+
+def apply_panel_fields_to_testing_site(
+    ts: MonthlyTestingSite,
+    *,
+    panel: str | None,
+    panel_location: str | None,
+) -> None:
+    ts.panel = panel
+    ts.facp_detail = panel
+    ts.panel_location = panel_location
+
+
+def apply_monitoring_fields_to_testing_site(
+    ts: MonthlyTestingSite,
+    *,
+    monitoring_company_id: int | None,
+    monitoring_account_number: str | None,
+    monitoring_notes: str | None,
+) -> None:
+    ts.monitoring_company_id = monitoring_company_id
+    ts.monitoring_account_number = monitoring_account_number
+    ts.monitoring_notes = monitoring_notes
 
 
 def apply_panel_fields_to_primary_testing_site(

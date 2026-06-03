@@ -28,7 +28,7 @@ from app.monthly.monthly_sites_sync import (
     push_primary_testing_site_display_to_legacy,
     sync_testing_sites_from_legacy,
 )
-from app.monthly.sheet_visit_times import looks_like_sheet_clock
+from app.monthly.sheet_visit_times import SheetTimeImportRow, looks_like_sheet_clock
 from app.monthly.site_field_template import (
     master_template_fields,
     merge_template_with_prior_fallback,
@@ -300,6 +300,22 @@ def _apply_history_outcome_to_base(
         base["session_route_stop_order"] = hist.session_route_stop_order
 
 
+def _apply_history_outcome_to_row(
+    row: MonthlyTestingSiteMonth,
+    hist: MonthlyRouteTestHistory,
+) -> None:
+    """Copy sheet-derived visit outcome from history onto an existing primary stop-month row."""
+    if hist.result_status is None or row.result_status is not None:
+        return
+    row.result_status = hist.result_status
+    row.skip_reason = hist.skip_reason
+    row.sheet_time_in_raw = hist.sheet_time_in_raw
+    row.sheet_time_out_raw = hist.sheet_time_out_raw
+    row.source_value_raw = hist.source_value_raw
+    if hist.session_route_stop_order is not None and row.session_route_stop_order is None:
+        row.session_route_stop_order = hist.session_route_stop_order
+
+
 def seed_stop_month_fields(
     ts: MonthlyTestingSite,
     loc: MonthlyRouteLocation,
@@ -505,6 +521,8 @@ def ensure_worksheet_stops_for_route_month(
                     row.run_id = run_id
                 if row.test_monthly_route_id is None:
                     row.test_monthly_route_id = route_id
+                if is_primary and loc_hist is not None:
+                    _apply_history_outcome_to_row(row, loc_hist)
                 continue
     db.session.flush()
 
@@ -512,8 +530,15 @@ def ensure_worksheet_stops_for_route_month(
 def apply_session_stop_order_from_history_for_route_month(
     route_id: int,
     month_first: date,
+    *,
+    overwrite: bool = False,
 ) -> int:
-    """Copy ``session_route_stop_order`` from history onto all worksheet stops at each location."""
+    """Copy ``session_route_stop_order`` from history onto worksheet stops at each location.
+
+    When ``overwrite`` is false (default), only rows with a null session order are updated.
+    CSV import passes ``overwrite=True`` so run review always follows the sheet ``#`` column
+    without changing library ``route_stop_order``.
+    """
     locs = _route_locations(route_id)
     if not locs:
         return 0
@@ -538,11 +563,137 @@ def apply_session_stop_order_from_history_for_route_month(
             .all()
         )
         for row in rows:
-            if row.session_route_stop_order != order:
-                row.session_route_stop_order = order
-                updated += 1
+            if not overwrite and row.session_route_stop_order is not None:
+                continue
+            if row.session_route_stop_order == order:
+                continue
+            row.session_route_stop_order = order
+            updated += 1
     db.session.flush()
     return updated
+
+
+def upsert_stop_month_from_csv_import(
+    *,
+    ts: MonthlyTestingSite,
+    loc: MonthlyRouteLocation,
+    route_id: int,
+    run_id: int,
+    month_first: date,
+    session_route_stop_order: int,
+    sheet_times: SheetTimeImportRow,
+    panel: str | None,
+    panel_location: str | None,
+    ring_detail: str | None,
+    keys_text: str | None,
+    annual_month: str | None,
+    testing_procedures: str | None,
+    inspection_tech_notes: str | None,
+    monitoring_notes: str | None,
+    monitoring_account_number: str | None,
+    monitoring_company_id: int | None,
+    sheet_time_in_raw: str | None,
+    sheet_time_out_raw: str | None,
+    preserve_existing_outcome: bool = True,
+) -> MonthlyTestingSiteMonth:
+    """Write or update one ``MonthlyTestingSiteMonth`` row from a route inspection CSV row."""
+    ts_id = int(ts.id)
+    row = (
+        MonthlyTestingSiteMonth.query.filter_by(
+            monthly_testing_site_id=ts_id,
+            month_date=month_first,
+        ).one_or_none()
+    )
+
+    upsert_result_status = sheet_times.result_status
+    upsert_skip_reason = sheet_times.skip_reason
+    upsert_source_value_raw = sheet_times.source_value_raw
+    if (
+        preserve_existing_outcome
+        and row is not None
+        and row.result_status is not None
+    ):
+        upsert_result_status = row.result_status
+        upsert_skip_reason = row.skip_reason
+        upsert_source_value_raw = row.source_value_raw
+        upsert_time_in = row.sheet_time_in_raw
+        upsert_time_out = row.sheet_time_out_raw
+    else:
+        upsert_time_in = sheet_time_in_raw
+        upsert_time_out = sheet_time_out_raw
+
+    snapshot_values: dict[str, object] = {
+        "annual_month": annual_month,
+        "ring": ring_detail,
+        "key_number": keys_text,
+        "panel": panel,
+        "facp": panel,
+        "panel_location": panel_location,
+        "testing_procedures": testing_procedures,
+        "inspection_tech_notes": inspection_tech_notes,
+        "monitoring_notes": monitoring_notes,
+        "monitoring_account_number": monitoring_account_number,
+        "monitoring_company_id": monitoring_company_id,
+        "property_management_company": loc.property_management_company,
+        "building_name": ts.building_name or loc.building,
+        "result_status": upsert_result_status,
+        "skip_reason": upsert_skip_reason,
+        "source_value_raw": upsert_source_value_raw,
+        "sheet_time_in_raw": upsert_time_in,
+        "sheet_time_out_raw": upsert_time_out,
+        "session_route_stop_order": session_route_stop_order,
+        "test_monthly_route_id": route_id,
+        "run_id": run_id,
+        "month_date": month_first,
+    }
+
+    if row is None:
+        prior = (
+            MonthlyTestingSiteMonth.query.filter(
+                MonthlyTestingSiteMonth.monthly_testing_site_id == ts_id,
+                MonthlyTestingSiteMonth.month_date < month_first,
+            )
+            .order_by(MonthlyTestingSiteMonth.month_date.desc())
+            .first()
+        )
+        base = seed_stop_month_fields(
+            ts,
+            loc,
+            prior,
+            route_id=route_id,
+            run_id=run_id,
+            month_first=month_first,
+            primary=False,
+            location_hist=None,
+            include_history_gap_fill=False,
+        )
+        base.update(snapshot_values)
+        base["monthly_testing_site_id"] = ts_id
+        kw = dict(base)
+        nid = _next_sqlite_bigint_id(MonthlyTestingSiteMonth)
+        if nid is not None:
+            kw["id"] = nid
+        row = MonthlyTestingSiteMonth(**kw)
+        db.session.add(row)
+    else:
+        for key, value in snapshot_values.items():
+            if key in SNAPSHOT_STRING_FIELDS or key in SNAPSHOT_TEXT_FIELDS:
+                setattr(row, key, value)
+            elif key in (
+                "result_status",
+                "skip_reason",
+                "source_value_raw",
+                "sheet_time_in_raw",
+                "sheet_time_out_raw",
+                "session_route_stop_order",
+                "test_monthly_route_id",
+                "run_id",
+                "monitoring_company_id",
+            ):
+                setattr(row, key, value)
+
+    db.session.flush()
+    return row
 
 
 def dismiss_prior_month_out_of_order_for_testing_sites(
@@ -722,8 +873,11 @@ def _stop_sort_key(
     mtsm: MonthlyTestingSiteMonth | None,
     ts: MonthlyTestingSite,
     loc: MonthlyRouteLocation,
+    hist: MonthlyRouteTestHistory | None = None,
 ) -> tuple[int, int, int, int]:
     sess = mtsm.session_route_stop_order if mtsm is not None else None
+    if sess is None and hist is not None and hist.session_route_stop_order is not None:
+        sess = int(hist.session_route_stop_order)
     if sess is not None:
         tier = 0
         order = int(sess)
@@ -857,6 +1011,8 @@ def serialize_worksheet_stop(
     run: MonthlyRouteRun | None = None,
     include_portal_extras: bool = True,
     billing_status: str | None = None,
+    site_count: int = 1,
+    site_index: int = 0,
 ) -> dict[str, object]:
     company, mon_notes, mcid, mon_acct, mc = _monitoring_labels(mtsm, ts, loc)
     panel = None
@@ -950,6 +1106,8 @@ def serialize_worksheet_stop(
         "history_month_row_id": row_id,
         "month_date": month_first.isoformat(),
         "display_address": _display_address(loc, int(loc.id)),
+        "latitude": float(loc.latitude) if loc.latitude is not None else None,
+        "longitude": float(loc.longitude) if loc.longitude is not None else None,
         "building_name": building,
         "property_management_company": pmc,
         "label": _normalize_text(ts.label),
@@ -1010,6 +1168,15 @@ def serialize_worksheet_stop(
                 "is_legacy_run": portal_run_is_read_only(run),
             }
         )
+    from app.monthly.testing_site_display import enrich_stop_display_fields
+
+    enrich_stop_display_fields(
+        stop,
+        ts,
+        loc,
+        site_count=site_count,
+        site_index=site_index,
+    )
     return stop
 
 
@@ -1035,10 +1202,19 @@ def portal_worksheet_preview_stops(
         )
         if not ts_rows:
             ts_rows = sync_testing_sites_from_legacy(loc)
-        for ts in ts_rows:
+        for index, ts in enumerate(ts_rows):
             stop_num += 1
             stops.append(
-                serialize_worksheet_stop(ts, loc, None, route_id=route_id, month_first=month_first, stop_number=stop_num)
+                serialize_worksheet_stop(
+                    ts,
+                    loc,
+                    None,
+                    route_id=route_id,
+                    month_first=month_first,
+                    stop_number=stop_num,
+                    site_count=len(ts_rows),
+                    site_index=index,
+                )
             )
     return stops
 
@@ -1129,7 +1305,14 @@ def worksheet_stops_from_attributed_history(
     pairs.sort(key=_hist_pair_sort_key)
 
     out: list[dict[str, object]] = []
+    ts_by_loc = _testing_sites_by_location_bulk([loc for _, _, loc in pairs] if pairs else [])
     for idx, (hist, ts, loc) in enumerate(pairs, start=1):
+        ts_rows = ts_by_loc.get(int(loc.id), [])
+        site_count = len(ts_rows) or 1
+        site_index = next(
+            (i for i, row in enumerate(ts_rows) if int(row.id) == int(ts.id)),
+            0,
+        )
         mtsm = (
             MonthlyTestingSiteMonth.query.filter_by(
                 monthly_testing_site_id=int(ts.id),
@@ -1149,6 +1332,8 @@ def worksheet_stops_from_attributed_history(
             stop_number=idx,
             include_portal_extras=include_portal_extras,
             billing_status=billing_status,
+            site_count=site_count,
+            site_index=site_index,
         )
         if mtsm is None:
             stop = _overlay_history_on_stop(stop, hist, ts=ts, loc=loc)
@@ -1202,7 +1387,16 @@ def _worksheet_stop_pairs_for_route_month(
             continue
         pairs.append((mtsm_by_ts.get(ts_id), ts, loc))
 
-    pairs.sort(key=lambda item: _stop_sort_key(item[0], item[1], item[2]))
+    loc_ids = [int(loc.id) for loc in locs]
+    hist_by_loc = _history_for_locations(loc_ids, month_first)
+    pairs.sort(
+        key=lambda item: _stop_sort_key(
+            item[0],
+            item[1],
+            item[2],
+            hist_by_loc.get(int(item[2].id)),
+        )
+    )
     return pairs
 
 
@@ -1250,15 +1444,19 @@ def serialize_worksheet_stop_office_prep_patch(
     *,
     month_first: date,
     stop_number: int,
+    site_count: int = 1,
+    site_index: int = 0,
 ) -> dict[str, object]:
     """Minimal worksheet stop JSON for office run-prep PATCH (no portal extras / master merge)."""
     company, mon_notes, mcid, mon_acct, mc = _monitoring_labels(mtsm, ts, loc)
     panel = _normalize_text(mtsm.panel) or _normalize_text(mtsm.facp)
-    return {
+    stop: dict[str, object] = {
         "testing_site_id": int(ts.id),
         "location_id": int(loc.id),
         "month_date": month_first.isoformat(),
         "display_address": _display_address(loc, int(loc.id)),
+        "latitude": float(loc.latitude) if loc.latitude is not None else None,
+        "longitude": float(loc.longitude) if loc.longitude is not None else None,
         "building_name": _normalize_text(mtsm.building_name),
         "property_management_company": _normalize_text(mtsm.property_management_company),
         "label": _normalize_text(ts.label),
@@ -1281,6 +1479,15 @@ def serialize_worksheet_stop_office_prep_patch(
         "prior_month_out_of_order_dismissed": bool(mtsm.prior_month_out_of_order_dismissed),
         "stop_number": int(stop_number),
     }
+    from app.monthly.testing_site_display import enrich_stop_display_fields
+
+    return enrich_stop_display_fields(
+        stop,
+        ts,
+        loc,
+        site_count=site_count,
+        site_index=site_index,
+    )
 
 
 def worksheet_stops_for_route_month(
@@ -1320,7 +1527,13 @@ def worksheet_stops_for_route_month(
     out: list[dict[str, object]] = []
     for idx, (mtsm, ts, loc) in enumerate(pairs, start=1):
         hist = hist_by_loc.get(int(loc.id))
-        primary = primary_testing_site(ts_by_loc.get(int(loc.id), []))
+        ts_rows = ts_by_loc.get(int(loc.id), [])
+        site_count = len(ts_rows) or 1
+        site_index = next(
+            (i for i, row in enumerate(ts_rows) if int(row.id) == int(ts.id)),
+            0,
+        )
+        primary = primary_testing_site(ts_rows)
         is_primary = primary is not None and int(primary.id) == int(ts.id)
         billing_status = None
         if not include_portal_extras and hist is not None:
@@ -1335,6 +1548,8 @@ def worksheet_stops_for_route_month(
             run=run,
             include_portal_extras=include_portal_extras,
             billing_status=billing_status,
+            site_count=site_count,
+            site_index=site_index,
         )
         if is_primary and hist is not None and mtsm is None:
             stop = _overlay_history_on_stop(stop, hist, ts=ts, loc=loc)

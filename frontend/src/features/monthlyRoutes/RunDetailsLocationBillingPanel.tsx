@@ -10,6 +10,7 @@ import type {
   TechnicianWorksheetRun,
 } from './monthlyRoutesShared'
 import { apiJson } from '../../lib/apiClient'
+import { runDetailsOfficeReviewReadOnly } from './runWorkflowShared'
 
 type BillingPatchResponse = {
   ok: boolean
@@ -31,7 +32,7 @@ export default function RunDetailsLocationBillingPanel({
   run: TechnicianWorksheetRun | null
   onBillingUpdated: () => Promise<void>
 }) {
-  const readOnly = (run?.source || '').trim().toLowerCase() === 'csv_import'
+  const readOnly = runDetailsOfficeReviewReadOnly(run)
 
   const [busyLocationId, setBusyLocationId] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)

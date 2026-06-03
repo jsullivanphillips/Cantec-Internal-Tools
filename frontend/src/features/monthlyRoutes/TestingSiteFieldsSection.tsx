@@ -15,6 +15,7 @@ import MonitoringCompanySelect, {
   monitoringCompanyPhonesText,
 } from './MonitoringCompanySelect'
 import { useMonitoringCompanies } from './useMonitoringCompanies'
+import { testingSitePrimaryLabel } from './testingSiteDisplay'
 
 const INPUT_STYLE: CSSProperties = {
   backgroundColor: '#f8fafc',
@@ -55,12 +56,12 @@ function stopTitle(
   site: TestingSiteSummary,
   index: number,
   total: number,
-  location?: LibraryLocation | null
+  location?: LibraryLocation | null,
 ): string {
-  const label = site.label?.trim()
-  if (label) return label
-  if (total === 1) return location?.address?.trim() || 'Testing location'
-  return `Testing location ${index + 1}`
+  return testingSitePrimaryLabel(
+    { label: site.label, display_address: location?.address },
+    { siteCount: total, siteIndex: index },
+  )
 }
 
 function formatPrice(value: number | null | undefined): string {

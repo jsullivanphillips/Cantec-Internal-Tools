@@ -7,9 +7,13 @@ import type {
   MonthlyRunDetailReviewStopDetailPayload,
 } from './monthlyRoutesShared'
 import type { NotableChangeItem, NotableStopChangeCard } from './notableStopChanges'
+import { worksheetStopDisplaySubline } from './testingSiteDisplay'
 import RunReviewOutcomeLabel from './RunReviewOutcomeLabel'
+import RunDetailsStopOutcomeSelect from './RunDetailsStopOutcomeSelect'
 import { runReviewResultHeadlineClass } from './notableStopChanges'
 import { stopShowsNoDeficienciesConfirmedPill } from './runDetailsDeficiencyDisplay'
+import type { TechnicianWorksheetRun, TechnicianWorksheetStop } from './monthlyRoutesShared'
+import { canOfficeEditOutcomes } from './runWorkflowShared'
 import { apiJson } from '../../lib/apiClient'
 
 export function RunDetailsStopTestBlock({
@@ -17,32 +21,81 @@ export function RunDetailsStopTestBlock({
   showSiteLabel,
   onOpen,
   activeDeficiencyCount = 0,
+  run = null,
+  routeId,
+  readOnly = true,
+  onStopUpdated,
 }: {
   card: NotableStopChangeCard
   showSiteLabel: boolean
   onOpen?: () => void
   activeDeficiencyCount?: number
+  run?: TechnicianWorksheetRun | null
+  routeId?: number
+  readOnly?: boolean
+  onStopUpdated?: (stop: TechnicianWorksheetStop) => void | Promise<void>
 }) {
   const { resultHeadline, stop, siteLabel, siteIndex, siteCount, stopNumber } = card
   const monthIso = stop.month_date
   const resultClass = runReviewResultHeadlineClass(stop, monthIso)
   const showNoDefPill = stopShowsNoDeficienciesConfirmedPill(stop, activeDeficiencyCount)
   const showSiteMeta = showSiteLabel && siteCount > 1
+  const canEditOutcome =
+    routeId != null && onStopUpdated != null && !readOnly && canOfficeEditOutcomes(run)
 
-  if (!resultHeadline && !showNoDefPill && !showSiteMeta && !onOpen) return null
+  if (!resultHeadline && !showNoDefPill && !showSiteMeta && !onOpen && !canEditOutcome) return null
+
+  const siteSubline =
+    showSiteMeta
+      ? worksheetStopDisplaySubline(stop, {
+          siteCount,
+          siteIndex: siteIndex - 1,
+          primaryLabel: siteLabel,
+        })
+      : null
+
+  const siteMetaInner = (
+    <>
+      <span className="tabular-nums">Stop {stopNumber}</span>
+      <span>
+        <span className="fw-semibold text-body">{siteLabel}</span>
+        {siteSubline ? <span className="d-block">{siteSubline}</span> : null}
+      </span>
+    </>
+  )
 
   const inner = (
     <>
       {showSiteMeta ? (
-        <div className="run-location-card__test-site text-muted small">
-          <span className="tabular-nums">Stop {stopNumber}</span>
-          <span>
-            {siteLabel !== 'Primary testing location' ? siteLabel : `Site ${siteIndex}`}
-            {siteCount > 1 ? ` · ${siteIndex} of ${siteCount}` : ''}
-          </span>
-        </div>
+        onOpen ? (
+          <button
+            type="button"
+            className="run-location-card__test-site run-location-card__test-site-btn text-muted small"
+            onClick={onOpen}
+            aria-label={`View site details for stop ${stopNumber}`}
+          >
+            {siteMetaInner}
+          </button>
+        ) : (
+          <div className="run-location-card__test-site text-muted small">{siteMetaInner}</div>
+        )
       ) : null}
-      {resultHeadline ? (
+      {canEditOutcome ? (
+        <div
+          className="run-location-card__outcome"
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
+          <RunDetailsStopOutcomeSelect
+            stop={stop}
+            run={run}
+            routeId={routeId}
+            monthDate={monthIso}
+            readOnly={readOnly}
+            onStopUpdated={onStopUpdated}
+          />
+        </div>
+      ) : resultHeadline ? (
         <RunReviewOutcomeLabel
           stop={stop}
           monthDate={monthIso}
@@ -54,10 +107,19 @@ export function RunDetailsStopTestBlock({
       {showNoDefPill ? (
         <span className="run-details-stop-row__no-def-pill">No deficiencies confirmed</span>
       ) : null}
+      {canEditOutcome && onOpen && !showSiteMeta ? (
+        <button
+          type="button"
+          className="btn btn-link btn-sm p-0 align-self-start run-location-card__test-site-link"
+          onClick={onOpen}
+        >
+          Site details
+        </button>
+      ) : null}
     </>
   )
 
-  if (!onOpen) {
+  if (!onOpen || canEditOutcome) {
     return <div className="run-location-card__test-stop">{inner}</div>
   }
 
@@ -97,6 +159,13 @@ export function RunDetailsStopDeficienciesBlock({
 }) {
   const { siteLabel, siteIndex, siteCount, stopNumber } = card
   const showSiteMeta = showSiteLabel && siteCount > 1
+  const siteSubline = showSiteMeta
+    ? worksheetStopDisplaySubline(card.stop, {
+        siteCount,
+        siteIndex: siteIndex - 1,
+        primaryLabel: siteLabel,
+      })
+    : null
 
   if (!deficiencies.length) return null
 
@@ -106,7 +175,8 @@ export function RunDetailsStopDeficienciesBlock({
         <div className="run-location-card__deficiencies-site text-muted small">
           <span className="tabular-nums">Stop {stopNumber}</span>
           <span>
-            {siteLabel !== 'Primary testing location' ? siteLabel : `Site ${siteIndex}`}
+            <span className="fw-semibold text-body">{siteLabel}</span>
+            {siteSubline ? <span className="d-block">{siteSubline}</span> : null}
           </span>
         </div>
       ) : null}
@@ -152,6 +222,13 @@ export function RunDetailsStopFollowUpBlock({
   const hasChangeDetails = showFieldChanges && (changes.length > 0 || needsDetailFetch)
   const runComment = (stop.run_comments || '').trim()
   const showSiteMeta = showSiteLabel && siteCount > 1
+  const siteSubline = showSiteMeta
+    ? worksheetStopDisplaySubline(stop, {
+        siteCount,
+        siteIndex: siteIndex - 1,
+        primaryLabel: siteLabel,
+      })
+    : null
 
   const loadDetail = useCallback(async () => {
     if (!needsDetailFetch || detailLoading) return
@@ -184,7 +261,8 @@ export function RunDetailsStopFollowUpBlock({
         <div className="run-location-card__changes-site text-muted small mb-1">
           <span className="tabular-nums">Stop {stopNumber}</span>
           <span>
-            {siteLabel !== 'Primary testing location' ? siteLabel : `Site ${siteIndex}`}
+            <span className="fw-semibold text-body">{siteLabel}</span>
+            {siteSubline ? <span className="d-block">{siteSubline}</span> : null}
           </span>
         </div>
       ) : null}

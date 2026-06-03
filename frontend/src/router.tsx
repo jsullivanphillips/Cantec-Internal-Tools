@@ -23,6 +23,7 @@ const MonthlyLocationDetailPage = lazy(() => import('./pages/MonthlyLocationDeta
 const MonthlyRoutesMapPage = lazy(() => import('./pages/MonthlyRoutesMapPage'))
 const MonthlySpecialistsPage = lazy(() => import('./pages/MonthlySpecialistsPage'))
 const MonitoringCompaniesPage = lazy(() => import('./pages/MonitoringCompaniesPage'))
+const MonthlyBillingPage = lazy(() => import('./pages/MonthlyBillingPage'))
 const KeyMetricsPage = lazy(() => import('./pages/KeyMetricsPage'))
 const DeficiencyTrackerPage = lazy(() => import('./pages/DeficiencyTrackerPage'))
 const SchedulingAttackPage = lazy(() => import('./pages/SchedulingAttackPage'))
@@ -117,6 +118,7 @@ export const router = createBrowserRouter([
       { path: 'monthlies/routes/:routeId/runs/:monthIso', element: <RedirectMonthlyRunToPaperwork /> },
       { path: 'monthlies/routes/:routeId/worksheet/:monthIso', element: <TechnicianWorksheetPage /> },
       { path: 'monthlies/locations/:locationId', element: <MonthlyLocationDetailPage /> },
+      { path: 'monthlies/billing', element: <MonthlyBillingPage /> },
       { path: 'monthlies/map', element: <MonthlyRoutesMapPage /> },
       { path: 'monthlies/specialists', element: <MonthlySpecialistsPage /> },
       { path: 'monthlies/monitoring-companies', element: <MonitoringCompaniesPage /> },

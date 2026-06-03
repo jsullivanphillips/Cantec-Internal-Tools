@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button, Modal, Spinner } from 'react-bootstrap'
 import type { TechnicianWorksheetStop } from './monthlyRoutesShared'
+import { testingSitePrimaryLabel } from './testingSiteDisplay'
 import {
   portalStopCanChooseAllGood,
   portalStopNeedsDeficiencyVerify,
@@ -78,7 +79,7 @@ function severityTone(severity: string): string {
 }
 
 function stopAddressLabel(stop: TechnicianWorksheetStop): string {
-  return (stop.display_address || '').trim() || `Stop #${stop.stop_number}`
+  return testingSitePrimaryLabel(stop) || `Stop #${stop.stop_number}`
 }
 
 function modalHeading(recordAndClockOut: boolean): string {

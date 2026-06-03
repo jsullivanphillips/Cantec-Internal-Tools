@@ -120,8 +120,12 @@ def run_details_audit_location_ids(
 def _location_display_label(loc: MonthlyRouteLocation | None, location_id: int) -> str:
     if loc is None:
         return f"Location {location_id}"
-    s = (loc.display_address or loc.address or "").strip()
-    return s or f"Location {location_id}"
+    from app.monthly.monthly_sites_sync import sync_testing_sites_from_legacy
+    from app.monthly.testing_site_display import location_row_display_labels
+
+    ts_rows = sync_testing_sites_from_legacy(loc) if loc is not None else []
+    title, _labels = location_row_display_labels(loc, ts_rows)
+    return title or f"Location {location_id}"
 
 
 def collapse_worksheet_audit_changes_for_display(
@@ -427,6 +431,8 @@ def _serialize_review_stop_summary(
         "stop_number": int(stop["stop_number"]),
         "display_address": stop.get("display_address"),
         "label": stop.get("label"),
+        "primary_label": stop.get("primary_label"),
+        "billing_address_subline": stop.get("billing_address_subline"),
         "month_date": stop.get("month_date") or month_first.isoformat(),
         "result_status": stop.get("result_status"),
         "test_outcome": stop.get("test_outcome"),
@@ -706,6 +712,8 @@ def _serialize_location_stop(
         "stop_number": int(stop.get("stop_number") or 0),
         "display_address": stop.get("display_address"),
         "label": stop.get("label"),
+        "primary_label": stop.get("primary_label"),
+        "billing_address_subline": stop.get("billing_address_subline"),
         "month_date": stop.get("month_date") or month_first.isoformat(),
         "result_status": stop.get("result_status"),
         "test_outcome": stop.get("test_outcome"),
@@ -966,7 +974,9 @@ def run_details_worksheet_stop(
         load_stop_for_patch,
         serialize_worksheet_stop,
         worksheet_stop_number_for_site,
+        _testing_sites_for_location,
     )
+    from app.monthly.testing_site_display import testing_site_index_and_count
 
     run = MonthlyRouteRun.query.filter_by(
         monthly_route_id=route_id,
@@ -976,6 +986,8 @@ def run_details_worksheet_stop(
     if ts is None or loc is None:
         return None
     stop_number = worksheet_stop_number_for_site(route_id, month_first, testing_site_id)
+    ts_rows = _testing_sites_for_location(loc)
+    site_index, site_count = testing_site_index_and_count(ts_rows, ts)
     return serialize_worksheet_stop(
         ts,
         loc,
@@ -985,4 +997,6 @@ def run_details_worksheet_stop(
         stop_number=stop_number,
         run=run,
         include_portal_extras=True,
+        site_count=site_count,
+        site_index=site_index,
     )

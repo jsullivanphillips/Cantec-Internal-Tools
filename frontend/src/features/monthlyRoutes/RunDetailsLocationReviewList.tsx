@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 
-import { Form, Spinner } from 'react-bootstrap'
+import { Button, Form, Spinner } from 'react-bootstrap'
 
 import RunDetailsFieldChangesTable from './RunDetailsFieldChangesTable'
 import RunDetailsHistoryTable from './RunDetailsHistoryTable'
@@ -20,8 +20,11 @@ import {
   filterRunDetailFieldEditLocations,
   filterRunDetailPrepRows,
   flattenRunDetailPrepRows,
+  listAutoOfficeBillingUpdates,
   type RunDetailReviewSectionTab,
 } from './runDetailsLocationReview'
+import type { OfficeBillingStatus } from './officeRunReviewShared'
+import { apiJson } from '../../lib/apiClient'
 
 import { canOfficeEditBilling, runInOfficePrepPhase, worksheetRunFieldInProgress } from './runWorkflowShared'
 
@@ -48,6 +51,25 @@ const REVIEW_OUTCOME_PROGRESS: {
   { key: 'failed_count', label: 'failed', modifier: 'failed' },
   { key: 'skipped_count', label: 'skipped', modifier: 'skipped' },
 ]
+
+type BillingPatchResponse = {
+  ok: boolean
+  location_id: number
+  month_date: string
+  billing_status: OfficeBillingStatus
+}
+
+function formatAutoBillingError(err: unknown): string {
+  if (err && typeof err === 'object') {
+    const o = err as { error?: unknown; code?: unknown }
+    if (typeof o.error === 'string' && o.error.trim()) return o.error
+    if (o.code === 'billing_before_field_end') {
+      return 'Billing can be set after technicians end the field run.'
+    }
+  }
+  if (typeof err === 'string' && err.trim()) return err
+  return 'Could not auto-set billing. Try again or set billing manually.'
+}
 
 export default function RunDetailsLocationReviewList({
   locations,
@@ -100,6 +122,8 @@ export default function RunDetailsLocationReviewList({
   onRouteOrderChanged?: (orderedLocationIds: number[]) => void | Promise<void>
 }) {
   const [prepSearch, setPrepSearch] = useState('')
+  const [autoBillingBusy, setAutoBillingBusy] = useState(false)
+  const [autoBillingError, setAutoBillingError] = useState<string | null>(null)
 
   const prepPhase = paperworkViewMode === 'preparation' || runInOfficePrepPhase(run)
   const showBillingColumn = canOfficeEditBilling(run) && !runCompleted
@@ -133,6 +157,58 @@ export default function RunDetailsLocationReviewList({
       : paperworkViewMode === 'run_review'
         ? 'run_review'
         : sectionTab ?? 'run_review'
+
+  const showRunReview =
+    effectiveSectionTab === 'run_review' && paperworkViewMode !== 'exact_history'
+
+  const autoBillingUpdates = useMemo(
+    () => (showBillingColumn && showRunReview ? listAutoOfficeBillingUpdates(locations, monthDate) : []),
+    [locations, monthDate, showBillingColumn, showRunReview],
+  )
+
+  const onAutoSetBilling = useCallback(async () => {
+    if (autoBillingUpdates.length === 0 || autoBillingBusy) return
+    setAutoBillingBusy(true)
+    setAutoBillingError(null)
+    const failures: string[] = []
+    for (const { locationId, billingStatus } of autoBillingUpdates) {
+      const loc = locations.find((item) => item.location_id === locationId)
+      const previous = loc?.billing_status ?? 'unset'
+      onBillingPatched(locationId, billingStatus)
+      try {
+        const qs = new URLSearchParams({ month: monthDate })
+        const res = await apiJson<BillingPatchResponse>(
+          `/api/monthly_routes/routes/${routeId}/locations/${locationId}/billing_status?${qs.toString()}`,
+          {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ billing_status: billingStatus }),
+          },
+        )
+        const serverStatus = (res.billing_status || billingStatus).trim().toLowerCase()
+        if (serverStatus !== billingStatus.trim().toLowerCase()) {
+          onBillingPatched(locationId, res.billing_status)
+        }
+      } catch (err) {
+        onBillingPatched(locationId, previous ?? 'unset')
+        failures.push(loc?.location_label || `Location ${locationId}`)
+        if (failures.length === 1) {
+          setAutoBillingError(formatAutoBillingError(err))
+        }
+      }
+    }
+    if (failures.length > 1) {
+      setAutoBillingError(`Could not update billing for ${failures.length} locations.`)
+    }
+    setAutoBillingBusy(false)
+  }, [
+    autoBillingBusy,
+    autoBillingUpdates,
+    locations,
+    monthDate,
+    onBillingPatched,
+    routeId,
+  ])
 
   if (prepPhase) {
     return (
@@ -186,7 +262,6 @@ export default function RunDetailsLocationReviewList({
   }
 
   const showRunHistory = effectiveSectionTab === 'run_history'
-  const showRunReview = effectiveSectionTab === 'run_review'
   const showFieldChanges = effectiveSectionTab === 'field_changes'
   const lockedPaperwork = paperworkViewMode != null
 
@@ -210,31 +285,58 @@ export default function RunDetailsLocationReviewList({
       ) : null}
 
       {showRunReview ? (
-        <div className="monthly-run-detail-progress" aria-label="Review progress">
-          {showBillingColumn ? (
-            <span className="monthly-run-detail-progress__item">
-              <strong className="tabular-nums">{progress.billingDecidedCount}</strong>
-              <span className="text-muted"> / {progress.locationCount} billing decided</span>
-            </span>
-          ) : null}
-          {outcomeCounts
-            ? REVIEW_OUTCOME_PROGRESS.map(({ key, label, modifier }) => (
-                <span
-                  key={key}
-                  className={`monthly-run-detail-progress__item monthly-run-detail-progress__item--${modifier}`}
+        <>
+          <div className="monthly-run-detail-progress" aria-label="Review progress">
+            {showBillingColumn ? (
+              <span className="monthly-run-detail-progress__item">
+                <strong className="tabular-nums">{progress.billingDecidedCount}</strong>
+                <span className="text-muted"> / {progress.locationCount} billing decided</span>
+              </span>
+            ) : null}
+            {outcomeCounts
+              ? REVIEW_OUTCOME_PROGRESS.map(({ key, label, modifier }) => (
+                  <span
+                    key={key}
+                    className={`monthly-run-detail-progress__item monthly-run-detail-progress__item--${modifier}`}
+                  >
+                    <strong className="tabular-nums">{outcomeCounts[key]}</strong>
+                    <span className="text-muted"> {label}</span>
+                  </span>
+                ))
+              : null}
+            {runCompleted && progress.prepRemainingCount > 0 ? (
+              <span className="monthly-run-detail-progress__item">
+                <strong className="tabular-nums">{progress.prepRemainingCount}</strong>
+                <span className="text-muted"> prep remaining</span>
+              </span>
+            ) : null}
+            {showBillingColumn ? (
+              <span className="monthly-run-detail-progress__item monthly-run-detail-progress__item--action">
+                <Button
+                  size="sm"
+                  variant="outline-primary"
+                  className="monthly-run-detail-auto-billing-btn"
+                  disabled={autoBillingBusy || autoBillingUpdates.length === 0}
+                  onClick={() => void onAutoSetBilling()}
                 >
-                  <strong className="tabular-nums">{outcomeCounts[key]}</strong>
-                  <span className="text-muted"> {label}</span>
-                </span>
-              ))
-            : null}
-          {runCompleted && progress.prepRemainingCount > 0 ? (
-            <span className="monthly-run-detail-progress__item">
-              <strong className="tabular-nums">{progress.prepRemainingCount}</strong>
-              <span className="text-muted"> prep remaining</span>
-            </span>
+                  {autoBillingBusy ? (
+                    <>
+                      <Spinner animation="border" size="sm" className="me-1" aria-hidden />
+                      Auto setting…
+                    </>
+                  ) : (
+                    'Auto set billing'
+                  )}
+                </Button>
+              </span>
+            ) : null}
+          </div>
+          {autoBillingError ? (
+            <p className="small text-danger mb-2" role="alert">
+              {autoBillingError}
+            </p>
           ) : null}
-        </div>
+        </>
       ) : null}
 
       {!lockedPaperwork ? (

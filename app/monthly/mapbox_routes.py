@@ -37,10 +37,30 @@ def ordered_route_locations(route_id: int) -> list[MonthlyRouteLocation]:
 
 
 def serialize_route_stop(loc: MonthlyRouteLocation) -> dict[str, object]:
-    label = ((loc.display_address or loc.address or "").strip()) or f"Location {int(loc.id)}"
+    from app.monthly.monthly_sites_sync import sync_testing_sites_from_legacy
+    from app.monthly.testing_site_display import (
+        billing_address_for_location,
+        location_row_display_labels,
+        testing_site_billing_subline,
+    )
+
+    ts_rows = sync_testing_sites_from_legacy(loc)
+    billing = billing_address_for_location(loc, int(loc.id))
+    location_label, testing_site_labels = location_row_display_labels(loc, ts_rows)
+    primary = ts_rows[0] if len(ts_rows) == 1 else None
+    if primary is not None:
+        popup_title = location_label
+        popup_subline = testing_site_billing_subline(location_label, loc)
+    else:
+        popup_title = billing
+        popup_subline = None
     return {
         "id": int(loc.id),
-        "label": label,
+        "label": popup_title,
+        "primary_label": popup_title,
+        "billing_address_subline": popup_subline,
+        "testing_site_count": len(ts_rows),
+        "testing_site_labels": testing_site_labels,
         "address": loc.address,
         "display_address": loc.display_address,
         "building": loc.building,

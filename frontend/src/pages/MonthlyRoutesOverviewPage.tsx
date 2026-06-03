@@ -6,14 +6,22 @@ import type {
   MonthlyRouteOverviewRow,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
 import {
-  isRoutePlacedOnOverviewCalendar,
-  MONTHLY_ROUTE_CALENDAR_WEEK_COUNT,
-  MONTHLY_ROUTE_CALENDAR_WEEKDAY_HEADERS,
-  routeCalendarCellKey,
+  buildPacificWorkweekCalendarGrid,
+  effectiveRouteTestDayIso,
+  formatRouteOverviewMonthHeading,
+  monthFirstIsoPacificToday,
+  MONTHLY_ROUTE_OVERVIEW_WORKDAY_COLUMN_COUNT,
+  MONTHLY_ROUTE_OVERVIEW_WORKDAY_HEADERS,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
 import { apiJson, isAbortError } from '../lib/apiClient'
 
-function RouteOverviewCard({ row }: { row: MonthlyRouteOverviewRow }) {
+type RouteOverviewCardProps = {
+  row: MonthlyRouteOverviewRow
+  /** When false (calendar cell), only show route number — date is on the cell. */
+  showScheduleHint?: boolean
+}
+
+function RouteOverviewCard({ row, showScheduleHint = false }: RouteOverviewCardProps) {
   const { route } = row
   const count = route.location_count
   const countLabel =
@@ -26,7 +34,10 @@ function RouteOverviewCard({ row }: { row: MonthlyRouteOverviewRow }) {
       to={`/monthlies/routes/${route.id}`}
       className="monthly-routes-overview-calendar__card text-decoration-none"
     >
-      <div className="monthly-routes-overview-calendar__card-label fw-semibold">{route.label}</div>
+      <div className="monthly-routes-overview-calendar__card-label fw-semibold">
+        R{route.route_number}
+        {showScheduleHint ? ` · ${route.label}` : null}
+      </div>
       {countLabel ? (
         <div className="monthly-routes-overview-calendar__card-meta small text-muted">{countLabel}</div>
       ) : null}
@@ -38,6 +49,9 @@ export default function MonthlyRoutesOverviewPage() {
   const [payload, setPayload] = useState<MonthlyRouteOverviewPayload | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  const monthFirstIso = useMemo(() => monthFirstIsoPacificToday(), [])
+  const monthHeading = useMemo(() => formatRouteOverviewMonthHeading(monthFirstIso), [monthFirstIso])
 
   useEffect(() => {
     let active = true
@@ -64,38 +78,43 @@ export default function MonthlyRoutesOverviewPage() {
 
   const rows = useMemo(() => payload?.routes ?? [], [payload])
 
-  const { cellsByKey, unscheduledRows } = useMemo(() => {
-    const map = new Map<string, MonthlyRouteOverviewRow[]>()
+  const { calendarCells, routesByDateIso, unscheduledRows } = useMemo(() => {
+    const calendarCells = buildPacificWorkweekCalendarGrid(monthFirstIso)
+    const routesByDateIso = new Map<string, MonthlyRouteOverviewRow[]>()
     const unscheduled: MonthlyRouteOverviewRow[] = []
+
     for (const row of rows) {
-      const key = routeCalendarCellKey(row.route.week_occurrence, row.route.weekday_iso)
-      if (!key) {
+      const effectiveIso = effectiveRouteTestDayIso(monthFirstIso, row.route)
+      if (!effectiveIso) {
         unscheduled.push(row)
         continue
       }
-      const bucket = map.get(key)
+      const ym = monthFirstIso.slice(0, 7)
+      if (!effectiveIso.startsWith(ym)) {
+        unscheduled.push(row)
+        continue
+      }
+      const bucket = routesByDateIso.get(effectiveIso)
       if (bucket) bucket.push(row)
-      else map.set(key, [row])
+      else routesByDateIso.set(effectiveIso, [row])
     }
-    for (const bucket of map.values()) {
+
+    for (const bucket of routesByDateIso.values()) {
       bucket.sort((a, b) => a.route.route_number - b.route.route_number)
     }
     unscheduled.sort((a, b) => a.route.route_number - b.route.route_number)
-    return { cellsByKey: map, unscheduledRows: unscheduled }
-  }, [rows])
 
-  const weekRows = useMemo(
-    () => Array.from({ length: MONTHLY_ROUTE_CALENDAR_WEEK_COUNT }, (_, i) => i + 1),
-    []
-  )
+    return { calendarCells, routesByDateIso, unscheduledRows: unscheduled }
+  }, [rows, monthFirstIso])
 
-  const hasPlacedRoutes = rows.some((row) => isRoutePlacedOnOverviewCalendar(row.route))
+  const weekCount = calendarCells.length / MONTHLY_ROUTE_OVERVIEW_WORKDAY_COLUMN_COUNT
 
   return (
     <div className="d-flex flex-column gap-3">
       <Card className="app-surface-card">
         <Card.Body className="p-3 p-md-4">
-          <h2 className="processing-page-title mb-0">Routes</h2>
+          <h2 className="processing-page-title mb-1">Routes</h2>
+          <p className="text-muted mb-0">{monthHeading}</p>
         </Card.Body>
       </Card>
       <Card className="app-surface-card">
@@ -108,17 +127,13 @@ export default function MonthlyRoutesOverviewPage() {
             ) : (
               <>
                 <div
-                  className="monthly-routes-overview-calendar"
+                  className="monthly-routes-overview-calendar monthly-routes-overview-calendar--workweek"
+                  style={{ gridTemplateRows: `auto repeat(${weekCount}, minmax(5.5rem, auto))` }}
                   role="grid"
-                  aria-label="Monthly routes by week and weekday"
+                  aria-label={`Monthly routes for ${monthHeading}`}
                 >
                   <div className="monthly-routes-overview-calendar__header" role="row">
-                    <div
-                      className="monthly-routes-overview-calendar__corner"
-                      role="columnheader"
-                      aria-hidden
-                    />
-                    {MONTHLY_ROUTE_CALENDAR_WEEKDAY_HEADERS.map((day) => (
+                    {MONTHLY_ROUTE_OVERVIEW_WORKDAY_HEADERS.map((day) => (
                       <div
                         key={day}
                         className="monthly-routes-overview-calendar__day-header"
@@ -128,45 +143,73 @@ export default function MonthlyRoutesOverviewPage() {
                       </div>
                     ))}
                   </div>
-                  {weekRows.map((week) => (
-                    <div key={week} className="monthly-routes-overview-calendar__week-row" role="row">
-                      <div
-                        className="monthly-routes-overview-calendar__week-label"
-                        role="rowheader"
-                      >
-                        Week {week}
-                      </div>
-                      {MONTHLY_ROUTE_CALENDAR_WEEKDAY_HEADERS.map((_, weekdayIso) => {
-                        const key = routeCalendarCellKey(week, weekdayIso)
-                        const cellRows = key ? (cellsByKey.get(key) ?? []) : []
-                        return (
-                          <div
-                            key={`${week}-${weekdayIso}`}
-                            className="monthly-routes-overview-calendar__cell"
-                            role="gridcell"
-                          >
-                            <div className="monthly-routes-overview-calendar__cell-stack">
-                              {cellRows.map((row) => (
-                                <RouteOverviewCard key={row.route.id} row={row} />
-                              ))}
-                            </div>
-                          </div>
+                  {Array.from({ length: weekCount }, (_, weekIndex) => (
+                    <div
+                      key={weekIndex}
+                      className="monthly-routes-overview-calendar__week-row"
+                      role="row"
+                    >
+                      {calendarCells
+                        .slice(
+                          weekIndex * MONTHLY_ROUTE_OVERVIEW_WORKDAY_COLUMN_COUNT,
+                          weekIndex * MONTHLY_ROUTE_OVERVIEW_WORKDAY_COLUMN_COUNT +
+                            MONTHLY_ROUTE_OVERVIEW_WORKDAY_COLUMN_COUNT,
                         )
-                      })}
+                        .map((cell, cellIndex) => {
+                          if (cell.isPadding) {
+                            return (
+                              <div
+                                key={`pad-${weekIndex}-${cellIndex}`}
+                                className="monthly-routes-overview-calendar__cell monthly-routes-overview-calendar__cell--padding"
+                                role="gridcell"
+                                aria-hidden
+                              />
+                            )
+                          }
+                          const cellRows = routesByDateIso.get(cell.iso) ?? []
+                          const cellClassNames = [
+                            'monthly-routes-overview-calendar__cell',
+                            cell.isToday ? 'monthly-routes-overview-calendar__cell--today' : '',
+                            cell.isHoliday ? 'monthly-routes-overview-calendar__cell--holiday' : '',
+                          ]
+                            .filter(Boolean)
+                            .join(' ')
+                          return (
+                            <div
+                              key={cell.iso}
+                              className={cellClassNames}
+                              role="gridcell"
+                              aria-label={
+                                cell.holidayName
+                                  ? `${cell.dayOfMonth}, ${cell.holidayName}`
+                                  : String(cell.dayOfMonth)
+                              }
+                            >
+                              <div className="monthly-routes-overview-calendar__cell-day">
+                                {cell.dayOfMonth}
+                              </div>
+                              {cell.isHoliday && cellRows.length === 0 && cell.holidayName ? (
+                                <div className="monthly-routes-overview-calendar__holiday-label small text-muted">
+                                  {cell.holidayName}
+                                </div>
+                              ) : null}
+                              <div className="monthly-routes-overview-calendar__cell-stack">
+                                {cellRows.map((row) => (
+                                  <RouteOverviewCard key={row.route.id} row={row} />
+                                ))}
+                              </div>
+                            </div>
+                          )
+                        })}
                     </div>
                   ))}
                 </div>
-                {!hasPlacedRoutes && unscheduledRows.length > 0 ? (
-                  <div className="text-muted mt-3">
-                    Routes could not be placed on the calendar (invalid week or weekday).
-                  </div>
-                ) : null}
                 {unscheduledRows.length > 0 ? (
                   <div className="monthly-routes-overview-calendar__unscheduled mt-4">
-                    <h3 className="h6 text-muted mb-2">Unscheduled</h3>
+                    <h3 className="h6 text-muted mb-2">Unscheduled this month</h3>
                     <div className="monthly-routes-overview-calendar__unscheduled-stack d-flex flex-column gap-2">
                       {unscheduledRows.map((row) => (
-                        <RouteOverviewCard key={row.route.id} row={row} />
+                        <RouteOverviewCard key={row.route.id} row={row} showScheduleHint />
                       ))}
                     </div>
                   </div>

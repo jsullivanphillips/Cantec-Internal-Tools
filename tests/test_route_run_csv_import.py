@@ -240,6 +240,88 @@ def test_import_without_sync_stop_order_leaves_route_stop_order(import_client):
         assert db.session.get(MonthlyRouteLocation, loc2).route_stop_order == 1
 
 
+def test_import_without_sync_stop_order_applies_csv_session_order_to_run_review(import_client):
+    """CSV # drives run-month order even when library route_stop_order is left unchanged."""
+    from app.monthly.monthly_sites_sync import sync_testing_sites_from_legacy
+    from app.monthly.runs import get_or_create_monthly_route_run
+    from app.monthly.worksheet_stops import ensure_worksheet_stops_for_route_month, worksheet_stops_for_route_month
+
+    client, app = import_client
+    with app.app_context():
+        route_id, loc1, loc2 = _seed_route8_with_two_stops()
+        loc1_row = db.session.get(MonthlyRouteLocation, loc1)
+        loc2_row = db.session.get(MonthlyRouteLocation, loc2)
+        # Library order opposite of CSV (#1 Johnson, #2 Blanshard).
+        loc1_row.route_stop_order = 99
+        loc2_row.route_stop_order = 1
+        db.session.commit()
+        sync_testing_sites_from_legacy(loc1_row)
+        sync_testing_sites_from_legacy(loc2_row)
+        month_first = date(2026, 4, 1)
+        run = get_or_create_monthly_route_run(route_id, month_first, source="csv_import")
+        ensure_worksheet_stops_for_route_month(route_id, month_first, run)
+        ts1 = MonthlyTestingSite.query.filter_by(monthly_site_id=MonthlySite.query.filter_by(
+            legacy_monthly_route_location_id=loc1
+        ).one().id).one()
+        ts2 = MonthlyTestingSite.query.filter_by(monthly_site_id=MonthlySite.query.filter_by(
+            legacy_monthly_route_location_id=loc2
+        ).one().id).one()
+        mtsm1 = MonthlyTestingSiteMonth.query.filter_by(
+            monthly_testing_site_id=int(ts1.id),
+            month_date=month_first,
+        ).one()
+        mtsm2 = MonthlyTestingSiteMonth.query.filter_by(
+            monthly_testing_site_id=int(ts2.id),
+            month_date=month_first,
+        ).one()
+        mtsm1.result_status = "tested"
+        mtsm1.session_route_stop_order = None
+        mtsm2.session_route_stop_order = None
+        ts1_id = int(ts1.id)
+        ts2_id = int(ts2.id)
+        db.session.commit()
+
+    res = _post_csv(
+        client,
+        route_id,
+        _build_csv(address_header="Address", tech_notes_header="Tech Comments & Notes"),
+        sync_stop_order=False,
+    )
+    assert res.status_code == 200, res.get_data(as_text=True)
+    body = res.get_json()
+    assert body["session_stop_order_applied"] >= 2
+
+    with app.app_context():
+        assert db.session.get(MonthlyRouteLocation, loc1).route_stop_order == 99
+        assert db.session.get(MonthlyRouteLocation, loc2).route_stop_order == 1
+        h1 = MonthlyRouteTestHistory.query.filter_by(location_id=loc1, month_date=month_first).one()
+        h2 = MonthlyRouteTestHistory.query.filter_by(location_id=loc2, month_date=month_first).one()
+        assert h1.session_route_stop_order == 0
+        assert h2.session_route_stop_order == 1
+        mtsm1 = MonthlyTestingSiteMonth.query.filter_by(
+            monthly_testing_site_id=ts1_id,
+            month_date=month_first,
+        ).one()
+        mtsm2 = MonthlyTestingSiteMonth.query.filter_by(
+            monthly_testing_site_id=ts2_id,
+            month_date=month_first,
+        ).one()
+        assert mtsm1.session_route_stop_order == 0
+        assert mtsm2.session_route_stop_order == 1
+        stops = worksheet_stops_for_route_month(route_id, month_first, include_portal_extras=False)
+        assert [int(s["location_id"]) for s in stops] == [loc1, loc2]
+        assert [int(s["stop_number"]) for s in stops] == [1, 2]
+
+        from app.monthly.run_details_review import run_details_base_payload_extras
+
+        _counts, _billing, _meta, locations, _summary = run_details_base_payload_extras(
+            route_id,
+            month_first,
+        )
+        assert [int(row["location_id"]) for row in locations] == [loc1, loc2]
+        assert [int(row["first_stop_number"]) for row in locations] == [1, 2]
+
+
 def test_import_creates_run_and_snapshots(import_client):
     client, app = import_client
     with app.app_context():
@@ -342,6 +424,7 @@ def test_import_rejects_completed_run_409(import_client):
     assert res.status_code == 409, res.get_data(as_text=True)
     body = res.get_json()
     assert body.get("code") == "run_completed_csv_blocked"
+    assert body.get("month_date") == "2026-04-01"
 
 
 def test_import_allows_started_open_run(import_client):
@@ -892,7 +975,7 @@ def test_import_r15_style_headers_multiline_snapshots(import_client):
             location_id=loc_id, month_date=date(2026, 12, 1)
         ).one()
         assert h.facp == "EDWARDS 6500"
-        assert "Bullet" in (h.monitoring_notes or "")
+        assert "SIGNALS: A T" in (h.monitoring_notes or "")
         assert h.ring == "w/ Parking Attendant"
         assert h.annual_month == "December"
         assert h.testing_procedures == "RING BELLS BY 7:45AM"
@@ -926,3 +1009,171 @@ def test_import_r15_panel_fields_on_v2_testing_site(import_client):
         assert ts.panel == "EDWARDS 6500"
         assert ts.facp_detail == "EDWARDS 6500"
         assert ts.panel_location == "Electrical room"
+
+
+def _seed_route1_dual_address_billing() -> tuple[int, int, int, int]:
+    route = MonthlyRoute(id=1, route_number=1, weekday_iso=0, week_occurrence=1)
+    loc = MonthlyRouteLocation(
+        id=101,
+        address="2471 Sidney Ave",
+        address_normalized="2471 sidney ave",
+        property_management_company="Example PMC",
+        property_management_company_normalized="example pmc",
+        building="Main",
+        building_normalized="main",
+        status_normalized="active",
+        status_raw="Active",
+        monthly_route_id=1,
+    )
+    site = MonthlySite(id=501, legacy_monthly_route_location_id=101)
+    ts_primary = MonthlyTestingSite(
+        id=1001,
+        monthly_site_id=501,
+        sort_order=0,
+        label="2471 Sidney Ave",
+    )
+    ts_secondary = MonthlyTestingSite(
+        id=1002,
+        monthly_site_id=501,
+        sort_order=1,
+        label="9838 Second Street",
+    )
+    db.session.add_all([route, loc, site, ts_primary, ts_secondary])
+    db.session.commit()
+    return int(route.id), int(loc.id), int(ts_primary.id), int(ts_secondary.id)
+
+
+def _build_csv_route1_dual_address() -> bytes:
+    rows = [
+        ",,,,,,,,,,,",
+        "MONTHLY BELL TESTING,,,,,,,,,,,",
+        ",ROUTE:,1st Monday,,Route 1,,,,,,,",
+        ",DATE:,April,,2026,,,,,,,",
+        ",,,,,,,,,,,",
+        "#,Address,Annual,Ring,Key #,FACP,Monitoring,Testing Procedures,Tech Comments & Notes,Time In:,Time Out:",
+        '1,"2471 Sidney Ave\nName: Main\nManagement: Example PMC",Jan,R1,KEY-A,PANEL-A,Telus,Proc A,Note A,8:00am,8:30am',
+        '2,"9838 Second Street",Feb,R2,KEY-B,PANEL-B,Telus,Proc B,Note B,9:00am,9:30am',
+    ]
+    return ("\r\n".join(rows) + "\r\n").encode("utf-8")
+
+
+def test_import_matches_secondary_testing_site_by_label_street(import_client):
+    client, app = import_client
+    with app.app_context():
+        route_id, loc_id, _primary_ts_id, secondary_ts_id = _seed_route1_dual_address_billing()
+
+    res = _post_csv(client, route_id, _build_csv_route1_dual_address())
+    assert res.status_code == 200, res.get_data(as_text=True)
+    body = res.get_json()
+    assert body["testing_site_matches"] == 1
+    assert body["stop_month_upserts"] == 1
+    assert body["history_upserts"] == 1
+
+    with app.app_context():
+        hist = MonthlyRouteTestHistory.query.filter_by(
+            location_id=loc_id,
+            month_date=date(2026, 4, 1),
+        ).one()
+        assert hist.result_status == "tested"
+        assert hist.key_number == "KEY-A"
+        assert hist.facp == "PANEL-A"
+
+        secondary_mtsm = MonthlyTestingSiteMonth.query.filter_by(
+            monthly_testing_site_id=secondary_ts_id,
+            month_date=date(2026, 4, 1),
+        ).one()
+        assert secondary_mtsm.result_status == "tested"
+        assert secondary_mtsm.key_number == "KEY-B"
+        assert secondary_mtsm.panel == "PANEL-B"
+        assert secondary_mtsm.session_route_stop_order == 1
+
+
+def _seed_route2_with_off_route_testing_site_label() -> tuple[int, int]:
+    route1 = MonthlyRoute(id=1, route_number=1, weekday_iso=0, week_occurrence=1)
+    route2 = MonthlyRoute(id=2, route_number=2, weekday_iso=1, week_occurrence=1)
+    loc_on_r2 = MonthlyRouteLocation(
+        id=201,
+        address="2471 Sidney Ave",
+        address_normalized="2471 sidney ave",
+        property_management_company_normalized="",
+        building_normalized="",
+        status_normalized="active",
+        status_raw="Active",
+        monthly_route_id=2,
+    )
+    site = MonthlySite(id=601, legacy_monthly_route_location_id=201)
+    ts = MonthlyTestingSite(
+        id=2001,
+        monthly_site_id=601,
+        sort_order=0,
+        label="9838 Second Street",
+    )
+    db.session.add_all([route1, route2, loc_on_r2, site, ts])
+    db.session.commit()
+    return int(route1.id), int(route2.id)
+
+
+def test_import_testing_site_fallback_scoped_to_route(import_client):
+    client, app = import_client
+    with app.app_context():
+        route1_id, _route2_id = _seed_route2_with_off_route_testing_site_label()
+
+    res = _post_csv(client, route1_id, _build_csv_route1_dual_address())
+    assert res.status_code == 200, res.get_data(as_text=True)
+    body = res.get_json()
+    assert body["testing_site_matches"] == 0
+    kinds = [issue["kind"] for issue in body["issues"]]
+    assert "unmatched" in kinds
+
+
+def _seed_route1_ambiguous_testing_site_labels() -> int:
+    route = MonthlyRoute(id=1, route_number=1, weekday_iso=0, week_occurrence=1)
+    loc1 = MonthlyRouteLocation(
+        id=301,
+        address="100 Alpha St",
+        address_normalized="100 alpha st",
+        property_management_company_normalized="",
+        building_normalized="",
+        status_normalized="active",
+        status_raw="Active",
+        monthly_route_id=1,
+    )
+    loc2 = MonthlyRouteLocation(
+        id=302,
+        address="200 Beta St",
+        address_normalized="200 beta st",
+        property_management_company_normalized="",
+        building_normalized="",
+        status_normalized="active",
+        status_raw="Active",
+        monthly_route_id=1,
+    )
+    site1 = MonthlySite(id=701, legacy_monthly_route_location_id=301)
+    site2 = MonthlySite(id=702, legacy_monthly_route_location_id=302)
+    ts1 = MonthlyTestingSite(id=3001, monthly_site_id=701, sort_order=0, label="9838 Second Street")
+    ts2 = MonthlyTestingSite(id=3002, monthly_site_id=702, sort_order=0, label="9838 Second Street")
+    db.session.add_all([route, loc1, loc2, site1, site2, ts1, ts2])
+    db.session.commit()
+    return int(route.id)
+
+
+def test_import_testing_site_ambiguous_when_two_labels_collide(import_client):
+    client, app = import_client
+    with app.app_context():
+        route_id = _seed_route1_ambiguous_testing_site_labels()
+
+    rows = [
+        ",,,,,,,,,,,",
+        "MONTHLY BELL TESTING,,,,,,,,,,,",
+        ",ROUTE:,1st Monday,,Route 1,,,,,,,",
+        ",DATE:,April,,2026,,,,,,,",
+        ",,,,,,,,,,,",
+        "#,Address,Annual,Ring,Key #,FACP,Monitoring,Testing Procedures,Tech Comments & Notes,Time In:,Time Out:",
+        '1,"9838 Second Street",Jan,R1,KEY-A,PANEL-A,Telus,Proc,Note,8:00am,8:30am',
+    ]
+    csv_bytes = ("\r\n".join(rows) + "\r\n").encode("utf-8")
+    res = _post_csv(client, route_id, csv_bytes)
+    assert res.status_code == 200, res.get_data(as_text=True)
+    body = res.get_json()
+    assert body["testing_site_matches"] == 0
+    assert any(issue["kind"] == "testing_site_ambiguous" for issue in body["issues"])

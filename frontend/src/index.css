@@ -278,6 +278,11 @@ body.portal-worksheet-body-lock {
   font-weight: 600;
 }
 
+/* Keep hero→paperwork gap; tighten space before accordions */
+.monthly-route-detail-page .monthly-route-paperwork-entry {
+  margin-bottom: -0.5rem;
+}
+
 .paperwork-run-selector {
   display: flex;
   flex-wrap: nowrap;
@@ -578,6 +583,10 @@ body.portal-worksheet-body-lock {
   margin-top: 1rem;
 }
 
+.monthly-location-billing-comments-panel {
+  margin-top: 1rem;
+}
+
 .monthly-location-detail-accordion {
   margin-top: 1rem;
 }
@@ -720,6 +729,28 @@ body.portal-worksheet-body-lock {
   text-decoration: none;
 }
 
+.monthly-location-testing-history-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.monthly-location-testing-history-field-label {
+  margin-bottom: 0.1rem;
+  color: var(--ml-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.monthly-location-testing-history-readonly-value {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
 .monthly-location-testing-history-status-chip {
   width: fit-content;
   max-width: 100%;
@@ -745,6 +776,48 @@ body.portal-worksheet-body-lock {
 .monthly-location-testing-history-status-chip--button:focus-visible {
   border-color: rgba(37, 99, 235, 0.45);
   box-shadow: 0 0 0 0.16rem rgba(37, 99, 235, 0.12);
+}
+
+.monthly-location-testing-history-status-chip--tested {
+  border-color: rgba(25, 135, 84, 0.35);
+  background-color: rgba(25, 135, 84, 0.12);
+  color: #146c43;
+}
+
+.monthly-location-testing-history-status-chip--skipped {
+  border-color: rgba(217, 164, 6, 0.4);
+  background-color: rgba(217, 164, 6, 0.18);
+  color: #856404;
+}
+
+.monthly-location-testing-history-status-chip--annual {
+  border-color: rgba(111, 66, 193, 0.3);
+  background-color: rgba(111, 66, 193, 0.1);
+  color: #6f42c1;
+}
+
+.monthly-location-testing-history-status-chip--bill {
+  border-color: rgba(25, 135, 84, 0.35);
+  background-color: rgba(25, 135, 84, 0.12);
+  color: #146c43;
+}
+
+.monthly-location-testing-history-status-chip--do-not-bill {
+  border-color: rgba(220, 53, 69, 0.32);
+  background-color: rgba(220, 53, 69, 0.1);
+  color: #b02a37;
+}
+
+.monthly-location-testing-history-status-chip--unset {
+  border-color: rgba(217, 164, 6, 0.4);
+  background-color: rgba(217, 164, 6, 0.18);
+  color: #856404;
+}
+
+.monthly-location-testing-history-status-chip--legacy {
+  border-color: rgba(108, 117, 125, 0.35);
+  background-color: rgba(108, 117, 125, 0.12);
+  color: #495057;
 }
 
 .monthly-location-testing-history-status-chip--button:disabled {
@@ -1483,21 +1556,21 @@ body.portal-worksheet-body-lock {
   text-align: center;
 }
 
-/* Monthly routes overview (/monthlies/routes) — generic 4-week calendar */
+/* Monthly routes overview (/monthlies/routes) — Pacific current-month workweek calendar */
 .monthly-routes-overview-calendar {
   display: grid;
-  grid-template-columns: 4.5rem repeat(7, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 0.5rem;
   width: 100%;
+}
+
+.monthly-routes-overview-calendar--workweek {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 .monthly-routes-overview-calendar__header,
 .monthly-routes-overview-calendar__week-row {
   display: contents;
-}
-
-.monthly-routes-overview-calendar__corner {
-  min-height: 2rem;
 }
 
 .monthly-routes-overview-calendar__day-header {
@@ -1510,18 +1583,8 @@ body.portal-worksheet-body-lock {
   padding: 0.25rem 0;
 }
 
-.monthly-routes-overview-calendar__week-label {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--bs-secondary-color);
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-end;
-  padding: 0.5rem 0.35rem 0 0;
-  text-align: right;
-}
-
 .monthly-routes-overview-calendar__cell {
+  position: relative;
   min-height: 5.5rem;
   border: 1px solid var(--bs-border-color);
   border-radius: 0.5rem;
@@ -1529,11 +1592,42 @@ body.portal-worksheet-body-lock {
   padding: 0.35rem;
 }
 
+.monthly-routes-overview-calendar__cell--padding {
+  visibility: hidden;
+  border-color: transparent;
+  background: transparent;
+  min-height: 0;
+  padding: 0;
+}
+
+.monthly-routes-overview-calendar__cell--today {
+  border-color: var(--bs-primary, #0d6efd);
+  box-shadow: inset 0 0 0 1px var(--bs-primary, #0d6efd);
+}
+
+.monthly-routes-overview-calendar__cell--holiday {
+  background: var(--bs-secondary-bg, #e9ecef);
+}
+
+.monthly-routes-overview-calendar__cell-day {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--bs-secondary-color);
+  text-align: right;
+  line-height: 1;
+  margin-bottom: 0.25rem;
+}
+
+.monthly-routes-overview-calendar__holiday-label {
+  font-size: 0.625rem;
+  line-height: 1.15;
+  margin-bottom: 0.25rem;
+}
+
 .monthly-routes-overview-calendar__cell-stack {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
-  min-height: 100%;
 }
 
 .monthly-routes-overview-calendar__card {
@@ -1568,7 +1662,6 @@ body.portal-worksheet-body-lock {
 
 @media (max-width: 767.98px) {
   .monthly-routes-overview-calendar {
-    grid-template-columns: 3rem repeat(7, minmax(0, 1fr));
     gap: 0.25rem;
     font-size: 0.7rem;
   }
@@ -1577,14 +1670,13 @@ body.portal-worksheet-body-lock {
     font-size: 0.65rem;
   }
 
-  .monthly-routes-overview-calendar__week-label {
-    font-size: 0.65rem;
-    padding-right: 0.15rem;
-  }
-
   .monthly-routes-overview-calendar__cell {
     min-height: 4rem;
     padding: 0.2rem;
+  }
+
+  .monthly-routes-overview-calendar__holiday-label {
+    display: none;
   }
 
   .monthly-routes-overview-calendar__card {
@@ -3318,6 +3410,12 @@ body.portal-worksheet-body-lock {
 }
 
 /* Monthly route detail — compact enterprise detail workspace */
+.monthly-route-detail-page .monthly-route-detail-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
 .monthly-route-detail-container {
   width: 100%;
   max-width: none;
@@ -3788,6 +3886,15 @@ body.portal-worksheet-body-lock {
 
 .monthly-run-detail-progress__item--skipped strong {
   color: #64748b;
+}
+
+.monthly-run-detail-progress__item--action {
+  display: inline-flex;
+  align-items: center;
+}
+
+.monthly-run-detail-auto-billing-btn {
+  font-size: 0.84rem;
 }
 
 .run-location-card-list {
@@ -5658,12 +5765,37 @@ body.portal-worksheet-body-lock {
   flex: 0 0 auto;
 }
 
-.monthly-route-map-card__canvas {
-  min-height: 22rem;
+.monthly-route-map-card__canvas-shell {
+  /* Default taller than before (was 22rem min-only); drag bottom edge to resize */
+  height: 34rem;
+  min-height: 18rem;
+  max-height: min(52rem, 72vh);
+  resize: vertical;
   overflow: hidden;
   border: 1px solid var(--ml-border-soft);
   border-radius: var(--ml-radius-md);
   background: #e8eef5;
+  position: relative;
+}
+
+.monthly-route-map-card__canvas-shell::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 0.35rem;
+  z-index: 2;
+  width: 2.75rem;
+  height: 0.35rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.22);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.monthly-route-map-card__canvas {
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
 }
 
 .monthly-route-map-card__empty {
@@ -5691,6 +5823,99 @@ body.portal-worksheet-body-lock {
   color: var(--ml-muted);
   font-size: 0.78rem;
   font-weight: 700;
+}
+
+.monthly-route-map-card__resize-hint {
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.monthly-route-map-card__stat--warning {
+  border-color: #f0c36d !important;
+  background: #fff8e8 !important;
+}
+
+.monthly-route-map-card__stat--warning strong {
+  color: #9a6700;
+}
+
+.monthly-route-map-card__missing-panel {
+  border: 1px solid #f0c36d;
+  border-radius: var(--ml-radius-md);
+  background: #fffdf6;
+  overflow: hidden;
+}
+
+.monthly-route-map-card__missing-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.65rem 0.85rem;
+  border: 0;
+  background: transparent;
+  color: var(--ml-text);
+  font-size: 0.88rem;
+  text-align: left;
+}
+
+.monthly-route-map-card__missing-toggle:hover {
+  background: #fff6e0;
+}
+
+.monthly-route-map-card__missing-intro {
+  padding: 0 0.85rem;
+}
+
+.monthly-route-map-card__missing-list {
+  list-style: none;
+  padding: 0 0.85rem 0.85rem;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.monthly-route-map-card__missing-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem 0.75rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--ml-border-soft);
+  border-radius: 0.55rem;
+  background: #fff;
+}
+
+.monthly-route-map-card__missing-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  min-width: 0;
+  flex: 1 1 12rem;
+}
+
+.monthly-route-map-card__missing-order {
+  flex: 0 0 auto;
+  width: 1.5rem;
+  height: 1.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.monthly-route-map-card__missing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  flex: 0 0 auto;
 }
 
 .monthly-route-map-marker {
@@ -8405,6 +8630,58 @@ body {
   }
 }
 
+.pw-mock-nav-stop-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.35rem;
+  margin-bottom: 0.35rem;
+}
+
+.pw-mock-nav-stop-map {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  align-self: stretch;
+  width: 2.25rem;
+  min-height: 2.25rem;
+  padding: 0;
+  border: 1px solid var(--pw-border-soft);
+  border-radius: 0.65rem;
+  background: #fff;
+  color: var(--pw-text-muted);
+  cursor: pointer;
+  transition:
+    background-color 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+.pw-mock-nav-stop-map:hover {
+  background: #eef5ff;
+  border-color: #d7e7ff;
+  color: #1d4ed8;
+}
+
+.pw-mock-nav-stop-map:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.pw-mock-nav-stop-map.pw-mock-nav-stop--active {
+  background: var(--pw-progress-soft);
+  border-color: var(--pw-progress-soft);
+  color: #1e40af;
+  box-shadow: none;
+}
+
+.pw-mock-nav-stop-row .pw-mock-nav-stop--expanded {
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
 .pw-mock-nav-stop {
   display: block;
   width: 100%;
@@ -8497,7 +8774,6 @@ body {
 
 .pw-mock-nav-stop--expanded {
   padding: 0.65rem 0.7rem;
-  margin-bottom: 0.35rem;
   background: #fff;
   border-color: var(--pw-border-soft);
   box-shadow: 0 2px 10px rgba(15, 23, 42, 0.035);
@@ -8881,6 +9157,46 @@ body {
   font-size: 0.88rem;
   line-height: 1.35;
   color: #475569;
+}
+
+.pw-mock-header-meta-row {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 0.65rem;
+  margin-top: 0.2rem;
+}
+
+.pw-mock-header-meta-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.pw-mock-header-meta-copy .pw-mock-header-line + .pw-mock-header-line {
+  margin-top: 0.2rem;
+}
+
+.pw-mock-header-directions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  align-self: flex-end;
+}
+
+.pw-mock-header-directions-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1;
+  color: #2563eb;
+  white-space: nowrap;
+}
+
+.pw-mock-header-directions-btn {
+  width: 3rem;
+  min-height: 3rem;
+  align-self: auto;
+  font-size: 1.2rem;
 }
 
 .pw-mock-header-times,

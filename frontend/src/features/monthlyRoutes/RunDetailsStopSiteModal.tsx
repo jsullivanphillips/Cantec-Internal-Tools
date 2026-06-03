@@ -12,11 +12,12 @@ import {
   runDetailsStopDisplayStatus,
   runDetailsStopHeaderBandClass,
 } from './runDetailsStopSiteDisplay'
+import { TestingSiteStopHeading } from './testingSiteDisplay'
 import { useRunDetailsWorksheetStops } from './useRunDetailsWorksheetStops'
 import type { RunDetailsStopPatchApi } from './useRunDetailsStopPatch'
 import type { TechnicianWorksheetRun, TechnicianWorksheetStop } from './monthlyRoutesShared'
-import { worksheetRunExplicitlyCompleted } from './monthlyRoutesShared'
 import { portalOutcomeDisplay, portalStopHasTestOutcome } from './portalWorkflowShared'
+import { runDetailsOfficeReviewReadOnly } from './runWorkflowShared'
 
 type Props = {
   show: boolean
@@ -51,9 +52,7 @@ export default function RunDetailsStopSiteModal({
 
   const stop: TechnicianWorksheetStop | undefined =
     testingSiteId != null ? getStop(testingSiteId) : undefined
-  const readOnly =
-    (run?.source || '').trim().toLowerCase() === 'csv_import' ||
-    worksheetRunExplicitlyCompleted(run)
+  const readOnly = runDetailsOfficeReviewReadOnly(run)
   const displayStatus = stop ? runDetailsStopDisplayStatus(stop) : 'pending'
   const activeSkipLabel = stop ? runDetailsSkipReasonDisplay(stop) : null
   const activePanelDisplay = stop ? runDetailsHeaderPanelDisplay(stop) : null
@@ -120,7 +119,12 @@ export default function RunDetailsStopSiteModal({
                   onStopUpdated={handleStopPatched}
                 />
               </div>
-              <h2 className="pw-mock-header-address h5 mb-0">{stop.display_address}</h2>
+              <TestingSiteStopHeading
+                stop={stop}
+                as="h2"
+                primaryClassName="pw-mock-header-address h5 mb-0"
+                sublineClassName="pw-mock-header-line text-muted"
+              />
               {stop.building_name ? (
                 <div className="pw-mock-header-line">{stop.building_name}</div>
               ) : null}

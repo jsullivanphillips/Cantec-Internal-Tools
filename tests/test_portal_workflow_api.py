@@ -78,6 +78,8 @@ def _seed_route_with_two_stops() -> tuple[int, int, int, int]:
         route_stop_order=0,
         keys="KEY-A",
         ring_detail="R-1",
+        latitude=48.4284,
+        longitude=-123.3656,
     )
     db.session.add_all([route, loc])
     db.session.commit()
@@ -389,6 +391,8 @@ def test_worksheet_payload_includes_portal_fields(portal_client, monkeypatch):
     assert "deficiencies" in stop
     assert "billing_status" in stop
     assert "portal_read_only" in stop
+    assert stop["latitude"] == 48.4284
+    assert stop["longitude"] == -123.3656
 
 
 def test_test_outcome_validation_rules(portal_client, monkeypatch):

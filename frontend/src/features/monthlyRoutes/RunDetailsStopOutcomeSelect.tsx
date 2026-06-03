@@ -18,15 +18,14 @@ import { portalStatusPillClass } from './portalWorkflowShared'
 import { canOfficeEditOutcomes } from './runWorkflowShared'
 import type { TechnicianWorksheetRun, TechnicianWorksheetStop } from './monthlyRoutesShared'
 import {
-  portalStopHasTestOutcome,
+  OFFICE_OUTCOME_PENDING_VALUE,
+  officeOutcomeSelectValue,
   portalStopNeedsDeficiencyVerify,
   portalStopNeedsNoDeficiencyConfirm,
   TEST_OUTCOME_OPTIONS,
   type PortalSkipCategory,
   type PortalTestOutcome,
 } from './portalWorkflowShared'
-
-const PENDING_VALUE = '__pending__'
 
 type Props = {
   stop: TechnicianWorksheetStop
@@ -37,15 +36,8 @@ type Props = {
   onStopUpdated: (stop: TechnicianWorksheetStop) => void | Promise<void>
 }
 
-function outcomeSelectValue(stop: TechnicianWorksheetStop): string {
-  if (portalStopHasTestOutcome(stop)) {
-    return (stop.test_outcome || '').trim().toLowerCase()
-  }
-  return PENDING_VALUE
-}
-
 function pillStatusClass(selectValue: string): string {
-  if (selectValue === PENDING_VALUE) return 'pending'
+  if (selectValue === OFFICE_OUTCOME_PENDING_VALUE) return 'pending'
   if (selectValue === 'skipped') return 'skipped'
   if (selectValue === 'passed_with_problems') return 'passed-problems'
   if (selectValue === 'failed') return 'failed'
@@ -73,7 +65,7 @@ export default function RunDetailsStopOutcomeSelect({
 }: Props) {
   const displayStatus = runDetailsStopDisplayStatus(stop)
   const canEdit = !readOnly && canOfficeEditOutcomes(run)
-  const [selectValue, setSelectValue] = useState(() => outcomeSelectValue(stop))
+  const [selectValue, setSelectValue] = useState(() => officeOutcomeSelectValue(stop))
   const [saving, setSaving] = useState(false)
   const [skipModalOpen, setSkipModalOpen] = useState(false)
   const [resultsModalOpen, setResultsModalOpen] = useState(false)
@@ -82,13 +74,13 @@ export default function RunDetailsStopOutcomeSelect({
   const skipRevertRef = useRef<string | null>(null)
 
   useEffect(() => {
-    setSelectValue(outcomeSelectValue(stop))
+    setSelectValue(officeOutcomeSelectValue(stop))
     setLocalStop(stop)
   }, [stop])
 
   const pillClass = canEdit ? pillStatusClass(selectValue) : runDetailsStopStatusPillClass(stop, monthDate)
   const pillLabel = useMemo(() => {
-    if (selectValue === PENDING_VALUE) return 'Pending'
+    if (selectValue === OFFICE_OUTCOME_PENDING_VALUE) return 'Pending'
     const opt = TEST_OUTCOME_OPTIONS.find((o) => o.value === selectValue)
     if (opt) return opt.label
     return runDetailsStopStatusLabel(displayStatus, stop)
@@ -128,11 +120,11 @@ export default function RunDetailsStopOutcomeSelect({
     setSaving(true)
     try {
       const updated = await officeClearStopTestOutcome(routeId, monthDate, stop.testing_site_id)
-      setSelectValue(PENDING_VALUE)
+      setSelectValue(OFFICE_OUTCOME_PENDING_VALUE)
       setLocalStop(updated)
       await onStopUpdated(updated)
     } catch (err) {
-      setSelectValue(outcomeSelectValue(stop))
+      setSelectValue(officeOutcomeSelectValue(stop))
       window.alert(formatOutcomeApiError(err))
     } finally {
       setSaving(false)
@@ -145,8 +137,8 @@ export default function RunDetailsStopOutcomeSelect({
       const previous = selectValue
       if (nextRaw === previous) return
 
-      if (nextRaw === PENDING_VALUE) {
-        setSelectValue(PENDING_VALUE)
+      if (nextRaw === OFFICE_OUTCOME_PENDING_VALUE) {
+        setSelectValue(OFFICE_OUTCOME_PENDING_VALUE)
         void applyClear().catch(() => setSelectValue(previous))
         return
       }
@@ -181,7 +173,7 @@ export default function RunDetailsStopOutcomeSelect({
       setSkipModalOpen(false)
       skipRevertRef.current = null
       void applyOutcome('skipped', { skipCategory: category, skipNote: note }).catch(() => {
-        setSelectValue(outcomeSelectValue(stop))
+        setSelectValue(officeOutcomeSelectValue(stop))
       })
     },
     [applyOutcome, stop],
@@ -258,7 +250,7 @@ export default function RunDetailsStopOutcomeSelect({
           aria-label={`Test outcome: ${pillLabel}`}
           onChange={(e) => handleSelectChange(e.target.value)}
         >
-          <option value={PENDING_VALUE}>Pending</option>
+          <option value={OFFICE_OUTCOME_PENDING_VALUE}>Pending</option>
           {TEST_OUTCOME_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
               {opt.label}

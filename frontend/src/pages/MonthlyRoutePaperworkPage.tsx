@@ -105,7 +105,7 @@ export default function MonthlyRoutePaperworkPage() {
   const currentMonthIso = monthFirstIsoPacificToday()
 
   const [routeMeta, setRouteMeta] = useState<MonthlyRouteDetailPayload | null>(null)
-  const [, setRouteMetaLoading] = useState(true)
+  const [routeMetaLoading, setRouteMetaLoading] = useState(true)
   const [payload, setPayload] = useState<MonthlyRunDetailPayload | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -131,10 +131,15 @@ export default function MonthlyRoutePaperworkPage() {
     [routeMeta?.runs_by_month, currentMonthIso],
   )
 
-  const monthQuery = useMemo(
-    () => resolvePaperworkMonthQuery(searchParams.get('month'), currentMonthIso, selectableMonths),
-    [searchParams, currentMonthIso, selectableMonths],
-  )
+  const monthQuery = useMemo(() => {
+    const monthParam = searchParams.get('month')
+    if (routeMetaLoading && routeMeta == null) {
+      const trimmed = (monthParam ?? '').trim()
+      if (trimmed) return trimmed
+      return currentMonthIso
+    }
+    return resolvePaperworkMonthQuery(monthParam, currentMonthIso, selectableMonths)
+  }, [searchParams, currentMonthIso, selectableMonths, routeMetaLoading, routeMeta])
 
   const paperworkViewMode = useMemo(
     () => derivePaperworkViewMode(payload?.run ?? null, monthQuery, currentMonthIso),
@@ -163,11 +168,12 @@ export default function MonthlyRoutePaperworkPage() {
   )
 
   useEffect(() => {
+    if (routeMetaLoading) return
     const param = searchParams.get('month')
     if (param && param !== monthQuery) {
       syncMonthInUrl(monthQuery)
     }
-  }, [searchParams, monthQuery, syncMonthInUrl])
+  }, [searchParams, monthQuery, syncMonthInUrl, routeMetaLoading])
 
   const loadRouteMeta = useCallback(async (signal?: AbortSignal) => {
     if (!Number.isFinite(idNum)) return
@@ -391,11 +397,19 @@ export default function MonthlyRoutePaperworkPage() {
   const applyWorkflowRunUpdate = useCallback(
     (run: TechnicianWorksheetRun) => {
       runDetailsFetchSeqRef.current += 1
-      setPayload((prev) => (prev ? patchRunDetailPayloadRun(prev, run) : prev))
-      setRouteMeta((prev) => patchRouteMetaRunMonth(prev, monthQuery, run))
       if (Number.isFinite(idNum)) {
+        abortPaperworkRunDetailsFetch(idNum, monthQuery)
         invalidatePaperworkSecondaryCaches(idNum, monthQuery)
       }
+      setPayload((prev) => {
+        if (!prev) return prev
+        const next = patchRunDetailPayloadRun(prev, run)
+        if (Number.isFinite(idNum)) {
+          setCachedRunDetails(idNum, monthQuery, next)
+        }
+        return next
+      })
+      setRouteMeta((prev) => patchRouteMetaRunMonth(prev, monthQuery, run))
     },
     [monthQuery, idNum],
   )

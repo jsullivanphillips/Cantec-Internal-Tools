@@ -132,7 +132,16 @@ def _run_cli(
     else:
         print("[inspection-csv] Committed.", flush=True)
 
-    fatal_kinds = frozenset({"missing_address", "unmatched", "ambiguous", "duplicate"})
+    fatal_kinds = frozenset(
+        {
+            "missing_address",
+            "unmatched",
+            "ambiguous",
+            "duplicate",
+            "testing_site_ambiguous",
+            "testing_site_duplicate",
+        }
+    )
     fatal = [i for i in result.issues if i.kind in fatal_kinds]
     if fatal:
         print(f"[inspection-csv] Non-zero exit: {len(fatal)} fatal row issue(s).", flush=True)

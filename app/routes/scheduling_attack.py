@@ -837,85 +837,11 @@ def _iter_workdays(start_dt, end_dt):
             yield cur
         cur += timedelta(days=1)
 
-def _nth_weekday_of_month(year, month, weekday, n):
-    # weekday: Mon=0..Sun=6, n>=1
-    first, last = _month_range(year, month)
-    count, cur = 0, first
-    while cur <= last:
-        if cur.weekday() == weekday:
-            count += 1
-            if count == n:
-                return cur
-        cur += timedelta(days=1)
-    return None
+from app.monthly.bc_stat_holidays import (
+    bc_richer_holidays as _bc_richer_holidays,
+    company_9_holidays as _company_9_holidays,
+)
 
-def _weekday_before(year, month, day, weekday):
-    # e.g., Monday before May 25 (Victoria Day): weekday=0 (Mon)
-    target = date(year, month, day)
-    cur = target - timedelta(days=1)
-    while cur.weekday() != weekday:
-        cur -= timedelta(days=1)
-    return cur
-
-def _observed(dt):
-    # If holiday falls on weekend, observe on weekday (Mon for Sat/Sun)
-    if dt.weekday() == 5:  # Sat -> Friday (some orgs) or Monday; Canada often Monday
-        return dt + timedelta(days=2)
-    if dt.weekday() == 6:  # Sun -> Monday
-        return dt + timedelta(days=1)
-    return dt
-
-# Minimal “company 9” stat set (matches your previous total = 9 days)
-def _company_9_holidays(year):
-    # New Year’s, Family Day (BC 3rd Mon Feb), Good Friday, Victoria Day,
-    # Canada Day, Labour Day, Thanksgiving, Remembrance Day, Christmas.
-    # (No BC Day, Truth & Reconciliation, Boxing Day to keep it at 9.)
-    # ---- Good Friday requires Easter calculation (Computus) ----
-    # Anonymous Gregorian computus:
-    a = year % 19
-    b = year // 100
-    c = year % 100
-    d = b // 4
-    e = b % 4
-    f = (b + 8) // 25
-    g = (b - f + 1) // 3
-    h = (19*a + b - d - g + 15) % 30
-    i = c // 4
-    k = c % 4
-    l = (32 + 2*e + 2*i - h - k) % 7
-    m = (a + 11*h + 22*l) // 451
-    easter_month = (h + l - 7*m + 114) // 31  # 3=Mar, 4=Apr
-    easter_day = ((h + l - 7*m + 114) % 31) + 1
-    easter = date(year, easter_month, easter_day)
-    good_friday = easter - timedelta(days=2)
-
-    holidays = {
-        "New Year's Day": _observed(date(year, 1, 1)),
-        "Family Day (BC)": _nth_weekday_of_month(year, 2, 0, 3),   # 3rd Monday Feb
-        "Good Friday": good_friday,
-        "Victoria Day": _weekday_before(year, 5, 25, 0),          # Monday before May 25
-        "Canada Day": _observed(date(year, 7, 1)),
-        "Labour Day": _nth_weekday_of_month(year, 9, 0, 1),       # 1st Monday Sept
-        "Thanksgiving": _nth_weekday_of_month(year, 10, 0, 2),    # 2nd Monday Oct
-        "Remembrance Day": _observed(date(year, 11, 11)),
-        "Christmas Day": _observed(date(year, 12, 25)),
-    }
-    # Ensure no Nones (in pathological calendar cases)
-    return {name: dt for name, dt in holidays.items() if dt is not None}
-
-# Optional richer BC set (+ BC Day, Truth & Reconciliation, Boxing Day)
-def _bc_richer_holidays(year):
-    h = _company_9_holidays(year).copy()
-    h.update({
-        "BC Day": _nth_weekday_of_month(year, 8, 0, 1),                   # 1st Monday Aug
-        "National Day for Truth and Reconciliation": _observed(date(year, 9, 30)),
-        "Boxing Day": _observed(date(year, 12, 26)),
-    })
-    return h
-
-# -----------------------
-# Main calculator
-# -----------------------
 
 def calculate_monthly_available_hours(
     active_techs,

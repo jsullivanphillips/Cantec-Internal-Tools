@@ -4,6 +4,7 @@ import RunDetailsLocationBillingControl from './RunDetailsLocationBillingControl
 import RunDetailsLocationPrepPanel from './RunDetailsLocationPrepPanel'
 import RunDetailsStopSiteModal from './RunDetailsStopSiteModal'
 import RunReviewOutcomeLabel from './RunReviewOutcomeLabel'
+import RunDetailsStopOutcomeSelect from './RunDetailsStopOutcomeSelect'
 import {
   RunDetailsStopDeficienciesBlock,
   RunDetailsStopFollowUpBlock,
@@ -27,7 +28,7 @@ import {
   runLocationReviewDomId,
   RUN_LOCATION_EXPAND_EVENT,
 } from './runDetailsLocationReview'
-import { canOfficeEditBilling } from './runWorkflowShared'
+import { canOfficeEditBilling, canOfficeEditOutcomes, runDetailsOfficeReviewReadOnly } from './runWorkflowShared'
 import {
   runReviewDeficiencySummaries,
   stopShowsNoDeficienciesConfirmedPill,
@@ -112,7 +113,8 @@ export default function RunDetailsLocationCard({
     updated: MonthlyRunDetailDeficiencySummary,
   ) => void | Promise<void>
 }) {
-  const readOnly = (run?.source || '').trim().toLowerCase() === 'csv_import'
+  const readOnly = runDetailsOfficeReviewReadOnly(run)
+  const canEditOutcome = !readOnly && canOfficeEditOutcomes(run)
   const showBilling = canOfficeEditBilling(run) && !runCompleted
   const compact = locationIsCompact(location, monthDate)
   const [changesExpanded, setChangesExpanded] = useState(!compact || forceExpanded === true)
@@ -232,19 +234,23 @@ export default function RunDetailsLocationCard({
 
         <div
           className={`run-location-card__test-col run-location-card__test-col--tone-${identityTone}${
-            !multiStop && primaryTestingSiteId != null
+            !multiStop && primaryTestingSiteId != null && !canEditOutcome
               ? ' run-location-card__test-col--clickable'
               : ''
           }`}
-          role={!multiStop && primaryTestingSiteId != null ? 'button' : undefined}
-          tabIndex={!multiStop && primaryTestingSiteId != null ? 0 : undefined}
+          role={
+            !multiStop && primaryTestingSiteId != null && !canEditOutcome ? 'button' : undefined
+          }
+          tabIndex={
+            !multiStop && primaryTestingSiteId != null && !canEditOutcome ? 0 : undefined
+          }
           onClick={
-            !multiStop && primaryTestingSiteId != null
+            !multiStop && primaryTestingSiteId != null && !canEditOutcome
               ? () => openSiteModal(primaryTestingSiteId)
               : undefined
           }
           onKeyDown={
-            !multiStop && primaryTestingSiteId != null
+            !multiStop && primaryTestingSiteId != null && !canEditOutcome
               ? (e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault()
@@ -254,7 +260,7 @@ export default function RunDetailsLocationCard({
               : undefined
           }
           aria-label={
-            !multiStop && primaryTestingSiteId != null
+            !multiStop && primaryTestingSiteId != null && !canEditOutcome
               ? `View site details for ${location.location_label}`
               : undefined
           }
@@ -277,12 +283,31 @@ export default function RunDetailsLocationCard({
                     stopReviewDeficiencies(location.stops[idx], run).length
                   }
                   onOpen={() => openSiteModal(card.stop.testing_site_id)}
+                  run={run}
+                  routeId={routeId}
+                  readOnly={readOnly}
+                  onStopUpdated={onStopMergedFromWorksheet}
                 />
               ))}
             </div>
           ) : (
             <>
-              {primaryOutcome && stopCards[0] ? (
+              {stopCards[0] && canEditOutcome ? (
+                <div
+                  className="run-location-card__outcome"
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => e.stopPropagation()}
+                >
+                  <RunDetailsStopOutcomeSelect
+                    stop={stopCards[0].stop}
+                    run={run}
+                    routeId={routeId}
+                    monthDate={monthDate}
+                    readOnly={readOnly}
+                    onStopUpdated={onStopMergedFromWorksheet}
+                  />
+                </div>
+              ) : primaryOutcome && stopCards[0] ? (
                 <RunReviewOutcomeLabel
                   stop={stopCards[0].stop}
                   monthDate={monthDate}
@@ -290,6 +315,15 @@ export default function RunDetailsLocationCard({
                   badgeClass={primaryOutcome.badgeClass}
                   className="run-location-card__outcome"
                 />
+              ) : null}
+              {canEditOutcome && primaryTestingSiteId != null ? (
+                <button
+                  type="button"
+                  className="btn btn-link btn-sm p-0 align-self-start run-location-card__test-site-link"
+                  onClick={() => openSiteModal(primaryTestingSiteId)}
+                >
+                  Site details
+                </button>
               ) : null}
               {stopCards[0] &&
               stopShowsNoDeficienciesConfirmedPill(

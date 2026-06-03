@@ -43,11 +43,21 @@ from app.db_models import (
 )
 from app.monthly.monthly_sites_sync import (
     apply_monitoring_fields_to_primary_testing_site,
+    apply_monitoring_fields_to_testing_site,
     apply_panel_fields_to_primary_testing_site,
+    apply_panel_fields_to_testing_site,
+    sync_testing_sites_from_legacy,
 )
 from app.monthly.monitoring_companies import find_active_monitoring_company_by_name
 from app.monthly.monitoring_notes_parse import parse_monitoring_notes, rebuild_monitoring_notes
-from app.monthly.sheet_visit_times import analyze_sheet_time_cells
+from app.monthly.sheet_visit_times import SheetTimeImportRow, analyze_sheet_time_cells
+from app.monthly.testing_site_csv_match import (
+    CsvRowTarget,
+    load_testing_sites_by_canonical_label,
+    lookup_testing_sites_for_sheet_street,
+    resolve_testing_site_by_sheet_street,
+)
+from app.monthly.worksheet_stops import primary_testing_site, upsert_stop_month_from_csv_import
 
 LOG = logging.getLogger("route_inspection_csv_import")
 
@@ -745,7 +755,263 @@ class ImportResult:
     existing_status_preserved: int = 0
     stop_order_applied: int = 0
     stop_order_skipped_not_on_sheet_route: int = 0
+    testing_site_matches: int = 0
+    stop_month_upserts: int = 0
     issues: list[ImportIssue] = field(default_factory=list)
+
+
+@dataclass
+class ParsedCsvRowFields:
+    stop_order: int
+    annual: str | None
+    ring_detail: str | None
+    keys_text: str | None
+    panel_text: str | None
+    panel_location_text: str | None
+    monitoring_company_id: int | None
+    monitoring_account_number: str | None
+    cleaned_monitoring_notes: str | None
+    testing_procedures: str | None
+    tech_notes: str | None
+    time_in: str | None
+    time_out: str | None
+    sheet_times: SheetTimeImportRow
+    monitoring_cell: str | None
+
+
+def _parse_csv_row_fields(row: dict[str, str], *, stop_order: int) -> ParsedCsvRowFields:
+    annual = _clean_text(_row_get_alias(row, _ANNUAL_OR_MONTH_ALIASES))
+    ring_detail = _clean_multiline(_row_get_alias(row, _RING_OR_ACCESS_ALIASES))
+    keys_text = _clean_multiline(_row_get_alias(row, _KEY_ALIASES))
+    facp_cell = _row_get_alias(row, _FACP_ALIASES)
+    panel_text, panel_location_text = parse_facp_panel_fields(facp_cell)
+    monitoring_cell = _row_get_alias(row, _MONITORING_ALIASES)
+    monitoring_notes = _clean_multiline(monitoring_cell)
+    parsed_monitoring = parse_monitoring_notes(monitoring_notes)
+    monitoring_account_number = (parsed_monitoring.acct or "").strip() or None
+    monitoring_company_id: int | None = None
+    if parsed_monitoring.company:
+        matched = find_active_monitoring_company_by_name(parsed_monitoring.company)
+        if matched is not None:
+            monitoring_company_id = int(matched.id)
+    cleaned_monitoring_notes = rebuild_monitoring_notes(parsed_monitoring) or monitoring_notes
+    if _is_monitoring_none(monitoring_cell):
+        monitoring_company_id = None
+        monitoring_account_number = None
+        cleaned_monitoring_notes = None
+    testing_procedures = _clean_multiline(_row_get_alias(row, _TESTING_PROCEDURES_ALIASES))
+    tech_notes = _clean_multiline(_row_get_alias(row, _TECH_NOTES_HEADER_ALIASES))
+    time_in = _row_get_alias(row, _TIME_IN_ALIASES)
+    time_out = _row_get_alias(row, _TIME_OUT_ALIASES)
+    return ParsedCsvRowFields(
+        stop_order=stop_order,
+        annual=annual,
+        ring_detail=ring_detail,
+        keys_text=keys_text,
+        panel_text=panel_text,
+        panel_location_text=panel_location_text,
+        monitoring_company_id=monitoring_company_id,
+        monitoring_account_number=monitoring_account_number,
+        cleaned_monitoring_notes=cleaned_monitoring_notes,
+        testing_procedures=testing_procedures,
+        tech_notes=tech_notes,
+        time_in=time_in,
+        time_out=time_out,
+        sheet_times=analyze_sheet_time_cells(time_in, time_out),
+        monitoring_cell=monitoring_cell,
+    )
+
+
+def _append_route_mismatch_issue(
+    result: ImportResult,
+    *,
+    logical_row: int,
+    loc: MonthlyRouteLocation,
+    route: MonthlyRoute,
+) -> None:
+    if loc.monthly_route_id is None or int(loc.monthly_route_id) == int(route.id):
+        return
+    assigned_rn: int | None = None
+    mr_assigned = loc.monthly_route
+    if mr_assigned is not None:
+        assigned_rn = int(mr_assigned.route_number)
+    detail_parts = [
+        f"location id={loc.id}",
+        f"DB address={loc.address!r}",
+    ]
+    if loc.display_address:
+        detail_parts.append(f"DB display_address={loc.display_address!r}")
+    if loc.building:
+        detail_parts.append(f"DB building={loc.building!r}")
+    if loc.property_management_company:
+        detail_parts.append(f"DB mgmt={loc.property_management_company!r}")
+    detail_parts.append(f"assigned monthly_route_id={loc.monthly_route_id}")
+    if assigned_rn is not None:
+        detail_parts.append(f"(DB route_number={assigned_rn})")
+    detail_parts.append(
+        f"sheet expects route_number={route.route_number} (route entity id={route.id})"
+    )
+    result.issues.append(ImportIssue("route_mismatch", logical_row, "; ".join(detail_parts)))
+
+
+def _apply_csv_row_to_target(
+    *,
+    target: CsvRowTarget,
+    parsed: ParsedCsvRowFields,
+    route: MonthlyRoute,
+    month_date: date,
+    run: MonthlyRouteRun,
+    result: ImportResult,
+    logical_row: int,
+    now: datetime,
+    sync_route_meta: bool,
+    sync_stop_order: bool,
+) -> None:
+    from app.monthly.history_sheet_notes import is_latest_history_month_for_location
+
+    loc = target.location
+    ts = target.testing_site
+    _append_route_mismatch_issue(result, logical_row=logical_row, loc=loc, route=route)
+
+    write_location_history = target.match_kind == "location"
+    if ts is not None:
+        ts_rows = sync_testing_sites_from_legacy(loc)
+        primary = primary_testing_site(ts_rows)
+        is_primary = primary is not None and int(primary.id) == int(ts.id)
+        if is_primary:
+            write_location_history = True
+    else:
+        is_primary = True
+
+    if target.match_kind == "location":
+        loc.annual_month = parsed.annual
+        loc.ring_detail = parsed.ring_detail
+        loc.keys = parsed.keys_text
+        apply_panel_fields_to_primary_testing_site(
+            loc,
+            panel=parsed.panel_text,
+            panel_location=parsed.panel_location_text,
+        )
+        apply_monitoring_fields_to_primary_testing_site(
+            loc,
+            monitoring_company_id=parsed.monitoring_company_id,
+            monitoring_account_number=parsed.monitoring_account_number,
+            monitoring_notes=parsed.cleaned_monitoring_notes,
+        )
+        if is_latest_history_month_for_location(int(loc.id), month_date):
+            loc.testing_procedures = parsed.testing_procedures
+            loc.inspection_tech_notes = parsed.tech_notes
+        if _is_monitoring_none(parsed.monitoring_cell):
+            loc.monitoring_company_id = None
+            loc.pending_monitoring_company_proposal_id = None
+    elif ts is not None:
+        ts.annual_month = parsed.annual
+        ts.ring_detail = parsed.ring_detail
+        ts.keys = parsed.keys_text
+        ts.testing_procedures = parsed.testing_procedures
+        ts.inspection_tech_notes = parsed.tech_notes
+        apply_panel_fields_to_testing_site(
+            ts,
+            panel=parsed.panel_text,
+            panel_location=parsed.panel_location_text,
+        )
+        apply_monitoring_fields_to_testing_site(
+            ts,
+            monitoring_company_id=parsed.monitoring_company_id,
+            monitoring_account_number=parsed.monitoring_account_number,
+            monitoring_notes=parsed.cleaned_monitoring_notes,
+        )
+
+    loc.updated_at = now
+    if ts is not None:
+        ts.updated_at = now
+
+    if target.match_kind == "location" and sync_route_meta:
+        loc.monthly_route_id = route.id
+        loc.route_stop_order = parsed.stop_order
+        result.stop_order_applied += 1
+    elif target.match_kind == "location" and sync_stop_order:
+        if loc.monthly_route_id is not None and int(loc.monthly_route_id) == int(route.id):
+            loc.route_stop_order = parsed.stop_order
+            result.stop_order_applied += 1
+        else:
+            result.stop_order_skipped_not_on_sheet_route += 1
+
+    if parsed.sheet_times.result_status is None:
+        result.skipped_no_history += 1
+
+    run_id = int(run.id) if run is not None else None
+
+    if write_location_history:
+        existing_hist = (
+            db.session.query(MonthlyRouteTestHistory)
+            .filter(
+                MonthlyRouteTestHistory.location_id == int(loc.id),
+                MonthlyRouteTestHistory.month_date == month_date,
+            )
+            .one_or_none()
+        )
+        upsert_result_status = parsed.sheet_times.result_status
+        upsert_skip_reason = parsed.sheet_times.skip_reason
+        upsert_source_value_raw = parsed.sheet_times.source_value_raw
+        upsert_time_in = _clean_text(parsed.time_in)
+        upsert_time_out = _clean_text(parsed.time_out)
+        if existing_hist is not None and existing_hist.result_status is not None:
+            upsert_result_status = existing_hist.result_status
+            upsert_skip_reason = existing_hist.skip_reason
+            upsert_source_value_raw = existing_hist.source_value_raw
+            upsert_time_in = existing_hist.sheet_time_in_raw
+            upsert_time_out = existing_hist.sheet_time_out_raw
+            result.existing_status_preserved += 1
+
+        _upsert_history_row(
+            location_id=int(loc.id),
+            month_date=month_date,
+            result_status=upsert_result_status,
+            skip_reason=upsert_skip_reason,
+            source_value_raw=upsert_source_value_raw,
+            testing_procedures=parsed.testing_procedures,
+            inspection_tech_notes=parsed.tech_notes,
+            sheet_time_in_raw=upsert_time_in,
+            sheet_time_out_raw=upsert_time_out,
+            test_monthly_route_id=int(route.id),
+            session_route_stop_order=parsed.stop_order,
+            facp=parsed.panel_text,
+            ring=parsed.ring_detail,
+            key_number=parsed.keys_text,
+            annual_month=parsed.annual,
+            monitoring_notes=parsed.cleaned_monitoring_notes,
+            run_id=run_id,
+            now=now,
+        )
+        result.history_upserts += 1
+
+    if ts is not None and target.match_kind == "testing_site_label":
+        upsert_stop_month_from_csv_import(
+            ts=ts,
+            loc=loc,
+            route_id=int(route.id),
+            run_id=int(run_id or 0),
+            month_first=month_date,
+            session_route_stop_order=parsed.stop_order,
+            sheet_times=parsed.sheet_times,
+            panel=parsed.panel_text,
+            panel_location=parsed.panel_location_text,
+            ring_detail=parsed.ring_detail,
+            keys_text=parsed.keys_text,
+            annual_month=parsed.annual,
+            testing_procedures=parsed.testing_procedures,
+            inspection_tech_notes=parsed.tech_notes,
+            monitoring_notes=parsed.cleaned_monitoring_notes,
+            monitoring_account_number=parsed.monitoring_account_number,
+            monitoring_company_id=parsed.monitoring_company_id,
+            sheet_time_in_raw=_clean_text(parsed.time_in),
+            sheet_time_out_raw=_clean_text(parsed.time_out),
+        )
+        result.stop_month_upserts += 1
+        result.testing_site_matches += 1
+
+    result.locations_updated += 1
 
 
 def resolve_monthly_location_by_sheet_identity(
@@ -943,9 +1209,14 @@ def run_route_inspection_csv_import(
     _parsed_rn, _sheet_month, sheet_label = parse_sheet_meta(rows, hdr_idx)
 
     canonical_index = load_locations_by_canonical_street()
+    testing_site_index = load_testing_sites_by_canonical_label(int(route.id))
     LOG.info(
         "Built canonical street index (%s distinct street keys).",
         f"{len(canonical_index):,}",
+    )
+    LOG.info(
+        "Built route-scoped testing site label index (%s distinct keys).",
+        f"{len(testing_site_index):,}",
     )
 
     reader = _dict_reader_from_slice(rows, hdr_idx)
@@ -996,7 +1267,10 @@ def run_route_inspection_csv_import(
             company_display=company,
             building_display=building,
         )
-        if loc is None:
+        target: CsvRowTarget | None = None
+        if loc is not None:
+            target = CsvRowTarget(location=loc, testing_site=None, match_kind="location")
+        elif at_address:
             result.issues.append(
                 ImportIssue(
                     match_err or "unmatched",
@@ -1005,152 +1279,41 @@ def run_route_inspection_csv_import(
                 )
             )
             continue
-
-        if loc.monthly_route_id is not None and int(loc.monthly_route_id) != int(route.id):
-            assigned_rn: int | None = None
-            mr_assigned = loc.monthly_route
-            if mr_assigned is not None:
-                assigned_rn = int(mr_assigned.route_number)
-            detail_parts = [
-                f"location id={loc.id}",
-                f"DB address={loc.address!r}",
-            ]
-            if loc.display_address:
-                detail_parts.append(f"DB display_address={loc.display_address!r}")
-            if loc.building:
-                detail_parts.append(f"DB building={loc.building!r}")
-            if loc.property_management_company:
-                detail_parts.append(f"DB mgmt={loc.property_management_company!r}")
-            detail_parts.append(f"assigned monthly_route_id={loc.monthly_route_id}")
-            if assigned_rn is not None:
-                detail_parts.append(f"(DB route_number={assigned_rn})")
-            detail_parts.append(
-                f"sheet expects route_number={route.route_number} (route entity id={route.id})"
+        else:
+            at_testing_sites = lookup_testing_sites_for_sheet_street(testing_site_index, street)
+            ts_loc, ts_row, ts_err, ts_detail = resolve_testing_site_by_sheet_street(
+                at_street=at_testing_sites,
+                street_display=street,
             )
-            result.issues.append(
-                ImportIssue("route_mismatch", logical_row, "; ".join(detail_parts))
+            if ts_loc is None or ts_row is None:
+                result.issues.append(
+                    ImportIssue(
+                        ts_err or "unmatched",
+                        logical_row,
+                        f"{street!r} | mgmt {company!r} | name {building!r} — {ts_detail}",
+                    )
+                )
+                continue
+            target = CsvRowTarget(
+                location=ts_loc,
+                testing_site=ts_row,
+                match_kind="testing_site_label",
             )
 
         stop_order = int(num_raw) - 1
-        annual = _clean_text(_row_get_alias(row, _ANNUAL_OR_MONTH_ALIASES))
-        ring_detail = _clean_multiline(_row_get_alias(row, _RING_OR_ACCESS_ALIASES))
-        keys_text = _clean_multiline(_row_get_alias(row, _KEY_ALIASES))
-        facp_cell = _row_get_alias(row, _FACP_ALIASES)
-        panel_text, panel_location_text = parse_facp_panel_fields(facp_cell)
-        monitoring_cell = _row_get_alias(row, _MONITORING_ALIASES)
-        monitoring_notes = _clean_multiline(monitoring_cell)
-        parsed_monitoring = parse_monitoring_notes(monitoring_notes)
-        monitoring_account_number = (parsed_monitoring.acct or "").strip() or None
-        monitoring_company_id: int | None = None
-        if parsed_monitoring.company:
-            matched = find_active_monitoring_company_by_name(parsed_monitoring.company)
-            if matched is not None:
-                monitoring_company_id = int(matched.id)
-        cleaned_monitoring_notes = rebuild_monitoring_notes(parsed_monitoring) or monitoring_notes
-        if _is_monitoring_none(monitoring_cell):
-            monitoring_company_id = None
-            monitoring_account_number = None
-            cleaned_monitoring_notes = None
-        testing_procedures = _clean_multiline(
-            _row_get_alias(row, _TESTING_PROCEDURES_ALIASES)
-        )
-        tech_notes = _clean_multiline(_row_get_alias(row, _TECH_NOTES_HEADER_ALIASES))
-        time_in = _row_get_alias(row, _TIME_IN_ALIASES)
-        time_out = _row_get_alias(row, _TIME_OUT_ALIASES)
-
-        # Library "current" mirror — CSV is the source of truth for the latest run.
-        loc.annual_month = annual
-        loc.ring_detail = ring_detail
-        loc.keys = keys_text
-        from app.monthly.history_sheet_notes import is_latest_history_month_for_location
-
-        apply_panel_fields_to_primary_testing_site(
-            loc,
-            panel=panel_text,
-            panel_location=panel_location_text,
-        )
-        apply_monitoring_fields_to_primary_testing_site(
-            loc,
-            monitoring_company_id=monitoring_company_id,
-            monitoring_account_number=monitoring_account_number,
-            monitoring_notes=cleaned_monitoring_notes,
-        )
-
-        if is_latest_history_month_for_location(int(loc.id), month_date):
-            loc.testing_procedures = testing_procedures
-            loc.inspection_tech_notes = tech_notes
-        loc.updated_at = now
-
-        if _is_monitoring_none(monitoring_cell):
-            loc.monitoring_company_id = None
-            loc.pending_monitoring_company_proposal_id = None
-
-        if sync_route_meta:
-            loc.monthly_route_id = route.id
-            loc.route_stop_order = stop_order
-            result.stop_order_applied += 1
-        elif sync_stop_order:
-            if (
-                loc.monthly_route_id is not None
-                and int(loc.monthly_route_id) == int(route.id)
-            ):
-                loc.route_stop_order = stop_order
-                result.stop_order_applied += 1
-            else:
-                result.stop_order_skipped_not_on_sheet_route += 1
-
-        sheet_times = analyze_sheet_time_cells(time_in, time_out)
-        rs = sheet_times.result_status
-        if rs is None:
-            result.skipped_no_history += 1
-
-        # Merge with the technician portal: when an existing row already carries
-        # a ``result_status`` (set in the worksheet), CSV upload must not clobber
-        # it. We still overwrite the CSV-only snapshot fields below.
-        existing_hist = (
-            db.session.query(MonthlyRouteTestHistory)
-            .filter(
-                MonthlyRouteTestHistory.location_id == int(loc.id),
-                MonthlyRouteTestHistory.month_date == month_date,
-            )
-            .one_or_none()
-        )
-        upsert_result_status = rs
-        upsert_skip_reason = sheet_times.skip_reason
-        upsert_source_value_raw = sheet_times.source_value_raw
-        upsert_time_in = _clean_text(time_in)
-        upsert_time_out = _clean_text(time_out)
-        if existing_hist is not None and existing_hist.result_status is not None:
-            upsert_result_status = existing_hist.result_status
-            upsert_skip_reason = existing_hist.skip_reason
-            upsert_source_value_raw = existing_hist.source_value_raw
-            upsert_time_in = existing_hist.sheet_time_in_raw
-            upsert_time_out = existing_hist.sheet_time_out_raw
-            result.existing_status_preserved += 1
-
-        _upsert_history_row(
-            location_id=int(loc.id),
+        parsed = _parse_csv_row_fields(row, stop_order=stop_order)
+        _apply_csv_row_to_target(
+            target=target,
+            parsed=parsed,
+            route=route,
             month_date=month_date,
-            result_status=upsert_result_status,
-            skip_reason=upsert_skip_reason,
-            source_value_raw=upsert_source_value_raw,
-            testing_procedures=testing_procedures,
-            inspection_tech_notes=tech_notes,
-            sheet_time_in_raw=upsert_time_in,
-            sheet_time_out_raw=upsert_time_out,
-            test_monthly_route_id=int(route.id),
-            session_route_stop_order=stop_order,
-            facp=panel_text,
-            ring=ring_detail,
-            key_number=keys_text,
-            annual_month=annual,
-            monitoring_notes=cleaned_monitoring_notes,
-            run_id=int(run.id) if run is not None else None,
+            run=run,
+            result=result,
+            logical_row=logical_row,
             now=now,
+            sync_route_meta=sync_route_meta,
+            sync_stop_order=sync_stop_order,
         )
-        result.history_upserts += 1
-
-        result.locations_updated += 1
 
     if pending_blank_rows:
         result.issues.extend(pending_blank_rows)

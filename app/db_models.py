@@ -925,6 +925,7 @@ class MonthlyRouteLocation(db.Model):
     building = db.Column(db.String(255), nullable=True)
     building_normalized = db.Column(db.String(255), nullable=False, default="")
     notes = db.Column(db.Text, nullable=True)
+    billing_comments = db.Column(db.Text, nullable=True)
     barcode = db.Column(db.String(64), nullable=True)
     price_per_month = db.Column(db.Numeric(10, 2), nullable=True)
     area = db.Column(db.String(255), nullable=True)
@@ -1552,6 +1553,35 @@ class MonthlyRouteTestHistory(db.Model):
         cascade="all, delete-orphan",
         lazy="dynamic",
     )
+
+
+class MonthlyLocationQuarterBilled(db.Model):
+    """Billing team tracker: address invoiced for a calendar quarter (separate from processor ``billing_status``)."""
+
+    __tablename__ = "monthly_location_quarter_billed"
+    __table_args__ = (
+        db.UniqueConstraint(
+            "location_id",
+            "year",
+            "quarter",
+            name="uq_monthly_location_quarter_billed_loc_year_q",
+        ),
+        db.Index("ix_monthly_location_quarter_billed_year_quarter", "year", "quarter"),
+    )
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    location_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monthly_route_location.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    year = db.Column(db.SmallInteger, nullable=False)
+    quarter = db.Column(db.SmallInteger, nullable=False)
+    billed_at = db.Column(db.DateTime(timezone=True), nullable=False)
+    billed_by_username = db.Column(db.String(255), nullable=True)
+
+    location = db.relationship("MonthlyRouteLocation", backref="quarter_billed_flags")
 
 
 class MonthlyRouteWorksheetAuditEvent(db.Model):

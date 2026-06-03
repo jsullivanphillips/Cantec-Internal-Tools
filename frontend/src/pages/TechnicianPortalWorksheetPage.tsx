@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Alert, Badge, Button, Spinner } from 'react-bootstrap'
 import {
@@ -21,12 +21,25 @@ import type { WorksheetStopChangeSet } from '../features/monthlyRoutes/worksheet
 import PortalWorksheetSkeleton from './PortalWorksheetSkeleton'
 import PortalClockEventsCard from '../features/monthlyRoutes/PortalClockEventsCard'
 import PortalSkipModal from '../features/monthlyRoutes/PortalSkipModal'
+import PortalMapsChoiceModal from '../features/monthlyRoutes/PortalMapsChoiceModal'
+import {
+  getPortalMapsProvider,
+  openMapsLocation,
+  resolveStopMapsTarget,
+  setPortalMapsProvider,
+  type PortalMapsProvider,
+} from '../features/monthlyRoutes/portalMapsLinks'
 import PortalEndRunModals from '../features/monthlyRoutes/PortalEndRunModals'
 import PortalRecordResultsModal, {
   type RecordResultsCompletePayload,
 } from '../features/monthlyRoutes/PortalRecordResultsModal'
 import PortalDeficienciesCard from '../features/monthlyRoutes/PortalDeficienciesCard'
 import PortalDeficiencyModal from '../features/monthlyRoutes/PortalDeficiencyModal'
+import {
+  testingSitePositionAtLocation,
+  testingSitePrimaryLabel,
+  TestingSiteStopHeading,
+} from '../features/monthlyRoutes/testingSiteDisplay'
 import {
   portalHeaderBandClass,
   portalNavStopStatusClass,
@@ -229,6 +242,93 @@ export default function TechnicianPortalWorksheetPage() {
   const [editingDeficiency, setEditingDeficiency] = useState<PortalDeficiencySummary | null>(null)
   const [editingField, setEditingField] = useState<string | null>(null)
   const [fieldEditActions, setFieldEditActions] = useState<PortalFieldEditActions | null>(null)
+  const [mapsChoiceOpen, setMapsChoiceOpen] = useState(false)
+  const [mapsPendingStop, setMapsPendingStop] = useState<TechnicianWorksheetStop | null>(null)
+
+  const openMapsForStop = useCallback(
+    (stop: TechnicianWorksheetStop, forceChoice = false) => {
+      if (!resolveStopMapsTarget(stop)) return
+      const provider = forceChoice ? null : getPortalMapsProvider()
+      if (provider) {
+        openMapsLocation(provider, stop)
+        return
+      }
+      setMapsPendingStop(stop)
+      setMapsChoiceOpen(true)
+    },
+    [],
+  )
+
+  const handleMapsProviderSelect = useCallback(
+    (provider: PortalMapsProvider) => {
+      setPortalMapsProvider(provider)
+      setMapsChoiceOpen(false)
+      if (mapsPendingStop) {
+        openMapsLocation(provider, mapsPendingStop)
+      }
+      setMapsPendingStop(null)
+    },
+    [mapsPendingStop],
+  )
+
+  const handleMapsPinClick = useCallback(
+    (event: MouseEvent, stop: TechnicianWorksheetStop) => {
+      event.preventDefault()
+      event.stopPropagation()
+      openMapsForStop(stop)
+    },
+    [openMapsForStop],
+  )
+
+  const handleMapsPinContextMenu = useCallback(
+    (event: MouseEvent, stop: TechnicianWorksheetStop) => {
+      event.preventDefault()
+      event.stopPropagation()
+      openMapsForStop(stop, true)
+    },
+    [openMapsForStop],
+  )
+
+  const renderMapsPinButton = useCallback(
+    (stop: TechnicianWorksheetStop, extraClassName = '') => {
+      if (!resolveStopMapsTarget(stop)) return null
+      return (
+        <button
+          type="button"
+          className={`pw-mock-nav-stop-map${extraClassName}`}
+          aria-label={`Open maps for stop ${stop.stop_number}`}
+          title="Open in maps (right-click to change maps app)"
+          onClick={(event) => handleMapsPinClick(event, stop)}
+          onContextMenu={(event) => handleMapsPinContextMenu(event, stop)}
+        >
+          <i className="bi bi-geo-alt" aria-hidden />
+        </button>
+      )
+    },
+    [handleMapsPinClick, handleMapsPinContextMenu],
+  )
+
+  const renderHeroDirectionsButton = useCallback(
+    (stop: TechnicianWorksheetStop) => {
+      if (!resolveStopMapsTarget(stop)) return null
+      return (
+        <div className="pw-mock-header-directions">
+          <span className="pw-mock-header-directions-label">Directions</span>
+          <button
+            type="button"
+            className="pw-mock-nav-stop-map pw-mock-header-directions-btn"
+            aria-label={`Open directions for stop ${stop.stop_number}`}
+            title="Open in maps (right-click to change maps app)"
+            onClick={(event) => handleMapsPinClick(event, stop)}
+            onContextMenu={(event) => handleMapsPinContextMenu(event, stop)}
+          >
+            <i className="bi bi-geo-alt" aria-hidden />
+          </button>
+        </div>
+      )
+    },
+    [handleMapsPinClick, handleMapsPinContextMenu],
+  )
 
   useEffect(() => {
     if (!projectedStops.length) {
@@ -244,6 +344,11 @@ export default function TechnicianPortalWorksheetPage() {
     () => projectedStops.find((s) => s.testing_site_id === activeId) ?? projectedStops[0] ?? null,
     [projectedStops, activeId],
   )
+
+  const activeSitePosition = useMemo(() => {
+    if (!active) return { siteCount: 1, siteIndex: 0 }
+    return testingSitePositionAtLocation(active, projectedStops)
+  }, [active, projectedStops])
 
   const runMonthIso = payload?.month_date ?? monthQuery
 
@@ -503,8 +608,9 @@ export default function TechnicianPortalWorksheetPage() {
     const key = (stop.key_number || '—').trim()
     const monitoring = stopMonitoringDisplay(stop)
     const hasMonitoring = stopHasMonitoring(stop)
+    const { siteCount, siteIndex } = testingSitePositionAtLocation(stop, projectedStops)
     const collapsedTitleParts = [
-      `#${stop.stop_number} — ${stop.display_address}`,
+      `#${stop.stop_number} — ${testingSitePrimaryLabel(stop, { siteCount, siteIndex, compact: true })}`,
       hasMonitoring
         ? [
             monitoring.company !== '—' ? monitoring.company : null,
@@ -532,41 +638,45 @@ export default function TechnicianPortalWorksheetPage() {
     }
 
     return (
-      <button
-        key={stop.testing_site_id}
-        type="button"
-        className={`pw-mock-nav-stop pw-mock-nav-stop--expanded${statusSuffix}${activeClass}`}
-        onClick={() => setActiveId(stop.testing_site_id)}
-        aria-current={isActive ? 'true' : undefined}
-      >
-        <span className="pw-mock-nav-stop-address">{stop.display_address}</span>
-        <span className="pw-mock-nav-stop-detail">
-          {hasMonitoring ? (
-            <>
-              {monitoring.company !== '—' ? (
-                <span className="pw-mock-nav-stop-line">
-                  <span className="pw-mock-nav-stop-label">Monitoring</span>
-                  {monitoring.company}
-                </span>
-              ) : null}
-              {monitoring.account !== '—' ? (
-                <span className="pw-mock-nav-stop-line">
-                  <span className="pw-mock-nav-stop-label">Acct</span>
-                  {monitoring.account}
-                </span>
-              ) : null}
-            </>
-          ) : null}
-          <span className="pw-mock-nav-stop-line">
-            <span className="pw-mock-nav-stop-label">Key</span>
-            {key}
+      <div key={stop.testing_site_id} className="pw-mock-nav-stop-row">
+        <button
+          type="button"
+          className={`pw-mock-nav-stop pw-mock-nav-stop--expanded${statusSuffix}${activeClass}`}
+          onClick={() => setActiveId(stop.testing_site_id)}
+          aria-current={isActive ? 'true' : undefined}
+        >
+          <span className="pw-mock-nav-stop-address">
+            {testingSitePrimaryLabel(stop, { siteCount, siteIndex, compact: true })}
           </span>
-          <span className="pw-mock-nav-stop-line">
-            <span className="pw-mock-nav-stop-label">Ring</span>
-            {ring}
+          <span className="pw-mock-nav-stop-detail">
+            {hasMonitoring ? (
+              <>
+                {monitoring.company !== '—' ? (
+                  <span className="pw-mock-nav-stop-line">
+                    <span className="pw-mock-nav-stop-label">Monitoring</span>
+                    {monitoring.company}
+                  </span>
+                ) : null}
+                {monitoring.account !== '—' ? (
+                  <span className="pw-mock-nav-stop-line">
+                    <span className="pw-mock-nav-stop-label">Acct</span>
+                    {monitoring.account}
+                  </span>
+                ) : null}
+              </>
+            ) : null}
+            <span className="pw-mock-nav-stop-line">
+              <span className="pw-mock-nav-stop-label">Key</span>
+              {key}
+            </span>
+            <span className="pw-mock-nav-stop-line">
+              <span className="pw-mock-nav-stop-label">Ring</span>
+              {ring}
+            </span>
           </span>
-        </span>
-      </button>
+        </button>
+        {resolveStopMapsTarget(stop) ? renderMapsPinButton(stop, activeClass) : null}
+      </div>
     )
   }
 
@@ -895,14 +1005,27 @@ export default function TechnicianPortalWorksheetPage() {
                     {statusLabel(activeStatus, active)}
                   </span>
                 </div>
-                <h1 className="pw-mock-header-address">{active.display_address}</h1>
+                <TestingSiteStopHeading
+                  stop={active}
+                  siteCount={activeSitePosition.siteCount}
+                  siteIndex={activeSitePosition.siteIndex}
+                  compact
+                  as="h1"
+                  primaryClassName="pw-mock-header-address"
+                  sublineClassName="pw-mock-header-line text-muted"
+                />
                 {active.building_name ? (
                   <div className="pw-mock-header-line">{active.building_name}</div>
                 ) : null}
-                <div className="pw-mock-header-line text-muted">{activeMonitoringDisplay}</div>
-                {activePanelDisplay ? (
-                  <div className="pw-mock-header-line fw-semibold">{activePanelDisplay}</div>
-                ) : null}
+                <div className="pw-mock-header-meta-row">
+                  <div className="pw-mock-header-meta-copy">
+                    <div className="pw-mock-header-line text-muted">{activeMonitoringDisplay}</div>
+                    {activePanelDisplay ? (
+                      <div className="pw-mock-header-line fw-semibold">{activePanelDisplay}</div>
+                    ) : null}
+                  </div>
+                  {renderHeroDirectionsButton(active)}
+                </div>
                 {activeHeaderTimes ? (
                   <div className="pw-mock-header-times">{activeHeaderTimes}</div>
                 ) : null}
@@ -1120,6 +1243,14 @@ export default function TechnicianPortalWorksheetPage() {
             deficiency={editingDeficiency}
             onHide={() => setDefModalOpen(false)}
             onSave={handleDeficiencySave}
+          />
+          <PortalMapsChoiceModal
+            show={mapsChoiceOpen}
+            onHide={() => {
+              setMapsChoiceOpen(false)
+              setMapsPendingStop(null)
+            }}
+            onSelect={handleMapsProviderSelect}
           />
         </>
       ) : null}

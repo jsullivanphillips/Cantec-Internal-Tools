@@ -42,11 +42,40 @@ function runSummary(monthIso: string): RouteRunMonthSummary {
 }
 
 describe('derivePaperworkViewMode', () => {
-  it('returns exact_history for past months regardless of run state', () => {
-    expect(derivePaperworkViewMode(run({ started_at: '2026-05-01T00:00:00Z' }), '2026-05-01', CURRENT)).toBe(
-      'exact_history',
-    )
+  it('returns exact_history for past months with no run header', () => {
     expect(derivePaperworkViewMode(null, '2026-05-01', CURRENT)).toBe('exact_history')
+  })
+
+  it('returns exact_history for completed past-month run', () => {
+    expect(
+      derivePaperworkViewMode(
+        run({
+          month_date: '2026-05-01',
+          started_at: '2026-05-02T00:00:00Z',
+          field_ended_at: '2026-05-03T00:00:00Z',
+          completed_at: '2026-05-04T00:00:00Z',
+          status: 'completed',
+        }),
+        '2026-05-01',
+        CURRENT,
+      ),
+    ).toBe('exact_history')
+  })
+
+  it('returns run_review for reopened past-month run after office completion cleared', () => {
+    expect(
+      derivePaperworkViewMode(
+        run({
+          month_date: '2026-05-01',
+          started_at: '2026-05-02T00:00:00Z',
+          field_ended_at: '2026-05-03T00:00:00Z',
+          completed_at: null,
+          status: 'open',
+        }),
+        '2026-05-01',
+        CURRENT,
+      ),
+    ).toBe('run_review')
   })
 
   it('returns exact_history for completed current-month run', () => {
@@ -102,18 +131,32 @@ describe('derivePaperworkViewMode', () => {
       ),
     ).toBe('run_review')
   })
+
+  it('returns run_review for reopened current-month run', () => {
+    expect(
+      derivePaperworkViewMode(
+        run({
+          started_at: '2026-06-02T00:00:00Z',
+          field_ended_at: '2026-06-10T00:00:00Z',
+          completed_at: null,
+          status: 'open',
+        }),
+        CURRENT,
+        CURRENT,
+      ),
+    ).toBe('run_review')
+  })
 })
 
 describe('computeSelectablePaperworkMonths', () => {
-  it('includes past run files, current month, and next month only', () => {
+  it('includes every run file month plus current and next calendar month', () => {
     const runsByMonth: Record<string, RouteRunMonthSummary> = {
       '2026-03-01': runSummary('2026-03-01'),
       '2026-05-01': runSummary('2026-05-01'),
       '2026-08-01': runSummary('2026-08-01'),
     }
     const months = computeSelectablePaperworkMonths(runsByMonth, CURRENT).map((m) => m.monthIso)
-    expect(months).toEqual(['2026-03-01', '2026-05-01', '2026-06-01', '2026-07-01'])
-    expect(months).not.toContain('2026-08-01')
+    expect(months).toEqual(['2026-03-01', '2026-05-01', '2026-06-01', '2026-07-01', '2026-08-01'])
   })
 
   it('always includes current and next even with no run files', () => {

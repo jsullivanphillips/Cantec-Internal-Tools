@@ -599,8 +599,11 @@ def run_upload(
     duplicates_only: bool = False,
     duplicates_csv_path: Path | None = None,
     history_only: bool = False,
+    locations_only: bool = False,
     month_years: frozenset[int] | None = None,
 ) -> None:
+    if history_only and locations_only:
+        raise ValueError("Cannot use history_only and locations_only together.")
     mode = "dry-run (no DB commit)" if dry_run else "commit"
     print(f"[monthly-sheet] Starting upload ({mode}) …", flush=True)
     print(f"[monthly-sheet] Reading CSV: {csv_path}", flush=True)
@@ -621,31 +624,37 @@ def run_upload(
     print(f"[monthly-sheet] Parsed {len(rows)} data rows from file.", flush=True)
 
     month_columns: list[tuple[str, date]] = []
-    for header in headers:
-        parsed = _parse_month_header(header)
-        if parsed:
-            month_columns.append((header, parsed))
-    if not month_columns:
-        raise ValueError("No month columns were detected in CSV headers.")
-
-    print(
-        f"[monthly-sheet] Found {len(month_columns)} month column(s): "
-        f"{', '.join(h for h, _ in month_columns)}",
-        flush=True,
-    )
-
-    if month_years:
-        before_filter = len(month_columns)
-        month_columns = [(h, d) for h, d in month_columns if d.year in month_years]
+    if not locations_only:
+        for header in headers:
+            parsed = _parse_month_header(header)
+            if parsed:
+                month_columns.append((header, parsed))
         if not month_columns:
-            raise ValueError(
-                f"No month columns left after --months-year filter "
-                f"{sorted(month_years)!r} (CSV had {before_filter} month column(s))."
-            )
+            raise ValueError("No month columns were detected in CSV headers.")
+
         print(
-            f"[monthly-sheet] After year filter {sorted(month_years)}: "
-            f"{len(month_columns)} month column(s): "
+            f"[monthly-sheet] Found {len(month_columns)} month column(s): "
             f"{', '.join(h for h, _ in month_columns)}",
+            flush=True,
+        )
+
+        if month_years:
+            before_filter = len(month_columns)
+            month_columns = [(h, d) for h, d in month_columns if d.year in month_years]
+            if not month_columns:
+                raise ValueError(
+                    f"No month columns left after --months-year filter "
+                    f"{sorted(month_years)!r} (CSV had {before_filter} month column(s))."
+                )
+            print(
+                f"[monthly-sheet] After year filter {sorted(month_years)}: "
+                f"{len(month_columns)} month column(s): "
+                f"{', '.join(h for h, _ in month_columns)}",
+                flush=True,
+            )
+    else:
+        print(
+            "[monthly-sheet] Locations-only mode: skipping month columns and test history import.",
             flush=True,
         )
 
@@ -680,6 +689,8 @@ def run_upload(
         + (
             "Resolving existing locations and upserting monthly history only (no location upserts) …"
             if history_only
+            else "Upserting library locations only (no test history) …"
+            if locations_only
             else "Upserting locations and monthly history (this may take a minute) …"
         ),
         flush=True,
@@ -755,39 +766,40 @@ def run_upload(
             if loc_row is not None:
                 refresh_primary_testing_site_from_legacy(loc_row)
 
-        for month_col, month_date in month_columns:
-            raw_value = _normalize_space(row.get(month_col))
-            result_status, skip_reason = _derive_month_result(raw_value)
-            override_key = (normalized_address, normalized_company, normalized_building, month_date)
-            override = skip_reason_overrides.get(override_key)
+        if not locations_only:
+            for month_col, month_date in month_columns:
+                raw_value = _normalize_space(row.get(month_col))
+                result_status, skip_reason = _derive_month_result(raw_value)
+                override_key = (normalized_address, normalized_company, normalized_building, month_date)
+                override = skip_reason_overrides.get(override_key)
 
-            # If no importable monthly value exists, allow explicit override rows
-            # to force a skipped-history record for that address/month.
-            if not result_status and override:
-                result_status = "skipped"
-                skip_reason = override.skip_reason
-                used_override_keys.add(override_key)
-                override_forced_history_rows += 1
-
-            if not result_status:
-                continue
-
-            if raw_value.upper() == "X":
-                if override:
+                # If no importable monthly value exists, allow explicit override rows
+                # to force a skipped-history record for that address/month.
+                if not result_status and override:
+                    result_status = "skipped"
                     skip_reason = override.skip_reason
                     used_override_keys.add(override_key)
-                else:
-                    missing_reason_logs.append(
-                        MissingReasonLog(address=address, month_date=month_date, row_number=row_number)
-                    )
-            _upsert_history(
-                location_id=location_id,
-                month_date=month_date,
-                result_status=result_status,
-                skip_reason=skip_reason,
-                source_value_raw=raw_value or None,
-            )
-            history_upserts += 1
+                    override_forced_history_rows += 1
+
+                if not result_status:
+                    continue
+
+                if raw_value.upper() == "X":
+                    if override:
+                        skip_reason = override.skip_reason
+                        used_override_keys.add(override_key)
+                    else:
+                        missing_reason_logs.append(
+                            MissingReasonLog(address=address, month_date=month_date, row_number=row_number)
+                        )
+                _upsert_history(
+                    location_id=location_id,
+                    month_date=month_date,
+                    result_status=result_status,
+                    skip_reason=skip_reason,
+                    source_value_raw=raw_value or None,
+                )
+                history_upserts += 1
 
         if idx == 1 or idx == total_locations or idx % PROGRESS_EVERY_N_LOCATIONS == 0:
             pct = (100 * idx // total_locations) if total_locations else 100
@@ -872,8 +884,16 @@ def run_upload(
     remap_unmatched = 0
     if duplicates_only:
         print("[monthly-sheet] Duplicates-only mode: skipping preserved-reason remap pass.", flush=True)
-    elif history_only:
-        print("[monthly-sheet] History-only mode: skipping preserved-reason remap pass.", flush=True)
+    elif history_only or locations_only:
+        print(
+            "[monthly-sheet] "
+            + (
+                "History-only mode: skipping preserved-reason remap pass."
+                if history_only
+                else "Locations-only mode: skipping preserved-reason remap pass."
+            ),
+            flush=True,
+        )
     else:
         print("[monthly-sheet] Running preserved-reason remap pass …", flush=True)
         remap_applied, remap_unmatched = _remap_existing_skip_reasons()
@@ -963,6 +983,14 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--locations-only",
+        action="store_true",
+        help=(
+            "Only upsert MonthlyRouteLocation (and v2 testing sites); do not import "
+            "month columns or MonthlyRouteTestHistory from the master sheet."
+        ),
+    )
+    parser.add_argument(
         "--months-year",
         action="append",
         type=int,
@@ -984,6 +1012,8 @@ def main() -> None:
 
     with app.app_context():
         print("[monthly-sheet] App context ready.", flush=True)
+        if args.history_only and args.locations_only:
+            raise SystemExit("Cannot use --history-only and --locations-only together.")
         if args.duplicates_only and not args.duplicates_csv:
             raise SystemExit("--duplicates-only requires --duplicates-csv")
         month_years_arg = frozenset(args.months_years) if args.months_years else None
@@ -995,6 +1025,7 @@ def main() -> None:
             duplicates_only=args.duplicates_only,
             duplicates_csv_path=Path(args.duplicates_csv) if args.duplicates_csv else None,
             history_only=args.history_only,
+            locations_only=args.locations_only,
             month_years=month_years_arg,
         )
         print("[monthly-sheet] Done.", flush=True)

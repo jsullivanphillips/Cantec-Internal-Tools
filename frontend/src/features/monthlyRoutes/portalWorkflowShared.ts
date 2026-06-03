@@ -97,6 +97,19 @@ export function portalStopHasTestOutcome(stop: TechnicianWorksheetStop): boolean
   return norm(stop.test_outcome).length > 0
 }
 
+/** Select value for office outcome dropdown; maps legacy result_status when test_outcome is unset. */
+export const OFFICE_OUTCOME_PENDING_VALUE = '__pending__'
+
+export function officeOutcomeSelectValue(stop: TechnicianWorksheetStop): string {
+  if (portalStopHasTestOutcome(stop)) {
+    return norm(stop.test_outcome).toLowerCase()
+  }
+  const rs = norm(stop.result_status).toLowerCase()
+  if (rs === 'tested') return 'all_good'
+  if (rs === 'skipped') return 'skipped'
+  return OFFICE_OUTCOME_PENDING_VALUE
+}
+
 export function portalStopVisitComplete(stop: TechnicianWorksheetStop): boolean {
   return portalStopHasTestOutcome(stop) && !portalStopHasOpenClock(stop)
 }

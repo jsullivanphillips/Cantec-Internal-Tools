@@ -53,7 +53,7 @@ MonthlyKeyBridge — survives location wipes
 | Model | Table | Role |
 |--------|--------|------|
 | `MonthlyRoute` | `monthly_route` | Route shell: `route_number`, `weekday_iso`, `week_occurrence`, optional ST route pseudo-location |
-| `MonthlyRouteLocation` | `monthly_route_location` | Site library; unique normalized address/PMC/building; `test_day`, route FK, stop order, keys, inspection/monitoring fields |
+| `MonthlyRouteLocation` | `monthly_route_location` | Site library; unique normalized address/PMC/building; `test_day`, route FK, stop order, keys, `billing_comments` (office billing notes), inspection/monitoring fields |
 | `MonthlyRouteRun` | `monthly_route_run` | One run per `(monthly_route_id, month_date)`; opened/started/completed timestamps, `status`, `source` |
 | `MonthlyRouteTestHistory` | `monthly_route_test_history` | **One row per `(location_id, month_date)`** — worksheet grain; run-scoped snapshots |
 | `MonthlyRouteWorksheetAuditEvent` | `monthly_route_worksheet_audit_event` | Append-only field audit for worksheet PATCH |
@@ -110,7 +110,7 @@ Primary API for library, routes, worksheet, CSV import, comments.
 | Routes | `GET /api/monthly_routes/routes`, `GET .../routes/<id>` |
 | Worksheet | `GET .../worksheet`, `GET .../worksheet/stream` (SSE), `PATCH .../worksheet/rows/<location_id>`, `PATCH .../worksheet/stops/<testing_site_id>` (portal v2), `POST .../worksheet/reset_run` |
 | Runs | `GET .../run_details?month=` (office run summary), `GET .../run_details/review?month=` (lazy run review), `GET .../run_details/review/stops/<testing_site_id>?month=` (per-stop change detail), `POST .../runs/import_csv`, `POST .../runs/complete`, `POST .../runs/reopen` |
-| Other | `PUT .../location_order`, comments, geocode, `GET .../testing_session` |
+| Other | `PUT .../location_order`, comments, `POST .../library/<id>/geocode`, `POST .../routes/<id>/geocode_missing_coordinates`, placement, `GET .../testing_session` |
 
 Location create/update also runs: `sync_monthly_route_fk_for_location`, `sync_key_fk_for_location`, v2 `sync_testing_sites_from_legacy`, `push_legacy_keys_to_primary_testing_site`.
 
@@ -128,16 +128,16 @@ Delegates most mutations to `monthly_routes`, then augments with v2:
 
 **Frontend split:** Library/map pages use **`/api/monthly_sites/...`**; route detail, run details, and worksheet use **`/api/monthly_routes/...`**.
 
-**Office run navigation:** Route detail → **Paperwork** button → **Paperwork** page (`/monthlies/routes/:routeId/paperwork`, optional `?month=YYYY-MM-01`). Defaults to the current Pacific calendar month. The month selector lists: past months that have a run file (`runs_by_month`), the current month, and the next calendar month. Legacy `/runs/:monthIso` URLs redirect to Paperwork with the same month query.
+**Office run navigation:** Route detail → **Paperwork** button → **Paperwork** page (`/monthlies/routes/:routeId/paperwork`, optional `?month=YYYY-MM-01`). Defaults to the current Pacific calendar month. The month selector lists every month that has a run file (`runs_by_month`), plus the current month and the next calendar month. Legacy `/runs/:monthIso` URLs redirect to Paperwork with the same month query.
 
 **Paperwork locked views** (one view at a time; hero badge shows which):
 
 | Condition | View |
 |-----------|------|
-| Past month (before current Pacific month) | **Exact history** — frozen field submission |
-| Run completed | **Exact history** |
+| Run office-completed (`completed_at` / completed status) | **Exact history** — frozen field submission |
+| Past month with no run header loaded | **Exact history** |
 | Draft / prepared (no `started_at`) | **Run preparation** |
-| Field started, not completed | **Run review** |
+| Field started, not office-completed (including after **Reopen job**) | **Run review** |
 
 **Future-month prep gate:** Office cannot **Mark prepared**, edit prep stops, or edit the pre-run message for a calendar month after the Pacific current month until the **current month run is closed** (`completed_at` / `completed` status). API returns `409` with `code: current_month_not_closed`.
 
@@ -195,7 +195,7 @@ Normalize `KEYS` text → match `keys.keycode` or unique barcode → set `key_id
 
 | Path | Module |
 |------|--------|
-| Route inspection CSV | `app/monthly/route_inspection_csv_import.py` → `POST .../runs/import_csv` (optional multipart field ``sync_stop_order=1`` reorders stops from the ``#`` column) |
+| Route inspection CSV | `app/monthly/route_inspection_csv_import.py` → `POST .../runs/import_csv` (location match first; route-scoped testing-site label fallback; CSV ``#`` always drives run-month ``session_route_stop_order`` / run review order; optional ``sync_stop_order=1`` also updates library ``route_stop_order``) |
 | Master sheet bulk | `app/scripts/upload_monthly_sheet.py` |
 
 Import flow:
@@ -233,13 +233,34 @@ Many earlier migrations scaffolded routes, runs, history, inspection fields, coo
 | `app/scripts/backfill_monthly_v2_sites.py` | Scaffold `MonthlySite` + primary `MonthlyTestingSite` (`--execute`) |
 | `app/scripts/backfill_monthly_key_bridge.py` | Populate `monthly_key_bridge`; optional CSV (`--execute`, `--csv`) |
 | `app/scripts/wipe_monthly_locations_data.py` | Delete locations, history, runs, v2, comments, snapshots; **keep** `monthly_route` shells and `monthly_key_bridge` |
-| `app/scripts/upload_monthly_sheet.py` | Bulk master sheet → library + history + v2 refresh |
+| `app/scripts/upload_monthly_sheet.py` | Bulk master sheet → library + history + v2 refresh (`--locations-only` skips month columns/history; `--history-only` skips location upserts) |
 | `app/scripts/backfill_monthly_route_entities.py` | Route entities from TEST DAY classification |
 | `app/scripts/backfill_monthly_location_key_id.py` | Key FK backfill on locations |
-| `app/scripts/backfill_monthly_route_coordinates.py` | Geocode backfill |
+| `app/scripts/backfill_monthly_route_coordinates.py` | Bulk geocode all library rows missing lat/lng (`--commit`) |
+
+### Map coordinates (office UX)
+
+Stops need `latitude`/`longitude` on `monthly_route_location` before the route map can draw pins or Mapbox driving directions.
+
+1. **Identify** — Route detail → **Route map**: **Missing coords** count; expand the list for each stop (address + **Set pin** / **Edit address**). **Sites on this route** shows a **No map pin** badge linking to the map section.
+2. **Fix in bulk** — **Geocode missing** on the route map (calls `POST /api/monthly_routes/routes/<id>/geocode_missing_coordinates`; requires backend `MAPBOX_ACCESS_TOKEN`).
+3. **Fix one stop** — **Set pin** → **Try automatic geocode**, or search Greater Victoria and pick a Mapbox candidate (`PATCH .../placement`).
+4. **Correct address first** when auto-geocode fails (typo/incomplete street); then geocode again.
+5. **Refresh route** recalculates drive distance/time only — it does not geocode.
+6. **Monthlies → Map** still auto-geocodes on load (`include_coordinates=true`) for the full library; use the route map panel when working one route (e.g. R10).
+
+Script fallback for many routes: `python -m app.scripts.backfill_monthly_route_coordinates --commit`.
 | `app/scripts/audit_keys_multiple_monthly_routes.py` | Audit keys spanning multiple routes |
 
 **Safe wipe order:** `backfill_monthly_key_bridge --execute` → then `wipe_monthly_locations_data --execute`.
+
+**Fresh library from master sheet (no historical test cells):**
+
+1. `python -m app.scripts.backfill_monthly_key_bridge --execute` (optional archive before wipe)
+2. `python -m app.scripts.wipe_monthly_locations_data --execute`
+3. `python -m app.scripts.upload_monthly_sheet --locations-only --commit --csv-path <master.csv>`
+4. `python -m app.scripts.backfill_monthly_route_entities --execute` (assign routes from TEST DAY)
+5. Import per-month run CSVs via the office UI (or route inspection CSV import API) for test history only
 
 ---
 
@@ -247,6 +268,7 @@ Many earlier migrations scaffolded routes, runs, history, inspection fields, coo
 
 | File | Role |
 |------|------|
+| `frontend/src/pages/MonthlyRoutesOverviewPage.tsx` | Routes overview — Pacific **current-month** calendar; routes placed on **effective** test dates (BC stat holidays bump to next same-weekday occurrence) |
 | `frontend/src/pages/MonthlyRoutesPage.tsx` | Library (v2 API) |
 | `frontend/src/pages/MonthlyRouteDetailPage.tsx` | Route detail; Paperwork entry button |
 | `frontend/src/pages/MonthlyRoutePaperworkPage.tsx` | Office Paperwork (prep / review / exact history) |
@@ -257,10 +279,13 @@ Many earlier migrations scaffolded routes, runs, history, inspection fields, coo
 | `frontend/src/features/monthlyRoutes/usePortalWorksheet.ts` | Portal load/sync/SSE/run lifecycle hook |
 | `app/monthly/worksheet_stops.py` | Materialize/serialize/PATCH helpers for portal stops; **run-month snapshots** on read; new months seed from **office master** (+ prior-month fallback); latest-month PATCH mirrors to master |
 | `app/monthly/site_field_template.py` | Master template + prior-month merge for seeding new ``MonthlyTestingSiteMonth`` rows |
-| `frontend/src/features/monthlyRoutes/monthlyRoutesShared.ts` | Shared types/helpers |
+| `frontend/src/features/monthlyRoutes/monthlyRoutesShared.ts` | Shared types/helpers; ``effectiveRouteTestDayIso``, ``scheduledRouteTestDayIso``, calendar grid builders |
+| `frontend/src/features/monthlyRoutes/bcStatHolidays.ts` | BC richer stat holiday set (mirrors ``app/monthly/bc_stat_holidays.py``) |
 | `frontend/src/features/monthlyRoutes/worksheetOfflineStore.ts` | Offline worksheet support |
 
 Technician flow: `/tech` → `/tech/start` → `/tech/route/:routeId/worksheet/:monthIso`.
+
+**Routes overview calendar:** Uses ``monthFirstIsoPacificToday()`` for the displayed month. Each route's cell date comes from ``effectiveRouteTestDayIso`` — nominal ``week_occurrence`` + ``weekday_iso``, bumped to the next same-weekday occurrence when that day is a BC richer stat holiday (e.g. 3rd Monday → 4th Monday when Victoria Day falls on the 3rd). ``scheduledRouteTestDayIso`` delegates to the same logic for portal/worksheet "route today" checks.
 
 ---
 
@@ -357,9 +382,11 @@ Logic: ``app/monthly/run_workflow.py``. UI stepper: ``RunWorkflowStepper.tsx``.
 - **Library location display:** Each `MonthlyTestingSite` master row is the **newest edition** for that testing stop (office edits + mirror from the latest run month when techs PATCH snapshot fields). Primary testing-site values also dual-write to the legacy route location for sheet/detail parity.
 - **Portal stop PATCH (latest month only):** Snapshot field edits on the current/latest run mirror to that stop's `MonthlyTestingSite` master via `mirror_mtsm_snapshot_to_primary_master` (`monthly_sites_sync.py`). Primary stops also mirror to the legacy location. Older months never mirror.
 - **Office testing-site PATCH:** Updates master directly; open prep ``MonthlyTestingSiteMonth`` rows for that route/month (draft/prepared, before ``started_at``) are refreshed from master in the same transaction. The next run seeds from that master when no prep row exists yet.
-- **Route CSV import:** Writes snapshot fields to `MonthlyRouteTestHistory` and materializes `MonthlyTestingSiteMonth` stop rows for that month. Legacy location library columns still use `is_latest_history_month_for_location` (`history_sheet_notes.py`).
+- **Route CSV import:** Writes snapshot fields to `MonthlyRouteTestHistory` for **library location matches** (canonical street on `MonthlyRouteLocation.address`, then PMC/building narrowing). When no library row exists at that street, the importer falls back to **route-scoped** testing sites: it matches the CSV street line against `MonthlyTestingSite.label` and `building_name` on locations assigned to the importing route only (same canonical street normalization as civic addresses). **Primary / location path:** history upsert + primary testing-site master fields (unchanged). **Secondary testing-site fallback:** updates the matched `MonthlyTestingSite` master and upserts `MonthlyTestingSiteMonth` with CSV snapshots, sheet times, and tested/skipped outcome — **no** location history upsert (avoids clobbering the single per-location history row). If the fallback hits the **primary** stop (label differs from library address), history is still upserted. Example: billing location `2471 Sidney Ave` with a secondary stop labeled `9838 Second Street` — row 2471 writes history; row 9838 writes MTSM only. API response counters: `testing_site_matches`, `stop_month_upserts`. Issue kinds: `testing_site_ambiguous`, `testing_site_duplicate`. Every import stores CSV ``#`` on history ``session_route_stop_order`` and post-import syncs that onto worksheet rows so **run review / worksheet order matches the sheet** without changing library ``route_stop_order``. Optional ``sync_stop_order=1`` additionally updates library ``route_stop_order`` for locations already on the route. Post-import `ensure_worksheet_stops_for_route_month` materializes any untouched stops; existing MTSM rows from office prep pick up history outcomes when still empty. Legacy location library columns still use `is_latest_history_month_for_location` (`history_sheet_notes.py`).
 
 ### Per-testing-site display fields (2026-05)
+
+**Stop titles in worksheets, paperwork, maps, and billing:** API stop payloads include ``primary_label`` (testing site ``label``, or billing address when there is only one site and ``label`` is empty) and optional ``billing_address_subline`` when the billing address differs from that title. **Multi-site billing locations:** each stop shows its testing site label as the main line, with subline ``testing site X/N of <billing location>`` (e.g. ``testing site 1/2 of 2471 Sidney Avenue`` under ``9838 Second Street``). Billing-board location rows use ``location_label`` plus ``testing_site_labels[]`` when a library location has multiple testing sites. Helpers: ``app/monthly/testing_site_display.py``, ``frontend/src/features/monthlyRoutes/testingSiteDisplay.tsx``.
 
 Master data lives on **`MonthlyTestingSite`** (migration `z4a5b6c7d8e9`):
 
@@ -453,7 +480,7 @@ Worksheet `stops[]` payload adds: `clock_events`, `test_outcome`, `skip_category
 
 **Billing defaults:** Non-skip outcome on any stop at a location → `bill`; all stops skipped → `unset`; any billable stop on location → `bill` (E1). Office sets final Bill / Do not bill on **Run details** (see Phase 4 below).
 
-**Read-only runs:** `MonthlyRouteRun.source = csv_import` → `portal_read_only` (portal PATCH/workflow blocked).
+**Read-only runs:** `MonthlyRouteRun.source = csv_import` → `portal_read_only` (technician portal PATCH/workflow blocked). Office Paperwork **run review** may still edit billing and test outcomes when the run is reopened and field work has ended.
 
 Legacy `result_status` / `sheet_time_in_raw` / `sheet_time_out_raw` remain for CSV and transition; primary-stop dual-write continues via `sync_primary_history_from_stop`.
 
@@ -536,7 +563,22 @@ Annual-month sites (for the run’s calendar month) are excluded from the untest
 |--------|------|
 | PATCH | `/api/monthly_routes/routes/<route_id>/locations/<location_id>/billing_status?month=YYYY-MM-01` |
 
-Body: `{ "billing_status": "bill" | "do_not_bill" | "unset" }`. Allowed only after technicians **end field** on the run (`office_may_edit_billing`; `409` + `code: billing_before_field_end` while field work is open). Rejects when the row is `legacy` (`code: billing_legacy_locked`). `csv_import` runs: billing controls disabled in UI (read-only).
+Body: `{ "billing_status": "bill" | "do_not_bill" | "unset" }`. Allowed only after technicians **end field** on the run (`office_may_edit_billing`; `409` + `code: billing_before_field_end` while field work is open). Rejects when the row is `legacy` (`code: billing_legacy_locked`). CSV-import runs use the same office review gates (technician portal remains read-only via `portal_read_only`). **Legacy outcomes** (`result_status` without `test_outcome`, e.g. CSV import) show in the run-review outcome dropdown as All good or Skip and may be changed or cleared like portal outcomes once field work has ended. **Auto set billing** (run review button) sets **Bill** when any testing site at the location is all good, passed with problems, or legacy tested; sets **Do not bill** when every site at the location is an annual skip / annual month. Other outcomes (failed, non-annual skip, pending) are left unchanged; legacy billing rows are skipped.
+
+**Monthly Billing board** (staff session, company-wide — not route-scoped):
+
+| Method | Path |
+|--------|------|
+| GET | `/api/monthly_routes/billing_board` |
+| PATCH | `/api/monthly_routes/billing_board/locations/<location_id>/quarter_billed` |
+
+Query: `anchor_month=YYYY-MM-01` **or** `year` + `quarter` (1–4). Optional: `q` (address/PMC; route-like tokens match TEST DAY ``-R{n}`` suffix only), `route` (``R{n}`` route number or full TEST DAY token), `page`, `page_size` (max 200), `bill_any_month`, `unset_any_month`, `not_billed_quarter`, `failed_any_month`.
+
+GET returns active library locations with, for each month in that **calendar quarter**: processor ``billing_status`` from ``monthly_route_test_history`` (defaults to ``unset`` when no row), and a rolled-up **test summary** from ``monthly_testing_site_month`` (worst outcome across testing sites at the address). Also ``quarter_billed`` from ``monthly_location_quarter_billed``.
+
+PATCH body: `{ "billed": true | false }` — upserts or deletes one row per ``(location_id, year, quarter)`` with ``billed_at`` / ``billed_by_username``. This is **invoicing complete**, separate from processor Bill / Do not bill.
+
+UI: ``frontend/src/pages/MonthlyBillingPage.tsx`` at ``/monthlies/billing``. Implementation: ``app/monthly/billing_board.py``. Each row shows ``billing_comments`` under the address (when set); the building field is not shown on this page. Edit comments on the monthly location detail page (**Billing comments** card); persisted on ``monthly_route_location.billing_comments`` via ``PATCH /api/monthly_sites/library/<id>``.
 
 **Paperwork UI:** Single locked view per run phase (see §5.2). **Run preparation** (before `started_at`) uses **Office job comment** (`office_job_comment` on `MonthlyTestingSiteMonth`) instead of the legacy Highlight checkbox; non-empty office comments highlight the prep row purple and appear read-only in the technician portal. **Run review** shows live outcomes, billing, tickets, and deficiencies. **Exact history** shows the frozen technician submission from `GET .../run_details/field_submission` (empty state when no snapshot exists). **Field changes** is not a Paperwork tab in this iteration. **Mark review complete** requires every billing location to be `bill` or `do_not_bill` (not `unset`).
 
@@ -577,6 +619,8 @@ Body: `{ "billing_status": "bill" | "do_not_bill" | "unset" }`. Allowed only aft
 | `app/routes/monthly_specialists.py` | Specialist snapshots |
 | `app/monthly/monthly_sites_sync.py` | V2 scaffold + dual-write (`sync_testing_sites_from_legacy`, `push_primary_testing_site_display_to_legacy`) |
 | `frontend/src/pages/MonthlyLocationDetailPage.tsx` | Library location detail (v2 testing stops section) |
+| `frontend/src/pages/MonthlyBillingPage.tsx` | Billing board (quarter test/bill status + mark billed) |
+| `app/monthly/billing_board.py` | Billing board query + quarter billed toggle |
 | `frontend/src/features/monthlyRoutes/MonthlyLocationLibraryModal.tsx` | Edit billing + v2 testing stops |
 | `frontend/src/features/monthlyRoutes/TestingSiteFieldsSection.tsx` | Shared view/edit fields for a testing stop |
 | `app/monthly/testing_site_fields.py` | Canonical field names for API/CSV |

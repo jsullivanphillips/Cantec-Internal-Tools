@@ -14,6 +14,9 @@ import {
 import { flushSync } from 'react-dom'
 import { Alert, Badge, Button, Card, Modal, Spinner, Table } from 'react-bootstrap'
 import { Link, useMatch, useParams } from 'react-router-dom'
+import {
+  legacyWorksheetRowDisplay,
+} from '../features/monthlyRoutes/testingSiteDisplay'
 import OfficeWorksheetReadOnlyTable from '../features/monthlyRoutes/OfficeWorksheetReadOnlyTable'
 import {
   groupOfficeWorksheetStops,
@@ -699,6 +702,24 @@ export default function TechnicianWorksheetPage() {
     [isOfficeReadOnly, payload?.stops],
   )
 
+  const rowDisplayByLocationId = useMemo(() => {
+    const map = new Map<number, { primary: string; subline: string | null }>()
+    if (!payload) return map
+    for (const row of payload.rows) {
+      map.set(row.location_id, legacyWorksheetRowDisplay(row, payload.stops))
+    }
+    return map
+  }, [payload])
+
+  const rowWorksheetAriaLabel = useCallback(
+    (row: TechnicianWorksheetRow) => {
+      const display = rowDisplayByLocationId.get(row.location_id)
+      if (!display) return row.display_address
+      return display.subline ? `${display.primary}, ${display.subline}` : display.primary
+    },
+    [rowDisplayByLocationId],
+  )
+
   const officeStopGroups = useMemo(
     () => groupOfficeWorksheetStops(officeWorksheetStops),
     [officeWorksheetStops],
@@ -1093,7 +1114,7 @@ export default function TechnicianWorksheetPage() {
           className={`${tdClass} tw-worksheet-grid-td`}
           tabIndex={-1}
           role="gridcell"
-          aria-label={`${WORKSHEET_GRID_COLUMN_LABELS[column]}${payload?.run == null ? ' (preview)' : ''}, ${row.display_address}`}
+          aria-label={`${WORKSHEET_GRID_COLUMN_LABELS[column]}${payload?.run == null ? ' (preview)' : ''}, ${rowWorksheetAriaLabel(row)}`}
         >
           <div className="tw-worksheet-cell-surface tw-worksheet-cell-surface--excel-shell">
             <div className="tw-worksheet-cell-flow">
@@ -1122,7 +1143,7 @@ export default function TechnicianWorksheetPage() {
         }}
         tabIndex={selected && !showEditor ? 0 : -1}
         role="gridcell"
-        aria-label={`${WORKSHEET_GRID_COLUMN_LABELS[column]}, ${row.display_address}`}
+        aria-label={`${WORKSHEET_GRID_COLUMN_LABELS[column]}, ${rowWorksheetAriaLabel(row)}`}
         className={`${tdClass} tw-worksheet-grid-td`}
         onKeyDown={showEditor ? undefined : onWorksheetGridCellKeyDown(row, column)}
         onPointerDownCapture={() => {
@@ -1224,7 +1245,7 @@ export default function TechnicianWorksheetPage() {
             <textarea
               ref={worksheetFloatingEditorRef}
               className="form-control form-control-sm tw-worksheet-cell-editor"
-              aria-label={`Edit ${WORKSHEET_GRID_COLUMN_LABELS[column]}, ${row.display_address}`}
+              aria-label={`Edit ${WORKSHEET_GRID_COLUMN_LABELS[column]}, ${rowWorksheetAriaLabel(row)}`}
               value={worksheetGridDraft}
               onChange={(e) => {
                 const v = e.target.value
@@ -1591,12 +1612,24 @@ export default function TechnicianWorksheetPage() {
                         <td className="tw-col-order text-center tabular-nums">{index + 1}</td>
                         <td className={`tw-col-address${addressStatusClass ? ` ${addressStatusClass}` : ''}`}>
                           <div className="tw-address-block">
+                            {(() => {
+                              const display = rowDisplayByLocationId.get(row.location_id)
+                              const primary = display?.primary ?? row.display_address
+                              const subline = display?.subline
+                              return (
+                                <>
                             <Link
                               to={`/monthlies/locations/${row.location_id}`}
                               className="fw-semibold text-break text-decoration-none link-primary d-inline-block"
                             >
-                              {row.display_address}
+                              {primary}
                             </Link>
+                            {subline ? (
+                              <div className="small text-muted">{subline}</div>
+                            ) : null}
+                                </>
+                              )
+                            })()}
                             <div className="small text-muted">{worksheetReadOnlyDisplay(row.building)}</div>
                             <div className="small text-muted">{row.property_management_company || '—'}</div>
                           </div>
@@ -1917,7 +1950,12 @@ export default function TechnicianWorksheetPage() {
           <Modal.Title className="h6 mb-0">Time In</Modal.Title>
         </Modal.Header>
         <Modal.Body>
-          <div className="small mb-2 text-muted">{timeInModalRow?.display_address}</div>
+          <div className="small mb-2 text-muted">
+            {timeInModalRow
+              ? rowDisplayByLocationId.get(timeInModalRow.location_id)?.primary ??
+                timeInModalRow.display_address
+              : null}
+          </div>
           <input
             className="form-control"
             value={timeInDraft}
@@ -1953,7 +1991,12 @@ export default function TechnicianWorksheetPage() {
           <Modal.Title className="h6 mb-0">Time Out</Modal.Title>
         </Modal.Header>
         <Modal.Body>
-          <div className="small mb-2 text-muted">{timeOutModalRow?.display_address}</div>
+          <div className="small mb-2 text-muted">
+            {timeOutModalRow
+              ? rowDisplayByLocationId.get(timeOutModalRow.location_id)?.primary ??
+                timeOutModalRow.display_address
+              : null}
+          </div>
           <input
             className="form-control"
             value={timeOutDraft}
@@ -1991,7 +2034,12 @@ export default function TechnicianWorksheetPage() {
           <Modal.Title className="h6 mb-0">Skip Reason</Modal.Title>
         </Modal.Header>
         <Modal.Body>
-          <div className="small mb-2 text-muted">{skipReasonModalRow?.display_address}</div>
+          <div className="small mb-2 text-muted">
+            {skipReasonModalRow
+              ? rowDisplayByLocationId.get(skipReasonModalRow.location_id)?.primary ??
+                skipReasonModalRow.display_address
+              : null}
+          </div>
           <input
             className="form-control"
             value={skipReasonDraft}

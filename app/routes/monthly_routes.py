@@ -357,6 +357,7 @@ def _months_payload_for_location(location_id: int) -> dict[str, dict[str, object
         out[row.month_date.isoformat()] = {
             "result_status": row.result_status,
             "skip_reason": row.skip_reason,
+            "billing_status": (row.billing_status or "").strip().lower() or None,
             "test_monthly_route": _serialize_monthly_route_entity(row.test_monthly_route),
             "worksheet_route_id": worksheet_route_id,
             "run_id": int(row.run_id) if row.run_id is not None else None,
@@ -1620,6 +1621,7 @@ def _serialize_location_row(
     from app.monthly.history_sheet_notes import apply_latest_run_notes_to_location_payload
 
     payload["notes"] = loc.notes
+    payload["billing_comments"] = loc.billing_comments
     payload["ring_detail"] = loc.ring_detail
     payload["facp_detail"] = loc.facp_detail
     payload["testing_procedures"] = loc.testing_procedures
@@ -1850,6 +1852,115 @@ def monthly_routes_library(*, list_view: bool | None = None):
             },
         }
     )
+
+
+@monthly_routes_bp.get("/api/monthly_routes/billing_board")
+def get_monthly_billing_board():
+    """Active locations with processor billing + test rollup per month in a calendar quarter."""
+    from app.monthly.billing_board import (
+        _billing_board_route_options,
+        load_billing_board,
+        resolve_quarter_params,
+    )
+
+    anchor_raw = (request.args.get("anchor_month") or "").strip()
+    anchor_month = _parse_month(anchor_raw) if anchor_raw else None
+    year_raw = (request.args.get("year") or "").strip()
+    quarter_raw = (request.args.get("quarter") or "").strip()
+    year = int(year_raw) if year_raw.isdigit() else None
+    quarter = int(quarter_raw) if quarter_raw.isdigit() else None
+
+    resolved = resolve_quarter_params(
+        anchor_month=anchor_month,
+        year=year,
+        quarter=quarter,
+    )
+    if resolved is None:
+        return (
+            jsonify(
+                {
+                    "error": "Provide anchor_month (YYYY-MM-01) or year and quarter (1–4)",
+                    "code": "invalid_quarter_params",
+                }
+            ),
+            400,
+        )
+
+    year_i, quarter_i, month_dates = resolved
+    page = _parse_positive_int(request.args.get("page"), 1)
+    page_size = min(_parse_positive_int(request.args.get("page_size"), 50), 200)
+    q = (request.args.get("q") or "").strip().casefold()
+    route = (request.args.get("route") or "").strip()
+    bill_any_month = (request.args.get("bill_any_month") or "").strip().lower() == "true"
+    unset_any_month = (request.args.get("unset_any_month") or "").strip().lower() == "true"
+    not_billed_quarter = (request.args.get("not_billed_quarter") or "").strip().lower() == "true"
+    failed_any_month = (request.args.get("failed_any_month") or "").strip().lower() == "true"
+
+    payload = load_billing_board(
+        year_i,
+        quarter_i,
+        month_dates,
+        q=q,
+        route=route,
+        page=page,
+        page_size=page_size,
+        bill_any_month=bill_any_month,
+        unset_any_month=unset_any_month,
+        not_billed_quarter=not_billed_quarter,
+        failed_any_month=failed_any_month,
+    )
+    payload["meta"] = {"routes": _billing_board_route_options()}
+    return jsonify(payload)
+
+
+@monthly_routes_bp.patch(
+    "/api/monthly_routes/billing_board/locations/<int:location_id>/quarter_billed"
+)
+def patch_monthly_billing_quarter_billed(location_id: int):
+    """Billing team: mark or clear quarter invoiced for a library location."""
+    from app.monthly.billing_board import resolve_quarter_params, set_location_quarter_billed
+
+    anchor_raw = (request.args.get("anchor_month") or "").strip()
+    anchor_month = _parse_month(anchor_raw) if anchor_raw else None
+    year_raw = (request.args.get("year") or "").strip()
+    quarter_raw = (request.args.get("quarter") or "").strip()
+    year = int(year_raw) if year_raw.isdigit() else None
+    quarter = int(quarter_raw) if quarter_raw.isdigit() else None
+
+    resolved = resolve_quarter_params(
+        anchor_month=anchor_month,
+        year=year,
+        quarter=quarter,
+    )
+    if resolved is None:
+        return (
+            jsonify(
+                {
+                    "error": "Provide anchor_month (YYYY-MM-01) or year and quarter (1–4)",
+                    "code": "invalid_quarter_params",
+                }
+            ),
+            400,
+        )
+
+    year_i, quarter_i, _month_dates = resolved
+    body = request.get_json(silent=True) or {}
+    if "billed" not in body:
+        return jsonify({"error": "billed is required", "code": "invalid_body"}), 400
+    billed = bool(body.get("billed"))
+
+    try:
+        result = set_location_quarter_billed(
+            location_id,
+            year_i,
+            quarter_i,
+            billed=billed,
+            username=_session_username_clean(),
+        )
+    except LookupError:
+        return jsonify({"error": "Location not found"}), 404
+
+    return jsonify(result)
 
 
 @monthly_routes_bp.get("/api/monthly_routes/library/<int:location_id>")
@@ -2404,6 +2515,86 @@ def get_monthly_route_testing_session(route_id: int):
     if payload is None:
         return jsonify({"error": "Route not found"}), 404
     return jsonify(payload)
+
+
+@monthly_routes_bp.post("/api/monthly_routes/library/<int:location_id>/geocode")
+def geocode_monthly_library_location(location_id: int):
+    """Attempt Mapbox geocoding for one library location missing coordinates."""
+    if not os.getenv("MAPBOX_ACCESS_TOKEN"):
+        return jsonify({"error": "MAPBOX_ACCESS_TOKEN is not configured"}), 503
+
+    loc = _get_monthly_location(location_id)
+    if loc is None:
+        return jsonify({"error": "Location not found"}), 404
+
+    already_had = loc.latitude is not None and loc.longitude is not None
+    if not already_had:
+        _populate_missing_coordinates([loc])
+        db.session.refresh(loc)
+
+    geocoded = loc.latitude is not None and loc.longitude is not None
+    if geocoded and loc.monthly_route_id is not None:
+        invalidate_monthly_route_path(loc.monthly_route_id)
+
+    months_by_location = _months_payload_for_location(location_id)
+    body: dict[str, object] = {
+        "location": _serialize_location_row(loc, months_by_location),
+        "geocoded": geocoded,
+        "already_had_coordinates": already_had,
+    }
+    if not geocoded and not already_had:
+        body["error"] = (
+            "Mapbox could not find coordinates for this address in Greater Victoria. "
+            "Correct the street address or set the map pin manually."
+        )
+    return jsonify(body)
+
+
+@monthly_routes_bp.post("/api/monthly_routes/routes/<int:route_id>/geocode_missing_coordinates")
+def geocode_missing_route_coordinates(route_id: int):
+    """Geocode all stops on a route that are missing latitude/longitude."""
+    from app.monthly.mapbox_routes import ordered_route_locations, serialize_route_stop
+
+    if not os.getenv("MAPBOX_ACCESS_TOKEN"):
+        return jsonify({"error": "MAPBOX_ACCESS_TOKEN is not configured"}), 503
+
+    mr = _get_monthly_route(route_id)
+    if mr is None:
+        return jsonify({"error": "Route not found"}), 404
+
+    locations = ordered_route_locations(route_id)
+    missing_before = [
+        loc for loc in locations if loc.latitude is None or loc.longitude is None
+    ]
+    if missing_before:
+        _populate_missing_coordinates(missing_before)
+        invalidate_monthly_route_path(route_id)
+
+    updated: list[dict[str, object]] = []
+    failed: list[dict[str, object]] = []
+    for loc in missing_before:
+        db.session.refresh(loc)
+        stop = serialize_route_stop(loc)
+        row = {
+            "id": int(loc.id),
+            "label": stop.get("label") or loc.address,
+            "address": loc.address,
+            "building": loc.building,
+        }
+        if loc.latitude is not None and loc.longitude is not None:
+            updated.append(row)
+        else:
+            failed.append(row)
+
+    return jsonify(
+        {
+            "route_id": route_id,
+            "attempted": len(missing_before),
+            "updated_count": len(updated),
+            "updated": updated,
+            "failed": failed,
+        }
+    )
 
 
 @monthly_routes_bp.get("/api/monthly_routes/routes/<int:route_id>/calculated_path")
@@ -4059,10 +4250,11 @@ def import_route_run_csv(route_id: int):
             jsonify(
                 {
                     "error": (
-                        "This month's run is marked completed. Upload a CSV again only "
-                        "after staff reopens the run from the worksheet."
+                        "This month's run is marked completed. Reopen it from the "
+                        "Paperwork page for this route, then upload the CSV again."
                     ),
                     "code": "run_completed_csv_blocked",
+                    "month_date": month_first.isoformat(),
                 }
             ),
             409,
@@ -4089,12 +4281,11 @@ def import_route_run_csv(route_id: int):
     )
 
     ensure_worksheet_stops_for_route_month(int(route.id), month_first, run)
-    session_stop_order_applied = 0
-    if sync_stop_order:
-        session_stop_order_applied = apply_session_stop_order_from_history_for_route_month(
-            int(route.id),
-            month_first,
-        )
+    session_stop_order_applied = apply_session_stop_order_from_history_for_route_month(
+        int(route.id),
+        month_first,
+        overwrite=True,
+    )
 
     from app.monthly.field_submission import capture_field_submission_for_run
     from app.monthly.run_workflow import (
@@ -4131,6 +4322,8 @@ def import_route_run_csv(route_id: int):
             "stop_order_applied": result.stop_order_applied,
             "stop_order_skipped_not_on_sheet_route": result.stop_order_skipped_not_on_sheet_route,
             "session_stop_order_applied": session_stop_order_applied,
+            "testing_site_matches": result.testing_site_matches,
+            "stop_month_upserts": result.stop_month_upserts,
             "issues": [
                 {"kind": i.kind, "csv_row": i.csv_row, "detail": i.detail}
                 for i in result.issues
@@ -4862,6 +5055,8 @@ def update_monthly_route_location(location_id: int):
             loc.building_normalized = (value or "").casefold()
         if "notes" in payload:
             loc.notes = _clean_text(payload.get("notes"))
+        if "billing_comments" in payload:
+            loc.billing_comments = _clean_text(payload.get("billing_comments"))
         if "price_per_month" in payload:
             loc.price_per_month = _parse_price(payload.get("price_per_month"))
         if "area" in payload:
@@ -4920,19 +5115,42 @@ def update_monthly_route_location(location_id: int):
 
                 result_status = _clean_text(month_value.get("result_status"))
                 skip_reason = _clean_text(month_value.get("skip_reason"))
+                billing_raw = month_value.get("billing_status")
+                billing_status: str | None = None
+                if billing_raw is not None:
+                    billing_status = (_clean_text(billing_raw) or "").lower() or "unset"
+                    if billing_status not in {"bill", "do_not_bill", "unset"}:
+                        raise ValueError(
+                            f"months[{month_key}].billing_status must be bill, do_not_bill, or unset"
+                        )
+
+                row = MonthlyRouteTestHistory.query.filter_by(
+                    location_id=location_id, month_date=month_date
+                ).one_or_none()
+
                 if result_status is None:
-                    MonthlyRouteTestHistory.query.filter_by(
-                        location_id=location_id, month_date=month_date
-                    ).delete()
+                    if row is None:
+                        if billing_status is None:
+                            continue
+                        raise ValueError(
+                            f"months[{month_key}] requires result_status before billing_status"
+                        )
+                    if billing_status is not None:
+                        current_billing = (row.billing_status or "").strip().lower()
+                        if current_billing == "legacy":
+                            raise ValueError(f"months[{month_key}].billing_status is legacy (locked)")
+                        row.billing_status = billing_status
+                    else:
+                        MonthlyRouteTestHistory.query.filter_by(
+                            location_id=location_id, month_date=month_date
+                        ).delete()
                     continue
+
                 if result_status not in {"tested", "skipped"}:
                     raise ValueError(f"months[{month_key}].result_status must be tested or skipped")
                 if result_status != "skipped":
                     skip_reason = None
 
-                row = MonthlyRouteTestHistory.query.filter_by(
-                    location_id=location_id, month_date=month_date
-                ).one_or_none()
                 if row is None:
                     row = MonthlyRouteTestHistory(
                         location_id=location_id,
@@ -4941,9 +5159,15 @@ def update_monthly_route_location(location_id: int):
                         skip_reason=skip_reason,
                         source_value_raw=None,
                         test_monthly_route_id=loc.monthly_route_id,
+                        billing_status=billing_status or "unset",
                     )
                     db.session.add(row)
                 else:
+                    if billing_status is not None:
+                        current_billing = (row.billing_status or "").strip().lower()
+                        if current_billing == "legacy":
+                            raise ValueError(f"months[{month_key}].billing_status is legacy (locked)")
+                        row.billing_status = billing_status
                     row.result_status = result_status
                     row.skip_reason = skip_reason
                     row.test_monthly_route_id = loc.monthly_route_id
