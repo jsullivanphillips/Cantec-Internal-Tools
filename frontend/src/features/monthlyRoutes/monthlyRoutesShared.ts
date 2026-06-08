@@ -74,6 +74,7 @@ export type TestingSiteSummary = {
   monitoring_company_id?: number | null
   monitoring_company?: MonitoringCompanySummary | null
   monitoring_account_number?: string | null
+  monitoring_password?: string | null
   monitoring_notes: string | null
   testing_procedures: string | null
   inspection_tech_notes: string | null
@@ -274,6 +275,10 @@ export type RouteRunMonthSummary = {
   completed_at: string | null
   workflow_stage?: string
   workflow_stage_label?: string
+  /** Worksheet stops on this route for the run month (historical worksheet grain). */
+  stops_on_route_count?: number
+  /** Stops with a tested outcome; annual skips are excluded. */
+  stops_tested_count?: number
 }
 
 export type MonthlyRouteDetailPayload = {
@@ -441,6 +446,7 @@ export type MonthlyRunDetailLocationStop = {
   monitoring_company?: string | null
   monitoring_company_id?: number | null
   monitoring_account_number?: string | null
+  monitoring_password?: string | null
   monitoring_notes?: string | null
   monitoring_company_record?: MonitoringCompanySummary | null
   run_comments: string | null
@@ -667,6 +673,7 @@ export type TechnicianWorksheetStop = {
   monitoring_company_id?: number | null
   monitoring_company_record?: MonitoringCompanySummary | null
   monitoring_account_number?: string | null
+  monitoring_password?: string | null
   monitoring_notes: string | null
   result_status: string | null
   skip_reason: string | null
@@ -1036,6 +1043,7 @@ export type TestingSiteEditForm = {
   annual_month: string
   monitoring_company_id: string
   monitoring_account_number: string
+  monitoring_password: string
   monitoring_notes: string
   testing_procedures: string
   inspection_tech_notes: string
@@ -1066,6 +1074,7 @@ export function buildTestingSiteEditForm(
     monitoring_company_id:
       ts.monitoring_company_id != null ? String(ts.monitoring_company_id) : '',
     monitoring_account_number: ts.monitoring_account_number ?? '',
+    monitoring_password: ts.monitoring_password ?? '',
     monitoring_notes: ts.monitoring_notes ?? '',
     testing_procedures: ts.testing_procedures ?? '',
     inspection_tech_notes: ts.inspection_tech_notes ?? '',
@@ -1093,6 +1102,7 @@ export function testingSitePayloadFromEditForm(form: TestingSiteEditForm): Recor
     annual_month: form.annual_month.trim() || null,
     monitoring_company_id,
     monitoring_account_number: form.monitoring_account_number.trim() || null,
+    monitoring_password: form.monitoring_password.trim() || null,
     monitoring_notes: form.monitoring_notes.trim() || null,
     testing_procedures: form.testing_procedures.trim() || null,
     inspection_tech_notes: form.inspection_tech_notes.trim() || null,
@@ -1115,6 +1125,26 @@ export const STATUS_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'on_hold', label: 'On Hold' },
   { value: 'waiting_keys', label: 'Waiting Keys' },
 ]
+
+export function isCancelledMonthlyLocation(
+  loc: Pick<RouteLocationListItem, 'status_normalized'>,
+): boolean {
+  return (loc.status_normalized || '').trim().toLowerCase() === 'cancelled'
+}
+
+/** Route detail / map: hide cancelled library locations from active stop lists. */
+export function activeRouteLocations(locations: RouteLocationListItem[]): RouteLocationListItem[] {
+  return locations.filter((loc) => !isCancelledMonthlyLocation(loc))
+}
+
+/** Preserve cancelled rows in place when persisting a drag reorder on visible stops only. */
+export function mergeVisibleRouteLocationReorder(
+  full: RouteLocationListItem[],
+  reorderedVisible: RouteLocationListItem[],
+): RouteLocationListItem[] {
+  const queue = [...reorderedVisible]
+  return full.map((loc) => (isCancelledMonthlyLocation(loc) ? loc : queue.shift()!))
+}
 
 /** Sidebar filter key for locations with no assigned route (not a real test_day value). */
 export const MAP_ROUTE_UNASSIGNED = '__monthly_map_unassigned__'

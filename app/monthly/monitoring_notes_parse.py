@@ -137,8 +137,6 @@ def rebuild_monitoring_notes(parsed: MonitoringNotesParsed) -> str | None:
         parts.append(f"SIGNALS: {parsed.signals}")
     if parsed.phone:
         parts.append(f"PHONE: {parsed.phone}")
-    if parsed.password:
-        parts.append(f"PASS: {parsed.password}")
     if parsed.remainder_notes:
         parts.append(parsed.remainder_notes.strip())
     joined = "\n\n".join(p for p in parts if p).strip()

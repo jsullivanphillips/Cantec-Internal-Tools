@@ -1,5 +1,6 @@
 import { Alert, Button, Form, Spinner } from 'react-bootstrap'
 import type { MonthlyRunDetailLocation } from './monthlyRoutesShared'
+import { annualMonthDropdownOptions, normalizeAnnualMonthForSelect } from './monthlyRoutesShared'
 import { annualMonthHint } from './annualMonthHint'
 import { rollbackPatchForChanges } from './runDetailsPrepPatch'
 import type { RunDetailsStopPatchApi } from './useRunDetailsStopPatch'
@@ -28,6 +29,7 @@ export default function RunDetailsLocationPrepPanel({
         const annualHintText = annualMonthHint(stop, location.location_label, monthDate)
         const sid = stop.testing_site_id
         const annualBusy = isFieldSaving(sid, `prep-${sid}-annual`)
+        const annualSelectValue = normalizeAnnualMonthForSelect(stop.annual_month) || ''
         const proceduresBusy = isFieldSaving(sid, `prep-${sid}-procedures`)
         const locNotesBusy = isFieldSaving(sid, `prep-${sid}-loc-notes`)
         const runCommentsBusy = isFieldSaving(sid, `prep-${sid}-run-comments`)
@@ -45,24 +47,29 @@ export default function RunDetailsLocationPrepPanel({
                   {annualHintText}
                 </span>
               ) : null}
-              <Form.Control
+              <Form.Select
                 size="sm"
                 className="run-location-card__prep-input"
-                defaultValue={stop.annual_month || ''}
+                value={annualSelectValue}
                 disabled={annualBusy}
-                onBlur={(e) => {
+                onChange={(e) => {
                   const next = e.target.value.trim()
-                  const prev = (stop.annual_month || '').trim()
-                  if (next !== prev) {
-                    void patchStop(
-                      sid,
-                      `prep-${sid}-annual`,
-                      { annual_month: next || null },
-                      rollbackPatchForChanges(stop, { annual_month: next || null }),
-                    )
-                  }
+                  const prev = normalizeAnnualMonthForSelect(stop.annual_month) || ''
+                  if (next === prev) return
+                  void patchStop(
+                    sid,
+                    `prep-${sid}-annual`,
+                    { annual_month: next || null },
+                    rollbackPatchForChanges(stop, { annual_month: next || null }),
+                  )
                 }}
-              />
+              >
+                {annualMonthDropdownOptions(stop.annual_month).map((opt) => (
+                  <option key={opt.value || '__empty'} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </Form.Select>
             </div>
             <div className="run-location-card__prep-row">
               <span className="run-location-card__prep-key">Testing procedures</span>

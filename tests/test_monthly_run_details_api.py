@@ -958,6 +958,93 @@ def test_get_run_details_ledger_only_without_run_file(run_details_client):
         assert _runs_by_month_for_route(1).get("2026-05-01") is None
 
 
+def test_runs_by_month_includes_worksheet_stop_counts(run_details_client):
+    """Route detail runs_by_month includes tested/total stop counts at worksheet grain."""
+    client, app = run_details_client
+    with app.app_context():
+        route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
+        loc = MonthlyRouteLocation(
+            id=101,
+            address="123 Test St",
+            address_normalized="123 test st",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
+            building=None,
+            building_normalized="",
+            status_normalized="active",
+            status_raw="Active",
+            monthly_route_id=1,
+            route_stop_order=1,
+            annual_month="May",
+        )
+        run = MonthlyRouteRun(
+            id=9001,
+            monthly_route_id=1,
+            month_date=date(2026, 5, 1),
+            started_at=datetime(2026, 5, 2, 8, 0, tzinfo=PACIFIC_TZ),
+            status="open",
+            source="technician_app",
+        )
+        db.session.add_all([route, loc, run])
+        db.session.commit()
+        sync_testing_sites_from_legacy(loc)
+        site = MonthlySite.query.filter_by(legacy_monthly_route_location_id=101).one()
+        ts_primary = MonthlyTestingSite.query.filter_by(monthly_site_id=int(site.id)).one()
+        ts_annex = MonthlyTestingSite(
+            id=88002,
+            monthly_site_id=int(site.id),
+            sort_order=1,
+            label="Annex panel",
+        )
+        ts_pending = MonthlyTestingSite(
+            id=88003,
+            monthly_site_id=int(site.id),
+            sort_order=2,
+            label="Garage panel",
+        )
+        db.session.add_all([ts_annex, ts_pending])
+        db.session.add_all(
+            [
+                MonthlyTestingSiteMonth(
+                    id=92001,
+                    monthly_testing_site_id=int(ts_primary.id),
+                    month_date=date(2026, 5, 1),
+                    test_monthly_route_id=1,
+                    run_id=9001,
+                    test_outcome="all_good",
+                ),
+                MonthlyTestingSiteMonth(
+                    id=92002,
+                    monthly_testing_site_id=88002,
+                    month_date=date(2026, 5, 1),
+                    test_monthly_route_id=1,
+                    run_id=9001,
+                    result_status="skipped",
+                    skip_reason="annual_booked",
+                ),
+                MonthlyTestingSiteMonth(
+                    id=92003,
+                    monthly_testing_site_id=88003,
+                    month_date=date(2026, 5, 1),
+                    test_monthly_route_id=1,
+                    run_id=9001,
+                ),
+            ]
+        )
+        db.session.commit()
+
+        from app.monthly.run_details_review import run_month_worksheet_stop_counts
+        from app.routes.monthly_routes import _runs_by_month_for_route
+
+        counts = run_month_worksheet_stop_counts(1, date(2026, 5, 1))
+        assert counts == {"stops_on_route_count": 3, "stops_tested_count": 1}
+
+        run_row = _runs_by_month_for_route(1)["2026-05-01"]
+        assert run_row["stops_on_route_count"] == 3
+        assert run_row["stops_tested_count"] == 1
+        assert run_row["workflow_stage_label"] == "Field in progress"
+
+
 def test_get_run_details_draft_future_month_without_run_file(run_details_client):
     """Office may open run details for a future month before any run file exists."""
     from app.monthly.monthly_sites_sync import sync_testing_sites_from_legacy

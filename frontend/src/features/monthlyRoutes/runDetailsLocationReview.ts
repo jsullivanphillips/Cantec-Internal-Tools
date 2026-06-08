@@ -87,6 +87,7 @@ export function locationStopAsWorksheetStop(
     monitoring_company_id: stop.monitoring_company_id ?? null,
     monitoring_company_record: stop.monitoring_company_record ?? null,
     monitoring_account_number: stop.monitoring_account_number ?? null,
+    monitoring_password: stop.monitoring_password ?? null,
     monitoring_notes: stop.monitoring_notes ?? null,
     result_status: stop.result_status,
     skip_reason: stop.skip_reason ?? null,

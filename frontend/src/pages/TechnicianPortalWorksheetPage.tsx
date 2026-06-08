@@ -41,6 +41,7 @@ import PortalRecordResultsModal, {
 } from '../features/monthlyRoutes/PortalRecordResultsModal'
 import PortalDeficienciesCard from '../features/monthlyRoutes/PortalDeficienciesCard'
 import PortalDeficiencyModal from '../features/monthlyRoutes/PortalDeficiencyModal'
+import PortalKeyViewModal from '../features/monthlyRoutes/PortalKeyViewModal'
 import {
   testingSitePositionAtLocation,
   testingSitePrimaryLabel,
@@ -244,6 +245,7 @@ export default function TechnicianPortalWorksheetPage() {
   const [phoneLayout, setPhoneLayout] = useState(
     () => typeof window !== 'undefined' && window.matchMedia(PORTAL_WORKSHEET_PHONE_LAYOUT_MEDIA).matches,
   )
+  const [keyViewOpen, setKeyViewOpen] = useState(false)
   const [skipModalOpen, setSkipModalOpen] = useState(false)
   const [resultsModalOpen, setResultsModalOpen] = useState(false)
   const [resultsForClockOut, setResultsForClockOut] = useState(false)
@@ -422,12 +424,14 @@ export default function TechnicianPortalWorksheetPage() {
 
   useEffect(() => {
     setInteractiveBusy(
-      skipModalOpen ||
+      keyViewOpen ||
+        skipModalOpen ||
         resultsModalOpen ||
         defModalOpen ||
         editingField != null,
     )
   }, [
+    keyViewOpen,
     skipModalOpen,
     resultsModalOpen,
     defModalOpen,
@@ -670,6 +674,7 @@ export default function TechnicianPortalWorksheetPage() {
             monitoring.company !== '—' ? monitoring.company : null,
             ...monitoring.phones,
             monitoring.account !== '—' ? `Acct ${monitoring.account}` : null,
+            monitoring.password !== '—' ? `PW ${monitoring.password}` : null,
           ]
             .filter(Boolean)
             .join(' · ')
@@ -704,17 +709,30 @@ export default function TechnicianPortalWorksheetPage() {
             {testingSitePrimaryLabel(stop, { siteCount, siteIndex, compact: true })}
           </span>
           <span className="pw-mock-nav-stop-detail">
+            <span className="pw-mock-nav-stop-group">
+              <span className="pw-mock-nav-stop-line">
+                <i className="bi bi-key pw-mock-nav-stop-icon" title="Key" aria-hidden="true" />
+                {key}
+              </span>
+              <span className="pw-mock-nav-stop-line">
+                <i className="bi bi-circle pw-mock-nav-stop-icon" title="Ring" aria-hidden="true" />
+                {ring}
+              </span>
+            </span>
             {hasMonitoring || monitoring.phones.length > 0 ? (
-              <>
+              <span className="pw-mock-nav-stop-group">
                 {monitoring.company !== '—' ? (
                   <span className="pw-mock-nav-stop-line">
-                    <span className="pw-mock-nav-stop-label">Monitoring</span>
+                    <i
+                      className="bi bi-telephone pw-mock-nav-stop-icon"
+                      title="Monitoring"
+                      aria-hidden="true"
+                    />
                     {monitoring.company}
                   </span>
                 ) : null}
                 {monitoring.phones.map((phone) => (
                   <span key={phone} className="pw-mock-nav-stop-line">
-                    <span className="pw-mock-nav-stop-label">Phone</span>
                     {phone}
                   </span>
                 ))}
@@ -724,16 +742,14 @@ export default function TechnicianPortalWorksheetPage() {
                     {monitoring.account}
                   </span>
                 ) : null}
-              </>
+                {monitoring.password !== '—' ? (
+                  <span className="pw-mock-nav-stop-line">
+                    <span className="pw-mock-nav-stop-label">PW</span>
+                    {monitoring.password}
+                  </span>
+                ) : null}
+              </span>
             ) : null}
-            <span className="pw-mock-nav-stop-line">
-              <span className="pw-mock-nav-stop-label">Key</span>
-              {key}
-            </span>
-            <span className="pw-mock-nav-stop-line">
-              <span className="pw-mock-nav-stop-label">Ring</span>
-              {ring}
-            </span>
           </span>
         </button>
         {resolveStopMapsTarget(stop) ? renderMapsPinButton(stop, activeClass) : null}
@@ -1026,8 +1042,19 @@ export default function TechnicianPortalWorksheetPage() {
           >
             {navItemsExpanded ? (
               <div className="pw-mock-sidenav-head">
-                <div className="pw-mock-sidenav-title">{routeLabel}</div>
-                <div className="pw-mock-sidenav-sub">{progress.total} stops</div>
+                <div className="pw-mock-sidenav-head-text">
+                  <div className="pw-mock-sidenav-title">{routeLabel}</div>
+                  <div className="pw-mock-sidenav-sub">{progress.total} stops</div>
+                </div>
+                <button
+                  type="button"
+                  className="pw-mock-sidenav-key-btn"
+                  aria-label="Key view"
+                  title="Key view"
+                  onClick={() => setKeyViewOpen(true)}
+                >
+                  <i className="bi bi-key" aria-hidden />
+                </button>
               </div>
             ) : null}
             <div
@@ -1197,6 +1224,13 @@ export default function TechnicianPortalWorksheetPage() {
                     {...fieldEditProps}
                   />
                   <PortalEditableFieldRow
+                    fieldKey="monitoring_password"
+                    label="Password"
+                    value={active.monitoring_password ?? ''}
+                    onSave={saveField('monitoring_password')}
+                    {...fieldEditProps}
+                  />
+                  <PortalEditableFieldRow
                     fieldKey="monitoring_notes"
                     label="Notes"
                     value={active.monitoring_notes ?? ''}
@@ -1277,6 +1311,15 @@ export default function TechnicianPortalWorksheetPage() {
             </footer>
           </div>
         </div>
+      ) : null}
+
+      {showStopWorkspace && projectedStops.length > 0 ? (
+        <PortalKeyViewModal
+          show={keyViewOpen}
+          onHide={() => setKeyViewOpen(false)}
+          stops={projectedStops}
+          activeStopId={activeId}
+        />
       ) : null}
 
       {active ? (

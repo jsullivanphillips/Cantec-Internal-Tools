@@ -19,6 +19,8 @@ const LABEL_TO_COLUMN: Record<string, FieldChangePrepColumnId> = {
   Panel: 'access',
   'Panel location': 'access',
   Company: 'monitoring',
+  'Account #': 'monitoring',
+  Password: 'monitoring',
   Notes: 'monitoring',
   'Job comment': 'run_comments',
   'Testing procedures': 'procedures',

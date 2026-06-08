@@ -474,6 +474,23 @@ export function portalHeaderBandClass(stop: TechnicianWorksheetStop, runMonthIso
   return ''
 }
 
+/** Key view row background — recorded test outcomes only (not pending / annual / clocked-in). */
+export function portalKeyViewOutcomeStatusClass(stop: TechnicianWorksheetStop): string {
+  if (portalStopHasTestOutcome(stop)) {
+    const outcome = norm(stop.test_outcome).toLowerCase()
+    if (outcome === 'passed_with_problems') return 'pw-key-view-item--passed-problems'
+    if (outcome === 'failed') return 'pw-key-view-item--failed'
+    if (outcome === 'skipped') return 'pw-key-view-item--skipped'
+    return 'pw-key-view-item--tested'
+  }
+  if (stop.is_legacy_outcome) {
+    const rs = norm(stop.result_status).toLowerCase()
+    if (rs === 'tested') return 'pw-key-view-item--tested'
+    if (rs === 'skipped') return 'pw-key-view-item--skipped'
+  }
+  return ''
+}
+
 export function portalNavStopStatusClass(stop: TechnicianWorksheetStop, runMonthIso: string): string {
   if (worksheetStopIsOpenClockIn(stop)) return 'pw-mock-nav-stop--clocked-in'
   const tone = portalStopVisualTone(stop, runMonthIso)

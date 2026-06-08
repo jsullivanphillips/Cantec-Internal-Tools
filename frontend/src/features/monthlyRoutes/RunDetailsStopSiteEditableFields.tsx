@@ -287,6 +287,13 @@ export default function RunDetailsStopSiteEditableFields({
             {...fieldEditProps}
           />
           <PortalEditableFieldRow
+            fieldKey="monitoring_password"
+            label="Password"
+            value={stop.monitoring_password ?? ''}
+            onSave={saveField('monitoring_password')}
+            {...fieldEditProps}
+          />
+          <PortalEditableFieldRow
             fieldKey="monitoring_notes"
             label="Notes"
             value={stop.monitoring_notes ?? ''}

@@ -41,6 +41,8 @@ _AUDIT_FIELD_DISPLAY_LABEL: dict[str, str] = {
     "facp": "Panel",
     "panel_location": "Panel location",
     "monitoring_company": "Company",
+    "monitoring_account_number": "Account #",
+    "monitoring_password": "Password",
     "monitoring_notes": "Notes",
     "monitoring": "Notes",
     "building_name": "Building",
@@ -60,6 +62,8 @@ _CHANGE_LABEL_ORDER: tuple[str, ...] = (
     "Panel",
     "Panel location",
     "Company",
+    "Account #",
+    "Password",
     "Notes",
     "Testing procedures",
     "Location comments",
@@ -292,6 +296,24 @@ def _lean_stops_for_route_month(route_id: int, month_first: date) -> list[dict[s
     from app.monthly.worksheet_stops import portal_worksheet_preview_stops
 
     return portal_worksheet_preview_stops(route_id, month_first)
+
+
+def _stop_counts_as_tested(stop: dict[str, object], month_first: date) -> bool:
+    """True when the stop has a tested portal/legacy outcome (annual skips excluded)."""
+    outcome = _worksheet_stop_portal_outcome(stop)
+    if outcome in ("all_good", "passed_with_problems", "failed"):
+        return True
+    return _office_stop_status(stop, month_first) == "tested"
+
+
+def run_month_worksheet_stop_counts(route_id: int, month_first: date) -> dict[str, int]:
+    """Worksheet stop totals for route-detail Runs card (``stops_tested_count / stops_on_route_count``)."""
+    stops = _lean_stops_for_route_month(route_id, month_first)
+    tested = sum(1 for stop in stops if _stop_counts_as_tested(stop, month_first))
+    return {
+        "stops_on_route_count": len(stops),
+        "stops_tested_count": tested,
+    }
 
 
 def _notable_lean_stops(
@@ -727,6 +749,7 @@ def _serialize_location_stop(
         "monitoring_company": stop.get("monitoring_company"),
         "monitoring_company_id": stop.get("monitoring_company_id"),
         "monitoring_account_number": stop.get("monitoring_account_number"),
+        "monitoring_password": stop.get("monitoring_password"),
         "monitoring_notes": stop.get("monitoring_notes"),
         "monitoring_company_record": stop.get("monitoring_company_record"),
         "run_comments": stop.get("run_comments"),

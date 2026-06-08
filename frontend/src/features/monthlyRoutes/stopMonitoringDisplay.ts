@@ -4,6 +4,7 @@ import type { MonitoringCompanySummary } from './monthlyRoutesShared'
 export type StopMonitoringDisplay = {
   company: string
   account: string
+  password: string
   notes: string
   phones: string[]
 }
@@ -12,6 +13,7 @@ type StopMonitoringSource = {
   monitoring_company?: string | null
   monitoring_company_id?: number | null
   monitoring_account_number?: string | null
+  monitoring_password?: string | null
   monitoring_notes?: string | null
   monitoring_company_record?: MonitoringCompanySummary | null
 }
@@ -21,16 +23,24 @@ export function stopMonitoringDisplay(stop: StopMonitoringSource): StopMonitorin
   const structuredCompany =
     stop.monitoring_company_record?.name?.trim() || stop.monitoring_company?.trim() || ''
   const structuredAccount = stop.monitoring_account_number?.trim() || ''
+  const structuredPassword = stop.monitoring_password?.trim() || ''
   const structuredNotes = stop.monitoring_notes?.trim() || ''
   const phones = [
     stop.monitoring_company_record?.primary_phone?.trim(),
     stop.monitoring_company_record?.secondary_phone?.trim(),
   ].filter((line): line is string => Boolean(line))
 
-  if (structuredCompany || structuredAccount || structuredNotes || phones.length > 0) {
+  if (
+    structuredCompany ||
+    structuredAccount ||
+    structuredPassword ||
+    structuredNotes ||
+    phones.length > 0
+  ) {
     return {
       company: structuredCompany || '—',
       account: structuredAccount || '—',
+      password: structuredPassword || '—',
       notes: structuredNotes || '—',
       phones,
     }
@@ -41,6 +51,7 @@ export function stopMonitoringDisplay(stop: StopMonitoringSource): StopMonitorin
     return {
       company: '—',
       account: '—',
+      password: '—',
       notes: stop.monitoring_notes?.trim() || '—',
       phones: [],
     }
@@ -51,6 +62,7 @@ export function stopMonitoringDisplay(stop: StopMonitoringSource): StopMonitorin
   return {
     company: fieldMap.company || '—',
     account: fieldMap.acct || '—',
+    password: fieldMap.pass || '—',
     notes: remainder || structuredNotes || '—',
     phones: fieldMap.phone ? [fieldMap.phone] : [],
   }
@@ -68,7 +80,7 @@ export function stopMonitoringSummaryLabel(stop: StopMonitoringSource): string {
 
 export function stopHasMonitoring(stop: StopMonitoringSource): boolean {
   const display = stopMonitoringDisplay(stop)
-  return display.company !== '—' || display.account !== '—'
+  return display.company !== '—' || display.account !== '—' || display.password !== '—'
 }
 
 /** First callable monitoring line (primary phone, secondary, or legacy sheet phone). */

@@ -1103,6 +1103,43 @@ def test_stop_patch_writes_audit_for_each_property_field(stops_client, monkeypat
         assert by_field["annual_month"].new_value == "June"
 
 
+def test_patch_monitoring_password_mirrors_to_testing_site_master(stops_client, monkeypatch):
+    from app.monthly.worksheet_stops import ensure_worksheet_stops_for_route_month
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
+
+    client, app = stops_client
+    with app.app_context():
+        route_id, ts_id, _ = _seed_route_with_two_stops()
+        run = MonthlyRouteRun(
+            id=5098,
+            monthly_route_id=route_id,
+            month_date=date(2026, 5, 1),
+            started_at=datetime(2026, 5, 2, 8, 0, tzinfo=PACIFIC_TZ),
+            status="open",
+            source="technician_app",
+        )
+        db.session.add(run)
+        db.session.commit()
+        ensure_worksheet_stops_for_route_month(route_id, date(2026, 5, 1), run)
+        db.session.commit()
+
+    qs = "month=2026-05-01"
+    res = client.patch(
+        f"/api/monthly_routes/routes/1/worksheet/stops/{ts_id}?{qs}",
+        json={"changes": {"monitoring_password": "boats"}},
+    )
+    assert res.status_code == 200, res.get_data(as_text=True)
+    stop = res.get_json()["stop"]
+    assert stop["monitoring_password"] == "boats"
+
+    with app.app_context():
+        ts = db.session.get(MonthlyTestingSite, ts_id)
+        assert ts is not None
+        assert ts.monitoring_password == "boats"
+
+
 def test_patch_monitoring_company_id_and_account(stops_client, monkeypatch):
     from app.monthly.worksheet_stops import ensure_worksheet_stops_for_route_month
     from app.routes import monthly_routes as mr_mod
@@ -1249,8 +1286,10 @@ def test_patch_prior_month_out_of_order_dismissed_office_prep_only(stops_client,
     assert portal.get_json().get("code") == "prior_month_out_of_order_dismissed_office_only"
 
 
-def test_regenerate_prep_stops_overwrites_stale_notes_without_history_backfill(stops_client, monkeypatch):
-    """Office prep regenerate uses prior stop-month snapshots, not stale history gap-fill."""
+def test_regenerate_prep_stops_reseeds_from_prior_month_and_clears_prep_flags(
+    stops_client, monkeypatch
+):
+    """Office prep regenerate re-seeds from prior stop-month and clears office prep flags."""
     from app.routes import monthly_routes as mr_mod
 
     monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 6, 1))
@@ -1300,6 +1339,8 @@ def test_regenerate_prep_stops_overwrites_stale_notes_without_history_backfill(s
                 inspection_tech_notes="Stale resurrected notes",
                 testing_procedures="Stale procedures",
                 office_attention=True,
+                run_comments="Keep me?",
+                result_status="tested",
             )
         )
         db.session.commit()
@@ -1312,16 +1353,19 @@ def test_regenerate_prep_stops_overwrites_stale_notes_without_history_backfill(s
         json={"month_date": "2026-06-01"},
     )
     assert res.status_code == 200
-    assert res.get_json()["stops_regenerated"] >= 1
+    body = res.get_json()
+    assert body["stops_regenerated"] >= 1
+    assert body.get("stops_pruned", 0) >= 0
 
     with app.app_context():
         june = MonthlyTestingSiteMonth.query.filter_by(
             monthly_testing_site_id=ts_id,
             month_date=date(2026, 6, 1),
         ).one()
-        assert june.inspection_tech_notes is None
         assert june.testing_procedures == "May procedures"
-        assert june.office_attention is True
+        assert june.office_attention is False
+        assert june.run_comments is None
+        assert june.result_status is None
 
 
 def test_regenerate_prep_stops_blocked_after_field_work_starts(stops_client, monkeypatch):
@@ -1352,6 +1396,363 @@ def test_regenerate_prep_stops_blocked_after_field_work_starts(stops_client, mon
     )
     assert res.status_code == 409
     assert res.get_json().get("code") == "run_prep_locked"
+
+
+def _prep_regen_auth(client) -> None:
+    with client.session_transaction() as sess:
+        sess["authenticated"] = True
+
+
+def _prep_run(route_id: int, run_id: int, month: date) -> MonthlyRouteRun:
+    run = MonthlyRouteRun(
+        id=run_id,
+        monthly_route_id=route_id,
+        month_date=month,
+        status="open",
+        source="office_manual",
+    )
+    db.session.add(run)
+    return run
+
+
+def test_regenerate_prep_stops_prunes_cancelled_location(stops_client, monkeypatch):
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 6, 1))
+
+    client, app = stops_client
+    with app.app_context():
+        route_id, ts_active, _ = _seed_route_with_two_stops()
+        cancelled = MonthlyRouteLocation(
+            id=102,
+            address="999 Cancelled Ave",
+            address_normalized="999 cancelled ave",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
+            building=None,
+            building_normalized="",
+            status_normalized="cancelled",
+            status_raw="Cancelled",
+            monthly_route_id=route_id,
+            route_stop_order=1,
+        )
+        db.session.add(cancelled)
+        db.session.commit()
+        sync_testing_sites_from_legacy(cancelled)
+        ts_cancelled = (
+            MonthlyTestingSite.query.join(MonthlySite)
+            .filter(MonthlySite.legacy_monthly_route_location_id == 102)
+            .one()
+        )
+        ts_cancelled_id = int(ts_cancelled.id)
+        run = _prep_run(route_id, 94100, date(2026, 6, 1))
+        db.session.add_all(
+            [
+                MonthlyTestingSiteMonth(
+                    id=94101,
+                    monthly_testing_site_id=ts_active,
+                    month_date=date(2026, 6, 1),
+                    test_monthly_route_id=route_id,
+                    run_id=94100,
+                ),
+                MonthlyTestingSiteMonth(
+                    id=94102,
+                    monthly_testing_site_id=ts_cancelled_id,
+                    month_date=date(2026, 6, 1),
+                    test_monthly_route_id=route_id,
+                    run_id=94100,
+                ),
+            ]
+        )
+        db.session.commit()
+
+    _prep_regen_auth(client)
+    res = client.post(
+        f"/api/monthly_routes/routes/{route_id}/runs/regenerate_prep_stops",
+        json={"month_date": "2026-06-01"},
+    )
+    assert res.status_code == 200
+    assert res.get_json()["stops_pruned"] >= 1
+
+    with app.app_context():
+        assert (
+            MonthlyTestingSiteMonth.query.filter_by(
+                monthly_testing_site_id=ts_cancelled_id,
+                month_date=date(2026, 6, 1),
+            ).one_or_none()
+            is None
+        )
+        assert (
+            MonthlyTestingSiteMonth.query.filter_by(
+                monthly_testing_site_id=ts_active,
+                month_date=date(2026, 6, 1),
+            ).one_or_none()
+            is not None
+        )
+
+
+def test_regenerate_prep_stops_run_details_does_not_resurrect_cancelled(
+    stops_client, monkeypatch
+):
+    """Prep run_details ensure must not recreate stop-month rows for cancelled sites."""
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 6, 1))
+
+    client, app = stops_client
+    with app.app_context():
+        route_id, ts_active, _ = _seed_route_with_two_stops()
+        cancelled = MonthlyRouteLocation(
+            id=102,
+            address="999 Cancelled Ave",
+            address_normalized="999 cancelled ave",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
+            building=None,
+            building_normalized="",
+            status_normalized="cancelled",
+            status_raw="Cancelled",
+            monthly_route_id=route_id,
+            route_stop_order=1,
+        )
+        db.session.add(cancelled)
+        db.session.commit()
+        sync_testing_sites_from_legacy(cancelled)
+        ts_cancelled_id = int(
+            MonthlyTestingSite.query.join(MonthlySite)
+            .filter(MonthlySite.legacy_monthly_route_location_id == 102)
+            .one()
+            .id
+        )
+        run = _prep_run(route_id, 94140, date(2026, 6, 1))
+        db.session.add_all(
+            [
+                MonthlyTestingSiteMonth(
+                    id=94141,
+                    monthly_testing_site_id=ts_active,
+                    month_date=date(2026, 6, 1),
+                    test_monthly_route_id=route_id,
+                    run_id=94140,
+                ),
+                MonthlyTestingSiteMonth(
+                    id=94142,
+                    monthly_testing_site_id=ts_cancelled_id,
+                    month_date=date(2026, 6, 1),
+                    test_monthly_route_id=route_id,
+                    run_id=94140,
+                ),
+            ]
+        )
+        db.session.commit()
+
+    _prep_regen_auth(client)
+    regen = client.post(
+        f"/api/monthly_routes/routes/{route_id}/runs/regenerate_prep_stops",
+        json={"month_date": "2026-06-01"},
+    )
+    assert regen.status_code == 200
+
+    details = client.get(f"/api/monthly_routes/routes/{route_id}/run_details?month=2026-06-01")
+    assert details.status_code == 200
+    location_ids = {
+        int(loc["location_id"]) for loc in (details.get_json().get("locations") or [])
+    }
+    assert 102 not in location_ids
+
+    with app.app_context():
+        assert (
+            MonthlyTestingSiteMonth.query.filter_by(
+                monthly_testing_site_id=ts_cancelled_id,
+                month_date=date(2026, 6, 1),
+            ).one_or_none()
+            is None
+        )
+
+
+def test_regenerate_prep_stops_prunes_off_route_location(stops_client, monkeypatch):
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 6, 1))
+
+    client, app = stops_client
+    with app.app_context():
+        route_id, ts_id, _ = _seed_route_with_two_stops()
+        loc = db.session.get(MonthlyRouteLocation, 101)
+        assert loc is not None
+        run = _prep_run(route_id, 94110, date(2026, 6, 1))
+        db.session.add(
+            MonthlyTestingSiteMonth(
+                id=94111,
+                monthly_testing_site_id=ts_id,
+                month_date=date(2026, 6, 1),
+                test_monthly_route_id=route_id,
+                run_id=94110,
+            )
+        )
+        db.session.commit()
+        loc.monthly_route_id = None
+        db.session.commit()
+
+    _prep_regen_auth(client)
+    res = client.post(
+        f"/api/monthly_routes/routes/{route_id}/runs/regenerate_prep_stops",
+        json={"month_date": "2026-06-01"},
+    )
+    assert res.status_code == 200
+    assert res.get_json()["stops_pruned"] == 1
+
+    with app.app_context():
+        assert (
+            MonthlyTestingSiteMonth.query.filter_by(
+                monthly_testing_site_id=ts_id,
+                month_date=date(2026, 6, 1),
+            ).one_or_none()
+            is None
+        )
+
+
+def test_regenerate_prep_stops_adds_new_library_location(stops_client, monkeypatch):
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 6, 1))
+
+    client, app = stops_client
+    with app.app_context():
+        route_id, ts_existing, _ = _seed_route_with_two_stops()
+        new_loc = MonthlyRouteLocation(
+            id=103,
+            address="555 New St",
+            address_normalized="555 new st",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
+            building=None,
+            building_normalized="",
+            status_normalized="active",
+            status_raw="Active",
+            monthly_route_id=route_id,
+            route_stop_order=1,
+        )
+        _prep_run(route_id, 94120, date(2026, 6, 1))
+        db.session.add(new_loc)
+        db.session.add(
+            MonthlyTestingSiteMonth(
+                id=94121,
+                monthly_testing_site_id=ts_existing,
+                month_date=date(2026, 6, 1),
+                test_monthly_route_id=route_id,
+                run_id=94120,
+            )
+        )
+        db.session.commit()
+        sync_testing_sites_from_legacy(new_loc)
+        ts_new = (
+            MonthlyTestingSite.query.join(MonthlySite)
+            .filter(MonthlySite.legacy_monthly_route_location_id == 103)
+            .one()
+        )
+
+    _prep_regen_auth(client)
+    res = client.post(
+        f"/api/monthly_routes/routes/{route_id}/runs/regenerate_prep_stops",
+        json={"month_date": "2026-06-01"},
+    )
+    assert res.status_code == 200
+    assert res.get_json()["stops_regenerated"] >= 2
+
+    with app.app_context():
+        assert (
+            MonthlyTestingSiteMonth.query.filter_by(
+                monthly_testing_site_id=int(ts_new.id),
+                month_date=date(2026, 6, 1),
+            ).one_or_none()
+            is not None
+        )
+
+
+def test_regenerate_prep_stops_applies_library_stop_order(stops_client, monkeypatch):
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 6, 1))
+
+    client, app = stops_client
+    with app.app_context():
+        route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
+        loc_a = MonthlyRouteLocation(
+            id=101,
+            address="AAA First St",
+            address_normalized="aaa first st",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
+            building=None,
+            building_normalized="",
+            status_normalized="active",
+            status_raw="Active",
+            monthly_route_id=1,
+            route_stop_order=0,
+        )
+        loc_b = MonthlyRouteLocation(
+            id=102,
+            address="BBB Second St",
+            address_normalized="bbb second st",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
+            building=None,
+            building_normalized="",
+            status_normalized="active",
+            status_raw="Active",
+            monthly_route_id=1,
+            route_stop_order=1,
+        )
+        db.session.add_all([route, loc_a, loc_b])
+        db.session.commit()
+        sync_testing_sites_from_legacy(loc_a)
+        sync_testing_sites_from_legacy(loc_b)
+        ts_a = (
+            MonthlyTestingSite.query.join(MonthlySite)
+            .filter(MonthlySite.legacy_monthly_route_location_id == 101)
+            .one()
+        )
+        ts_b = (
+            MonthlyTestingSite.query.join(MonthlySite)
+            .filter(MonthlySite.legacy_monthly_route_location_id == 102)
+            .one()
+        )
+        run = _prep_run(1, 94130, date(2026, 6, 1))
+        db.session.add_all(
+            [
+                MonthlyTestingSiteMonth(
+                    id=94131,
+                    monthly_testing_site_id=int(ts_a.id),
+                    month_date=date(2026, 6, 1),
+                    test_monthly_route_id=1,
+                    run_id=94130,
+                    session_route_stop_order=1,
+                ),
+                MonthlyTestingSiteMonth(
+                    id=94132,
+                    monthly_testing_site_id=int(ts_b.id),
+                    month_date=date(2026, 6, 1),
+                    test_monthly_route_id=1,
+                    run_id=94130,
+                    session_route_stop_order=0,
+                ),
+            ]
+        )
+        db.session.commit()
+
+    _prep_regen_auth(client)
+    res = client.post(
+        "/api/monthly_routes/routes/1/runs/regenerate_prep_stops",
+        json={"month_date": "2026-06-01"},
+    )
+    assert res.status_code == 200
+    assert res.get_json()["session_orders_updated"] >= 1
+
+    with app.app_context():
+        mtsm_a = db.session.get(MonthlyTestingSiteMonth, 94131)
+        mtsm_b = db.session.get(MonthlyTestingSiteMonth, 94132)
+        assert mtsm_a.session_route_stop_order == 0
+        assert mtsm_b.session_route_stop_order == 1
 
 
 def test_library_patch_syncs_open_prep_mtsm_from_master(stops_client):

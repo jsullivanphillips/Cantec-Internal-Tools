@@ -90,6 +90,8 @@ const CHANGE_LABEL_ORDER: readonly string[] = [
   'Panel',
   'Panel location',
   'Company',
+  'Account #',
+  'Password',
   'Notes',
   'Testing procedures',
   'Location comments',

@@ -147,6 +147,8 @@ const AUDIT_FIELD_TO_COMPACT_LABEL: Record<string, string> = {
   facp: 'Panel',
   panel_location: 'Panel location',
   monitoring_company: 'Company',
+  monitoring_account_number: 'Account #',
+  monitoring_password: 'Password',
   monitoring_notes: 'Notes',
   monitoring: 'Notes',
   building_name: 'Building',
@@ -265,7 +267,7 @@ export function renderFieldChangeInline(change: OfficeFieldChange): string {
 
 const ACCESS_AUDIT_LABELS = ['Ring', 'Key #', 'Door code', 'Annual'] as const
 const PANEL_AUDIT_LABELS = ['Panel', 'Panel location'] as const
-const MONITORING_AUDIT_LABELS = ['Company', 'Notes'] as const
+const MONITORING_AUDIT_LABELS = ['Company', 'Account #', 'Password', 'Notes'] as const
 const ADDRESS_AUDIT_LABELS = ['Building', 'PMC'] as const
 
 function locationHasAuditLabel(

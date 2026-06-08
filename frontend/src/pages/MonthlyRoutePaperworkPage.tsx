@@ -722,8 +722,10 @@ export default function MonthlyRoutePaperworkPage() {
     if (regenerateLibraryBusy || runLifecycleAction != null) return
     if (
       !window.confirm(
-        'Reload panel, procedures, and other library fields into this month\'s paperwork? ' +
-          'Test outcomes, clock times, and run comments are kept. Office attention flags are kept.',
+        'Rebuild this month\'s paperwork from the library route? ' +
+          'Adds new stops, removes cancelled or unassigned sites, and applies library stop order. ' +
+          'Clears all run progress on remaining stops (outcomes, times, comments, billing, change log) ' +
+          '— same scope as Reset run. This cannot be undone.',
       )
     ) {
       return
@@ -748,7 +750,7 @@ export default function MonthlyRoutePaperworkPage() {
       const msg =
         typeof e === 'object' && e != null && 'error' in (e as Record<string, unknown>)
           ? String((e as { error?: unknown }).error)
-          : 'Could not regenerate from library. Try again.'
+          : 'Could not regenerate paperwork. Try again.'
       window.alert(msg)
     } finally {
       setRegenerateLibraryBusy(false)
@@ -969,7 +971,7 @@ export default function MonthlyRoutePaperworkPage() {
                       Regenerating…
                     </>
                   ) : (
-                    'Regenerate from library'
+                    'Regenerate paperwork'
                   )}
                 </Button>
               ) : null}

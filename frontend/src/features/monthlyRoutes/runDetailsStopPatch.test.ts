@@ -93,6 +93,15 @@ describe('syncPrepChangesForApi', () => {
 })
 
 describe('prepChangesToStopPatch', () => {
+  it('maps monitoring_password with trim', () => {
+    expect(prepChangesToStopPatch({ monitoring_password: '  boats  ' })).toEqual({
+      monitoring_password: 'boats',
+    })
+    expect(prepChangesToStopPatch({ monitoring_password: '   ' })).toEqual({
+      monitoring_password: null,
+    })
+  })
+
   it('clears out-of-order hint when dismissed', () => {
     expect(
       prepChangesToStopPatch({ prior_month_out_of_order_dismissed: true }),
@@ -193,6 +202,7 @@ describe('rollbackPatchForChanges', () => {
       key_number: null,
       door_code: null,
       monitoring_account_number: null,
+      monitoring_password: null,
       monitoring_notes: null,
       monitoring_company_id: null,
       monitoring_company: null,

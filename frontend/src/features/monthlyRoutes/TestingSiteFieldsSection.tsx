@@ -315,6 +315,8 @@ function TestingSiteViewFields({
       <dd className="col-sm-9">{monitoringDisplay(site) || '—'}</dd>
       <dt className="col-sm-3 text-muted">Account #</dt>
       <dd className="col-sm-9">{site.monitoring_account_number?.trim() || '—'}</dd>
+      <dt className="col-sm-3 text-muted">Password</dt>
+      <dd className="col-sm-9">{site.monitoring_password?.trim() || '—'}</dd>
       <dt className="col-sm-3 text-muted">Monitoring notes</dt>
       <dd className="col-sm-9 text-break" style={{ whiteSpace: 'pre-wrap' }}>
         {site.monitoring_notes?.trim() || '—'}
@@ -825,6 +827,13 @@ function TestingSiteInlineFields({
           onSave={saveField}
         />
         <InlineTestingSiteFieldRow
+          fieldKey="monitoring_password"
+          label="Password"
+          value={form.monitoring_password}
+          displayValue={site.monitoring_password?.trim() || '—'}
+          onSave={saveField}
+        />
+        <InlineTestingSiteFieldRow
           fieldKey="monitoring_notes"
           label="Monitoring notes"
           value={form.monitoring_notes}
@@ -1029,6 +1038,15 @@ function TestingSiteEditFormFields({
           size="sm"
           value={form.monitoring_account_number}
           onChange={(e) => onFormChange({ monitoring_account_number: e.target.value })}
+        />
+      </Form.Group>
+      <Form.Group>
+        <Form.Label className="small mb-1">Password</Form.Label>
+        <Form.Control
+          style={INPUT_STYLE}
+          size="sm"
+          value={form.monitoring_password}
+          onChange={(e) => onFormChange({ monitoring_password: e.target.value })}
         />
       </Form.Group>
       <Form.Group>

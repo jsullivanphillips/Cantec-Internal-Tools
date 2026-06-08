@@ -42,6 +42,7 @@ export type WorksheetStopChangeSet = Partial<
     | 'monitoring_company'
     | 'monitoring_company_id'
     | 'monitoring_account_number'
+    | 'monitoring_password'
     | 'monitoring_notes'
     | 'result_status'
     | 'skip_reason'

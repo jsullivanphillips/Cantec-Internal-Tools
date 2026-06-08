@@ -354,6 +354,11 @@ function OfficeStopTableRow({
                     change={auditChangeForCompactLabel(lid, 'Account #', fieldChangesByLocation)}
                   />
                   <OfficeCompactField
+                    label="Password"
+                    value={monitoring.password}
+                    change={auditChangeForCompactLabel(lid, 'Password', fieldChangesByLocation)}
+                  />
+                  <OfficeCompactField
                     label="Notes"
                     value={monitoring.notes}
                     wide

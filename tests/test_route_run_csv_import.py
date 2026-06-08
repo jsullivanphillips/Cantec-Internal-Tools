@@ -931,6 +931,22 @@ def _build_csv_r15_multiline_site_sheet() -> bytes:
     return buf.getvalue().encode("utf-8")
 
 
+def test_parse_csv_row_fields_extracts_monitoring_password():
+    from app.monthly.route_inspection_csv_import import _parse_csv_row_fields
+
+    parsed = _parse_csv_row_fields(
+        {
+            "Monitoring": "ACCT: 123\nPASS: secret99\nSIGNALS: fire only",
+        },
+        stop_order=1,
+    )
+    assert parsed.monitoring_account_number == "123"
+    assert parsed.monitoring_password == "secret99"
+    assert parsed.cleaned_monitoring_notes is not None
+    assert "SIGNALS: fire only" in parsed.cleaned_monitoring_notes
+    assert "PASS" not in (parsed.cleaned_monitoring_notes or "")
+
+
 @pytest.mark.parametrize(
     "facp_cell,expected_panel,expected_location",
     [

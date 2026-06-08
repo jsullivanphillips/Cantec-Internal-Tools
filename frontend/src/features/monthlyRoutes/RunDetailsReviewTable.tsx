@@ -365,6 +365,10 @@ export default function RunDetailsReviewTable({
                           value={stop.monitoring_account_number}
                         />
                         <ReviewReadonlyStackField
+                          label="Password"
+                          value={stop.monitoring_password}
+                        />
+                        <ReviewReadonlyStackField
                           label="Notes"
                           value={stop.monitoring_notes}
                           multiline

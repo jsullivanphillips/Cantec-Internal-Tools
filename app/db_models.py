@@ -1139,6 +1139,7 @@ class MonthlyTestingSite(db.Model):
         nullable=True,
     )
     monitoring_account_number = db.Column(db.String(64), nullable=True)
+    monitoring_password = db.Column(db.String(64), nullable=True)
     monitoring_notes = db.Column(db.Text, nullable=True)
 
     created_at = db.Column(
@@ -1248,6 +1249,7 @@ class MonthlyTestingSiteMonth(db.Model):
         index=True,
     )
     monitoring_account_number = db.Column(db.String(64), nullable=True)
+    monitoring_password = db.Column(db.String(64), nullable=True)
     monitoring_notes = db.Column(db.Text, nullable=True)
 
     created_at = db.Column(

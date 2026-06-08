@@ -242,7 +242,7 @@ Many earlier migrations scaffolded routes, runs, history, inspection fields, coo
 
 Stops need `latitude`/`longitude` on `monthly_route_location` before the route map can draw pins or Mapbox driving directions.
 
-1. **Identify** — Route detail → **Route map**: **Missing coords** count; expand the list for each stop (address + **Set pin** / **Edit address**). **Sites on this route** shows a **No map pin** badge linking to the map section.
+1. **Identify** — Route detail → **Route map**: **Missing coords** count; expand the list for each stop (address + **Set pin** / **Edit address**). **Sites on this route** shows a **No map pin** badge linking to the map section. **Runs** lists each run file month with worksheet **sites tested** (``stops_tested_count / stops_on_route_count``; annual skips are not counted as tested) and workflow **stage**.
 2. **Fix in bulk** — **Geocode missing** on the route map (calls `POST /api/monthly_routes/routes/<id>/geocode_missing_coordinates`; requires backend `MAPBOX_ACCESS_TOKEN`).
 3. **Fix one stop** — **Set pin** → **Try automatic geocode**, or search Greater Victoria and pick a Mapbox candidate (`PATCH .../placement`).
 4. **Correct address first** when auto-geocode fails (typo/incomplete street); then geocode again.
@@ -270,7 +270,7 @@ Script fallback for many routes: `python -m app.scripts.backfill_monthly_route_c
 |------|------|
 | `frontend/src/pages/MonthlyRoutesOverviewPage.tsx` | Routes overview — Pacific **current-month** calendar; routes placed on **effective** test dates (BC stat holidays bump to next same-weekday occurrence) |
 | `frontend/src/pages/MonthlyRoutesPage.tsx` | Library (v2 API) |
-| `frontend/src/pages/MonthlyRouteDetailPage.tsx` | Route detail; Paperwork entry button |
+| `frontend/src/pages/MonthlyRouteDetailPage.tsx` | Route detail; **Runs** card (one row per ``MonthlyRouteRun``: month, run date, worksheet tested ratio, workflow stage); Paperwork entry button |
 | `frontend/src/pages/MonthlyRoutePaperworkPage.tsx` | Office Paperwork (prep / review / exact history) |
 | `frontend/src/pages/MonthlyRoutesMapPage.tsx` | Map view |
 | `frontend/src/pages/MonthlyLocationDetailPage.tsx` | Location detail (edit status, route assignment, testing sites) |
@@ -377,7 +377,7 @@ Logic: ``app/monthly/run_workflow.py``. UI stepper: ``RunWorkflowStepper.tsx``.
 
 - **Portal `stops[]` and office `rows[]` (historical month):** All site fields for that visit come from the **run month** (`MonthlyTestingSiteMonth`, or `MonthlyRouteTestHistory` when no MTSM row). Older months are not overwritten when a later month or the library master changes.
 - **New run materialize:** `seed_stop_month_fields` copies display fields from **office master** (`MonthlyTestingSite` / `master_template_fields`), with gaps filled from the **most recent prior** `MonthlyTestingSiteMonth`, then from the **current or prior** `MonthlyRouteTestHistory` row when no prior stop-month row exists (so an April CSV import carries procedures into May even when no April portal stop rows exist). Outcomes (tested/skipped/times) start empty. **`run_comments` always starts empty** for a new month (never copied from prior month or master).
-- **Office prep / library sync:** Snapshot fields stay aligned during open prep: prep worksheet PATCH mirrors to library master (latest month), and library testing-site PATCH mirrors back into open prep ``MonthlyTestingSiteMonth`` rows. Prep-only fields (`run_comments`, `office_job_comment`, `office_attention`) stay on the stop-month row only. Paperwork **Preparation** view exposes **Regenerate from library** (`POST …/runs/regenerate_prep_stops`), which re-seeds stop-month snapshot fields from the library master and prior run month while preserving office attention flags (blocked after field work starts or when the run is completed).
+- **Office prep / library sync:** Snapshot fields stay aligned during open prep: prep worksheet PATCH mirrors to library master (latest month), and library testing-site PATCH mirrors back into open prep ``MonthlyTestingSiteMonth`` rows. Prep-only fields (`run_comments`, `office_job_comment`, `office_attention`) stay on the stop-month row only. Paperwork **Preparation** view exposes **Regenerate paperwork** (`POST …/runs/regenerate_prep_stops`), which rebuilds the route-month stop list from the active library route (adds new sites, removes cancelled or unassigned sites, applies library stop order) and clears all run-scoped worksheet progress on remaining stops—the same scope as **Reset run** (outcomes, times, comments, billing, audit change log; legacy billing preserved)—without unprepare or clearing the pre-run message. Blocked after field work starts or when the run is completed.
 - **Portal refresh paperwork:** Opening the current-month portal worksheet (`GET …/worksheet?tech_portal=1&refresh_paperwork=1`) re-runs stop-month seeding from the latest office/prior-run data when the run is not completed (automatic on each worksheet open; prior months and background SSE refreshes skip this). Snapshot fields are overwritten; times, tested/skipped outcomes, and run comments are preserved. `POST /api/technician_portal/routes/<id>/regenerate_paperwork` performs the same refresh explicitly if needed. **`POST …/worksheet/reset_run`** clears the full run for that route-month: deletes worksheet audit events, clears attributed ``monthly_route_test_history`` outcomes and run snapshots (including master-sheet legacy rows), clears per-location ``billing_status`` (``bill`` / ``do_not_bill`` / ``unset``; **legacy** billing is preserved), re-seeds every ``MonthlyTestingSiteMonth`` from library master (testing outcomes, run comments, and field edits such as annual month / panel / PMC), clears ``MonthlyRouteRun.started_at``, and mirrors primary stops to library when this month is the location's latest. Run-details KPIs count only rows with ``result_status`` ``tested`` or ``skipped``.
 - **Library location display:** Each `MonthlyTestingSite` master row is the **newest edition** for that testing stop (office edits + mirror from the latest run month when techs PATCH snapshot fields). Primary testing-site values also dual-write to the legacy route location for sheet/detail parity.
 - **Portal stop PATCH (latest month only):** Snapshot field edits on the current/latest run mirror to that stop's `MonthlyTestingSite` master via `mirror_mtsm_snapshot_to_primary_master` (`monthly_sites_sync.py`). Primary stops also mirror to the legacy location. Older months never mirror.
@@ -402,9 +402,10 @@ Master data lives on **`MonthlyTestingSite`** (migration `z4a5b6c7d8e9`):
 | Door code (if any) | `door_code` |
 | Monitoring company | `monitoring_company_id` → `monitoring_company` (directory phones on `MonitoringCompany`) |
 | Monitoring account # | `monitoring_account_number` (site-specific; not on directory row) |
-| Monitoring notes | `monitoring_notes` (signals, passwords, free notes — not account #) |
+| Monitoring password | `monitoring_password` (site-specific; not on directory row) |
+| Monitoring notes | `monitoring_notes` (signals, phones, free notes — not account # or password) |
 
-Run-month copies: **`MonthlyTestingSiteMonth`** (`panel`, `panel_location`, `door_code`, `building_name`, `property_management_company`, `testing_procedures`, `inspection_tech_notes`, `monitoring_company_id`, `monitoring_account_number`, `monitoring_notes`, plus existing ring/key/annual).
+Run-month copies: **`MonthlyTestingSiteMonth`** (`panel`, `panel_location`, `door_code`, `building_name`, `property_management_company`, `testing_procedures`, `inspection_tech_notes`, `monitoring_company_id`, `monitoring_account_number`, `monitoring_password`, `monitoring_notes`, plus existing ring/key/annual).
 
 ### Monitoring company directory (2026-05)
 
@@ -418,12 +419,12 @@ Office maintains vendors at **`/monthlies/monitoring-companies`**. Technicians p
 | PATCH | `/api/monitoring_companies/:id` | Update name/phones/active |
 | POST | `/api/monitoring_companies/:id/merge` | Merge duplicate into canonical row |
 
-Backfill structured monitoring fields from legacy `monitoring_notes` paste shapes:
+Backfill structured monitoring fields from legacy `monitoring_notes` paste shapes (account #, password, company FK):
 
 - `python -m app.scripts.backfill_monitoring_account_numbers` (dry-run)
 - `python -m app.scripts.backfill_monitoring_account_numbers --execute`
 
-Legacy `monitoring_company_name` on run-month rows remains for historical fidelity; new worksheet PATCHes use `monitoring_company_id` + `monitoring_account_number`.
+Legacy `monitoring_company_name` on run-month rows remains for historical fidelity; new worksheet PATCHes use `monitoring_company_id` + `monitoring_account_number` + `monitoring_password`.
 
 ### Comments (portal worksheet — 2026-05)
 

@@ -49,6 +49,9 @@ export function prepChangesToStopPatch(changes: PrepStopPatchChanges): Partial<M
   if ('monitoring_account_number' in changes) {
     patch.monitoring_account_number = normNullableText(changes.monitoring_account_number)
   }
+  if ('monitoring_password' in changes) {
+    patch.monitoring_password = normNullableText(changes.monitoring_password)
+  }
   if ('monitoring_notes' in changes) {
     patch.monitoring_notes = changes.monitoring_notes == null ? null : String(changes.monitoring_notes)
   }
@@ -79,6 +82,9 @@ export function prepPatchFromWorksheetStop(
   if (keys.has('monitoring_account_number')) {
     patch.monitoring_account_number = stop.monitoring_account_number ?? null
   }
+  if (keys.has('monitoring_password')) {
+    patch.monitoring_password = stop.monitoring_password ?? null
+  }
   if (keys.has('monitoring_notes')) patch.monitoring_notes = stop.monitoring_notes ?? null
   if (keys.has('monitoring_company_id')) {
     patch.monitoring_company_id = stop.monitoring_company_id ?? null
@@ -104,6 +110,7 @@ type PrepRollbackStop = Pick<
   | 'key_number'
   | 'door_code'
   | 'monitoring_account_number'
+  | 'monitoring_password'
   | 'monitoring_notes'
   | 'monitoring_company_id'
   | 'monitoring_company'
@@ -135,6 +142,9 @@ export function rollbackPatchForChanges(
   if ('door_code' in changes) rollback.door_code = stop.door_code ?? null
   if ('monitoring_account_number' in changes) {
     rollback.monitoring_account_number = stop.monitoring_account_number ?? null
+  }
+  if ('monitoring_password' in changes) {
+    rollback.monitoring_password = stop.monitoring_password ?? null
   }
   if ('monitoring_notes' in changes) rollback.monitoring_notes = stop.monitoring_notes ?? null
   if ('monitoring_company_id' in changes) {
@@ -269,6 +279,7 @@ export function detailPatchFromWorksheetStop(
     monitoring_company: stop.monitoring_company ?? null,
     monitoring_company_id: stop.monitoring_company_id ?? null,
     monitoring_account_number: stop.monitoring_account_number ?? null,
+    monitoring_password: stop.monitoring_password ?? null,
     monitoring_notes: stop.monitoring_notes ?? null,
     monitoring_company_record: stop.monitoring_company_record ?? null,
     result_status: stop.result_status,

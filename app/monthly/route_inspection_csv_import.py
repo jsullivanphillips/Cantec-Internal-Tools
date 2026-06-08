@@ -837,6 +837,7 @@ class ParsedCsvRowFields:
     panel_location_text: str | None
     monitoring_company_id: int | None
     monitoring_account_number: str | None
+    monitoring_password: str | None
     cleaned_monitoring_notes: str | None
     testing_procedures: str | None
     tech_notes: str | None
@@ -856,6 +857,7 @@ def _parse_csv_row_fields(row: dict[str, str], *, stop_order: int) -> ParsedCsvR
     monitoring_notes = _clean_multiline(monitoring_cell)
     parsed_monitoring = parse_monitoring_notes(monitoring_notes)
     monitoring_account_number = (parsed_monitoring.acct or "").strip() or None
+    monitoring_password = (parsed_monitoring.password or "").strip() or None
     monitoring_company_id: int | None = None
     if parsed_monitoring.company:
         matched = find_active_monitoring_company_by_name(parsed_monitoring.company)
@@ -865,6 +867,7 @@ def _parse_csv_row_fields(row: dict[str, str], *, stop_order: int) -> ParsedCsvR
     if _is_monitoring_none(monitoring_cell):
         monitoring_company_id = None
         monitoring_account_number = None
+        monitoring_password = None
         cleaned_monitoring_notes = None
     testing_procedures = _clean_multiline(_row_get_alias(row, _TESTING_PROCEDURES_ALIASES))
     tech_notes = _clean_multiline(_row_get_alias(row, _TECH_NOTES_HEADER_ALIASES))
@@ -879,6 +882,7 @@ def _parse_csv_row_fields(row: dict[str, str], *, stop_order: int) -> ParsedCsvR
         panel_location_text=panel_location_text,
         monitoring_company_id=monitoring_company_id,
         monitoring_account_number=monitoring_account_number,
+        monitoring_password=monitoring_password,
         cleaned_monitoring_notes=cleaned_monitoring_notes,
         testing_procedures=testing_procedures,
         tech_notes=tech_notes,
@@ -963,6 +967,7 @@ def _apply_csv_row_to_target(
             loc,
             monitoring_company_id=parsed.monitoring_company_id,
             monitoring_account_number=parsed.monitoring_account_number,
+            monitoring_password=parsed.monitoring_password,
             monitoring_notes=parsed.cleaned_monitoring_notes,
         )
         if is_latest_history_month_for_location(int(loc.id), month_date):
@@ -986,6 +991,7 @@ def _apply_csv_row_to_target(
             ts,
             monitoring_company_id=parsed.monitoring_company_id,
             monitoring_account_number=parsed.monitoring_account_number,
+            monitoring_password=parsed.monitoring_password,
             monitoring_notes=parsed.cleaned_monitoring_notes,
         )
 
@@ -1071,6 +1077,7 @@ def _apply_csv_row_to_target(
             inspection_tech_notes=parsed.tech_notes,
             monitoring_notes=parsed.cleaned_monitoring_notes,
             monitoring_account_number=parsed.monitoring_account_number,
+            monitoring_password=parsed.monitoring_password,
             monitoring_company_id=parsed.monitoring_company_id,
             sheet_time_in_raw=_clean_text(parsed.time_in),
             sheet_time_out_raw=_clean_text(parsed.time_out),

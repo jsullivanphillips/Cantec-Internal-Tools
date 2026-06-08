@@ -16,6 +16,7 @@ import {
   officeOutcomeSelectValue,
   OFFICE_OUTCOME_PENDING_VALUE,
   portalHeaderBandClass,
+  portalKeyViewOutcomeStatusClass,
   portalNavStopStatusClass,
   portalStatusPillClass,
   portalStopVisitComplete,
@@ -252,6 +253,46 @@ describe('portalStopCanReset', () => {
       clock_events: [{ id: 1, sort_order: 1, time_in: '9:00 AM', time_out: null }],
     })
     expect(portalStopCanReset(stop)).toBe(true)
+  })
+})
+
+describe('portalKeyViewOutcomeStatusClass', () => {
+  it('returns no class for pending stops', () => {
+    expect(portalKeyViewOutcomeStatusClass(baseStop())).toBe('')
+    expect(
+      portalKeyViewOutcomeStatusClass(baseStop({ annual_month: 'May', result_status: null })),
+    ).toBe('')
+    expect(
+      portalKeyViewOutcomeStatusClass(baseStop({ office_attention: true })),
+    ).toBe('')
+  })
+
+  it('maps portal test outcomes to key view classes', () => {
+    expect(
+      portalKeyViewOutcomeStatusClass(baseStop({ test_outcome: 'all_good' })),
+    ).toBe('pw-key-view-item--tested')
+    expect(
+      portalKeyViewOutcomeStatusClass(baseStop({ test_outcome: 'passed_with_problems' })),
+    ).toBe('pw-key-view-item--passed-problems')
+    expect(
+      portalKeyViewOutcomeStatusClass(baseStop({ test_outcome: 'failed' })),
+    ).toBe('pw-key-view-item--failed')
+    expect(
+      portalKeyViewOutcomeStatusClass(baseStop({ test_outcome: 'skipped' })),
+    ).toBe('pw-key-view-item--skipped')
+  })
+
+  it('maps legacy outcomes', () => {
+    expect(
+      portalKeyViewOutcomeStatusClass(
+        baseStop({ is_legacy_outcome: true, result_status: 'tested' }),
+      ),
+    ).toBe('pw-key-view-item--tested')
+    expect(
+      portalKeyViewOutcomeStatusClass(
+        baseStop({ is_legacy_outcome: true, result_status: 'skipped' }),
+      ),
+    ).toBe('pw-key-view-item--skipped')
   })
 })
 

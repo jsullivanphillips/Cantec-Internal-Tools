@@ -58,6 +58,7 @@ def master_template_fields(
         "monitoring_company_id": ts.monitoring_company_id,
         "monitoring_company_name": _master_monitoring_company_name(ts, loc),
         "monitoring_account_number": ts.monitoring_account_number,
+        "monitoring_password": ts.monitoring_password,
         "monitoring_notes": ts.monitoring_notes,
     }
 

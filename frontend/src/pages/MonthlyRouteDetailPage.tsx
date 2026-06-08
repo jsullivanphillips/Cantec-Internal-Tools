@@ -23,7 +23,9 @@ import { Link, useParams } from 'react-router-dom'
 import MonthlyLibraryCommentsPanel from '../features/monthlyRoutes/MonthlyLibraryCommentsPanel'
 import MonthlyRouteMapCard from '../features/monthlyRoutes/MonthlyRouteMapCard'
 import {
+  activeRouteLocations,
   libraryLocationHasMapCoordinates,
+  mergeVisibleRouteLocationReorder,
   parseYearMonth,
   toMonthKey,
   type MonthlyLocationComment,
@@ -34,7 +36,12 @@ import {
   type RouteLocationListItem,
   type RouteLocationTestingSiteListItem,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
-import { testingSitePrimaryLabel } from '../features/monthlyRoutes/testingSiteDisplay'
+import {
+  buildRouteRunTableRows,
+  formatRunDisplayDate,
+  formatSitesTestedRatio,
+} from '../features/monthlyRoutes/routeRunsDisplay'
+import { shortStreetAddress, testingSitePrimaryLabel } from '../features/monthlyRoutes/testingSiteDisplay'
 import { apiJson, apiPostFormData, isAbortError } from '../lib/apiClient'
 import { formatCurrencyCad } from '../lib/formatCurrencyCad'
 
@@ -156,7 +163,9 @@ function SortableRouteSiteRow({
     transition,
     opacity: isDragging ? 0.72 : undefined,
   }
-  const line1 = (loc.display_address || loc.address || '').trim() || `Location ${loc.id}`
+  const line1 = shortStreetAddress(
+    (loc.display_address || loc.address || '').trim() || `Location ${loc.id}`,
+  )
   const blockLine = (loc.building || '').trim()
   const testingSites = testingSitesForRouteLocation(loc)
 
@@ -616,6 +625,7 @@ export default function MonthlyRouteDetailPage() {
   const [specialists, setSpecialists] = useState<MonthlyRouteSpecialistsPayload | null>(null)
   const [comments, setComments] = useState<MonthlyLocationComment[]>([])
   const [testingByMonth, setTestingByMonth] = useState<MonthlyRouteDetailPayload['testing_by_month']>({})
+  const [runsByMonth, setRunsByMonth] = useState<MonthlyRouteDetailPayload['runs_by_month']>({})
   const [specialistsByMonth, setSpecialistsByMonth] = useState<MonthlyRouteDetailPayload['specialists_by_month']>(
     {}
   )
@@ -643,6 +653,7 @@ export default function MonthlyRouteDetailPage() {
         setSpecialists(data.specialists ?? null)
         setComments(data.comments || [])
         setTestingByMonth(data.testing_by_month || {})
+        setRunsByMonth(data.runs_by_month || {})
         setSpecialistsByMonth(data.specialists_by_month || {})
         setOrderedSites(data.locations ?? [])
         setOrderError(null)
@@ -653,6 +664,7 @@ export default function MonthlyRouteDetailPage() {
         setSpecialists(null)
         setComments([])
         setTestingByMonth({})
+        setRunsByMonth({})
         setSpecialistsByMonth({})
         setOrderedSites([])
       } finally {
@@ -738,15 +750,21 @@ export default function MonthlyRouteDetailPage() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
+  const visibleSites = useMemo(() => activeRouteLocations(orderedSites), [orderedSites])
+  const runRows = useMemo(
+    () => buildRouteRunTableRows(runsByMonth, specialistsByMonth),
+    [runsByMonth, specialistsByMonth],
+  )
+
   const routeStopStartByLocationId = useMemo(() => {
     const out = new Map<number, number>()
     let nextStop = 1
-    for (const loc of orderedSites) {
+    for (const loc of visibleSites) {
       out.set(loc.id, nextStop)
       nextStop += routeLocationStopCount(loc)
     }
     return out
-  }, [orderedSites])
+  }, [visibleSites])
 
   const handleSitesDragEnd = useCallback(
     (event: DragEndEvent) => {
@@ -755,14 +773,15 @@ export default function MonthlyRouteDetailPage() {
       const activeId = Number(active.id)
       const overId = Number(over.id)
       if (!Number.isFinite(activeId) || !Number.isFinite(overId)) return
-      const oldIndex = orderedSites.findIndex((s) => s.id === activeId)
-      const newIndex = orderedSites.findIndex((s) => s.id === overId)
+      const oldIndex = visibleSites.findIndex((s) => s.id === activeId)
+      const newIndex = visibleSites.findIndex((s) => s.id === overId)
       if (oldIndex < 0 || newIndex < 0) return
-      const next = arrayMove(orderedSites, oldIndex, newIndex)
+      const nextVisible = arrayMove(visibleSites, oldIndex, newIndex)
+      const next = mergeVisibleRouteLocationReorder(orderedSites, nextVisible)
       setOrderedSites(next)
       void persistRouteOrder(next)
     },
-    [orderedSites, orderSaving, persistRouteOrder]
+    [visibleSites, orderedSites, orderSaving, persistRouteOrder]
   )
 
   const testingHistoryMonthKeys = useMemo(() => {
@@ -879,8 +898,8 @@ export default function MonthlyRouteDetailPage() {
   }
 
   const stUrl = route.service_trade_route_location_url
-  const routeLocationCount = route.location_count ?? orderedSites.length
-  const routeStopTotal = orderedSites.reduce((sum, loc) => sum + routeLocationStopCount(loc), 0)
+  const routeLocationCount = visibleSites.length
+  const routeStopTotal = visibleSites.reduce((sum, loc) => sum + routeLocationStopCount(loc), 0)
   const selectedYearMonthKeys =
     effectiveHistoryYear != null ? monthIsoKeysForCalendarYear(effectiveHistoryYear) : []
   const selectedYearRevenue = selectedYearMonthKeys.reduce((sum, monthIso) => {
@@ -895,7 +914,7 @@ export default function MonthlyRouteDetailPage() {
     })
     .sort((a, b) => specialistTechJobs(b) - specialistTechJobs(a))
     .slice(0, 3)
-  const routeMapOrderSignature = orderedSites
+  const routeMapOrderSignature = visibleSites
     .map((loc) => `${loc.id}:${loc.route_stop_order ?? ''}:${loc.latitude ?? ''}:${loc.longitude ?? ''}`)
     .join('|')
 
@@ -993,7 +1012,7 @@ export default function MonthlyRouteDetailPage() {
           <Accordion.Body className="monthly-location-testing-history-body">
             <MonthlyRouteMapCard
               routeId={idNum}
-              stops={orderedSites}
+              stops={visibleSites}
               orderSignature={routeMapOrderSignature}
             />
           </Accordion.Body>
@@ -1016,12 +1035,12 @@ export default function MonthlyRouteDetailPage() {
                 {orderError}
               </Alert>
             ) : null}
-            {orderedSites.length === 0 ? (
+            {visibleSites.length === 0 ? (
               <p className="monthly-location-empty-state mb-0">No locations are assigned to this route.</p>
             ) : (
               <>
                 <div className="monthly-route-detail-note">
-                  <span>{orderedSites.length} assigned locations</span>
+                  <span>{visibleSites.length} assigned locations</span>
                   <span>Order saves automatically after drop</span>
                 </div>
                 <div className="monthly-route-detail-table-shell">
@@ -1048,11 +1067,11 @@ export default function MonthlyRouteDetailPage() {
                         </tr>
                       </thead>
                       <SortableContext
-                        items={orderedSites.map((s) => s.id)}
+                        items={visibleSites.map((s) => s.id)}
                         strategy={verticalListSortingStrategy}
                       >
                         <tbody>
-                          {orderedSites.map((loc, index) => (
+                          {visibleSites.map((loc, index) => (
                             <SortableRouteSiteRow
                               key={loc.id}
                               loc={loc}
@@ -1066,6 +1085,51 @@ export default function MonthlyRouteDetailPage() {
                   </DndContext>
                 </div>
               </>
+            )}
+          </Accordion.Body>
+        </Accordion.Item>
+
+        <Accordion.Item
+          eventKey="runs"
+          className="monthly-location-testing-history-card monthly-route-detail-section monthly-location-detail-surface"
+        >
+          <Accordion.Header className="monthly-location-testing-history-card-header">
+            <RouteSectionHeader
+              icon="bi-calendar-check"
+              title="Runs"
+              badge={runRows.length}
+            />
+          </Accordion.Header>
+          <Accordion.Body className="monthly-location-testing-history-body">
+            {runRows.length === 0 ? (
+              <p className="monthly-location-empty-state mb-0">No runs recorded for this route yet.</p>
+            ) : (
+              <div className="monthly-route-detail-table-shell">
+                <Table size="sm" className="monthly-route-detail-table mb-0 align-middle">
+                  <thead>
+                    <tr className="small text-muted text-uppercase">
+                      <th>Month</th>
+                      <th>Date</th>
+                      <th className="text-nowrap">Sites tested</th>
+                      <th>Stage</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {runRows.map(({ monthIso, run, specialistMonth }) => (
+                      <tr key={monthIso}>
+                        <td className="fw-semibold">{formatMonthHeading(monthIso)}</td>
+                        <td className="text-nowrap">{formatRunDisplayDate(run, specialistMonth)}</td>
+                        <td className="tabular-nums">{formatSitesTestedRatio(run)}</td>
+                        <td>
+                          <Badge bg="light" text="dark" className="monthly-route-pill">
+                            {run.workflow_stage_label || '—'}
+                          </Badge>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </Table>
+              </div>
             )}
           </Accordion.Body>
         </Accordion.Item>

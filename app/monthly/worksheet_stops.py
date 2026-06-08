@@ -80,6 +80,7 @@ _MTSM_SNAPSHOT_DISPLAY_KEYS = (
     "monitoring_company_id",
     "monitoring_company_name",
     "monitoring_account_number",
+    "monitoring_password",
     "monitoring_notes",
 )
 
@@ -123,6 +124,7 @@ def _fill_snapshot_gaps_from_master(
         "monitoring_company_id",
         "monitoring_company_name",
         "monitoring_account_number",
+        "monitoring_password",
         "monitoring_notes",
     ):
         if _normalize_text(values.get(key)) is not None:
@@ -203,15 +205,17 @@ def _monitoring_labels(
     mtsm: MonthlyTestingSiteMonth | None,
     ts: MonthlyTestingSite,
     loc: MonthlyRouteLocation | None,
-) -> tuple[str | None, str | None, int | None, str | None, MonitoringCompany | None]:
+) -> tuple[str | None, str | None, int | None, str | None, str | None, MonitoringCompany | None]:
     mcid: int | None = None
     acct: str | None = None
+    mon_pwd: str | None = None
     mon_notes: str | None = None
     company_name: str | None = None
 
     if mtsm is not None:
         mcid = int(mtsm.monitoring_company_id) if mtsm.monitoring_company_id is not None else None
         acct = _normalize_text(mtsm.monitoring_account_number)
+        mon_pwd = _normalize_text(mtsm.monitoring_password)
         mon_notes = _normalize_text(mtsm.monitoring_notes)
         company_name = _normalize_text(mtsm.monitoring_company_name)
         if loc is not None:
@@ -220,6 +224,8 @@ def _monitoring_labels(
                 mcid = int(preview["monitoring_company_id"])
             if acct is None:
                 acct = _normalize_text(preview.get("monitoring_account_number"))
+            if mon_pwd is None:
+                mon_pwd = _normalize_text(preview.get("monitoring_password"))
             if mon_notes is None:
                 mon_notes = _normalize_text(preview.get("monitoring_notes"))
             if company_name is None:
@@ -228,6 +234,7 @@ def _monitoring_labels(
         preview = master_template_fields(ts, loc) if loc is not None else {}
         mcid = int(ts.monitoring_company_id) if ts.monitoring_company_id is not None else None
         acct = _normalize_text(preview.get("monitoring_account_number") or ts.monitoring_account_number)
+        mon_pwd = _normalize_text(preview.get("monitoring_password") or ts.monitoring_password)
         mon_notes = _normalize_text(preview.get("monitoring_notes"))
         company_name = _normalize_text(preview.get("monitoring_company_name"))
 
@@ -241,7 +248,7 @@ def _monitoring_labels(
     elif not company_name and ts.monitoring_company is not None:
         company_name = _normalize_text(ts.monitoring_company.name)
 
-    return company_name, mon_notes, mcid, acct, mc
+    return company_name, mon_notes, mcid, acct, mon_pwd, mc
 
 
 _HISTORY_SNAPSHOT_TO_MTSM: tuple[tuple[str, str], ...] = (
@@ -406,6 +413,27 @@ def _route_locations(route_id: int) -> list[MonthlyRouteLocation]:
     )
 
 
+def _is_cancelled_library_location(loc: MonthlyRouteLocation) -> bool:
+    return (loc.status_normalized or "").strip().lower() == "cancelled"
+
+
+def _active_library_route_locations(route_id: int) -> list[MonthlyRouteLocation]:
+    """Route library rows assigned to this route, excluding cancelled MBT locations."""
+    return [loc for loc in _route_locations(route_id) if not _is_cancelled_library_location(loc)]
+
+
+def _testing_site_ids_for_locations(locs: list[MonthlyRouteLocation]) -> set[int]:
+    """Testing-site ids currently on the library master for these route locations."""
+    if not locs:
+        return set()
+    ts_by_loc = _testing_sites_by_location_bulk(locs)
+    out: set[int] = set()
+    for loc in locs:
+        for ts in ts_by_loc.get(int(loc.id), []):
+            out.add(int(ts.id))
+    return out
+
+
 def _history_for_locations(
     location_ids: list[int],
     month_first: date,
@@ -443,7 +471,7 @@ def ensure_worksheet_stops_for_route_month(
     run: MonthlyRouteRun,
 ) -> None:
     """Idempotently materialize ``MonthlyTestingSiteMonth`` for every testing site on the route."""
-    locs = _route_locations(route_id)
+    locs = _active_library_route_locations(route_id)
     if not locs:
         return
     loc_ids = [int(loc.id) for loc in locs]
@@ -591,6 +619,7 @@ def upsert_stop_month_from_csv_import(
     inspection_tech_notes: str | None,
     monitoring_notes: str | None,
     monitoring_account_number: str | None,
+    monitoring_password: str | None,
     monitoring_company_id: int | None,
     sheet_time_in_raw: str | None,
     sheet_time_out_raw: str | None,
@@ -633,6 +662,7 @@ def upsert_stop_month_from_csv_import(
         "inspection_tech_notes": inspection_tech_notes,
         "monitoring_notes": monitoring_notes,
         "monitoring_account_number": monitoring_account_number,
+        "monitoring_password": monitoring_password,
         "monitoring_company_id": monitoring_company_id,
         "property_management_company": loc.property_management_company,
         "building_name": ts.building_name or loc.building,
@@ -723,9 +753,19 @@ def dismiss_prior_month_out_of_order_for_testing_sites(
     return updated
 
 
-def sync_session_route_stop_order_from_library_route(route_id: int) -> int:
-    """After library ``route_stop_order`` changes, align worksheet session order on that route."""
-    locs = _route_locations(route_id)
+def sync_session_route_stop_order_from_library_route(
+    route_id: int,
+    *,
+    locs: list[MonthlyRouteLocation] | None = None,
+    overwrite: bool = True,
+) -> int:
+    """After library ``route_stop_order`` changes, align worksheet session order on that route.
+
+    When ``overwrite`` is false, only rows with a null ``session_route_stop_order`` are updated
+    (legacy no-op for callers that pass the default ``True``).
+    """
+    if locs is None:
+        locs = _route_locations(route_id)
     if not locs:
         return 0
     ts_by_loc = _testing_sites_by_location_bulk(locs)
@@ -746,6 +786,8 @@ def sync_session_route_stop_order_from_library_route(route_id: int) -> int:
             .all()
         )
         for row in rows:
+            if not overwrite and row.session_route_stop_order is not None:
+                continue
             if row.session_route_stop_order != order:
                 row.session_route_stop_order = order
                 updated += 1
@@ -1014,7 +1056,7 @@ def serialize_worksheet_stop(
     site_count: int = 1,
     site_index: int = 0,
 ) -> dict[str, object]:
-    company, mon_notes, mcid, mon_acct, mc = _monitoring_labels(mtsm, ts, loc)
+    company, mon_notes, mcid, mon_acct, mon_pwd, mc = _monitoring_labels(mtsm, ts, loc)
     panel = None
     ring = None
     key_number = None
@@ -1121,6 +1163,7 @@ def serialize_worksheet_stop(
         "monitoring_company_id": mcid,
         "monitoring_company_record": serialize_monitoring_company(mc),
         "monitoring_account_number": mon_acct,
+        "monitoring_password": mon_pwd,
         "monitoring_notes": mon_notes,
         "result_status": result_status,
         "skip_reason": skip_reason,
@@ -1185,7 +1228,7 @@ def portal_worksheet_preview_stops(
     month_first: date,
 ) -> list[dict[str, object]]:
     """Preview stops from library master data (no ``MonthlyTestingSiteMonth`` rows)."""
-    locs = _route_locations(route_id)
+    locs = _active_library_route_locations(route_id)
     locs_sorted = sorted(
         locs,
         key=lambda loc: (0, int(loc.route_stop_order)) if loc.route_stop_order is not None else (1, 10**9),
@@ -1279,14 +1322,14 @@ def worksheet_stops_from_attributed_history(
     hist_rows = _attributed_history_for_route_month(route_id, month_first)
     if not hist_rows:
         return []
-    locs = _route_locations(route_id)
+    locs = _active_library_route_locations(route_id)
     loc_by_id = {int(loc.id): loc for loc in locs}
     hist_by_loc = {int(h.location_id): h for h in hist_rows}
 
     pairs: list[tuple[MonthlyRouteTestHistory, MonthlyTestingSite, MonthlyRouteLocation]] = []
     for loc_id, hist in hist_by_loc.items():
         loc = loc_by_id.get(loc_id)
-        if loc is None:
+        if loc is None or _is_cancelled_library_location(loc):
             continue
         ts_rows = _testing_sites_for_location(loc)
         primary = primary_testing_site(ts_rows)
@@ -1350,7 +1393,7 @@ def _worksheet_stop_pairs_for_route_month(
 ) -> list[tuple[MonthlyTestingSiteMonth | None, MonthlyTestingSite, MonthlyRouteLocation]]:
     """Ordered (mtsm, testing site, location) tuples for one route month — no serialization."""
     if locs is None:
-        locs = _route_locations(route_id)
+        locs = _active_library_route_locations(route_id)
     if not locs:
         return []
     loc_by_id = {int(loc.id): loc for loc in locs}
@@ -1448,7 +1491,7 @@ def serialize_worksheet_stop_office_prep_patch(
     site_index: int = 0,
 ) -> dict[str, object]:
     """Minimal worksheet stop JSON for office run-prep PATCH (no portal extras / master merge)."""
-    company, mon_notes, mcid, mon_acct, mc = _monitoring_labels(mtsm, ts, loc)
+    company, mon_notes, mcid, mon_acct, mon_pwd, mc = _monitoring_labels(mtsm, ts, loc)
     panel = _normalize_text(mtsm.panel) or _normalize_text(mtsm.facp)
     stop: dict[str, object] = {
         "testing_site_id": int(ts.id),
@@ -1470,6 +1513,7 @@ def serialize_worksheet_stop_office_prep_patch(
         "monitoring_company_id": mcid,
         "monitoring_company_record": serialize_monitoring_company(mc),
         "monitoring_account_number": mon_acct,
+        "monitoring_password": mon_pwd,
         "monitoring_notes": mon_notes,
         "testing_procedures": mtsm.testing_procedures,
         "inspection_tech_notes": mtsm.inspection_tech_notes,
@@ -1497,7 +1541,7 @@ def worksheet_stops_for_route_month(
     include_portal_extras: bool = True,
 ) -> list[dict[str, object]]:
     """Load and sort portal worksheet stops for an active run month."""
-    locs = _route_locations(route_id)
+    locs = _active_library_route_locations(route_id)
     if not locs:
         return []
     loc_by_id = {int(loc.id): loc for loc in locs}
@@ -1946,113 +1990,16 @@ def _is_latest_run_for_location(location_id: int, month_first: date) -> bool:
     return latest is None or month_first >= latest
 
 
-def regenerate_prep_stops_from_latest_data(
-    route_id: int,
-    month_first: date,
-    run: MonthlyRouteRun,
-) -> int:
-    """Office prep: overwrite stop-month snapshots from library master + prior run month.
-
-    Preserves ``office_attention`` flags. Does not copy prior-month history gaps when a
-    prior ``MonthlyTestingSiteMonth`` row exists (avoids resurrecting cleared notes).
-    """
-    locs = _route_locations(route_id)
-    if not locs:
-        return 0
-    loc_ids = [int(loc.id) for loc in locs]
-    hist_by_loc = _history_for_locations(loc_ids, month_first)
-    run_id = int(run.id)
-
-    all_ts_ids: list[int] = []
-    loc_ts: dict[int, list[MonthlyTestingSite]] = {}
-    for loc in locs:
-        site = ensure_monthly_site_for_location(loc)
-        ts_rows = sync_testing_sites_from_legacy(loc)
-        if not ts_rows:
-            ts_rows = (
-                MonthlyTestingSite.query.filter_by(monthly_site_id=int(site.id))
-                .order_by(MonthlyTestingSite.sort_order.asc(), MonthlyTestingSite.id.asc())
-                .all()
-            )
-        loc_ts[int(loc.id)] = ts_rows
-        all_ts_ids.extend(int(t.id) for t in ts_rows)
-
-    prior_by_ts = _prior_mtsm_by_testing_site(all_ts_ids, month_first)
-    existing = {
-        int(r.monthly_testing_site_id): r
-        for r in db.session.query(MonthlyTestingSiteMonth)
-        .filter(
-            MonthlyTestingSiteMonth.month_date == month_first,
-            MonthlyTestingSiteMonth.monthly_testing_site_id.in_(all_ts_ids),
-        )
-        .all()
-    } if all_ts_ids else {}
-
-    regenerated = 0
-    for loc in locs:
-        ts_list = loc_ts.get(int(loc.id), [])
-        if not ts_list:
-            continue
-        primary = primary_testing_site(ts_list)
-        loc_hist = hist_by_loc.get(int(loc.id))
-        for ts in ts_list:
-            ts_id = int(ts.id)
-            is_primary = primary is not None and int(primary.id) == ts_id
-            prior = prior_by_ts.get(ts_id)
-            row = existing.get(ts_id)
-            office_attention = bool(row.office_attention) if row is not None else False
-            prior_month_out_of_order_dismissed = (
-                bool(row.prior_month_out_of_order_dismissed) if row is not None else False
-            )
-            fresh = seed_stop_month_fields(
-                ts,
-                loc,
-                prior,
-                route_id=route_id,
-                run_id=run_id,
-                month_first=month_first,
-                primary=is_primary,
-                location_hist=loc_hist if is_primary else None,
-                existing_row=None,
-                include_history_gap_fill=prior is None,
-            )
-            fresh["office_attention"] = office_attention
-            fresh["prior_month_out_of_order_dismissed"] = prior_month_out_of_order_dismissed
-            if row is None:
-                fields = dict(fresh)
-                fields["monthly_testing_site_id"] = ts_id
-                nid = _next_sqlite_bigint_id(MonthlyTestingSiteMonth)
-                if nid is not None:
-                    fields["id"] = nid
-                try:
-                    with db.session.begin_nested():
-                        db.session.add(MonthlyTestingSiteMonth(**fields))
-                    regenerated += 1
-                    continue
-                except IntegrityError:
-                    row = (
-                        MonthlyTestingSiteMonth.query.filter_by(
-                            monthly_testing_site_id=ts_id,
-                            month_date=month_first,
-                        ).one_or_none()
-                    )
-            if row is None:
-                continue
-            _apply_fresh_stop_month_fields(row, fresh, route_id=route_id, run_id=run_id)
-            regenerated += 1
-            if is_primary:
-                sync_primary_history_from_stop(row, loc, route_id, month_first)
-    db.session.flush()
-    return regenerated
-
-
 def _reseed_stop_month_rows_from_master(
     route_id: int,
     month_first: date,
     run: MonthlyRouteRun | None,
+    *,
+    locs: list[MonthlyRouteLocation] | None = None,
 ) -> int:
     """Replace run-month stop rows with master template + prior-month fallback (no run progress)."""
-    locs = _route_locations(route_id)
+    if locs is None:
+        locs = _route_locations(route_id)
     if not locs:
         return 0
     loc_ids = [int(loc.id) for loc in locs]
@@ -2176,17 +2123,68 @@ def _delete_clock_events_for_route_month(route_id: int, month_first: date) -> in
     return int(deleted or 0)
 
 
-def reset_worksheet_run_for_route_month(
+def _delete_clock_events_for_route_month_attributed(
     route_id: int,
     month_first: date,
-    run: MonthlyRouteRun | None,
-) -> dict[str, int]:
-    """Clear all run-scoped worksheet progress and property edits for one route-month.
+) -> int:
+    """Remove portal clock events for every stop attributed to a route-month."""
+    from app.db_models import MonthlyStopClockEvent
 
-    Deletes worksheet audit events, clears attributed history (including per-location billing
-    decisions except locked legacy billing), re-seeds stop-month rows from library master, and
-    mirrors primary stops to library when this is the latest run month.
-    """
+    mtsm_ids = [
+        int(row.id)
+        for row in MonthlyTestingSiteMonth.query.filter(
+            MonthlyTestingSiteMonth.month_date == month_first,
+            MonthlyTestingSiteMonth.test_monthly_route_id == route_id,
+        ).all()
+    ]
+    if not mtsm_ids:
+        return 0
+    deleted = (
+        MonthlyStopClockEvent.query.filter(
+            MonthlyStopClockEvent.monthly_testing_site_month_id.in_(mtsm_ids),
+        ).delete(synchronize_session=False)
+    )
+    return int(deleted or 0)
+
+
+def prune_route_month_stops_not_on_active_library(
+    route_id: int,
+    month_first: date,
+    active_locs: list[MonthlyRouteLocation],
+) -> int:
+    """Delete route-month stop rows (and clocks) not on the active library route membership."""
+    from app.db_models import MonthlyStopClockEvent
+
+    valid_ts_ids = _testing_site_ids_for_locations(active_locs)
+    stale_rows = (
+        MonthlyTestingSiteMonth.query.filter(
+            MonthlyTestingSiteMonth.month_date == month_first,
+            MonthlyTestingSiteMonth.test_monthly_route_id == route_id,
+        )
+        .all()
+    )
+    stale_rows = [
+        row for row in stale_rows if int(row.monthly_testing_site_id) not in valid_ts_ids
+    ]
+    if not stale_rows:
+        return 0
+    stale_mtsm_ids = [int(row.id) for row in stale_rows]
+    MonthlyStopClockEvent.query.filter(
+        MonthlyStopClockEvent.monthly_testing_site_month_id.in_(stale_mtsm_ids),
+    ).delete(synchronize_session=False)
+    deleted = (
+        MonthlyTestingSiteMonth.query.filter(MonthlyTestingSiteMonth.id.in_(stale_mtsm_ids))
+        .delete(synchronize_session=False)
+    )
+    db.session.flush()
+    return int(deleted or 0)
+
+
+def _clear_run_scoped_worksheet_progress(
+    route_id: int,
+    month_first: date,
+) -> dict[str, int]:
+    """Delete audit rows and clear attributed history / clocks for one route-month."""
     deleted_audits = (
         MonthlyRouteWorksheetAuditEvent.query.filter_by(
             monthly_route_id=route_id,
@@ -2200,12 +2198,23 @@ def reset_worksheet_run_for_route_month(
             cleared_history += 1
         _clear_history_run_scoped_fields(hist)
 
-    deleted_clock_events = _delete_clock_events_for_route_month(route_id, month_first)
+    deleted_clock_events = _delete_clock_events_for_route_month_attributed(route_id, month_first)
 
-    reseeded_stops = _reseed_stop_month_rows_from_master(route_id, month_first, run)
+    return {
+        "deleted_audit_events": int(deleted_audits or 0),
+        "cleared_history_rows": cleared_history,
+        "deleted_clock_events": deleted_clock_events,
+    }
 
+
+def _mirror_reseeded_stops_to_library(
+    route_id: int,
+    month_first: date,
+    locs: list[MonthlyRouteLocation],
+) -> int:
+    """Mirror primary stop-month snapshots back to library master for latest run months."""
     mirrored = 0
-    for loc in _route_locations(route_id):
+    for loc in locs:
         if not _is_latest_run_for_location(int(loc.id), month_first):
             continue
         ts_list = _testing_sites_for_location(loc)
@@ -2224,11 +2233,61 @@ def reset_worksheet_run_for_route_month(
         mirror_mtsm_snapshot_to_primary_master(primary, mtsm)
         push_primary_testing_site_display_to_legacy(loc, primary)
         mirrored += 1
+    return mirrored
+
+
+def regenerate_prep_paperwork_from_library(
+    route_id: int,
+    month_first: date,
+    run: MonthlyRouteRun,
+) -> dict[str, int]:
+    """Office prep: rebuild route-month paperwork from active library membership and order.
+
+    Prunes cancelled/off-route/removed testing sites, clears run-scoped worksheet progress
+    (same scope as ``reset_worksheet_run_for_route_month``), re-seeds active stops from
+    library master, mirrors to library when latest, and applies library stop order.
+    """
+    active_locs = _active_library_route_locations(route_id)
+    stops_pruned = prune_route_month_stops_not_on_active_library(route_id, month_first, active_locs)
+    clear_stats = _clear_run_scoped_worksheet_progress(route_id, month_first)
+    reseeded_stops = _reseed_stop_month_rows_from_master(
+        route_id,
+        month_first,
+        run,
+        locs=active_locs,
+    )
+    mirrored = _mirror_reseeded_stops_to_library(route_id, month_first, active_locs)
+    session_orders_updated = sync_session_route_stop_order_from_library_route(
+        route_id,
+        locs=active_locs,
+        overwrite=True,
+    )
+    return {
+        "stops_pruned": stops_pruned,
+        "reseeded_stops": reseeded_stops,
+        "mirrored_library_locations": mirrored,
+        "session_orders_updated": session_orders_updated,
+        **clear_stats,
+    }
+
+
+def reset_worksheet_run_for_route_month(
+    route_id: int,
+    month_first: date,
+    run: MonthlyRouteRun | None,
+) -> dict[str, int]:
+    """Clear all run-scoped worksheet progress and property edits for one route-month.
+
+    Deletes worksheet audit events, clears attributed history (including per-location billing
+    decisions except locked legacy billing), re-seeds stop-month rows from library master, and
+    mirrors primary stops to library when this is the latest run month.
+    """
+    clear_stats = _clear_run_scoped_worksheet_progress(route_id, month_first)
+    reseeded_stops = _reseed_stop_month_rows_from_master(route_id, month_first, run)
+    mirrored = _mirror_reseeded_stops_to_library(route_id, month_first, _route_locations(route_id))
 
     return {
-        "deleted_audit_events": int(deleted_audits or 0),
-        "cleared_history_rows": cleared_history,
-        "deleted_clock_events": deleted_clock_events,
+        **clear_stats,
         "reseeded_stops": reseeded_stops,
         "mirrored_library_locations": mirrored,
     }
@@ -2266,6 +2325,7 @@ STOP_PATCH_FIELD_MAP: dict[str, str] = {
     "building_name": "building_name",
     "monitoring_company_id": "monitoring_company_id",
     "monitoring_account_number": "monitoring_account_number",
+    "monitoring_password": "monitoring_password",
     "monitoring_notes": "monitoring_notes",
     "monitoring_company": "monitoring_company_name",
 }

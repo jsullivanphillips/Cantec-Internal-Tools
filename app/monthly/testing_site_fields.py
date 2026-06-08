@@ -18,6 +18,7 @@ LIBRARY_STRING_FIELDS = (
     "barcode",
     "label",
     "monitoring_account_number",
+    "monitoring_password",
 )
 
 LIBRARY_TEXT_FIELDS = (
@@ -39,6 +40,7 @@ SNAPSHOT_STRING_FIELDS = (
     "ring",
     "key_number",
     "monitoring_account_number",
+    "monitoring_password",
 )
 
 SNAPSHOT_TEXT_FIELDS = (

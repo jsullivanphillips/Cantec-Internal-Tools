@@ -6,9 +6,13 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from 'react'
-import { Spinner } from 'react-bootstrap'
+import { Spinner, Form } from 'react-bootstrap'
 import MonitoringCompanySelect from './MonitoringCompanySelect'
 import type { MonitoringCompanySummary } from './monthlyRoutesShared'
+import {
+  annualMonthDropdownOptions,
+  normalizeAnnualMonthForSelect,
+} from './monthlyRoutesShared'
 import { worksheetReadOnlyDisplay } from './officeWorksheetTableShared'
 
 function activateField(onActivate: (key: string | null) => void, fieldKey: string, disabled: boolean) {
@@ -215,6 +219,118 @@ export function PrepCompactField({
           }}
         />
       )}
+      {hint ? <div className="run-details-prepare-field-hint">{hint}</div> : null}
+      <PrepEditActions onCancel={cancel} onSave={save} saving={saving} />
+    </div>
+  )
+}
+
+function annualMonthDisplayValue(value: string | null | undefined): string {
+  const normalized = normalizeAnnualMonthForSelect(value)
+  if (normalized) return normalized
+  return worksheetReadOnlyDisplay(value)
+}
+
+export function PrepAnnualMonthField({
+  fieldKey,
+  label,
+  value,
+  disabled = false,
+  saving,
+  activeKey,
+  onActivate,
+  onCommit,
+  hint,
+}: {
+  fieldKey: string
+  label: string
+  value: string | null | undefined
+  disabled?: boolean
+  saving?: boolean
+  activeKey: string | null
+  onActivate: (key: string | null) => void
+  onCommit: (next: string) => void
+  hint?: string
+}) {
+  const selectRef = useRef<HTMLSelectElement>(null)
+  const editing = activeKey === fieldKey
+  const normalizedValue = normalizeAnnualMonthForSelect(value)
+  const display = annualMonthDisplayValue(value)
+  const empty = display === '—'
+  const [draft, setDraft] = useState(normalizedValue)
+  const markExplicitClose = useCommitDraftWhenEditingCloses(
+    editing,
+    draft,
+    normalizedValue,
+    onCommit,
+    setDraft,
+  )
+  const options = annualMonthDropdownOptions(value)
+
+  useEffect(() => {
+    if (!editing) return
+    selectRef.current?.focus({ preventScroll: true })
+  }, [editing])
+
+  const cancel = useCallback(() => {
+    markExplicitClose()
+    setDraft(normalizedValue)
+    onActivate(null)
+  }, [markExplicitClose, normalizedValue, onActivate])
+
+  const save = useCallback(() => {
+    markExplicitClose()
+    if (draft !== normalizedValue) onCommit(draft)
+    onActivate(null)
+  }, [draft, markExplicitClose, normalizedValue, onActivate, onCommit])
+
+  if (!editing) {
+    return (
+      <div className="run-details-prepare-stack__field">
+        <PrepFieldLabel label={label} saving={saving} />
+        <div
+          className={`run-details-prepare-display${
+            empty ? ' run-details-prepare-display--empty' : ''
+          }${disabled ? '' : ' run-details-prepare-display--editable'}`}
+          role={disabled ? undefined : 'button'}
+          tabIndex={disabled ? undefined : 0}
+          onClick={() => activateField(onActivate, fieldKey, disabled)}
+          onKeyDown={(e) => fieldKeyDown(e, disabled, onActivate, fieldKey)}
+        >
+          {display}
+        </div>
+        {hint ? <div className="run-details-prepare-field-hint">{hint}</div> : null}
+      </div>
+    )
+  }
+
+  return (
+    <div className="run-details-prepare-stack__field run-details-prepare-stack__field--editing">
+      <PrepFieldLabel label={label} saving={saving} />
+      <Form.Select
+        ref={selectRef}
+        size="sm"
+        className="run-details-prepare-editor"
+        value={draft}
+        disabled={disabled || saving}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            save()
+          }
+          if (e.key === 'Escape') {
+            e.preventDefault()
+            cancel()
+          }
+        }}
+      >
+        {options.map((opt) => (
+          <option key={opt.value || '__empty'} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </Form.Select>
       {hint ? <div className="run-details-prepare-field-hint">{hint}</div> : null}
       <PrepEditActions onCancel={cancel} onSave={save} saving={saving} />
     </div>

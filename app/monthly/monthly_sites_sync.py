@@ -204,6 +204,7 @@ def mirror_mtsm_snapshot_to_primary_master(
     ts.inspection_tech_notes = mtsm.inspection_tech_notes
     ts.monitoring_notes = mtsm.monitoring_notes
     ts.monitoring_account_number = mtsm.monitoring_account_number
+    ts.monitoring_password = mtsm.monitoring_password
     ts.monitoring_company_id = mtsm.monitoring_company_id
 
 
@@ -241,10 +242,12 @@ def apply_monitoring_fields_to_testing_site(
     *,
     monitoring_company_id: int | None,
     monitoring_account_number: str | None,
+    monitoring_password: str | None,
     monitoring_notes: str | None,
 ) -> None:
     ts.monitoring_company_id = monitoring_company_id
     ts.monitoring_account_number = monitoring_account_number
+    ts.monitoring_password = monitoring_password
     ts.monitoring_notes = monitoring_notes
 
 
@@ -274,9 +277,10 @@ def apply_monitoring_fields_to_primary_testing_site(
     *,
     monitoring_company_id: int | None,
     monitoring_account_number: str | None,
+    monitoring_password: str | None,
     monitoring_notes: str | None,
 ) -> None:
-    """Set primary v2 stop monitoring FK, account number, and notes."""
+    """Set primary v2 stop monitoring FK, account number, password, and notes."""
     try:
         rows = sync_testing_sites_from_legacy(loc)
     except (OperationalError, ProgrammingError):
@@ -286,6 +290,7 @@ def apply_monitoring_fields_to_primary_testing_site(
     primary = min(rows, key=lambda t: int(t.sort_order))
     primary.monitoring_company_id = monitoring_company_id
     primary.monitoring_account_number = monitoring_account_number
+    primary.monitoring_password = monitoring_password
     primary.monitoring_notes = monitoring_notes
 
 
@@ -358,6 +363,7 @@ def mirror_master_to_mtsm_snapshot(
     _set("inspection_tech_notes", template.get("inspection_tech_notes"))
     _set("monitoring_notes", template.get("monitoring_notes"))
     _set("monitoring_account_number", template.get("monitoring_account_number"))
+    _set("monitoring_password", template.get("monitoring_password"))
     _set("monitoring_company_id", template.get("monitoring_company_id"))
     _set("monitoring_company_name", template.get("monitoring_company_name"))
     return changed

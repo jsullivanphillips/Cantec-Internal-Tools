@@ -20,6 +20,7 @@ import { Link } from 'react-router-dom'
 import { annualMonthHint, stopAnnualDueThisMonth } from './annualMonthHint'
 import { monitoringCompanyDisplayName } from './MonitoringCompanySelect'
 import {
+  PrepAnnualMonthField,
   PrepCompactField,
   PrepCompanyField,
   PrepLongTextCell,
@@ -36,6 +37,7 @@ import type { MonthlyRunDetailDeficiencySummary } from './monthlyRoutesShared'
 import type { RunDetailsStopPatchApi } from './useRunDetailsStopPatch'
 import { useMonitoringCompanies } from './useMonitoringCompanies'
 import { apiJson } from '../../lib/apiClient'
+import { shortStreetAddress } from './testingSiteDisplay'
 
 type PrepDragHandleProps = Pick<ReturnType<typeof useSortable>, 'attributes' | 'listeners'>
 
@@ -269,6 +271,7 @@ export default function RunDetailsPrepareTable({
       },
     ) => {
       const { stop, locationLabel, siteCount } = row
+      const displayLocationLabel = shortStreetAddress(locationLabel)
       const sid = stop.testing_site_id
       const siteLabel = (stop.label || '').trim() || 'Primary testing location'
       const companyId = stop.monitoring_company_id ?? null
@@ -296,7 +299,7 @@ export default function RunDetailsPrepareTable({
               stopNumber={stop.stop_number}
               showDragHandle={options.showDragHandle}
               orderSaving={orderSaving}
-              locationLabel={locationLabel}
+              locationLabel={displayLocationLabel}
               dragHandleProps={options.dragHandleProps}
             />
           </td>
@@ -305,7 +308,7 @@ export default function RunDetailsPrepareTable({
               to={`/monthlies/locations/${stop.location_id}`}
               className="run-details-prepare-address-link"
             >
-              {locationLabel}
+              {displayLocationLabel}
             </Link>
             {options.isPrimaryForLocation && stop.prior_month_field_edits ? (
               <span className="badge bg-light text-dark border mt-1 d-block run-details-prep-badge">
@@ -368,10 +371,10 @@ export default function RunDetailsPrepareTable({
                   )
                 }
               />
-              <PrepCompactField
+              <PrepAnnualMonthField
                 fieldKey={fk('annual')}
                 label="Annual month"
-                value={stop.annual_month || ''}
+                value={stop.annual_month}
                 saving={isFieldSaving(sid, fk('annual'))}
                 activeKey={activeFieldKey}
                 onActivate={setActiveFieldKey}
@@ -436,6 +439,23 @@ export default function RunDetailsPrepareTable({
                 }
               />
               <PrepCompactField
+                fieldKey={fk('password')}
+                label="Password"
+                value={stop.monitoring_password || ''}
+                saving={isFieldSaving(sid, fk('password'))}
+                activeKey={activeFieldKey}
+                onActivate={setActiveFieldKey}
+                disabled={prepEditsDisabled}
+                onCommit={(next) =>
+                  void patchStop(
+                    sid,
+                    fk('password'),
+                    { monitoring_password: next.trim() || null },
+                    { monitoring_password: stop.monitoring_password },
+                  )
+                }
+              />
+              <PrepCompactField
                 fieldKey={fk('mon-notes')}
                 label="Notes"
                 value={stop.monitoring_notes || ''}
@@ -464,7 +484,7 @@ export default function RunDetailsPrepareTable({
               compact
               onDeficiencyUpdated={onDeficiencyUpdated}
               modalContext={{
-                locationLabel,
+                locationLabel: displayLocationLabel,
                 stopNumber: stop.stop_number,
                 siteLabel: multiSite ? siteLabel : undefined,
               }}

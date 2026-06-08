@@ -573,6 +573,7 @@ def _route_testing_by_month(route_id: int) -> dict[str, dict]:
 
 def _runs_by_month_for_route(route_id: int) -> dict[str, dict[str, object]]:
     """``MonthlyRouteRun`` rows keyed by ``YYYY-MM-01`` (CSV import, portal, or worksheet materialization)."""
+    from app.monthly.run_details_review import run_month_worksheet_stop_counts
     from app.monthly.run_workflow import derive_run_workflow_stage, workflow_stage_label
 
     rows = (
@@ -583,6 +584,7 @@ def _runs_by_month_for_route(route_id: int) -> dict[str, dict[str, object]]:
     out: dict[str, dict[str, object]] = {}
     for run in rows:
         stage = derive_run_workflow_stage(run)
+        stop_counts = run_month_worksheet_stop_counts(route_id, run.month_date)
         out[run.month_date.isoformat()] = {
             "run_id": int(run.id),
             "source": run.source,
@@ -592,6 +594,7 @@ def _runs_by_month_for_route(route_id: int) -> dict[str, dict[str, object]]:
             "completed_at": run.completed_at.isoformat() if run.completed_at else None,
             "workflow_stage": stage,
             "workflow_stage_label": workflow_stage_label(stage),
+            **stop_counts,
         }
     return out
 
@@ -3425,6 +3428,10 @@ def patch_monthly_route_worksheet_stop(route_id: int, testing_site_id: int):
                 old_val = audit_old_values.get("monitoring_account_number")
                 new_val = mtsm.monitoring_account_number
                 audit_name = "monitoring_account_number"
+            elif field_name == "monitoring_password":
+                old_val = audit_old_values.get("monitoring_password")
+                new_val = mtsm.monitoring_password
+                audit_name = "monitoring_password"
             elif field_name == "monitoring_notes":
                 old_val = audit_old_values.get("monitoring_notes")
                 new_val = mtsm.monitoring_notes
@@ -4423,7 +4430,7 @@ def post_monthly_route_run_prepare(route_id: int):
 
 @monthly_routes_bp.post("/api/monthly_routes/routes/<int:route_id>/runs/regenerate_prep_stops")
 def post_monthly_route_regenerate_prep_stops(route_id: int):
-    """Office prep: re-seed stop-month snapshots from library master and prior run month."""
+    """Office prep: rebuild route-month paperwork from active library membership and order."""
     if not session.get("authenticated"):
         return jsonify({"error": "Unauthorized"}), 401
 
@@ -4476,18 +4483,15 @@ def post_monthly_route_regenerate_prep_stops(route_id: int):
     if blocked is not None:
         return blocked
 
-    from app.monthly.worksheet_stops import (
-        ensure_worksheet_stops_for_route_month,
-        regenerate_prep_stops_from_latest_data,
-    )
+    from app.monthly.worksheet_stops import regenerate_prep_paperwork_from_library
 
-    ensure_worksheet_stops_for_route_month(route_id, month_first, run)
-    stops_regenerated = regenerate_prep_stops_from_latest_data(route_id, month_first, run)
+    regen_stats = regenerate_prep_paperwork_from_library(route_id, month_first, run)
     db.session.commit()
     return jsonify(
         {
             "ok": True,
-            "stops_regenerated": stops_regenerated,
+            "stops_regenerated": regen_stats["reseeded_stops"],
+            **regen_stats,
             "run": _serialize_run(run),
         }
     )
