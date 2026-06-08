@@ -39,6 +39,19 @@ def _refuse_debug_against_production_db(app: Flask) -> None:
         )
 
 
+def _sqlalchemy_engine_options(database_url: str | None) -> dict[str, object]:
+    """RDS/Postgres often drops idle connections; pre-ping avoids 500s on the next request."""
+    if not database_url:
+        return {}
+    url = database_url.lower()
+    if not url.startswith("postgresql"):
+        return {}
+    return {
+        "pool_pre_ping": True,
+        "pool_recycle": 280,
+    }
+
+
 def create_app():
     # Templates live next to the app package (empty unless you add Jinja later).
     # No repo-root static/: SPA assets are frontend/dist + routes in app/spa.py.
@@ -57,6 +70,7 @@ def create_app():
         database_url = database_url.replace("postgres://", "postgresql://", 1)
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = _sqlalchemy_engine_options(database_url)
     # Technician portal PIN sessions use ``session.permanent`` (see ``portal_auth``).
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=16)
     _refuse_debug_against_production_db(app)

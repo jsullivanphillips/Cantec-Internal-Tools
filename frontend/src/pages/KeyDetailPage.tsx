@@ -32,8 +32,14 @@ type KeyHistoryEvent = {
   id: number
   status: string
   key_location?: string | null
+  air_tag?: string | null
   returned_by?: string | null
   inserted_at?: string | null
+}
+
+function historyAirTagCell(event: KeyHistoryEvent): string {
+  if (event.status?.toLowerCase() !== 'signed out') return '—'
+  return event.air_tag?.trim() || '—'
 }
 
 const HISTORY_PAGE_SIZE = 5
@@ -297,6 +303,7 @@ export default function KeyDetailPage() {
                       <th>When</th>
                       <th>Status</th>
                       <th>Location</th>
+                      <th>AirTag</th>
                       <th>Returned by</th>
                     </tr>
                   </thead>
@@ -306,6 +313,7 @@ export default function KeyDetailPage() {
                         <td>{h.inserted_at ? new Date(h.inserted_at).toLocaleString() : '—'}</td>
                         <td>{h.status || '—'}</td>
                         <td>{h.key_location || '—'}</td>
+                        <td>{historyAirTagCell(h)}</td>
                         <td>{h.returned_by || '—'}</td>
                       </tr>
                     ))}

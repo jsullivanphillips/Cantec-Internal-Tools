@@ -7,7 +7,7 @@ There is **no** repo-root `static/` or `templates/` folder anymore: the UI is th
 ## Production
 
 1. Build the SPA: `cd frontend && npm install && npm run build`
-2. Set `DATABASE_URL`, `SECRET_KEY`, and other env vars (see `app/config.py`).
+2. Set `DATABASE_URL`, `SECRET_KEY`, and other env vars (see `app/config.py`). For PostgreSQL/RDS, the app enables connection pool pre-ping and recycle so idle dropped connections do not cause 500s.
 3. Run the Flask app with the same factory the dev server uses, after the SPA build exists under `frontend/dist/`. Example with Gunicorn:
 
    `gunicorn --bind 0.0.0.0:8000 --factory app:create_app`

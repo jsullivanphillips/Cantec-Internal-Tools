@@ -117,3 +117,16 @@ def test_canonical_cedar_hill_matches_cedar_hill_cross_road():
     sheet = canonical_street_address_key("3221 Cedar Hill")
     db_keys = iter_street_lookup_keys("3221 Cedar Hill Cross Road")
     assert sheet in db_keys
+
+
+def test_canonical_ampersand_corners_order_insensitive():
+    sheet = canonical_street_address_key("990 View & 911 Yates (London Drugs)")
+    db = canonical_street_address_key("911 Yates Street & 990 View Street")
+    assert sheet == "911 yates 990 view"
+    assert db == "911 yates street 990 view street"
+
+
+def test_ampersand_corner_sheet_matches_db_lookup_keys():
+    sheet_keys = iter_street_lookup_keys("990 View & 911 Yates (London Drugs)")
+    db_keys = iter_street_lookup_keys("911 Yates Street & 990 View Street")
+    assert sheet_keys[0] in db_keys

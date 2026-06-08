@@ -709,6 +709,7 @@ def api_key_history(key_id: int):
             "id": r.id,
             "status": r.status,
             "key_location": r.key_location,
+            "air_tag": r.air_tag,
             "returned_by": r.returned_by,
             "inserted_at": r.inserted_at.isoformat() if r.inserted_at else None,
         })

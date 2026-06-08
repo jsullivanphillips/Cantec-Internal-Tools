@@ -41,46 +41,89 @@ const NAV_SECTIONS: NavSection[] = [
   },
 ]
 
-function navLinkClassName({ isActive }: { isActive: boolean }) {
-  return `app-sidebar-link d-flex align-items-center gap-2 px-3 py-2 rounded${isActive ? ' active' : ''}`
+function navLinkClassName(isActive: boolean, showLabels: boolean, animateLabels: boolean) {
+  const classes = ['app-sidebar-link', 'd-flex', 'align-items-center', 'rounded']
+  classes.push(showLabels ? 'app-sidebar-link--with-labels' : 'app-sidebar-link--icon-only')
+  if (showLabels && animateLabels) {
+    classes.push('app-sidebar-link--revealing')
+  }
+  if (isActive) classes.push('active')
+  return classes.join(' ')
 }
 
 export function SidebarNav({
   onNavigate,
   idPrefix,
+  shellExpanded = true,
+  itemsExpanded = true,
+  animateLabels = false,
 }: {
   onNavigate?: () => void
   idPrefix: string
+  shellExpanded?: boolean
+  itemsExpanded?: boolean
+  animateLabels?: boolean
 }) {
+  const showLabels = shellExpanded && itemsExpanded
+  const iconOnly = !showLabels
+
   return (
-    <Nav className="flex-column gap-1 px-2 pb-3" as="nav">
+    <Nav
+      className={`flex-column app-sidebar-nav${
+        iconOnly ? ' app-sidebar-nav--icon-only' : ' gap-1 px-2 pb-3 app-sidebar-nav--with-labels'
+      }${animateLabels ? ' app-sidebar-nav--revealing' : ''}`}
+      as="nav"
+    >
       <NavLink
         to="/home"
         end
-        className={navLinkClassName}
+        className={({ isActive }) => navLinkClassName(isActive, showLabels, animateLabels)}
         onClick={onNavigate}
         id={`${idPrefix}-home`}
+        title={iconOnly ? 'Home' : undefined}
+        aria-label="Home"
       >
-        <i className="bi bi-house-door" aria-hidden />
-        Home
+        <span className="app-sidebar-link-icon">
+          <i className="bi bi-house-door" aria-hidden />
+        </span>
+        <span className="app-sidebar-link-label">Home</span>
       </NavLink>
       {NAV_SECTIONS.map((section) => (
-        <div key={section.title} className="mt-3">
-          <div className="app-sidebar-section-title px-3 pb-1 small text-uppercase text-muted fw-semibold">
-            {section.title}
-          </div>
-          <div className="app-sidebar-section-items d-flex flex-column gap-1">
+        <div
+          key={section.title}
+          className={
+            showLabels ? 'app-sidebar-section' : 'app-sidebar-section app-sidebar-section--icon-only'
+          }
+        >
+          {showLabels ? (
+            <div
+              className={`app-sidebar-section-title px-3 pb-1 small text-uppercase text-muted fw-semibold${
+                animateLabels ? ' app-sidebar-section-title--revealing' : ''
+              }`}
+            >
+              {section.title}
+            </div>
+          ) : null}
+          <div
+            className={`app-sidebar-section-items d-flex flex-column${
+              showLabels ? ' gap-1' : ' app-sidebar-section-items--icon-only'
+            }`}
+          >
             {section.items.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
                 end={item.end}
-                className={navLinkClassName}
+                className={({ isActive }) => navLinkClassName(isActive, showLabels, animateLabels)}
                 onClick={onNavigate}
                 id={`${idPrefix}-${item.to.replace(/\//g, '-')}`}
+                title={iconOnly ? item.label : undefined}
+                aria-label={item.label}
               >
-                <i className={`bi ${item.icon}`} aria-hidden />
-                {item.label}
+                <span className="app-sidebar-link-icon">
+                  <i className={`bi ${item.icon}`} aria-hidden />
+                </span>
+                <span className="app-sidebar-link-label">{item.label}</span>
               </NavLink>
             ))}
           </div>

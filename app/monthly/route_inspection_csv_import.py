@@ -197,6 +197,11 @@ _TRAILING_EMPTY_ADDRESS_ROWS = 10
 # ``1125 Douglas / (702 Fort)`` → primary ``1125 Douglas``; ``709 (-715) Yates`` → ``709-715 Yates``.
 _PAREN_UNIT_RANGE_RE = re.compile(r"\(\s*-?(\d+)\s*\)")
 
+# Trailing tenant/anchor labels on sheet lines, e.g. ``990 View & 911 Yates (London Drugs)``.
+_TRAILING_PAREN_ANNOTATION_RE = re.compile(r"\s*\([^)]*\)\s*$")
+
+_AMPERSAND_STREET_SPLIT_RE = re.compile(r"\s*&\s*", re.IGNORECASE)
+
 # Second line of site block: ``Building B`` (no ``Name:`` prefix) — common on multi-building sites.
 _STANDALONE_BUILDING_LINE_RE = re.compile(r"^building\s+.+$", re.IGNORECASE)
 
@@ -307,6 +312,19 @@ def _canonical_street_ordinal_token(token: str) -> str:
     return _STREET_ORDINAL_WORD_TO_TOKEN.get(token, token)
 
 
+def _strip_trailing_paren_annotation(line: str) -> str:
+    """Drop a trailing ``(London Drugs)``-style label; not unit-range parens mid-line."""
+    return _TRAILING_PAREN_ANNOTATION_RE.sub("", line).strip()
+
+
+def _street_line_has_ampersand_segments(line: str) -> bool:
+    return "&" in line.casefold()
+
+
+def _split_ampersand_street_segments(line: str) -> list[str]:
+    return [seg.strip() for seg in _AMPERSAND_STREET_SPLIT_RE.split(line) if seg.strip()]
+
+
 def _preprocess_sheet_street_for_match(line: str) -> str:
     """Normalize export quirks before ``canonical_street_address_key``.
 
@@ -314,6 +332,7 @@ def _preprocess_sheet_street_for_match(line: str) -> str:
       primary façade).
     - Turn ``709 (-715)``-style parenthetical unit ranges into hyphen form so they align with
       ``709-715`` in the database.
+    - Strip trailing ``(tenant)`` annotations common on technician sheets.
     """
     s = _normalize_space(line)
     if not s:
@@ -324,6 +343,7 @@ def _preprocess_sheet_street_for_match(line: str) -> str:
         return ""
     s = _PAREN_UNIT_RANGE_RE.sub(r"-\1", s)
     s = _normalize_space(s)
+    s = _strip_trailing_paren_annotation(s)
     s = _apply_street_phrase_aliases(s)
     return _normalize_space(s)
 
@@ -368,14 +388,9 @@ def _normalize_civic_number_token(parts: list[str]) -> list[str]:
     return out
 
 
-def canonical_street_address_key(raw: str | None) -> str:
-    """Normalize a street line so trivial abbreviation variants match each other."""
-    if not raw:
-        return ""
-    segment = _normalize_space(raw.split(",")[0])
-    if not segment:
-        return ""
-    segment = _preprocess_sheet_street_for_match(segment)
+def _canonical_single_street_segment(preprocessed: str) -> str:
+    """Canonical key for one civic line (no ``&``-joined corners)."""
+    segment = preprocessed
     if not segment:
         return ""
     segment = segment.casefold()
@@ -394,9 +409,28 @@ def canonical_street_address_key(raw: str | None) -> str:
     return " ".join(out)
 
 
-def iter_street_lookup_keys(raw: str | None) -> list[str]:
-    """Longest-first canonical street keys (full line, then progressively without trailing type tokens)."""
-    base = canonical_street_address_key(raw)
+def canonical_street_address_key(raw: str | None) -> str:
+    """Normalize a street line so trivial abbreviation variants match each other."""
+    if not raw:
+        return ""
+    segment = _normalize_space(raw.split(",")[0])
+    if not segment:
+        return ""
+    segment = _preprocess_sheet_street_for_match(segment)
+    if not segment:
+        return ""
+    if _street_line_has_ampersand_segments(segment):
+        parts = sorted(
+            _canonical_single_street_segment(seg)
+            for seg in _split_ampersand_street_segments(segment)
+        )
+        return " ".join(p for p in parts if p)
+    return _canonical_single_street_segment(segment)
+
+
+def _iter_single_street_lookup_keys(preprocessed: str) -> list[str]:
+    """Longest-first keys for one civic line (progressive trailing type-token drop)."""
+    base = _canonical_single_street_segment(preprocessed)
     if not base:
         return []
     keys: list[str] = []
@@ -409,6 +443,39 @@ def iter_street_lookup_keys(raw: str | None) -> list[str]:
             continue
         break
     return keys
+
+
+def _iter_compound_street_lookup_keys(preprocessed: str) -> list[str]:
+    """Longest-first keys for ``&`` corners (order-insensitive; per-corner suffix stripping)."""
+    segments = _split_ampersand_street_segments(preprocessed)
+    if len(segments) < 2:
+        return _iter_single_street_lookup_keys(preprocessed)
+    per_seg = [_iter_single_street_lookup_keys(seg) for seg in segments]
+    if not all(per_seg):
+        return []
+    keys: list[str] = []
+    longest = " ".join(sorted(keys[0] for keys in per_seg))
+    if longest:
+        keys.append(longest)
+    stripped = " ".join(sorted(keys[-1] for keys in per_seg))
+    if stripped and stripped not in keys:
+        keys.append(stripped)
+    return keys
+
+
+def iter_street_lookup_keys(raw: str | None) -> list[str]:
+    """Longest-first canonical street keys (full line, then progressively without trailing type tokens)."""
+    if not raw:
+        return []
+    segment = _normalize_space(raw.split(",")[0])
+    if not segment:
+        return []
+    segment = _preprocess_sheet_street_for_match(segment)
+    if not segment:
+        return []
+    if _street_line_has_ampersand_segments(segment):
+        return _iter_compound_street_lookup_keys(segment)
+    return _iter_single_street_lookup_keys(segment)
 
 
 def load_locations_by_canonical_street() -> dict[str, list[MonthlyRouteLocation]]:

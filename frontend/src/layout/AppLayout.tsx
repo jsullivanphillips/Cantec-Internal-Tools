@@ -1,8 +1,10 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { Suspense, useCallback, useEffect, useState } from 'react'
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { apiFetch } from '../lib/apiClient'
 import { Button, Offcanvas } from 'react-bootstrap'
 import { SidebarNav } from './SidebarNav'
+
+const APP_SIDEBAR_EXPAND_TRANSITION_MS = 220
 
 export default function AppLayout() {
   const nav = useNavigate()
@@ -10,6 +12,10 @@ export default function AppLayout() {
   const [ready, setReady] = useState(false)
   const [logoFailed, setLogoFailed] = useState(false)
   const [showMenu, setShowMenu] = useState(false)
+  const [navExpanded, setNavExpanded] = useState(true)
+  const [navItemsExpanded, setNavItemsExpanded] = useState(true)
+  const [navLabelsAnimating, setNavLabelsAnimating] = useState(false)
+  const navWasCollapsedRef = useRef(false)
   const isPublicBatteryCalculatorRoute = location.pathname === '/battery_capacity_calculator'
   const isMonthlyRoutesMapRoute = location.pathname === '/monthlies/map'
   const isMonthlyRouteDetailRoute =
@@ -39,6 +45,33 @@ export default function AppLayout() {
   useEffect(() => {
     check()
   }, [check])
+
+  useEffect(() => {
+    if (!navExpanded) {
+      setNavItemsExpanded(false)
+      setNavLabelsAnimating(false)
+      navWasCollapsedRef.current = true
+      return undefined
+    }
+
+    const shouldAnimateLabels = navWasCollapsedRef.current
+    navWasCollapsedRef.current = false
+
+    const revealTimer = window.setTimeout(() => {
+      setNavItemsExpanded(true)
+      if (shouldAnimateLabels) {
+        setNavLabelsAnimating(true)
+      }
+    }, APP_SIDEBAR_EXPAND_TRANSITION_MS)
+
+    return () => window.clearTimeout(revealTimer)
+  }, [navExpanded])
+
+  useEffect(() => {
+    if (!navLabelsAnimating) return undefined
+    const timer = window.setTimeout(() => setNavLabelsAnimating(false), 360)
+    return () => window.clearTimeout(timer)
+  }, [navLabelsAnimating])
 
   const logout = async () => {
     setShowMenu(false)
@@ -89,10 +122,43 @@ export default function AppLayout() {
       </header>
 
       <div className="app-body d-flex flex-grow-1">
-        <aside className="app-sidebar d-none d-lg-flex flex-column border-end bg-white">
-          <div className="app-sidebar__inner flex-grow-1 pt-3">
-            <SidebarNav idPrefix="side" />
+        <aside
+          className={`app-sidebar d-none d-lg-grid${
+            navExpanded ? ' app-sidebar--expanded' : ' app-sidebar--collapsed'
+          }`}
+        >
+          <div
+            className={`app-sidebar__inner${
+              navItemsExpanded ? ' app-sidebar__inner--expanded' : ' app-sidebar__inner--collapsed'
+            }`}
+          >
+            <SidebarNav
+              idPrefix="side"
+              shellExpanded={navExpanded}
+              itemsExpanded={navItemsExpanded}
+              animateLabels={navLabelsAnimating}
+            />
           </div>
+          <button
+            type="button"
+            className="app-sidebar-toggle"
+            aria-expanded={navExpanded}
+            onClick={() => setNavExpanded((v) => !v)}
+          >
+            <i
+              className={`bi ${navExpanded ? 'bi-chevron-double-left' : 'bi-chevron-double-right'}`}
+              aria-hidden
+            />
+            {navItemsExpanded ? (
+              <span
+                className={`app-sidebar-toggle-label${
+                  navLabelsAnimating ? ' app-sidebar-toggle-label--revealing' : ''
+                }`}
+              >
+                Collapse menu
+              </span>
+            ) : null}
+          </button>
         </aside>
 
         <Offcanvas
