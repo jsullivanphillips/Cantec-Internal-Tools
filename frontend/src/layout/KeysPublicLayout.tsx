@@ -2,6 +2,7 @@ import { Link, Outlet, useNavigate } from 'react-router-dom'
 import { Suspense, useCallback, useEffect, useState } from 'react'
 import { apiFetch } from '../lib/apiClient'
 import { Button, Offcanvas } from 'react-bootstrap'
+import CollapsibleAppSidebar from './CollapsibleAppSidebar'
 import { SidebarNav } from './SidebarNav'
 
 /**
@@ -75,11 +76,7 @@ export default function KeysPublicLayout() {
       </header>
 
       <div className="app-body d-flex flex-grow-1">
-        <aside className="app-sidebar d-none d-lg-flex flex-column border-end bg-white">
-          <div className="flex-grow-1 overflow-auto pt-3">
-            <SidebarNav idPrefix="keys-public-side" />
-          </div>
-        </aside>
+        <CollapsibleAppSidebar idPrefix="keys-public-side" />
 
         <Offcanvas
           show={showMenu}
