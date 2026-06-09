@@ -41,6 +41,7 @@ import {
   projectedOpenClockStop,
   projectStopsWithWorkflowQueue,
 } from './portalRouteProjection'
+import { ensureMonitoringCompaniesCached } from './monitoringCompaniesShared'
 import { usePortalWorkflowActions } from './usePortalWorkflowActions'
 import {
   evaluatePortalEndRunPreflight,
@@ -144,6 +145,7 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
       if (cached && !hasLoadedOnceRef.current) {
         setPayload(cached)
         setSyncState(navigator.onLine ? 'synced' : 'saved_offline')
+        void ensureMonitoringCompaniesCached().catch(() => {})
       }
       if (mode === 'initial') {
         setError(null)
@@ -181,6 +183,7 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
         )
         setHasLoadedOnce(true)
         hasLoadedOnceRef.current = true
+        void ensureMonitoringCompaniesCached().catch(() => {})
       } catch (e) {
         if (isAbortError(e)) return
         if (e instanceof Error && e.message === 'portal_auth') return

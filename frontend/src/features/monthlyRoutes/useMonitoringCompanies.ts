@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { isAbortError } from '../../lib/apiClient'
 import {
+  ensureMonitoringCompaniesCached,
   fetchMonitoringCompanies,
-  invalidateMonitoringCompaniesCache,
   loadMonitoringCompaniesCache,
   saveMonitoringCompaniesCache,
 } from './monitoringCompaniesShared'
@@ -17,11 +17,13 @@ export function useMonitoringCompanies(activeOnly = true) {
     const cached = loadMonitoringCompaniesCache()
     return cached ? sortCompanies(cached) : []
   })
-  const [loading, setLoading] = useState(() => !loadMonitoringCompaniesCache())
+  const [loading, setLoading] = useState(() => {
+    const cached = loadMonitoringCompaniesCache()
+    return !cached?.length && navigator.onLine
+  })
   const [error, setError] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
-    invalidateMonitoringCompaniesCache()
     setLoading(true)
     setError(null)
     try {
@@ -29,19 +31,42 @@ export function useMonitoringCompanies(activeOnly = true) {
       setCompanies(rows)
       return rows
     } catch (err) {
-      if (!isAbortError(err)) {
+      const cached = loadMonitoringCompaniesCache()
+      if (cached?.length) {
+        setCompanies(sortCompanies(cached))
+      } else if (!isAbortError(err)) {
         setError(err instanceof Error ? err.message : 'Unable to load monitoring companies.')
       }
-      return null
+      return cached ? sortCompanies(cached) : null
     } finally {
       setLoading(false)
     }
   }, [activeOnly])
 
   useEffect(() => {
-    if (loadMonitoringCompaniesCache()) return
-    void refresh()
-  }, [activeOnly, refresh])
+    let cancelled = false
+    const cached = loadMonitoringCompaniesCache()
+    if (cached?.length) {
+      setCompanies(sortCompanies(cached))
+      setLoading(false)
+    }
+
+    void (async () => {
+      const rows = await ensureMonitoringCompaniesCached(activeOnly)
+      if (cancelled) return
+      if (rows.length) {
+        setCompanies(sortCompanies(rows))
+        setError(null)
+      } else if (!cached?.length && navigator.onLine) {
+        setError('Unable to load monitoring companies.')
+      }
+      setLoading(false)
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeOnly])
 
   const appendCompany = useCallback((company: MonitoringCompanySummary) => {
     setCompanies((prev) => {

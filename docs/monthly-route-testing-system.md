@@ -544,6 +544,8 @@ Technician workflow actions are **optimistic**: the UI updates immediately, then
 
 **PWA / offline shell (field iPad):** The technician portal is an installable PWA scoped to `/tech` (`vite-plugin-pwa` + Workbox). After at least one **online** visit, the service worker precaches `index.html` and Vite chunks so Safari can reload the worksheet offline. `portalSessionSnapshot` in `sessionStorage` restores PIN-unlock and technician identity when `/api/technician_portal/me` cannot be reached. Field edits still use the queues above (`localStorage`).
 
+**Monitoring company directory (offline):** Active monitoring companies (name + phones, up to 1000 rows) are cached in `localStorage` key `monitoringCompaniesDirectory.v1` when the portal worksheet loads online (`ensureMonitoringCompaniesCached`). Offline, the worksheet reuses that cache for the company picker and overlays phones onto stops via `enrichStopsWithMonitoringDirectory`. Creating a brand-new directory company still requires network; switching among cached companies and calling listed numbers works offline after preload.
+
 **Field iPad setup:**
 
 1. Open `/tech` **online**, unlock with PIN, pick technician, and open the route worksheet once (precache + worksheet cache).

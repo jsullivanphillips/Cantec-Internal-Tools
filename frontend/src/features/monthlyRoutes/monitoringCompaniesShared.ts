@@ -1,5 +1,5 @@
 import { apiJson } from '../../lib/apiClient'
-import type { MonitoringCompanySummary } from './monthlyRoutesShared'
+import type { MonitoringCompanySummary, TechnicianWorksheetStop } from './monthlyRoutesShared'
 
 export type MonitoringCompanyListResponse = {
   companies: MonitoringCompanySummary[]
@@ -10,14 +10,28 @@ export type MonitoringCompanyCreateResponse = {
   reused_existing: boolean
 }
 
+export type MonitoringCompaniesCacheBundle = {
+  fetchedAt: string
+  companies: MonitoringCompanySummary[]
+}
+
 export const MONITORING_COMPANIES_CACHE_KEY = 'monitoringCompaniesDirectory.v1'
+
+function parseMonitoringCompaniesCache(raw: string | null): MonitoringCompanySummary[] | null {
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw) as MonitoringCompanySummary[] | MonitoringCompaniesCacheBundle
+    if (Array.isArray(parsed)) return parsed
+    if (parsed && Array.isArray(parsed.companies)) return parsed.companies
+    return null
+  } catch {
+    return null
+  }
+}
 
 export function loadMonitoringCompaniesCache(): MonitoringCompanySummary[] | null {
   try {
-    const raw = localStorage.getItem(MONITORING_COMPANIES_CACHE_KEY)
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as MonitoringCompanySummary[]
-    return Array.isArray(parsed) ? parsed : null
+    return parseMonitoringCompaniesCache(localStorage.getItem(MONITORING_COMPANIES_CACHE_KEY))
   } catch {
     return null
   }
@@ -25,7 +39,11 @@ export function loadMonitoringCompaniesCache(): MonitoringCompanySummary[] | nul
 
 export function saveMonitoringCompaniesCache(companies: MonitoringCompanySummary[]): void {
   try {
-    localStorage.setItem(MONITORING_COMPANIES_CACHE_KEY, JSON.stringify(companies))
+    const bundle: MonitoringCompaniesCacheBundle = {
+      fetchedAt: new Date().toISOString(),
+      companies,
+    }
+    localStorage.setItem(MONITORING_COMPANIES_CACHE_KEY, JSON.stringify(bundle))
   } catch {
     /* ignore quota */
   }
@@ -47,6 +65,61 @@ export async function fetchMonitoringCompanies(activeOnly = true): Promise<Monit
   const companies = data.companies ?? []
   saveMonitoringCompaniesCache(companies)
   return companies
+}
+
+/** Load cached directory or fetch when online; never clears cache on failure. */
+export async function ensureMonitoringCompaniesCached(activeOnly = true): Promise<MonitoringCompanySummary[]> {
+  const cached = loadMonitoringCompaniesCache()
+  if (!navigator.onLine) {
+    return cached ?? []
+  }
+  try {
+    return await fetchMonitoringCompanies(activeOnly)
+  } catch {
+    return cached ?? []
+  }
+}
+
+export function monitoringCompanyFromDirectory(
+  companyId: number | null | undefined,
+  companies: MonitoringCompanySummary[],
+): MonitoringCompanySummary | null {
+  if (companyId == null) return null
+  return companies.find((row) => row.id === companyId) ?? null
+}
+
+/** Overlay directory phones/names when worksheet rows only store the company id. */
+export function enrichStopMonitoringFromDirectory<T extends TechnicianWorksheetStop>(
+  stop: T,
+  companies: MonitoringCompanySummary[],
+): T {
+  if (stop.monitoring_company_id == null || !companies.length) return stop
+  const directory = monitoringCompanyFromDirectory(stop.monitoring_company_id, companies)
+  if (!directory) return stop
+
+  const record = stop.monitoring_company_record
+  const mergedRecord: MonitoringCompanySummary = {
+    ...directory,
+    ...(record ?? {}),
+    id: stop.monitoring_company_id,
+    name: record?.name?.trim() || directory.name,
+    primary_phone: record?.primary_phone?.trim() || directory.primary_phone,
+    secondary_phone: record?.secondary_phone?.trim() || directory.secondary_phone,
+  }
+
+  return {
+    ...stop,
+    monitoring_company: stop.monitoring_company?.trim() || mergedRecord.name,
+    monitoring_company_record: mergedRecord,
+  }
+}
+
+export function enrichStopsWithMonitoringDirectory<T extends TechnicianWorksheetStop>(
+  stops: T[],
+  companies: MonitoringCompanySummary[],
+): T[] {
+  if (!companies.length) return stops
+  return stops.map((stop) => enrichStopMonitoringFromDirectory(stop, companies))
 }
 
 export async function createMonitoringCompany(payload: {

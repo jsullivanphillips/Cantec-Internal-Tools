@@ -21,6 +21,7 @@ import {
   stopMonitoringCallPhone,
   monitoringPhoneTelHref,
 } from '../features/monthlyRoutes/stopMonitoringDisplay'
+import { enrichStopsWithMonitoringDirectory } from '../features/monthlyRoutes/monitoringCompaniesShared'
 import { useMonitoringCompanies } from '../features/monthlyRoutes/useMonitoringCompanies'
 import type { MonitoringCompanySummary } from '../features/monthlyRoutes/monthlyRoutesShared'
 import type { WorksheetStopChangeSet } from '../features/monthlyRoutes/worksheetOfflineStore'
@@ -239,6 +240,11 @@ export default function TechnicianPortalWorksheetPage() {
   const { companies: monitoringCompanies, loading: monitoringCompaniesLoading, appendCompany } =
     useMonitoringCompanies()
 
+  const displayStops = useMemo(
+    () => enrichStopsWithMonitoringDirectory(projectedStops, monitoringCompanies),
+    [projectedStops, monitoringCompanies],
+  )
+
   const [activeId, setActiveId] = useState<number | null>(null)
   const [navExpanded, setNavExpanded] = useState(false)
   const [navItemsExpanded, setNavItemsExpanded] = useState(false)
@@ -371,24 +377,24 @@ export default function TechnicianPortalWorksheetPage() {
   )
 
   useEffect(() => {
-    if (!projectedStops.length) {
+    if (!displayStops.length) {
       setActiveId(null)
       return
     }
-    if (activeId != null && projectedStops.some((s) => s.testing_site_id === activeId)) return
-    const firstOpen = projectedStops.find((s) => stopDisplayStatus(s) === 'pending')
-    setActiveId((firstOpen ?? projectedStops[0]).testing_site_id)
-  }, [projectedStops, activeId])
+    if (activeId != null && displayStops.some((s) => s.testing_site_id === activeId)) return
+    const firstOpen = displayStops.find((s) => stopDisplayStatus(s) === 'pending')
+    setActiveId((firstOpen ?? displayStops[0]).testing_site_id)
+  }, [displayStops, activeId])
 
   const active = useMemo(
-    () => projectedStops.find((s) => s.testing_site_id === activeId) ?? projectedStops[0] ?? null,
-    [projectedStops, activeId],
+    () => displayStops.find((s) => s.testing_site_id === activeId) ?? displayStops[0] ?? null,
+    [displayStops, activeId],
   )
 
   const activeSitePosition = useMemo(() => {
     if (!active) return { siteCount: 1, siteIndex: 0 }
-    return testingSitePositionAtLocation(active, projectedStops)
-  }, [active, projectedStops])
+    return testingSitePositionAtLocation(active, displayStops)
+  }, [active, displayStops])
 
   const runMonthIso = payload?.month_date ?? monthQuery
 
@@ -666,7 +672,7 @@ export default function TechnicianPortalWorksheetPage() {
     const key = (stop.key_number || '—').trim()
     const monitoring = stopMonitoringDisplay(stop)
     const hasMonitoring = stopHasMonitoring(stop)
-    const { siteCount, siteIndex } = testingSitePositionAtLocation(stop, projectedStops)
+    const { siteCount, siteIndex } = testingSitePositionAtLocation(stop, displayStops)
     const collapsedTitleParts = [
       `#${stop.stop_number} — ${testingSitePrimaryLabel(stop, { siteCount, siteIndex, compact: true })}`,
       hasMonitoring || monitoring.phones.length > 0
@@ -1062,7 +1068,7 @@ export default function TechnicianPortalWorksheetPage() {
                 navItemsExpanded ? ' pw-mock-sidenav-list--expanded' : ' pw-mock-sidenav-list--collapsed'
               }`}
             >
-              {projectedStops.map((s) => renderNavStop(s))}
+              {displayStops.map((s) => renderNavStop(s))}
             </div>
             <button
               type="button"
