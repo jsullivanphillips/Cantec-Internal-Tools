@@ -5,6 +5,8 @@ import {
   preserveWorksheetStopOrderFields,
   reconcileStopWithServer,
   serverRunWasExternallyReset,
+  countPendingSyncForRouteMonth,
+  saveWorkflowSyncQueue,
   type PortalRunLifecycleQueueItem,
 } from './worksheetOfflineStore'
 
@@ -171,5 +173,38 @@ describe('serverRunWasExternallyReset', () => {
       stops: [stop(1)],
     }
     expect(serverRunWasExternallyReset(local, server, 1, '2026-05-01')).toBe(false)
+  })
+})
+
+describe('countPendingSyncForRouteMonth', () => {
+  beforeEach(() => {
+    const store = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        store.set(key, value)
+      },
+      removeItem: (key: string) => {
+        store.delete(key)
+      },
+    })
+  })
+
+  it('sums field, workflow, and run lifecycle queue items for one route-month', () => {
+    saveWorkflowSyncQueue([
+      {
+        id: 'w1',
+        action: 'test_outcome',
+        routeId: 1,
+        monthIso: '2026-05-01',
+        testingSiteId: 10,
+        payload: {},
+        attempts: 0,
+        nextAttemptAt: 0,
+        enqueuedAt: 1,
+      },
+    ])
+    expect(countPendingSyncForRouteMonth(1, '2026-05-01')).toBe(1)
+    expect(countPendingSyncForRouteMonth(2, '2026-05-01')).toBe(0)
   })
 })

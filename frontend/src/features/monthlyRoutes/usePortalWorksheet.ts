@@ -19,6 +19,7 @@ import {
   backoffMs,
   enqueuePortalRunLifecycleAction,
   enqueueWorksheetChange,
+  countPendingSyncForRouteMonth,
   hasPendingRunLifecycleForRouteMonth,
   hasPendingSyncForRouteMonth,
   loadSyncQueue,
@@ -119,6 +120,11 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
         (item) => item.routeId === routeId && item.monthIso === monthIso,
       ).length,
     [stops, syncState, routeId, monthIso],
+  )
+
+  const pendingSyncCount = useMemo(
+    () => (Number.isNaN(routeId) || !monthOk ? 0 : countPendingSyncForRouteMonth(routeId, monthIso)),
+    [routeId, monthIso, monthOk, syncState, stops, workflowQueueRevision],
   )
 
   const projectedStops = useMemo(
@@ -780,6 +786,7 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
     runLifecycleBusy,
     syncState,
     syncMessage,
+    pendingSyncCount,
     openClockInStop,
     clockInBlockedForStop,
     updateLocalStop,

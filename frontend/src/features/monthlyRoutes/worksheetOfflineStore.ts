@@ -279,17 +279,24 @@ export function hasPendingWorkflowForRouteMonth(routeId: number, monthIso: strin
 }
 
 export function hasPendingSyncForRouteMonth(routeId: number, monthIso: string): boolean {
-  const fieldPending = loadSyncQueue().some(
+  return countPendingSyncForRouteMonth(routeId, monthIso) > 0
+}
+
+/** Total queued field, workflow, and run-lifecycle mutations for one route-month. */
+export function countPendingSyncForRouteMonth(routeId: number, monthIso: string): number {
+  const fieldCount = loadSyncQueue().filter(
     (item) =>
       item.routeId === routeId &&
       item.monthIso === monthIso &&
       item.testingSiteId != null,
-  )
-  const workflowPending = loadWorkflowSyncQueue().some(
+  ).length
+  const workflowCount = loadWorkflowSyncQueue().filter(
     (item) => item.routeId === routeId && item.monthIso === monthIso,
-  )
-  const runLifecyclePending = hasPendingRunLifecycleForRouteMonth(routeId, monthIso)
-  return fieldPending || workflowPending || runLifecyclePending
+  ).length
+  const runLifecycleCount = loadRunLifecycleSyncQueue().filter(
+    (item) => item.routeId === routeId && item.monthIso === monthIso,
+  ).length
+  return fieldCount + workflowCount + runLifecycleCount
 }
 
 /** Unsynced field edits for one stop (optionally skip queue items already applied on the server). */

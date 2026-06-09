@@ -16,11 +16,11 @@ import PortalEditableFieldRow, { type PortalFieldEditActions } from '../features
 import PortalMonitoringCompanyField from '../features/monthlyRoutes/PortalMonitoringCompanyField'
 import {
   stopMonitoringDisplay,
-  stopMonitoringSummaryLabel,
   stopHasMonitoring,
   stopMonitoringCallPhone,
   monitoringPhoneTelHref,
 } from '../features/monthlyRoutes/stopMonitoringDisplay'
+import PortalStopSummaryDetail from '../features/monthlyRoutes/PortalStopSummaryDetail'
 import { enrichStopsWithMonitoringDirectory } from '../features/monthlyRoutes/monitoringCompaniesShared'
 import { useMonitoringCompanies } from '../features/monthlyRoutes/useMonitoringCompanies'
 import type { MonitoringCompanySummary } from '../features/monthlyRoutes/monthlyRoutesShared'
@@ -123,19 +123,6 @@ function skipReasonDisplay(stop: TechnicianWorksheetStop): string | null {
   return reason
 }
 
-function headerPanelDisplay(stop: TechnicianWorksheetStop): string | null {
-  const makeModel = (stop.panel || '').trim()
-  const location = (stop.panel_location || '').trim()
-  if (makeModel && location) return `${makeModel} - ${location}`
-  if (makeModel) return makeModel
-  if (location) return location
-  return (stop.label || '').trim() || null
-}
-
-function headerMonitoringDisplay(stop: TechnicianWorksheetStop): string {
-  return stopMonitoringSummaryLabel(stop)
-}
-
 function headerTimesDisplay(stop: TechnicianWorksheetStop): ReactNode | null {
   const events = stop.clock_events ?? []
   if (events.length > 0) {
@@ -176,12 +163,33 @@ function syncBadgeVariant(state: string): string {
   return 'warning'
 }
 
-function syncBadgeLabel(state: string): string {
+function syncBadgeText(state: string): string {
   if (state === 'synced') return 'Synced'
-  if (state === 'syncing') return 'Syncing…'
+  if (state === 'syncing') return 'Syncing'
   if (state === 'conflict') return 'Conflict'
   if (state === 'saved_offline') return 'Pending sync'
   return 'Offline'
+}
+
+function PortalSyncStatusBadge({
+  state,
+  pendingCount,
+}: {
+  state: string
+  pendingCount: number
+}) {
+  const showCount =
+    pendingCount > 0 && (state === 'syncing' || state === 'saved_offline')
+  return (
+    <Badge bg={syncBadgeVariant(state)} className="pw-mock-sync">
+      <span>{syncBadgeText(state)}</span>
+      {showCount ? (
+        <span className="pw-mock-sync__count" aria-label={`${pendingCount} queued changes`}>
+          {pendingCount}
+        </span>
+      ) : null}
+    </Badge>
+  )
 }
 
 export default function TechnicianPortalWorksheetPage() {
@@ -226,6 +234,7 @@ export default function TechnicianPortalWorksheetPage() {
     hasRunFile,
     syncState,
     syncMessage,
+    pendingSyncCount,
     clockInBlockedForStop,
     openClockInStop,
     queueStopChanges,
@@ -668,8 +677,6 @@ export default function TechnicianPortalWorksheetPage() {
     const activeClass = isActive ? ' pw-mock-nav-stop--active' : ''
     const statusSuffix = statusClass ? ` ${statusClass}` : ''
     const displayStatus = stopDisplayStatus(stop)
-    const ring = (stop.ring || '—').trim()
-    const key = (stop.key_number || '—').trim()
     const monitoring = stopMonitoringDisplay(stop)
     const hasMonitoring = stopHasMonitoring(stop)
     const { siteCount, siteIndex } = testingSitePositionAtLocation(stop, displayStops)
@@ -714,49 +721,7 @@ export default function TechnicianPortalWorksheetPage() {
           <span className="pw-mock-nav-stop-address">
             {testingSitePrimaryLabel(stop, { siteCount, siteIndex, compact: true })}
           </span>
-          <span className="pw-mock-nav-stop-detail">
-            <span className="pw-mock-nav-stop-group">
-              <span className="pw-mock-nav-stop-line">
-                <i className="bi bi-key pw-mock-nav-stop-icon" title="Key" aria-hidden="true" />
-                {key}
-              </span>
-              <span className="pw-mock-nav-stop-line">
-                <i className="bi bi-circle pw-mock-nav-stop-icon" title="Ring" aria-hidden="true" />
-                {ring}
-              </span>
-            </span>
-            {hasMonitoring || monitoring.phones.length > 0 ? (
-              <span className="pw-mock-nav-stop-group">
-                {monitoring.company !== '—' ? (
-                  <span className="pw-mock-nav-stop-line">
-                    <i
-                      className="bi bi-telephone pw-mock-nav-stop-icon"
-                      title="Monitoring"
-                      aria-hidden="true"
-                    />
-                    {monitoring.company}
-                  </span>
-                ) : null}
-                {monitoring.phones.map((phone) => (
-                  <span key={phone} className="pw-mock-nav-stop-line">
-                    {phone}
-                  </span>
-                ))}
-                {monitoring.account !== '—' ? (
-                  <span className="pw-mock-nav-stop-line">
-                    <span className="pw-mock-nav-stop-label">Acct</span>
-                    {monitoring.account}
-                  </span>
-                ) : null}
-                {monitoring.password !== '—' ? (
-                  <span className="pw-mock-nav-stop-line">
-                    <span className="pw-mock-nav-stop-label">PW</span>
-                    {monitoring.password}
-                  </span>
-                ) : null}
-              </span>
-            ) : null}
-          </span>
+          <PortalStopSummaryDetail stop={stop} />
         </button>
         {resolveStopMapsTarget(stop) ? renderMapsPinButton(stop, activeClass) : null}
         {renderMonitoringCallButton(stop, activeClass)}
@@ -887,8 +852,6 @@ export default function TechnicianPortalWorksheetPage() {
   const routeLabel = payload?.route.label || `Route ${payload?.route.route_number ?? routeId}`
   const activeStatus = active ? stopDisplayStatus(active) : 'pending'
   const activeSkipLabel = active ? skipReasonDisplay(active) : null
-  const activePanelDisplay = active ? headerPanelDisplay(active) : null
-  const activeMonitoringDisplay = active ? headerMonitoringDisplay(active) : 'No Monitoring'
   const activeHeaderTimes = active ? headerTimesDisplay(active) : null
   const activeFieldEditActions =
     editingField && fieldEditActions?.fieldKey === editingField ? fieldEditActions : null
@@ -995,12 +958,13 @@ export default function TechnicianPortalWorksheetPage() {
                 )}
               </Button>
             ) : null}
-            <Badge
-              bg={isDemo ? 'info' : syncBadgeVariant(syncState)}
-              className="pw-mock-sync"
-            >
-              {isDemo ? 'Demo' : syncBadgeLabel(syncState)}
-            </Badge>
+            {isDemo ? (
+              <Badge bg="info" className="pw-mock-sync">
+                Demo
+              </Badge>
+            ) : (
+              <PortalSyncStatusBadge state={syncState} pendingCount={pendingSyncCount} />
+            )}
           </div>
         </div>
         {isDemo ? (
@@ -1109,16 +1073,12 @@ export default function TechnicianPortalWorksheetPage() {
                   primaryClassName="pw-mock-header-address"
                   sublineClassName="pw-mock-header-line text-muted"
                 />
-                {active.building_name ? (
-                  <div className="pw-mock-header-line">{active.building_name}</div>
-                ) : null}
                 <div className="pw-mock-header-meta-row">
-                  <div className="pw-mock-header-meta-copy">
-                    <div className="pw-mock-header-line text-muted">{activeMonitoringDisplay}</div>
-                    {activePanelDisplay ? (
-                      <div className="pw-mock-header-line fw-semibold">{activePanelDisplay}</div>
-                    ) : null}
-                  </div>
+                  <PortalStopSummaryDetail
+                    stop={active}
+                    includePanel={!phoneLayout}
+                    className="pw-mock-header-detail"
+                  />
                   {renderHeroDirectionsButton(active)}
                 </div>
                 {activeHeaderTimes ? (

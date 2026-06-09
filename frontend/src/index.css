@@ -8744,6 +8744,25 @@ body {
   font-weight: 650;
   border-radius: 999px;
   padding: 0.35rem 0.55rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.pw-mock-sync__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.125rem;
+  height: 1.125rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  background: rgba(255, 255, 255, 0.22);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
 }
 
 .pw-mock-chrome-meta {
@@ -9699,7 +9718,17 @@ body {
   align-items: stretch;
   justify-content: space-between;
   gap: 0.65rem;
-  margin-top: 0.2rem;
+  margin-top: 0.45rem;
+}
+
+.pw-mock-header-detail {
+  flex: 1;
+  min-width: 0;
+  margin-top: 0;
+}
+
+.pw-mock-header-detail .pw-mock-nav-stop-line {
+  font-size: 0.78rem;
 }
 
 .pw-mock-header-meta-copy {
@@ -10736,12 +10765,46 @@ body {
   .pw-mock-dock {
     grid-template-columns: repeat(3, 1fr);
   }
+
+  .portal-worksheet-mockup .pw-mock-detail {
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  .portal-worksheet-mockup .pw-mock-fields {
+    flex: none;
+    min-height: auto;
+    overflow: visible;
+  }
 }
 
 /* Phone-width viewports only (below iPad); expanded stop nav covers the worksheet body. */
 @media (max-width: 767.98px) {
   .pw-mock-body {
     position: relative;
+  }
+
+  /* Hero card: full-width fields; directions/call on their own row (tablet+ scrolls with fields at 991.98px). */
+  .portal-worksheet-mockup .pw-mock-header-meta-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+  }
+
+  .portal-worksheet-mockup .pw-mock-header-detail {
+    width: 100%;
+    flex: none;
+  }
+
+  .portal-worksheet-mockup .pw-mock-header-directions {
+    width: 100%;
+    align-self: stretch;
+    justify-content: flex-start;
+    margin-top: 0.45rem;
+    padding-top: 0.45rem;
+    border-top: 1px solid var(--pw-border-soft);
   }
 
   .pw-mock-sidenav--expanded {

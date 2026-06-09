@@ -167,6 +167,7 @@ export function usePortalWorksheetDemo(monthIso: string) {
     runLifecycleBusy,
     syncState,
     syncMessage,
+    pendingSyncCount: 0,
     openClockInStop,
     clockInBlockedForStop,
     updateLocalStop,
