@@ -1,17 +1,35 @@
 import { useCallback, useMemo, useRef, useState, type RefObject } from 'react'
 import type { PortalFieldEditActions } from './PortalEditableFieldRow'
 
-const KEYBOARD_SCROLL_DELAYS_MS = [80, 320, 400, 600] as const
-const KEYBOARD_VIEWPORT_SHRINK_PX = 40
+function isVerticalScrollContainer(el: HTMLElement): boolean {
+  const { overflowY } = getComputedStyle(el)
+  return overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay'
+}
+
+/** Nearest ancestor that actually scrolls field content (varies by viewport / layout). */
+export function resolvePortalFieldScrollContainer(row: HTMLElement): HTMLElement | null {
+  const fields = row.closest<HTMLElement>('.pw-mock-fields')
+  if (fields && isVerticalScrollContainer(fields)) return fields
+
+  // Tablet/iPad: detail panel scrolls; fields panel is overflow:visible.
+  const detail = row.closest<HTMLElement>('.pw-mock-detail')
+  if (detail && isVerticalScrollContainer(detail)) return detail
+
+  const modalContent = row.closest<HTMLElement>('.run-details-stop-site-modal__content')
+  if (modalContent && isVerticalScrollContainer(modalContent)) return modalContent
+
+  for (let node: HTMLElement | null = row.parentElement; node; node = node.parentElement) {
+    if (isVerticalScrollContainer(node)) return node
+  }
+
+  return fields ?? detail ?? modalContent
+}
 
 /** Scroll an editing field row clear of the dock and on-screen keyboard. */
 export function scrollPortalFieldRowIntoView(row: HTMLElement | null): void {
   if (!row) return
-  const scroller = row.closest<HTMLElement>('.pw-mock-fields')
+  const scroller = resolvePortalFieldScrollContainer(row)
   if (!scroller) return
-
-  const dock = row.closest('.pw-mock-detail')?.querySelector<HTMLElement>('.pw-mock-dock')
-  const dockHeight = dock?.getBoundingClientRect().height ?? 0
 
   const rowRect = row.getBoundingClientRect()
   const scrollerRect = scroller.getBoundingClientRect()
@@ -19,7 +37,17 @@ export function scrollPortalFieldRowIntoView(row: HTMLElement | null): void {
   const viewportTop = visualViewport?.offsetTop ?? 0
   const viewportBottom = viewportTop + (visualViewport?.height ?? window.innerHeight)
   const visibleTop = Math.max(scrollerRect.top, viewportTop) + 16
-  const visibleBottom = Math.min(scrollerRect.bottom, viewportBottom) - dockHeight - 16
+
+  let visibleBottom = Math.min(scrollerRect.bottom, viewportBottom) - 16
+  const dock =
+    row.closest('.pw-mock-shell')?.querySelector<HTMLElement>('.pw-mock-dock') ??
+    row.closest('.run-details-stop-site-modal')?.querySelector<HTMLElement>(
+      '.run-details-stop-site-modal__edit-footer',
+    )
+  const dockTop = dock?.getBoundingClientRect().top
+  if (dockTop != null && dockTop < visibleBottom) {
+    visibleBottom = dockTop - 16
+  }
 
   if (rowRect.top < visibleTop) {
     scroller.scrollTop -= visibleTop - rowRect.top
@@ -29,33 +57,19 @@ export function scrollPortalFieldRowIntoView(row: HTMLElement | null): void {
 }
 
 export function schedulePortalFieldRowScroll(rowRef: RefObject<HTMLElement | null>): () => void {
-  const getRow = () => rowRef.current
-  const run = () => scrollPortalFieldRowIntoView(getRow())
-  const vv = window.visualViewport
-  const baselineHeight = vv?.height ?? window.innerHeight
-
+  const run = () => scrollPortalFieldRowIntoView(rowRef.current)
   run()
   requestAnimationFrame(run)
-  const timers = KEYBOARD_SCROLL_DELAYS_MS.map((delayMs) => window.setTimeout(run, delayMs))
-
-  const onViewportChange = () => {
-    if (!vv) {
-      run()
-      return
-    }
-    // iPad/iOS often opens the keyboard after focus; re-scroll once the viewport shrinks.
-    if (vv.height < baselineHeight - KEYBOARD_VIEWPORT_SHRINK_PX) {
-      run()
-    }
-  }
-
-  vv?.addEventListener('resize', onViewportChange)
-  vv?.addEventListener('scroll', onViewportChange)
-
+  const t1 = window.setTimeout(run, 80)
+  const t2 = window.setTimeout(run, 320)
+  const vv = window.visualViewport
+  vv?.addEventListener('resize', run)
+  vv?.addEventListener('scroll', run)
   return () => {
-    timers.forEach((timer) => window.clearTimeout(timer))
-    vv?.removeEventListener('resize', onViewportChange)
-    vv?.removeEventListener('scroll', onViewportChange)
+    window.clearTimeout(t1)
+    window.clearTimeout(t2)
+    vv?.removeEventListener('resize', run)
+    vv?.removeEventListener('scroll', run)
   }
 }
 
