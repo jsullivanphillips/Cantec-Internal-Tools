@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import MonitoringCompanySelect, {
   monitoringCompanyDisplayName,
   monitoringCompanyPhonesText,
 } from './MonitoringCompanySelect'
 import type { PortalFieldEditActions } from './PortalEditableFieldRow'
+import { schedulePortalFieldRowScroll } from './portalFieldEditRegistry'
 import type { MonitoringCompanySummary } from './monthlyRoutesShared'
 
 type PortalMonitoringCompanyFieldProps = {
@@ -19,6 +20,9 @@ type PortalMonitoringCompanyFieldProps = {
   onEditingFieldChange: (key: string | null) => void
   onSave: (companyId: number | null) => void
   onCompanyCreated?: (company: MonitoringCompanySummary) => void
+  onRegisterFieldEditActions?: (actions: PortalFieldEditActions) => void
+  onUnregisterFieldEditActions?: (fieldKey: string) => void
+  /** @deprecated Use onRegisterFieldEditActions / onUnregisterFieldEditActions */
   onEditActionsChange?: (actions: PortalFieldEditActions | null) => void
 }
 
@@ -35,6 +39,8 @@ export default function PortalMonitoringCompanyField({
   onEditingFieldChange,
   onSave,
   onCompanyCreated,
+  onRegisterFieldEditActions,
+  onUnregisterFieldEditActions,
   onEditActionsChange,
 }: PortalMonitoringCompanyFieldProps) {
   const inputId = useId()
@@ -67,47 +73,39 @@ export default function PortalMonitoringCompanyField({
   commitRef.current = commit
   cancelRef.current = cancel
 
-  useEffect(() => {
-    if (!editing || !onEditActionsChange) return undefined
-    onEditActionsChange({
+  useLayoutEffect(() => {
+    if (!editing) return undefined
+    return schedulePortalFieldRowScroll(rowRef)
+  }, [editing])
+
+  useLayoutEffect(() => {
+    if (!editing) return undefined
+
+    const actions: PortalFieldEditActions = {
       fieldKey,
       cancel: () => cancelRef.current(),
       save: () => commitRef.current(),
-    })
-    return () => onEditActionsChange(null)
-  }, [editing, fieldKey, onEditActionsChange])
-
-  useEffect(() => {
-    if (!editing) return undefined
-
-    const scrollFieldIntoView = () => {
-      const row = rowRef.current
-      const scroller = row?.closest<HTMLElement>('.pw-mock-fields')
-      if (!row || !scroller) return
-
-      const rowRect = row.getBoundingClientRect()
-      const scrollerRect = scroller.getBoundingClientRect()
-      const visualViewport = window.visualViewport
-      const viewportTop = visualViewport?.offsetTop ?? 0
-      const viewportBottom = viewportTop + (visualViewport?.height ?? window.innerHeight)
-      const visibleTop = Math.max(scrollerRect.top, viewportTop) + 16
-      const visibleBottom = Math.min(scrollerRect.bottom, viewportBottom) - 16
-
-      if (rowRect.top < visibleTop) {
-        scroller.scrollTop -= visibleTop - rowRect.top
-      } else if (rowRect.bottom > visibleBottom) {
-        scroller.scrollTop += rowRect.bottom - visibleBottom
-      }
     }
-
-    const firstScroll = window.setTimeout(scrollFieldIntoView, 80)
-    const keyboardScroll = window.setTimeout(scrollFieldIntoView, 320)
+    if (onRegisterFieldEditActions) {
+      onRegisterFieldEditActions(actions)
+    } else {
+      onEditActionsChange?.(actions)
+    }
 
     return () => {
-      window.clearTimeout(firstScroll)
-      window.clearTimeout(keyboardScroll)
+      if (onUnregisterFieldEditActions) {
+        onUnregisterFieldEditActions(fieldKey)
+      } else {
+        onEditActionsChange?.(null)
+      }
     }
-  }, [editing])
+  }, [
+    editing,
+    fieldKey,
+    onRegisterFieldEditActions,
+    onUnregisterFieldEditActions,
+    onEditActionsChange,
+  ])
 
   const startEdit = () => {
     if (readOnly) return

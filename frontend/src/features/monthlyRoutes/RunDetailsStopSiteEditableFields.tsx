@@ -2,8 +2,9 @@ import { useCallback, useEffect, useState } from 'react'
 import { Alert, Button } from 'react-bootstrap'
 import PortalDeficienciesCard from './PortalDeficienciesCard'
 import PortalDeficiencyModal from './PortalDeficiencyModal'
-import PortalEditableFieldRow, { type PortalFieldEditActions } from './PortalEditableFieldRow'
+import PortalEditableFieldRow from './PortalEditableFieldRow'
 import PortalMonitoringCompanyField from './PortalMonitoringCompanyField'
+import { usePortalFieldEditActionRegistry } from './portalFieldEditRegistry'
 import {
   officeCreateDeficiency,
   officeUpdateDeficiency,
@@ -39,7 +40,11 @@ export default function RunDetailsStopSiteEditableFields({
   const { companies: monitoringCompanies, loading: monitoringCompaniesLoading, appendCompany } =
     useMonitoringCompanies()
   const [editingField, setEditingField] = useState<string | null>(null)
-  const [fieldEditActions, setFieldEditActions] = useState<PortalFieldEditActions | null>(null)
+  const {
+    activeFieldEditActions,
+    registerFieldEditActions,
+    unregisterFieldEditActions,
+  } = usePortalFieldEditActionRegistry(editingField)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [defModalOpen, setDefModalOpen] = useState(false)
   const [defModalMode, setDefModalMode] = useState<'add' | 'edit'>('add')
@@ -47,7 +52,6 @@ export default function RunDetailsStopSiteEditableFields({
 
   useEffect(() => {
     setEditingField(null)
-    setFieldEditActions(null)
     setSaveError(null)
   }, [stop.testing_site_id])
 
@@ -101,15 +105,12 @@ export default function RunDetailsStopSiteEditableFields({
     [appendCompany],
   )
 
-  const handleFieldEditActionsChange = useCallback((actions: PortalFieldEditActions | null) => {
-    setFieldEditActions(actions)
-  }, [])
-
   const fieldEditProps = {
     readOnly,
     editingField,
     onEditingFieldChange: setEditingField,
-    onEditActionsChange: handleFieldEditActionsChange,
+    onRegisterFieldEditActions: registerFieldEditActions,
+    onUnregisterFieldEditActions: unregisterFieldEditActions,
   }
 
   const applyDeficiencyStop = useCallback(
@@ -338,12 +339,12 @@ export default function RunDetailsStopSiteEditableFields({
           />
         </div>
       </div>
-      {fieldEditActions ? (
+      {activeFieldEditActions ? (
         <div className="run-details-stop-site-modal__edit-footer">
-          <Button variant="outline-secondary" size="sm" onClick={fieldEditActions.cancel}>
+          <Button variant="outline-secondary" size="sm" onClick={activeFieldEditActions.cancel}>
             Cancel
           </Button>
-          <Button variant="primary" size="sm" onClick={fieldEditActions.save}>
+          <Button variant="primary" size="sm" onClick={activeFieldEditActions.save}>
             Save
           </Button>
         </div>

@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { annualMonthSelectChoiceValues, normalizeAnnualMonthForSelect } from './monthlyRoutesShared'
+import { schedulePortalFieldRowScroll } from './portalFieldEditRegistry'
 
 export type PortalFieldEditActions = {
   fieldKey: string
@@ -16,6 +17,9 @@ type PortalEditableFieldRowProps = {
   editingField: string | null
   onEditingFieldChange: (key: string | null) => void
   onSave: (next: string) => void
+  onRegisterFieldEditActions?: (actions: PortalFieldEditActions) => void
+  onUnregisterFieldEditActions?: (fieldKey: string) => void
+  /** @deprecated Use onRegisterFieldEditActions / onUnregisterFieldEditActions */
   onEditActionsChange?: (actions: PortalFieldEditActions | null) => void
   /** When true, edit with a month-of-year dropdown instead of free text. */
   monthSelect?: boolean
@@ -30,6 +34,8 @@ export default function PortalEditableFieldRow({
   editingField,
   onEditingFieldChange,
   onSave,
+  onRegisterFieldEditActions,
+  onUnregisterFieldEditActions,
   onEditActionsChange,
   monthSelect = false,
 }: PortalEditableFieldRowProps) {
@@ -50,43 +56,9 @@ export default function PortalEditableFieldRow({
     if (!editing) setDraft(monthSelect ? normalizeAnnualMonthForSelect(value) : value)
   }, [value, editing, monthSelect])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!editing) return undefined
-
-    const input = inputRef.current
-    try {
-      input?.focus({ preventScroll: true })
-    } catch {
-      input?.focus()
-    }
-
-    const scrollFieldIntoView = () => {
-      const row = rowRef.current
-      const scroller = row?.closest<HTMLElement>('.pw-mock-fields')
-      if (!row || !scroller) return
-
-      const rowRect = row.getBoundingClientRect()
-      const scrollerRect = scroller.getBoundingClientRect()
-      const visualViewport = window.visualViewport
-      const viewportTop = visualViewport?.offsetTop ?? 0
-      const viewportBottom = viewportTop + (visualViewport?.height ?? window.innerHeight)
-      const visibleTop = Math.max(scrollerRect.top, viewportTop) + 16
-      const visibleBottom = Math.min(scrollerRect.bottom, viewportBottom) - 16
-
-      if (rowRect.top < visibleTop) {
-        scroller.scrollTop -= visibleTop - rowRect.top
-      } else if (rowRect.bottom > visibleBottom) {
-        scroller.scrollTop += rowRect.bottom - visibleBottom
-      }
-    }
-
-    const firstScroll = window.setTimeout(scrollFieldIntoView, 80)
-    const keyboardScroll = window.setTimeout(scrollFieldIntoView, 320)
-
-    return () => {
-      window.clearTimeout(firstScroll)
-      window.clearTimeout(keyboardScroll)
-    }
+    return schedulePortalFieldRowScroll(rowRef)
   }, [editing])
 
   const commit = useCallback(() => {
@@ -106,15 +78,41 @@ export default function PortalEditableFieldRow({
   commitRef.current = commit
   cancelRef.current = cancel
 
-  useEffect(() => {
-    if (!editing || !onEditActionsChange) return undefined
-    onEditActionsChange({
+  useLayoutEffect(() => {
+    if (!editing) return undefined
+
+    const input = inputRef.current
+    try {
+      input?.focus({ preventScroll: true })
+    } catch {
+      input?.focus()
+    }
+
+    const actions: PortalFieldEditActions = {
       fieldKey,
       cancel: () => cancelRef.current(),
       save: () => commitRef.current(),
-    })
-    return () => onEditActionsChange(null)
-  }, [editing, fieldKey, onEditActionsChange])
+    }
+    if (onRegisterFieldEditActions) {
+      onRegisterFieldEditActions(actions)
+    } else {
+      onEditActionsChange?.(actions)
+    }
+
+    return () => {
+      if (onUnregisterFieldEditActions) {
+        onUnregisterFieldEditActions(fieldKey)
+      } else {
+        onEditActionsChange?.(null)
+      }
+    }
+  }, [
+    editing,
+    fieldKey,
+    onRegisterFieldEditActions,
+    onUnregisterFieldEditActions,
+    onEditActionsChange,
+  ])
 
   const startEdit = () => {
     if (readOnly) return

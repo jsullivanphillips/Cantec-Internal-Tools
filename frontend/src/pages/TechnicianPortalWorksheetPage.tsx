@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Alert, Badge, Button, Spinner } from 'react-bootstrap'
 import {
@@ -12,7 +12,11 @@ import { isPortalWorksheetDemoRoute } from '../features/monthlyRoutes/portalWork
 import PortalBlockingOverlay from '../features/monthlyRoutes/PortalBlockingOverlay'
 import { usePortalWorksheet } from '../features/monthlyRoutes/usePortalWorksheet'
 import { usePortalWorksheetDemo } from '../features/monthlyRoutes/usePortalWorksheetDemo'
-import PortalEditableFieldRow, { type PortalFieldEditActions } from '../features/monthlyRoutes/PortalEditableFieldRow'
+import PortalEditableFieldRow from '../features/monthlyRoutes/PortalEditableFieldRow'
+import {
+  scrollPortalFieldRowIntoView,
+  usePortalFieldEditActionRegistry,
+} from '../features/monthlyRoutes/portalFieldEditRegistry'
 import PortalMonitoringCompanyField from '../features/monthlyRoutes/PortalMonitoringCompanyField'
 import {
   stopMonitoringDisplay,
@@ -269,7 +273,11 @@ export default function TechnicianPortalWorksheetPage() {
   const [defModalMode, setDefModalMode] = useState<'add' | 'edit'>('add')
   const [editingDeficiency, setEditingDeficiency] = useState<PortalDeficiencySummary | null>(null)
   const [editingField, setEditingField] = useState<string | null>(null)
-  const [fieldEditActions, setFieldEditActions] = useState<PortalFieldEditActions | null>(null)
+  const {
+    activeFieldEditActions,
+    registerFieldEditActions,
+    unregisterFieldEditActions,
+  } = usePortalFieldEditActionRegistry(editingField)
   const [mapsChoiceOpen, setMapsChoiceOpen] = useState(false)
   const [mapsPendingStop, setMapsPendingStop] = useState<TechnicianWorksheetStop | null>(null)
 
@@ -435,8 +443,14 @@ export default function TechnicianPortalWorksheetPage() {
 
   useEffect(() => {
     setEditingField(null)
-    setFieldEditActions(null)
   }, [active?.testing_site_id])
+
+  useLayoutEffect(() => {
+    if (!activeFieldEditActions) return
+    const row = document.querySelector<HTMLElement>('.pw-mock-field-row--editing')
+    scrollPortalFieldRowIntoView(row)
+    requestAnimationFrame(() => scrollPortalFieldRowIntoView(row))
+  }, [activeFieldEditActions])
 
   useEffect(() => {
     setInteractiveBusy(
@@ -587,15 +601,12 @@ export default function TechnicianPortalWorksheetPage() {
     [appendCompany],
   )
 
-  const handleFieldEditActionsChange = useCallback((actions: PortalFieldEditActions | null) => {
-    setFieldEditActions(actions)
-  }, [])
-
   const fieldEditProps = {
     readOnly: readOnlyWorksheet,
     editingField,
     onEditingFieldChange: setEditingField,
-    onEditActionsChange: handleFieldEditActionsChange,
+    onRegisterFieldEditActions: registerFieldEditActions,
+    onUnregisterFieldEditActions: unregisterFieldEditActions,
   }
 
   const openDeficiencyAdd = useCallback(() => {
@@ -854,8 +865,6 @@ export default function TechnicianPortalWorksheetPage() {
   const activeStatus = active ? stopDisplayStatus(active) : 'pending'
   const activeSkipLabel = active ? skipReasonDisplay(active) : null
   const activeHeaderTimes = active ? headerTimesDisplay(active) : null
-  const activeFieldEditActions =
-    editingField && fieldEditActions?.fieldKey === editingField ? fieldEditActions : null
   const dockClassName = [
     'pw-mock-dock',
     dockBand === 'C' ? 'pw-mock-dock--completed' : '',
