@@ -1,1 +1,1 @@
-web: waitress-serve --port=$PORT run:app
+web: waitress-serve --port=$PORT --threads=16 run:app

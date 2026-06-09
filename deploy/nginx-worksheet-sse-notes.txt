@@ -29,3 +29,11 @@ Example location snippet:
   }
 
 Each open worksheet tab holds one SSE connection; size worker concurrency accordingly.
+
+Heroku / Waitress (Procfile):
+
+- Default Waitress uses 4 threads; worksheet SSE tabs, ServiceTrade webhooks, and heavy
+  ``refresh_paperwork`` GETs can exhaust the queue (``Task queue depth`` warnings, H12 timeouts).
+- Procfile uses ``--threads=16`` so SPA HTML and API requests are less likely to wait behind
+  long-lived SSE streams and deferred webhook work.
+- Webhook handlers return immediately and run ServiceTrade sync on a background thread.

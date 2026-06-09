@@ -40,6 +40,10 @@ import { runPortalRunLifecycleSyncQueue } from './portalRunLifecycleSync'
 import { runPortalWorkflowSyncQueue } from './portalWorkflowSync'
 import { waitForPortalRouteSyncIdle } from './flushPortalRouteSync'
 import {
+  markPortalPaperworkRefreshRequested,
+  shouldRequestPortalPaperworkRefresh,
+} from './portalWorksheetLoadPolicy'
+import {
   projectedClockInBlockedForStop,
   projectedOpenClockStop,
   projectStopsWithWorkflowQueue,
@@ -151,18 +155,28 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
         return
       }
       const cached = loadWorksheetCache(routeId, monthIso)
-      if (cached && !hasLoadedOnceRef.current) {
+      const hasCache = cached != null
+      if (hasCache && !hasLoadedOnceRef.current) {
         setPayload(cached)
         setSyncState(navigator.onLine ? 'synced' : 'saved_offline')
+        setLoading(false)
         void ensureMonitoringCompaniesCached().catch(() => {})
       }
+      const fetchMode: 'initial' | 'background' =
+        hasCache && mode === 'initial' ? 'background' : mode
       if (mode === 'initial') {
         setError(null)
       }
       try {
         const qs = new URLSearchParams({ month: monthIso, tech_portal: '1' })
-        if (mode === 'initial' && monthIso === monthFirstIsoPacificToday()) {
+        const isCurrentMonth = monthIso === monthFirstIsoPacificToday()
+        if (
+          fetchMode === 'initial' &&
+          isCurrentMonth &&
+          shouldRequestPortalPaperworkRefresh(routeId, monthIso)
+        ) {
           qs.set('refresh_paperwork', '1')
+          markPortalPaperworkRefreshRequested(routeId, monthIso)
         }
         const data = await apiJson<TechnicianWorksheetPayload>(
           `/api/monthly_routes/routes/${routeId}/worksheet?${qs.toString()}`,
@@ -180,7 +194,7 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
           purgePortalRouteMonthClientState(routeId, monthIso)
         }
         const merged = mergePendingChangesIntoPayload(data, routeId, monthIso)
-        if (mode === 'background' && hasLoadedOnceRef.current) {
+        if (fetchMode === 'background') {
           if (!externallyReset && hasPendingSyncForRouteMonth(routeId, monthIso)) {
             setPayload((prev) => {
               const next = prev ? mergeServerWorksheetPayload(prev, merged, routeId, monthIso) : merged
@@ -218,12 +232,15 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
           window.location.href = authFailureRedirectPath()
           return
         }
-        if (mode === 'initial' && !cached) {
+        if (fetchMode === 'initial' && !hasCache) {
           setError('Unable to load worksheet.')
           setSyncState('saved_offline')
+        } else if (hasCache && !hasLoadedOnceRef.current) {
+          setHasLoadedOnce(true)
+          hasLoadedOnceRef.current = true
         }
       } finally {
-        if (!signal?.aborted && mode === 'initial') {
+        if (!signal?.aborted && mode === 'initial' && !hasCache) {
           setLoading(false)
         }
       }
@@ -647,9 +664,10 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
     worksheetDeferredRemoteFetchRef.current = false
     hasLoadedOnceRef.current = false
     setHasLoadedOnce(false)
-    setPayload(null)
+    const cached = loadWorksheetCache(routeId, monthIso)
+    setPayload(cached)
     setError(null)
-    setLoading(true)
+    setLoading(cached == null)
     suppressRemoteRefreshUntilRef.current = 0
   }, [routeId, monthIso])
 
@@ -668,7 +686,16 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
     return () => clearInterval(t)
   }, [runSyncQueue])
 
-  const sseEnabled = payload !== null && monthOk && !Number.isNaN(routeId)
+  const [sseGateOpen, setSseGateOpen] = useState(false)
+
+  useEffect(() => {
+    setSseGateOpen(false)
+    const timer = window.setTimeout(() => setSseGateOpen(true), 2500)
+    return () => window.clearTimeout(timer)
+  }, [routeId, monthIso])
+
+  const sseEnabled =
+    payload !== null && monthOk && !Number.isNaN(routeId) && sseGateOpen
 
   useEffect(() => {
     if (!sseEnabled) return
@@ -770,8 +797,8 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
   const showEndRun = showPortalRunLifecycle && worksheetRunFieldInProgress(payload?.run)
   const showReopenField = showPortalRunLifecycle && runEnded && !worksheetRunFieldInProgress(payload?.run)
   const readOnlyWorksheet = showStopWorkspace && !canEditStops
-  /** True until the first successful fetch for this route/month (avoids stale prior-month UI). */
-  const initialLoading = loading && !hasLoadedOnce
+  /** True until we have any worksheet payload to render (cache or network). */
+  const initialLoading = loading && payload == null
 
   return {
     payload,
