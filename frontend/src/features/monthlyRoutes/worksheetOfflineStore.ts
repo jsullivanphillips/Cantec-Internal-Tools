@@ -4,6 +4,7 @@ import type {
   TechnicianWorksheetRun,
   TechnicianWorksheetStop,
 } from './monthlyRoutesShared'
+import { worksheetRunExplicitlyCompleted } from './monthlyRoutesShared'
 import { projectStopsWithWorkflowQueue } from './portalRouteProjection'
 import {
   portalStopHasOpenClock,
@@ -500,5 +501,103 @@ export function mergeServerWorksheetPayload(
     mergeWorkflowQueueIntoPayload({ ...server, stops }, routeId, monthIso),
     routeId,
     monthIso,
+  )
+}
+
+/** Stops with a logged visit outcome, open clock, or legacy tested/skipped status. */
+export function countStopsWithFieldProgress(stops: TechnicianWorksheetStop[] | undefined): number {
+  return (stops ?? []).filter((stop) => stopHasFieldProgress(stop)).length
+}
+
+function stopHasFieldProgress(stop: TechnicianWorksheetStop): boolean {
+  if (portalStopHasTestOutcome(stop) || portalStopHasOpenClock(stop)) return true
+  const rs = (stop.result_status || '').trim().toLowerCase()
+  return rs === 'tested' || rs === 'skipped'
+}
+
+function runHeaderHadFieldProgress(run: TechnicianWorksheetRun | null | undefined): boolean {
+  if (!run) return false
+  return Boolean((run.started_at || '').trim() || (run.field_ended_at || '').trim())
+}
+
+function runHeaderHasFieldProgress(run: TechnicianWorksheetRun | null | undefined): boolean {
+  if (!run) return false
+  return Boolean((run.started_at || '').trim() || (run.field_ended_at || '').trim())
+}
+
+/**
+ * True when the server worksheet looks like an office ``reset_run`` while this device still
+ * holds prior field progress (cache and/or offline sync queues).
+ */
+export function serverRunWasExternallyReset(
+  local: TechnicianWorksheetPayload | null | undefined,
+  server: TechnicianWorksheetPayload,
+  routeId: number,
+  monthIso: string,
+): boolean {
+  if (!local) return false
+
+  const localStopProgress = countStopsWithFieldProgress(local.stops)
+  const serverStopProgress = countStopsWithFieldProgress(server.stops)
+  const localHeaderProgress = runHeaderHadFieldProgress(local.run)
+  const serverHeaderProgress = runHeaderHasFieldProgress(server.run)
+
+  const pendingWorkflow = loadWorkflowSyncQueue().filter(
+    (item) =>
+      item.routeId === routeId &&
+      item.monthIso === monthIso &&
+      item.action !== 'reset_stop',
+  )
+  const pendingField = loadSyncQueue().filter(
+    (item) =>
+      item.routeId === routeId &&
+      item.monthIso === monthIso &&
+      item.testingSiteId != null,
+  )
+  const pendingRunLifecycle = loadRunLifecycleSyncQueue().filter(
+    (item) => item.routeId === routeId && item.monthIso === monthIso,
+  )
+
+  const localHadProgress =
+    localStopProgress > 0 ||
+    localHeaderProgress ||
+    pendingWorkflow.length > 0 ||
+    pendingField.length > 0 ||
+    pendingRunLifecycle.length > 0
+
+  const serverLooksFresh =
+    serverStopProgress === 0 && !serverHeaderProgress && !worksheetRunExplicitlyCompleted(server.run)
+
+  if (!localHadProgress || !serverLooksFresh) return false
+
+  const runHeaderCleared = localHeaderProgress && !serverHeaderProgress
+  if (runHeaderCleared) return true
+
+  if (localStopProgress >= 2 && serverStopProgress === 0) return true
+
+  if (localStopProgress > 0 && pendingWorkflow.length > 0 && serverStopProgress === 0) return true
+
+  return false
+}
+
+/** Drop cached worksheet and all offline queues for one portal route-month (after office reset). */
+export function purgePortalRouteMonthClientState(routeId: number, monthIso: string): void {
+  clearWorksheetCache(routeId, monthIso)
+  markCompletionPending(routeId, monthIso, false)
+
+  saveSyncQueue(
+    loadSyncQueue().filter(
+      (item) => !(item.routeId === routeId && item.monthIso === monthIso),
+    ),
+  )
+  saveWorkflowSyncQueue(
+    loadWorkflowSyncQueue().filter(
+      (item) => !(item.routeId === routeId && item.monthIso === monthIso),
+    ),
+  )
+  saveRunLifecycleSyncQueue(
+    loadRunLifecycleSyncQueue().filter(
+      (item) => !(item.routeId === routeId && item.monthIso === monthIso),
+    ),
   )
 }

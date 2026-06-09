@@ -1,9 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TechnicianWorksheetPayload, TechnicianWorksheetStop } from './monthlyRoutesShared'
 import {
   mergeRunLifecycleQueueIntoPayload,
   preserveWorksheetStopOrderFields,
   reconcileStopWithServer,
+  serverRunWasExternallyReset,
   type PortalRunLifecycleQueueItem,
 } from './worksheetOfflineStore'
 
@@ -128,5 +129,47 @@ describe('preserveWorksheetStopOrderFields', () => {
     const merged = preserveWorksheetStopOrderFields(local, remote)
     expect(merged.stop_number).toBe(2)
     expect(merged.time_in).toBe('9:00 AM')
+  })
+})
+
+describe('serverRunWasExternallyReset', () => {
+  beforeEach(() => {
+    const store = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        store.set(key, value)
+      },
+      removeItem: (key: string) => {
+        store.delete(key)
+      },
+    })
+  })
+
+  it('detects office reset when run header and stop outcomes were cleared', () => {
+    const local = {
+      ...worksheetPayload('2026-05-02T09:00:00Z'),
+      stops: [
+        stop(1, { test_outcome: 'skipped', result_status: 'skipped' }),
+        stop(2, { test_outcome: 'skipped', result_status: 'skipped' }),
+      ],
+    }
+    const server = {
+      ...worksheetPayload(null),
+      stops: [stop(1), stop(2)],
+    }
+    expect(serverRunWasExternallyReset(local, server, 1, '2026-05-01')).toBe(true)
+  })
+
+  it('does not treat a single unsynced skip as an office reset', () => {
+    const local = {
+      ...worksheetPayload(null),
+      stops: [stop(1, { test_outcome: 'skipped', result_status: 'skipped' })],
+    }
+    const server = {
+      ...worksheetPayload(null),
+      stops: [stop(1)],
+    }
+    expect(serverRunWasExternallyReset(local, server, 1, '2026-05-01')).toBe(false)
   })
 })

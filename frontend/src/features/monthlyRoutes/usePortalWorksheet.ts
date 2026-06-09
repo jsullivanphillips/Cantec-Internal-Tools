@@ -27,8 +27,10 @@ import {
   applyServerStopWithPending,
   mergePendingChangesIntoPayload,
   mergeServerWorksheetPayload,
+  purgePortalRouteMonthClientState,
   saveSyncQueue,
   saveWorksheetCache,
+  serverRunWasExternallyReset,
   type WorksheetStopChangeSet,
   worksheetStopChangesForSync,
 } from './worksheetOfflineStore'
@@ -160,16 +162,28 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
           { signal },
         )
         if (signal?.aborted) return
+        const localBaseline = loadWorksheetCache(routeId, monthIso) ?? cached
+        const externallyReset = serverRunWasExternallyReset(
+          localBaseline,
+          data,
+          routeId,
+          monthIso,
+        )
+        if (externallyReset) {
+          purgePortalRouteMonthClientState(routeId, monthIso)
+        }
         const merged = mergePendingChangesIntoPayload(data, routeId, monthIso)
         if (mode === 'background' && hasLoadedOnceRef.current) {
-          if (hasPendingSyncForRouteMonth(routeId, monthIso)) {
-            return
+          if (!externallyReset && hasPendingSyncForRouteMonth(routeId, monthIso)) {
+            setPayload((prev) => {
+              const next = prev ? mergeServerWorksheetPayload(prev, merged, routeId, monthIso) : merged
+              saveWorksheetCache(next)
+              return next
+            })
+          } else {
+            setPayload(merged)
+            saveWorksheetCache(merged)
           }
-          setPayload((prev) => {
-            const next = prev ? mergeServerWorksheetPayload(prev, merged, routeId, monthIso) : merged
-            saveWorksheetCache(next)
-            return next
-          })
         } else {
           setPayload(merged)
           saveWorksheetCache(merged)
@@ -610,12 +624,9 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
       worksheetDeferredRemoteFetchRef.current = true
       return
     }
-    if (hasPendingSyncForRouteMonth(routeId, monthIso)) {
-      return
-    }
     worksheetDeferredRemoteFetchRef.current = false
     refreshInBackgroundRef.current()
-  }, [routeId, monthIso])
+  }, [])
 
   const setInteractiveBusy = useCallback((busy: boolean) => {
     worksheetInteractiveBusyRef.current = busy
