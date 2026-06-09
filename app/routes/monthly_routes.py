@@ -2820,12 +2820,12 @@ def stream_monthly_route_worksheet(route_id: int):
             db.session.remove()
             return
 
+    # Do not set Connection here — it is hop-by-hop (PEP 3333) and Waitress rejects it.
     return Response(
         stream_with_context(generate()),
         mimetype="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
         },
     )

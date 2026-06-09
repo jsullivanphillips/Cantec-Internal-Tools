@@ -41,6 +41,36 @@ import { shortStreetAddress } from './testingSiteDisplay'
 
 type PrepDragHandleProps = Pick<ReturnType<typeof useSortable>, 'attributes' | 'listeners'>
 
+function PrepTableColGroup() {
+  return (
+    <colgroup>
+      <col className="run-details-prepare-col-stop" />
+      <col className="run-details-prepare-col-address" />
+      <col className="run-details-prepare-col-access" />
+      <col className="run-details-prepare-col-monitoring" />
+      <col className="run-details-prepare-col-deficiencies" />
+      <col className="run-details-prepare-col-run-comments" />
+      <col className="run-details-prepare-col-procedures" />
+      <col className="run-details-prepare-col-location-comments" />
+    </colgroup>
+  )
+}
+
+function PrepTableHeaderRow() {
+  return (
+    <tr>
+      <th className="run-details-prepare-sticky-order">#</th>
+      <th className="run-details-prepare-sticky-address">Address</th>
+      <th>Access</th>
+      <th>Monitoring</th>
+      <th>Deficiencies</th>
+      <th>Office job comment</th>
+      <th>Testing procedures</th>
+      <th>Location comments</th>
+    </tr>
+  )
+}
+
 function prepRowClassName(annualDue: boolean, highlighted: boolean): string | undefined {
   return (
     [
@@ -592,59 +622,54 @@ export default function RunDetailsPrepareTable({
     </tbody>
   )
 
-  return (
+  const tableClassName = `run-details-prepare-table mb-0${reorderEnabled ? ' run-details-prepare-table--reorderable' : ''}`
+
+  const tableShell = (
     <div className="run-details-prepare-table-shell">
-      {prepEditsDisabled ? (
-        <Alert variant="warning" className="py-2 small mb-2">
-          Close the current month&apos;s paperwork before editing a future month.
-        </Alert>
-      ) : null}
-      {orderError ? (
-        <Alert variant="warning" className="py-2 small mb-2">
-          {orderError}
-        </Alert>
-      ) : null}
-      {error ? (
-        <Alert variant="danger" className="py-2 small mb-2">
-          {error}
-        </Alert>
-      ) : null}
-      <Table
-        size="sm"
-        className={`run-details-prepare-table mb-0${reorderEnabled ? ' run-details-prepare-table--reorderable' : ''}`}
-      >
-        <colgroup>
-          <col className="run-details-prepare-col-stop" />
-          <col className="run-details-prepare-col-address" />
-          <col className="run-details-prepare-col-access" />
-          <col className="run-details-prepare-col-monitoring" />
-          <col className="run-details-prepare-col-deficiencies" />
-          <col className="run-details-prepare-col-run-comments" />
-          <col className="run-details-prepare-col-procedures" />
-          <col className="run-details-prepare-col-location-comments" />
-        </colgroup>
+      <Table size="sm" className={tableClassName}>
+        <PrepTableColGroup />
         <thead>
-          <tr>
-            <th className="run-details-prepare-sticky-order">#</th>
-            <th className="run-details-prepare-sticky-address">Address</th>
-            <th>Access</th>
-            <th>Monitoring</th>
-            <th>Deficiencies</th>
-            <th>Office job comment</th>
-            <th>Testing procedures</th>
-            <th>Location comments</th>
-          </tr>
+          <PrepTableHeaderRow />
         </thead>
         {reorderEnabled ? (
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-            <SortableContext items={sortableLocationIds} strategy={verticalListSortingStrategy}>
-              {tableBody}
-            </SortableContext>
-          </DndContext>
+          <SortableContext items={sortableLocationIds} strategy={verticalListSortingStrategy}>
+            {tableBody}
+          </SortableContext>
         ) : (
           tableBody
         )}
       </Table>
+    </div>
+  )
+
+  return (
+    <div className="run-details-prep-section monthly-location-detail-surface">
+      {(prepEditsDisabled || orderError || error) && (
+        <div className="run-details-prepare-alerts">
+          {prepEditsDisabled ? (
+            <Alert variant="warning" className="py-2 small mb-2">
+              Close the current month&apos;s paperwork before editing a future month.
+            </Alert>
+          ) : null}
+          {orderError ? (
+            <Alert variant="warning" className="py-2 small mb-2">
+              {orderError}
+            </Alert>
+          ) : null}
+          {error ? (
+            <Alert variant="danger" className="py-2 small mb-2">
+              {error}
+            </Alert>
+          ) : null}
+        </div>
+      )}
+      {reorderEnabled ? (
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          {tableShell}
+        </DndContext>
+      ) : (
+        tableShell
+      )}
     </div>
   )
 }

@@ -123,6 +123,28 @@ def test_get_worksheet_includes_stops_preview(stops_client, monkeypatch):
     assert stops[0]["history_month_row_id"] == 0
 
 
+def test_worksheet_stream_sse_headers_are_wsgi_safe(stops_client, monkeypatch):
+    """Waitress rejects hop-by-hop Connection on WSGI responses (PEP 3333)."""
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 6, 1))
+
+    client, app = stops_client
+    with app.app_context():
+        _seed_route_with_two_stops()
+
+    with app.test_request_context(
+        "/api/monthly_routes/routes/1/worksheet/stream?month=2026-06-01&tech_portal=1"
+    ):
+        response = mr_mod.stream_monthly_route_worksheet(1)
+
+    assert response.status_code == 200
+    assert response.mimetype == "text/event-stream"
+    assert response.headers.get("Cache-Control") == "no-cache"
+    assert response.headers.get("X-Accel-Buffering") == "no"
+    assert "Connection" not in response.headers
+
+
 def test_portal_start_materializes_stops(stops_client, monkeypatch):
     from app.routes import monthly_routes as mr_mod
 

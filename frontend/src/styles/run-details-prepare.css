@@ -1,7 +1,60 @@
 /* Run details prep table — loaded after legacy-global so Bootstrap table overrides do not win */
 
 .monthly-run-detail-page .run-details-prep-section {
-  padding: 1rem 1.15rem 1.15rem;
+  padding: 0;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prepare-alerts {
+  padding: 0.75rem 1rem 0;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prepare-table-shell {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  overflow-x: auto;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prepare-table.table {
+  width: 100%;
+  min-width: 100%;
+  table-layout: fixed;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prepare-col-stop {
+  width: 4%;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prepare-table--reorderable .run-details-prepare-col-stop {
+  width: 5%;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prepare-col-address {
+  width: 12%;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prepare-col-access {
+  width: 13%;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prepare-col-monitoring {
+  width: 12%;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prepare-col-deficiencies {
+  width: 9%;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prepare-col-run-comments,
+.monthly-run-detail-page .run-details-prep-section .run-details-prepare-col-procedures,
+.monthly-run-detail-page .run-details-prep-section .run-details-prepare-col-location-comments {
+  width: 13.5%;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prepare-sticky-order,
+.monthly-run-detail-page .run-details-prep-section .run-details-prepare-sticky-address {
+  position: static;
+  box-shadow: none;
 }
 
 .monthly-run-detail-page .run-details-prep-section__header {
@@ -75,6 +128,7 @@
     var(--rdp-col-deficiencies)
   );
   overflow-x: auto;
+  overflow-y: clip;
   border: 1px solid var(--ml-border, #dbe3ef);
   border-radius: var(--ml-radius-md, 0.65rem);
   background: var(--ml-card, rgba(255, 255, 255, 0.96));
@@ -197,8 +251,15 @@
 
 .monthly-run-detail-page .run-details-prepare-table.table thead .run-details-prepare-sticky-order,
 .monthly-run-detail-page .run-details-prepare-table.table thead .run-details-prepare-sticky-address {
-  z-index: 3;
   background: var(--ml-surface-muted, #f1f5f9);
+}
+
+.monthly-run-detail-page .run-details-prepare-table.table thead .run-details-prepare-sticky-order {
+  z-index: 6;
+}
+
+.monthly-run-detail-page .run-details-prepare-table.table thead .run-details-prepare-sticky-address {
+  z-index: 5;
 }
 
 .monthly-run-detail-page .run-details-prepare-sticky-order {
@@ -789,26 +850,6 @@
 }
 
 /* Run prep tab: narrower stop #, wider access, denser typography */
-.monthly-run-detail-page .run-details-prep-section .run-details-prepare-table-shell {
-  --rdp-col-stop: 2rem;
-  --rdp-col-access: 13.25rem;
-  --rdp-sticky-address-left: var(--rdp-col-stop);
-  --rdp-table-w: calc(
-    var(--rdp-col-stop) +
-    var(--rdp-col-address) +
-    var(--rdp-col-access) +
-    var(--rdp-col-monitoring) +
-    var(--rdp-col-run-comments) +
-    var(--rdp-col-procedures) +
-    var(--rdp-col-location-comments) +
-    var(--rdp-col-deficiencies)
-  );
-}
-
-.monthly-run-detail-page .run-details-prep-section .run-details-prepare-table--reorderable {
-  --rdp-col-stop: 3.5rem;
-}
-
 .monthly-run-detail-page .run-details-prep-section .run-details-prepare-table.table {
   font-size: 0.75rem;
 }

@@ -13,6 +13,10 @@ Reverse-proxy checklist:
 
 3. The Flask handler sets header X-Accel-Buffering: no for nginx.
 
+4. Do not set Connection on the Flask response (hop-by-hop; WSGI servers such as
+   Waitress reject it). Configure keep-alive at the reverse proxy instead
+   (e.g. proxy_http_version 1.1; proxy_set_header Connection '').
+
 Example location snippet:
 
   location ~ ^/api/monthly_routes/routes/[0-9]+/worksheet/stream {

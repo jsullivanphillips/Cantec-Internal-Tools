@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 
-import { Button, Form, Spinner } from 'react-bootstrap'
+import { Button, Spinner } from 'react-bootstrap'
 
 import RunDetailsFieldChangesTable from './RunDetailsFieldChangesTable'
 import RunDetailsHistoryTable from './RunDetailsHistoryTable'
@@ -14,11 +14,9 @@ import type {
 } from './monthlyRoutesShared'
 
 import {
-  computeRunDetailsPrepSummary,
   computeRunDetailsProgress,
   countRunDetailFieldEditLocations,
   filterRunDetailFieldEditLocations,
-  filterRunDetailPrepRows,
   flattenRunDetailPrepRows,
   listAutoOfficeBillingUpdates,
   type RunDetailReviewSectionTab,
@@ -121,15 +119,12 @@ export default function RunDetailsLocationReviewList({
   outcomeCounts?: RunReviewOutcomeCounts
   onRouteOrderChanged?: (orderedLocationIds: number[]) => void | Promise<void>
 }) {
-  const [prepSearch, setPrepSearch] = useState('')
   const [autoBillingBusy, setAutoBillingBusy] = useState(false)
   const [autoBillingError, setAutoBillingError] = useState<string | null>(null)
 
   const prepPhase = paperworkViewMode === 'preparation' || runInOfficePrepPhase(run)
   const showBillingColumn = canOfficeEditBilling(run) && !runCompleted
   const fieldWorkOpen = worksheetRunFieldInProgress(run)
-
-  const prepSummary = useMemo(() => computeRunDetailsPrepSummary(locations), [locations])
 
   const progress = useMemo(
     () => computeRunDetailsProgress(locations, monthDate, runCompleted),
@@ -146,10 +141,7 @@ export default function RunDetailsLocationReviewList({
     [locations],
   )
 
-  const prepRows = useMemo(() => {
-    const rows = flattenRunDetailPrepRows(locations)
-    return filterRunDetailPrepRows(rows, prepSearch)
-  }, [locations, prepSearch])
+  const prepRows = useMemo(() => flattenRunDetailPrepRows(locations), [locations])
 
   const effectiveSectionTab: RunDetailReviewSectionTab =
     paperworkViewMode === 'exact_history'
@@ -211,52 +203,33 @@ export default function RunDetailsLocationReviewList({
   ])
 
   if (prepPhase) {
+    if (prepRows.length === 0) {
+      return (
+        <section
+          id="run-review-section"
+          className="monthly-run-detail-locations"
+          aria-label="Sites on this run"
+        >
+          <p className="monthly-run-detail-empty mb-0">No stops on this route yet.</p>
+        </section>
+      )
+    }
+
     return (
       <section
         id="run-review-section"
         className="monthly-run-detail-locations"
         aria-label="Sites on this run"
       >
-        <div className="monthly-location-detail-surface run-details-prep-section">
-          <div className="run-details-prep-section__header">
-            <h2 className="monthly-run-detail-section__title mb-0">Run preparation</h2>
-            <span className="monthly-run-detail-section__meta text-muted small tabular-nums">
-              {prepSummary.stopCount} {prepSummary.stopCount === 1 ? 'stop' : 'stops'}
-            </span>
-          </div>
-          <p className="monthly-run-detail-section__meta text-muted small mb-3">
-            Click a field to edit. Use Save or Cancel before moving to another field.
-          </p>
-          {locations.length > 3 ? (
-            <div className="run-details-prep-search mb-3">
-              <Form.Control
-                size="sm"
-                type="search"
-                className="run-details-prep-search__input"
-                placeholder="Search address or stop #…"
-                value={prepSearch}
-                onChange={(e) => setPrepSearch(e.target.value)}
-                aria-label="Search prep stops"
-              />
-            </div>
-          ) : null}
-          {prepRows.length === 0 && locations.length > 0 ? (
-            <p className="monthly-run-detail-empty mb-0">
-              {prepSearch.trim() ? 'No stops match this search.' : 'No stops on this route yet.'}
-            </p>
-          ) : (
-            <RunDetailsPrepareTable
-              rows={prepRows}
-              routeId={routeId}
-              monthDate={monthDate}
-              stopPatch={stopPatch}
-              onDeficiencyUpdated={onDeficiencyUpdated}
-              prepEditsDisabled={prepEditsDisabled}
-              reorderDisabled={prepSearch.trim().length > 0}
-              onRouteOrderChanged={onRouteOrderChanged}
-            />
-          )}
-        </div>
+        <RunDetailsPrepareTable
+          rows={prepRows}
+          routeId={routeId}
+          monthDate={monthDate}
+          stopPatch={stopPatch}
+          onDeficiencyUpdated={onDeficiencyUpdated}
+          prepEditsDisabled={prepEditsDisabled}
+          onRouteOrderChanged={onRouteOrderChanged}
+        />
       </section>
     )
   }
