@@ -1,5 +1,6 @@
 import type { TechnicianWorksheetStop } from './monthlyRoutesShared'
 import { stopHasMonitoring, stopMonitoringDisplay } from './stopMonitoringDisplay'
+import PortalBootstrapIcon from './PortalBootstrapIcon'
 
 type PortalStopSummaryDetailProps = {
   stop: TechnicianWorksheetStop
@@ -25,11 +26,11 @@ export default function PortalStopSummaryDetail({
     <div className={['pw-mock-nav-stop-detail', className].filter(Boolean).join(' ')}>
       <span className="pw-mock-nav-stop-group">
         <span className="pw-mock-nav-stop-line">
-          <i className="bi bi-key pw-mock-nav-stop-icon" title="Key" aria-hidden="true" />
+          <PortalBootstrapIcon name="key" className="pw-mock-nav-stop-icon" title="Key" />
           {key}
         </span>
         <span className="pw-mock-nav-stop-line">
-          <i className="bi bi-circle pw-mock-nav-stop-icon" title="Ring" aria-hidden="true" />
+          <PortalBootstrapIcon name="circle" className="pw-mock-nav-stop-icon" title="Ring" />
           {ring}
         </span>
       </span>
@@ -37,11 +38,7 @@ export default function PortalStopSummaryDetail({
         <span className="pw-mock-nav-stop-group">
           {monitoring.company !== '—' ? (
             <span className="pw-mock-nav-stop-line">
-              <i
-                className="bi bi-telephone pw-mock-nav-stop-icon"
-                title="Monitoring"
-                aria-hidden="true"
-              />
+              <PortalBootstrapIcon name="telephone" className="pw-mock-nav-stop-icon" title="Monitoring" />
               {monitoring.company}
             </span>
           ) : null}
@@ -67,11 +64,11 @@ export default function PortalStopSummaryDetail({
       {includePanel ? (
         <span className="pw-mock-nav-stop-group">
           <span className="pw-mock-nav-stop-line">
-            <i className="bi bi-cpu pw-mock-nav-stop-icon" title="Panel" aria-hidden="true" />
+            <PortalBootstrapIcon name="cpu" className="pw-mock-nav-stop-icon" title="Panel" />
             {panelMakeModel}
           </span>
           <span className="pw-mock-nav-stop-line">
-            <i className="bi bi-pin-map pw-mock-nav-stop-icon" title="Panel location" aria-hidden="true" />
+            <PortalBootstrapIcon name="pin-map" className="pw-mock-nav-stop-icon" title="Panel location" />
             {panelLocation}
           </span>
         </span>

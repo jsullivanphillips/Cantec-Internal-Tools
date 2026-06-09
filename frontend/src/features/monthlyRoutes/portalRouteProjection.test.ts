@@ -5,7 +5,7 @@ import {
   projectedOpenClockSiteId,
   projectStopsWithWorkflowQueue,
 } from './portalRouteProjection'
-import { portalStopHasOpenClock } from './portalWorkflowShared'
+import { portalStopHasOpenClock, portalStopHasTestOutcome } from './portalWorkflowShared'
 import { mergeWorkflowQueueIntoPayload } from './worksheetOfflineStore'
 import type { PortalWorkflowQueueItem } from './worksheetOfflineStore'
 function baseStop(
@@ -197,6 +197,68 @@ describe('projectStopsWithWorkflowQueue', () => {
     const projected = projectStopsWithWorkflowQueue(stops, ROUTE_ID, MONTH, queue)
     expect(portalStopHasOpenClock(projected[0])).toBe(false)
     expect(projected[0].has_run_changes).toBe(false)
+  })
+
+  it('reset_stop alone clears a stop after prior queued visit actions were purged', () => {
+    const stops = [
+      baseStop(1, {
+        test_outcome: 'all_good',
+        result_status: 'tested',
+        has_run_changes: true,
+        clock_events: [{ id: 1, sort_order: 1, time_in: '9:00 AM', time_out: '9:30 AM' }],
+        time_in: '9:00 AM',
+        time_out: '9:30 AM',
+      }),
+    ]
+    const queue = [
+      queueItem({
+        id: 'reset',
+        action: 'reset_stop',
+        testingSiteId: 1,
+        payload: {},
+        enqueuedAt: 4,
+      }),
+    ]
+    const projected = projectStopsWithWorkflowQueue(stops, ROUTE_ID, MONTH, queue)
+    expect(portalStopHasTestOutcome(projected[0])).toBe(false)
+    expect(projected[0].has_run_changes).toBe(false)
+    expect(projected[0].clock_events).toEqual([])
+  })
+
+  it('without purge, stale queued visit actions override a local reset patch', () => {
+    const stops = [
+      baseStop(1, {
+        test_outcome: null,
+        result_status: null,
+        has_run_changes: false,
+        clock_events: [],
+      }),
+    ]
+    const queue = [
+      queueItem({
+        id: 'cin',
+        action: 'clock_in',
+        testingSiteId: 1,
+        payload: { time_in: '9:00 AM' },
+        enqueuedAt: 1,
+      }),
+      queueItem({
+        id: 'outcome',
+        action: 'test_outcome',
+        testingSiteId: 1,
+        payload: { test_outcome: 'all_good' },
+        enqueuedAt: 2,
+      }),
+      queueItem({
+        id: 'cout',
+        action: 'clock_out',
+        testingSiteId: 1,
+        payload: { time_out: '9:30 AM' },
+        enqueuedAt: 3,
+      }),
+    ]
+    const projected = projectStopsWithWorkflowQueue(stops, ROUTE_ID, MONTH, queue)
+    expect(portalStopHasTestOutcome(projected[0])).toBe(true)
   })
 })
 

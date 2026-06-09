@@ -1,0 +1,10 @@
+@import 'bootstrap-icons/font/bootstrap-icons.css';
+
+/* iOS Safari / PWA: swap avoids indefinitely invisible icons while the font loads. */
+@font-face {
+  font-display: swap;
+  font-family: 'bootstrap-icons';
+  src:
+    url('bootstrap-icons/font/fonts/bootstrap-icons.woff2') format('woff2'),
+    url('bootstrap-icons/font/fonts/bootstrap-icons.woff') format('woff');
+}

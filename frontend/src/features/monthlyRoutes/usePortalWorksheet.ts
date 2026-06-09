@@ -116,9 +116,10 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
 
   const workflowQueueRevision = useMemo(
     () =>
-      loadWorkflowSyncQueue().filter(
-        (item) => item.routeId === routeId && item.monthIso === monthIso,
-      ).length,
+      loadWorkflowSyncQueue()
+        .filter((item) => item.routeId === routeId && item.monthIso === monthIso)
+        .map((item) => `${item.id}:${item.action}:${item.testingSiteId}`)
+        .join('|'),
     [stops, syncState, routeId, monthIso],
   )
 

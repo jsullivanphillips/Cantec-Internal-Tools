@@ -504,7 +504,7 @@ Legacy `result_status` / `sheet_time_in_raw` / `sheet_time_out_raw` remain for C
 - `POST .../clock_events/clock_in` / `clock_out` / `cancel_clock_in` (API remains for sync/undo paths). **Reset** in the dock (`POST .../reset`) clears clock events, results, and deficiencies logged this run when `has_run_changes`.
 - `PUT .../test_outcome` (four outcomes + structured skip)
 - Deficiency CRUD + `POST .../verify`
-- `POST .../reset` per stop (clears `test_outcome`, legacy `result_status` / sheet times, clock events, and run-scoped deficiencies)
+- `POST .../reset` per stop (clears `test_outcome`, legacy `result_status` / sheet times, clock events, and run-scoped deficiencies). Offline, **Reset** purges pending workflow and field-sync rows for that stop before enqueueing `reset_stop`, so stale queued clock/test actions cannot repaint a completed visit after the local reset patch.
 
 Field edits (procedures, panel, comments, etc.) still use `PATCH .../worksheet/stops/:id`. Workflow mutations queue in `localStorage` key `portalWorkflowSyncQueue` (separate from field PATCH queue).
 

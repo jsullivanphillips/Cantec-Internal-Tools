@@ -1,7 +1,12 @@
 """Serve SPA from Vite in dev, frontend/dist in production."""
+import mimetypes
 import os
 
 from flask import abort, redirect, request, send_from_directory
+
+# Ensure Safari/iOS accepts icon font responses from /assets/* (woff/woff2).
+mimetypes.add_type('font/woff2', '.woff2')
+mimetypes.add_type('font/woff', '.woff')
 
 
 def _request_host_is_loopback() -> bool:
@@ -54,6 +59,10 @@ def register_spa_static_routes(app):
         assets_dir = os.path.join(dist, "assets")
         if not os.path.isdir(assets_dir):
             abort(503)
+        if filename.endswith(".woff2"):
+            return send_from_directory(assets_dir, filename, mimetype="font/woff2")
+        if filename.endswith(".woff"):
+            return send_from_directory(assets_dir, filename, mimetype="font/woff")
         return send_from_directory(assets_dir, filename)
 
     # Files from frontend/public/ are copied to dist/ root by Vite; Flask must expose them explicitly

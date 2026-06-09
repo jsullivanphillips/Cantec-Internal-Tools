@@ -6,6 +6,7 @@ import {
   reconcileStopWithServer,
   serverRunWasExternallyReset,
   countPendingSyncForRouteMonth,
+  purgePendingWorkflowForStop,
   saveWorkflowSyncQueue,
   type PortalRunLifecycleQueueItem,
 } from './worksheetOfflineStore'
@@ -206,5 +207,79 @@ describe('countPendingSyncForRouteMonth', () => {
     ])
     expect(countPendingSyncForRouteMonth(1, '2026-05-01')).toBe(1)
     expect(countPendingSyncForRouteMonth(2, '2026-05-01')).toBe(0)
+  })
+})
+
+describe('purgePendingWorkflowForStop', () => {
+  beforeEach(() => {
+    const store = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        store.set(key, value)
+      },
+      removeItem: (key: string) => {
+        store.delete(key)
+      },
+    })
+  })
+
+  it('removes pending visit actions for one stop but keeps other stops', () => {
+    saveWorkflowSyncQueue([
+      {
+        id: 'a-cin',
+        routeId: 1,
+        monthIso: '2026-05-01',
+        testingSiteId: 10,
+        action: 'clock_in',
+        payload: {},
+        attempts: 0,
+        nextAttemptAt: 0,
+        enqueuedAt: 1,
+      },
+      {
+        id: 'a-out',
+        routeId: 1,
+        monthIso: '2026-05-01',
+        testingSiteId: 10,
+        action: 'test_outcome',
+        payload: { test_outcome: 'all_good' },
+        attempts: 0,
+        nextAttemptAt: 0,
+        enqueuedAt: 2,
+      },
+      {
+        id: 'b-cin',
+        routeId: 1,
+        monthIso: '2026-05-01',
+        testingSiteId: 20,
+        action: 'clock_in',
+        payload: {},
+        attempts: 0,
+        nextAttemptAt: 0,
+        enqueuedAt: 3,
+      },
+    ])
+    const removed = purgePendingWorkflowForStop(1, '2026-05-01', 10)
+    expect(removed.map((item) => item.id)).toEqual(['a-cin', 'a-out'])
+    expect(countPendingSyncForRouteMonth(1, '2026-05-01')).toBe(1)
+  })
+
+  it('removes transition_clock rows touching the stop', () => {
+    saveWorkflowSyncQueue([
+      {
+        id: 'tx',
+        routeId: 1,
+        monthIso: '2026-05-01',
+        testingSiteId: 20,
+        action: 'transition_clock',
+        payload: { from_testing_site_id: 10, to_testing_site_id: 20 },
+        attempts: 0,
+        nextAttemptAt: 0,
+        enqueuedAt: 1,
+      },
+    ])
+    purgePendingWorkflowForStop(1, '2026-05-01', 10)
+    expect(countPendingSyncForRouteMonth(1, '2026-05-01')).toBe(0)
   })
 })

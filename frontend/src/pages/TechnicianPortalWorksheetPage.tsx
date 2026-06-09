@@ -21,6 +21,7 @@ import {
   monitoringPhoneTelHref,
 } from '../features/monthlyRoutes/stopMonitoringDisplay'
 import PortalStopSummaryDetail from '../features/monthlyRoutes/PortalStopSummaryDetail'
+import PortalBootstrapIcon from '../features/monthlyRoutes/PortalBootstrapIcon'
 import { enrichStopsWithMonitoringDirectory } from '../features/monthlyRoutes/monitoringCompaniesShared'
 import { useMonitoringCompanies } from '../features/monthlyRoutes/useMonitoringCompanies'
 import type { MonitoringCompanySummary } from '../features/monthlyRoutes/monthlyRoutesShared'
@@ -330,7 +331,7 @@ export default function TechnicianPortalWorksheetPage() {
           aria-label={`Call monitoring for stop ${stop.stop_number}`}
           title={`Call monitoring: ${phone}`}
         >
-          <i className="bi bi-telephone-fill" aria-hidden />
+          <PortalBootstrapIcon name="telephone-fill" className="pw-mock-nav-stop-map-icon" aria-hidden />
         </a>
       )
     },
@@ -349,7 +350,7 @@ export default function TechnicianPortalWorksheetPage() {
           onClick={(event) => handleMapsPinClick(event, stop)}
           onContextMenu={(event) => handleMapsPinContextMenu(event, stop)}
         >
-          <i className="bi bi-geo-alt" aria-hidden />
+          <PortalBootstrapIcon name="geo-alt" className="pw-mock-nav-stop-map-icon" aria-hidden />
         </button>
       )
     },
@@ -374,7 +375,7 @@ export default function TechnicianPortalWorksheetPage() {
                 onClick={(event) => handleMapsPinClick(event, stop)}
                 onContextMenu={(event) => handleMapsPinContextMenu(event, stop)}
               >
-                <i className="bi bi-geo-alt" aria-hidden />
+                <PortalBootstrapIcon name="geo-alt" className="pw-mock-nav-stop-map-icon" aria-hidden />
               </button>
             </>
           ) : null}
@@ -895,7 +896,7 @@ export default function TechnicianPortalWorksheetPage() {
       <header className="pw-mock-chrome">
         <div className="pw-mock-chrome-top">
           <Link to={routeBackPath} className="btn btn-link text-primary p-0 pw-mock-back" aria-label="Back to route">
-            <i className="bi bi-arrow-left-circle-fill" aria-hidden />
+            <PortalBootstrapIcon name="arrow-left-circle-fill" className="pw-mock-back-icon" aria-hidden />
           </Link>
           <div className="pw-mock-chrome-titles">
             <div className="pw-mock-route-title">{routeLabel}</div>
@@ -1023,7 +1024,7 @@ export default function TechnicianPortalWorksheetPage() {
                   title="Key view"
                   onClick={() => setKeyViewOpen(true)}
                 >
-                  <i className="bi bi-key" aria-hidden />
+                  <PortalBootstrapIcon name="key" className="pw-mock-sidenav-key-btn-icon" aria-hidden />
                 </button>
               </div>
             ) : null}
@@ -1040,8 +1041,9 @@ export default function TechnicianPortalWorksheetPage() {
               aria-expanded={navExpanded}
               onClick={() => setNavExpanded((v) => !v)}
             >
-              <i
-                className={`bi ${navExpanded ? 'bi-chevron-double-left' : 'bi-chevron-double-right'}`}
+              <PortalBootstrapIcon
+                name={navExpanded ? 'chevron-double-left' : 'chevron-double-right'}
+                className="pw-mock-sidenav-toggle-icon"
                 aria-hidden
               />
               {navItemsExpanded ? <span className="pw-mock-sidenav-toggle-label">Collapse menu</span> : null}

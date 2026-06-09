@@ -272,6 +272,59 @@ export function enqueuePortalWorkflowAction(
   return qItem
 }
 
+function workflowQueueItemTouchesStop(
+  item: PortalWorkflowQueueItem,
+  routeId: number,
+  monthIso: string,
+  testingSiteId: number,
+): boolean {
+  if (item.routeId !== routeId || item.monthIso !== monthIso) return false
+  if (item.action === 'transition_clock') {
+    return (
+      Number(item.payload.from_testing_site_id) === testingSiteId ||
+      Number(item.payload.to_testing_site_id) === testingSiteId
+    )
+  }
+  return item.testingSiteId === testingSiteId
+}
+
+/** Drop unsynced workflow intents for one stop (e.g. before offline reset). */
+export function purgePendingWorkflowForStop(
+  routeId: number,
+  monthIso: string,
+  testingSiteId: number,
+): PortalWorkflowQueueItem[] {
+  const queue = loadWorkflowSyncQueue()
+  const removed = queue.filter((item) =>
+    workflowQueueItemTouchesStop(item, routeId, monthIso, testingSiteId),
+  )
+  if (!removed.length) return removed
+  saveWorkflowSyncQueue(
+    queue.filter(
+      (item) => !workflowQueueItemTouchesStop(item, routeId, monthIso, testingSiteId),
+    ),
+  )
+  return removed
+}
+
+/** Drop unsynced field PATCH rows for one stop so reset is not overwritten on refresh. */
+export function purgePendingFieldChangesForStop(
+  routeId: number,
+  monthIso: string,
+  testingSiteId: number,
+): void {
+  saveSyncQueue(
+    loadSyncQueue().filter(
+      (item) =>
+        !(
+          item.routeId === routeId &&
+          item.monthIso === monthIso &&
+          item.testingSiteId === testingSiteId
+        ),
+    ),
+  )
+}
+
 export function hasPendingWorkflowForRouteMonth(routeId: number, monthIso: string): boolean {
   return loadWorkflowSyncQueue().some(
     (item) => item.routeId === routeId && item.monthIso === monthIso,

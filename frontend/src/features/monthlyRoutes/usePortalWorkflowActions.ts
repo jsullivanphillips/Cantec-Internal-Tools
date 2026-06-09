@@ -19,16 +19,13 @@ import { waitForWorkflowQueueItem, resolveWorkflowQueueItem } from './portalWork
 import {
   enqueuePortalWorkflowAction,
   hasPendingWorkflowForRouteMonth,
+  purgePendingFieldChangesForStop,
+  purgePendingWorkflowForStop,
   saveWorksheetCache,
   saveWorkflowSyncQueue,
   type PortalWorkflowAction,
 } from './worksheetOfflineStore'
-import {
-  cancelClockInRevertPatch,
-  pendingClockInForStop,
-  routeWorkflowQueueItems,
-  isPendingClockInQueueHead,
-} from './portalCancelClockIn'
+import { cancelClockInRevertPatch, pendingClockInForStop, routeWorkflowQueueItems, isPendingClockInQueueHead } from './portalCancelClockIn'
 
 function extendSuppressWhileWorkflowPending(
   ref: MutableRefObject<number>,
@@ -312,49 +309,38 @@ export function usePortalWorkflowActions({
   const resetStop = useCallback(
     async (stop: TechnicianWorksheetStop) => {
       const resetPatch = optimisticResetStopPatch()
-      const queue = routeWorkflowQueueItems(routeId, monthIso)
-      const pendingClockIn = pendingClockInForStop(queue, stop.testing_site_id)
-
-      if (pendingClockIn) {
-        if (isPendingClockInQueueHead(queue, pendingClockIn)) {
-          patchStopLocal(stop.testing_site_id, resetPatch)
-
-          const resetItem = enqueuePortalWorkflowAction({
-            action: 'reset_stop',
-            routeId,
-            monthIso,
-            testingSiteId: stop.testing_site_id,
-            payload: {},
-          })
-
-          if (!navigator.onLine) {
-            setSyncState('saved_offline')
-          }
-          extendSuppressWhileWorkflowPending(suppressRemoteRefreshUntilRef, routeId, monthIso)
-          triggerSyncRef.current()
-
-          const clockInResult = await waitForWorkflowQueueItem(pendingClockIn.id)
-          if (!clockInResult.ok) {
-            return { ok: false }
-          }
-          return waitForWorkflowQueueItem(resetItem.id)
-        }
-
-        saveWorkflowSyncQueue(queue.filter((q) => q.id !== pendingClockIn.id))
-        resolveWorkflowQueueItem(pendingClockIn.id, { ok: true })
-        patchStopLocal(stop.testing_site_id, resetPatch)
-        extendSuppressWhileWorkflowPending(suppressRemoteRefreshUntilRef, routeId, monthIso)
-        triggerSyncRef.current()
-        return { ok: true }
+      const removed = purgePendingWorkflowForStop(routeId, monthIso, stop.testing_site_id)
+      for (const item of removed) {
+        resolveWorkflowQueueItem(item.id, { ok: true })
       }
+      purgePendingFieldChangesForStop(routeId, monthIso, stop.testing_site_id)
+      patchStopLocal(stop.testing_site_id, resetPatch)
 
-      return runAction(stop, 'reset_stop', {}, resetPatch)
+      const resetItem = enqueuePortalWorkflowAction({
+        action: 'reset_stop',
+        routeId,
+        monthIso,
+        testingSiteId: stop.testing_site_id,
+        payload: {
+          stop_number: stop.stop_number,
+        },
+      })
+
+      if (!navigator.onLine) {
+        setSyncState('saved_offline')
+      }
+      extendSuppressWhileWorkflowPending(suppressRemoteRefreshUntilRef, routeId, monthIso)
+      triggerSyncRef.current()
+
+      if (!navigator.onLine) {
+        return { ok: true, queued: true }
+      }
+      return waitForWorkflowQueueItem(resetItem.id)
     },
     [
       routeId,
       monthIso,
       patchStopLocal,
-      runAction,
       setSyncState,
       suppressRemoteRefreshUntilRef,
       triggerSyncRef,

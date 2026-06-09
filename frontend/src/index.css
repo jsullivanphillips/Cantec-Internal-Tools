@@ -9195,12 +9195,34 @@ body {
 
 .pw-mock-nav-stop-icon {
   display: inline-block;
-  font-size: 0.62rem;
-  line-height: 1;
+  width: 0.85em;
+  height: 0.85em;
   margin-right: 0.3rem;
-  vertical-align: 0.05em;
+  vertical-align: -0.125em;
   color: var(--pw-text-muted);
   opacity: 0.85;
+  flex-shrink: 0;
+}
+
+.pw-mock-nav-stop-map-icon {
+  width: 1.15em;
+  height: 1.15em;
+  flex-shrink: 0;
+}
+
+.pw-mock-back-icon {
+  width: 1.35rem;
+  height: 1.35rem;
+}
+
+.pw-mock-sidenav-key-btn-icon {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.pw-mock-sidenav-toggle-icon {
+  width: 1rem;
+  height: 1rem;
 }
 
 .pw-mock-sidenav-toggle {
