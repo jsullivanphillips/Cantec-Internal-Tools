@@ -18,7 +18,6 @@ import type { PortalWorksheetSyncState } from './usePortalWorksheet'
 import { waitForWorkflowQueueItem, resolveWorkflowQueueItem } from './portalWorkflowQueueWaiters'
 import {
   enqueuePortalWorkflowAction,
-  hasPendingWorkflowForRouteMonth,
   purgePendingFieldChangesForStop,
   purgePendingWorkflowForStop,
   saveWorksheetCache,
