@@ -15,6 +15,7 @@ import { portalStopHasOpenClock } from './portalWorkflowShared'
 import type { PortalWorksheetSyncState } from './usePortalWorksheet'
 import {
   backoffMs,
+  hasPendingRunLifecycleForRouteMonth,
   hasPendingWorkflowForRouteMonth,
   loadSyncQueue,
   loadWorksheetCache,
@@ -163,7 +164,10 @@ function updateSyncBadge(ctx: PortalWorkflowDrainContext): void {
       item.monthIso === ctx.monthIso &&
       item.testingSiteId != null,
   )
-  ctx.setSyncState(workflowPending || fieldPending ? 'saved_offline' : 'synced')
+  const runLifecyclePending = hasPendingRunLifecycleForRouteMonth(ctx.routeId, ctx.monthIso)
+  ctx.setSyncState(
+    workflowPending || fieldPending || runLifecyclePending ? 'saved_offline' : 'synced',
+  )
 }
 
 function stopsForProjection(ctx: PortalWorkflowDrainContext): TechnicianWorksheetStop[] {
@@ -261,6 +265,10 @@ export async function drainPortalWorkflowQueue(
 
   try {
     while (navigator.onLine) {
+      if (hasPendingRunLifecycleForRouteMonth(ctx.routeId, ctx.monthIso)) {
+        break
+      }
+
       const head = routeQueueItems(ctx.routeId, ctx.monthIso)[0]
       if (!head) break
 

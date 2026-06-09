@@ -1,6 +1,7 @@
 import type {
   TechnicianWorksheetPayload,
   TechnicianWorksheetRow,
+  TechnicianWorksheetRun,
   TechnicianWorksheetStop,
 } from './monthlyRoutesShared'
 import { projectStopsWithWorkflowQueue } from './portalRouteProjection'
@@ -88,7 +89,23 @@ export type WorksheetQueueItem = {
 const CACHE_PREFIX = 'monthlyWorksheetCache::'
 const QUEUE_KEY = 'monthlyWorksheetSyncQueue'
 const WORKFLOW_QUEUE_KEY = 'portalWorkflowSyncQueue'
+const RUN_LIFECYCLE_QUEUE_KEY = 'portalRunLifecycleSyncQueue'
 const COMPLETION_KEY_PREFIX = 'monthlyWorksheetCompletion::'
+
+export type PortalRunLifecycleAction = 'start_run'
+
+export type PortalRunLifecycleQueueItem = {
+  id: string
+  action: PortalRunLifecycleAction
+  routeId: number
+  monthIso: string
+  /** Optimistic ``started_at`` for ``start_run`` until the server confirms. */
+  clientStartedAt?: string
+  attempts: number
+  nextAttemptAt: number
+  /** Monotonic enqueue time for FIFO ordering. */
+  enqueuedAt: number
+}
 
 export type PortalWorkflowAction =
   | 'clock_in'
@@ -191,6 +208,44 @@ export function saveWorkflowSyncQueue(items: PortalWorkflowQueueItem[]): void {
   localStorage.setItem(WORKFLOW_QUEUE_KEY, JSON.stringify(items))
 }
 
+export function loadRunLifecycleSyncQueue(): PortalRunLifecycleQueueItem[] {
+  return safeParse<PortalRunLifecycleQueueItem[]>(localStorage.getItem(RUN_LIFECYCLE_QUEUE_KEY)) ?? []
+}
+
+export function saveRunLifecycleSyncQueue(items: PortalRunLifecycleQueueItem[]): void {
+  localStorage.setItem(RUN_LIFECYCLE_QUEUE_KEY, JSON.stringify(items))
+}
+
+export function enqueuePortalRunLifecycleAction(
+  item: Omit<PortalRunLifecycleQueueItem, 'id' | 'attempts' | 'nextAttemptAt' | 'enqueuedAt'>,
+): PortalRunLifecycleQueueItem {
+  const queue = loadRunLifecycleSyncQueue()
+  const filtered = queue.filter(
+    (q) =>
+      !(
+        q.routeId === item.routeId &&
+        q.monthIso === item.monthIso &&
+        q.action === item.action
+      ),
+  )
+  const qItem: PortalRunLifecycleQueueItem = {
+    ...item,
+    id: randomId(),
+    attempts: 0,
+    nextAttemptAt: Date.now(),
+    enqueuedAt: Date.now(),
+  }
+  filtered.push(qItem)
+  saveRunLifecycleSyncQueue(filtered)
+  return qItem
+}
+
+export function hasPendingRunLifecycleForRouteMonth(routeId: number, monthIso: string): boolean {
+  return loadRunLifecycleSyncQueue().some(
+    (item) => item.routeId === routeId && item.monthIso === monthIso,
+  )
+}
+
 export function enqueuePortalWorkflowAction(
   item: Omit<PortalWorkflowQueueItem, 'id' | 'attempts' | 'nextAttemptAt' | 'enqueuedAt'>,
 ): PortalWorkflowQueueItem {
@@ -232,7 +287,8 @@ export function hasPendingSyncForRouteMonth(routeId: number, monthIso: string): 
   const workflowPending = loadWorkflowSyncQueue().some(
     (item) => item.routeId === routeId && item.monthIso === monthIso,
   )
-  return fieldPending || workflowPending
+  const runLifecyclePending = hasPendingRunLifecycleForRouteMonth(routeId, monthIso)
+  return fieldPending || workflowPending || runLifecyclePending
 }
 
 /** Unsynced field edits for one stop (optionally skip queue items already applied on the server). */
@@ -339,7 +395,40 @@ export function mergePendingChangesIntoPayload(
     })
     next = { ...payload, stops }
   }
-  return mergeWorkflowQueueIntoPayload(next, routeId, monthIso)
+  return mergeRunLifecycleQueueIntoPayload(
+    mergeWorkflowQueueIntoPayload(next, routeId, monthIso),
+    routeId,
+    monthIso,
+  )
+}
+
+/** Apply pending portal run lifecycle queue onto the worksheet run header. */
+export function mergeRunLifecycleQueueIntoPayload(
+  payload: TechnicianWorksheetPayload,
+  routeId: number,
+  monthIso: string,
+  queue?: PortalRunLifecycleQueueItem[],
+): TechnicianWorksheetPayload {
+  if (!payload.run) return payload
+  const items =
+    queue ??
+    loadRunLifecycleSyncQueue().filter(
+      (item) => item.routeId === routeId && item.monthIso === monthIso,
+    )
+  if (!items.length) return payload
+
+  let run: TechnicianWorksheetRun = payload.run
+  const sorted = [...items].sort((a, b) => (a.enqueuedAt ?? 0) - (b.enqueuedAt ?? 0))
+  for (const item of sorted) {
+    if (item.action === 'start_run' && item.clientStartedAt && !(run.started_at || '').trim()) {
+      run = {
+        ...run,
+        started_at: item.clientStartedAt,
+        opened_at: run.opened_at ?? item.clientStartedAt,
+      }
+    }
+  }
+  return run === payload.run ? payload : { ...payload, run }
 }
 
 /** Keep local intent when a background fetch is behind the workflow queue. */
@@ -407,5 +496,9 @@ export function mergeServerWorksheetPayload(
     }
   }
 
-  return mergeWorkflowQueueIntoPayload({ ...server, stops }, routeId, monthIso)
+  return mergeRunLifecycleQueueIntoPayload(
+    mergeWorkflowQueueIntoPayload({ ...server, stops }, routeId, monthIso),
+    routeId,
+    monthIso,
+  )
 }

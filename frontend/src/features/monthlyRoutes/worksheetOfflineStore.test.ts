@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import type { TechnicianWorksheetStop } from './monthlyRoutesShared'
-import { preserveWorksheetStopOrderFields, reconcileStopWithServer } from './worksheetOfflineStore'
+import type { TechnicianWorksheetPayload, TechnicianWorksheetStop } from './monthlyRoutesShared'
+import {
+  mergeRunLifecycleQueueIntoPayload,
+  preserveWorksheetStopOrderFields,
+  reconcileStopWithServer,
+  type PortalRunLifecycleQueueItem,
+} from './worksheetOfflineStore'
 
 function stop(id: number, patch: Partial<TechnicianWorksheetStop> = {}): TechnicianWorksheetStop {
   return {
@@ -64,6 +69,55 @@ describe('reconcileStopWithServer', () => {
     expect(merged.stop_number).toBe(2)
     expect(merged.session_route_stop_order).toBe(2)
     expect(merged.test_outcome).toBe('all_good')
+  })
+})
+
+function worksheetPayload(runStartedAt: string | null): TechnicianWorksheetPayload {
+  return {
+    route: {
+      id: 1,
+      route_number: 18,
+      label: 'R18',
+      display_name: null,
+      weekday_iso: 1,
+      week_occurrence: 1,
+    },
+    month_date: '2026-05-01',
+    rows: [],
+    run: {
+      id: 10,
+      monthly_route_id: 1,
+      month_date: '2026-05-01',
+      status: 'open',
+      opened_at: '2026-05-01T00:00:00Z',
+      started_at: runStartedAt,
+      prepared_at: '2026-05-01T00:00:00Z',
+      field_ended_at: null,
+      completed_at: null,
+      source: 'office_manual',
+      is_historical: false,
+    },
+    stops: [],
+  }
+}
+
+describe('mergeRunLifecycleQueueIntoPayload', () => {
+  it('applies pending start_run onto an unprepared server run header', () => {
+    const payload = worksheetPayload(null)
+    const queue: PortalRunLifecycleQueueItem[] = [
+      {
+        id: 'q1',
+        action: 'start_run',
+        routeId: 1,
+        monthIso: '2026-05-01',
+        clientStartedAt: '2026-05-02T09:00:00Z',
+        attempts: 0,
+        nextAttemptAt: 0,
+        enqueuedAt: 1,
+      },
+    ]
+    const merged = mergeRunLifecycleQueueIntoPayload(payload, 1, '2026-05-01', queue)
+    expect(merged.run?.started_at).toBe('2026-05-02T09:00:00Z')
   })
 })
 

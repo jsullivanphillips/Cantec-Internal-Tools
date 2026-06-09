@@ -527,10 +527,13 @@ Creating a deficiency while the stop is `all_good` auto-downgrades to `passed_wi
 
 ### Portal sync & projected state (2026-05)
 
+**Start Run** is **optimistic** like workflow actions: the worksheet run header gets `started_at` immediately, the action is queued in `portalRunLifecycleSyncQueue`, and the serial drain posts `POST /api/technician_portal/routes/:id/runs` when back online. Workflow drain waits until run lifecycle backlog clears for that route/month.
+
 Technician workflow actions are **optimistic**: the UI updates immediately, then a **serial** `portalWorkflowSyncQueue` drains one server mutation at a time per route/month.
 
 | Layer | Module | Role |
 |-------|--------|------|
+| Run lifecycle | `usePortalWorksheet` + `portalRunLifecycleQueueRunner.ts` | Optimistic `started_at` + enqueue `start_run`; drains before workflow |
 | Intent | `usePortalWorkflowActions` + `worksheetOfflineStore` | Optimistic patch + enqueue |
 | Projection | `portalRouteProjection.ts` | `projectStopsWithWorkflowQueue` — apply pending queue in `enqueuedAt` order for gating and refresh merge |
 | Drain | `portalWorkflowQueueRunner.ts` | Strict FIFO; merges each server `stop` (or `from_stop` / `to_stop` for transition) into cached payload |

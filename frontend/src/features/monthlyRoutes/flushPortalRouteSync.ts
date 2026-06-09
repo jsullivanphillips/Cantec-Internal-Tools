@@ -5,10 +5,12 @@
 import { hasPendingSyncForRouteMonth } from './worksheetOfflineStore'
 
 export type PortalRouteSyncRunners = {
+  runRunLifecycleSyncQueue: () => Promise<void>
   runFieldSyncQueue: () => Promise<void>
   runWorkflowSyncQueue: () => Promise<void>
   isFieldSyncing: () => boolean
   isWorkflowSyncing: () => boolean
+  isRunLifecycleSyncing: () => boolean
 }
 
 const DEFAULT_MAX_WAIT_MS = 120_000
@@ -27,11 +29,15 @@ export async function waitForPortalRouteSyncIdle(
 
   const deadline = Date.now() + maxWaitMs
   while (Date.now() < deadline) {
+    await runners.runRunLifecycleSyncQueue()
     await runners.runWorkflowSyncQueue()
     await runners.runFieldSyncQueue()
 
     const pending = hasPendingSyncForRouteMonth(routeId, monthIso)
-    const busy = runners.isFieldSyncing() || runners.isWorkflowSyncing()
+    const busy =
+      runners.isFieldSyncing() ||
+      runners.isWorkflowSyncing() ||
+      runners.isRunLifecycleSyncing()
     if (!pending && !busy) {
       return true
     }
@@ -39,7 +45,10 @@ export async function waitForPortalRouteSyncIdle(
     await new Promise((resolve) => setTimeout(resolve, POLL_MS))
   }
 
-  return !hasPendingSyncForRouteMonth(routeId, monthIso) &&
+  return (
+    !hasPendingSyncForRouteMonth(routeId, monthIso) &&
     !runners.isFieldSyncing() &&
-    !runners.isWorkflowSyncing()
+    !runners.isWorkflowSyncing() &&
+    !runners.isRunLifecycleSyncing()
+  )
 }

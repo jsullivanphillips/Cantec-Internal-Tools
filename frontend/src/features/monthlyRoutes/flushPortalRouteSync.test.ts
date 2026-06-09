@@ -12,10 +12,12 @@ describe('waitForPortalRouteSyncIdle', () => {
     vi.spyOn(worksheetOfflineStore, 'hasPendingSyncForRouteMonth').mockReturnValue(false)
 
     const result = await waitForPortalRouteSyncIdle(7, '2026-05-01', {
+      runRunLifecycleSyncQueue: vi.fn(async () => {}),
       runFieldSyncQueue: vi.fn(async () => {}),
       runWorkflowSyncQueue: vi.fn(async () => {}),
       isFieldSyncing: () => false,
       isWorkflowSyncing: () => false,
+      isRunLifecycleSyncing: () => false,
     })
 
     expect(result).toBe(true)
@@ -30,10 +32,12 @@ describe('waitForPortalRouteSyncIdle', () => {
     const runWorkflowSyncQueue = vi.fn(async () => {})
 
     const result = await waitForPortalRouteSyncIdle(7, '2026-05-01', {
+      runRunLifecycleSyncQueue: vi.fn(async () => {}),
       runFieldSyncQueue: vi.fn(async () => {}),
       runWorkflowSyncQueue,
       isFieldSyncing: () => false,
       isWorkflowSyncing: () => false,
+      isRunLifecycleSyncing: () => false,
     })
 
     expect(result).toBe(true)

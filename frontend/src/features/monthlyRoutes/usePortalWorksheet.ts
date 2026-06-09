@@ -17,7 +17,9 @@ import {
 } from './runWorkflowShared'
 import {
   backoffMs,
+  enqueuePortalRunLifecycleAction,
   enqueueWorksheetChange,
+  hasPendingRunLifecycleForRouteMonth,
   hasPendingSyncForRouteMonth,
   loadSyncQueue,
   loadWorkflowSyncQueue,
@@ -31,6 +33,7 @@ import {
   worksheetStopChangesForSync,
 } from './worksheetOfflineStore'
 import { apiJson, authFailureRedirectPath, isAbortError } from '../../lib/apiClient'
+import { runPortalRunLifecycleSyncQueue } from './portalRunLifecycleSync'
 import { runPortalWorkflowSyncQueue } from './portalWorkflowSync'
 import { waitForPortalRouteSyncIdle } from './flushPortalRouteSync'
 import {
@@ -85,7 +88,9 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
   const [syncMessage, setSyncMessage] = useState<string | null>(null)
   const syncingRef = useRef(false)
   const workflowSyncingRef = useRef(false)
+  const runLifecycleSyncingRef = useRef(false)
   const triggerWorkflowSyncRef = useRef(() => {})
+  const triggerRunLifecycleSyncRef = useRef(() => {})
   const worksheetDeferredRemoteFetchRef = useRef(false)
   const worksheetInteractiveBusyRef = useRef(false)
   const hasLoadedOnceRef = useRef(false)
@@ -326,8 +331,12 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
     const workflowPending = loadWorkflowSyncQueue().some(
       (item) => item.routeId === routeId && item.monthIso === monthIso,
     )
-    setSyncState(nextQueue.length > 0 || workflowPending ? 'saved_offline' : 'synced')
+    const runLifecyclePending = hasPendingRunLifecycleForRouteMonth(routeId, monthIso)
+    setSyncState(
+      nextQueue.length > 0 || workflowPending || runLifecyclePending ? 'saved_offline' : 'synced',
+    )
     if (!nextQueue.length) {
+      void runRunLifecycleSyncQueueRef.current()
       void runWorkflowSyncQueueRef.current()
     }
   }, [routeId, monthOk, monthIso])
@@ -336,6 +345,25 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
   useEffect(() => {
     runSyncQueueRef.current = runSyncQueue
   }, [runSyncQueue])
+
+  const runRunLifecycleSyncQueue = useCallback(async () => {
+    if (Number.isNaN(routeId) || !monthOk) return
+    await runPortalRunLifecycleSyncQueue(
+      {
+        routeId,
+        monthIso,
+        setPayload,
+        setSyncState,
+        suppressRemoteRefreshUntilRef,
+      },
+      runLifecycleSyncingRef,
+    )
+  }, [routeId, monthOk, monthIso])
+
+  const runRunLifecycleSyncQueueRef = useRef(runRunLifecycleSyncQueue)
+  useEffect(() => {
+    runRunLifecycleSyncQueueRef.current = runRunLifecycleSyncQueue
+  }, [runRunLifecycleSyncQueue])
 
   const runWorkflowSyncQueue = useCallback(async () => {
     if (Number.isNaN(routeId) || !monthOk) return
@@ -360,12 +388,18 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
     void runWorkflowSyncQueueRef.current()
   }
 
+  triggerRunLifecycleSyncRef.current = () => {
+    void runRunLifecycleSyncQueueRef.current()
+  }
+
   const waitForPortalSyncIdle = useCallback(async (): Promise<boolean> => {
     return waitForPortalRouteSyncIdle(routeId, monthIso, {
+      runRunLifecycleSyncQueue: () => runRunLifecycleSyncQueueRef.current(),
       runFieldSyncQueue: () => runSyncQueueRef.current(),
       runWorkflowSyncQueue: () => runWorkflowSyncQueueRef.current(),
       isFieldSyncing: () => syncingRef.current,
       isWorkflowSyncing: () => workflowSyncingRef.current,
+      isRunLifecycleSyncing: () => runLifecycleSyncingRef.current,
     })
   }, [routeId, monthIso])
 
@@ -407,26 +441,38 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
     if (payload?.run != null && payload.run.started_at != null) return
     setPortalStartingRun(true)
     try {
-      const body = await apiJson<{ run: TechnicianWorksheetRun }>(
-        `/api/technician_portal/routes/${routeId}/runs`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: '{}',
-        },
-      )
-      applyServerRunToPayload(body.run)
-    } catch (e) {
-      const maybe = e as { code?: string }
-      if (maybe?.code === 'run_not_prepared') {
-        window.alert('Office has not released this route for testing yet.')
-      } else {
-        window.alert('Could not start run. Try again.')
+      const now = new Date().toISOString()
+      setPayload((prev) => {
+        if (!prev?.run) return prev
+        const next = {
+          ...prev,
+          run: {
+            ...prev.run,
+            started_at: now,
+            opened_at: prev.run.opened_at ?? now,
+          },
+        }
+        saveWorksheetCache(next)
+        return next
+      })
+      enqueuePortalRunLifecycleAction({
+        action: 'start_run',
+        routeId,
+        monthIso,
+        clientStartedAt: now,
+      })
+      if (!navigator.onLine) {
+        setSyncState('saved_offline')
       }
+      suppressRemoteRefreshUntilRef.current = Math.max(
+        suppressRemoteRefreshUntilRef.current,
+        Date.now() + 60_000,
+      )
+      void runRunLifecycleSyncQueueRef.current()
     } finally {
       setPortalStartingRun(false)
     }
-  }, [routeId, payload?.run, applyServerRunToPayload, viewingHistoricalRun])
+  }, [routeId, monthIso, payload?.run, viewingHistoricalRun])
 
   const postPortalEndRun = useCallback(async (): Promise<boolean> => {
     try {
@@ -594,6 +640,7 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
 
   useEffect(() => {
     const t = setInterval(() => {
+      void runRunLifecycleSyncQueueRef.current()
       void runSyncQueue()
       void runWorkflowSyncQueueRef.current()
     }, 3500)
@@ -670,7 +717,12 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
       es = null
     }
 
-    const onOnline = () => openEs()
+    const onOnline = () => {
+      void runRunLifecycleSyncQueueRef.current()
+      void runSyncQueueRef.current()
+      void runWorkflowSyncQueueRef.current()
+      openEs()
+    }
 
     openEs()
     document.addEventListener('visibilitychange', onVisibility)
