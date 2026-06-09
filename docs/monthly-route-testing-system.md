@@ -542,6 +542,15 @@ Technician workflow actions are **optimistic**: the UI updates immediately, then
 
 **Refresh:** `mergeWorkflowQueueIntoPayload` overlays the workflow queue on GET/SSE merges so stale server data cannot reopen a site the technician already clocked out of. Remote refresh is suppressed while the workflow queue is non-empty.
 
+**PWA / offline shell (field iPad):** The technician portal is an installable PWA scoped to `/tech` (`vite-plugin-pwa` + Workbox). After at least one **online** visit, the service worker precaches `index.html` and Vite chunks so Safari can reload the worksheet offline. `portalSessionSnapshot` in `sessionStorage` restores PIN-unlock and technician identity when `/api/technician_portal/me` cannot be reached. Field edits still use the queues above (`localStorage`).
+
+**Field iPad setup:**
+
+1. Open `/tech` **online**, unlock with PIN, pick technician, and open the route worksheet once (precache + worksheet cache).
+2. Safari **Share → Add to Home Screen** (standalone app; `start_url` `/tech/start`).
+3. Prefer the home-screen icon for field work; avoid pull-to-refresh while offline unless the worksheet was opened online first in that session.
+4. PIN unlock and the route picker still require network; queued worksheet changes sync when back online.
+
 **End field run:** On the portal worksheet, **End field run** runs client preflight (`portalEndRunPreflight.ts`, `PortalEndRunModals.tsx`) after sync drain:
 
 1. **Open clock** — If any stop still has an open clock-in (projected queue state), a modal blocks ending the run and offers **Go to clocked-in stop** or **Cancel**.

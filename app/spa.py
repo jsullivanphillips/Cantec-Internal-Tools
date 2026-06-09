@@ -59,11 +59,24 @@ def register_spa_static_routes(app):
     # Files from frontend/public/ are copied to dist/ root by Vite; Flask must expose them explicitly
     # (unlike /assets/*). Keep this list in sync with files linked from index.html or the SPA.
     _dist_root_files = frozenset(
-        {"cantec-logo-horizontal.png", "vite.svg", "CANTEC Fire Alarms LOGO cropped.png"}
+        {
+            "cantec-logo-horizontal.png",
+            "vite.svg",
+            "CANTEC Fire Alarms LOGO cropped.png",
+            "pwa-192.png",
+            "pwa-512.png",
+            "sw.js",
+            "manifest.webmanifest",
+        }
     )
 
+    def _is_allowed_dist_root(filename: str) -> bool:
+        if filename in _dist_root_files:
+            return True
+        return filename.startswith("workbox-") and filename.endswith(".js")
+
     def _send_dist_root(filename: str):
-        if filename not in _dist_root_files:
+        if not _is_allowed_dist_root(filename):
             abort(404)
         path = os.path.join(dist, filename)
         if not os.path.isfile(path):
@@ -85,3 +98,23 @@ def register_spa_static_routes(app):
     @app.get("/favicon.png")
     def spa_favicon_png():
         return _send_dist_root("CANTEC Fire Alarms LOGO cropped.png")
+
+    @app.get("/pwa-192.png")
+    def spa_pwa_icon_192():
+        return _send_dist_root("pwa-192.png")
+
+    @app.get("/pwa-512.png")
+    def spa_pwa_icon_512():
+        return _send_dist_root("pwa-512.png")
+
+    @app.get("/sw.js")
+    def spa_service_worker():
+        return _send_dist_root("sw.js")
+
+    @app.get("/manifest.webmanifest")
+    def spa_web_manifest():
+        return _send_dist_root("manifest.webmanifest")
+
+    @app.get("/workbox-<workbox_hash>.js")
+    def spa_workbox_helper(workbox_hash: str):
+        return _send_dist_root(f"workbox-{workbox_hash}.js")

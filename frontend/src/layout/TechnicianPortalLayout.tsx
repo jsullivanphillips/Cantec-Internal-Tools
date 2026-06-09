@@ -1,7 +1,14 @@
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Suspense, useCallback, useEffect, useState } from 'react'
-import { Button } from 'react-bootstrap'
+import { Badge, Button } from 'react-bootstrap'
 import { apiFetch, apiJson } from '../lib/apiClient'
+import {
+  clearPortalSessionSnapshot,
+  isPortalNetworkUnavailableError,
+  portalSessionSnapshotForOfflineBoot,
+  readPortalSessionSnapshot,
+  writePortalSessionSnapshot,
+} from '../lib/portalSessionSnapshot'
 
 type PortalMeResponse = {
   unlocked: boolean
@@ -26,6 +33,7 @@ export default function TechnicianPortalLayout() {
   const [logoFailed, setLogoFailed] = useState(false)
   const [unlocked, setUnlocked] = useState<boolean | null>(null)
   const [sessionTechName, setSessionTechName] = useState<string | null>(null)
+  const [offline, setOffline] = useState(() => !navigator.onLine)
 
   const isLockScreen = location.pathname === LOCK_PATH || location.pathname === `${LOCK_PATH}/`
   const isTechnicianPicker =
@@ -35,10 +43,30 @@ export default function TechnicianPortalLayout() {
     location.pathname.startsWith('/tech/route/')
   const isWorksheetScreen = location.pathname.includes('/worksheet/')
 
+  const applyOfflineSessionSnapshot = useCallback(() => {
+    const snapshot = portalSessionSnapshotForOfflineBoot()
+    if (!snapshot) return false
+    setUnlocked(true)
+    if (snapshot.technician?.name) {
+      setSessionTechName(snapshot.technician.name)
+    }
+    return true
+  }, [])
+
   const refreshLock = useCallback(async () => {
+    if (!navigator.onLine) {
+      applyOfflineSessionSnapshot()
+      return
+    }
     try {
       const me = await apiJson<PortalMeResponse>('/api/technician_portal/me')
-      setUnlocked(!!me.unlocked)
+      const isUnlocked = !!me.unlocked
+      setUnlocked(isUnlocked)
+      if (isUnlocked) {
+        writePortalSessionSnapshot({ unlocked: true })
+      } else {
+        clearPortalSessionSnapshot()
+      }
     } catch (e) {
       const code =
         typeof e === 'object' && e != null && 'code' in e
@@ -46,14 +74,30 @@ export default function TechnicianPortalLayout() {
           : ''
       if (code === 'portal_locked' || code === 'auth_required') {
         setUnlocked(false)
+        clearPortalSessionSnapshot()
+        return
+      }
+      if (isPortalNetworkUnavailableError(e) && applyOfflineSessionSnapshot()) {
+        return
       }
       /* Transient/network errors: keep prior unlock state so a blip does not kick techs out. */
     }
-  }, [])
+  }, [applyOfflineSessionSnapshot])
 
   useEffect(() => {
     void refreshLock()
   }, [refreshLock, location.pathname])
+
+  useEffect(() => {
+    const onOnline = () => setOffline(false)
+    const onOffline = () => setOffline(true)
+    window.addEventListener('online', onOnline)
+    window.addEventListener('offline', onOffline)
+    return () => {
+      window.removeEventListener('online', onOnline)
+      window.removeEventListener('offline', onOffline)
+    }
+  }, [])
 
   useEffect(() => {
     if (unlocked === false && !isLockScreen) {
@@ -72,12 +116,18 @@ export default function TechnicianPortalLayout() {
         const data = await apiJson<SessionTechnicianResponse>('/api/technician_portal/session/technician')
         if (cancelled) return
         setSessionTechName(data.technician?.name ?? null)
+        writePortalSessionSnapshot({ technician: data.technician })
         if (needsTechnicianSession && !data.technician) {
           nav('/tech/technician', { replace: true })
         }
-      } catch {
+      } catch (e) {
         if (cancelled) return
-        if (needsTechnicianSession) {
+        const snapshot = readPortalSessionSnapshot()
+        if (snapshot?.technician) {
+          setSessionTechName(snapshot.technician.name)
+          return
+        }
+        if (needsTechnicianSession && !isPortalNetworkUnavailableError(e)) {
           nav('/tech/technician', { replace: true })
         }
       }
@@ -146,6 +196,7 @@ export default function TechnicianPortalLayout() {
     } catch {
       /* ignore – we still navigate to lock screen */
     }
+    clearPortalSessionSnapshot()
     setUnlocked(false)
     nav(LOCK_PATH, { replace: true })
   }, [nav])
@@ -171,6 +222,11 @@ export default function TechnicianPortalLayout() {
             <span className="badge text-bg-light border text-secondary d-none d-md-inline">
               {sessionTechName}
             </span>
+          ) : null}
+          {offline ? (
+            <Badge bg="warning" text="dark" className="d-none d-sm-inline">
+              Offline
+            </Badge>
           ) : null}
         </div>
         {unlocked && !isLockScreen ? (
