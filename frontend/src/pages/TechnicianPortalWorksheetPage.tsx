@@ -14,7 +14,7 @@ import { usePortalWorksheet } from '../features/monthlyRoutes/usePortalWorksheet
 import { usePortalWorksheetDemo } from '../features/monthlyRoutes/usePortalWorksheetDemo'
 import PortalEditableFieldRow from '../features/monthlyRoutes/PortalEditableFieldRow'
 import {
-  scrollPortalFieldRowIntoView,
+  schedulePortalFieldRowScrollForElement,
   usePortalFieldEditActionRegistry,
 } from '../features/monthlyRoutes/portalFieldEditRegistry'
 import PortalMonitoringCompanyField from '../features/monthlyRoutes/PortalMonitoringCompanyField'
@@ -446,10 +446,9 @@ export default function TechnicianPortalWorksheetPage() {
   }, [active?.testing_site_id])
 
   useLayoutEffect(() => {
-    if (!activeFieldEditActions) return
+    if (!activeFieldEditActions) return undefined
     const row = document.querySelector<HTMLElement>('.pw-mock-field-row--editing')
-    scrollPortalFieldRowIntoView(row)
-    requestAnimationFrame(() => scrollPortalFieldRowIntoView(row))
+    return schedulePortalFieldRowScrollForElement(row)
   }, [activeFieldEditActions])
 
   useEffect(() => {

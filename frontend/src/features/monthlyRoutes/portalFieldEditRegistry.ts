@@ -1,6 +1,9 @@
 import { useCallback, useMemo, useRef, useState, type RefObject } from 'react'
 import type { PortalFieldEditActions } from './PortalEditableFieldRow'
 
+const KEYBOARD_SCROLL_DELAYS_MS = [80, 320, 400, 600] as const
+const KEYBOARD_VIEWPORT_SHRINK_PX = 40
+
 /** Scroll an editing field row clear of the dock and on-screen keyboard. */
 export function scrollPortalFieldRowIntoView(row: HTMLElement | null): void {
   if (!row) return
@@ -26,20 +29,39 @@ export function scrollPortalFieldRowIntoView(row: HTMLElement | null): void {
 }
 
 export function schedulePortalFieldRowScroll(rowRef: RefObject<HTMLElement | null>): () => void {
-  const run = () => scrollPortalFieldRowIntoView(rowRef.current)
+  const getRow = () => rowRef.current
+  const run = () => scrollPortalFieldRowIntoView(getRow())
+  const vv = window.visualViewport
+  const baselineHeight = vv?.height ?? window.innerHeight
+
   run()
   requestAnimationFrame(run)
-  const t1 = window.setTimeout(run, 80)
-  const t2 = window.setTimeout(run, 320)
-  const vv = window.visualViewport
-  vv?.addEventListener('resize', run)
-  vv?.addEventListener('scroll', run)
-  return () => {
-    window.clearTimeout(t1)
-    window.clearTimeout(t2)
-    vv?.removeEventListener('resize', run)
-    vv?.removeEventListener('scroll', run)
+  const timers = KEYBOARD_SCROLL_DELAYS_MS.map((delayMs) => window.setTimeout(run, delayMs))
+
+  const onViewportChange = () => {
+    if (!vv) {
+      run()
+      return
+    }
+    // iPad/iOS often opens the keyboard after focus; re-scroll once the viewport shrinks.
+    if (vv.height < baselineHeight - KEYBOARD_VIEWPORT_SHRINK_PX) {
+      run()
+    }
   }
+
+  vv?.addEventListener('resize', onViewportChange)
+  vv?.addEventListener('scroll', onViewportChange)
+
+  return () => {
+    timers.forEach((timer) => window.clearTimeout(timer))
+    vv?.removeEventListener('resize', onViewportChange)
+    vv?.removeEventListener('scroll', onViewportChange)
+  }
+}
+
+export function schedulePortalFieldRowScrollForElement(row: HTMLElement | null): () => void {
+  const rowRef = { current: row }
+  return schedulePortalFieldRowScroll(rowRef)
 }
 
 type FieldHandlerMap = Map<string, Pick<PortalFieldEditActions, 'cancel' | 'save'>>
