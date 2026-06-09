@@ -325,6 +325,36 @@ export function purgePendingFieldChangesForStop(
   )
 }
 
+/** True while local edits are still queued — do not let SSE/background GET overwrite them. */
+export function shouldSuppressRemoteWorksheetRefresh(
+  suppressUntilMs: number,
+  routeId: number,
+  monthIso: string,
+): boolean {
+  if (Date.now() < suppressUntilMs) return true
+  return hasPendingSyncForRouteMonth(routeId, monthIso)
+}
+
+export function hasPendingSyncForStop(
+  routeId: number,
+  monthIso: string,
+  testingSiteId: number,
+): boolean {
+  const fieldPending = loadSyncQueue().some(
+    (item) =>
+      item.routeId === routeId &&
+      item.monthIso === monthIso &&
+      item.testingSiteId === testingSiteId,
+  )
+  if (fieldPending) return true
+  return loadWorkflowSyncQueue().some(
+    (item) =>
+      item.routeId === routeId &&
+      item.monthIso === monthIso &&
+      item.testingSiteId === testingSiteId,
+  )
+}
+
 export function hasPendingWorkflowForRouteMonth(routeId: number, monthIso: string): boolean {
   return loadWorkflowSyncQueue().some(
     (item) => item.routeId === routeId && item.monthIso === monthIso,
@@ -496,21 +526,30 @@ export function mergeRunLifecycleQueueIntoPayload(
 export function reconcileStopWithServer(
   local: TechnicianWorksheetStop,
   remote: TechnicianWorksheetStop,
+  routeId?: number,
+  monthIso?: string,
 ): TechnicianWorksheetStop {
   if (portalStopHasTestOutcome(local) && !portalStopHasTestOutcome(remote)) {
-    return preserveWorksheetStopOrderFields(local, {
-      ...remote,
-      test_outcome: local.test_outcome,
-      skip_category: local.skip_category,
-      skip_note: local.skip_note,
-      result_status: local.result_status,
-      skip_reason: local.skip_reason,
-      confirmed_no_deficiencies: local.confirmed_no_deficiencies,
-      is_legacy_outcome: local.is_legacy_outcome,
-      clock_events: local.clock_events,
-      time_in: local.time_in,
-      time_out: local.time_out,
-    })
+    const keepLocalOutcome =
+      routeId != null &&
+      monthIso != null &&
+      hasPendingSyncForStop(routeId, monthIso, local.testing_site_id)
+    if (keepLocalOutcome) {
+      return preserveWorksheetStopOrderFields(local, {
+        ...remote,
+        test_outcome: local.test_outcome,
+        skip_category: local.skip_category,
+        skip_note: local.skip_note,
+        result_status: local.result_status,
+        skip_reason: local.skip_reason,
+        confirmed_no_deficiencies: local.confirmed_no_deficiencies,
+        is_legacy_outcome: local.is_legacy_outcome,
+        clock_events: local.clock_events,
+        time_in: local.time_in,
+        time_out: local.time_out,
+      })
+    }
+    return preserveWorksheetStopOrderFields(local, remote)
   }
   if (
     portalStopVisitComplete(local) &&
@@ -534,7 +573,6 @@ export function mergeServerWorksheetPayload(
   routeId: number,
   monthIso: string,
 ): TechnicianWorksheetPayload {
-  const workflowPending = hasPendingWorkflowForRouteMonth(routeId, monthIso)
   const serverStops = server.stops ?? []
   const serverById = new Map(serverStops.map((s) => [s.testing_site_id, s]))
   const prevIds = new Set((prev.stops ?? []).map((s) => s.testing_site_id))
@@ -547,7 +585,10 @@ export function mergeServerWorksheetPayload(
       continue
     }
     const pending = collectPendingStopChanges(routeId, monthIso, s.testing_site_id)
-    let merged = workflowPending ? reconcileStopWithServer(s, remote) : remote
+    const stopHasPendingSync = hasPendingSyncForStop(routeId, monthIso, s.testing_site_id)
+    let merged = stopHasPendingSync
+      ? reconcileStopWithServer(s, remote, routeId, monthIso)
+      : remote
     merged = Object.keys(pending).length > 0 ? { ...merged, ...pending } : merged
     stops.push(merged)
   }

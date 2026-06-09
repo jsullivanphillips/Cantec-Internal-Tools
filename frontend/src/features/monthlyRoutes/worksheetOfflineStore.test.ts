@@ -45,7 +45,33 @@ function stop(id: number, patch: Partial<TechnicianWorksheetStop> = {}): Technic
 }
 
 describe('reconcileStopWithServer', () => {
-  it('keeps local test outcome when server fetch lags', () => {
+  beforeEach(() => {
+    const store = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        store.set(key, value)
+      },
+      removeItem: (key: string) => {
+        store.delete(key)
+      },
+    })
+  })
+
+  it('keeps local test outcome when this device still has pending sync for the stop', () => {
+    saveWorkflowSyncQueue([
+      {
+        id: 'q1',
+        routeId: 1,
+        monthIso: '2026-05-01',
+        testingSiteId: 1,
+        action: 'test_outcome',
+        payload: { test_outcome: 'all_good' },
+        attempts: 0,
+        nextAttemptAt: 0,
+        enqueuedAt: 1,
+      },
+    ])
     const local = stop(1, {
       test_outcome: 'all_good',
       result_status: 'tested',
@@ -56,9 +82,28 @@ describe('reconcileStopWithServer', () => {
       clock_events: [{ id: 1, sort_order: 1, time_in: '9:00 AM', time_out: null }],
       time_in: '9:00 AM',
     })
-    const merged = reconcileStopWithServer(local, remote)
+    const merged = reconcileStopWithServer(local, remote, 1, '2026-05-01')
     expect(merged.test_outcome).toBe('all_good')
     expect(merged.clock_events?.[0]?.time_out).toBe('9:30 AM')
+  })
+
+  it('accepts server reset when another device cleared the stop and this device has no pending sync', () => {
+    const local = stop(1, {
+      test_outcome: 'all_good',
+      result_status: 'tested',
+      clock_events: [{ id: 1, sort_order: 1, time_in: '9:00 AM', time_out: '9:30 AM' }],
+      time_out: '9:30 AM',
+    })
+    const remote = stop(1, {
+      test_outcome: null,
+      result_status: null,
+      clock_events: [],
+      time_in: null,
+      time_out: null,
+    })
+    const merged = reconcileStopWithServer(local, remote, 1, '2026-05-01')
+    expect(merged.test_outcome).toBeNull()
+    expect(merged.clock_events).toEqual([])
   })
 
   it('preserves local stop_number when server response recalculates order', () => {
@@ -69,7 +114,7 @@ describe('reconcileStopWithServer', () => {
       test_outcome: 'all_good',
       result_status: 'tested',
     })
-    const merged = reconcileStopWithServer(local, remote)
+    const merged = reconcileStopWithServer(local, remote, 1, '2026-05-01')
     expect(merged.stop_number).toBe(2)
     expect(merged.session_route_stop_order).toBe(2)
     expect(merged.test_outcome).toBe('all_good')

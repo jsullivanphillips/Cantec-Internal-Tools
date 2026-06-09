@@ -149,7 +149,7 @@ function mergeStopIntoPayload(
   if (hasPendingWorkflowForRouteMonth(ctx.routeId, ctx.monthIso)) {
     ctx.suppressRemoteRefreshUntilRef.current = Math.max(
       ctx.suppressRemoteRefreshUntilRef.current,
-      Date.now() + 60_000,
+      Date.now() + 2500,
     )
   }
 }

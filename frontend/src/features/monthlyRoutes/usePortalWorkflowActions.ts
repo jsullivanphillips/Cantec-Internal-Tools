@@ -29,12 +29,10 @@ import { cancelClockInRevertPatch, pendingClockInForStop, routeWorkflowQueueItem
 
 function extendSuppressWhileWorkflowPending(
   ref: MutableRefObject<number>,
-  routeId: number,
-  monthIso: string,
+  _routeId: number,
+  _monthIso: string,
 ): void {
-  if (hasPendingWorkflowForRouteMonth(routeId, monthIso)) {
-    ref.current = Math.max(ref.current, Date.now() + 60_000)
-  }
+  ref.current = Math.max(ref.current, Date.now() + 2500)
 }
 
 type WorkflowHookParams = {

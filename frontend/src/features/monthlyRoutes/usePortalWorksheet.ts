@@ -32,6 +32,7 @@ import {
   saveSyncQueue,
   saveWorksheetCache,
   serverRunWasExternallyReset,
+  shouldSuppressRemoteWorksheetRefresh,
   type WorksheetStopChangeSet,
   worksheetStopChangesForSync,
 } from './worksheetOfflineStore'
@@ -507,7 +508,7 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
       }
       suppressRemoteRefreshUntilRef.current = Math.max(
         suppressRemoteRefreshUntilRef.current,
-        Date.now() + 60_000,
+        Date.now() + 2500,
       )
       void runRunLifecycleSyncQueueRef.current()
     } finally {
@@ -641,7 +642,8 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
   const onPortalReopenRun = onPortalReopenField
 
   const applyRemoteWorksheetRefresh = useCallback(() => {
-    if (Date.now() < suppressRemoteRefreshUntilRef.current) {
+    if (shouldSuppressRemoteWorksheetRefresh(suppressRemoteRefreshUntilRef.current, routeId, monthIso)) {
+      worksheetDeferredRemoteFetchRef.current = true
       return
     }
     if (worksheetInteractiveBusyRef.current) {
@@ -650,7 +652,7 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
     }
     worksheetDeferredRemoteFetchRef.current = false
     refreshInBackgroundRef.current()
-  }, [])
+  }, [routeId, monthIso])
 
   const setInteractiveBusy = useCallback((busy: boolean) => {
     worksheetInteractiveBusyRef.current = busy
@@ -682,9 +684,21 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
       void runRunLifecycleSyncQueueRef.current()
       void runSyncQueue()
       void runWorkflowSyncQueueRef.current()
+      if (worksheetDeferredRemoteFetchRef.current) {
+        applyRemoteWorksheetRefresh()
+      }
     }, 3500)
     return () => clearInterval(t)
-  }, [runSyncQueue])
+  }, [runSyncQueue, applyRemoteWorksheetRefresh])
+
+  useEffect(() => {
+    const t = setInterval(() => {
+      if (document.visibilityState === 'visible' && navigator.onLine && hasLoadedOnceRef.current) {
+        applyRemoteWorksheetRefresh()
+      }
+    }, 30_000)
+    return () => clearInterval(t)
+  }, [applyRemoteWorksheetRefresh])
 
   const [sseGateOpen, setSseGateOpen] = useState(false)
 
@@ -740,6 +754,9 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
         } catch {
           return
         }
+        applyRemoteWorksheetRefresh()
+      }
+      es.onopen = () => {
         applyRemoteWorksheetRefresh()
       }
       es.onerror = () => {
