@@ -707,6 +707,19 @@ export type TechnicianWorksheetStop = {
   version_updated_at: string | null
 }
 
+export type PortalPriorMonthPaceStatus = 'ahead' | 'behind' | 'even'
+
+export type PortalPriorMonthPace = {
+  available: boolean
+  prior_month_label?: string
+  comparison_day?: number
+  as_of_time_label?: string
+  current_tested_count?: number
+  prior_tested_count?: number
+  delta?: number
+  status?: PortalPriorMonthPaceStatus
+}
+
 export type TechnicianWorksheetPayload = {
   route: MonthlyRouteSummary
   month_date: string
@@ -715,6 +728,8 @@ export type TechnicianWorksheetPayload = {
   rows: TechnicianWorksheetRow[]
   /** Portal worksheet (``tech_portal=1``): one stop per testing site. */
   stops?: TechnicianWorksheetStop[]
+  /** Pacific current-month field pace vs prior month (portal worksheet header). */
+  prior_month_pace?: PortalPriorMonthPace | null
 }
 
 export function monthlyCommentAuthorsMatch(session: string | null, author: string | null): boolean {

@@ -70,6 +70,7 @@ import {
   type PortalDeficiencySummary,
   type PortalSkipCategory,
 } from '../features/monthlyRoutes/portalWorkflowShared'
+import { PortalRunPaceMetric } from '../features/monthlyRoutes/PortalRunPaceMetric'
 
 type StopDisplayStatus = 'pending' | 'in_progress' | 'tested' | 'skipped'
 
@@ -912,6 +913,9 @@ export default function TechnicianPortalWorksheetPage() {
               {monthHeading} run · {progress.total} stops
             </div>
           </div>
+          {!phoneLayout && payload?.prior_month_pace?.available ? (
+            <PortalRunPaceMetric pace={payload.prior_month_pace} />
+          ) : null}
           <div className="pw-mock-chrome-actions">
             {showStartRun ? (
               <Button

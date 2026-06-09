@@ -53,10 +53,10 @@ export default function PortalStopSummaryDetail({
               {monitoring.account}
             </span>
           ) : null}
-          {monitoring.password !== '—' ? (
+          {showMonitoring ? (
             <span className="pw-mock-nav-stop-line">
               <span className="pw-mock-nav-stop-label">PW</span>
-              {monitoring.password}
+              {monitoring.password !== '—' ? monitoring.password : 'No Password'}
             </span>
           ) : null}
         </span>

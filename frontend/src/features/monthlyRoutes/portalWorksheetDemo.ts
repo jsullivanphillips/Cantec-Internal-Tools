@@ -215,5 +215,15 @@ export function buildPortalWorksheetDemoPayload(monthIso: string): TechnicianWor
     },
     rows: [],
     stops: demoStops(monthIso),
+    prior_month_pace: {
+      available: true,
+      prior_month_label: 'May',
+      comparison_day: 9,
+      as_of_time_label: '10:00 AM',
+      current_tested_count: 3,
+      prior_tested_count: 4,
+      delta: -1,
+      status: 'behind',
+    },
   }
 }

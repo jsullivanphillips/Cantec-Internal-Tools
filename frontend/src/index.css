@@ -8703,6 +8703,58 @@ body {
   gap: 0.5rem;
 }
 
+@media (min-width: 768px) {
+  .pw-mock-chrome-top {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 0.65rem 0.75rem;
+  }
+
+  .pw-mock-chrome-titles {
+    flex: unset;
+  }
+
+  .pw-mock-chrome-pace {
+    display: flex;
+    justify-content: center;
+    min-width: 0;
+  }
+
+  .pw-mock-chrome-actions {
+    justify-self: end;
+  }
+}
+
+.pw-mock-chrome-pace-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  font-weight: 650;
+  border-radius: 999px;
+  padding: 0.35rem 0.65rem;
+  max-width: 100%;
+  line-height: 1.2;
+}
+
+.pw-mock-chrome-pace-status {
+  white-space: nowrap;
+}
+
+.pw-mock-chrome-pace-delta {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pw-mock-chrome-pace-vs {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  opacity: 0.92;
+  white-space: nowrap;
+}
+
 .pw-mock-back {
   font-size: 1.35rem;
   line-height: 1;
@@ -9267,6 +9319,10 @@ body {
   max-width: none;
   width: 100%;
   height: 100%;
+  --pw-key-view-tested-bg: rgba(220, 252, 231, 0.42);
+  --pw-key-view-passed-problems-bg: rgba(252, 231, 243, 0.42);
+  --pw-key-view-failed-bg: rgba(254, 202, 202, 0.42);
+  --pw-key-view-skipped-bg: rgba(254, 243, 199, 0.42);
 }
 
 .pw-key-view-modal-backdrop {
@@ -9312,20 +9368,22 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2.75rem;
-  height: 2.75rem;
-  border: 0;
+  width: 3.35rem;
+  height: 3.35rem;
+  border: 1px solid var(--pw-border, #d8e1eb);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.72);
-  color: var(--pw-text-muted);
-  font-size: 1.1rem;
+  background: #fff;
+  color: var(--pw-text);
+  font-size: 1.45rem;
   cursor: pointer;
-  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.12);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.16);
 }
 
 .pw-key-view-close:hover {
-  background: rgba(15, 23, 42, 0.1);
+  background: #fff;
   color: var(--pw-text);
+  border-color: #cbd5e1;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.2);
 }
 
 .pw-key-view-title {
@@ -9419,24 +9477,24 @@ body {
 }
 
 .pw-key-view-item--tested {
-  background: var(--pw-tested-soft);
+  background: var(--pw-key-view-tested-bg);
   border-color: #bbf7d0;
 }
 
 .pw-key-view-item--passed-problems {
-  background: var(--pw-passed-problems-soft);
+  background: var(--pw-key-view-passed-problems-bg);
   border-color: var(--pw-passed-problems-border);
   color: var(--pw-passed-problems-text);
 }
 
 .pw-key-view-item--failed {
-  background: var(--pw-failed-soft);
+  background: var(--pw-key-view-failed-bg);
   border-color: var(--pw-failed-border);
   color: var(--pw-failed-text);
 }
 
 .pw-key-view-item--skipped {
-  background: var(--pw-skipped-soft);
+  background: var(--pw-key-view-skipped-bg);
   border-color: #fde68a;
   color: #92400e;
 }
@@ -10804,6 +10862,10 @@ body {
 
 /* Phone-width viewports only (below iPad); expanded stop nav covers the worksheet body. */
 @media (max-width: 767.98px) {
+  .pw-mock-chrome-pace {
+    display: none;
+  }
+
   .pw-mock-body {
     position: relative;
   }

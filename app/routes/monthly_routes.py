@@ -2730,6 +2730,12 @@ def get_monthly_route_worksheet(route_id: int):
     )
     if payload is None:
         return jsonify({"error": "Route not found"}), 404
+    if _tech_portal_worksheet_request() and month_first == _current_pacific_month_first():
+        from app.monthly.run_pace_comparison import compute_run_pace_comparison
+
+        pace = compute_run_pace_comparison(route_id, month_first)
+        if pace is not None:
+            payload["prior_month_pace"] = pace
     return jsonify(payload)
 
 
