@@ -725,6 +725,18 @@ export default function TechnicianPortalWorksheetPage() {
     return () => mediaQuery.removeEventListener('change', syncPhoneLayout)
   }, [])
 
+  useEffect(() => {
+    const body = document.body
+    if (!phoneLayout || !editingField) {
+      body.classList.remove('portal-worksheet-body-field-editing')
+      return undefined
+    }
+    body.classList.add('portal-worksheet-body-field-editing')
+    return () => {
+      body.classList.remove('portal-worksheet-body-field-editing')
+    }
+  }, [phoneLayout, editingField])
+
   const selectStop = useCallback(
     (locationId: number) => {
       setActiveId(locationId)
@@ -935,7 +947,11 @@ export default function TechnicianPortalWorksheetPage() {
     (payload?.run?.started_at ?? '').trim().length === 0
 
   return (
-    <div className="portal-worksheet-mockup">
+    <div
+      className={`portal-worksheet-mockup${
+        editingField ? ' portal-worksheet-mockup--field-editing' : ''
+      }`}
+    >
       <PortalBlockingOverlay
         show={portalStartingRun || runLifecycleBusy}
         message={

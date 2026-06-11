@@ -472,6 +472,42 @@ body.portal-worksheet-body-lock {
   inset: 0;
 }
 
+/* Phone field edit: reclaim vertical space for keyboard + active field. */
+body.portal-worksheet-body-field-editing .app-topbar {
+  display: none;
+}
+
+body.portal-worksheet-body-field-editing .portal-worksheet-mockup .pw-mock-chrome,
+body.portal-worksheet-body-field-editing .portal-worksheet-mockup .pw-mock-header,
+body.portal-worksheet-body-field-editing .portal-worksheet-mockup .pw-mock-sidenav,
+body.portal-worksheet-body-field-editing .portal-worksheet-mockup .pw-portal-clock-card {
+  display: none;
+}
+
+body.portal-worksheet-body-field-editing .portal-worksheet-mockup .pw-mock-detail {
+  margin-top: 0;
+}
+
+body.portal-worksheet-body-field-editing .portal-worksheet-mockup .pw-mock-fields {
+  padding-top: 0.65rem;
+}
+
+body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editing {
+  gap: 0.35rem;
+  padding: 0.4rem 0.65rem 0.5rem;
+  padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
+  box-shadow: 0 -4px 12px rgba(15, 23, 42, 0.06);
+}
+
+body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editing .pw-mock-dock-edit-btn {
+  min-height: 2.25rem;
+  font-size: 0.84rem;
+  font-weight: 700;
+  padding: 0.3rem 0.5rem;
+  border-radius: 0.6rem;
+  box-shadow: none;
+}
+
 /* Portal worksheet: lock shell to visible viewport (min-vh alone overflows on iOS/iPad) */
 .app-shell.app-shell--portal-worksheet {
   height: 100vh;
