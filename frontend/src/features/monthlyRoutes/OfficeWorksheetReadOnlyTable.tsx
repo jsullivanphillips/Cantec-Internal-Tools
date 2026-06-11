@@ -25,7 +25,6 @@ import {
   worksheetSkipReasonDuplicatesTimeInNote,
   worksheetTimeInOutDisplayLine,
   type OfficeFieldChange,
-  type OfficeStopGroup,
   type OfficeStopStatus,
   type OfficeWorksheetChangeColumnVisibility,
 } from './officeWorksheetTableShared'

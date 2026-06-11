@@ -1069,7 +1069,7 @@ export default function MonthlyRoutePaperworkPage() {
             onRouteOrderChanged={(orderedLocationIds) => void onRouteOrderChanged(orderedLocationIds)}
             annualScheduleStatus={annualScheduleStatus}
             annualScheduleByLocationId={annualScheduleByLocationId}
-            onAnnualScheduleRefresh={() => refreshAnnualScheduleCheck(true)}
+            onAnnualScheduleRefresh={() => void refreshAnnualScheduleCheck()}
             outcomeCounts={
               paperworkViewMode === 'run_review'
                 ? {

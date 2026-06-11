@@ -20,7 +20,6 @@ import {
 import OfficeWorksheetReadOnlyTable from '../features/monthlyRoutes/OfficeWorksheetReadOnlyTable'
 import {
   groupOfficeWorksheetStops,
-  worksheetReadOnlyDisplay,
   worksheetStopIsAnnualSkip,
 } from '../features/monthlyRoutes/officeWorksheetTableShared'
 import { parseMonitoringSheetDisplay } from '../features/monthlyRoutes/monitoringSheetDisplay'
