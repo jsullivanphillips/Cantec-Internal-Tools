@@ -426,6 +426,23 @@ export function applyServerStopWithPending(
   return localStop ? preserveWorksheetStopOrderFields(localStop, merged) : merged
 }
 
+function parseWorksheetStopVersionMs(iso: string | null | undefined): number {
+  if (!iso) return 0
+  const parsed = Date.parse(iso)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+/** True when local stop reflects a same-or-newer server revision than a background fetch row. */
+export function isWorksheetStopVersionNewerThan(
+  local: TechnicianWorksheetLocation,
+  remote: TechnicianWorksheetLocation,
+): boolean {
+  const localMs = parseWorksheetStopVersionMs(local.version_updated_at)
+  const remoteMs = parseWorksheetStopVersionMs(remote.version_updated_at)
+  if (localMs === 0 || remoteMs === 0) return false
+  return localMs >= remoteMs
+}
+
 /** Keep route sheet stop # stable when workflow PATCH responses recalculate order. */
 export function preserveWorksheetStopOrderFields(
   local: TechnicianWorksheetLocation,
@@ -536,6 +553,12 @@ export function reconcileStopWithServer(
   routeId?: number,
   monthIso?: string,
 ): TechnicianWorksheetLocation {
+  const pending =
+    routeId != null && monthIso != null
+      ? collectPendingStopChanges(routeId, monthIso, local.location_id)
+      : {}
+  const hasPendingFields = Object.keys(pending).length > 0
+
   if (portalStopHasTestOutcome(local) && !portalStopHasTestOutcome(remote)) {
     const keepLocalOutcome =
       routeId != null &&
@@ -570,6 +593,12 @@ export function reconcileStopWithServer(
       time_out: local.time_out,
     })
   }
+  if (hasPendingFields) {
+    return preserveWorksheetStopOrderFields(local, { ...remote, ...pending })
+  }
+  if (isWorksheetStopVersionNewerThan(local, remote)) {
+    return preserveWorksheetStopOrderFields(local, local)
+  }
   return preserveWorksheetStopOrderFields(local, remote)
 }
 
@@ -594,9 +623,14 @@ export function mergeServerWorksheetPayload(
     }
     const pending = collectPendingStopChanges(routeId, monthIso, s.location_id)
     const stopHasPendingSync = hasPendingSyncForStop(routeId, monthIso, s.location_id)
-    let merged = stopHasPendingSync
-      ? reconcileStopWithServer(s, remote, routeId, monthIso)
-      : remote
+    let merged: TechnicianWorksheetLocation
+    if (stopHasPendingSync) {
+      merged = reconcileStopWithServer(s, remote, routeId, monthIso)
+    } else if (isWorksheetStopVersionNewerThan(s, remote)) {
+      merged = preserveWorksheetStopOrderFields(s, s)
+    } else {
+      merged = preserveWorksheetStopOrderFields(s, remote)
+    }
     merged = Object.keys(pending).length > 0 ? { ...merged, ...pending } : merged
     stops.push(merged)
   }

@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TechnicianWorksheetPayload, TechnicianWorksheetLocation } from './monthlyRoutesShared'
+import { worksheetPayloadLocations } from './monthlyRoutesShared'
 import {
+  enqueueWorksheetChange,
+  isWorksheetStopVersionNewerThan,
+  mergePendingChangesIntoPayload,
   mergeRunLifecycleQueueIntoPayload,
+  mergeServerWorksheetPayload,
   preserveWorksheetStopOrderFields,
   reconcileStopWithServer,
   serverRunWasExternallyReset,
@@ -144,13 +149,156 @@ function worksheetPayload(runStartedAt: string | null): TechnicianWorksheetPaylo
       source: 'office_manual',
       is_historical: false,
     },
+    stops: [stop({ location_id: 1 })],
+  }
+}
+
+describe('isWorksheetStopVersionNewerThan', () => {
+  it('treats a same-or-newer local revision as authoritative over stale GET rows', () => {
+    const local = stop({
+      location_id: 1,
+      run_comments: 'Device B',
+      version_updated_at: '2026-05-02T10:05:00Z',
+    })
+    const remote = stop({
+      location_id: 1,
+      run_comments: 'Device A',
+      version_updated_at: '2026-05-02T10:00:00Z',
+    })
+    expect(isWorksheetStopVersionNewerThan(local, remote)).toBe(true)
+  })
+})
+
+describe('mergeServerWorksheetPayload', () => {
+  beforeEach(() => {
+    const store = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        store.set(key, value)
+      },
+      removeItem: (key: string) => {
+        store.delete(key)
+      },
+    })
+  })
+
+  it('keeps local field values when a stale background fetch is behind this device', () => {
+    const prev = {
+      ...worksheetPayload('2026-05-02T09:00:00Z'),
+      stops: [
+        stop({
+          location_id: 1,
+          run_comments: 'Device B',
+          version_updated_at: '2026-05-02T10:05:00Z',
+        }),
+      ],
+    }
+    const server = {
+      ...worksheetPayload('2026-05-02T09:00:00Z'),
+      stops: [
+        stop({
+          location_id: 1,
+          run_comments: 'Device A',
+          version_updated_at: '2026-05-02T10:00:00Z',
+        }),
+      ],
+    }
+    const merged = mergeServerWorksheetPayload(prev, server, 1, '2026-05-01')
+    expect(worksheetPayloadLocations(merged)[0]?.run_comments).toBe('Device B')
+  })
+
+  it('keeps unsynced queued field edits over a fresher server row from another device', () => {
+    enqueueWorksheetChange({
+      routeId: 1,
+      monthIso: '2026-05-01',
+      locationId: 1,
+      expectedUpdatedAt: '2026-05-02T10:00:00Z',
+      clientMutatedAt: '2026-05-02T10:06:00Z',
+      techPortal: true,
+      changes: { run_comments: 'Device B draft' },
+    })
+    const prev = {
+      ...worksheetPayload('2026-05-02T09:00:00Z'),
+      stops: [
+        stop({
+          location_id: 1,
+          run_comments: 'Device B draft',
+          version_updated_at: '2026-05-02T10:00:00Z',
+        }),
+      ],
+    }
+    const server = {
+      ...worksheetPayload('2026-05-02T09:00:00Z'),
+      stops: [
+        stop({
+          location_id: 1,
+          run_comments: 'Device A',
+          version_updated_at: '2026-05-02T10:05:00Z',
+        }),
+      ],
+    }
+    const merged = mergeServerWorksheetPayload(prev, server, 1, '2026-05-01')
+    expect(worksheetPayloadLocations(merged)[0]?.run_comments).toBe('Device B draft')
+  })
+
+  it('overlays queued field edits when merging a raw server payload', () => {
+    enqueueWorksheetChange({
+      routeId: 1,
+      monthIso: '2026-05-01',
+      locationId: 1,
+      expectedUpdatedAt: '2026-05-02T10:00:00Z',
+      clientMutatedAt: '2026-05-02T10:06:00Z',
+      techPortal: true,
+      changes: { run_comments: 'Device B draft' },
+    })
+    const server = {
+      ...worksheetPayload('2026-05-02T09:00:00Z'),
+      stops: [
+        stop({
+          location_id: 1,
+          run_comments: 'Device A',
+          version_updated_at: '2026-05-02T10:05:00Z',
+        }),
+      ],
+    }
+    const merged = mergePendingChangesIntoPayload(server, 1, '2026-05-01')
+    expect(worksheetPayloadLocations(merged)[0]?.run_comments).toBe('Device B draft')
+  })
+})
+
+function worksheetPayloadWithoutStops(runStartedAt: string | null): TechnicianWorksheetPayload {
+  return {
+    route: {
+      id: 1,
+      route_number: 18,
+      label: 'R18',
+      display_name: null,
+      weekday_iso: 1,
+      week_occurrence: 1,
+    },
+    month_date: '2026-05-01',
+    rows: [],
+    run: {
+      id: 10,
+      monthly_route_id: 1,
+      month_date: '2026-05-01',
+      status: 'open',
+      opened_at: '2026-05-01T00:00:00Z',
+      started_at: runStartedAt,
+      prepared_at: '2026-05-01T00:00:00Z',
+      field_ended_at: null,
+      completed_at: null,
+      source: 'office_manual',
+      is_historical: false,
+    },
     stops: [],
   }
 }
 
 describe('mergeRunLifecycleQueueIntoPayload', () => {
   it('applies pending start_run onto an unprepared server run header', () => {
-    const payload = worksheetPayload(null)
+    const payload = worksheetPayloadWithoutStops(null)
     const queue: PortalRunLifecycleQueueItem[] = [
       {
         id: 'q1',

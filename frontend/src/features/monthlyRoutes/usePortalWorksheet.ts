@@ -202,15 +202,15 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
         }
         const merged = mergePendingChangesIntoPayload(data, routeId, monthIso)
         if (fetchMode === 'background') {
-          if (!externallyReset && hasPendingSyncForRouteMonth(routeId, monthIso)) {
+          if (externallyReset) {
+            setPayload(merged)
+            saveWorksheetCache(merged)
+          } else {
             setPayload((prev) => {
               const next = prev ? mergeServerWorksheetPayload(prev, merged, routeId, monthIso) : merged
               saveWorksheetCache(next)
               return next
             })
-          } else {
-            setPayload(merged)
-            saveWorksheetCache(merged)
           }
         } else {
           setPayload(merged)
@@ -661,13 +661,15 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
     refreshInBackgroundRef.current()
   }, [routeId, monthIso])
 
-  const setInteractiveBusy = useCallback((busy: boolean) => {
-    worksheetInteractiveBusyRef.current = busy
-    if (!busy && worksheetDeferredRemoteFetchRef.current) {
-      worksheetDeferredRemoteFetchRef.current = false
-      refreshInBackgroundRef.current()
-    }
-  }, [])
+  const setInteractiveBusy = useCallback(
+    (busy: boolean) => {
+      worksheetInteractiveBusyRef.current = busy
+      if (!busy && worksheetDeferredRemoteFetchRef.current) {
+        applyRemoteWorksheetRefresh()
+      }
+    },
+    [applyRemoteWorksheetRefresh],
+  )
 
   useEffect(() => {
     worksheetDeferredRemoteFetchRef.current = false
