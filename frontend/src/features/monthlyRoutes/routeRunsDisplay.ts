@@ -1,12 +1,118 @@
 import type {
   MonthlyRouteSpecialistMonthPayload,
   RouteRunMonthSummary,
+  RouteTestingMonthCell,
 } from './monthlyRoutesShared'
+import { addCalendarMonths, parseYearMonth } from './monthlyRoutesShared'
 
 export type RouteRunTableRow = {
   monthIso: string
   run: RouteRunMonthSummary
   specialistMonth: MonthlyRouteSpecialistMonthPayload | null
+}
+
+export type RunsCardRow = {
+  monthIso: string
+  run: RouteRunMonthSummary | null
+  specialistMonth: MonthlyRouteSpecialistMonthPayload | null
+  hasRunData: boolean
+}
+
+function compareMonthFirstIso(a: string, b: string): number {
+  const ya = parseYearMonth(a)
+  const yb = parseYearMonth(b)
+  if (!ya || !yb) return a.localeCompare(b)
+  if (ya.year !== yb.year) return ya.year - yb.year
+  return ya.month - yb.month
+}
+
+function monthIsoForYearMonth(year: number, month: number): string {
+  return `${year}-${String(month).padStart(2, '0')}-01`
+}
+
+export function maxSelectableRunsMonthIso(currentMonthIso: string): string | null {
+  return addCalendarMonths(currentMonthIso, 1)
+}
+
+export function availableRunsCardYears(
+  currentMonthIso: string,
+  runsByMonth: Record<string, RouteRunMonthSummary>,
+  testingByMonth: Record<string, RouteTestingMonthCell>,
+): number[] {
+  const years = new Set<number>()
+  const currentYear = parseYearMonth(currentMonthIso)?.year
+  if (currentYear != null) years.add(currentYear)
+  for (const key of [...Object.keys(runsByMonth), ...Object.keys(testingByMonth)]) {
+    const ym = parseYearMonth(key)
+    if (ym) years.add(ym.year)
+  }
+  return Array.from(years).sort((a, b) => a - b)
+}
+
+export function defaultRunsCardYear(years: number[], currentMonthIso: string): number | null {
+  if (years.length === 0) return null
+  const currentYear = parseYearMonth(currentMonthIso)?.year
+  if (currentYear != null && years.includes(currentYear)) return currentYear
+  return years[years.length - 1] ?? null
+}
+
+export function buildRunsCardRowsForYear(
+  year: number,
+  currentMonthIso: string,
+  runsByMonth: Record<string, RouteRunMonthSummary>,
+  specialistsByMonth: Record<string, MonthlyRouteSpecialistMonthPayload>,
+): RunsCardRow[] {
+  const maxMonthIso = maxSelectableRunsMonthIso(currentMonthIso)
+  if (!maxMonthIso) return []
+
+  const rows: RunsCardRow[] = []
+  for (let month = 1; month <= 12; month += 1) {
+    const monthIso = monthIsoForYearMonth(year, month)
+    if (compareMonthFirstIso(monthIso, maxMonthIso) > 0) continue
+    const run = runsByMonth[monthIso] ?? null
+    rows.push({
+      monthIso,
+      run,
+      specialistMonth: specialistsByMonth[monthIso] ?? null,
+      hasRunData: run != null,
+    })
+  }
+  return rows.sort((a, b) => b.monthIso.localeCompare(a.monthIso))
+}
+
+export function formatRunsCardStageLabel(row: RunsCardRow): string {
+  if (!row.hasRunData || !row.run) return 'No data'
+  return row.run.workflow_stage_label?.trim() || '—'
+}
+
+type ApiRunSummary = {
+  id?: number
+  run_id?: number
+  source?: string
+  status?: string
+  opened_at?: string | null
+  started_at?: string | null
+  completed_at?: string | null
+  workflow_stage?: string
+  workflow_stage_label?: string
+  stops_on_route_count?: number
+  stops_tested_count?: number
+}
+
+/** Normalize run payloads from skip/import API responses for ``runs_by_month`` patches. */
+export function routeRunSummaryFromApi(run: ApiRunSummary): RouteRunMonthSummary {
+  return {
+    run_id: Number(run.run_id ?? run.id),
+    source: String(run.source ?? ''),
+    status: String(run.status ?? ''),
+    opened_at: run.opened_at ?? null,
+    started_at: run.started_at ?? null,
+    completed_at: run.completed_at ?? null,
+    workflow_stage: run.workflow_stage,
+    workflow_stage_label: run.workflow_stage_label,
+    stops_on_route_count: run.stops_on_route_count,
+    stops_tested_count: run.stops_tested_count,
+  }
 }
 
 function formatPacificDateOnly(isoDate: string): string | null {

@@ -8,22 +8,14 @@ import pytest
 
 from app import create_app
 from app.db_models import (
-    Key,
-    MonitoringCompany,
-    MonthlyRoute,
-    MonthlyRouteLocation,
+    MonthlyLocationDeficiency,
+    MonthlyLocationMonth,
     MonthlyRouteRun,
-    MonthlyRouteTestHistory,
     MonthlyRouteWorksheetAuditEvent,
-    MonthlySite,
-    MonthlyStopClockEvent,
-    MonthlyTestingSite,
-    MonthlyTestingSiteDeficiency,
-    MonthlyTestingSiteMonth,
     db,
 )
-from app.monthly.monthly_sites_sync import sync_testing_sites_from_legacy
 from app.monthly.portal_workflow import get_location_billing_status
+from tests.monthly_location_helpers import WORKSHEET_TABLES, seed_route_with_two_stops
 
 
 @pytest.fixture
@@ -34,23 +26,8 @@ def portal_client(monkeypatch):
     app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///:memory:"
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-    tables = [
-        Key.__table__,
-        MonitoringCompany.__table__,
-        MonthlyRoute.__table__,
-        MonthlyRouteLocation.__table__,
-        MonthlyRouteRun.__table__,
-        MonthlyRouteTestHistory.__table__,
-        MonthlyRouteWorksheetAuditEvent.__table__,
-        MonthlySite.__table__,
-        MonthlyTestingSite.__table__,
-        MonthlyTestingSiteMonth.__table__,
-        MonthlyStopClockEvent.__table__,
-        MonthlyTestingSiteDeficiency.__table__,
-    ]
-
     with app.app_context():
-        db.metadata.create_all(db.engine, tables=tables)
+        db.metadata.create_all(db.engine, tables=WORKSHEET_TABLES)
         with app.test_client() as client:
             with client.session_transaction() as sess:
                 sess["tech_portal_unlocked"] = True
@@ -59,48 +36,12 @@ def portal_client(monkeypatch):
                 sess["username"] = "office_tester"
             yield client, app
         db.session.remove()
-        db.metadata.drop_all(db.engine, tables=list(reversed(tables)))
+        db.metadata.drop_all(db.engine, tables=list(reversed(WORKSHEET_TABLES)))
 
 
 def _seed_route_with_two_stops() -> tuple[int, int, int, int]:
-    route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
-    loc = MonthlyRouteLocation(
-        id=101,
-        address="123 Test St",
-        address_normalized="123 test st",
-        property_management_company="Acme",
-        property_management_company_normalized="acme",
-        building="Tower A",
-        building_normalized="tower a",
-        status_normalized="active",
-        status_raw="Active",
-        monthly_route_id=1,
-        route_stop_order=0,
-        keys="KEY-A",
-        ring_detail="R-1",
-        latitude=48.4284,
-        longitude=-123.3656,
-    )
-    db.session.add_all([route, loc])
-    db.session.commit()
-    sync_testing_sites_from_legacy(loc)
-    ts_primary = (
-        MonthlyTestingSite.query.filter_by(monthly_site_id=MonthlySite.query.one().id)
-        .order_by(MonthlyTestingSite.sort_order.asc(), MonthlyTestingSite.id.asc())
-        .first()
-    )
-    site = MonthlySite.query.one()
-    ts_second = MonthlyTestingSite(
-        id=9002,
-        monthly_site_id=int(site.id),
-        sort_order=1,
-        label="Annex panel",
-        keys="KEY-A",
-        ring_detail="R-1B",
-    )
-    db.session.add(ts_second)
-    db.session.commit()
-    return 1, int(loc.id), int(ts_primary.id), int(ts_second.id)
+    route_id, primary_id, secondary_id = seed_route_with_two_stops()
+    return route_id, primary_id, primary_id, secondary_id
 
 
 def _start_run(client, route_id: int = 1) -> None:
@@ -128,13 +69,13 @@ def test_clock_in_conflict_and_workflow(portal_client, monkeypatch):
 
     client, app = portal_client
     with app.app_context():
-        route_id, _loc_id, ts_a, ts_b = _seed_route_with_two_stops()
+        route_id, _loc_id, stop_a, stop_b = _seed_route_with_two_stops()
 
     _start_run(client)
     month = "2026-05-01"
 
     cin_a = client.post(
-        f"/api/monthly_routes/routes/{route_id}/worksheet/stops/{ts_a}/clock_events/clock_in"
+        f"/api/monthly_routes/routes/{route_id}/worksheet/locations/{stop_a}/clock_events/clock_in"
         f"?month={month}&tech_portal=1",
         json={"time_in": "9:00 AM", "stop_number": 1},
     )
@@ -142,25 +83,25 @@ def test_clock_in_conflict_and_workflow(portal_client, monkeypatch):
     assert cin_a.get_json()["stop"]["stop_number"] == 1
 
     cancel_a = client.post(
-        f"/api/monthly_routes/routes/{route_id}/worksheet/stops/{ts_a}/clock_events/cancel_clock_in"
+        f"/api/monthly_routes/routes/{route_id}/worksheet/locations/{stop_a}/clock_events/cancel_clock_in"
         f"?month={month}&tech_portal=1",
         json={},
     )
     assert cancel_a.status_code == 200
-    stop_a = cancel_a.get_json()["stop"]
-    assert not stop_a.get("clock_events") or all(
-        ev.get("time_out") for ev in stop_a.get("clock_events", [])
+    stop_a_payload = cancel_a.get_json()["stop"]
+    assert not stop_a_payload.get("clock_events") or all(
+        ev.get("time_out") for ev in stop_a_payload.get("clock_events", [])
     )
 
     cin_a_again = client.post(
-        f"/api/monthly_routes/routes/{route_id}/worksheet/stops/{ts_a}/clock_events/clock_in"
+        f"/api/monthly_routes/routes/{route_id}/worksheet/locations/{stop_a}/clock_events/clock_in"
         f"?month={month}&tech_portal=1",
         json={"time_in": "9:00 AM"},
     )
     assert cin_a_again.status_code == 200
 
     cin_b = client.post(
-        f"/api/monthly_routes/routes/{route_id}/worksheet/stops/{ts_b}/clock_events/clock_in"
+        f"/api/monthly_routes/routes/{route_id}/worksheet/locations/{stop_b}/clock_events/clock_in"
         f"?month={month}&tech_portal=1",
         json={"time_in": "9:05 AM"},
     )
@@ -168,7 +109,7 @@ def test_clock_in_conflict_and_workflow(portal_client, monkeypatch):
     assert cin_b.get_json().get("code") == "open_clock_in_conflict"
 
     put_skip_b = client.put(
-        f"/api/monthly_routes/routes/{route_id}/worksheet/stops/{ts_b}/test_outcome"
+        f"/api/monthly_routes/routes/{route_id}/worksheet/locations/{stop_b}/test_outcome"
         f"?month={month}&tech_portal=1",
         json={
             "test_outcome": "skipped",
@@ -179,14 +120,14 @@ def test_clock_in_conflict_and_workflow(portal_client, monkeypatch):
     assert put_skip_b.status_code == 200
 
     cout_a = client.post(
-        f"/api/monthly_routes/routes/{route_id}/worksheet/stops/{ts_a}/clock_events/clock_out"
+        f"/api/monthly_routes/routes/{route_id}/worksheet/locations/{stop_a}/clock_events/clock_out"
         f"?month={month}&tech_portal=1",
         json={"time_out": "9:30 AM"},
     )
     assert cout_a.status_code == 200
 
     put_good = client.put(
-        f"/api/monthly_routes/routes/{route_id}/worksheet/stops/{ts_a}/test_outcome"
+        f"/api/monthly_routes/routes/{route_id}/worksheet/locations/{stop_a}/test_outcome"
         f"?month={month}&tech_portal=1",
         json={"test_outcome": "all_good", "stop_number": 1},
     )
@@ -204,13 +145,13 @@ def test_transition_clock_between_stops(portal_client, monkeypatch):
 
     client, app = portal_client
     with app.app_context():
-        route_id, _loc_id, ts_a, ts_b = _seed_route_with_two_stops()
+        route_id, _loc_id, stop_a, stop_b = _seed_route_with_two_stops()
 
     _start_run(client)
     month = "2026-05-01"
 
     cin_a = client.post(
-        f"/api/monthly_routes/routes/{route_id}/worksheet/stops/{ts_a}/clock_events/clock_in"
+        f"/api/monthly_routes/routes/{route_id}/worksheet/locations/{stop_a}/clock_events/clock_in"
         f"?month={month}&tech_portal=1",
         json={"time_in": "9:00 AM"},
     )
@@ -220,8 +161,8 @@ def test_transition_clock_between_stops(portal_client, monkeypatch):
         f"/api/monthly_routes/routes/{route_id}/worksheet/transition_clock"
         f"?month={month}&tech_portal=1",
         json={
-            "from_testing_site_id": ts_a,
-            "to_testing_site_id": ts_b,
+            "from_testing_site_id": stop_a,
+            "to_testing_site_id": stop_b,
             "time_out": "9:30 AM",
             "time_in": "9:35 AM",
         },
@@ -240,8 +181,8 @@ def test_transition_clock_between_stops(portal_client, monkeypatch):
         f"/api/monthly_routes/routes/{route_id}/worksheet/transition_clock"
         f"?month={month}&tech_portal=1",
         json={
-            "from_testing_site_id": ts_a,
-            "to_testing_site_id": ts_b,
+            "from_testing_site_id": stop_a,
+            "to_testing_site_id": stop_b,
             "time_out": "10:00 AM",
             "time_in": "10:05 AM",
         },
@@ -256,13 +197,13 @@ def test_billing_unset_when_all_skipped(portal_client, monkeypatch):
 
     client, app = portal_client
     with app.app_context():
-        route_id, loc_id, ts_a, ts_b = _seed_route_with_two_stops()
+        route_id, loc_id, stop_a, stop_b = _seed_route_with_two_stops()
 
     _start_run(client)
     month = "2026-05-01"
-    for ts_id in (ts_a, ts_b):
+    for stop_id in (stop_a, stop_b):
         res = client.put(
-            f"/api/monthly_routes/routes/{route_id}/worksheet/stops/{ts_id}/test_outcome"
+            f"/api/monthly_routes/routes/{route_id}/worksheet/locations/{stop_id}/test_outcome"
             f"?month={month}&tech_portal=1",
             json={
                 "test_outcome": "skipped",
@@ -284,11 +225,11 @@ def test_reset_clears_outcome_and_legacy_result_status(portal_client, monkeypatc
 
     client, app = portal_client
     with app.app_context():
-        route_id, loc_id, ts_a, _ts_b = _seed_route_with_two_stops()
+        route_id, _loc_id, stop_a, _stop_b = _seed_route_with_two_stops()
 
     _start_run(client)
     month = "2026-05-01"
-    base = f"/api/monthly_routes/routes/{route_id}/worksheet/stops/{ts_a}"
+    base = f"/api/monthly_routes/routes/{route_id}/worksheet/locations/{stop_a}"
 
     assert (
         client.post(f"{base}/clock_events/clock_in?month={month}&tech_portal=1", json={"time_in": "9:00 AM"}).status_code
@@ -319,11 +260,9 @@ def test_reset_clears_outcome_and_legacy_result_status(portal_client, monkeypatc
     assert stop.get("is_legacy_outcome") is False
 
     with app.app_context():
-        mtsm = MonthlyTestingSiteMonth.query.filter_by(monthly_testing_site_id=ts_a).one()
-        assert mtsm.test_outcome is None
-        assert mtsm.result_status is None
-        hist = MonthlyRouteTestHistory.query.filter_by(location_id=loc_id).one()
-        assert hist.result_status is None
+        mlm = MonthlyLocationMonth.query.filter_by(monthly_location_id=stop_a).one()
+        assert mlm.test_outcome is None
+        assert mlm.result_status is None
 
 
 def test_deficiency_verify_and_reset(portal_client, monkeypatch):
@@ -333,13 +272,13 @@ def test_deficiency_verify_and_reset(portal_client, monkeypatch):
 
     client, app = portal_client
     with app.app_context():
-        route_id, _loc_id, ts_a, _ts_b = _seed_route_with_two_stops()
+        route_id, _loc_id, stop_a, _stop_b = _seed_route_with_two_stops()
 
     _start_run(client)
     month = "2026-05-01"
 
     created = client.post(
-        f"/api/monthly_routes/routes/{route_id}/worksheet/stops/{ts_a}/deficiencies"
+        f"/api/monthly_routes/routes/{route_id}/worksheet/locations/{stop_a}/deficiencies"
         f"?month={month}&tech_portal=1",
         json={
             "title": "Bell offline",
@@ -352,7 +291,7 @@ def test_deficiency_verify_and_reset(portal_client, monkeypatch):
     def_id = created.get_json()["deficiency"]["id"]
 
     verified = client.post(
-        f"/api/monthly_routes/routes/{route_id}/worksheet/stops/{ts_a}/deficiencies/{def_id}/verify"
+        f"/api/monthly_routes/routes/{route_id}/worksheet/locations/{stop_a}/deficiencies/{def_id}/verify"
         f"?month={month}&tech_portal=1",
         json={},
     )
@@ -361,13 +300,13 @@ def test_deficiency_verify_and_reset(portal_client, monkeypatch):
     assert notes and "Verified by" in notes
 
     reset = client.post(
-        f"/api/monthly_routes/routes/{route_id}/worksheet/stops/{ts_a}/reset"
+        f"/api/monthly_routes/routes/{route_id}/worksheet/locations/{stop_a}/reset"
         f"?month={month}&tech_portal=1",
     )
     assert reset.status_code == 200
 
     with app.app_context():
-        assert MonthlyTestingSiteDeficiency.query.filter_by(id=int(def_id)).count() == 0
+        assert MonthlyLocationDeficiency.query.filter_by(id=int(def_id)).count() == 0
         audit = MonthlyRouteWorksheetAuditEvent.query.filter_by(field_name="stop_reset").count()
         assert audit == 1
 
@@ -379,7 +318,7 @@ def test_worksheet_payload_includes_portal_fields(portal_client, monkeypatch):
 
     client, app = portal_client
     with app.app_context():
-        route_id, _loc_id, ts_a, _ts_b = _seed_route_with_two_stops()
+        route_id, _loc_id, stop_a, _stop_b = _seed_route_with_two_stops()
 
     _start_run(client)
     res = client.get(
@@ -388,7 +327,7 @@ def test_worksheet_payload_includes_portal_fields(portal_client, monkeypatch):
     assert res.status_code == 200
     stops = res.get_json().get("stops") or []
     assert len(stops) == 2
-    stop = next(s for s in stops if int(s["testing_site_id"]) == ts_a)
+    stop = next(s for s in stops if int(s["testing_site_id"]) == stop_a)
     assert "clock_events" in stop
     assert "deficiencies" in stop
     assert "billing_status" in stop
@@ -404,17 +343,17 @@ def test_test_outcome_validation_rules(portal_client, monkeypatch):
 
     client, app = portal_client
     with app.app_context():
-        route_id, _loc_id, ts_a, _ts_b = _seed_route_with_two_stops()
+        route_id, _loc_id, stop_a, _stop_b = _seed_route_with_two_stops()
 
     _start_run(client)
     month = "2026-05-01"
-    base = f"/api/monthly_routes/routes/{route_id}/worksheet/stops/{ts_a}/test_outcome?month={month}&tech_portal=1"
+    base = f"/api/monthly_routes/routes/{route_id}/worksheet/locations/{stop_a}/test_outcome?month={month}&tech_portal=1"
 
     all_good_first = client.put(base, json={"test_outcome": "all_good"})
     assert all_good_first.status_code == 200
 
     created = client.post(
-        f"/api/monthly_routes/routes/{route_id}/worksheet/stops/{ts_a}/deficiencies"
+        f"/api/monthly_routes/routes/{route_id}/worksheet/locations/{stop_a}/deficiencies"
         f"?month={month}&tech_portal=1",
         json={
             "title": "Smoke head",
@@ -439,15 +378,15 @@ def test_test_outcome_validation_rules(portal_client, monkeypatch):
     assert failed_same_run.status_code == 200
 
     reset = client.post(
-        f"/api/monthly_routes/routes/{route_id}/worksheet/stops/{ts_a}/reset"
+        f"/api/monthly_routes/routes/{route_id}/worksheet/locations/{stop_a}/reset"
         f"?month={month}&tech_portal=1",
     )
     assert reset.status_code == 200
 
     with app.app_context():
-        prior = MonthlyTestingSiteDeficiency(
+        prior = MonthlyLocationDeficiency(
             id=5001,
-            monthly_testing_site_id=ts_a,
+            monthly_location_id=stop_a,
             created_run_id=None,
             title="Carry-over bell",
             severity="deficient",
@@ -467,7 +406,7 @@ def test_test_outcome_validation_rules(portal_client, monkeypatch):
     assert failed_prior.get_json().get("code") == "unverified_deficiencies"
 
     verified = client.post(
-        f"/api/monthly_routes/routes/{route_id}/worksheet/stops/{ts_a}/deficiencies/{prior_id}/verify"
+        f"/api/monthly_routes/routes/{route_id}/worksheet/locations/{stop_a}/deficiencies/{prior_id}/verify"
         f"?month={month}&tech_portal=1",
         json={},
     )
@@ -477,13 +416,13 @@ def test_test_outcome_validation_rules(portal_client, monkeypatch):
     assert pwp_ok.status_code == 200
 
     reset = client.post(
-        f"/api/monthly_routes/routes/{route_id}/worksheet/stops/{ts_a}/reset"
+        f"/api/monthly_routes/routes/{route_id}/worksheet/locations/{stop_a}/reset"
         f"?month={month}&tech_portal=1",
     )
     assert reset.status_code == 200
 
     with app.app_context():
-        MonthlyTestingSiteDeficiency.query.filter_by(monthly_testing_site_id=ts_a).delete()
+        MonthlyLocationDeficiency.query.filter_by(monthly_location_id=stop_a).delete()
         db.session.commit()
 
     pwp_zero = client.put(base, json={"test_outcome": "passed_with_problems"})
@@ -497,7 +436,7 @@ def test_test_outcome_validation_rules(portal_client, monkeypatch):
     assert pwp_confirmed.status_code == 200
 
     created = client.post(
-        f"/api/monthly_routes/routes/{route_id}/worksheet/stops/{ts_a}/deficiencies"
+        f"/api/monthly_routes/routes/{route_id}/worksheet/locations/{stop_a}/deficiencies"
         f"?month={month}&tech_portal=1",
         json={"title": "Bell not sounding", "severity": "deficient", "status": "new"},
     )
@@ -516,7 +455,7 @@ def test_csv_import_run_is_portal_read_only(portal_client, monkeypatch):
 
     client, app = portal_client
     with app.app_context():
-        route_id, _loc_id, ts_a, _ts_b = _seed_route_with_two_stops()
+        route_id, _loc_id, stop_a, _stop_b = _seed_route_with_two_stops()
         run = MonthlyRouteRun(
             id=50,
             monthly_route_id=route_id,
@@ -528,7 +467,7 @@ def test_csv_import_run_is_portal_read_only(portal_client, monkeypatch):
         db.session.commit()
 
     blocked = client.post(
-        f"/api/monthly_routes/routes/{route_id}/worksheet/stops/{ts_a}/clock_events/clock_in"
+        f"/api/monthly_routes/routes/{route_id}/worksheet/locations/{stop_a}/clock_events/clock_in"
         f"?month=2026-05-01&tech_portal=1",
         json={"time_in": "8:00 AM"},
     )

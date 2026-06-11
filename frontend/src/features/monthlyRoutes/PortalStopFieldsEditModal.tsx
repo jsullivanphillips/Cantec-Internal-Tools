@@ -3,7 +3,7 @@ import { Button, Form, Modal } from 'react-bootstrap'
 import {
   annualMonthDropdownOptions,
   normalizeAnnualMonthForSelect,
-  type TechnicianWorksheetStop,
+  type TechnicianWorksheetLocation,
 } from './monthlyRoutesShared'
 import type { WorksheetStopChangeSet } from './worksheetOfflineStore'
 
@@ -15,14 +15,14 @@ export type PortalStopFieldsDraft = {
   panel: string
   panel_location: string
   property_management_company: string
-  building_name: string
+  label: string
   monitoring_notes: string
   testing_procedures: string
   inspection_tech_notes: string
   run_comments: string
 }
 
-function draftFromStop(stop: TechnicianWorksheetStop): PortalStopFieldsDraft {
+function draftFromStop(stop: TechnicianWorksheetLocation): PortalStopFieldsDraft {
   return {
     ring: stop.ring ?? '',
     key_number: stop.key_number ?? '',
@@ -31,7 +31,7 @@ function draftFromStop(stop: TechnicianWorksheetStop): PortalStopFieldsDraft {
     panel: stop.panel ?? '',
     panel_location: stop.panel_location ?? '',
     property_management_company: stop.property_management_company ?? '',
-    building_name: stop.building_name ?? '',
+    label: stop.label ?? '',
     monitoring_notes: stop.monitoring_notes ?? '',
     testing_procedures: stop.testing_procedures ?? '',
     inspection_tech_notes: stop.inspection_tech_notes ?? '',
@@ -49,7 +49,7 @@ function draftToPatch(draft: PortalStopFieldsDraft): WorksheetStopChangeSet {
     panel: trim(draft.panel) || null,
     panel_location: trim(draft.panel_location) || null,
     property_management_company: trim(draft.property_management_company) || null,
-    building_name: trim(draft.building_name) || null,
+    label: trim(draft.label) || null,
     monitoring_notes: trim(draft.monitoring_notes) || null,
     testing_procedures: trim(draft.testing_procedures) || null,
     inspection_tech_notes: trim(draft.inspection_tech_notes) || null,
@@ -59,7 +59,7 @@ function draftToPatch(draft: PortalStopFieldsDraft): WorksheetStopChangeSet {
 
 type PortalStopFieldsEditModalProps = {
   show: boolean
-  stop: TechnicianWorksheetStop | null
+  stop: TechnicianWorksheetLocation | null
   onHide: () => void
   onSave: (patch: WorksheetStopChangeSet) => void
 }
@@ -71,7 +71,7 @@ export default function PortalStopFieldsEditModal({
   onSave,
 }: PortalStopFieldsEditModalProps) {
   const [draft, setDraft] = useState<PortalStopFieldsDraft>(() =>
-    stop ? draftFromStop(stop) : draftFromStop({} as TechnicianWorksheetStop),
+    stop ? draftFromStop(stop) : draftFromStop({} as TechnicianWorksheetLocation),
   )
 
   useEffect(() => {
@@ -159,8 +159,8 @@ export default function PortalStopFieldsEditModal({
             <Form.Group>
               <Form.Label className="small">Building name</Form.Label>
               <Form.Control
-                value={draft.building_name}
-                onChange={(e) => update({ building_name: e.target.value })}
+                value={draft.label}
+                onChange={(e) => update({ label: e.target.value })}
                 disabled={!stop}
               />
             </Form.Group>

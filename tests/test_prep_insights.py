@@ -90,11 +90,11 @@ def test_out_of_order_resolved_when_placed_after_tested_after_address(monkeypatc
         def in_(_ids):
             return _ids
 
-    class _MRL:
+    class _ML:
         query = _Query()
         id = _IdCol
 
-    monkeypatch.setattr(prep_insights, "MonthlyRouteLocation", _MRL)
+    monkeypatch.setattr(prep_insights, "MonthlyLocation", _ML)
 
     resolved = site_ids_out_of_order_resolved_by_library_order(1, date(2026, 6, 1), [102, 101])
     assert resolved == {1}

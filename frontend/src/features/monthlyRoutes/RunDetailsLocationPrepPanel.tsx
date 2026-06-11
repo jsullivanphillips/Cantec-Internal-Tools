@@ -24,10 +24,10 @@ export default function RunDetailsLocationPrepPanel({
           {error}
         </Alert>
       ) : null}
-      {location.stops.map((stop) => {
+      {(() => { const stop = location;
         const runComment = (stop.run_comments || '').trim()
         const annualHintText = annualMonthHint(stop, location.location_label, monthDate)
-        const sid = stop.testing_site_id
+        const sid = stop.location_id
         const annualBusy = isFieldSaving(sid, `prep-${sid}-annual`)
         const annualSelectValue = normalizeAnnualMonthForSelect(stop.annual_month) || ''
         const proceduresBusy = isFieldSaving(sid, `prep-${sid}-procedures`)
@@ -35,7 +35,7 @@ export default function RunDetailsLocationPrepPanel({
         const runCommentsBusy = isFieldSaving(sid, `prep-${sid}-run-comments`)
         return (
           <div key={sid} className="run-location-card__prep-stop">
-            {location.stops.length > 1 ? (
+            {false ? (
               <div className="run-location-card__prep-stop-label text-muted small">
                 {(stop.label || '').trim() || `Stop ${stop.stop_number}`}
               </div>
@@ -145,7 +145,7 @@ export default function RunDetailsLocationPrepPanel({
             ) : null}
           </div>
         )
-      })}
+      })()}
     </div>
   )
 }

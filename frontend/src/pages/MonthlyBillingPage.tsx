@@ -12,7 +12,7 @@ import {
   type BillingBoardLocationRow,
   type BillingBoardPayload,
 } from '../features/monthlyRoutes/monthlyBillingBoard'
-import { billingBoardLocationSubline, billingBoardLocationTitle } from '../features/monthlyRoutes/testingSiteDisplay'
+import { billingBoardLocationSubline, billingBoardLocationTitle } from '../features/monthlyRoutes/locationDisplay'
 import { monthFirstIsoPacificToday, parseYearMonth, toMonthKey } from '../features/monthlyRoutes/monthlyRoutesShared'
 import { isAbortError } from '../lib/apiClient'
 

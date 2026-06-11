@@ -1,17 +1,21 @@
 import {
   isAnnualMonthNotAtSite,
   parseYearMonth,
-  type TechnicianWorksheetStop,
+  type TechnicianWorksheetLocation,
 } from './monthlyRoutesShared'
+import { locationDisplaySubline, locationPrimaryLabel } from './locationDisplay'
 
 export type OfficeStopStatus = 'tested' | 'skipped' | 'annual' | 'pending'
 
 export type OfficeStopGroup = {
   locationId: number
+  /** @deprecated Prefer ``primaryLabel``; kept for same-address merge keys. */
   displayAddress: string
+  primaryLabel: string
+  addressSubline: string | null
   buildingName: string | null
   propertyManagementCompany: string | null
-  stops: TechnicianWorksheetStop[]
+  stops: TechnicianWorksheetLocation[]
 }
 
 export type OfficeFieldChange = {
@@ -64,13 +68,13 @@ function sheetSkipReasonIsAnnual(skipReason: string | null | undefined): boolean
   return s === 'annual' || s === 'annual_booked'
 }
 
-export function worksheetStopIsAnnualSkip(stop: TechnicianWorksheetStop, monthDate: string): boolean {
+export function worksheetStopIsAnnualSkip(stop: TechnicianWorksheetLocation, monthDate: string): boolean {
   const rs = (stop.result_status || '').trim().toLowerCase()
   if (rs !== 'skipped') return isAnnualForMonth(stop.annual_month, monthDate)
   return sheetSkipReasonIsAnnual(stop.skip_reason) || isAnnualForMonth(stop.annual_month, monthDate)
 }
 
-export function officeStopStatus(stop: TechnicianWorksheetStop, monthDate: string): OfficeStopStatus {
+export function officeStopStatus(stop: TechnicianWorksheetLocation, monthDate: string): OfficeStopStatus {
   const rs = (stop.result_status || '').trim().toLowerCase()
   if (rs === 'tested') return 'tested'
   if (rs === 'skipped') return worksheetStopIsAnnualSkip(stop, monthDate) ? 'annual' : 'skipped'
@@ -151,27 +155,40 @@ const AUDIT_FIELD_TO_COMPACT_LABEL: Record<string, string> = {
   monitoring_password: 'Password',
   monitoring_notes: 'Notes',
   monitoring: 'Notes',
-  building_name: 'Building',
+  label: 'Building',
   property_management_company: 'PMC',
 }
 
-const AUDIT_FIELD_TO_LONG_TEXT_KEY: Record<string, keyof TechnicianWorksheetStop> = {
+const AUDIT_FIELD_TO_LONG_TEXT_KEY: Record<string, keyof TechnicianWorksheetLocation> = {
   testing_procedures: 'testing_procedures',
   inspection_tech_notes: 'inspection_tech_notes',
   run_comments: 'run_comments',
 }
 
-export function groupOfficeWorksheetStops(stops: TechnicianWorksheetStop[]): OfficeStopGroup[] {
+function worksheetStopBuildingName(stop: TechnicianWorksheetLocation): string | null {
+  return officeFirstDisplayValue(stop.building_name)
+}
+
+function officeStopGroupHeading(stop: TechnicianWorksheetLocation): {
+  primaryLabel: string
+  addressSubline: string | null
+} {
+  const primaryLabel = locationPrimaryLabel(stop)
+  const addressSubline = locationDisplaySubline(stop, { primaryLabel })
+  return { primaryLabel, addressSubline }
+}
+
+export function groupOfficeWorksheetStops(stops: TechnicianWorksheetLocation[]): OfficeStopGroup[] {
   const groupsByLocation = new Map<number, OfficeStopGroup>()
   const orderedStops = [...stops].sort((a, b) => {
     const aNum = Number.isFinite(a.stop_number) ? a.stop_number : Number.MAX_SAFE_INTEGER
     const bNum = Number.isFinite(b.stop_number) ? b.stop_number : Number.MAX_SAFE_INTEGER
-    return aNum - bNum || a.location_id - b.location_id || a.testing_site_id - b.testing_site_id
+    return aNum - bNum || a.location_id - b.location_id
   })
   for (const stop of orderedStops) {
     const existing = groupsByLocation.get(stop.location_id)
     if (existing) {
-      existing.buildingName = officeFirstDisplayValue(existing.buildingName, stop.building_name)
+      existing.buildingName = officeFirstDisplayValue(existing.buildingName, worksheetStopBuildingName(stop))
       existing.propertyManagementCompany = officeFirstDisplayValue(
         existing.propertyManagementCompany,
         stop.property_management_company,
@@ -179,10 +196,13 @@ export function groupOfficeWorksheetStops(stops: TechnicianWorksheetStop[]): Off
       existing.stops.push(stop)
       continue
     }
+    const heading = officeStopGroupHeading(stop)
     groupsByLocation.set(stop.location_id, {
       locationId: stop.location_id,
       displayAddress: stop.display_address,
-      buildingName: officeFirstDisplayValue(stop.building_name),
+      primaryLabel: heading.primaryLabel,
+      addressSubline: heading.addressSubline,
+      buildingName: officeFirstDisplayValue(worksheetStopBuildingName(stop)),
       propertyManagementCompany: officeFirstDisplayValue(stop.property_management_company),
       stops: [stop],
     })
@@ -190,31 +210,22 @@ export function groupOfficeWorksheetStops(stops: TechnicianWorksheetStop[]): Off
   return Array.from(groupsByLocation.values())
 }
 
-/** Group stops in frozen submission array order (only merge consecutive same-address rows). */
+/** One group per stop in API/submission array order (flat locations — no same-address merge). */
 export function groupOfficeWorksheetStopsInSubmissionOrder(
-  stops: TechnicianWorksheetStop[],
+  stops: TechnicianWorksheetLocation[],
 ): OfficeStopGroup[] {
-  const groups: OfficeStopGroup[] = []
-  for (const stop of stops) {
-    const last = groups.length > 0 ? groups[groups.length - 1] : null
-    if (last && last.locationId === stop.location_id) {
-      last.buildingName = officeFirstDisplayValue(last.buildingName, stop.building_name)
-      last.propertyManagementCompany = officeFirstDisplayValue(
-        last.propertyManagementCompany,
-        stop.property_management_company,
-      )
-      last.stops.push(stop)
-      continue
-    }
-    groups.push({
+  return stops.map((stop) => {
+    const heading = officeStopGroupHeading(stop)
+    return {
       locationId: stop.location_id,
       displayAddress: stop.display_address,
-      buildingName: officeFirstDisplayValue(stop.building_name),
+      primaryLabel: heading.primaryLabel,
+      addressSubline: heading.addressSubline,
+      buildingName: officeFirstDisplayValue(worksheetStopBuildingName(stop)),
       propertyManagementCompany: officeFirstDisplayValue(stop.property_management_company),
       stops: [stop],
-    })
-  }
-  return groups
+    }
+  })
 }
 
 export function fieldChangesForLocation(
@@ -235,7 +246,7 @@ export function auditChangeForCompactLabel(
 
 export function auditChangeForLongTextField(
   locationId: number,
-  stopKey: keyof TechnicianWorksheetStop,
+  stopKey: keyof TechnicianWorksheetLocation,
   fieldChangesByLocation?: Map<number, OfficeFieldChange[]>,
 ): OfficeFieldChange | undefined {
   const changes = fieldChangesForLocation(locationId, fieldChangesByLocation)
@@ -308,7 +319,7 @@ export function officeAddressCellUpdated(
 
 /** Human-readable reasons a stop appears on run-details notable worksheet (debug / tooltips). */
 export function notableStopInclusionReasons(
-  stop: TechnicianWorksheetStop,
+  stop: TechnicianWorksheetLocation,
   monthDate: string,
   fieldChangesByLocation?: Map<number, OfficeFieldChange[]>,
 ): string[] {
@@ -367,20 +378,20 @@ const OFFICE_COL_WIDTH_REM = {
 
 function officeLongTextColumnHasChange(
   locationId: number,
-  stopKey: keyof TechnicianWorksheetStop,
+  stopKey: keyof TechnicianWorksheetLocation,
   fieldChangesByLocation?: Map<number, OfficeFieldChange[]>,
 ): boolean {
   return auditChangeForLongTextField(locationId, stopKey, fieldChangesByLocation) != null
 }
 
 /** Which optional columns have at least one audited change anywhere on the route. */
-export function stopHasRunComments(stop: TechnicianWorksheetStop): boolean {
+export function stopHasRunComments(stop: TechnicianWorksheetLocation): boolean {
   return (stop.run_comments ?? '').trim().length > 0
 }
 
 export function computeOfficeWorksheetChangeColumnVisibility(
   fieldChangesByLocation?: Map<number, OfficeFieldChange[]>,
-  stops?: TechnicianWorksheetStop[],
+  stops?: TechnicianWorksheetLocation[],
 ): OfficeWorksheetChangeColumnVisibility {
   const vis: OfficeWorksheetChangeColumnVisibility = {
     access: false,

@@ -16,7 +16,7 @@ import { Alert, Badge, Button, Card, Modal, Spinner, Table } from 'react-bootstr
 import { Link, useMatch, useParams } from 'react-router-dom'
 import {
   legacyWorksheetRowDisplay,
-} from '../features/monthlyRoutes/testingSiteDisplay'
+} from '../features/monthlyRoutes/locationDisplay'
 import OfficeWorksheetReadOnlyTable from '../features/monthlyRoutes/OfficeWorksheetReadOnlyTable'
 import {
   groupOfficeWorksheetStops,
@@ -698,15 +698,15 @@ export default function TechnicianWorksheetPage() {
   }, [idNum, monthQuery, payload, syncState])
 
   const officeWorksheetStops = useMemo(
-    () => (isOfficeReadOnly ? (payload?.stops ?? []) : []),
-    [isOfficeReadOnly, payload?.stops],
+    () => (isOfficeReadOnly ? (payload?.locations ?? []) : []),
+    [isOfficeReadOnly, payload?.locations],
   )
 
   const rowDisplayByLocationId = useMemo(() => {
     const map = new Map<number, { primary: string; subline: string | null }>()
     if (!payload) return map
     for (const row of payload.rows) {
-      map.set(row.location_id, legacyWorksheetRowDisplay(row, payload.stops))
+      map.set(row.location_id, legacyWorksheetRowDisplay(row))
     }
     return map
   }, [payload])
@@ -1374,7 +1374,7 @@ export default function TechnicianWorksheetPage() {
                         ? '/tech/start'
                         : `/tech/route/${idNum}`
                       : Number.isNaN(idNum)
-                        ? '/monthlies/routes'
+                        ? '/monthlies'
                         : monthOk
                           ? `/monthlies/routes/${idNum}/paperwork?month=${encodeURIComponent(monthQuery)}`
                           : `/monthlies/routes/${idNum}`
@@ -1616,6 +1616,12 @@ export default function TechnicianWorksheetPage() {
                               const display = rowDisplayByLocationId.get(row.location_id)
                               const primary = display?.primary ?? row.display_address
                               const subline = display?.subline
+                              const buildingRaw = (row.building_name ?? row.building ?? '').trim()
+                              const buildingDisplay =
+                                buildingRaw &&
+                                buildingRaw.toLowerCase() !== primary.trim().toLowerCase()
+                                  ? buildingRaw
+                                  : null
                               return (
                                 <>
                             <Link
@@ -1627,10 +1633,12 @@ export default function TechnicianWorksheetPage() {
                             {subline ? (
                               <div className="small text-muted">{subline}</div>
                             ) : null}
+                            {buildingDisplay ? (
+                              <div className="small text-muted">{buildingDisplay}</div>
+                            ) : null}
                                 </>
                               )
                             })()}
-                            <div className="small text-muted">{worksheetReadOnlyDisplay(row.building)}</div>
                             <div className="small text-muted">{row.property_management_company || '—'}</div>
                           </div>
                         </td>

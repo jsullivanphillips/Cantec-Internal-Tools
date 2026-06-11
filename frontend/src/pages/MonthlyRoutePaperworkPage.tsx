@@ -11,11 +11,11 @@ import {
   worksheetRunExplicitlyCompleted,
   type MonthlyRunDetailDeficiencySummary,
   type MonthlyRouteDetailPayload,
-  type MonthlyRunDetailLocationStop,
+  type MonthlyRunDetailLocation,
   type MonthlyRunDetailPayload,
   type MonthlySpecialistTechRow,
   type TechnicianWorksheetRun,
-  type TechnicianWorksheetStop,
+  type TechnicianWorksheetLocation,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
 import {
   computeSelectablePaperworkMonths,
@@ -31,6 +31,7 @@ import {
 } from '../features/monthlyRoutes/runDetailsPrepPatch'
 import { syncRunDetailsStopCache } from '../features/monthlyRoutes/useRunDetailsWorksheetStops'
 import { useRunDetailsStopPatch } from '../features/monthlyRoutes/useRunDetailsStopPatch'
+import { useAnnualScheduleCheck } from '../features/monthlyRoutes/useAnnualScheduleCheck'
 import {
   canOfficeCompleteRun,
   canOfficeReturnRunToPrep,
@@ -117,7 +118,7 @@ export default function MonthlyRoutePaperworkPage() {
   const [resetRunModalOpen, setResetRunModalOpen] = useState(false)
   const [resetRunBusy, setResetRunBusy] = useState(false)
   const [regenerateLibraryBusy, setRegenerateLibraryBusy] = useState(false)
-  const [historyStops, setHistoryStops] = useState<TechnicianWorksheetStop[]>([])
+  const [historyStops, setHistoryStops] = useState<TechnicianWorksheetLocation[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
   const [historyMeta, setHistoryMeta] = useState<{
     capturedAt: string | null
@@ -147,6 +148,16 @@ export default function MonthlyRoutePaperworkPage() {
     () => derivePaperworkViewMode(payload?.run ?? null, monthQuery, currentMonthIso),
     [payload?.run, monthQuery, currentMonthIso],
   )
+
+  const annualScheduleCheckEnabled =
+    paperworkViewMode === 'preparation' && Number.isFinite(idNum) && payload != null
+  const {
+    status: annualScheduleStatus,
+    locationsById: annualScheduleByLocationId,
+    warningCount: annualScheduleWarningCount,
+    error: annualScheduleError,
+    refresh: refreshAnnualScheduleCheck,
+  } = useAnnualScheduleCheck(idNum, monthQuery, annualScheduleCheckEnabled)
 
   const futurePrepBlocked = useMemo(
     () => isFutureMonthPrepBlocked(monthQuery, currentMonthIso, routeMeta?.runs_by_month ?? {}),
@@ -365,7 +376,7 @@ export default function MonthlyRoutePaperworkPage() {
       }
       try {
         const data = await apiJson<{
-          stops: TechnicianWorksheetStop[]
+          stops: TechnicianWorksheetLocation[]
           captured_at: string | null
           field_work_reopened: boolean
         }>(`/api/monthly_routes/routes/${idNum}/run_details/field_submission?${qs.toString()}`, {
@@ -471,12 +482,12 @@ export default function MonthlyRoutePaperworkPage() {
   const locationsRef = useRef<MonthlyRunDetailPayload['locations']>(undefined)
 
   const onStopPatched = useCallback(
-    (testingSiteId: number, patch: Partial<MonthlyRunDetailLocationStop>) => {
+    (locationId: number, patch: Partial<MonthlyRunDetailLocation>) => {
       setPayload((prev) => {
         if (!prev?.locations?.length) return prev
         const locations = patchRunDetailLocationStop(
           prev.locations,
-          testingSiteId,
+          locationId,
           prev.month_date,
           patch,
         )
@@ -491,16 +502,12 @@ export default function MonthlyRoutePaperworkPage() {
     locationsRef.current = payload?.locations
   }, [payload?.locations])
 
-  const getStopSnapshot = useCallback((testingSiteId: number) => {
-    for (const loc of locationsRef.current ?? []) {
-      const stop = loc.stops.find((row) => row.testing_site_id === testingSiteId)
-      if (stop) return stop
-    }
-    return undefined
+  const getStopSnapshot = useCallback((locationId: number) => {
+    return (locationsRef.current ?? []).find((loc) => loc.location_id === locationId)
   }, [])
 
   const onWorksheetStopSynced = useCallback(
-    (stop: TechnicianWorksheetStop) => {
+    (stop: TechnicianWorksheetLocation) => {
       if (!Number.isFinite(idNum)) return
       syncRunDetailsStopCache(idNum, monthQuery, stop)
     },
@@ -508,14 +515,14 @@ export default function MonthlyRoutePaperworkPage() {
   )
 
   const onStopMergedFromWorksheet = useCallback(
-    (stop: TechnicianWorksheetStop, scope: 'full' | 'deficiency' = 'full') => {
+    (stop: TechnicianWorksheetLocation, scope: 'full' | 'deficiency' = 'full') => {
       if (!Number.isFinite(idNum)) return
       syncRunDetailsStopCache(idNum, monthQuery, stop)
       const patch =
         scope === 'deficiency'
           ? deficiencyPatchFromWorksheetStop(stop, payload?.run ?? null)
           : detailPatchFromWorksheetStop(stop)
-      onStopPatched(stop.testing_site_id, patch)
+      onStopPatched(stop.location_id, patch)
     },
     [idNum, monthQuery, onStopPatched, payload?.run],
   )
@@ -531,14 +538,14 @@ export default function MonthlyRoutePaperworkPage() {
   const { hasPendingPatches } = stopPatch
 
   const onDeficiencyUpdated = useCallback(
-    async (testingSiteId: number, updated: MonthlyRunDetailDeficiencySummary) => {
+    async (locationId: number, updated: MonthlyRunDetailDeficiencySummary) => {
       setPayload((prev) => {
         if (!prev?.locations?.length) return prev
         return {
           ...prev,
           locations: patchRunDetailStopDeficiency(
             prev.locations,
-            testingSiteId,
+            locationId,
             prev.month_date,
             updated,
           ),
@@ -632,8 +639,12 @@ export default function MonthlyRoutePaperworkPage() {
       )
       clearWorksheetCache(idNum, monthQuery)
       applyWorkflowRunUpdate(data.run)
-    } catch {
-      window.alert('Could not mark review complete. Try again.')
+    } catch (e) {
+      const msg =
+        typeof e === 'object' && e != null && 'error' in (e as Record<string, unknown>)
+          ? String((e as { error?: unknown }).error)
+          : 'Could not mark review complete. Try again.'
+      window.alert(msg)
     } finally {
       setRunLifecycleAction(null)
     }
@@ -774,7 +785,7 @@ export default function MonthlyRoutePaperworkPage() {
       <div className="monthly-route-detail-page">
         <div className="monthly-route-detail-container container py-4">
           <Alert variant="warning">Invalid route.</Alert>
-          <Link to="/monthlies/routes">Back to Monthly Routes</Link>
+          <Link to="/monthlies">Back to Monthlies</Link>
         </div>
       </div>
     )
@@ -819,11 +830,15 @@ export default function MonthlyRoutePaperworkPage() {
   const lifecycleBusy = runLifecycleAction != null
 
   return (
-    <div className="monthly-route-detail-page monthly-run-detail-page monthly-paperwork-page">
+    <div
+      className={`monthly-route-detail-page monthly-run-detail-page monthly-paperwork-page${
+        paperworkViewMode === 'exact_history' ? ' monthly-paperwork-page--exact-history' : ''
+      }`}
+    >
       <div className="monthly-route-detail-container">
         <nav className="monthly-run-detail-breadcrumb" aria-label="Breadcrumb">
-          <Link to="/monthlies/routes" className="monthly-location-back-link">
-            Monthly Routes
+          <Link to="/monthlies" className="monthly-location-back-link">
+            Monthlies
           </Link>
           <span className="monthly-run-detail-breadcrumb__sep" aria-hidden>
             /
@@ -862,6 +877,29 @@ export default function MonthlyRoutePaperworkPage() {
             {futurePrepBlocked && paperworkViewMode === 'preparation' ? (
               <Alert variant="warning" className="py-2 small mb-0 mt-2">
                 {FUTURE_MONTH_PREP_BLOCKED_MESSAGE}
+              </Alert>
+            ) : null}
+            {prepPhase && annualScheduleStatus === 'loading' ? (
+              <p className="small text-muted mb-0 mt-2">Checking ServiceTrade annual schedules…</p>
+            ) : null}
+            {prepPhase && annualScheduleStatus === 'error' && annualScheduleError ? (
+              <Alert variant="warning" className="py-2 small mb-0 mt-2">
+                {annualScheduleError}{' '}
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="p-0 align-baseline"
+                  onClick={() => void refreshAnnualScheduleCheck()}
+                >
+                  Retry
+                </Button>
+              </Alert>
+            ) : null}
+            {prepPhase && annualScheduleWarningCount > 0 ? (
+              <Alert variant="warning" className="py-2 small mb-0 mt-2">
+                {annualScheduleWarningCount} site
+                {annualScheduleWarningCount === 1 ? '' : 's'} need annual schedule review before
+                technicians start.
               </Alert>
             ) : null}
           </div>
@@ -1029,6 +1067,9 @@ export default function MonthlyRoutePaperworkPage() {
             paperworkViewMode={paperworkViewMode}
             prepEditsDisabled={futurePrepBlocked}
             onRouteOrderChanged={(orderedLocationIds) => void onRouteOrderChanged(orderedLocationIds)}
+            annualScheduleStatus={annualScheduleStatus}
+            annualScheduleByLocationId={annualScheduleByLocationId}
+            onAnnualScheduleRefresh={() => refreshAnnualScheduleCheck(true)}
             outcomeCounts={
               paperworkViewMode === 'run_review'
                 ? {
@@ -1042,7 +1083,7 @@ export default function MonthlyRoutePaperworkPage() {
           />
         ) : (
           <section id="run-review-section" className="monthly-location-detail-surface p-3">
-            <p className="monthly-run-detail-empty mb-0">No worksheet stops for this run yet.</p>
+            <p className="monthly-run-detail-empty mb-0">No worksheet locations for this run yet.</p>
           </section>
         )}
       </div>

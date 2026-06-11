@@ -13,19 +13,19 @@ import {
 import { rollbackPatchForChanges } from './runDetailsPrepPatch'
 import type { PrepStopPatchChanges } from './runDetailsPrepPatch'
 import type { RunDetailsStopPatchApi } from './useRunDetailsStopPatch'
-import type { MonitoringCompanySummary, TechnicianWorksheetStop } from './monthlyRoutesShared'
+import type { MonitoringCompanySummary, TechnicianWorksheetLocation } from './monthlyRoutesShared'
 import type { PortalDeficiencySummary } from './portalWorkflowShared'
 import { useMonitoringCompanies } from './useMonitoringCompanies'
 import type { WorksheetStopChangeSet } from './worksheetOfflineStore'
 
 type Props = {
-  stop: TechnicianWorksheetStop
+  stop: TechnicianWorksheetLocation
   routeId: number
   monthDate: string
   runId: number | null
   readOnly: boolean
   stopPatch: RunDetailsStopPatchApi
-  onStopMergedFromWorksheet: (stop: TechnicianWorksheetStop, scope?: 'full' | 'deficiency') => void
+  onStopMergedFromWorksheet: (stop: TechnicianWorksheetLocation, scope?: 'full' | 'deficiency') => void
 }
 
 export default function RunDetailsStopSiteEditableFields({
@@ -53,7 +53,7 @@ export default function RunDetailsStopSiteEditableFields({
   useEffect(() => {
     setEditingField(null)
     setSaveError(null)
-  }, [stop.testing_site_id])
+  }, [stop.location_id])
 
   const { patchStop: patchStopFields, setError: setStopPatchError } = stopPatch
 
@@ -64,7 +64,7 @@ export default function RunDetailsStopSiteEditableFields({
       const prepChanges = changes as PrepStopPatchChanges
       try {
         await patchStopFields(
-          stop.testing_site_id,
+          stop.location_id,
           fieldKey,
           prepChanges,
           rollbackPatchForChanges(stop, prepChanges),
@@ -114,7 +114,7 @@ export default function RunDetailsStopSiteEditableFields({
   }
 
   const applyDeficiencyStop = useCallback(
-    (updated: TechnicianWorksheetStop) => {
+    (updated: TechnicianWorksheetLocation) => {
       onStopMergedFromWorksheet(updated, 'deficiency')
     },
     [onStopMergedFromWorksheet],
@@ -140,7 +140,7 @@ export default function RunDetailsStopSiteEditableFields({
       try {
         const updated =
           defModalMode === 'add'
-            ? await officeCreateDeficiency(routeId, monthDate, stop.testing_site_id, {
+            ? await officeCreateDeficiency(routeId, monthDate, stop.location_id, {
                 ...values,
                 description: values.description || undefined,
                 run_id: runId,
@@ -149,7 +149,7 @@ export default function RunDetailsStopSiteEditableFields({
               ? await officeUpdateDeficiency(
                   routeId,
                   monthDate,
-                  stop.testing_site_id,
+                  stop.location_id,
                   editingDeficiency.id,
                   values,
                 )
@@ -164,7 +164,7 @@ export default function RunDetailsStopSiteEditableFields({
       defModalMode,
       routeId,
       monthDate,
-      stop.testing_site_id,
+      stop.location_id,
       runId,
       editingDeficiency,
       applyDeficiencyStop,
@@ -179,7 +179,7 @@ export default function RunDetailsStopSiteEditableFields({
         const updated = await officeVerifyDeficiency(
           routeId,
           monthDate,
-          stop.testing_site_id,
+          stop.location_id,
           def.id,
         )
         await applyDeficiencyStop(updated)
@@ -187,7 +187,7 @@ export default function RunDetailsStopSiteEditableFields({
         setSaveError(e instanceof Error ? e.message : 'Could not verify deficiency.')
       }
     },
-    [readOnly, routeId, monthDate, stop.testing_site_id, applyDeficiencyStop],
+    [readOnly, routeId, monthDate, stop.location_id, applyDeficiencyStop],
   )
 
   return (
@@ -208,10 +208,10 @@ export default function RunDetailsStopSiteEditableFields({
             {...fieldEditProps}
           />
           <PortalEditableFieldRow
-            fieldKey="building_name"
+            fieldKey="label"
             label="Building"
-            value={stop.building_name ?? ''}
-            onSave={saveField('building_name')}
+            value={stop.label ?? ''}
+            onSave={saveField('label')}
             {...fieldEditProps}
           />
         </div>

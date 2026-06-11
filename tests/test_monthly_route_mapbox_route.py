@@ -5,13 +5,14 @@ from sqlalchemy.exc import IntegrityError
 
 from app import create_app
 from app.db_models import (
+    MonitoringCompany,
+    MonthlyLocation,
+    MonthlyLocationMonth,
     MonthlyRoute,
     MonthlyRouteCalculatedPath,
-    MonthlyRouteLocation,
-    MonthlySite,
-    MonthlyTestingSite,
     db,
 )
+from tests.monthly_location_helpers import make_location
 from app.monthly.mapbox_routes import calculated_path_payload
 
 
@@ -24,11 +25,11 @@ def route_map_client(monkeypatch):
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
     tables = [
+        MonitoringCompany.__table__,
         MonthlyRoute.__table__,
-        MonthlyRouteLocation.__table__,
+        MonthlyLocation.__table__,
+        MonthlyLocationMonth.__table__,
         MonthlyRouteCalculatedPath.__table__,
-        MonthlySite.__table__,
-        MonthlyTestingSite.__table__,
     ]
     with app.app_context():
         db.metadata.create_all(db.engine, tables=tables)
@@ -44,31 +45,21 @@ def route_map_client(monkeypatch):
 def _seed_route_with_locations() -> None:
     route = MonthlyRoute(id=1, route_number=4, weekday_iso=0, week_occurrence=1)
     locs = [
-        MonthlyRouteLocation(
+        make_location(
             id=101,
             address="100 Test St",
-            address_normalized="100 test st",
             property_management_company="PM",
             property_management_company_normalized="pm",
-            building=None,
-            building_normalized="",
-            status_normalized="active",
-            status_raw="Active",
             monthly_route_id=1,
             route_stop_order=0,
             latitude=48.42,
             longitude=-123.36,
         ),
-        MonthlyRouteLocation(
+        make_location(
             id=102,
             address="200 Test St",
-            address_normalized="200 test st",
             property_management_company="PM",
             property_management_company_normalized="pm",
-            building=None,
-            building_normalized="",
-            status_normalized="active",
-            status_raw="Active",
             monthly_route_id=1,
             route_stop_order=1,
             latitude=48.43,
@@ -144,8 +135,8 @@ def test_changed_stop_order_recalculates_from_signature(route_map_client, monkey
     with app.app_context():
         _seed_route_with_locations()
         first = calculated_path_payload(1)
-        loc_a = db.session.get(MonthlyRouteLocation, 101)
-        loc_b = db.session.get(MonthlyRouteLocation, 102)
+        loc_a = db.session.get(MonthlyLocation, 101)
+        loc_b = db.session.get(MonthlyLocation, 102)
         loc_a.route_stop_order = 1
         loc_b.route_stop_order = 0
         db.session.commit()

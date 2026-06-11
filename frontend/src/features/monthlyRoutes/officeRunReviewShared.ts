@@ -1,6 +1,6 @@
 /** Office run-details review: portal outcomes, billing labels, location grouping. */
 
-import type { TechnicianWorksheetStop } from './monthlyRoutesShared'
+import type { TechnicianWorksheetLocation } from './monthlyRoutesShared'
 import { officeStopStatus, officeStopStatusLabel } from './officeWorksheetTableShared'
 import {
   formatSkipReasonDisplayText,
@@ -23,7 +23,7 @@ function norm(value: string | null | undefined): string {
   return (value ?? '').trim()
 }
 
-export function stopPortalOutcome(stop: TechnicianWorksheetStop): PortalTestOutcome | null {
+export function stopPortalOutcome(stop: TechnicianWorksheetLocation): PortalTestOutcome | null {
   const outcome = norm(stop.test_outcome).toLowerCase() as PortalTestOutcome
   return PORTAL_OUTCOMES.has(outcome) ? outcome : null
 }
@@ -32,7 +32,7 @@ export type RunReviewOutcomeIconKind = 'all_good' | 'failed' | 'passed_with_prob
 
 /** Icon shown beside run-review outcome text (null when no icon applies). */
 export function runReviewOutcomeIconKind(
-  stop: TechnicianWorksheetStop,
+  stop: TechnicianWorksheetLocation,
   monthDate: string,
 ): RunReviewOutcomeIconKind | null {
   if (runReviewStopIsAnnualSkip(stop, monthDate)) return 'annual'
@@ -48,7 +48,7 @@ export function runReviewOutcomeIconKind(
 
 /** Skipped because of annual month / annual skip reason (not a generic field skip). */
 export function runReviewStopIsAnnualSkip(
-  stop: TechnicianWorksheetStop,
+  stop: TechnicianWorksheetLocation,
   monthDate: string,
 ): boolean {
   const outcome = stopPortalOutcome(stop)
@@ -59,7 +59,7 @@ export function runReviewStopIsAnnualSkip(
 }
 
 export function runReviewOutcomeHeadline(
-  stop: TechnicianWorksheetStop,
+  stop: TechnicianWorksheetLocation,
   monthDate: string,
 ): string | null {
   const portalLabel = portalOutcomeDisplay(stop)
@@ -91,7 +91,7 @@ export function runReviewOutcomeHeadline(
 }
 
 export function runReviewOutcomeBadgeClass(
-  stop: TechnicianWorksheetStop,
+  stop: TechnicianWorksheetLocation,
   monthDate: string,
 ): string {
   const outcome = stopPortalOutcome(stop)
@@ -143,12 +143,12 @@ export function billingStatusVariant(status: string | null | undefined): string 
 export type RunReviewLocationGroup = {
   locationId: number
   label: string
-  stops: TechnicianWorksheetStop[]
+  stops: TechnicianWorksheetLocation[]
   billing_status: string | null
 }
 
-export function groupStopsByLocation(stops: TechnicianWorksheetStop[]): RunReviewLocationGroup[] {
-  const byLocation = new Map<number, TechnicianWorksheetStop[]>()
+export function groupStopsByLocation(stops: TechnicianWorksheetLocation[]): RunReviewLocationGroup[] {
+  const byLocation = new Map<number, TechnicianWorksheetLocation[]>()
   for (const stop of stops) {
     const list = byLocation.get(stop.location_id) ?? []
     list.push(stop)
@@ -157,7 +157,7 @@ export function groupStopsByLocation(stops: TechnicianWorksheetStop[]): RunRevie
   const groups: RunReviewLocationGroup[] = []
   for (const [locationId, locationStops] of byLocation) {
     const sorted = [...locationStops].sort(
-      (a, b) => a.testing_site_id - b.testing_site_id || a.stop_number - b.stop_number,
+      (a, b) => a.location_id - b.location_id || a.stop_number - b.stop_number,
     )
     const label =
       (sorted[0]?.display_address || sorted[0]?.label || '').trim() || `Location ${locationId}`
@@ -174,7 +174,7 @@ export function groupStopsByLocation(stops: TechnicianWorksheetStop[]): RunRevie
 }
 
 export function stopMatchesOutcomeFilter(
-  stop: TechnicianWorksheetStop,
+  stop: TechnicianWorksheetLocation,
   monthDate: string,
   filter: PortalTestOutcome,
 ): boolean {
@@ -191,7 +191,7 @@ export function stopMatchesOutcomeFilter(
   return false
 }
 
-export function stopHasOutcomeOnlyReview(stop: TechnicianWorksheetStop, monthDate: string): boolean {
+export function stopHasOutcomeOnlyReview(stop: TechnicianWorksheetLocation, monthDate: string): boolean {
   const outcome = stopPortalOutcome(stop)
   if (outcome === 'all_good' || outcome === 'passed_with_problems' || outcome === 'failed') {
     return true

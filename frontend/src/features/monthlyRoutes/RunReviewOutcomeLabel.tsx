@@ -1,4 +1,4 @@
-import type { TechnicianWorksheetStop } from './monthlyRoutesShared'
+import type { TechnicianWorksheetLocation } from './monthlyRoutesShared'
 import { runReviewOutcomeIconKind } from './officeRunReviewShared'
 
 const ICON_CLASS: Record<
@@ -13,7 +13,7 @@ const ICON_CLASS: Record<
 }
 
 type Props = {
-  stop: TechnicianWorksheetStop
+  stop: TechnicianWorksheetLocation
   monthDate: string
   headline: string
   badgeClass: string
@@ -24,7 +24,7 @@ export function RunReviewOutcomeIcon({
   stop,
   monthDate,
 }: {
-  stop: TechnicianWorksheetStop
+  stop: TechnicianWorksheetLocation
   monthDate: string
 }) {
   const kind = runReviewOutcomeIconKind(stop, monthDate)

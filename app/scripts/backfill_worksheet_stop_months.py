@@ -1,4 +1,6 @@
-"""Backfill ``MonthlyTestingSiteMonth`` rows from legacy ``MonthlyRouteTestHistory``.
+"""DEPRECATED — pre-flat-model script. Legacy tables removed after Alembic z11 cutover.
+
+Backfill ``MonthlyTestingSiteMonth`` rows from legacy ``MonthlyRouteTestHistory``.
 
     python -m app.scripts.backfill_worksheet_stop_months
     python -m app.scripts.backfill_worksheet_stop_months --execute

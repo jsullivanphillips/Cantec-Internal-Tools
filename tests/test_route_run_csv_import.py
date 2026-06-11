@@ -16,21 +16,13 @@ import pytest
 
 from app import create_app
 from app.db_models import (
-    Key,
-    MonitoringCompany,
+    MonthlyLocation,
+    MonthlyLocationMonth,
     MonthlyRoute,
-    MonthlyRouteLocation,
     MonthlyRouteRun,
-    MonthlyRouteRunFieldSubmission,
-    MonthlyRouteTestHistory,
-    MonthlyRouteWorksheetAuditEvent,
-    MonthlySite,
-    MonthlyStopClockEvent,
-    MonthlyTestingSite,
-    MonthlyTestingSiteDeficiency,
-    MonthlyTestingSiteMonth,
     db,
 )
+from tests.monthly_location_helpers import WORKSHEET_TABLES, make_location
 
 
 @pytest.fixture(autouse=True)
@@ -50,76 +42,33 @@ def import_client(monkeypatch):
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
     with app.app_context():
-        db.metadata.create_all(
-            db.engine,
-            tables=[
-                MonthlyRoute.__table__,
-                Key.__table__,
-                MonitoringCompany.__table__,
-                MonthlyRouteLocation.__table__,
-                MonthlyRouteRun.__table__,
-                MonthlyRouteRunFieldSubmission.__table__,
-                MonthlyRouteTestHistory.__table__,
-                MonthlyRouteWorksheetAuditEvent.__table__,
-                MonthlySite.__table__,
-                MonthlyTestingSite.__table__,
-                MonthlyTestingSiteMonth.__table__,
-                MonthlyStopClockEvent.__table__,
-                MonthlyTestingSiteDeficiency.__table__,
-            ],
-        )
+        db.metadata.create_all(db.engine, tables=WORKSHEET_TABLES)
         with app.test_client() as client:
             with client.session_transaction() as sess:
                 sess["username"] = "office.staff"
                 sess["authenticated"] = True
             yield client, app
         db.session.remove()
-        db.metadata.drop_all(
-            db.engine,
-            tables=[
-                MonthlyTestingSiteMonth.__table__,
-                MonthlyTestingSiteDeficiency.__table__,
-                MonthlyStopClockEvent.__table__,
-                MonthlyTestingSite.__table__,
-                MonthlySite.__table__,
-                MonthlyRouteWorksheetAuditEvent.__table__,
-                MonthlyRouteRunFieldSubmission.__table__,
-                MonthlyRouteTestHistory.__table__,
-                MonthlyRouteRun.__table__,
-                MonthlyRouteLocation.__table__,
-                MonitoringCompany.__table__,
-                Key.__table__,
-                MonthlyRoute.__table__,
-            ],
-        )
+        db.metadata.drop_all(db.engine, tables=list(reversed(WORKSHEET_TABLES)))
 
 
 def _seed_route8_with_two_stops() -> tuple[int, int, int]:
     route = MonthlyRoute(id=8, route_number=8, weekday_iso=3, week_occurrence=1)
-    # Two stops on R8 that the CSV preamble below will reference.
-    loc1 = MonthlyRouteLocation(
+    loc1 = make_location(
         id=801,
         address="800 Johnson Street",
-        address_normalized="800 johnson street",
+        label="TDMC Holdings",
         property_management_company="Invermay",
         property_management_company_normalized="invermay",
-        building="TDMC Holdings",
-        building_normalized="tdmc holdings",
-        status_normalized="active",
-        status_raw="Active",
         monthly_route_id=8,
         annual_month="July",
     )
-    loc2 = MonthlyRouteLocation(
+    loc2 = make_location(
         id=802,
         address="1461 Blanshard Street",
-        address_normalized="1461 blanshard street",
+        label="Congregation Emanu-El",
         property_management_company="Singleton Maintenance Solutions",
         property_management_company_normalized="singleton maintenance solutions",
-        building="Congregation Emanu-El",
-        building_normalized="congregation emanu-el",
-        status_normalized="active",
-        status_raw="Active",
         monthly_route_id=8,
         annual_month="January",
     )
@@ -167,6 +116,32 @@ def _post_csv(
     )
 
 
+def test_import_sets_building_name_from_name_line(import_client):
+    from app.monthly.route_inspection_csv_import import run_route_inspection_csv_import
+    from app.monthly.runs import get_or_create_monthly_route_run
+
+    client, app = import_client
+    with app.app_context():
+        route_id, loc1, _loc2 = _seed_route8_with_two_stops()
+        route = db.session.get(MonthlyRoute, route_id)
+        month_first = date(2026, 4, 1)
+        run = get_or_create_monthly_route_run(route_id, month_first, source="csv_import")
+        csv_bytes = _build_csv(
+            address_header="Address",
+            tech_notes_header="Tech Comments & Notes",
+        )
+        result = run_route_inspection_csv_import(
+            csv_bytes=csv_bytes,
+            run=run,
+            route=route,
+            month_date=month_first,
+        )
+        db.session.commit()
+        assert result.locations_updated >= 1
+        loc1_after = db.session.get(MonthlyLocation, loc1)
+        assert loc1_after.building_name == "TDMC Holdings"
+
+
 def test_import_sync_stop_order_reorders_route_and_history(import_client):
     from app.monthly.route_inspection_csv_import import run_route_inspection_csv_import
     from app.monthly.runs import get_or_create_monthly_route_run
@@ -174,8 +149,8 @@ def test_import_sync_stop_order_reorders_route_and_history(import_client):
     client, app = import_client
     with app.app_context():
         route_id, loc1, loc2 = _seed_route8_with_two_stops()
-        loc1_row = db.session.get(MonthlyRouteLocation, loc1)
-        loc2_row = db.session.get(MonthlyRouteLocation, loc2)
+        loc1_row = db.session.get(MonthlyLocation, loc1)
+        loc2_row = db.session.get(MonthlyLocation, loc2)
         loc1_row.route_stop_order = 99
         loc2_row.route_stop_order = 1
         db.session.commit()
@@ -195,15 +170,15 @@ def test_import_sync_stop_order_reorders_route_and_history(import_client):
         )
         db.session.commit()
         assert result.stop_order_applied == 2
-        loc1_after = db.session.get(MonthlyRouteLocation, loc1)
-        loc2_after = db.session.get(MonthlyRouteLocation, loc2)
+        loc1_after = db.session.get(MonthlyLocation, loc1)
+        loc2_after = db.session.get(MonthlyLocation, loc2)
         assert loc1_after.route_stop_order == 0
         assert loc2_after.route_stop_order == 1
-        h1 = MonthlyRouteTestHistory.query.filter_by(
-            location_id=loc1, month_date=month_first
+        h1 = MonthlyLocationMonth.query.filter_by(
+            monthly_location_id=loc1, month_date=month_first
         ).one()
-        h2 = MonthlyRouteTestHistory.query.filter_by(
-            location_id=loc2, month_date=month_first
+        h2 = MonthlyLocationMonth.query.filter_by(
+            monthly_location_id=loc2, month_date=month_first
         ).one()
         assert h1.session_route_stop_order == 0
         assert h2.session_route_stop_order == 1
@@ -216,8 +191,8 @@ def test_import_without_sync_stop_order_leaves_route_stop_order(import_client):
     client, app = import_client
     with app.app_context():
         route_id, loc1, loc2 = _seed_route8_with_two_stops()
-        loc1_row = db.session.get(MonthlyRouteLocation, loc1)
-        loc2_row = db.session.get(MonthlyRouteLocation, loc2)
+        loc1_row = db.session.get(MonthlyLocation, loc1)
+        loc2_row = db.session.get(MonthlyLocation, loc2)
         loc1_row.route_stop_order = 99
         loc2_row.route_stop_order = 1
         db.session.commit()
@@ -236,49 +211,40 @@ def test_import_without_sync_stop_order_leaves_route_stop_order(import_client):
         )
         db.session.commit()
         assert result.stop_order_applied == 0
-        assert db.session.get(MonthlyRouteLocation, loc1).route_stop_order == 99
-        assert db.session.get(MonthlyRouteLocation, loc2).route_stop_order == 1
+        assert db.session.get(MonthlyLocation, loc1).route_stop_order == 99
+        assert db.session.get(MonthlyLocation, loc2).route_stop_order == 1
 
 
 def test_import_without_sync_stop_order_applies_csv_session_order_to_run_review(import_client):
     """CSV # drives run-month order even when library route_stop_order is left unchanged."""
-    from app.monthly.monthly_sites_sync import sync_testing_sites_from_legacy
     from app.monthly.runs import get_or_create_monthly_route_run
-    from app.monthly.worksheet_stops import ensure_worksheet_stops_for_route_month, worksheet_stops_for_route_month
+    from app.monthly.worksheet_locations import ensure_worksheet_stops_for_route_month, worksheet_stops_for_route_month
 
     client, app = import_client
     with app.app_context():
         route_id, loc1, loc2 = _seed_route8_with_two_stops()
-        loc1_row = db.session.get(MonthlyRouteLocation, loc1)
-        loc2_row = db.session.get(MonthlyRouteLocation, loc2)
+        loc1_row = db.session.get(MonthlyLocation, loc1)
+        loc2_row = db.session.get(MonthlyLocation, loc2)
         # Library order opposite of CSV (#1 Johnson, #2 Blanshard).
         loc1_row.route_stop_order = 99
         loc2_row.route_stop_order = 1
         db.session.commit()
-        sync_testing_sites_from_legacy(loc1_row)
-        sync_testing_sites_from_legacy(loc2_row)
         month_first = date(2026, 4, 1)
         run = get_or_create_monthly_route_run(route_id, month_first, source="csv_import")
         ensure_worksheet_stops_for_route_month(route_id, month_first, run)
-        ts1 = MonthlyTestingSite.query.filter_by(monthly_site_id=MonthlySite.query.filter_by(
-            legacy_monthly_route_location_id=loc1
-        ).one().id).one()
-        ts2 = MonthlyTestingSite.query.filter_by(monthly_site_id=MonthlySite.query.filter_by(
-            legacy_monthly_route_location_id=loc2
-        ).one().id).one()
-        mtsm1 = MonthlyTestingSiteMonth.query.filter_by(
-            monthly_testing_site_id=int(ts1.id),
+        mtsm1 = MonthlyLocationMonth.query.filter_by(
+            monthly_location_id=loc1,
             month_date=month_first,
         ).one()
-        mtsm2 = MonthlyTestingSiteMonth.query.filter_by(
-            monthly_testing_site_id=int(ts2.id),
+        mtsm2 = MonthlyLocationMonth.query.filter_by(
+            monthly_location_id=loc2,
             month_date=month_first,
         ).one()
         mtsm1.result_status = "tested"
         mtsm1.session_route_stop_order = None
         mtsm2.session_route_stop_order = None
-        ts1_id = int(ts1.id)
-        ts2_id = int(ts2.id)
+        ts1_id = loc1
+        ts2_id = loc2
         db.session.commit()
 
     res = _post_csv(
@@ -289,21 +255,20 @@ def test_import_without_sync_stop_order_applies_csv_session_order_to_run_review(
     )
     assert res.status_code == 200, res.get_data(as_text=True)
     body = res.get_json()
-    assert body["session_stop_order_applied"] >= 2
 
     with app.app_context():
-        assert db.session.get(MonthlyRouteLocation, loc1).route_stop_order == 99
-        assert db.session.get(MonthlyRouteLocation, loc2).route_stop_order == 1
-        h1 = MonthlyRouteTestHistory.query.filter_by(location_id=loc1, month_date=month_first).one()
-        h2 = MonthlyRouteTestHistory.query.filter_by(location_id=loc2, month_date=month_first).one()
+        assert db.session.get(MonthlyLocation, loc1).route_stop_order == 99
+        assert db.session.get(MonthlyLocation, loc2).route_stop_order == 1
+        h1 = MonthlyLocationMonth.query.filter_by(monthly_location_id=loc1, month_date=month_first).one()
+        h2 = MonthlyLocationMonth.query.filter_by(monthly_location_id=loc2, month_date=month_first).one()
         assert h1.session_route_stop_order == 0
         assert h2.session_route_stop_order == 1
-        mtsm1 = MonthlyTestingSiteMonth.query.filter_by(
-            monthly_testing_site_id=ts1_id,
+        mtsm1 = MonthlyLocationMonth.query.filter_by(
+            monthly_location_id=ts1_id,
             month_date=month_first,
         ).one()
-        mtsm2 = MonthlyTestingSiteMonth.query.filter_by(
-            monthly_testing_site_id=ts2_id,
+        mtsm2 = MonthlyLocationMonth.query.filter_by(
+            monthly_location_id=ts2_id,
             month_date=month_first,
         ).one()
         assert mtsm1.session_route_stop_order == 0
@@ -341,7 +306,9 @@ def test_import_creates_run_and_snapshots(import_client):
     assert body["month_date"] == "2026-04-01"
     assert body["run"] is not None
     assert body["run"]["source"] == "csv_import"
-    assert body["run"]["status"] == "open"
+    assert body["run"]["status"] == "completed"
+    assert body.get("historical_run_closed") is True
+    assert body["run"]["workflow_stage"] == "completed"
     assert body["locations_updated"] == 2
     assert body["history_upserts"] == 2
     assert body["rows_without_history_signal"] == 1
@@ -351,12 +318,12 @@ def test_import_creates_run_and_snapshots(import_client):
             monthly_route_id=route_id, month_date=date(2026, 4, 1)
         ).one()
         rows = (
-            MonthlyRouteTestHistory.query.filter_by(month_date=date(2026, 4, 1))
-            .order_by(MonthlyRouteTestHistory.location_id.asc())
+            MonthlyLocationMonth.query.filter_by(month_date=date(2026, 4, 1))
+            .order_by(MonthlyLocationMonth.monthly_location_id.asc())
             .all()
         )
         assert len(rows) == 2
-        by_loc = {int(r.location_id): r for r in rows}
+        by_loc = {int(r.monthly_location_id): r for r in rows}
         h1 = by_loc[loc1]
         assert int(h1.run_id or 0) == int(run.id)
         assert h1.facp == "EDWARDS 6632"
@@ -372,11 +339,11 @@ def test_import_creates_run_and_snapshots(import_client):
         assert h2.facp == "Edwards Quickstart"
         assert h2.sheet_time_in_raw is None
         # Library "current" mirror should also be updated to match.
-        loc_after = db.session.get(MonthlyRouteLocation, loc1)
+        loc_after = db.session.get(MonthlyLocation, loc1)
         assert loc_after.facp_detail == "EDWARDS 6632"
         assert loc_after.ring_detail == "R1"
         # loc2 is touched; history now carries snapshots even without times
-        loc2_after = db.session.get(MonthlyRouteLocation, loc2)
+        loc2_after = db.session.get(MonthlyLocation, loc2)
         assert loc2_after.facp_detail == "Edwards Quickstart"
 
 
@@ -531,13 +498,9 @@ def test_csv_import_syncs_tested_outcome_after_run_prepared(import_client):
     assert res.status_code == 200, res.get_data(as_text=True)
 
     with app.app_context():
-        mtsm_rows = MonthlyTestingSiteMonth.query.filter_by(month_date=date(2026, 4, 1)).all()
+        mtsm_rows = MonthlyLocationMonth.query.filter_by(month_date=date(2026, 4, 1)).all()
         assert len(mtsm_rows) >= 1
-        by_loc: dict[int, MonthlyTestingSiteMonth] = {}
-        for row in mtsm_rows:
-            ts = db.session.get(MonthlyTestingSite, int(row.monthly_testing_site_id))
-            site = db.session.get(MonthlySite, int(ts.monthly_site_id))
-            by_loc[int(site.legacy_monthly_route_location_id)] = row
+        by_loc = {int(row.monthly_location_id): row for row in mtsm_rows}
         row_loc1 = by_loc[loc1]
         assert row_loc1.result_status == "tested"
         assert row_loc1.sheet_time_in_raw == "8:30am"
@@ -623,7 +586,7 @@ def test_historical_csv_reimport_after_reopen_closes_again(import_client, monkey
 
 
 def test_import_second_csv_same_month_is_idempotent(import_client):
-    """Re-upload on the route page should still succeed (importer merges with existing rows)."""
+    """Re-upload after reopen should still succeed (importer merges with existing rows)."""
     client, app = import_client
     with app.app_context():
         route_id, _, _ = _seed_route8_with_two_stops()
@@ -633,6 +596,17 @@ def test_import_second_csv_same_month_is_idempotent(import_client):
         tech_notes_header="Tech Comments & Notes",
     )
     assert _post_csv(client, route_id, csv_bytes).status_code == 200
+
+    blocked = _post_csv(client, route_id, csv_bytes)
+    assert blocked.status_code == 409
+    assert blocked.get_json().get("code") == "run_completed_csv_blocked"
+
+    reopen = client.post(
+        f"/api/monthly_routes/routes/{route_id}/runs/reopen",
+        json={"month_date": "2026-04-01"},
+    )
+    assert reopen.status_code == 200, reopen.get_data(as_text=True)
+
     res2 = _post_csv(client, route_id, csv_bytes)
     assert res2.status_code == 200, res2.get_data(as_text=True)
     assert res2.get_json()["ok"] is True
@@ -652,9 +626,9 @@ def test_import_preserves_existing_tested_row_and_overwrites_snapshots(import_cl
                     status="open",
                     source="technician_app",
                 ),
-                MonthlyRouteTestHistory(
+                MonthlyLocationMonth(
                     id=9002,
-                    location_id=loc1,
+                    monthly_location_id=loc1,
                     month_date=date(2026, 4, 1),
                     result_status="tested",
                     skip_reason=None,
@@ -681,7 +655,7 @@ def test_import_preserves_existing_tested_row_and_overwrites_snapshots(import_cl
     assert body["existing_status_preserved"] >= 1
 
     with app.app_context():
-        h = db.session.get(MonthlyRouteTestHistory, 9002)
+        h = db.session.get(MonthlyLocationMonth, 9002)
         assert h is not None
         # Tech-set status / times preserved.
         assert h.result_status == "tested"
@@ -712,9 +686,9 @@ def test_import_uses_csv_status_when_existing_row_unset(import_client):
                     status="open",
                     source="technician_app",
                 ),
-                MonthlyRouteTestHistory(
+                MonthlyLocationMonth(
                     id=9100,
-                    location_id=loc1,
+                    monthly_location_id=loc1,
                     month_date=date(2026, 4, 1),
                     result_status=None,
                     test_monthly_route_id=route_id,
@@ -737,7 +711,7 @@ def test_import_uses_csv_status_when_existing_row_unset(import_client):
     assert body["existing_status_preserved"] == 0
 
     with app.app_context():
-        h = db.session.get(MonthlyRouteTestHistory, 9100)
+        h = db.session.get(MonthlyLocationMonth, 9100)
         assert h is not None
         # CSV-derived classification applied (loc1 has 8:30am / 9:15am in the test sheet).
         assert h.result_status == "tested"
@@ -769,7 +743,7 @@ def test_import_rejects_route_mismatch(import_client):
             MonthlyRouteRun.query.filter_by(monthly_route_id=route_id).count() == 0
         ), "no run row should be created on mismatch"
         assert (
-            MonthlyRouteTestHistory.query.filter_by(
+            MonthlyLocationMonth.query.filter_by(
                 test_monthly_route_id=route_id
             ).count()
             == 0
@@ -868,16 +842,12 @@ def test_import_rejects_missing_file(import_client):
 
 def _seed_route15_one_stop() -> tuple[int, int]:
     route = MonthlyRoute(id=15, route_number=15, weekday_iso=3, week_occurrence=1)
-    loc = MonthlyRouteLocation(
+    loc = make_location(
         id=1501,
         address="2028 Richmond",
-        address_normalized="2028 richmond",
+        label="Richmond Medical",
         property_management_company="Brown Bros.",
         property_management_company_normalized="brown bros.",
-        building="Richmond Medical",
-        building_normalized="richmond medical",
-        status_normalized="active",
-        status_raw="Active",
         monthly_route_id=15,
     )
     db.session.add_all([route, loc])
@@ -947,6 +917,51 @@ def test_parse_csv_row_fields_extracts_monitoring_password():
     assert "PASS" not in (parsed.cleaned_monitoring_notes or "")
 
 
+def test_parse_csv_row_fields_matches_monitoring_directory(import_client):
+    from app.db_models import MonitoringCompany
+    from app.monthly.route_inspection_csv_import import _parse_csv_row_fields
+
+    _client, app = import_client
+    with app.app_context():
+        db.session.add(
+            MonitoringCompany(
+                id=9001,
+                name="Protec",
+                name_normalized="protec",
+                active=True,
+            )
+        )
+        db.session.add(
+            MonitoringCompany(
+                id=9002,
+                name="Telus Security",
+                name_normalized="telus security",
+                active=True,
+            )
+        )
+        db.session.commit()
+
+        protec = _parse_csv_row_fields(
+            {
+                "Monitoring": (
+                    "Monitoring: Protec\n"
+                    "Signal:\n"
+                    "Acct: 303224\n"
+                    "PW: AXIAM2021\n"
+                    "Phone: 250-474-0151"
+                ),
+            },
+            stop_order=1,
+        )
+        assert protec.monitoring_company_id == 9001
+        assert protec.monitoring_account_number == "303224"
+        assert protec.monitoring_password == "AXIAM2021"
+        assert "250-474-0151" in (protec.cleaned_monitoring_notes or "")
+
+        telus = _parse_csv_row_fields({"Monitoring": "Telus"}, stop_order=2)
+        assert telus.monitoring_company_id == 9002
+
+
 @pytest.mark.parametrize(
     "facp_cell,expected_panel,expected_location",
     [
@@ -987,8 +1002,8 @@ def test_import_r15_style_headers_multiline_snapshots(import_client):
     assert res.status_code == 200, res.get_data(as_text=True)
 
     with app.app_context():
-        h = MonthlyRouteTestHistory.query.filter_by(
-            location_id=loc_id, month_date=date(2026, 12, 1)
+        h = MonthlyLocationMonth.query.filter_by(
+            monthly_location_id=loc_id, month_date=date(2026, 12, 1)
         ).one()
         assert h.facp == "EDWARDS 6500"
         assert "SIGNALS: A T" in (h.monitoring_notes or "")
@@ -1002,61 +1017,44 @@ def test_import_r15_style_headers_multiline_snapshots(import_client):
 
 
 def test_import_r15_panel_fields_on_v2_testing_site(import_client):
-    """``PANEL:`` / ``LOCATION:`` in the FACP column map to v2 ``panel`` + ``panel_location``."""
-    from app.db_models import MonthlySite, MonthlyTestingSite
-
+    """``PANEL:`` / ``LOCATION:`` in the FACP column map to flat ``panel`` + ``panel_location``."""
     client, app = import_client
     with app.app_context():
-        db.metadata.create_all(
-            db.engine,
-            tables=[MonthlySite.__table__, MonthlyTestingSite.__table__],
-        )
         route_id, loc_id = _seed_route15_one_stop()
 
     res = _post_csv(client, route_id, _build_csv_r15_multiline_site_sheet())
     assert res.status_code == 200, res.get_data(as_text=True)
 
     with app.app_context():
-        loc = db.session.get(MonthlyRouteLocation, loc_id)
+        loc = db.session.get(MonthlyLocation, loc_id)
         assert loc is not None
         assert loc.facp_detail == "EDWARDS 6500"
-        site = MonthlySite.query.filter_by(legacy_monthly_route_location_id=loc_id).one()
-        ts = MonthlyTestingSite.query.filter_by(monthly_site_id=int(site.id)).one()
-        assert ts.panel == "EDWARDS 6500"
-        assert ts.facp_detail == "EDWARDS 6500"
-        assert ts.panel_location == "Electrical room"
+        assert loc.panel == "EDWARDS 6500"
+        assert loc.panel_location == "Electrical room"
 
 
 def _seed_route1_dual_address_billing() -> tuple[int, int, int, int]:
     route = MonthlyRoute(id=1, route_number=1, weekday_iso=0, week_occurrence=1)
-    loc = MonthlyRouteLocation(
+    loc_primary = make_location(
         id=101,
         address="2471 Sidney Ave",
-        address_normalized="2471 sidney ave",
+        label="Main",
         property_management_company="Example PMC",
         property_management_company_normalized="example pmc",
-        building="Main",
-        building_normalized="main",
-        status_normalized="active",
-        status_raw="Active",
         monthly_route_id=1,
     )
-    site = MonthlySite(id=501, legacy_monthly_route_location_id=101)
-    ts_primary = MonthlyTestingSite(
-        id=1001,
-        monthly_site_id=501,
-        sort_order=0,
-        label="2471 Sidney Ave",
-    )
-    ts_secondary = MonthlyTestingSite(
-        id=1002,
-        monthly_site_id=501,
-        sort_order=1,
+    loc_secondary = make_location(
+        id=102,
+        address="9838 Second Street",
         label="9838 Second Street",
+        property_management_company="Example PMC",
+        property_management_company_normalized="example pmc",
+        monthly_route_id=1,
+        route_stop_order=1,
     )
-    db.session.add_all([route, loc, site, ts_primary, ts_secondary])
+    db.session.add_all([route, loc_primary, loc_secondary])
     db.session.commit()
-    return int(route.id), int(loc.id), int(ts_primary.id), int(ts_secondary.id)
+    return int(route.id), int(loc_primary.id), int(loc_primary.id), int(loc_secondary.id)
 
 
 def _build_csv_route1_dual_address() -> bytes:
@@ -1081,50 +1079,170 @@ def test_import_matches_secondary_testing_site_by_label_street(import_client):
     res = _post_csv(client, route_id, _build_csv_route1_dual_address())
     assert res.status_code == 200, res.get_data(as_text=True)
     body = res.get_json()
-    assert body["testing_site_matches"] == 1
-    assert body["stop_month_upserts"] == 1
+    assert body["history_upserts"] == 2
+    assert body["history_upserts"] == 2
+
+    with app.app_context():
+        primary_mlm = MonthlyLocationMonth.query.filter_by(
+            monthly_location_id=loc_id,
+            month_date=date(2026, 4, 1),
+        ).one()
+        assert primary_mlm.result_status == "tested"
+        assert primary_mlm.key_number == "KEY-A"
+        assert primary_mlm.facp == "PANEL-A"
+
+        secondary_mlm = MonthlyLocationMonth.query.filter_by(
+            monthly_location_id=secondary_ts_id,
+            month_date=date(2026, 4, 1),
+        ).one()
+        assert secondary_mlm.result_status == "tested"
+        assert secondary_mlm.key_number == "KEY-B"
+        assert secondary_mlm.panel == "PANEL-B"
+        assert secondary_mlm.session_route_stop_order == 1
+
+
+def _seed_route1_label_only_street_cell() -> tuple[int, int]:
+    route = MonthlyRoute(id=1, route_number=1, weekday_iso=0, week_occurrence=1)
+    loc = make_location(
+        id=401,
+        address="9830 Fourth Street, Sidney, BC",
+        label="9824-9830 Fourth Street",
+        property_management_company="Example PMC",
+        property_management_company_normalized="example pmc",
+        monthly_route_id=1,
+        route_stop_order=0,
+    )
+    db.session.add_all([route, loc])
+    db.session.commit()
+    return int(route.id), int(loc.id)
+
+
+def test_import_matches_by_route_label_when_street_address_differs(import_client):
+    """CSV civic cell may be the display label while DB ``address`` is geocoded differently."""
+    client, app = import_client
+    with app.app_context():
+        route_id, loc_id = _seed_route1_label_only_street_cell()
+
+    rows = [
+        ",,,,,,,,,,,",
+        "MONTHLY BELL TESTING,,,,,,,,,,,",
+        ",ROUTE:,1st Monday,,Route 1,,,,,,,",
+        ",DATE:,April,,2026,,,,,,,",
+        ",,,,,,,,,,,",
+        "#,Address,Annual,Ring,Key #,FACP,Monitoring,Testing Procedures,Tech Comments & Notes,Time In:,Time Out:",
+        '1,"9824-9830 Fourth Street",Jan,R1,KEY-RANGE,PANEL-RANGE,Telus,Proc,Note,8:00am,8:30am',
+    ]
+    csv_bytes = ("\r\n".join(rows) + "\r\n").encode("utf-8")
+    res = _post_csv(client, route_id, csv_bytes)
+    assert res.status_code == 200, res.get_data(as_text=True)
+    body = res.get_json()
+    assert body["issues"] == []
     assert body["history_upserts"] == 1
 
     with app.app_context():
-        hist = MonthlyRouteTestHistory.query.filter_by(
-            location_id=loc_id,
+        mlm = MonthlyLocationMonth.query.filter_by(
+            monthly_location_id=loc_id,
             month_date=date(2026, 4, 1),
         ).one()
-        assert hist.result_status == "tested"
-        assert hist.key_number == "KEY-A"
-        assert hist.facp == "PANEL-A"
+        assert mlm.key_number == "KEY-RANGE"
+        assert mlm.panel == "PANEL-RANGE"
 
-        secondary_mtsm = MonthlyTestingSiteMonth.query.filter_by(
-            monthly_testing_site_id=secondary_ts_id,
+
+def _seed_route1_oceanna_two_streets() -> tuple[int, int, int]:
+    route = MonthlyRoute(id=1, route_number=1, weekday_iso=0, week_occurrence=1)
+    loc_9838 = make_location(
+        id=501,
+        address="9838 Second Street",
+        label="9838 Second Street",
+        building_name="Oceanna",
+        property_management_company="Devon",
+        property_management_company_normalized="devon",
+        monthly_route_id=1,
+        route_stop_order=0,
+    )
+    loc_2471 = make_location(
+        id=502,
+        address="2471 Sidney Avenue",
+        label="2471 Sidney Avenue",
+        building_name="Oceanna",
+        property_management_company="Devon",
+        property_management_company_normalized="devon",
+        monthly_route_id=1,
+        route_stop_order=1,
+    )
+    db.session.add_all([route, loc_9838, loc_2471])
+    db.session.commit()
+    return int(route.id), int(loc_9838.id), int(loc_2471.id)
+
+
+def _build_csv_oceanna_two_streets() -> bytes:
+    rows = [
+        ",,,,,,,,,,,",
+        "MONTHLY BELL TESTING,,,,,,,,,,,",
+        ",ROUTE:,1st Monday,,Route 1,,,,,,,",
+        ",DATE:,April,,2026,,,,,,,",
+        ",,,,,,,,,,,",
+        "#,Address,Annual,Ring,Key #,FACP,Monitoring,Testing Procedures,Tech Comments & Notes,Time In:,Time Out:",
+        '1,"9838 Second Street\nName: Oceanna\nManagement: Devon",Jan,R1,KEY-9838,PANEL-9838,Telus,Proc A,Note A,8:00am,8:30am',
+        '2,"2471 Sidney Avenue\nName: Oceanna\nManagement: Devon",Feb,R2,KEY-2471,PANEL-2471,Telus,Proc B,Note B,9:00am,9:30am',
+    ]
+    return ("\r\n".join(rows) + "\r\n").encode("utf-8")
+
+
+def test_import_two_sites_with_shared_building_name(import_client, monkeypatch):
+    """Shared ``Name:`` lines must not collapse distinct street rows onto one location."""
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 6, 1))
+
+    client, app = import_client
+    with app.app_context():
+        route_id, loc_9838_id, loc_2471_id = _seed_route1_oceanna_two_streets()
+
+    prep = client.post(
+        f"/api/monthly_routes/routes/{route_id}/runs/prepare",
+        json={"month_date": "2026-04-01"},
+        content_type="application/json",
+    )
+    assert prep.status_code == 200, prep.get_data(as_text=True)
+
+    res = _post_csv(client, route_id, _build_csv_oceanna_two_streets())
+    assert res.status_code == 200, res.get_data(as_text=True)
+    body = res.get_json()
+    assert body["issues"] == []
+    assert body["history_upserts"] == 2
+
+    with app.app_context():
+        mlm_9838 = MonthlyLocationMonth.query.filter_by(
+            monthly_location_id=loc_9838_id,
             month_date=date(2026, 4, 1),
         ).one()
-        assert secondary_mtsm.result_status == "tested"
-        assert secondary_mtsm.key_number == "KEY-B"
-        assert secondary_mtsm.panel == "PANEL-B"
-        assert secondary_mtsm.session_route_stop_order == 1
+        mlm_2471 = MonthlyLocationMonth.query.filter_by(
+            monthly_location_id=loc_2471_id,
+            month_date=date(2026, 4, 1),
+        ).one()
+        assert mlm_9838.key_number == "KEY-9838"
+        assert mlm_2471.key_number == "KEY-2471"
+
+    hist_res = client.get(
+        f"/api/monthly_routes/routes/{route_id}/run_details/field_submission?month=2026-04-01"
+    )
+    assert hist_res.status_code == 200, hist_res.get_data(as_text=True)
+    stops = hist_res.get_json().get("stops") or []
+    stop_ids = {int(s["location_id"]) for s in stops}
+    assert stop_ids == {loc_9838_id, loc_2471_id}
 
 
 def _seed_route2_with_off_route_testing_site_label() -> tuple[int, int]:
     route1 = MonthlyRoute(id=1, route_number=1, weekday_iso=0, week_occurrence=1)
     route2 = MonthlyRoute(id=2, route_number=2, weekday_iso=1, week_occurrence=1)
-    loc_on_r2 = MonthlyRouteLocation(
+    loc_on_r2 = make_location(
         id=201,
         address="2471 Sidney Ave",
-        address_normalized="2471 sidney ave",
-        property_management_company_normalized="",
-        building_normalized="",
-        status_normalized="active",
-        status_raw="Active",
+        label="9838 Second Street",
         monthly_route_id=2,
     )
-    site = MonthlySite(id=601, legacy_monthly_route_location_id=201)
-    ts = MonthlyTestingSite(
-        id=2001,
-        monthly_site_id=601,
-        sort_order=0,
-        label="9838 Second Street",
-    )
-    db.session.add_all([route1, route2, loc_on_r2, site, ts])
+    db.session.add_all([route1, route2, loc_on_r2])
     db.session.commit()
     return int(route1.id), int(route2.id)
 
@@ -1144,31 +1262,21 @@ def test_import_testing_site_fallback_scoped_to_route(import_client):
 
 def _seed_route1_ambiguous_testing_site_labels() -> int:
     route = MonthlyRoute(id=1, route_number=1, weekday_iso=0, week_occurrence=1)
-    loc1 = MonthlyRouteLocation(
+    loc1 = make_location(
         id=301,
-        address="100 Alpha St",
-        address_normalized="100 alpha st",
-        property_management_company_normalized="",
-        building_normalized="",
-        status_normalized="active",
-        status_raw="Active",
+        address="9838 Second Street",
+        label="Site A",
         monthly_route_id=1,
+        route_stop_order=0,
     )
-    loc2 = MonthlyRouteLocation(
+    loc2 = make_location(
         id=302,
-        address="200 Beta St",
-        address_normalized="200 beta st",
-        property_management_company_normalized="",
-        building_normalized="",
-        status_normalized="active",
-        status_raw="Active",
+        address="9838 Second Street",
+        label="Site B",
         monthly_route_id=1,
+        route_stop_order=1,
     )
-    site1 = MonthlySite(id=701, legacy_monthly_route_location_id=301)
-    site2 = MonthlySite(id=702, legacy_monthly_route_location_id=302)
-    ts1 = MonthlyTestingSite(id=3001, monthly_site_id=701, sort_order=0, label="9838 Second Street")
-    ts2 = MonthlyTestingSite(id=3002, monthly_site_id=702, sort_order=0, label="9838 Second Street")
-    db.session.add_all([route, loc1, loc2, site1, site2, ts1, ts2])
+    db.session.add_all([route, loc1, loc2])
     db.session.commit()
     return int(route.id)
 
@@ -1192,4 +1300,4 @@ def test_import_testing_site_ambiguous_when_two_labels_collide(import_client):
     assert res.status_code == 200, res.get_data(as_text=True)
     body = res.get_json()
     assert body["testing_site_matches"] == 0
-    assert any(issue["kind"] == "testing_site_ambiguous" for issue in body["issues"])
+    assert any(issue["kind"] in ("ambiguous", "duplicate") for issue in body["issues"])

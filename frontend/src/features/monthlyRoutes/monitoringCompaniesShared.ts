@@ -1,5 +1,5 @@
 import { apiJson } from '../../lib/apiClient'
-import type { MonitoringCompanySummary, TechnicianWorksheetStop } from './monthlyRoutesShared'
+import type { MonitoringCompanySummary, TechnicianWorksheetLocation } from './monthlyRoutesShared'
 
 export type MonitoringCompanyListResponse = {
   companies: MonitoringCompanySummary[]
@@ -89,7 +89,7 @@ export function monitoringCompanyFromDirectory(
 }
 
 /** Overlay directory phones/names when worksheet rows only store the company id. */
-export function enrichStopMonitoringFromDirectory<T extends TechnicianWorksheetStop>(
+export function enrichStopMonitoringFromDirectory<T extends TechnicianWorksheetLocation>(
   stop: T,
   companies: MonitoringCompanySummary[],
 ): T {
@@ -114,7 +114,7 @@ export function enrichStopMonitoringFromDirectory<T extends TechnicianWorksheetS
   }
 }
 
-export function enrichStopsWithMonitoringDirectory<T extends TechnicianWorksheetStop>(
+export function enrichStopsWithMonitoringDirectory<T extends TechnicianWorksheetLocation>(
   stops: T[],
   companies: MonitoringCompanySummary[],
 ): T[] {

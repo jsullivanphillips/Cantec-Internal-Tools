@@ -111,7 +111,7 @@ export default function RunDetailsSiteChangeCard({
   card: NotableStopChangeCard
   routeId: number
   monthDate: string
-  onDetailLoaded: (testingSiteId: number, changes: NotableChangeItem[]) => void
+  onDetailLoaded: (locationId: number, changes: NotableChangeItem[]) => void
 }) {
   const { changes, stopNumber, displayAddress, resultHeadline, stop, siteLabel, siteIndex, siteCount } =
     card
@@ -131,9 +131,9 @@ export default function RunDetailsSiteChangeCard({
     try {
       const qs = new URLSearchParams({ month: monthDate })
       const data = await apiJson<MonthlyRunDetailReviewStopDetailPayload>(
-        `/api/monthly_routes/routes/${routeId}/run_details/review/stops/${stop.testing_site_id}?${qs.toString()}`,
+        `/api/monthly_routes/routes/${routeId}/run_details/review/stops/${stop.location_id}?${qs.toString()}`,
       )
-      onDetailLoaded(stop.testing_site_id, data.changes)
+      onDetailLoaded(stop.location_id, data.changes)
     } catch {
       setDetailError('Could not load site changes.')
     } finally {
@@ -144,7 +144,7 @@ export default function RunDetailsSiteChangeCard({
     detailLoading,
     monthDate,
     routeId,
-    stop.testing_site_id,
+    stop.location_id,
     onDetailLoaded,
   ])
 

@@ -1,9 +1,10 @@
 import { useCallback, useRef, useState } from 'react'
-import type { MonthlyRunDetailLocationStop, TechnicianWorksheetStop } from './monthlyRoutesShared'
+import type { MonthlyRunDetailLocation, TechnicianWorksheetLocation } from './monthlyRoutesShared'
 import { patchRunDetailsStop } from './patchRunDetailsStop'
 import {
   enrichmentPatchFromWorksheetStop,
   prepChangesToStopPatch,
+  prepPatchFromWorksheetStop,
   rollbackPatchForChanges,
   syncPrepChangesForApi,
   type PrepStopPatchChanges,
@@ -14,10 +15,10 @@ export type RunDetailsStopPatchSaving = { siteId: number; fieldKey: string } | n
 /** True when a PATCH response still matches the latest save attempt for that stop. */
 export function isStopPatchGenerationCurrent(
   generations: Map<number, number>,
-  testingSiteId: number,
+  locationId: number,
   generation: number,
 ): boolean {
-  return generations.get(testingSiteId) === generation
+  return generations.get(locationId) === generation
 }
 
 function newPatchAttemptId(): string {
@@ -38,17 +39,17 @@ function patchErrorMessage(error: unknown): string {
 
 function enqueueSitePatch(
   queues: Map<number, Promise<void>>,
-  testingSiteId: number,
+  locationId: number,
   task: () => Promise<void>,
 ): Promise<void> {
-  const prior = queues.get(testingSiteId) ?? Promise.resolve()
+  const prior = queues.get(locationId) ?? Promise.resolve()
   const chained = prior.then(task, task)
   const tracked = chained.finally(() => {
-    if (queues.get(testingSiteId) === tracked) {
-      queues.delete(testingSiteId)
+    if (queues.get(locationId) === tracked) {
+      queues.delete(locationId)
     }
   })
-  queues.set(testingSiteId, tracked)
+  queues.set(locationId, tracked)
   return tracked
 }
 
@@ -61,11 +62,11 @@ export function useRunDetailsStopPatch({
 }: {
   routeId: number
   monthDate: string
-  onStopPatched: (testingSiteId: number, patch: Partial<MonthlyRunDetailLocationStop>) => void
+  onStopPatched: (locationId: number, patch: Partial<MonthlyRunDetailLocation>) => void
   /** Updates modal stop cache only — do not merge full stop into run-details payload here. */
-  onWorksheetStopSynced?: (stop: TechnicianWorksheetStop) => void
+  onWorksheetStopSynced?: (stop: TechnicianWorksheetLocation) => void
   /** Current run-details stop row, read immediately before optimistic merge (for rollback). */
-  getStopSnapshot?: (testingSiteId: number) => MonthlyRunDetailLocationStop | undefined
+  getStopSnapshot?: (locationId: number) => MonthlyRunDetailLocation | undefined
 }) {
   const [saving, setSaving] = useState<RunDetailsStopPatchSaving>(null)
   const [error, setError] = useState<string | null>(null)
@@ -76,50 +77,51 @@ export function useRunDetailsStopPatch({
 
   const patchStop = useCallback(
     async (
-      testingSiteId: number,
+      locationId: number,
       fieldKey: string,
       changes: PrepStopPatchChanges,
-      rollback: Partial<MonthlyRunDetailLocationStop>,
+      rollback: Partial<MonthlyRunDetailLocation>,
       stopNumber?: number,
     ) => {
       const normalizedChanges = syncPrepChangesForApi(changes)
       const changeKeys = Object.keys(normalizedChanges)
       if (changeKeys.length === 0) return
 
-      const nextGen = (generationRef.current.get(testingSiteId) ?? 0) + 1
-      generationRef.current.set(testingSiteId, nextGen)
-      const clientMutationId = `run-prep-${testingSiteId}-${newPatchAttemptId()}`
+      const nextGen = (generationRef.current.get(locationId) ?? 0) + 1
+      generationRef.current.set(locationId, nextGen)
+      const clientMutationId = `run-prep-${locationId}-${newPatchAttemptId()}`
 
-      const snapshot = getStopSnapshot?.(testingSiteId)
+      const snapshot = getStopSnapshot?.(locationId)
       const rollbackPatch = snapshot
         ? rollbackPatchForChanges(snapshot, normalizedChanges)
         : rollback
 
-      onStopPatched(testingSiteId, prepChangesToStopPatch(normalizedChanges))
-      setSaving({ siteId: testingSiteId, fieldKey })
+      onStopPatched(locationId, prepChangesToStopPatch(normalizedChanges))
+      setSaving({ siteId: locationId, fieldKey })
       setError(null)
 
       pendingPatchCountRef.current += 1
       setHasPendingPatches(true)
 
-      await enqueueSitePatch(sitePatchQueuesRef.current, testingSiteId, async () => {
+      await enqueueSitePatch(sitePatchQueuesRef.current, locationId, async () => {
         try {
-          const stop = await patchRunDetailsStop(routeId, monthDate, testingSiteId, normalizedChanges, {
+          const stop = await patchRunDetailsStop(routeId, monthDate, locationId, normalizedChanges, {
             clientMutationId,
             stopNumber,
           })
-          if (!isStopPatchGenerationCurrent(generationRef.current, testingSiteId, nextGen)) {
+          if (!isStopPatchGenerationCurrent(generationRef.current, locationId, nextGen)) {
             onWorksheetStopSynced?.(stop)
             return
           }
+          onStopPatched(locationId, prepPatchFromWorksheetStop(stop, changeKeys))
           const enrichment = enrichmentPatchFromWorksheetStop(stop, changeKeys)
           if (Object.keys(enrichment).length > 0) {
-            onStopPatched(testingSiteId, enrichment)
+            onStopPatched(locationId, enrichment)
           }
           onWorksheetStopSynced?.(stop)
         } catch (e) {
-          if (isStopPatchGenerationCurrent(generationRef.current, testingSiteId, nextGen)) {
-            onStopPatched(testingSiteId, rollbackPatch)
+          if (isStopPatchGenerationCurrent(generationRef.current, locationId, nextGen)) {
+            onStopPatched(locationId, rollbackPatch)
           }
           const message = patchErrorMessage(e)
           setError(message)
@@ -129,9 +131,9 @@ export function useRunDetailsStopPatch({
           if (pendingPatchCountRef.current === 0) {
             setHasPendingPatches(false)
           }
-          if (isStopPatchGenerationCurrent(generationRef.current, testingSiteId, nextGen)) {
+          if (isStopPatchGenerationCurrent(generationRef.current, locationId, nextGen)) {
             setSaving((current) =>
-              current?.siteId === testingSiteId && current?.fieldKey === fieldKey ? null : current,
+              current?.siteId === locationId && current?.fieldKey === fieldKey ? null : current,
             )
           }
         }
@@ -142,23 +144,23 @@ export function useRunDetailsStopPatch({
 
   const patchStopFields = useCallback(
     async (
-      stop: Pick<MonthlyRunDetailLocationStop, 'testing_site_id'> & Partial<MonthlyRunDetailLocationStop>,
+      stop: Pick<MonthlyRunDetailLocation, 'location_id'> & Partial<MonthlyRunDetailLocation>,
       fieldKey: string,
       changes: PrepStopPatchChanges,
-      rollback: Partial<MonthlyRunDetailLocationStop>,
-    ) => patchStop(stop.testing_site_id, fieldKey, changes, rollback, stop.stop_number),
+      rollback: Partial<MonthlyRunDetailLocation>,
+    ) => patchStop(stop.location_id, fieldKey, changes, rollback, stop.stop_number),
     [patchStop],
   )
 
   const patchStopForRow = useCallback(
     (stopNumber?: number) => {
       return (
-        testingSiteId: number,
+        locationId: number,
         fieldKey: string,
         changes: PrepStopPatchChanges,
-        rollback: Partial<MonthlyRunDetailLocationStop>,
+        rollback: Partial<MonthlyRunDetailLocation>,
       ) => {
-        void patchStop(testingSiteId, fieldKey, changes, rollback, stopNumber)
+        void patchStop(locationId, fieldKey, changes, rollback, stopNumber)
       }
     },
     [patchStop],

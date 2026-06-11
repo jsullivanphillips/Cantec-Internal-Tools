@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from flask import Blueprint, jsonify, request, session
 
-from app.db_models import MonitoringCompany, MonthlyTestingSite, db
+from app.db_models import MonitoringCompany, MonthlyLocation, MonthlyLocationMonth, db
 from app.monthly.monitoring_companies import (
     create_monitoring_company,
     normalize_monitoring_company_name,
@@ -135,14 +135,12 @@ def merge_monitoring_company(company_id: int):
         return jsonify({"error": "Source monitoring company not found"}), 404
 
     moved = (
-        MonthlyTestingSite.query.filter_by(monitoring_company_id=source_id)
-        .update({MonthlyTestingSite.monitoring_company_id: company_id}, synchronize_session=False)
+        MonthlyLocation.query.filter_by(monitoring_company_id=source_id)
+        .update({MonthlyLocation.monitoring_company_id: company_id}, synchronize_session=False)
     )
-    from app.db_models import MonthlyTestingSiteMonth
-
     moved_months = (
-        MonthlyTestingSiteMonth.query.filter_by(monitoring_company_id=source_id)
-        .update({MonthlyTestingSiteMonth.monitoring_company_id: company_id}, synchronize_session=False)
+        MonthlyLocationMonth.query.filter_by(monitoring_company_id=source_id)
+        .update({MonthlyLocationMonth.monitoring_company_id: company_id}, synchronize_session=False)
     )
     source.active = False
     db.session.commit()

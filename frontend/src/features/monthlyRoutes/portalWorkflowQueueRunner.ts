@@ -8,7 +8,7 @@ import { apiJson } from '../../lib/apiClient'
 import {
   WORKSHEET_CLOCK_IN_BLOCKED_MESSAGE,
   type TechnicianWorksheetPayload,
-  type TechnicianWorksheetStop,
+  type TechnicianWorksheetLocation,
 } from './monthlyRoutesShared'
 import { classifyWorkflowError, workflowErrorMessage } from './portalWorkflowErrors'
 import { portalStopHasOpenClock } from './portalWorkflowShared'
@@ -38,43 +38,43 @@ export type PortalWorkflowDrainContext = {
 
 async function executeWorkflowItem(
   item: PortalWorkflowQueueItem,
-): Promise<{ stop?: TechnicianWorksheetStop; from_stop?: TechnicianWorksheetStop; to_stop?: TechnicianWorksheetStop }> {
+): Promise<{ stop?: TechnicianWorksheetLocation; from_stop?: TechnicianWorksheetLocation; to_stop?: TechnicianWorksheetLocation }> {
   const qs = new URLSearchParams({ month: item.monthIso, tech_portal: '1' })
-  const base = `/api/monthly_routes/routes/${item.routeId}/worksheet/stops/${item.testingSiteId}`
+  const base = `/api/monthly_routes/routes/${item.routeId}/worksheet/locations/${item.locationId}`
   const q = `?${qs.toString()}`
 
   switch (item.action) {
     case 'transition_clock':
       return apiJson<{
         ok: boolean
-        from_stop: TechnicianWorksheetStop
-        to_stop: TechnicianWorksheetStop
+        from_stop: TechnicianWorksheetLocation
+        to_stop: TechnicianWorksheetLocation
       }>(`/api/monthly_routes/routes/${item.routeId}/worksheet/transition_clock${q}`, {
         method: 'POST',
         body: JSON.stringify(item.payload),
       })
     case 'clock_in':
-      return apiJson<{ ok: boolean; stop: TechnicianWorksheetStop }>(
+      return apiJson<{ ok: boolean; stop: TechnicianWorksheetLocation }>(
         `${base}/clock_events/clock_in${q}`,
         { method: 'POST', body: JSON.stringify(item.payload) },
       )
     case 'clock_out':
-      return apiJson<{ ok: boolean; stop: TechnicianWorksheetStop }>(
+      return apiJson<{ ok: boolean; stop: TechnicianWorksheetLocation }>(
         `${base}/clock_events/clock_out${q}`,
         { method: 'POST', body: JSON.stringify(item.payload) },
       )
     case 'cancel_clock_in':
-      return apiJson<{ ok: boolean; stop: TechnicianWorksheetStop }>(
+      return apiJson<{ ok: boolean; stop: TechnicianWorksheetLocation }>(
         `${base}/clock_events/cancel_clock_in${q}`,
         { method: 'POST', body: JSON.stringify(item.payload) },
       )
     case 'test_outcome':
-      return apiJson<{ ok: boolean; stop: TechnicianWorksheetStop }>(
+      return apiJson<{ ok: boolean; stop: TechnicianWorksheetLocation }>(
         `${base}/test_outcome${q}`,
         { method: 'PUT', body: JSON.stringify(item.payload) },
       )
     case 'create_deficiency':
-      return apiJson<{ ok: boolean; stop: TechnicianWorksheetStop }>(
+      return apiJson<{ ok: boolean; stop: TechnicianWorksheetLocation }>(
         `${base}/deficiencies${q}`,
         { method: 'POST', body: JSON.stringify(item.payload) },
       )
@@ -82,20 +82,20 @@ async function executeWorkflowItem(
       const defId = item.payload.deficiency_id
       const body = { ...item.payload }
       delete body.deficiency_id
-      return apiJson<{ ok: boolean; stop: TechnicianWorksheetStop }>(
+      return apiJson<{ ok: boolean; stop: TechnicianWorksheetLocation }>(
         `${base}/deficiencies/${defId}${q}`,
         { method: 'PATCH', body: JSON.stringify(body) },
       )
     }
     case 'verify_deficiency': {
       const defId = item.payload.deficiency_id
-      return apiJson<{ ok: boolean; stop: TechnicianWorksheetStop }>(
+      return apiJson<{ ok: boolean; stop: TechnicianWorksheetLocation }>(
         `${base}/deficiencies/${defId}/verify${q}`,
         { method: 'POST', body: JSON.stringify({ note: item.payload.note }) },
       )
     }
     case 'reset_stop':
-      return apiJson<{ ok: boolean; stop: TechnicianWorksheetStop }>(
+      return apiJson<{ ok: boolean; stop: TechnicianWorksheetLocation }>(
         `${base}/reset${q}`,
         { method: 'POST', body: '{}' },
       )
@@ -112,11 +112,11 @@ function routeQueueItems(routeId: number, monthIso: string): PortalWorkflowQueue
 
 function mergeStopIntoPayload(
   ctx: PortalWorkflowDrainContext,
-  stop: TechnicianWorksheetStop,
+  stop: TechnicianWorksheetLocation,
 ): void {
   ctx.setPayload((prev) => {
-    if (!prev?.stops?.length) return prev
-    const prevStop = prev.stops.find((s) => s.testing_site_id === stop.testing_site_id)
+    if (!prev?.locations?.length) return prev
+    const prevStop = prev.locations.find((s) => s.location_id === stop.location_id)
     let mergedStop = stop
     if (
       prevStop &&
@@ -134,8 +134,8 @@ function mergeStopIntoPayload(
     if (prevStop) {
       mergedStop = preserveWorksheetStopOrderFields(prevStop, mergedStop)
     }
-    const nextStops = prev.stops.map((s) =>
-      s.testing_site_id === stop.testing_site_id ? mergedStop : s,
+    const nextStops = prev.locations.map((s) =>
+      s.location_id === stop.location_id ? mergedStop : s,
     )
     const next = mergeWorkflowQueueIntoPayload(
       { ...prev, stops: nextStops },
@@ -162,7 +162,7 @@ function updateSyncBadge(ctx: PortalWorkflowDrainContext): void {
     (item) =>
       item.routeId === ctx.routeId &&
       item.monthIso === ctx.monthIso &&
-      item.testingSiteId != null,
+      item.locationId != null,
   )
   const runLifecyclePending = hasPendingRunLifecycleForRouteMonth(ctx.routeId, ctx.monthIso)
   ctx.setSyncState(
@@ -170,9 +170,9 @@ function updateSyncBadge(ctx: PortalWorkflowDrainContext): void {
   )
 }
 
-function stopsForProjection(ctx: PortalWorkflowDrainContext): TechnicianWorksheetStop[] {
+function stopsForProjection(ctx: PortalWorkflowDrainContext): TechnicianWorksheetLocation[] {
   const cached = loadWorksheetCache(ctx.routeId, ctx.monthIso)
-  return cached?.stops ?? []
+  return cached?.locations ?? []
 }
 
 async function processOneItem(

@@ -1,27 +1,16 @@
-import {
-  closestCenter,
-  DndContext,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from '@dnd-kit/core'
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
-import type { CSSProperties, ReactNode } from 'react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Accordion, Alert, Badge, Button, Form, Modal, Spinner } from 'react-bootstrap'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import MonthlyLibraryCommentsPanel from '../features/monthlyRoutes/MonthlyLibraryCommentsPanel'
 import MonthlyLocationBillingCommentsPanel from '../features/monthlyRoutes/MonthlyLocationBillingCommentsPanel'
-import TestingSiteFieldsSection from '../features/monthlyRoutes/TestingSiteFieldsSection'
+import MonthlyLocationEditableFields, {
+  type MonthlyLocationEditableFieldsHandle,
+} from '../features/monthlyRoutes/MonthlyLocationEditableFields'
+import MonthlyLocationServiceTradeLinkPanel, {
+  MonthlyLocationServiceTradeHeroActions,
+  MonthlyLocationServiceTradeLinkEditModal,
+} from '../features/monthlyRoutes/MonthlyLocationServiceTradeLinkPanel'
 import { notifyPaperworkMasterSiteUpdated } from '../features/monthlyRoutes/paperworkMasterSync'
 import { billingStatusLabel } from '../features/monthlyRoutes/officeRunReviewShared'
 import {
@@ -35,11 +24,7 @@ import {
   normalizeAnnualMonthForSelect,
   parseYearMonth,
   shouldShowTestingHistoryStatus,
-  sortedTestingSites,
-  testingSitePayloadFromEditForm,
   toMonthKey,
-  type TestingSiteEditForm,
-  type TestingSiteSummary,
   type LibraryLocation,
   type MonthCell,
   type MonthlyLocationComment,
@@ -236,88 +221,87 @@ function detailText(value: string | null | undefined): string {
   return value?.trim() || '—'
 }
 
+function MonthlyLocationIdentityHero({ location }: { location: LibraryLocation }) {
+  const displayLabel = location.label?.trim() || ''
+  const navAddress = (location.address || '').trim()
+  const sameIdentity =
+    displayLabel !== '' &&
+    navAddress !== '' &&
+    displayLabel.toLowerCase() === navAddress.toLowerCase()
+
+  if (sameIdentity) {
+    return (
+      <div className="monthly-location-identity-display">
+        <h1 className="monthly-location-detail-title">{displayLabel}</h1>
+      </div>
+    )
+  }
+
+  return (
+    <div className="monthly-location-identity-display">
+      {displayLabel ? (
+        <div className="monthly-location-identity-block">
+          <h1 className="monthly-location-detail-title">{displayLabel}</h1>
+        </div>
+      ) : null}
+      {navAddress ? (
+        <div
+          className={`monthly-location-identity-block${
+            displayLabel ? ' monthly-location-identity-block--sub' : ''
+          }`}
+        >
+          <p
+            className={
+              displayLabel
+                ? 'monthly-location-nav-address-line'
+                : 'monthly-location-detail-title mb-0'
+            }
+          >
+            {navAddress}
+          </p>
+        </div>
+      ) : (
+        <h1 className="monthly-location-detail-title">Untitled location</h1>
+      )}
+    </div>
+  )
+}
+
 function DetailMetricCard({
   label,
   value,
   tone,
+  onClick,
 }: {
   label: string
   value: ReactNode
   tone?: 'success' | 'warning' | 'info'
+  onClick?: () => void
 }) {
+  const className = `monthly-location-metric-card${tone ? ` monthly-location-metric-card--${tone}` : ''}${
+    onClick ? ' monthly-location-metric-card--interactive' : ''
+  }`
+
+  if (onClick) {
+    return (
+      <button type="button" className={className} onClick={onClick}>
+        <div className="monthly-location-metric-label">{label}</div>
+        <div className="monthly-location-metric-value">{value}</div>
+      </button>
+    )
+  }
+
   return (
-    <div className={`monthly-location-metric-card${tone ? ` monthly-location-metric-card--${tone}` : ''}`}>
+    <div className={className}>
       <div className="monthly-location-metric-label">{label}</div>
       <div className="monthly-location-metric-value">{value}</div>
     </div>
   )
 }
 
-function SortableTestingSiteCard({
-  site,
-  index,
-  total,
-  location,
-  defaultExpanded,
-  orderSaving,
-  deleting,
-  onInlineSave,
-  onDelete,
-}: {
-  site: TestingSiteSummary
-  index: number
-  total: number
-  location: LibraryLocation
-  defaultExpanded: boolean
-  orderSaving: boolean
-  deleting: boolean
-  onInlineSave: (form: TestingSiteEditForm) => Promise<void> | void
-  onDelete: (site: TestingSiteSummary) => Promise<void> | void
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: site.id,
-    disabled: orderSaving || total <= 1,
-  })
-  const style: CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.72 : undefined,
-  }
-  const label = site.label?.trim() || `Testing location ${index + 1}`
-
-  return (
-    <div ref={setNodeRef} style={style} className="monthly-location-testing-site-sortable">
-      {total > 1 ? (
-        <button
-          type="button"
-          className="monthly-location-testing-site-drag-handle"
-          disabled={orderSaving}
-          aria-label={`Drag to reorder ${label}`}
-          {...attributes}
-          {...listeners}
-        >
-          <i className="bi bi-grip-vertical" aria-hidden />
-          <span>Drag to reorder</span>
-        </button>
-      ) : null}
-      <TestingSiteFieldsSection
-        mode="inline"
-        site={site}
-        index={index}
-        total={total}
-        location={location}
-        collapsible
-        defaultExpanded={defaultExpanded}
-        onInlineSave={onInlineSave}
-        onDelete={onDelete}
-        deleting={deleting}
-      />
-    </div>
-  )
-}
-
 export default function MonthlyLocationDetailPage() {
   const { locationId } = useParams<{ locationId: string }>()
+  const navigate = useNavigate()
   const [location, setLocation] = useState<LibraryLocation | null>(null)
   const [comments, setComments] = useState<MonthlyLocationComment[]>([])
   const [loading, setLoading] = useState(true)
@@ -331,22 +315,17 @@ export default function MonthlyLocationDetailPage() {
   const [routeDraft, setRouteDraft] = useState('')
   const [routeSaving, setRouteSaving] = useState(false)
   const [routeSaveError, setRouteSaveError] = useState<string | null>(null)
-  const [showAddressModal, setShowAddressModal] = useState(false)
-  const [addressDraft, setAddressDraft] = useState('')
-  const [addressSaving, setAddressSaving] = useState(false)
-  const [addressSaveError, setAddressSaveError] = useState<string | null>(null)
+  const [showStLinkEditModal, setShowStLinkEditModal] = useState(false)
   const [sessionUsername, setSessionUsername] = useState<string | null>(null)
-  const [addingTestingSite, setAddingTestingSite] = useState(false)
-  const [addTestingSiteError, setAddTestingSiteError] = useState<string | null>(null)
-  const [lastAddedTestingSiteId, setLastAddedTestingSiteId] = useState<number | null>(null)
-  const [deletingTestingSiteId, setDeletingTestingSiteId] = useState<number | null>(null)
-  const [testingSiteOrderSaving, setTestingSiteOrderSaving] = useState(false)
   /** Selected calendar year for testing-history grid; ``null`` means “use default year” until user picks one. */
   const [historyViewYear, setHistoryViewYear] = useState<number | null>(null)
   const [historyEdit, setHistoryEdit] = useState<HistoryEdit | null>(null)
   const [historyFieldEdit, setHistoryFieldEdit] = useState<HistoryFieldEdit | null>(null)
   const [historySaving, setHistorySaving] = useState(false)
   const [historySaveError, setHistorySaveError] = useState<string | null>(null)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [deleteSaving, setDeleteSaving] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const idNum = locationId ? parseInt(locationId, 10) : NaN
 
@@ -356,7 +335,7 @@ export default function MonthlyLocationDetailPage() {
       setLoading(true)
       setError(null)
       try {
-        const data = await apiJson<MonthlyLocationDetailPayload>(`/api/monthly_sites/library/${idNum}`, {
+        const data = await apiJson<MonthlyLocationDetailPayload>(`/api/monthly_routes/library/${idNum}`, {
           signal,
         })
         if (signal?.aborted) return
@@ -408,8 +387,6 @@ export default function MonthlyLocationDetailPage() {
 
   useEffect(() => {
     setHistoryViewYear(null)
-    setLastAddedTestingSiteId(null)
-    setAddTestingSiteError(null)
   }, [locationId])
 
   const effectiveTestingHistoryYear = useMemo(() => {
@@ -458,7 +435,7 @@ export default function MonthlyLocationDetailPage() {
       setHistorySaveError(null)
       try {
         const res = await apiJson<{ location: LibraryLocation }>(
-          `/api/monthly_sites/library/${location.id}`,
+          `/api/monthly_routes/library/${location.id}`,
           {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -488,7 +465,7 @@ export default function MonthlyLocationDetailPage() {
     setHistorySaveError(null)
     try {
       const res = await apiJson<{ location: LibraryLocation }>(
-        `/api/monthly_sites/library/${location.id}`,
+        `/api/monthly_routes/library/${location.id}`,
         {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -513,202 +490,17 @@ export default function MonthlyLocationDetailPage() {
     }
   }, [location, historyEdit, cancelHistoryEdit])
 
-  const saveTestingSiteForm = useCallback(
-    async (form: TestingSiteEditForm) => {
-      const res = await apiJson<{ testing_site: TestingSiteSummary }>(
-        `/api/monthly_sites/testing_sites/${form.id}`,
-        {
-          method: 'PATCH',
-          body: JSON.stringify(testingSitePayloadFromEditForm(form)),
-        }
-      )
+  const editableFieldsRef = useRef<MonthlyLocationEditableFieldsHandle>(null)
 
-      setLocation((prev) => {
-        if (!prev) return prev
-        const nextSites = sortedTestingSites(prev).map((site) =>
-          site.id === res.testing_site.id ? res.testing_site : site
-        )
-        const pricedSites = nextSites.filter((site) => site.price_per_month != null)
-        const rollup =
-          pricedSites.length > 0
-            ? pricedSites.reduce((sum, site) => sum + (site.price_per_month ?? 0), 0)
-            : null
+  const handleLocationUpdated = useCallback((updated: LibraryLocation) => {
+    setLocation(updated)
+    const routeId = updated.monthly_route?.id ?? updated.monthly_route_id ?? null
+    if (routeId != null) notifyPaperworkMasterSiteUpdated(routeId)
+  }, [])
 
-        const routeId = prev.monthly_route?.id ?? prev.monthly_route_id ?? null
-        if (routeId != null) notifyPaperworkMasterSiteUpdated(routeId)
-
-        return {
-          ...prev,
-          monthly_site_id: res.testing_site.monthly_site_id,
-          testing_sites: nextSites,
-          rollup_price_per_month: rollup,
-        }
-      })
-    },
-    []
-  )
-
-  const testingSiteOrderSensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
-  )
-
-  const persistTestingSiteOrder = useCallback(
-    async (nextSites: TestingSiteSummary[]) => {
-      if (!location) return
-      setTestingSiteOrderSaving(true)
-      setAddTestingSiteError(null)
-      try {
-        const res = await apiJson<{ testing_sites: TestingSiteSummary[] }>(
-          `/api/monthly_sites/library/${location.id}/testing_sites/order`,
-          {
-            method: 'PUT',
-            body: JSON.stringify({ ordered_testing_site_ids: nextSites.map((site) => site.id) }),
-          }
-        )
-
-        setLocation((prev) => {
-          if (!prev) return prev
-          const ordered = sortedTestingSites({
-            ...prev,
-            testing_sites: res.testing_sites ?? nextSites,
-          })
-          const pricedSites = ordered.filter((site) => site.price_per_month != null)
-          const rollup =
-            pricedSites.length > 0
-              ? pricedSites.reduce((sum, site) => sum + (site.price_per_month ?? 0), 0)
-              : null
-
-          return {
-            ...prev,
-            testing_sites: ordered,
-            rollup_price_per_month: rollup,
-          }
-        })
-      } catch {
-        setAddTestingSiteError('Unable to save testing site order.')
-        void load()
-      } finally {
-        setTestingSiteOrderSaving(false)
-      }
-    },
-    [load, location]
-  )
-
-  const handleTestingSiteDragEnd = useCallback(
-    (event: DragEndEvent) => {
-      if (!location || testingSiteOrderSaving) return
-      const { active, over } = event
-      if (!over || active.id === over.id) return
-      const activeId = Number(active.id)
-      const overId = Number(over.id)
-      if (!Number.isFinite(activeId) || !Number.isFinite(overId)) return
-
-      const currentSites = sortedTestingSites(location)
-      const oldIndex = currentSites.findIndex((site) => site.id === activeId)
-      const newIndex = currentSites.findIndex((site) => site.id === overId)
-      if (oldIndex < 0 || newIndex < 0) return
-
-      const nextSites = arrayMove(currentSites, oldIndex, newIndex).map((site, index) => ({
-        ...site,
-        sort_order: index,
-      }))
-      setLocation((prev) => (prev ? { ...prev, testing_sites: nextSites } : prev))
-      void persistTestingSiteOrder(nextSites)
-    },
-    [location, persistTestingSiteOrder, testingSiteOrderSaving]
-  )
-
-  const addTestingSite = useCallback(async () => {
-    if (!location) return
-
-    const nextLabel = `Testing location ${sortedTestingSites(location).length + 1}`
-    setAddingTestingSite(true)
-    setAddTestingSiteError(null)
-    try {
-      const res = await apiJson<{ testing_site: TestingSiteSummary }>(
-        `/api/monthly_sites/library/${location.id}/testing_sites`,
-        {
-          method: 'POST',
-          body: JSON.stringify({ label: nextLabel }),
-        }
-      )
-
-      setLocation((prev) => {
-        if (!prev) return prev
-        const nextSites = sortedTestingSites({
-          ...prev,
-          testing_sites: [...(prev.testing_sites ?? []), res.testing_site],
-        })
-        const pricedSites = nextSites.filter((site) => site.price_per_month != null)
-        const rollup =
-          pricedSites.length > 0
-            ? pricedSites.reduce((sum, site) => sum + (site.price_per_month ?? 0), 0)
-            : null
-
-        return {
-          ...prev,
-          monthly_site_id: res.testing_site.monthly_site_id,
-          testing_sites: nextSites,
-          rollup_price_per_month: rollup,
-        }
-      })
-      setLastAddedTestingSiteId(res.testing_site.id)
-    } catch (e) {
-      const msg =
-        typeof e === 'object' && e && 'error' in e ? String((e as { error: unknown }).error) : null
-      setAddTestingSiteError(msg || 'Unable to add testing site.')
-    } finally {
-      setAddingTestingSite(false)
-    }
-  }, [location])
-
-  const deleteTestingSite = useCallback(async (site: TestingSiteSummary) => {
-    if (!location) return
-    const currentSites = sortedTestingSites(location)
-    if (currentSites.length <= 1) return
-
-    const siteIndex = currentSites.findIndex((existing) => existing.id === site.id)
-    const label = site.label?.trim() || `testing location ${siteIndex >= 0 ? siteIndex + 1 : ''}`.trim()
-    const confirmed = window.confirm(`Remove ${label}? This cannot be undone.`)
-    if (!confirmed) return
-
-    setDeletingTestingSiteId(site.id)
-    setAddTestingSiteError(null)
-    try {
-      await apiJson<void>(`/api/monthly_sites/testing_sites/${site.id}`, {
-        method: 'DELETE',
-      })
-
-      setLocation((prev) => {
-        if (!prev) return prev
-        const nextSites = sortedTestingSites({
-          ...prev,
-          testing_sites: (prev.testing_sites ?? []).filter((existing) => existing.id !== site.id),
-        })
-        const pricedSites = nextSites.filter((existing) => existing.price_per_month != null)
-        const rollup =
-          pricedSites.length > 0
-            ? pricedSites.reduce((sum, existing) => sum + (existing.price_per_month ?? 0), 0)
-            : null
-
-        return {
-          ...prev,
-          testing_sites: nextSites,
-          rollup_price_per_month: rollup,
-        }
-      })
-      if (lastAddedTestingSiteId === site.id) {
-        setLastAddedTestingSiteId(null)
-      }
-    } catch (e) {
-      const msg =
-        typeof e === 'object' && e && 'error' in e ? String((e as { error: unknown }).error) : null
-      setAddTestingSiteError(msg || 'Unable to remove testing site.')
-    } finally {
-      setDeletingTestingSiteId(null)
-    }
-  }, [lastAddedTestingSiteId, location])
+  const openAnnualFieldEdit = useCallback(() => {
+    editableFieldsRef.current?.beginFieldEdit('annual_month', { openSelect: true })
+  }, [])
 
   const openStatusModal = useCallback(() => {
     if (!location) return
@@ -732,7 +524,7 @@ export default function MonthlyLocationDetailPage() {
     setStatusSaveError(null)
     try {
       const res = await apiJson<{ location: LibraryLocation }>(
-        `/api/monthly_sites/library/${location.id}`,
+        `/api/monthly_routes/library/${location.id}`,
         {
           method: 'PATCH',
           body: JSON.stringify({ status_raw: statusDraft || null }),
@@ -769,7 +561,7 @@ export default function MonthlyLocationDetailPage() {
     setRouteSaveError(null)
     try {
       const res = await apiJson<{ location: LibraryLocation }>(
-        `/api/monthly_sites/library/${location.id}`,
+        `/api/monthly_routes/library/${location.id}`,
         {
           method: 'PATCH',
           body: JSON.stringify({ test_day: routeDraft }),
@@ -791,46 +583,39 @@ export default function MonthlyLocationDetailPage() {
     }
   }, [location, routeDraft])
 
-  const openAddressModal = useCallback(() => {
-    if (!location) return
-    setAddressDraft(location.address || '')
-    setAddressSaveError(null)
-    setShowAddressModal(true)
+  const locationDeleteLabel = useMemo(() => {
+    if (!location) return 'this location'
+    return location.label?.trim() || location.address?.trim() || `location #${location.id}`
   }, [location])
 
-  const closeAddressModal = useCallback(() => {
-    if (addressSaving) return
-    setShowAddressModal(false)
-    setAddressSaveError(null)
-  }, [addressSaving])
+  const openDeleteModal = useCallback(() => {
+    setDeleteError(null)
+    setShowDeleteModal(true)
+  }, [])
 
-  const saveAddressEdit = useCallback(async () => {
+  const closeDeleteModal = useCallback(() => {
+    if (deleteSaving) return
+    setShowDeleteModal(false)
+    setDeleteError(null)
+  }, [deleteSaving])
+
+  const confirmDeleteLocation = useCallback(async () => {
     if (!location) return
-    const trimmed = addressDraft.trim()
-    if (!trimmed) {
-      setAddressSaveError('Address is required.')
-      return
-    }
-    setAddressSaving(true)
-    setAddressSaveError(null)
+    const routeId = location.monthly_route?.id ?? location.monthly_route_id ?? null
+    setDeleteSaving(true)
+    setDeleteError(null)
     try {
-      const res = await apiJson<{ location: LibraryLocation }>(
-        `/api/monthly_sites/library/${location.id}`,
-        {
-          method: 'PATCH',
-          body: JSON.stringify({ address: trimmed }),
-        }
-      )
-      setLocation(res.location)
-      setShowAddressModal(false)
+      await apiJson(`/api/monthly_routes/library/${location.id}`, { method: 'DELETE' })
+      if (routeId != null) notifyPaperworkMasterSiteUpdated(routeId)
+      navigate('/monthlies/locations', { replace: true })
     } catch (e) {
       const msg =
         typeof e === 'object' && e && 'error' in e ? String((e as { error: unknown }).error) : null
-      setAddressSaveError(msg || 'Unable to save address.')
+      setDeleteError(msg || 'Unable to delete this location.')
     } finally {
-      setAddressSaving(false)
+      setDeleteSaving(false)
     }
-  }, [location, addressDraft])
+  }, [location, navigate])
 
   useEffect(() => {
     if ((!historyEdit && !historyFieldEdit) || historySaving) return
@@ -852,10 +637,13 @@ export default function MonthlyLocationDetailPage() {
 
   if (loading) {
     return (
-      <div className="d-flex justify-content-center align-items-center py-5">
-        <Spinner animation="border" role="status">
-          <span className="visually-hidden">Loading…</span>
-        </Spinner>
+      <div className="monthly-location-detail-page">
+        <div className="monthly-location-detail-container monthly-location-detail-container--loading">
+          <div className="monthly-location-detail-loading" role="status" aria-live="polite">
+            <Spinner animation="border" />
+            <span>Loading location…</span>
+          </div>
+        </div>
       </div>
     )
   }
@@ -872,16 +660,10 @@ export default function MonthlyLocationDetailPage() {
   const routeLabel = libraryRouteDisplay(location)
   const routeLabelText = routeLabel.trim() || 'Unassigned'
   const routeDetailId = location.monthly_route?.id ?? location.monthly_route_id ?? null
-  const testingSites = sortedTestingSites(location)
-  const primaryStop = testingSites[0]
-  const buildingLabel =
-    primaryStop?.building_name?.trim() || location.building?.trim() || ''
-  const title =
-    buildingLabel !== '' ? `${location.address} (${buildingLabel})` : location.address
   const displayPrice = libraryDisplayPricePerMonth(location)
   const statusLabel = locationStatusLabel(location)
-  const keyRecord = primaryStop?.key ?? location.key
-  const keyText = primaryStop?.keys?.trim() || location.keys?.trim() || ''
+  const keyRecord = location.key
+  const keyText = location.keys?.trim() || ''
   const keyValue =
     keyRecord != null ? (
       <Link to={`/keys/${keyRecord.id}`} className="fw-semibold text-decoration-none">
@@ -898,24 +680,11 @@ export default function MonthlyLocationDetailPage() {
     ) : (
       <span className="fw-semibold">{routeLabelText}</span>
     )
-  const propertyManagementLabel =
-    primaryStop?.property_management_company?.trim() ||
-    location.property_management_company?.trim() ||
-    '—'
-  const annualMonthValues = Array.from(
-    new Set(
-      [
-        ...testingSites.map((site) => site.annual_month),
-        location.annual_month,
-      ]
-        .map((value) => {
-          const trimmed = value?.trim() || ''
-          return trimmed ? normalizeAnnualMonthForSelect(trimmed) || trimmed : ''
-        })
-        .filter(Boolean)
-    )
-  )
-  const annualValue = annualMonthValues.length > 0 ? annualMonthValues.join(', ') : '—'
+  const propertyManagementLabel = location.property_management_company?.trim() || '—'
+  const annualTrimmed = location.annual_month?.trim() || ''
+  const annualValue = annualTrimmed
+    ? normalizeAnnualMonthForSelect(annualTrimmed) || annualTrimmed
+    : '—'
 
   const testingHistoryGridYear =
     testingHistoryYears.length === 0
@@ -930,45 +699,83 @@ export default function MonthlyLocationDetailPage() {
     <div className="monthly-location-detail-page">
       <div className="monthly-location-detail-container">
         <Link to="/monthlies/locations" className="monthly-location-back-link">
-          ← Monthly Locations library
+          <i className="bi bi-chevron-left" aria-hidden />
+          Monthly locations
         </Link>
 
         <section className="monthly-location-detail-hero monthly-location-detail-surface">
           <div className="monthly-location-detail-hero-main">
-            <div className="monthly-location-detail-eyebrow">Monthly location</div>
-            <h1 className="monthly-location-detail-title">{title}</h1>
-            <div className="monthly-location-detail-subtitle">{propertyManagementLabel}</div>
+            <div className="monthly-location-hero-topline">
+              <span className="monthly-location-detail-eyebrow">Monthly location</span>
+              <span className="monthly-location-hero-id">#{location.id}</span>
+            </div>
+            <MonthlyLocationIdentityHero location={location} />
+            <div className="monthly-location-hero-meta">
+              <Badge
+                bg={statusBadgeVariant(location.status_normalized)}
+                className="monthly-location-hero-meta-badge text-capitalize"
+              >
+                {statusLabel}
+              </Badge>
+              {routeDetailId != null && routeLabel.trim() ? (
+                <Link
+                  to={`/monthlies/routes/${routeDetailId}`}
+                  className="monthly-location-hero-meta-link"
+                >
+                  <i className="bi bi-signpost-split" aria-hidden />
+                  {routeLabelText}
+                </Link>
+              ) : (
+                <span className="monthly-location-hero-meta-muted">{routeLabelText}</span>
+              )}
+              {propertyManagementLabel !== '—' ? (
+                <span className="monthly-location-hero-meta-muted">
+                  <i className="bi bi-building" aria-hidden />
+                  {propertyManagementLabel}
+                </span>
+              ) : null}
+            </div>
           </div>
-          <div className="d-flex flex-wrap gap-2">
+          <div className="monthly-location-hero-actions">
             <Button
               type="button"
-              variant="outline-primary"
-              size="sm"
-              className="monthly-location-detail-action"
-              onClick={openAddressModal}
-            >
-              <i className="bi bi-geo-alt" aria-hidden />
-              Edit address
-            </Button>
-            <Button
-              type="button"
-              variant="outline-primary"
+              variant="outline-secondary"
               size="sm"
               className="monthly-location-detail-action"
               onClick={openRouteModal}
             >
               <i className="bi bi-signpost-split" aria-hidden />
-              Edit route
+              Change route
             </Button>
             <Button
               type="button"
-              variant="outline-primary"
+              variant="outline-secondary"
               size="sm"
               className="monthly-location-detail-action"
               onClick={openStatusModal}
             >
               <i className="bi bi-sliders" aria-hidden />
-              Edit status
+              Change status
+            </Button>
+            <MonthlyLocationServiceTradeHeroActions
+              location={location}
+              onEditLink={() => setShowStLinkEditModal(true)}
+            />
+            <Button
+              type="button"
+              variant="outline-danger"
+              size="sm"
+              className="monthly-location-detail-action"
+              disabled={
+                deleteSaving ||
+                statusSaving ||
+                routeSaving ||
+                historySaving
+              }
+              onClick={openDeleteModal}
+            >
+              <i className="bi bi-trash" aria-hidden />
+              Delete location
             </Button>
           </div>
         </section>
@@ -981,6 +788,7 @@ export default function MonthlyLocationDetailPage() {
                 {statusLabel}
               </Badge>
             }
+            onClick={openStatusModal}
           />
           <DetailMetricCard label="Route" value={routeValue} />
           <DetailMetricCard label="Key" value={keyValue} />
@@ -988,6 +796,7 @@ export default function MonthlyLocationDetailPage() {
             label="Annual"
             value={annualValue}
             tone="info"
+            onClick={openAnnualFieldEdit}
           />
           <DetailMetricCard
             label="Monthly Price"
@@ -1000,46 +809,17 @@ export default function MonthlyLocationDetailPage() {
           />
         </div>
 
-        <Modal show={showAddressModal} onHide={closeAddressModal} centered>
-          <Modal.Header closeButton={!addressSaving}>
-            <Modal.Title>Edit address</Modal.Title>
-          </Modal.Header>
-          <Modal.Body>
-            {addressSaveError ? (
-              <Alert variant="danger" className="py-2 small">
-                {addressSaveError}
-              </Alert>
-            ) : null}
-            <Form.Group>
-              <Form.Label>Street address</Form.Label>
-              <Form.Control
-                type="text"
-                value={addressDraft}
-                disabled={addressSaving}
-                onChange={(e) => setAddressDraft(e.target.value)}
-                autoFocus
-              />
-            </Form.Group>
-          </Modal.Body>
-          <Modal.Footer>
-            <Button
-              type="button"
-              variant="outline-secondary"
-              disabled={addressSaving}
-              onClick={closeAddressModal}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="primary"
-              disabled={addressSaving || !addressDraft.trim()}
-              onClick={() => void saveAddressEdit()}
-            >
-              {addressSaving ? 'Saving…' : 'Save address'}
-            </Button>
-          </Modal.Footer>
-        </Modal>
+        <MonthlyLocationServiceTradeLinkPanel
+          location={location}
+          onLocationUpdated={handleLocationUpdated}
+        />
+
+        <MonthlyLocationServiceTradeLinkEditModal
+          show={showStLinkEditModal}
+          location={location}
+          onHide={() => setShowStLinkEditModal(false)}
+          onLocationUpdated={handleLocationUpdated}
+        />
 
         <Modal show={showStatusModal} onHide={closeStatusModal} centered size="sm">
           <Modal.Header closeButton={!statusSaving}>
@@ -1116,61 +896,76 @@ export default function MonthlyLocationDetailPage() {
           </Modal.Footer>
         </Modal>
 
-        <section className="monthly-location-detail-panel monthly-location-testing-locations-panel">
-          <div className="monthly-location-section-header">
-            <div>
-              <h2 className="monthly-location-section-title">Testing locations</h2>
-            </div>
-            <span className="monthly-location-section-count">{testingSites.length}</span>
-          </div>
-          {testingSites.length > 0 ? (
-            <DndContext
-              sensors={testingSiteOrderSensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleTestingSiteDragEnd}
+        <Modal
+          show={showDeleteModal}
+          onHide={closeDeleteModal}
+          centered
+          backdrop={deleteSaving ? 'static' : true}
+        >
+          <Modal.Header closeButton={!deleteSaving}>
+            <Modal.Title className="h6 mb-0">Delete this location?</Modal.Title>
+          </Modal.Header>
+          <Modal.Body>
+            {deleteError ? (
+              <Alert variant="danger" className="py-2 small">
+                {deleteError}
+              </Alert>
+            ) : null}
+            <p className="mb-2">
+              Permanently delete <strong>{locationDeleteLabel}</strong> from the monthly library?
+            </p>
+            <p className="mb-0 small text-muted">
+              This removes testing history, comments, deficiencies, tickets, and billing records for
+              this site. It cannot be undone.
+            </p>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button
+              type="button"
+              variant="outline-secondary"
+              size="sm"
+              disabled={deleteSaving}
+              onClick={closeDeleteModal}
             >
-              <SortableContext
-                items={testingSites.map((site) => site.id)}
-                strategy={verticalListSortingStrategy}
-              >
-                <div className="monthly-location-testing-site-list">
-                  {testingSites.map((site, index) => (
-                    <SortableTestingSiteCard
-                      key={site.id}
-                      site={site}
-                      index={index}
-                      total={testingSites.length}
-                      location={location}
-                      defaultExpanded={index === 0 || site.id === lastAddedTestingSiteId}
-                      orderSaving={testingSiteOrderSaving}
-                      onInlineSave={saveTestingSiteForm}
-                      onDelete={deleteTestingSite}
-                      deleting={deletingTestingSiteId === site.id}
-                    />
-                  ))}
-                </div>
-              </SortableContext>
-            </DndContext>
-          ) : (
-            <div className="monthly-location-empty-state">No testing locations have been added.</div>
-          )}
-          {addTestingSiteError ? (
-            <Alert variant="danger" className="py-2 small mt-3 mb-0">
-              {addTestingSiteError}
-            </Alert>
-          ) : null}
-          <Button
-            type="button"
-            variant="outline-primary"
-            className="monthly-location-add-testing-site-btn"
-            disabled={addingTestingSite || testingSiteOrderSaving}
-            onClick={() => void addTestingSite()}
-          >
-            {addingTestingSite ? 'Adding…' : '+ Add testing site'}
-          </Button>
-        </section>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              size="sm"
+              disabled={deleteSaving}
+              onClick={() => void confirmDeleteLocation()}
+            >
+              {deleteSaving ? (
+                <>
+                  <Spinner animation="border" size="sm" className="me-1" aria-hidden />
+                  Deleting…
+                </>
+              ) : (
+                'Yes, delete location'
+              )}
+            </Button>
+          </Modal.Footer>
+        </Modal>
 
-        <Accordion defaultActiveKey="history" className="monthly-location-detail-accordion">
+        <div className="monthly-location-detail-body">
+          <div className="monthly-location-detail-body__primary">
+            <section className="monthly-location-detail-panel monthly-location-details-panel">
+              <header className="monthly-location-section-header">
+                <div>
+                  <h2 className="monthly-location-section-title">Location details</h2>
+                </div>
+              </header>
+              <MonthlyLocationEditableFields
+                ref={editableFieldsRef}
+                location={location}
+                onLocationUpdated={handleLocationUpdated}
+              />
+            </section>
+          </div>
+
+          <div className="monthly-location-detail-body__secondary">
+            <Accordion defaultActiveKey="history" className="monthly-location-detail-accordion">
           <Accordion.Item
             eventKey="history"
             className="monthly-location-testing-history-card monthly-location-detail-surface"
@@ -1537,35 +1332,37 @@ export default function MonthlyLocationDetailPage() {
           </Accordion.Item>
         </Accordion>
 
-        <section className="monthly-location-detail-panel monthly-location-billing-comments-panel">
-          <div className="monthly-location-section-header">
-            <div>
-              <h2 className="monthly-location-section-title">Billing comments</h2>
-            </div>
-          </div>
-          {location ? (
-            <MonthlyLocationBillingCommentsPanel
-              locationId={location.id}
-              billingComments={location.billing_comments}
-              onSaved={setLocation}
-            />
-          ) : null}
-        </section>
+            <section className="monthly-location-detail-panel monthly-location-billing-comments-panel">
+              <header className="monthly-location-section-header">
+                <div>
+                  <h2 className="monthly-location-section-title">Billing comments</h2>
+                </div>
+              </header>
+              {location ? (
+                <MonthlyLocationBillingCommentsPanel
+                  locationId={location.id}
+                  billingComments={location.billing_comments}
+                  onSaved={setLocation}
+                />
+              ) : null}
+            </section>
 
-        <section className="monthly-location-detail-panel monthly-location-comments-panel monthly-location-comments-panel--full">
-          <div className="monthly-location-section-header">
-            <div>
-              <h2 className="monthly-location-section-title">Comments</h2>
-            </div>
+            <section className="monthly-location-detail-panel monthly-location-comments-panel">
+              <header className="monthly-location-section-header">
+                <div>
+                  <h2 className="monthly-location-section-title">Comments</h2>
+                </div>
+              </header>
+              <MonthlyLibraryCommentsPanel
+                commentsApiPrefix={`/api/monthly_routes/library/${idNum}`}
+                comments={comments}
+                setComments={setComments}
+                sessionUsername={sessionUsername}
+                composerPlaceholder="Write a note for this location…"
+              />
+            </section>
           </div>
-          <MonthlyLibraryCommentsPanel
-            commentsApiPrefix={`/api/monthly_sites/library/${idNum}`}
-            comments={comments}
-            setComments={setComments}
-            sessionUsername={sessionUsername}
-            composerPlaceholder="Write a note for this location…"
-          />
-        </section>
+        </div>
       </div>
     </div>
   )

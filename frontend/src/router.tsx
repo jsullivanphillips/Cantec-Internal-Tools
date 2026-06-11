@@ -14,7 +14,7 @@ const KeysHomePage = lazy(() => import('./pages/KeysHomePage'))
 const KeyDetailPage = lazy(() => import('./pages/KeyDetailPage'))
 const KeyByBarcodePage = lazy(() => import('./pages/KeyByBarcodePage'))
 const PerformanceSummaryPage = lazy(() => import('./pages/PerformanceSummaryPage'))
-const MonthlyRoutesOverviewPage = lazy(() => import('./pages/MonthlyRoutesOverviewPage'))
+const MonthlyHomePage = lazy(() => import('./pages/MonthlyHomePage'))
 const MonthlyRoutesPage = lazy(() => import('./pages/MonthlyRoutesPage'))
 const MonthlyRouteDetailPage = lazy(() => import('./pages/MonthlyRouteDetailPage'))
 const MonthlyRoutePaperworkPage = lazy(() => import('./pages/MonthlyRoutePaperworkPage'))
@@ -56,14 +56,14 @@ function paperworkUrl(routeId: string, monthIso?: string | null): string {
 /** Old session-ledger URLs forward to Paperwork. */
 function RedirectMonthlySessionToPaperwork() {
   const { routeId, monthIso } = useParams<{ routeId: string; monthIso: string }>()
-  if (!routeId?.trim() || !monthIso?.trim()) return <Navigate to="/monthlies/routes" replace />
+  if (!routeId?.trim() || !monthIso?.trim()) return <Navigate to="/monthlies" replace />
   return <Navigate to={paperworkUrl(routeId, monthIso)} replace />
 }
 
 /** Legacy run-details URLs forward to Paperwork. */
 function RedirectMonthlyRunToPaperwork() {
   const { routeId, monthIso } = useParams<{ routeId: string; monthIso: string }>()
-  if (!routeId?.trim() || !monthIso?.trim()) return <Navigate to="/monthlies/routes" replace />
+  if (!routeId?.trim() || !monthIso?.trim()) return <Navigate to="/monthlies" replace />
   return <Navigate to={paperworkUrl(routeId, monthIso)} replace />
 }
 
@@ -110,7 +110,8 @@ export const router = createBrowserRouter([
       { path: 'quotation_tool', element: <QuotationToolPage /> },
       { path: 'deficiency_tracker', element: <DeficiencyTrackerPage /> },
       { path: 'scheduling_attack', element: <SchedulingAttackPage /> },
-      { path: 'monthlies/routes', element: <MonthlyRoutesOverviewPage /> },
+      { path: 'monthlies', element: <MonthlyHomePage /> },
+      { path: 'monthlies/routes', element: <Navigate to="/monthlies" replace /> },
       { path: 'monthlies/locations', element: <MonthlyRoutesPage /> },
       { path: 'monthlies/routes/:routeId', element: <MonthlyRouteDetailPage /> },
       { path: 'monthlies/routes/:routeId/paperwork', element: <MonthlyRoutePaperworkPage /> },

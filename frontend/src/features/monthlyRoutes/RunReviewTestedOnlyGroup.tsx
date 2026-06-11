@@ -15,7 +15,7 @@ const RunReviewTestedOnlyGroup = forwardRef<
     defaultExpanded?: boolean
     routeId: number
     monthDate: string
-    onCardDetailLoaded: (testingSiteId: number, changes: NotableChangeItem[]) => void
+    onCardDetailLoaded: (locationId: number, changes: NotableChangeItem[]) => void
   }
 >(function RunReviewTestedOnlyGroup(
   { cards, defaultExpanded = false, routeId, monthDate, onCardDetailLoaded },
@@ -77,7 +77,7 @@ const RunReviewTestedOnlyGroup = forwardRef<
         <div id="run-review-tested-only-group-panel">
           <ul className="run-review-tested-group__list list-unstyled mb-0">
             {cards.map((card) => (
-              <li key={`${card.locationId}:${card.stop.testing_site_id}`} id={runReviewStopDomId(card)}>
+              <li key={`${card.locationId}:${card.stop.location_id}`} id={runReviewStopDomId(card)}>
                 <RunDetailsSiteChangeCard
                   card={card}
                   routeId={routeId}

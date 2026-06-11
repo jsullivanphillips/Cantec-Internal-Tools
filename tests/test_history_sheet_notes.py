@@ -8,11 +8,11 @@ from app import create_app
 from app.db_models import (
     Key,
     MonitoringCompany,
+    MonthlyLocation,
+    MonthlyLocationComment,
+    MonthlyLocationMonth,
     MonthlyRoute,
-    MonthlyRouteLocation,
-    MonthlyRouteLocationComment,
     MonthlyRouteRun,
-    MonthlyRouteTestHistory,
     MonthlyRouteWorksheetAuditEvent,
     db,
 )
@@ -22,14 +22,17 @@ from app.monthly.history_sheet_notes import (
 )
 from app.monthly.route_inspection_csv_import import run_route_inspection_csv_import
 from app.monthly.runs import get_or_create_monthly_route_run
+from tests.monthly_location_helpers import make_location
 
 
 @pytest.fixture
-def notes_client(monkeypatch):
-    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+def notes_client(monkeypatch, tmp_path):
+    db_file = tmp_path / "history_notes.db"
+    uri = f"sqlite:///{db_file.as_posix()}"
+    monkeypatch.setenv("DATABASE_URL", uri)
     app = create_app()
     app.config["TESTING"] = True
-    app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///:memory:"
+    app.config["SQLALCHEMY_DATABASE_URI"] = uri
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
     with app.app_context():
@@ -39,11 +42,11 @@ def notes_client(monkeypatch):
                 MonthlyRoute.__table__,
                 Key.__table__,
                 MonitoringCompany.__table__,
-                MonthlyRouteLocation.__table__,
+                MonthlyLocation.__table__,
                 MonthlyRouteRun.__table__,
-                MonthlyRouteTestHistory.__table__,
+                MonthlyLocationMonth.__table__,
                 MonthlyRouteWorksheetAuditEvent.__table__,
-                MonthlyRouteLocationComment.__table__,
+                MonthlyLocationComment.__table__,
             ],
         )
         with app.test_client() as client:
@@ -55,11 +58,11 @@ def notes_client(monkeypatch):
         db.metadata.drop_all(
             db.engine,
             tables=[
-                MonthlyRouteLocationComment.__table__,
+                MonthlyLocationComment.__table__,
                 MonthlyRouteWorksheetAuditEvent.__table__,
-                MonthlyRouteTestHistory.__table__,
+                MonthlyLocationMonth.__table__,
                 MonthlyRouteRun.__table__,
-                MonthlyRouteLocation.__table__,
+                MonthlyLocation.__table__,
                 MonitoringCompany.__table__,
                 Key.__table__,
                 MonthlyRoute.__table__,
@@ -67,18 +70,14 @@ def notes_client(monkeypatch):
         )
 
 
-def _seed_loc() -> tuple[MonthlyRoute, MonthlyRouteLocation]:
+def _seed_loc() -> tuple[MonthlyRoute, MonthlyLocation]:
     route = MonthlyRoute(id=8, route_number=8, weekday_iso=3, week_occurrence=1)
-    loc = MonthlyRouteLocation(
+    loc = make_location(
         id=801,
         address="800 Johnson Street",
-        address_normalized="800 johnson street",
+        label="TDMC Holdings",
         property_management_company="Invermay",
         property_management_company_normalized="invermay",
-        building="TDMC Holdings",
-        building_normalized="tdmc holdings",
-        status_normalized="active",
-        status_raw="Active",
         monthly_route_id=8,
         testing_procedures="Library current procedures",
         inspection_tech_notes="Library current notes",
@@ -92,27 +91,27 @@ def test_latest_run_notes_prefers_newer_history_month(notes_client):
     _client, app = notes_client
     with app.app_context():
         _route, loc = _seed_loc()
-        db.session.add(
-            MonthlyRouteTestHistory(
-                id=9001,
-                location_id=loc.id,
-                month_date=date(2026, 4, 1),
-                result_status="tested",
-                testing_procedures="April procedures",
-                inspection_tech_notes="April notes",
-                test_monthly_route_id=8,
-            )
-        )
-        db.session.add(
-            MonthlyRouteTestHistory(
-                id=9002,
-                location_id=loc.id,
-                month_date=date(2026, 5, 1),
-                result_status="tested",
-                testing_procedures="May procedures",
-                inspection_tech_notes="May notes",
-                test_monthly_route_id=8,
-            )
+        db.session.add_all(
+            [
+                MonthlyLocationMonth(
+                    id=9001,
+                    monthly_location_id=loc.id,
+                    month_date=date(2026, 4, 1),
+                    result_status="tested",
+                    testing_procedures="April procedures",
+                    inspection_tech_notes="April notes",
+                    test_monthly_route_id=8,
+                ),
+                MonthlyLocationMonth(
+                    id=9002,
+                    monthly_location_id=loc.id,
+                    month_date=date(2026, 5, 1),
+                    result_status="tested",
+                    testing_procedures="May procedures",
+                    inspection_tech_notes="May notes",
+                    test_monthly_route_id=8,
+                ),
+            ]
         )
         db.session.commit()
         tp, tn = latest_run_notes_for_location(int(loc.id))
@@ -121,14 +120,13 @@ def test_latest_run_notes_prefers_newer_history_month(notes_client):
 
 
 def test_csv_import_does_not_overwrite_library_notes_for_older_month(notes_client):
-    """Historical sheet month updates history only; library keeps latest month text."""
     _client, app = notes_client
     with app.app_context():
         route, loc = _seed_loc()
         db.session.add(
-            MonthlyRouteTestHistory(
+            MonthlyLocationMonth(
                 id=9002,
-                location_id=loc.id,
+                monthly_location_id=loc.id,
                 month_date=date(2026, 5, 1),
                 result_status="tested",
                 testing_procedures="May procedures",
@@ -158,13 +156,13 @@ def test_csv_import_does_not_overwrite_library_notes_for_older_month(notes_clien
             dry_run=False,
         )
 
-        hist_april = MonthlyRouteTestHistory.query.filter_by(
-            location_id=loc.id, month_date=date(2026, 4, 1)
+        hist_april = MonthlyLocationMonth.query.filter_by(
+            monthly_location_id=loc.id, month_date=date(2026, 4, 1)
         ).one()
         assert hist_april.testing_procedures == "April proc only"
         assert hist_april.inspection_tech_notes == "April note only"
 
-        loc_after = db.session.get(MonthlyRouteLocation, loc.id)
+        loc_after = db.session.get(MonthlyLocation, loc.id)
         assert loc_after.testing_procedures == "Library current procedures"
         assert loc_after.inspection_tech_notes == "Library current notes"
 
@@ -179,16 +177,12 @@ def test_worksheet_historical_month_shows_history_not_library(notes_client, monk
     client, app = notes_client
     with app.app_context():
         route = MonthlyRoute(id=8, route_number=8, weekday_iso=3, week_occurrence=1)
-        loc = MonthlyRouteLocation(
+        loc = make_location(
             id=801,
             address="800 Johnson Street",
-            address_normalized="800 johnson street",
+            label="TDMC",
             property_management_company="Invermay",
             property_management_company_normalized="invermay",
-            building="TDMC",
-            building_normalized="tdmc",
-            status_normalized="active",
-            status_raw="Active",
             monthly_route_id=8,
             testing_procedures="Only on library",
             inspection_tech_notes="Only on library notes",
@@ -200,9 +194,9 @@ def test_worksheet_historical_month_shows_history_not_library(notes_client, monk
             status="completed",
             source="csv_import",
         )
-        hist = MonthlyRouteTestHistory(
+        hist = MonthlyLocationMonth(
             id=9001,
-            location_id=801,
+            monthly_location_id=801,
             month_date=date(2026, 4, 1),
             result_status="tested",
             testing_procedures="April on history",
@@ -216,9 +210,10 @@ def test_worksheet_historical_month_shows_history_not_library(notes_client, monk
     res = client.get("/api/monthly_routes/routes/8/worksheet?month=2026-04-01")
     assert res.status_code == 200
     body = res.get_json()
-    assert len(body["rows"]) == 1
-    assert body["rows"][0]["testing_procedures"] == "April on history"
-    assert body["rows"][0]["inspection_tech_notes"] == "April history notes"
+    rows = body.get("locations") or body.get("rows") or []
+    assert len(rows) == 1
+    assert rows[0]["testing_procedures"] == "April on history"
+    assert rows[0]["inspection_tech_notes"] == "April history notes"
 
 
 def test_library_location_shows_latest_run_notes(notes_client):
@@ -226,27 +221,27 @@ def test_library_location_shows_latest_run_notes(notes_client):
     with app.app_context():
         _route, loc = _seed_loc()
         location_id = int(loc.id)
-        db.session.add(
-            MonthlyRouteTestHistory(
-                id=9001,
-                location_id=loc.id,
-                month_date=date(2026, 4, 1),
-                result_status="tested",
-                testing_procedures="April procedures",
-                inspection_tech_notes="April notes",
-                test_monthly_route_id=8,
-            )
-        )
-        db.session.add(
-            MonthlyRouteTestHistory(
-                id=9002,
-                location_id=loc.id,
-                month_date=date(2026, 5, 1),
-                result_status="tested",
-                testing_procedures="May procedures",
-                inspection_tech_notes="May notes",
-                test_monthly_route_id=8,
-            )
+        db.session.add_all(
+            [
+                MonthlyLocationMonth(
+                    id=9001,
+                    monthly_location_id=loc.id,
+                    month_date=date(2026, 4, 1),
+                    result_status="tested",
+                    testing_procedures="April procedures",
+                    inspection_tech_notes="April notes",
+                    test_monthly_route_id=8,
+                ),
+                MonthlyLocationMonth(
+                    id=9002,
+                    monthly_location_id=loc.id,
+                    month_date=date(2026, 5, 1),
+                    result_status="tested",
+                    testing_procedures="May procedures",
+                    inspection_tech_notes="May notes",
+                    test_monthly_route_id=8,
+                ),
+            ]
         )
         db.session.commit()
 
@@ -255,3 +250,40 @@ def test_library_location_shows_latest_run_notes(notes_client):
     loc_payload = res.get_json()["location"]
     assert loc_payload["testing_procedures"] == "May procedures"
     assert loc_payload["inspection_tech_notes"] == "May notes"
+
+
+def test_library_patch_testing_procedures_updates_latest_history_and_response(notes_client):
+    client, app = notes_client
+    with app.app_context():
+        _route, loc = _seed_loc()
+        db.session.add(
+            MonthlyLocationMonth(
+                id=9002,
+                monthly_location_id=loc.id,
+                month_date=date(2026, 5, 1),
+                result_status="tested",
+                testing_procedures="May procedures",
+                inspection_tech_notes="May notes",
+                test_monthly_route_id=8,
+            )
+        )
+        db.session.commit()
+        location_id = int(loc.id)
+
+    long_text = ("Ring bells by 7:45. " * 40).strip()
+    res = client.patch(
+        f"/api/monthly_routes/library/{location_id}",
+        json={"testing_procedures": long_text},
+    )
+    assert res.status_code == 200
+    loc_payload = res.get_json()["location"]
+    assert loc_payload["testing_procedures"] == long_text
+
+    with app.app_context():
+        loc_after = db.session.get(MonthlyLocation, location_id)
+        assert loc_after.testing_procedures == long_text
+        latest = MonthlyLocationMonth.query.filter_by(
+            monthly_location_id=location_id,
+            month_date=date(2026, 5, 1),
+        ).one()
+        assert latest.testing_procedures == long_text

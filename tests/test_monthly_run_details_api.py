@@ -7,25 +7,29 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from app import create_app
 from app.db_models import (
     Key,
     MonitoringCompany,
+    MonthlyLocation,
+    MonthlyLocationComment,
+    MonthlyLocationDeficiency,
+    MonthlyLocationMonth,
     MonthlyRoute,
     MonthlyRouteComment,
-    MonthlyRouteLocation,
-    MonthlyRouteLocationComment,
     MonthlyRouteRun,
-    MonthlyRouteTestHistory,
     MonthlyRouteWorksheetAuditEvent,
-    MonthlySite,
     MonthlyStopClockEvent,
-    MonthlyTestingSite,
-    MonthlyTestingSiteDeficiency,
-    MonthlyTestingSiteMonth,
-    db,
+    db
 )
-from app.monthly.monthly_sites_sync import sync_testing_sites_from_legacy
+from tests.monthly_location_helpers import (
+    WORKSHEET_TABLES,
+    make_location,
+    make_location_month,
+    seed_route_with_one_stop,
+    seed_route_with_two_stops
+)
+
+from app import create_app
 
 PACIFIC_TZ = ZoneInfo("America/Vancouver")
 
@@ -38,22 +42,7 @@ def run_details_client(monkeypatch):
     app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///:memory:"
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-    tables = [
-        Key.__table__,
-        MonitoringCompany.__table__,
-        MonthlyRoute.__table__,
-        MonthlyRouteComment.__table__,
-        MonthlyRouteLocation.__table__,
-        MonthlyRouteLocationComment.__table__,
-        MonthlyRouteRun.__table__,
-        MonthlyRouteTestHistory.__table__,
-        MonthlyRouteWorksheetAuditEvent.__table__,
-        MonthlySite.__table__,
-        MonthlyTestingSite.__table__,
-        MonthlyTestingSiteMonth.__table__,
-        MonthlyStopClockEvent.__table__,
-        MonthlyTestingSiteDeficiency.__table__,
-    ]
+    tables = WORKSHEET_TABLES
 
     with app.app_context():
         db.metadata.create_all(db.engine, tables=tables)
@@ -68,22 +57,18 @@ def run_details_client(monkeypatch):
 
 def _seed_basic_route_data():
     route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
-    loc = MonthlyRouteLocation(
+    loc = make_location(
         id=101,
         address="123 Test St",
-        address_normalized="123 test st",
+        label="123 Test St",
         property_management_company="Acme",
         property_management_company_normalized="acme",
-        building=None,
-        building_normalized="",
-        status_normalized="active",
-        status_raw="Active",
         monthly_route_id=1,
         annual_month="May",
     )
-    hist = MonthlyRouteTestHistory(
+    mlm = MonthlyLocationMonth(
         id=5001,
-        location_id=101,
+        monthly_location_id=101,
         month_date=date(2026, 5, 1),
         result_status="tested",
         test_monthly_route_id=1,
@@ -96,9 +81,9 @@ def _seed_basic_route_data():
         status="open",
         source="technician_app",
     )
-    db.session.add_all([route, loc, hist, run])
+    db.session.add_all([route, loc, mlm, run])
     db.session.commit()
-    return route, loc, hist, run
+    return route, loc, mlm, run
 
 
 REVIEW_URL = "/api/monthly_routes/routes/1/run_details/review?month=2026-05-01"
@@ -110,8 +95,8 @@ def _review_stop_for_location(client, location_id: int) -> dict:
     assert review.status_code == 200
     stop = next(
         (s for s in review.get_json()["stops"] if int(s["location_id"]) == int(location_id)),
-        None,
-    )
+        None
+)
     assert stop is not None
     return stop
 
@@ -138,17 +123,21 @@ def test_run_details_locations_include_all_worksheet_stops(run_details_client):
     client, app = run_details_client
     with app.app_context():
         _seed_basic_route_data()
-        loc2 = MonthlyRouteLocation(
+        loc2 = make_location(
             id=102,
             address="456 Other Ave",
-            address_normalized="456 other ave",
             property_management_company="Acme",
             property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
-            status_normalized="active",
-            status_raw="Active",
             monthly_route_id=1,
+            route_stop_order=1,
+        )
+        db.session.add(
+            MonthlyLocationMonth(
+                id=5002,
+                monthly_location_id=102,
+                month_date=date(2026, 5, 1),
+                test_monthly_route_id=1,
+            )
         )
         db.session.add(loc2)
         db.session.commit()
@@ -159,7 +148,7 @@ def test_run_details_locations_include_all_worksheet_stops(run_details_client):
     loc_ids = {int(loc["location_id"]) for loc in locations}
     assert 101 in loc_ids
     assert 102 in loc_ids
-    total_stops = sum(len(loc["stops"]) for loc in locations)
+    total_stops = len(locations)
     assert total_stops == res.get_json()["review_summary"]["stop_count"]
     assert total_stops >= 2
 
@@ -168,54 +157,53 @@ def test_run_details_locations_multi_stop_single_entry(run_details_client):
     client, app = run_details_client
     with app.app_context():
         _seed_basic_route_data()
-        loc = db.session.get(MonthlyRouteLocation, 101)
-        assert loc is not None
-        sync_testing_sites_from_legacy(loc)
-        site = MonthlySite.query.filter_by(legacy_monthly_route_location_id=101).one()
+        loc_secondary = make_location(
+            id=88002,
+            address="123 Test St",
+            label="Annex panel",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
+            monthly_route_id=1,
+            route_stop_order=1,
+            ring_detail="B",
+        )
+        db.session.add(loc_secondary)
         db.session.add(
-            MonthlyTestingSite(
-                id=88002,
-                monthly_site_id=int(site.id),
-                sort_order=1,
-                label="Annex panel",
-                ring_detail="B",
+            MonthlyLocationMonth(
+                id=88003,
+                monthly_location_id=88002,
+                month_date=date(2026, 5, 1),
+                test_monthly_route_id=1,
             )
         )
         db.session.commit()
 
     res = client.get(BASE_URL)
     assert res.status_code == 200
-    entry = next(loc for loc in res.get_json()["locations"] if int(loc["location_id"]) == 101)
-    assert len(entry["stops"]) >= 2
-    assert entry["first_stop_number"] <= entry["last_stop_number"]
+    locations = res.get_json()["locations"]
+    loc_ids = {int(row["location_id"]) for row in locations}
+    assert 101 in loc_ids
+    assert 88002 in loc_ids
+    assert len(locations) >= 2
 
 
 def test_run_details_locations_deficiency_summaries(run_details_client):
     client, app = run_details_client
     with app.app_context():
         _seed_basic_route_data()
-        loc = db.session.get(MonthlyRouteLocation, 101)
-        assert loc is not None
-        sync_testing_sites_from_legacy(loc)
-        ts_id = int(MonthlyTestingSite.query.one().id)
+        ts_id = 101
+        mlm = db.session.get(MonthlyLocationMonth, 5001)
+        assert mlm is not None
+        mlm.test_outcome = "passed_with_problems"
+        mlm.confirmed_no_deficiencies = True
         db.session.add(
-            MonthlyTestingSiteMonth(
-                id=92002,
-                monthly_testing_site_id=ts_id,
-                month_date=date(2026, 5, 1),
-                test_monthly_route_id=1,
-                test_outcome="passed_with_problems",
-                confirmed_no_deficiencies=True,
-            )
-        )
-        db.session.add(
-            MonthlyTestingSiteDeficiency(
+            MonthlyLocationDeficiency(
                 id=99001,
-                monthly_testing_site_id=ts_id,
+                monthly_location_id=ts_id,
                 created_run_id=9001,
                 title="Bad battery",
                 severity="deficient",
-                status="new",
+                status="new"
             )
         )
         db.session.commit()
@@ -223,7 +211,7 @@ def test_run_details_locations_deficiency_summaries(run_details_client):
     res = client.get(BASE_URL)
     assert res.status_code == 200
     entry = next(loc for loc in res.get_json()["locations"] if int(loc["location_id"]) == 101)
-    stop = entry["stops"][0]
+    stop = entry
     assert stop["has_active_deficiencies"] is True
     assert len(stop["deficiency_summaries"]) == 1
     assert stop["deficiency_summaries"][0]["title"] == "Bad battery"
@@ -235,60 +223,51 @@ def test_run_details_deficiency_summaries_scoped_to_field_run(run_details_client
     client, app = run_details_client
     with app.app_context():
         _seed_basic_route_data()
-        loc = db.session.get(MonthlyRouteLocation, 101)
-        assert loc is not None
-        sync_testing_sites_from_legacy(loc)
-        ts_id = int(MonthlyTestingSite.query.one().id)
+        ts_id = 101
+        mlm = db.session.get(MonthlyLocationMonth, 5001)
+        assert mlm is not None
+        mlm.test_outcome = "passed_with_problems"
         db.session.add(
-            MonthlyTestingSiteMonth(
-                id=92002,
-                monthly_testing_site_id=ts_id,
-                month_date=date(2026, 5, 1),
-                test_monthly_route_id=1,
-                test_outcome="passed_with_problems",
-            )
-        )
-        db.session.add(
-            MonthlyTestingSiteDeficiency(
+            MonthlyLocationDeficiency(
                 id=99001,
-                monthly_testing_site_id=ts_id,
+                monthly_location_id=ts_id,
                 created_run_id=9001,
                 title="Reported this run",
                 severity="deficient",
-                status="new",
+                status="new"
             )
         )
         db.session.add(
-            MonthlyTestingSiteDeficiency(
+            MonthlyLocationDeficiency(
                 id=99002,
-                monthly_testing_site_id=ts_id,
+                monthly_location_id=ts_id,
                 created_run_id=8000,
                 title="Carry-over new",
                 severity="deficient",
-                status="new",
-            )
+                status="new"
+)
         )
         db.session.add(
-            MonthlyTestingSiteDeficiency(
+            MonthlyLocationDeficiency(
                 id=99003,
-                monthly_testing_site_id=ts_id,
+                monthly_location_id=ts_id,
                 created_run_id=8000,
                 title="Verified on visit",
                 severity="deficient",
                 status="verified",
-                updated_at=datetime(2026, 5, 2, 10, 0, tzinfo=PACIFIC_TZ),
-            )
+                updated_at=datetime(2026, 5, 2, 10, 0, tzinfo=PACIFIC_TZ)
+)
         )
         db.session.add(
-            MonthlyTestingSiteDeficiency(
+            MonthlyLocationDeficiency(
                 id=99004,
-                monthly_testing_site_id=ts_id,
+                monthly_location_id=ts_id,
                 created_run_id=8000,
                 title="Verified before run",
                 severity="deficient",
                 status="verified",
-                updated_at=datetime(2026, 5, 1, 10, 0, tzinfo=PACIFIC_TZ),
-            )
+                updated_at=datetime(2026, 5, 1, 10, 0, tzinfo=PACIFIC_TZ)
+)
         )
         db.session.commit()
 
@@ -298,7 +277,7 @@ def test_run_details_deficiency_summaries_scoped_to_field_run(run_details_client
         loc
         for loc in res.get_json()["locations"]
         if int(loc["location_id"]) == 101
-    )["stops"][0]
+    )
     titles = {row["title"] for row in stop["deficiency_summaries"]}
     assert titles == {"Reported this run", "Verified on visit"}
     assert stop["has_active_deficiencies"] is True
@@ -309,49 +288,37 @@ def test_run_details_new_comment_fields_on_stop(run_details_client):
     """Office review flags newly added comment fields for red highlight."""
     client, app = run_details_client
     with app.app_context():
-        _, _, hist, run = _seed_basic_route_data()
-        loc = db.session.get(MonthlyRouteLocation, 101)
-        assert loc is not None
-        sync_testing_sites_from_legacy(loc)
-        ts_id = int(MonthlyTestingSite.query.one().id)
+        _, _, mlm, run = _seed_basic_route_data()
         field_time = datetime(2026, 5, 2, 10, 0, tzinfo=PACIFIC_TZ)
-        db.session.add(
-            MonthlyTestingSiteMonth(
-                id=92003,
-                monthly_testing_site_id=ts_id,
-                month_date=date(2026, 5, 1),
-                test_monthly_route_id=1,
-                run_comments="Technician noted smoke smell",
-                testing_procedures="Check panel",
-            )
-        )
+        mlm.run_comments = "Technician noted smoke smell"
+        mlm.testing_procedures = "Check panel"
         db.session.add(
             MonthlyRouteWorksheetAuditEvent(
                 id=88001,
                 monthly_route_id=1,
                 location_id=101,
-                history_row_id=int(hist.id),
+                location_month_row_id=int(mlm.id),
                 month_date=date(2026, 5, 1),
                 field_name="testing_procedures",
                 old_value="",
                 new_value="Check panel",
                 source="technician_app",
-                changed_at=field_time,
-            )
+                changed_at=field_time
+)
         )
         db.session.add(
             MonthlyRouteWorksheetAuditEvent(
                 id=88002,
                 monthly_route_id=1,
                 location_id=101,
-                history_row_id=int(hist.id),
+                location_month_row_id=int(mlm.id),
                 month_date=date(2026, 5, 1),
                 field_name="inspection_tech_notes",
                 old_value="Old office note",
                 new_value="",
                 source="technician_app",
-                changed_at=field_time,
-            )
+                changed_at=field_time
+)
         )
         db.session.commit()
         assert run.started_at is not None
@@ -362,7 +329,7 @@ def test_run_details_new_comment_fields_on_stop(run_details_client):
         loc
         for loc in res.get_json()["locations"]
         if int(loc["location_id"]) == 101
-    )["stops"][0]
+    )
     assert "run_comments" in stop["new_comment_fields"]
     assert "testing_procedures" in stop["new_comment_fields"]
     assert "inspection_tech_notes" not in stop["new_comment_fields"]
@@ -372,12 +339,11 @@ def test_run_details_worksheet_stop_for_site_modal(run_details_client):
     client, app = run_details_client
     with app.app_context():
         _seed_basic_route_data()
-        loc = db.session.get(MonthlyRouteLocation, 101)
+        loc = db.session.get(MonthlyLocation, 101)
         assert loc is not None
-        sync_testing_sites_from_legacy(loc)
-        ts_id = int(MonthlyTestingSite.query.one().id)
+        ts_id = 101
 
-    res = client.get(f"/api/monthly_routes/routes/1/run_details/stops/{ts_id}?month=2026-05-01")
+    res = client.get(f"/api/monthly_routes/routes/1/run_details/locations/{ts_id}?month=2026-05-01")
     assert res.status_code == 200
     stop = res.get_json()["stop"]
     assert int(stop["testing_site_id"]) == ts_id
@@ -391,28 +357,24 @@ def test_get_run_details_counts_and_run_header(run_details_client):
     client, app = run_details_client
     with app.app_context():
         _seed_basic_route_data()
-        loc2 = MonthlyRouteLocation(
+        loc2 = make_location(
             id=102,
             address="456 Other Ave",
-            address_normalized="456 other ave",
             property_management_company="Acme",
             property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
-            status_normalized="active",
-            status_raw="Active",
             monthly_route_id=1,
+            route_stop_order=1,
         )
         db.session.add(loc2)
         db.session.add(
-            MonthlyRouteTestHistory(
+            MonthlyLocationMonth(
                 id=5002,
-                location_id=102,
+                monthly_location_id=102,
                 month_date=date(2026, 5, 1),
                 result_status="skipped",
                 skip_reason="gate locked",
-                test_monthly_route_id=1,
-            )
+                test_monthly_route_id=1
+)
         )
         db.session.commit()
 
@@ -438,7 +400,7 @@ def test_run_details_counts_ignore_cleared_history_rows(run_details_client):
     client, app = run_details_client
     with app.app_context():
         _seed_basic_route_data()
-        cleared = db.session.get(MonthlyRouteTestHistory, 5001)
+        cleared = db.session.get(MonthlyLocationMonth, 5001)
         assert cleared is not None
         cleared.result_status = None
         cleared.source_value_raw = None
@@ -454,9 +416,9 @@ def test_run_details_review_includes_tested_stop_without_property_edits(run_deta
     client, app = run_details_client
     with app.app_context():
         _seed_basic_route_data()
-        hist = db.session.get(MonthlyRouteTestHistory, 5001)
-        assert hist is not None
-        assert (hist.result_status or "").strip().lower() == "tested"
+        mlm = db.session.get(MonthlyLocationMonth, 5001)
+        assert mlm is not None
+        assert (mlm.result_status or "").strip().lower() == "tested"
 
     res = client.get(REVIEW_URL)
     assert res.status_code == 200
@@ -467,28 +429,30 @@ def test_run_details_review_includes_tested_stop_without_property_edits(run_deta
 
 
 def test_run_details_notable_stops_includes_annual_month_without_technician_action(
-    run_details_client,
+    run_details_client
 ):
     """Annual-month sites appear in run review even with no skip/test outcome recorded."""
     client, app = run_details_client
     with app.app_context():
         _seed_basic_route_data()
-        loc_annual = MonthlyRouteLocation(
+        loc_annual = make_location(
             id=103,
             address="789 Annual Ln",
-            address_normalized="789 annual ln",
             property_management_company="Acme",
             property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
-            status_normalized="active",
-            status_raw="Active",
             monthly_route_id=1,
             annual_month="May",
         )
         db.session.add(loc_annual)
+        db.session.add(
+            MonthlyLocationMonth(
+                id=92004,
+                monthly_location_id=103,
+                month_date=date(2026, 5, 1),
+                test_monthly_route_id=1,
+            )
+        )
         db.session.commit()
-        sync_testing_sites_from_legacy(loc_annual)
 
     res = client.get(BASE_URL)
     assert res.status_code == 200
@@ -508,25 +472,24 @@ def test_run_details_counts_annual_month_site_not_when_tested(run_details_client
     """Tested outcome wins over annual month on the same site."""
     client, app = run_details_client
     with app.app_context():
-        route, loc, hist, _run = _seed_basic_route_data()
+        route, loc, mlm, _run = _seed_basic_route_data()
         assert loc.annual_month == "May"
-        assert (hist.result_status or "").strip().lower() == "tested"
-        loc_annual_only = MonthlyRouteLocation(
+        assert (mlm.result_status or "").strip().lower() == "tested"
+        loc_annual_only = MonthlyLocation(
             id=104,
             address="100 Annual Only",
             address_normalized="100 annual only",
             property_management_company="Acme",
             property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
+        label="100 Annual Only",
+        label_normalized="100 annual only",
             status_normalized="active",
             status_raw="Active",
             monthly_route_id=route.id,
-            annual_month="May",
-        )
+            annual_month="May"
+)
         db.session.add(loc_annual_only)
         db.session.commit()
-        sync_testing_sites_from_legacy(loc_annual_only)
 
     res = client.get("/api/monthly_routes/routes/1/run_details?month=2026-05-01")
     assert res.status_code == 200
@@ -543,19 +506,9 @@ def test_run_details_notable_stops_includes_run_comments_only(run_details_client
     client, app = run_details_client
     with app.app_context():
         _seed_basic_route_data()
-        loc = db.session.get(MonthlyRouteLocation, 101)
-        assert loc is not None
-        sync_testing_sites_from_legacy(loc)
-        ts_id = int(MonthlyTestingSite.query.one().id)
-        db.session.add(
-            MonthlyTestingSiteMonth(
-                id=92001,
-                monthly_testing_site_id=ts_id,
-                month_date=date(2026, 5, 1),
-                test_monthly_route_id=1,
-                run_comments="Found bad battery",
-            )
-        )
+        mlm = db.session.get(MonthlyLocationMonth, 5001)
+        assert mlm is not None
+        mlm.run_comments = "Found bad battery"
         db.session.commit()
 
     res = client.get(BASE_URL)
@@ -574,7 +527,7 @@ def test_run_details_field_changes_omit_office_prep_audits(run_details_client):
     """Field-changes card shows only post-field-start technician deltas, not office prep."""
     client, app = run_details_client
     with app.app_context():
-        _, _, hist, run = _seed_basic_route_data()
+        _, _, mlm, run = _seed_basic_route_data()
         started = run.started_at
         assert started is not None
         prep_time = datetime(2026, 5, 1, 10, 0, tzinfo=PACIFIC_TZ)
@@ -585,60 +538,60 @@ def test_run_details_field_changes_omit_office_prep_audits(run_details_client):
                     id=1,
                     monthly_route_id=1,
                     location_id=101,
-                    history_row_id=int(hist.id),
+                    location_month_row_id=int(mlm.id),
                     month_date=date(2026, 5, 1),
                     field_name="testing_procedures",
                     old_value="ok",
                     new_value=None,
                     source="office_manual",
-                    changed_at=prep_time,
-                ),
+                    changed_at=prep_time
+),
                 MonthlyRouteWorksheetAuditEvent(
                     id=2,
                     monthly_route_id=1,
                     location_id=101,
-                    history_row_id=int(hist.id),
+                    location_month_row_id=int(mlm.id),
                     month_date=date(2026, 5, 1),
                     field_name="office_attention",
                     old_value=False,
                     new_value=True,
                     source="technician_app",
-                    changed_at=prep_time,
-                ),
+                    changed_at=prep_time
+),
                 MonthlyRouteWorksheetAuditEvent(
                     id=3,
                     monthly_route_id=1,
                     location_id=101,
-                    history_row_id=int(hist.id),
+                    location_month_row_id=int(mlm.id),
                     month_date=date(2026, 5, 1),
                     field_name="inspection_tech_notes",
                     old_value="TEST COMMENT JSP",
                     new_value=None,
                     source="technician_app",
-                    changed_at=prep_time,
-                ),
+                    changed_at=prep_time
+),
                 MonthlyRouteWorksheetAuditEvent(
                     id=4,
                     monthly_route_id=1,
                     location_id=101,
-                    history_row_id=int(hist.id),
+                    location_month_row_id=int(mlm.id),
                     month_date=date(2026, 5, 1),
                     field_name="ring",
                     old_value="Ring A",
                     new_value="Ring B",
                     source="technician_app",
-                    changed_at=field_time,
-                ),
+                    changed_at=field_time
+),
             ]
         )
         db.session.commit()
 
     base = client.get(BASE_URL)
     assert base.status_code == 200
-    stop = base.get_json()["locations"][0]["stops"][0]
+    stop = base.get_json()["locations"][0]
     assert stop.get("has_field_edits") is True
     detail = client.get(
-        f"/api/monthly_routes/routes/1/run_details/review/stops/{stop['testing_site_id']}?month=2026-05-01"
+        f"/api/monthly_routes/routes/1/run_details/review/locations/{stop['testing_site_id']}?month=2026-05-01"
     )
     assert detail.status_code == 200
     changes = detail.get_json()["changes"]
@@ -651,8 +604,8 @@ def test_run_details_field_changes_omit_office_prep_audits(run_details_client):
 def test_get_run_details_field_changes_after_patch(run_details_client):
     client, app = run_details_client
     with app.app_context():
-        _, _, hist, _ = _seed_basic_route_data()
-        expected = hist.updated_at.isoformat() if hist.updated_at else None
+        _, _, mlm, _ = _seed_basic_route_data()
+        expected = mlm.updated_at.isoformat() if mlm.updated_at else None
 
     patch_res = client.patch(
         "/api/monthly_routes/routes/1/worksheet/rows/101?month=2026-05-01",
@@ -660,14 +613,14 @@ def test_get_run_details_field_changes_after_patch(run_details_client):
             "expected_updated_at": expected,
             "client_mutation_id": "mut-run-details-1",
             "changes": {"testing_procedures": "TURN OFF BREAKER", "time_in": "9:48"},
-        },
-    )
+        }
+)
     assert patch_res.status_code == 200
 
     stop = _review_stop_for_location(client, 101)
     ts_id = int(stop["testing_site_id"])
     detail = client.get(
-        f"/api/monthly_routes/routes/1/run_details/review/stops/{ts_id}?month=2026-05-01"
+        f"/api/monthly_routes/routes/1/run_details/review/locations/{ts_id}?month=2026-05-01"
     )
     assert detail.status_code == 200
     changes = detail.get_json()["changes"]
@@ -684,20 +637,20 @@ def test_get_run_details_field_changes_after_patch(run_details_client):
 def test_run_details_field_changes_omits_test_workflow_only(run_details_client):
     client, app = run_details_client
     with app.app_context():
-        _, _, hist, _ = _seed_basic_route_data()
+        _, _, mlm, _ = _seed_basic_route_data()
         for idx, field_name in enumerate(("time_in", "time_out", "result_status"), start=1):
             db.session.add(
                 MonthlyRouteWorksheetAuditEvent(
                     id=idx,
                     monthly_route_id=1,
                     location_id=101,
-                    history_row_id=int(hist.id),
+                    location_month_row_id=int(mlm.id),
                     month_date=date(2026, 5, 1),
                     field_name=field_name,
                     old_value=None,
                     new_value="tested" if field_name == "result_status" else "9:00",
-                    source="technician_app",
-                )
+                    source="technician_app"
+)
             )
         db.session.commit()
 
@@ -709,7 +662,7 @@ def test_run_details_field_changes_omits_test_workflow_only(run_details_client):
     assert (notable[0].get("result_status") or "").strip().lower() == "tested"
     stop = notable[0]
     detail = client.get(
-        f"/api/monthly_routes/routes/1/run_details/review/stops/{stop['testing_site_id']}?month=2026-05-01"
+        f"/api/monthly_routes/routes/1/run_details/review/locations/{stop['testing_site_id']}?month=2026-05-01"
     )
     assert detail.status_code == 200
     assert detail.get_json()["changes"] == []
@@ -718,13 +671,13 @@ def test_run_details_field_changes_omits_test_workflow_only(run_details_client):
 def test_run_details_field_changes_omits_reset_run_audit(run_details_client):
     client, app = run_details_client
     with app.app_context():
-        _, _, hist, _ = _seed_basic_route_data()
+        _, _, mlm, _ = _seed_basic_route_data()
         db.session.add(
             MonthlyRouteWorksheetAuditEvent(
                 id=1,
                 monthly_route_id=1,
                 location_id=101,
-                history_row_id=int(hist.id),
+                location_month_row_id=int(mlm.id),
                 month_date=date(2026, 5, 1),
                 field_name="reset_run",
                 old_value={
@@ -733,8 +686,8 @@ def test_run_details_field_changes_omits_reset_run_audit(run_details_client):
                     "time_out": "10:00",
                 },
                 new_value=None,
-                source="technician_app",
-            )
+                source="technician_app"
+)
         )
         db.session.commit()
 
@@ -742,7 +695,7 @@ def test_run_details_field_changes_omits_reset_run_audit(run_details_client):
     assert review.status_code == 200
     stop = _review_stop_for_location(client, 101)
     detail = client.get(
-        f"/api/monthly_routes/routes/1/run_details/review/stops/{stop['testing_site_id']}?month=2026-05-01"
+        f"/api/monthly_routes/routes/1/run_details/review/locations/{stop['testing_site_id']}?month=2026-05-01"
     )
     assert detail.status_code == 200
     assert detail.get_json()["changes"] == []
@@ -752,19 +705,19 @@ def test_run_details_field_changes_omits_stop_reset_audit(run_details_client):
     """Per-stop portal reset (``stop_reset`` audit) must not count as a field update."""
     client, app = run_details_client
     with app.app_context():
-        _, _, hist, _ = _seed_basic_route_data()
+        _, _, mlm, _ = _seed_basic_route_data()
         db.session.add(
             MonthlyRouteWorksheetAuditEvent(
                 id=2,
                 monthly_route_id=1,
                 location_id=101,
-                history_row_id=int(hist.id),
+                location_month_row_id=int(mlm.id),
                 month_date=date(2026, 5, 1),
                 field_name="stop_reset",
                 old_value=None,
                 new_value={"testing_site_id": 1},
-                source="technician_app",
-            )
+                source="technician_app"
+)
         )
         db.session.commit()
 
@@ -772,17 +725,17 @@ def test_run_details_field_changes_omits_stop_reset_audit(run_details_client):
     assert base.status_code == 200
     loc = next(
         (row for row in base.get_json()["locations"] if int(row["location_id"]) == 101),
-        None,
-    )
+        None
+)
     assert loc is not None
     assert loc["attention_flags"]["has_field_edits"] is False
-    assert loc["stops"][0]["has_field_edits"] is False
+    assert loc["has_field_edits"] is False
 
     review = client.get(REVIEW_URL)
     assert review.status_code == 200
     stop = _review_stop_for_location(client, 101)
     detail = client.get(
-        f"/api/monthly_routes/routes/1/run_details/review/stops/{stop['testing_site_id']}?month=2026-05-01"
+        f"/api/monthly_routes/routes/1/run_details/review/locations/{stop['testing_site_id']}?month=2026-05-01"
     )
     assert detail.status_code == 200
     assert detail.get_json()["changes"] == []
@@ -791,51 +744,51 @@ def test_run_details_field_changes_omits_stop_reset_audit(run_details_client):
 def test_run_details_field_changes_lists_all_distinct_fields_per_location(run_details_client):
     client, app = run_details_client
     with app.app_context():
-        _, _, hist, _ = _seed_basic_route_data()
+        _, _, mlm, _ = _seed_basic_route_data()
         db.session.add(
             MonthlyRouteWorksheetAuditEvent(
                 id=10,
                 monthly_route_id=1,
                 location_id=101,
-                history_row_id=int(hist.id),
+                location_month_row_id=int(mlm.id),
                 month_date=date(2026, 5, 1),
                 field_name="ring",
                 old_value="A",
                 new_value="B",
-                source="technician_app",
-            )
+                source="technician_app"
+)
         )
         db.session.add(
             MonthlyRouteWorksheetAuditEvent(
                 id=11,
                 monthly_route_id=1,
                 location_id=101,
-                history_row_id=int(hist.id),
+                location_month_row_id=int(mlm.id),
                 month_date=date(2026, 5, 1),
                 field_name="door_code",
                 old_value="1",
                 new_value="2",
-                source="technician_app",
-            )
+                source="technician_app"
+)
         )
         db.session.add(
             MonthlyRouteWorksheetAuditEvent(
                 id=12,
                 monthly_route_id=1,
                 location_id=101,
-                history_row_id=int(hist.id),
+                location_month_row_id=int(mlm.id),
                 month_date=date(2026, 5, 1),
                 field_name="annual_month",
                 old_value="May",
                 new_value="June",
-                source="technician_app",
-            )
+                source="technician_app"
+)
         )
         db.session.commit()
 
     stop = _review_stop_for_location(client, 101)
     detail = client.get(
-        f"/api/monthly_routes/routes/1/run_details/review/stops/{stop['testing_site_id']}?month=2026-05-01"
+        f"/api/monthly_routes/routes/1/run_details/review/locations/{stop['testing_site_id']}?month=2026-05-01"
     )
     assert detail.status_code == 200
     labels = {c["label"] for c in detail.get_json()["changes"]}
@@ -845,30 +798,26 @@ def test_run_details_field_changes_lists_all_distinct_fields_per_location(run_de
 def test_run_details_field_changes_groups_two_locations(run_details_client):
     client, app = run_details_client
     with app.app_context():
-        _, _, hist1, _ = _seed_basic_route_data()
-        loc2 = MonthlyRouteLocation(
+        _, _, mlm1, _ = _seed_basic_route_data()
+        loc2 = make_location(
             id=102,
             address="456 Other Ave",
-            address_normalized="456 other ave",
             property_management_company="Acme",
             property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
-            status_normalized="active",
-            status_raw="Active",
             monthly_route_id=1,
+            route_stop_order=1,
         )
-        hist2 = MonthlyRouteTestHistory(
-            id=5002,
-            location_id=102,
+        mlm2 = MonthlyLocationMonth(
+                id=5002,
+                monthly_location_id=102,
             month_date=date(2026, 5, 1),
             result_status="tested",
-            test_monthly_route_id=1,
-        )
-        db.session.add_all([loc2, hist2])
+            test_monthly_route_id=1
+)
+        db.session.add_all([loc2, mlm2])
         db.session.commit()
-        expected1 = hist1.updated_at.isoformat() if hist1.updated_at else None
-        expected2 = hist2.updated_at.isoformat() if hist2.updated_at else None
+        expected1 = mlm1.updated_at.isoformat() if mlm1.updated_at else None
+        expected2 = mlm2.updated_at.isoformat() if mlm2.updated_at else None
 
     assert (
         client.patch(
@@ -877,8 +826,8 @@ def test_run_details_field_changes_groups_two_locations(run_details_client):
                 "expected_updated_at": expected1,
                 "client_mutation_id": "mut-run-details-loc1",
                 "changes": {"testing_procedures": "PROC A"},
-            },
-        ).status_code
+            }
+).status_code
         == 200
     )
     assert (
@@ -888,18 +837,18 @@ def test_run_details_field_changes_groups_two_locations(run_details_client):
                 "expected_updated_at": expected2,
                 "client_mutation_id": "mut-run-details-loc2",
                 "changes": {"ring": "RING-9"},
-            },
-        ).status_code
+            }
+).status_code
         == 200
     )
 
     stop1 = _review_stop_for_location(client, 101)
     stop2 = _review_stop_for_location(client, 102)
     detail1 = client.get(
-        f"/api/monthly_routes/routes/1/run_details/review/stops/{stop1['testing_site_id']}?month=2026-05-01"
+        f"/api/monthly_routes/routes/1/run_details/review/locations/{stop1['testing_site_id']}?month=2026-05-01"
     )
     detail2 = client.get(
-        f"/api/monthly_routes/routes/1/run_details/review/stops/{stop2['testing_site_id']}?month=2026-05-01"
+        f"/api/monthly_routes/routes/1/run_details/review/locations/{stop2['testing_site_id']}?month=2026-05-01"
     )
     assert detail1.status_code == 200
     assert detail2.status_code == 200
@@ -917,34 +866,32 @@ def test_get_run_details_route_not_found(run_details_client):
 
 def test_get_run_details_ledger_only_without_run_file(run_details_client):
     """Master-sheet history without ``MonthlyRouteRun`` still opens run details (legacy sheet)."""
-    from app.monthly.monthly_sites_sync import sync_testing_sites_from_legacy
-
+    
     client, app = run_details_client
     with app.app_context():
         route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
-        loc = MonthlyRouteLocation(
+        loc = MonthlyLocation(
             id=101,
             address="123 Test St",
             address_normalized="123 test st",
             property_management_company="Acme",
             property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
+        label="123 Test St",
+        label_normalized="123 test st",
             status_normalized="active",
             status_raw="Active",
             monthly_route_id=1,
-            route_stop_order=1,
-        )
-        hist = MonthlyRouteTestHistory(
-            id=5001,
-            location_id=101,
+            route_stop_order=1
+)
+        mlm = MonthlyLocationMonth(
+                id=5001,
+                monthly_location_id=101,
             month_date=date(2026, 5, 1),
             result_status="tested",
-            test_monthly_route_id=1,
-        )
-        db.session.add_all([route, loc, hist])
+            test_monthly_route_id=1
+)
+        db.session.add_all([route, loc, mlm])
         db.session.commit()
-        sync_testing_sites_from_legacy(loc)
 
     res = client.get("/api/monthly_routes/routes/1/run_details?month=2026-05-01")
     assert res.status_code == 200
@@ -963,19 +910,33 @@ def test_runs_by_month_includes_worksheet_stop_counts(run_details_client):
     client, app = run_details_client
     with app.app_context():
         route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
-        loc = MonthlyRouteLocation(
+        loc_primary = make_location(
             id=101,
             address="123 Test St",
-            address_normalized="123 test st",
+            label="123 Test St",
             property_management_company="Acme",
             property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
-            status_normalized="active",
-            status_raw="Active",
+            monthly_route_id=1,
+            route_stop_order=0,
+            annual_month="May",
+        )
+        loc_annex = make_location(
+            id=88002,
+            address="123 Test St",
+            label="Annex panel",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
             monthly_route_id=1,
             route_stop_order=1,
-            annual_month="May",
+        )
+        loc_pending = make_location(
+            id=88003,
+            address="123 Test St",
+            label="Garage panel",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
+            monthly_route_id=1,
+            route_stop_order=2,
         )
         run = MonthlyRouteRun(
             id=9001,
@@ -985,46 +946,29 @@ def test_runs_by_month_includes_worksheet_stop_counts(run_details_client):
             status="open",
             source="technician_app",
         )
-        db.session.add_all([route, loc, run])
-        db.session.commit()
-        sync_testing_sites_from_legacy(loc)
-        site = MonthlySite.query.filter_by(legacy_monthly_route_location_id=101).one()
-        ts_primary = MonthlyTestingSite.query.filter_by(monthly_site_id=int(site.id)).one()
-        ts_annex = MonthlyTestingSite(
-            id=88002,
-            monthly_site_id=int(site.id),
-            sort_order=1,
-            label="Annex panel",
-        )
-        ts_pending = MonthlyTestingSite(
-            id=88003,
-            monthly_site_id=int(site.id),
-            sort_order=2,
-            label="Garage panel",
-        )
-        db.session.add_all([ts_annex, ts_pending])
+        db.session.add_all([route, loc_primary, loc_annex, loc_pending, run])
         db.session.add_all(
             [
-                MonthlyTestingSiteMonth(
+                MonthlyLocationMonth(
                     id=92001,
-                    monthly_testing_site_id=int(ts_primary.id),
+                    monthly_location_id=101,
                     month_date=date(2026, 5, 1),
                     test_monthly_route_id=1,
                     run_id=9001,
                     test_outcome="all_good",
                 ),
-                MonthlyTestingSiteMonth(
+                MonthlyLocationMonth(
                     id=92002,
-                    monthly_testing_site_id=88002,
+                    monthly_location_id=88002,
                     month_date=date(2026, 5, 1),
                     test_monthly_route_id=1,
                     run_id=9001,
                     result_status="skipped",
                     skip_reason="annual_booked",
                 ),
-                MonthlyTestingSiteMonth(
+                MonthlyLocationMonth(
                     id=92003,
-                    monthly_testing_site_id=88003,
+                    monthly_location_id=88003,
                     month_date=date(2026, 5, 1),
                     test_monthly_route_id=1,
                     run_id=9001,
@@ -1047,27 +991,25 @@ def test_runs_by_month_includes_worksheet_stop_counts(run_details_client):
 
 def test_get_run_details_draft_future_month_without_run_file(run_details_client):
     """Office may open run details for a future month before any run file exists."""
-    from app.monthly.monthly_sites_sync import sync_testing_sites_from_legacy
-
+    
     client, app = run_details_client
     with app.app_context():
         route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
-        loc = MonthlyRouteLocation(
+        loc = MonthlyLocation(
             id=101,
             address="123 Test St",
             address_normalized="123 test st",
             property_management_company="Acme",
             property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
+        label="123 Test St",
+        label_normalized="123 test st",
             status_normalized="active",
             status_raw="Active",
             monthly_route_id=1,
-            route_stop_order=1,
-        )
+            route_stop_order=1
+)
         db.session.add_all([route, loc])
         db.session.commit()
-        sync_testing_sites_from_legacy(loc)
 
     res = client.get("/api/monthly_routes/routes/1/run_details?month=2026-06-01")
     assert res.status_code == 200
@@ -1082,42 +1024,40 @@ def test_run_details_prep_fields_on_location_stops(run_details_client):
     client, app = run_details_client
     with app.app_context():
         route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
-        loc = MonthlyRouteLocation(
+        loc = MonthlyLocation(
             id=101,
             address="123 Test St",
             address_normalized="123 test st",
             property_management_company="Acme",
             property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
+        label="123 Test St",
+        label_normalized="123 test st",
             status_normalized="active",
             status_raw="Active",
             monthly_route_id=1,
             route_stop_order=1,
             keys="K-42",
             ring_detail="Ring B",
-            annual_month="June",
-        )
+            annual_month="June"
+)
         run = MonthlyRouteRun(
             id=9002,
             monthly_route_id=1,
             month_date=date(2026, 6, 1),
             status="open",
             source="office_manual",
-            prepared_at=datetime(2026, 5, 28, 9, 0, tzinfo=PACIFIC_TZ),
-        )
+            prepared_at=datetime(2026, 5, 28, 9, 0, tzinfo=PACIFIC_TZ)
+)
         db.session.add_all([route, loc, run])
         db.session.commit()
-        sync_testing_sites_from_legacy(loc)
-        ts = MonthlyTestingSite.query.one()
-        ts.door_code = "4821#"
+        loc = db.session.get(MonthlyLocation, 101)
+        assert loc is not None
+        loc.door_code = "4821#"
         db.session.commit()
 
     res = client.get("/api/monthly_routes/routes/1/run_details?month=2026-06-01")
     assert res.status_code == 200
-    stops = res.get_json()["locations"][0]["stops"]
-    assert len(stops) >= 1
-    stop = stops[0]
+    stop = res.get_json()["locations"][0]
     assert stop.get("key_number") == "K-42"
     assert stop.get("ring") == "Ring B"
     assert stop.get("door_code") == "4821#"
@@ -1129,49 +1069,48 @@ def test_office_prep_patch_materializes_stop_and_saves_key(run_details_client):
     client, app = run_details_client
     with app.app_context():
         route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
-        loc = MonthlyRouteLocation(
+        loc = MonthlyLocation(
             id=101,
             address="123 Test St",
             address_normalized="123 test st",
             property_management_company="Acme",
             property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
+        label="123 Test St",
+        label_normalized="123 test st",
             status_normalized="active",
             status_raw="Active",
             monthly_route_id=1,
             route_stop_order=1,
-            keys="OLD-KEY",
-        )
+            keys="OLD-KEY"
+)
         run = MonthlyRouteRun(
             id=9003,
             monthly_route_id=1,
             month_date=date(2026, 6, 1),
             status="open",
             source="office_manual",
-            prepared_at=datetime(2026, 5, 28, 9, 0, tzinfo=PACIFIC_TZ),
-        )
+            prepared_at=datetime(2026, 5, 28, 9, 0, tzinfo=PACIFIC_TZ)
+)
         db.session.add_all([route, loc, run])
         db.session.commit()
-        ts_rows = sync_testing_sites_from_legacy(loc)
-        ts_id = int(ts_rows[0].id)
+        ts_id = int(loc.id)
 
     res = client.patch(
-        f"/api/monthly_routes/routes/1/worksheet/stops/{ts_id}?month=2026-06-01",
-        json={"changes": {"key_number": "NEW-KEY"}},
-    )
+        f"/api/monthly_routes/routes/1/worksheet/locations/{ts_id}?month=2026-06-01",
+        json={"changes": {"key_number": "NEW-KEY"}}
+)
     assert res.status_code == 200
     assert res.get_json().get("ok") is True
 
     with app.app_context():
-        mtsm = MonthlyTestingSiteMonth.query.filter_by(
-            monthly_testing_site_id=ts_id,
-            month_date=date(2026, 6, 1),
-        ).one()
+        mtsm = MonthlyLocationMonth.query.filter_by(
+            monthly_location_id=ts_id,
+            month_date=date(2026, 6, 1)
+).one()
         assert (mtsm.key_number or "").strip() == "NEW-KEY"
 
     details = client.get("/api/monthly_routes/routes/1/run_details?month=2026-06-01")
-    stop = details.get_json()["locations"][0]["stops"][0]
+    stop = details.get_json()["locations"][0]
     assert stop.get("key_number") == "NEW-KEY"
 
 
@@ -1180,14 +1119,14 @@ def test_run_details_prep_fields_fallback_when_empty_mtsm_snapshot(run_details_c
     client, app = run_details_client
     with app.app_context():
         route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
-        loc = MonthlyRouteLocation(
+        loc = MonthlyLocation(
             id=101,
             address="123 Test St",
             address_normalized="123 test st",
             property_management_company="Acme",
             property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
+        label="123 Test St",
+        label_normalized="123 test st",
             status_normalized="active",
             status_raw="Active",
             monthly_route_id=1,
@@ -1195,40 +1134,39 @@ def test_run_details_prep_fields_fallback_when_empty_mtsm_snapshot(run_details_c
             keys="MA 5611 K2",
             ring_detail="Ring B",
             annual_month="June",
-            inspection_tech_notes="Site notes from library",
-        )
+            inspection_tech_notes="Site notes from library"
+)
         run = MonthlyRouteRun(
             id=9004,
             monthly_route_id=1,
             month_date=date(2026, 6, 1),
             status="open",
             source="office_manual",
-            prepared_at=datetime(2026, 5, 28, 9, 0, tzinfo=PACIFIC_TZ),
-        )
+            prepared_at=datetime(2026, 5, 28, 9, 0, tzinfo=PACIFIC_TZ)
+)
         db.session.add_all([route, loc, run])
         db.session.commit()
-        ts_rows = sync_testing_sites_from_legacy(loc)
-        ts_id = int(ts_rows[0].id)
-        ts = MonthlyTestingSite.query.get(ts_id)
+        ts_id = int(loc.id)
+        ts = MonthlyLocation.query.get(ts_id)
         assert ts is not None
         ts.annual_month = "June"
         ts.keys = "MA 5611 K2"
         ts.ring_detail = "Ring B"
         ts.inspection_tech_notes = "Site notes from library"
         db.session.add(
-            MonthlyTestingSiteMonth(
+            MonthlyLocationMonth(
                 id=91050,
-                monthly_testing_site_id=ts_id,
+                monthly_location_id=ts_id,
                 month_date=date(2026, 6, 1),
                 test_monthly_route_id=1,
-                run_id=9004,
-            )
+                run_id=9004
+)
         )
         db.session.commit()
 
     res = client.get("/api/monthly_routes/routes/1/run_details?month=2026-06-01")
     assert res.status_code == 200
-    stop = res.get_json()["locations"][0]["stops"][0]
+    stop = res.get_json()["locations"][0]
     assert stop.get("key_number") == "MA 5611 K2"
     assert stop.get("ring") == "Ring B"
     assert stop.get("annual_month") == "June"
@@ -1240,26 +1178,26 @@ def test_library_month_cell_no_worksheet_link_without_run_file(run_details_clien
     client, app = run_details_client
     with app.app_context():
         route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
-        loc = MonthlyRouteLocation(
+        loc = MonthlyLocation(
             id=101,
             address="123 Test St",
             address_normalized="123 test st",
             property_management_company="Acme",
             property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
+        label="123 Test St",
+        label_normalized="123 test st",
             status_normalized="active",
             status_raw="Active",
-            monthly_route_id=1,
-        )
-        hist = MonthlyRouteTestHistory(
-            id=5001,
-            location_id=101,
+            monthly_route_id=1
+)
+        mlm = MonthlyLocationMonth(
+                id=5001,
+                monthly_location_id=101,
             month_date=date(2026, 5, 1),
             result_status="tested",
-            test_monthly_route_id=1,
-        )
-        db.session.add_all([route, loc, hist])
+            test_monthly_route_id=1
+)
+        db.session.add_all([route, loc, mlm])
         db.session.commit()
 
     res = client.get("/api/monthly_routes/library/101")
@@ -1278,9 +1216,8 @@ def test_complete_job_then_worksheet_matches_run_details(run_details_client, mon
     client, app = run_details_client
     with app.app_context():
         _seed_basic_route_data()
-        loc = db.session.get(MonthlyRouteLocation, 101)
+        loc = db.session.get(MonthlyLocation, 101)
         assert loc is not None
-        sync_testing_sites_from_legacy(loc)
         run = MonthlyRouteRun.query.filter_by(monthly_route_id=1, month_date=date(2026, 5, 1)).one()
         now = datetime.now(PACIFIC_TZ)
         run.prepared_at = now
@@ -1290,8 +1227,8 @@ def test_complete_job_then_worksheet_matches_run_details(run_details_client, mon
 
     complete = client.post(
         "/api/monthly_routes/routes/1/runs/complete",
-        json={"month_date": "2026-05-01"},
-    )
+        json={"month_date": "2026-05-01"}
+)
     assert complete.status_code == 200
     completed_run = complete.get_json()["run"]
     assert completed_run["status"] == "completed"
@@ -1325,8 +1262,8 @@ def test_patch_location_billing_status_office_override(run_details_client):
 
     res = client.patch(
         "/api/monthly_routes/routes/1/locations/101/billing_status?month=2026-05-01",
-        json={"billing_status": "do_not_bill"},
-    )
+        json={"billing_status": "do_not_bill"}
+)
     assert res.status_code == 200
     body = res.get_json()
     assert body["ok"] is True
@@ -1334,9 +1271,9 @@ def test_patch_location_billing_status_office_override(run_details_client):
     assert body["billing_status"] == "do_not_bill"
 
     with app.app_context():
-        hist = db.session.get(MonthlyRouteTestHistory, 5001)
-        assert hist is not None
-        assert hist.billing_status == "do_not_bill"
+        mlm = db.session.get(MonthlyLocationMonth, 5001)
+        assert mlm is not None
+        assert mlm.billing_status == "do_not_bill"
 
 
 def test_patch_location_billing_status_before_field_end(run_details_client):
@@ -1346,8 +1283,8 @@ def test_patch_location_billing_status_before_field_end(run_details_client):
 
     res = client.patch(
         "/api/monthly_routes/routes/1/locations/101/billing_status?month=2026-05-01",
-        json={"billing_status": "do_not_bill"},
-    )
+        json={"billing_status": "do_not_bill"}
+)
     assert res.status_code == 409
     assert res.get_json()["code"] == "billing_before_field_end"
 
@@ -1356,15 +1293,18 @@ def test_patch_location_billing_status_legacy_locked(run_details_client):
     client, app = run_details_client
     with app.app_context():
         _seed_basic_route_data()
-        hist = db.session.get(MonthlyRouteTestHistory, 5001)
-        assert hist is not None
-        hist.billing_status = "legacy"
+        run = db.session.get(MonthlyRouteRun, 9001)
+        assert run is not None
+        run.field_ended_at = datetime(2026, 5, 2, 17, 0, tzinfo=PACIFIC_TZ)
+        mlm = db.session.get(MonthlyLocationMonth, 5001)
+        assert mlm is not None
+        mlm.billing_status = "legacy"
         db.session.commit()
 
     res = client.patch(
         "/api/monthly_routes/routes/1/locations/101/billing_status?month=2026-05-01",
-        json={"billing_status": "bill"},
-    )
+        json={"billing_status": "bill"}
+)
     assert res.status_code == 400
     assert res.get_json()["code"] == "billing_legacy_locked"
 
@@ -1373,11 +1313,15 @@ def test_patch_location_billing_status_invalid(run_details_client):
     client, app = run_details_client
     with app.app_context():
         _seed_basic_route_data()
+        run = db.session.get(MonthlyRouteRun, 9001)
+        assert run is not None
+        run.field_ended_at = datetime(2026, 5, 2, 17, 0, tzinfo=PACIFIC_TZ)
+        db.session.commit()
 
     res = client.patch(
         "/api/monthly_routes/routes/1/locations/101/billing_status?month=2026-05-01",
-        json={"billing_status": "legacy"},
-    )
+        json={"billing_status": "legacy"}
+)
     assert res.status_code == 400
     assert res.get_json()["code"] == "billing_legacy_locked"
 
@@ -1389,28 +1333,24 @@ def test_run_details_locations_use_bounded_query_count(run_details_client):
 
     client, app = run_details_client
     with app.app_context():
-        route, _loc, _hist, run = _seed_basic_route_data()
+        route, _loc, _mlm, run = _seed_basic_route_data()
         for idx in range(2, 12):
             lid = 100 + idx
+            addr = f"{idx} Batch St"
             db.session.add(
-                MonthlyRouteLocation(
+                make_location(
                     id=lid,
-                    address=f"{idx} Batch St",
-                    address_normalized=f"{idx} batch st",
+                    address=addr,
                     property_management_company="Acme",
                     property_management_company_normalized="acme",
-                    building=None,
-                    building_normalized="",
-                    status_normalized="active",
-                    status_raw="Active",
                     monthly_route_id=int(route.id),
                     route_stop_order=idx,
                 )
             )
             db.session.add(
-                MonthlyRouteTestHistory(
+                MonthlyLocationMonth(
                     id=8000 + idx,
-                    location_id=lid,
+                    monthly_location_id=lid,
                     month_date=date(2026, 5, 1),
                     result_status="tested",
                     test_monthly_route_id=int(route.id),

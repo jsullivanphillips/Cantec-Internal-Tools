@@ -1,10 +1,10 @@
 import type {
   MonthlyRunDetailPayload,
-  TechnicianWorksheetStop,
+  TechnicianWorksheetLocation,
 } from './monthlyRoutesShared'
 
 export type PaperworkFieldSubmissionCache = {
-  stops: TechnicianWorksheetStop[]
+  stops: TechnicianWorksheetLocation[]
   capturedAt: string | null
   fieldWorkReopened: boolean
 }

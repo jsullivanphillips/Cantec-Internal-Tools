@@ -22,6 +22,14 @@ import { apiJson, isAbortError } from '../lib/apiClient'
 /** Build markers in slices so typing / focus stays responsive with hundreds of pins. */
 const MAP_MARKER_BATCH_SIZE = 80
 
+const EMPTY_MAP_LOCATIONS: LibraryLocation[] = []
+
+function sameRouteSelection(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false
+  const bSet = new Set(b)
+  return a.every((route) => bSet.has(route))
+}
+
 const MAP_SEARCH_DEBOUNCE_MS = 250
 
 const MAP_SEARCH_RESULTS_STYLE: CSSProperties = {
@@ -96,7 +104,7 @@ export default function MonthlyRoutesMapPage() {
     params.set('unpaginated', 'true')
     params.set('include_coordinates', 'true')
 
-    apiJson<LibraryPayload>(`/api/monthly_sites/library?${params.toString()}`, {
+    apiJson<LibraryPayload>(`/api/monthly_routes/library?${params.toString()}`, {
       signal: controller.signal,
     })
       .then((data) => {
@@ -120,7 +128,7 @@ export default function MonthlyRoutesMapPage() {
     }
   }, [mapDataYear])
 
-  const mapLocationsRaw = mapPayload?.locations ?? []
+  const mapLocationsRaw = mapPayload?.locations ?? EMPTY_MAP_LOCATIONS
   /** Match library default: hide cancelled markers on the map (no toggle on this page). */
   const mapLocations = useMemo(
     () =>
@@ -176,7 +184,7 @@ export default function MonthlyRoutesMapPage() {
 
       const next = [...routesSelection]
       if (includeUnassigned && hasUnassignedData) next.push(MAP_ROUTE_UNASSIGNED)
-      return next
+      return sameRouteSelection(prev, next) ? prev : next
     })
   }, [mapRouteOptions, mapUnassignedCount])
 
@@ -209,7 +217,7 @@ export default function MonthlyRoutesMapPage() {
       setPlacementError(null)
       try {
         const response = await apiJson<{ location: LibraryLocation }>(
-          `/api/monthly_sites/library/${placementLocation.id}/placement`,
+          `/api/monthly_routes/library/${placementLocation.id}/placement`,
           {
             method: 'PATCH',
             body: JSON.stringify({
@@ -244,7 +252,7 @@ export default function MonthlyRoutesMapPage() {
     setPlacementRouteError(null)
     try {
       const response = await apiJson<{ location: LibraryLocation }>(
-        `/api/monthly_sites/library/${placementLocation.id}/assign_route`,
+        `/api/monthly_routes/library/${placementLocation.id}/assign_route`,
         {
           method: 'PATCH',
           body: JSON.stringify({ test_day: placementRouteValue.trim() }),
@@ -466,7 +474,7 @@ export default function MonthlyRoutesMapPage() {
     setPlacementError(null)
     const params = new URLSearchParams({ q: query })
     apiJson<{ candidates: GeocodeCandidate[] }>(
-      `/api/monthly_sites/geocode_candidates?${params.toString()}`,
+      `/api/monthly_routes/geocode_candidates?${params.toString()}`,
       { signal: controller.signal }
     )
       .then((data) => {
@@ -504,7 +512,7 @@ export default function MonthlyRoutesMapPage() {
       setMapSearchError(null)
       const params = new URLSearchParams({ q: query })
       apiJson<{ candidates: GeocodeCandidate[] }>(
-        `/api/monthly_sites/geocode_candidates?${params.toString()}`,
+        `/api/monthly_routes/geocode_candidates?${params.toString()}`,
         { signal: controller.signal }
       )
         .then((data) => {

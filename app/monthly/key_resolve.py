@@ -1,5 +1,5 @@
 """
-Resolve ``MonthlyRouteLocation.key_id`` from spreadsheet-style ``barcode`` and ``keys`` text.
+Resolve ``MonthlyLocation.key_id`` from spreadsheet-style ``barcode`` and ``keys`` text.
 
 Does not modify ``keys`` / ``key_status``. Barcode match wins when unambiguous; otherwise
 canonical KEYS text is matched to ``keys.keycode`` (case- and space-normalized).
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from sqlalchemy import select
 
-from app.db_models import Key, MonthlyRouteLocation, MonthlyTestingSite, db
+from app.db_models import Key, MonthlyLocation, db
 from app.monthly.monthly_keys_keycode import (
     canonical_keycode_from_monthly_keys_field,
     monthly_keys_field_indicates_no_key,
@@ -91,11 +91,6 @@ def resolve_key_id_for_monthly_fields(
     return None
 
 
-def sync_key_fk_for_location(loc: MonthlyRouteLocation) -> None:
+def sync_key_fk_for_location(loc: MonthlyLocation) -> None:
     """Set ``loc.key_id`` from current ``barcode`` / ``keys`` (clears FK when unresolved)."""
     loc.key_id = resolve_key_id_for_monthly_fields(loc.barcode, loc.keys)
-
-
-def sync_key_fk_for_testing_site(ts: MonthlyTestingSite) -> None:
-    """Set ``ts.key_id`` from current ``barcode`` / ``keys`` (clears FK when unresolved)."""
-    ts.key_id = resolve_key_id_for_monthly_fields(ts.barcode, ts.keys)

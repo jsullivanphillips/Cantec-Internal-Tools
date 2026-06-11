@@ -11,18 +11,16 @@ import {
 } from './runDetailsPrepPatch'
 import type { MonthlyRunDetailLocation } from './monthlyRoutesShared'
 import { isStopPatchGenerationCurrent } from './useRunDetailsStopPatch'
-import type { TechnicianWorksheetStop } from './monthlyRoutesShared'
+import type { TechnicianWorksheetLocation } from './monthlyRoutesShared'
 
-function sampleWorksheetStop(overrides: Partial<TechnicianWorksheetStop> = {}): TechnicianWorksheetStop {
+function sampleWorksheetStop(overrides: Partial<TechnicianWorksheetLocation> = {}): TechnicianWorksheetLocation {
   return {
-    testing_site_id: 12,
-    location_id: 1,
-    history_month_row_id: 1,
+    location_id: 12,
+    location_month_row_id: 1,
     month_date: '2026-06-01',
     display_address: '1 Main St',
-    building_name: null,
-    property_management_company: null,
     label: null,
+    property_management_company: null,
     panel: null,
     panel_location: null,
     door_code: null,
@@ -129,43 +127,44 @@ describe('patchRunDetailStopDeficiency', () => {
   it('updates status and drops invalid from open prep list', () => {
     const locations = [
       {
-        location_id: 101,
+        location_id: 12,
         location_label: '123 Main',
+        stop_number: 1,
+        display_address: '123 Main',
+        label: null,
+        month_date: '2026-06-01',
+        result_status: null,
+        annual_month: null,
+        run_comments: null,
+        testing_procedures: null,
+        inspection_tech_notes: null,
+        has_field_edits: false,
+        review_kind: 'tested_only',
         billing_status: null,
-        first_stop_number: 1,
-        last_stop_number: 1,
+        deficiency_summaries: [
+          {
+            id: 5,
+            monthly_location_id: 12,
+            created_run_id: null,
+            title: 'Bell',
+            severity: 'deficient',
+            status: 'new',
+            description: null,
+          },
+        ],
+        has_active_deficiencies: true,
         attention_flags: {
           has_field_edits: false,
           has_active_deficiencies: true,
-          has_any_open_deficiencies: true,
           has_job_comment: false,
           billing_unset: false,
           needs_attention: false,
         },
-        stops: [
-          {
-            testing_site_id: 12,
-            location_id: 101,
-            stop_number: 1,
-            deficiency_summaries: [
-              {
-                id: 5,
-                monthly_testing_site_id: 12,
-                created_run_id: null,
-                title: 'Bell',
-                severity: 'deficient',
-                status: 'new',
-                description: null,
-              },
-            ],
-            has_active_deficiencies: true,
-          },
-        ],
       },
     ] as unknown as MonthlyRunDetailLocation[]
     const updated = {
       id: 5,
-      monthly_testing_site_id: 12,
+      monthly_location_id: 12,
       created_run_id: null,
       title: 'Bell',
       severity: 'deficient',
@@ -173,8 +172,8 @@ describe('patchRunDetailStopDeficiency', () => {
       description: null,
     }
     const next = patchRunDetailStopDeficiency(locations, 12, '2026-06-01', updated)
-    expect(next[0].stops[0].deficiency_summaries?.[0].status).toBe('invalid')
-    expect(next[0].stops[0].has_active_deficiencies).toBe(false)
+    expect(next[0].deficiency_summaries?.[0].status).toBe('invalid')
+    expect(next[0].has_active_deficiencies).toBe(false)
   })
 })
 

@@ -24,19 +24,15 @@ from sqlalchemy import func, text
 from app import create_app, db
 from app.db_models import (
     MonthlyKeyBridge,
+    MonthlyLocation,
+    MonthlyLocationComment,
+    MonthlyLocationMonth,
     MonthlyRoute,
     MonthlyRouteComment,
-    MonthlyRouteLocation,
-    MonthlyRouteLocationComment,
-    MonthlyRouteLocationInspectionRevision,
     MonthlyRouteRun,
     MonthlyRouteSnapshot,
     MonthlyRouteSpecialistMonth,
-    MonthlyRouteTestHistory,
     MonthlyRouteWorksheetAuditEvent,
-    MonthlySite,
-    MonthlyTestingSite,
-    MonthlyTestingSiteMonth,
 )
 
 
@@ -56,7 +52,7 @@ def _sqlite_table_exists(name: str) -> bool:
 def _counts() -> dict[str, int]:
     return {
         "monthly_route": db.session.query(func.count(MonthlyRoute.id)).scalar() or 0,
-        "monthly_route_location": db.session.query(func.count(MonthlyRouteLocation.id)).scalar() or 0,
+        "monthly_location": db.session.query(func.count(MonthlyLocation.id)).scalar() or 0,
         "monthly_key_bridge": db.session.query(func.count(MonthlyKeyBridge.id)).scalar() or 0,
     }
 
@@ -78,20 +74,15 @@ def _wipe_sqlite_style() -> None:
 
     delete_order = [
         "monthly_stop_clock_event",
-        "monthly_testing_site_deficiency",
-        MonthlyTestingSiteMonth.__tablename__,
-        MonthlyTestingSite.__tablename__,
-        MonthlySite.__tablename__,
+        "monthly_location_deficiency",
+        MonthlyLocationMonth.__tablename__,
         MonthlyRouteWorksheetAuditEvent.__tablename__,
-        MonthlyRouteTestHistory.__tablename__,
         "monthly_location_ticket_event",
         "monthly_location_ticket",
         "monthly_location_quarter_billed",
-        MonthlyRouteLocationComment.__tablename__,
-        MonthlyRouteLocationInspectionRevision.__tablename__,
-        "monthly_route_run_field_submission",
+        MonthlyLocationComment.__tablename__,
         MonthlyRouteRun.__tablename__,
-        MonthlyRouteLocation.__tablename__,
+        MonthlyLocation.__tablename__,
         "monthly_route_calculated_path",
         MonthlyRouteSpecialistMonth.__tablename__,
         MonthlyRouteSnapshot.__tablename__,
@@ -116,20 +107,15 @@ def _wipe_postgres_truncate() -> None:
 
     trunc_order = [
         "monthly_stop_clock_event",
-        "monthly_testing_site_deficiency",
-        "monthly_testing_site_month",
-        "monthly_testing_site",
-        "monthly_site",
+        "monthly_location_deficiency",
+        "monthly_location_month",
         "monthly_route_worksheet_audit_event",
-        "monthly_route_test_history",
         "monthly_location_ticket_event",
         "monthly_location_ticket",
         "monthly_location_quarter_billed",
-        "monthly_route_location_comment",
-        "monthly_route_location_inspection_revision",
-        "monthly_route_run_field_submission",
+        "monthly_location_comment",
         "monthly_route_run",
-        "monthly_route_location",
+        "monthly_location",
         "monthly_route_calculated_path",
         "monthly_route_specialist_month",
         "monthly_route_snapshot",

@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
+  availableRunsCardYears,
   buildRouteRunTableRows,
+  buildRunsCardRowsForYear,
+  defaultRunsCardYear,
   formatRunDisplayDate,
+  formatRunsCardStageLabel,
   formatSitesTestedRatio,
 } from './routeRunsDisplay'
 import type { RouteRunMonthSummary } from './monthlyRoutesShared'
@@ -58,5 +62,64 @@ describe('routeRunsDisplay', () => {
       {},
     )
     expect(rows.map((row) => row.monthIso)).toEqual(['2026-06-01', '2026-05-01', '2026-04-01'])
+  })
+
+  it('buildRunsCardRowsForYear includes Jan through current+1 for selected year', () => {
+    const rows = buildRunsCardRowsForYear(
+      2026,
+      '2026-06-01',
+      {
+        '2026-04-01': run({ run_id: 2, workflow_stage_label: 'Completed' }),
+      },
+      {},
+    )
+    expect(rows.map((row) => row.monthIso)).toEqual([
+      '2026-07-01',
+      '2026-06-01',
+      '2026-05-01',
+      '2026-04-01',
+      '2026-03-01',
+      '2026-02-01',
+      '2026-01-01',
+    ])
+    const april = rows.find((row) => row.monthIso === '2026-04-01')
+    expect(april?.hasRunData).toBe(true)
+    const may = rows.find((row) => row.monthIso === '2026-05-01')
+    expect(may?.hasRunData).toBe(false)
+  })
+
+  it('formatRunsCardStageLabel shows No data for empty months', () => {
+    expect(
+      formatRunsCardStageLabel({
+        monthIso: '2026-05-01',
+        run: null,
+        specialistMonth: null,
+        hasRunData: false,
+      }),
+    ).toBe('No data')
+    expect(
+      formatRunsCardStageLabel({
+        monthIso: '2026-04-01',
+        run: run({ workflow_stage_label: 'Skipped' }),
+        specialistMonth: null,
+        hasRunData: true,
+      }),
+    ).toBe('Skipped')
+  })
+
+  it('availableRunsCardYears always includes current year', () => {
+    const years = availableRunsCardYears('2026-06-01', {}, {})
+    expect(years).toEqual([2026])
+    const mixed = availableRunsCardYears(
+      '2026-06-01',
+      { '2025-03-01': run({ run_id: 1 }) },
+      { '2024-08-01': { sites_tested_count: 1, skipped_non_annual_count: 0, skipped_annual_count: 0 } },
+    )
+    expect(mixed).toEqual([2024, 2025, 2026])
+  })
+
+  it('defaultRunsCardYear prefers current calendar year', () => {
+    expect(defaultRunsCardYear([2024, 2025, 2026], '2026-06-01')).toBe(2026)
+    expect(defaultRunsCardYear([2024, 2025], '2026-06-01')).toBe(2025)
   })
 })

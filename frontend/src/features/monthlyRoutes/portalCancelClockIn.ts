@@ -3,7 +3,7 @@
  */
 
 import { applyWorkflowActionToStop } from './portalRouteProjection'
-import type { TechnicianWorksheetStop } from './monthlyRoutesShared'
+import type { TechnicianWorksheetLocation } from './monthlyRoutesShared'
 import { optimisticCancelClockInPatch } from './portalWorkflowShared'
 import {
   loadWorkflowSyncQueue,
@@ -23,16 +23,16 @@ export function routeWorkflowQueueItems(
 
 export function pendingClockInForStop(
   queue: PortalWorkflowQueueItem[],
-  testingSiteId: number,
+  locationId: number,
 ): PortalWorkflowQueueItem | undefined {
-  return queue.find((q) => q.testingSiteId === testingSiteId && q.action === 'clock_in')
+  return queue.find((q) => q.locationId === locationId && q.action === 'clock_in')
 }
 
 /** Revert optimistic clock-in intent for a stop that never committed on the server. */
 export function cancelClockInRevertPatch(
-  stop: TechnicianWorksheetStop,
+  stop: TechnicianWorksheetLocation,
   pendingClockIn: PortalWorkflowQueueItem,
-): Partial<TechnicianWorksheetStop> {
+): Partial<TechnicianWorksheetLocation> {
   const withClock = applyWorkflowActionToStop(stop, 'clock_in', pendingClockIn.payload)
   return optimisticCancelClockInPatch(withClock)
 }

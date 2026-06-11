@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { TechnicianWorksheetStop } from './monthlyRoutesShared'
+import type { TechnicianWorksheetLocation } from './monthlyRoutesShared'
 import {
   formatSkipReasonDisplayText,
   portalSkipReasonDetail,
@@ -25,35 +25,33 @@ import {
 import { runReviewOutcomeHeadline } from './officeRunReviewShared'
 import type { PortalDeficiencySummary } from './portalWorkflowShared'
 
-function baseStop(overrides: Partial<TechnicianWorksheetStop> = {}): TechnicianWorksheetStop {
+function baseStop(overrides: Partial<TechnicianWorksheetLocation> = {}): TechnicianWorksheetLocation {
   return {
-    testing_site_id: 1,
     location_id: 1,
-    stop_number: 1,
-    display_address: 'Test',
+    location_month_row_id: 0,
     month_date: '2026-05-01',
-    history_month_row_id: 0,
-    route_stop_order: null,
-    session_route_stop_order: null,
-    version_updated_at: null,
-    building_name: null,
-    property_management_company: null,
+    display_address: '123 Main St',
     label: null,
+    property_management_company: null,
+    panel: null,
+    panel_location: null,
+    door_code: null,
     ring: null,
     key_number: null,
     annual_month: null,
-    door_code: null,
-    panel: null,
-    panel_location: null,
     monitoring_company: null,
     monitoring_notes: null,
+    result_status: null,
+    skip_reason: null,
     testing_procedures: null,
     inspection_tech_notes: null,
     run_comments: null,
     time_in: null,
     time_out: null,
-    result_status: null,
-    skip_reason: null,
+    route_stop_order: null,
+    session_route_stop_order: null,
+    stop_number: 1,
+    version_updated_at: null,
     ...overrides,
   }
 }
@@ -120,7 +118,7 @@ describe('portalStopDockBand', () => {
 function def(status: string, id = 1, createdRunId: number | null = 1): PortalDeficiencySummary {
   return {
     id,
-    monthly_testing_site_id: 1,
+    monthly_location_id: 1,
     created_run_id: createdRunId,
     title: 'Bell',
     severity: 'deficient',

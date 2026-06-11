@@ -94,7 +94,7 @@ function stopCoordinates(stop: MonthlyRouteCalculatedPathStop) {
 
 function stopTitle(stop: MonthlyRouteCalculatedPathStop): string {
 
-  return (stop.primary_label || stop.label || stop.address || `Location ${stop.id}`).trim()
+  return (stop.label || stop.address || `Location ${stop.id}`).trim()
 
 }
 
@@ -102,7 +102,7 @@ function stopTitle(stop: MonthlyRouteCalculatedPathStop): string {
 
 function stopAddressLine(stop: MonthlyRouteCalculatedPathStop): string {
 
-  const parts = [stop.address, stop.building].map((p) => (p || '').trim()).filter(Boolean)
+  const parts = [(stop.display_address || stop.address || '')].map((p) => p.trim()).filter(Boolean)
 
   return parts.join(' · ') || '—'
 
@@ -434,49 +434,9 @@ export default function MonthlyRouteMapCard({
 
         const title = document.createElement('strong')
 
-        title.textContent = stop.primary_label || stop.label
+        title.textContent = stop.label
 
         popupBody.appendChild(title)
-
-        const subline = (stop.billing_address_subline || '').trim()
-
-        if (subline) {
-
-          popupBody.appendChild(document.createElement('br'))
-
-          const sub = document.createElement('span')
-
-          sub.className = 'text-muted small'
-
-          sub.textContent = subline
-
-          popupBody.appendChild(sub)
-
-        } else if ((stop.testing_site_count ?? 0) > 1 && stop.testing_site_labels?.length) {
-
-          popupBody.appendChild(document.createElement('br'))
-
-          const sites = document.createElement('span')
-
-          sites.className = 'text-muted small'
-
-          sites.textContent = stop.testing_site_labels.join(' · ')
-
-          popupBody.appendChild(sites)
-
-        }
-
-        if (stop.building) {
-
-          popupBody.appendChild(document.createElement('br'))
-
-          const building = document.createElement('span')
-
-          building.textContent = stop.building
-
-          popupBody.appendChild(building)
-
-        }
 
         popupBody.appendChild(document.createElement('br'))
 

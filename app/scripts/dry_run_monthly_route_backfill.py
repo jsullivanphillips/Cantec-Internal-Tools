@@ -1,5 +1,5 @@
 """
-Dry-run for backfilling ``monthly_route`` and ``monthly_route_location.monthly_route_id``.
+Dry-run for backfilling ``monthly_route`` and ``monthly_location.monthly_route_id``.
 
 Reads the live DB but **does not commit** any changes. Use before running a real backfill.
 
@@ -17,7 +17,7 @@ import argparse
 import sys
 
 from app import create_app
-from app.db_models import MonthlyRoute, MonthlyRouteLocation
+from app.db_models import MonthlyLocation, MonthlyRoute
 from app.monthly.route_backfill import (
     classify_monthly_locations,
     validate_existing_location_fks,
@@ -26,7 +26,7 @@ from app.monthly.route_backfill import (
 
 
 def run_dry_run(*, verbose: bool, sample: int) -> int:
-    locations = MonthlyRouteLocation.query.order_by(MonthlyRouteLocation.id.asc()).all()
+    locations = MonthlyLocation.query.order_by(MonthlyLocation.id.asc()).all()
     existing_routes = MonthlyRoute.query.order_by(MonthlyRoute.route_number.asc()).all()
     route_by_id = {r.id: r for r in existing_routes}
 
@@ -40,7 +40,7 @@ def run_dry_run(*, verbose: bool, sample: int) -> int:
     fk_block, fk_warn = validate_existing_location_fks(locations, buckets, route_by_id)
 
     print("=== Dry run: monthly_route backfill (no DB writes) ===\n")
-    print(f"MonthlyRouteLocation rows: {len(locations)}")
+    print(f"MonthlyLocation rows: {len(locations)}")
     print(f"Existing MonthlyRoute rows: {len(existing_routes)}")
     print()
 
@@ -71,7 +71,7 @@ def run_dry_run(*, verbose: bool, sample: int) -> int:
         shown += 1
     print()
 
-    print("[PLANNED monthly_route_location.monthly_route_id]")
+    print("[PLANNED monthly_location.monthly_route_id]")
     print(f"  Locations to attach to a route entity: {would_touch_locations}")
     print()
 

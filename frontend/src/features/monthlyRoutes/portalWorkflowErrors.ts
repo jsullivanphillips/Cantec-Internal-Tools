@@ -2,7 +2,7 @@
 
 import { isTransientClockInConflict } from './portalRouteProjection'
 import { portalStopHasOpenClock, PORTAL_OUTCOME_VALIDATION_MESSAGES } from './portalWorkflowShared'
-import type { TechnicianWorksheetStop } from './monthlyRoutesShared'
+import type { TechnicianWorksheetLocation } from './monthlyRoutesShared'
 import {
   loadWorkflowSyncQueue,
   type PortalWorkflowAction,
@@ -35,7 +35,7 @@ export function workflowErrorMessage(code: string | undefined, fallback?: string
 
 export type ClassifyWorkflowErrorOpts = {
   item?: PortalWorkflowQueueItem
-  stops?: TechnicianWorksheetStop[]
+  stops?: TechnicianWorksheetLocation[]
   routeId?: number
   monthIso?: string
   queue?: PortalWorkflowQueueItem[]
@@ -53,8 +53,8 @@ export function classifyWorkflowError(
       : ''
 
   if (code === 'no_open_clock' && (action === 'clock_out' || action === 'cancel_clock_in')) {
-    const siteId = opts?.item?.testingSiteId
-    const stop = opts?.stops?.find((s) => s.testing_site_id === siteId)
+    const siteId = opts?.item?.locationId
+    const stop = opts?.stops?.find((s) => s.location_id === siteId)
     const attempts = opts?.item?.attempts ?? 0
     if (action === 'cancel_clock_in' && attempts < MAX_CANCEL_NO_OPEN_CLOCK_ATTEMPTS) {
       return 'retry'

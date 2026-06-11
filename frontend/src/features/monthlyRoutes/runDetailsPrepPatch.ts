@@ -1,9 +1,8 @@
 import type {
   MonthlyRunDetailDeficiencySummary,
   MonthlyRunDetailLocation,
-  MonthlyRunDetailLocationStop,
   TechnicianWorksheetRun,
-  TechnicianWorksheetStop,
+  TechnicianWorksheetLocation,
 } from './monthlyRoutesShared'
 import { openDeficiencySummaries, runReviewDeficiencySummaries } from './runDetailsDeficiencyDisplay'
 import { patchRunDetailLocationStop } from './runDetailsLocationReview'
@@ -17,8 +16,8 @@ function normNullableText(value: string | number | boolean | null | undefined): 
 }
 
 /** Map prep-table PATCH ``changes`` to run-details stop fields for optimistic UI. */
-export function prepChangesToStopPatch(changes: PrepStopPatchChanges): Partial<MonthlyRunDetailLocationStop> {
-  const patch: Partial<MonthlyRunDetailLocationStop> = {}
+export function prepChangesToStopPatch(changes: PrepStopPatchChanges): Partial<MonthlyRunDetailLocation> {
+  const patch: Partial<MonthlyRunDetailLocation> = {}
   if ('run_comments' in changes) {
     patch.run_comments = normNullableText(changes.run_comments)
   }
@@ -65,11 +64,11 @@ export function prepChangesToStopPatch(changes: PrepStopPatchChanges): Partial<M
 
 /** Reconcile optimistic prep edits from worksheet stop PATCH response. */
 export function prepPatchFromWorksheetStop(
-  stop: TechnicianWorksheetStop,
+  stop: TechnicianWorksheetLocation,
   changeKeys: string[],
-): Partial<MonthlyRunDetailLocationStop> {
+): Partial<MonthlyRunDetailLocation> {
   const keys = new Set(changeKeys)
-  const patch: Partial<MonthlyRunDetailLocationStop> = {}
+  const patch: Partial<MonthlyRunDetailLocation> = {}
   if (keys.has('run_comments')) patch.run_comments = stop.run_comments
   if (keys.has('office_job_comment')) patch.office_job_comment = stop.office_job_comment ?? null
   if (keys.has('testing_procedures')) patch.testing_procedures = stop.testing_procedures
@@ -96,7 +95,7 @@ export function prepPatchFromWorksheetStop(
 
 /** Rollback snapshot for fields present in a PATCH attempt. */
 type PrepRollbackStop = Pick<
-  MonthlyRunDetailLocationStop,
+  MonthlyRunDetailLocation,
   | 'run_comments'
   | 'office_job_comment'
   | 'testing_procedures'
@@ -120,8 +119,8 @@ type PrepRollbackStop = Pick<
 export function rollbackPatchForChanges(
   stop: PrepRollbackStop,
   changes: PrepStopPatchChanges,
-): Partial<MonthlyRunDetailLocationStop> {
-  const rollback: Partial<MonthlyRunDetailLocationStop> = {}
+): Partial<MonthlyRunDetailLocation> {
+  const rollback: Partial<MonthlyRunDetailLocation> = {}
   if ('run_comments' in changes) rollback.run_comments = stop.run_comments ?? null
   if ('office_job_comment' in changes) {
     rollback.office_job_comment = stop.office_job_comment ?? null
@@ -174,11 +173,11 @@ export function syncPrepChangesForApi(changes: PrepStopPatchChanges): PrepStopPa
 
 /** Server-only fields to merge after a successful save (optimistic UI already has the value). */
 export function enrichmentPatchFromWorksheetStop(
-  stop: TechnicianWorksheetStop,
+  stop: TechnicianWorksheetLocation,
   changeKeys: string[],
-): Partial<MonthlyRunDetailLocationStop> {
+): Partial<MonthlyRunDetailLocation> {
   const keys = new Set(changeKeys)
-  const patch: Partial<MonthlyRunDetailLocationStop> = {}
+  const patch: Partial<MonthlyRunDetailLocation> = {}
   if (keys.has('monitoring_company_id')) {
     patch.monitoring_company_id = stop.monitoring_company_id ?? null
     patch.monitoring_company = stop.monitoring_company ?? null
@@ -191,11 +190,11 @@ export function enrichmentPatchFromWorksheetStop(
 }
 
 function deficiencySummariesFromWorksheetStop(
-  stop: TechnicianWorksheetStop,
+  stop: TechnicianWorksheetLocation,
 ): MonthlyRunDetailDeficiencySummary[] {
   return (stop.deficiencies ?? []).map((def) => ({
     id: def.id,
-    monthly_testing_site_id: def.monthly_testing_site_id,
+    monthly_location_id: def.monthly_location_id,
     created_run_id: def.created_run_id,
     title: def.title,
     severity: def.severity,
@@ -213,9 +212,9 @@ function deficiencySummariesFromWorksheetStop(
 
 /** Merge one saved deficiency onto a run-details stop row (prep / review lists). */
 export function deficiencySummaryPatchOnStop(
-  stop: MonthlyRunDetailLocationStop,
+  stop: MonthlyRunDetailLocation,
   updated: MonthlyRunDetailDeficiencySummary,
-): Partial<MonthlyRunDetailLocationStop> {
+): Partial<MonthlyRunDetailLocation> {
   const summaries = (stop.deficiency_summaries ?? []).map((def) =>
     def.id === updated.id ? updated : def,
   )
@@ -227,30 +226,26 @@ export function deficiencySummaryPatchOnStop(
 
 export function patchRunDetailStopDeficiency(
   locations: MonthlyRunDetailLocation[],
-  testingSiteId: number,
+  locationId: number,
   monthDate: string,
   updated: MonthlyRunDetailDeficiencySummary,
 ): MonthlyRunDetailLocation[] {
-  for (const loc of locations) {
-    const hit = loc.stops.find((s) => s.testing_site_id === testingSiteId)
-    if (hit) {
-      return patchRunDetailLocationStop(
-        locations,
-        testingSiteId,
-        monthDate,
-        deficiencySummaryPatchOnStop(hit, updated),
-      )
-    }
-  }
-  return locations
+  const hit = locations.find((loc) => loc.location_id === locationId)
+  if (!hit) return locations
+  return patchRunDetailLocationStop(
+    locations,
+    locationId,
+    monthDate,
+    deficiencySummaryPatchOnStop(hit, updated),
+  )
 }
 
 /** Merge deficiency API responses without touching unrelated prep fields. */
 export function deficiencyPatchFromWorksheetStop(
-  stop: TechnicianWorksheetStop,
+  stop: TechnicianWorksheetLocation,
   run?: TechnicianWorksheetRun | null,
-): Partial<MonthlyRunDetailLocationStop> {
-  const patch: Partial<MonthlyRunDetailLocationStop> = {}
+): Partial<MonthlyRunDetailLocation> {
+  const patch: Partial<MonthlyRunDetailLocation> = {}
   if (stop.deficiencies !== undefined) {
     const summaries = deficiencySummariesFromWorksheetStop(stop)
     patch.deficiency_summaries = runReviewDeficiencySummaries(summaries, run ?? null)
@@ -264,8 +259,8 @@ export function deficiencyPatchFromWorksheetStop(
 
 /** Map full worksheet stop PATCH response onto run-details list stop fields. */
 export function detailPatchFromWorksheetStop(
-  stop: TechnicianWorksheetStop,
-): Partial<MonthlyRunDetailLocationStop> {
+  stop: TechnicianWorksheetLocation,
+): Partial<MonthlyRunDetailLocation> {
   return {
     run_comments: stop.run_comments,
     office_job_comment: stop.office_job_comment ?? null,

@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { Modal } from 'react-bootstrap'
-import type { TechnicianWorksheetStop } from './monthlyRoutesShared'
+import type { TechnicianWorksheetLocation } from './monthlyRoutesShared'
 import { buildKeyViewItems } from './portalKeyViewShared'
 
 type Props = {
   show: boolean
   onHide: () => void
-  stops: TechnicianWorksheetStop[]
+  stops: TechnicianWorksheetLocation[]
   activeStopId: number | null
 }
 
@@ -67,7 +67,7 @@ export default function PortalKeyViewModal({ show, onHide, stops, activeStopId }
     let nearest = 0
     let nearestDist = Number.POSITIVE_INFINITY
     items.forEach((item, index) => {
-      const el = itemRefs.current.get(item.testingSiteId)
+      const el = itemRefs.current.get(item.locationId)
       if (!el) return
       const itemCenter = el.offsetTop + el.offsetHeight / 2
       const dist = Math.abs(itemCenter - centerY)
@@ -83,20 +83,20 @@ export default function PortalKeyViewModal({ show, onHide, stops, activeStopId }
     const scroller = scrollerRef.current
     if (!scroller) return
     const centerY = scroller.scrollTop + scroller.clientHeight / 2
-    let focusedTestingSiteId: number | null = null
+    let focusedlocationId: number | null = null
     let nearestDist = Number.POSITIVE_INFINITY
     items.forEach((item) => {
-      const el = itemRefs.current.get(item.testingSiteId)
+      const el = itemRefs.current.get(item.locationId)
       if (!el) return
       const itemCenter = el.offsetTop + el.offsetHeight / 2
       const dist = Math.abs(itemCenter - centerY)
       if (dist < nearestDist) {
         nearestDist = dist
-        focusedTestingSiteId = item.testingSiteId
+        focusedlocationId = item.locationId
       }
     })
     items.forEach((item) => {
-      const el = itemRefs.current.get(item.testingSiteId)
+      const el = itemRefs.current.get(item.locationId)
       if (!el) return
       const itemCenter = el.offsetTop + el.offsetHeight / 2
       const { scale, opacity } = wheelItemVisual(itemCenter - centerY, el.offsetHeight)
@@ -104,7 +104,7 @@ export default function PortalKeyViewModal({ show, onHide, stops, activeStopId }
       el.style.transform = `scale(${scale})`
       el.classList.toggle(
         'pw-key-view-item--focused',
-        focusedTestingSiteId != null && item.testingSiteId === focusedTestingSiteId,
+        focusedlocationId != null && item.locationId === focusedlocationId,
       )
     })
   }, [items])
@@ -124,7 +124,7 @@ export default function PortalKeyViewModal({ show, onHide, stops, activeStopId }
       const nearest = findNearestIndex()
       const target = items[nearest]
       if (!target) return
-      const el = itemRefs.current.get(target.testingSiteId)
+      const el = itemRefs.current.get(target.locationId)
       if (!el) return
       if (behavior === 'auto') {
         el.scrollIntoView({ block: 'center', behavior: 'auto' })
@@ -172,7 +172,7 @@ export default function PortalKeyViewModal({ show, onHide, stops, activeStopId }
     const frame = window.requestAnimationFrame(() => {
       const target = items[index]
       if (!target) return
-      const el = itemRefs.current.get(target.testingSiteId)
+      const el = itemRefs.current.get(target.locationId)
       el?.scrollIntoView({ block: 'center', behavior: 'auto' })
       updateWheelVisuals()
     })
@@ -291,10 +291,10 @@ export default function PortalKeyViewModal({ show, onHide, stops, activeStopId }
               const classNames = ['pw-key-view-item', item.statusClass].filter(Boolean).join(' ')
               return (
                 <div
-                  key={item.testingSiteId}
+                  key={item.locationId}
                   ref={(el) => {
-                    if (el) itemRefs.current.set(item.testingSiteId, el)
-                    else itemRefs.current.delete(item.testingSiteId)
+                    if (el) itemRefs.current.set(item.locationId, el)
+                    else itemRefs.current.delete(item.locationId)
                   }}
                   className={classNames}
                 >

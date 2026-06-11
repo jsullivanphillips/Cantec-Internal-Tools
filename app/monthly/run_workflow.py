@@ -15,6 +15,7 @@ WORKFLOW_STAGES = (
     "awaiting_office_review",
     "ready_to_close",
     "completed",
+    "skipped",
 )
 
 WORKFLOW_STAGE_LABELS: dict[str, str] = {
@@ -24,6 +25,7 @@ WORKFLOW_STAGE_LABELS: dict[str, str] = {
     "awaiting_office_review": "Awaiting office review",
     "ready_to_close": "Ready to close",
     "completed": "Completed",
+    "skipped": "Skipped",
 }
 
 
@@ -40,6 +42,8 @@ def derive_run_workflow_stage(run: MonthlyRouteRun | None) -> str:
     if run is None:
         return "draft"
     if run_explicitly_completed(run):
+        if (run.source or "").strip().lower() == "office_skip":
+            return "skipped"
         return "completed"
     if run.office_review_completed_at is not None:
         return "ready_to_close"
@@ -178,15 +182,53 @@ def clear_workflow_on_reset(run: MonthlyRouteRun) -> None:
 
 
 def count_unset_billing_for_route_month(route_id: int, month_first: date) -> int:
-    from app.db_models import MonthlyRouteTestHistory
+    from app.db_models import MonthlyLocationMonth
+    from app.monthly.worksheet_locations import office_review_billing_location_ids
 
-    return (
-        MonthlyRouteTestHistory.query.filter(
-            MonthlyRouteTestHistory.test_monthly_route_id == int(route_id),
-            MonthlyRouteTestHistory.month_date == month_first,
-            MonthlyRouteTestHistory.billing_status == "unset",
-        ).count()
-    )
+    location_ids = office_review_billing_location_ids(route_id, month_first)
+    if not location_ids:
+        return 0
+
+    rows = MonthlyLocationMonth.query.filter(
+        MonthlyLocationMonth.test_monthly_route_id == int(route_id),
+        MonthlyLocationMonth.month_date == month_first,
+        MonthlyLocationMonth.monthly_location_id.in_(location_ids),
+    ).all()
+    unset = 0
+    for row in rows:
+        status = (row.billing_status or "").strip().lower()
+        if status in ("", "unset"):
+            unset += 1
+    return unset
+
+
+def prepare_billing_for_office_review_complete(route_id: int, month_first: date) -> None:
+    """Apply outcome-based billing defaults before the review-complete gate."""
+    from app.db_models import MonthlyLocationMonth
+    from app.monthly.portal_workflow import BILLABLE_OUTCOMES, apply_billing_defaults_for_location
+    from app.monthly.worksheet_locations import office_review_billing_location_ids
+
+    location_ids = office_review_billing_location_ids(route_id, month_first)
+    if not location_ids:
+        return
+
+    rows = MonthlyLocationMonth.query.filter(
+        MonthlyLocationMonth.test_monthly_route_id == int(route_id),
+        MonthlyLocationMonth.month_date == month_first,
+        MonthlyLocationMonth.monthly_location_id.in_(location_ids),
+    ).all()
+    for row in rows:
+        location_id = int(row.monthly_location_id)
+        apply_billing_defaults_for_location(location_id, month_first, route_id)
+        status = (row.billing_status or "").strip().lower()
+        if status in ("bill", "do_not_bill", "legacy"):
+            continue
+        outcome = (row.test_outcome or "").strip().lower()
+        result = (row.result_status or "").strip().lower()
+        if outcome == "skipped" or result == "skipped":
+            row.billing_status = "do_not_bill"
+        elif outcome in BILLABLE_OUTCOMES or result == "tested":
+            row.billing_status = "bill"
 
 
 def is_historical_run_month(
@@ -202,6 +244,23 @@ def is_historical_run_month(
     return month_first < current_month_first
 
 
+def should_auto_close_run_from_csv_import(
+    month_first: date,
+    *,
+    current_month_first: date | None = None,
+) -> bool:
+    """True when a successful CSV import should mark paperwork completed.
+
+    Current and prior months auto-close — the sheet represents finished field
+    results. Future months stay at prepared so office can still prep live runs.
+    """
+    if current_month_first is None:
+        from app.routes.monthly_routes import _current_pacific_month_first
+
+        current_month_first = _current_pacific_month_first()
+    return month_first <= current_month_first
+
+
 def close_historical_run_from_csv_import(
     run: MonthlyRouteRun,
     *,
@@ -209,6 +268,21 @@ def close_historical_run_from_csv_import(
     now,
 ) -> None:
     """Mark paperwork closed after importing a prior-month technician CSV."""
+    if run.started_at is None:
+        run.started_at = now
+    mark_field_ended(run, now=now)
+    mark_office_review_complete(run, username=username, now=now)
+    run.status = "completed"
+    run.completed_at = now
+
+
+def close_skipped_run_from_office(
+    run: MonthlyRouteRun,
+    *,
+    username: str,
+    now,
+) -> None:
+    """Mark a route-month closed after office bulk-skips every library site."""
     if run.started_at is None:
         run.started_at = now
     mark_field_ended(run, now=now)

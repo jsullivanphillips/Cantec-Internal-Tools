@@ -63,7 +63,7 @@ function updateSyncBadge(ctx: PortalRunLifecycleDrainContext): void {
     (item) =>
       item.routeId === ctx.routeId &&
       item.monthIso === ctx.monthIso &&
-      item.testingSiteId != null,
+      item.locationId != null,
   )
   ctx.setSyncState(
     runLifecyclePending || workflowPending || fieldPending ? 'saved_offline' : 'synced',

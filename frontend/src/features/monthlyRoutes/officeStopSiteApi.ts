@@ -1,6 +1,6 @@
 import { apiJson } from '../../lib/apiClient'
 
-import type { TechnicianWorksheetStop } from './monthlyRoutesShared'
+import type { TechnicianWorksheetLocation } from './monthlyRoutesShared'
 
 import type { PortalSkipCategory, PortalTestOutcome } from './portalWorkflowShared'
 
@@ -20,15 +20,15 @@ export async function officeCreateDeficiency(
 
   monthDate: string,
 
-  testingSiteId: number,
+  locationId: number,
 
   body: { title: string; severity: string; status: string; description?: string; run_id?: number | null },
 
-): Promise<TechnicianWorksheetStop> {
+): Promise<TechnicianWorksheetLocation> {
 
-  const res = await apiJson<{ ok: boolean; stop: TechnicianWorksheetStop }>(
+  const res = await apiJson<{ ok: boolean; stop: TechnicianWorksheetLocation }>(
 
-    `/api/monthly_routes/routes/${routeId}/worksheet/stops/${testingSiteId}/deficiencies?${monthQuery(monthDate)}`,
+    `/api/monthly_routes/routes/${routeId}/worksheet/locations/${locationId}/deficiencies?${monthQuery(monthDate)}`,
 
     { method: 'POST', body: JSON.stringify(body) },
 
@@ -46,17 +46,17 @@ export async function officeUpdateDeficiency(
 
   monthDate: string,
 
-  testingSiteId: number,
+  locationId: number,
 
   deficiencyId: number,
 
   body: { title?: string; severity?: string; status?: string; description?: string },
 
-): Promise<TechnicianWorksheetStop> {
+): Promise<TechnicianWorksheetLocation> {
 
-  const res = await apiJson<{ ok: boolean; stop: TechnicianWorksheetStop }>(
+  const res = await apiJson<{ ok: boolean; stop: TechnicianWorksheetLocation }>(
 
-    `/api/monthly_routes/routes/${routeId}/worksheet/stops/${testingSiteId}/deficiencies/${deficiencyId}?${monthQuery(monthDate)}`,
+    `/api/monthly_routes/routes/${routeId}/worksheet/locations/${locationId}/deficiencies/${deficiencyId}?${monthQuery(monthDate)}`,
 
     { method: 'PATCH', body: JSON.stringify(body) },
 
@@ -74,17 +74,17 @@ export async function officeVerifyDeficiency(
 
   monthDate: string,
 
-  testingSiteId: number,
+  locationId: number,
 
   deficiencyId: number,
 
   note?: string,
 
-): Promise<TechnicianWorksheetStop> {
+): Promise<TechnicianWorksheetLocation> {
 
-  const res = await apiJson<{ ok: boolean; stop: TechnicianWorksheetStop }>(
+  const res = await apiJson<{ ok: boolean; stop: TechnicianWorksheetLocation }>(
 
-    `/api/monthly_routes/routes/${routeId}/worksheet/stops/${testingSiteId}/deficiencies/${deficiencyId}/verify?${monthQuery(monthDate)}`,
+    `/api/monthly_routes/routes/${routeId}/worksheet/locations/${locationId}/deficiencies/${deficiencyId}/verify?${monthQuery(monthDate)}`,
 
     { method: 'POST', body: JSON.stringify({ note: note ?? '' }) },
 
@@ -116,15 +116,15 @@ export async function officeSetStopTestOutcome(
 
   monthDate: string,
 
-  testingSiteId: number,
+  locationId: number,
 
   body: OfficeSetTestOutcomeBody,
 
-): Promise<TechnicianWorksheetStop> {
+): Promise<TechnicianWorksheetLocation> {
 
-  const res = await apiJson<{ ok: boolean; stop: TechnicianWorksheetStop }>(
+  const res = await apiJson<{ ok: boolean; stop: TechnicianWorksheetLocation }>(
 
-    `/api/monthly_routes/routes/${routeId}/worksheet/stops/${testingSiteId}/test_outcome?${monthQuery(monthDate)}`,
+    `/api/monthly_routes/routes/${routeId}/worksheet/locations/${locationId}/test_outcome?${monthQuery(monthDate)}`,
 
     { method: 'PUT', body: JSON.stringify(body) },
 
@@ -142,13 +142,13 @@ export async function officeClearStopTestOutcome(
 
   monthDate: string,
 
-  testingSiteId: number,
+  locationId: number,
 
-): Promise<TechnicianWorksheetStop> {
+): Promise<TechnicianWorksheetLocation> {
 
-  const res = await apiJson<{ ok: boolean; stop: TechnicianWorksheetStop }>(
+  const res = await apiJson<{ ok: boolean; stop: TechnicianWorksheetLocation }>(
 
-    `/api/monthly_routes/routes/${routeId}/worksheet/stops/${testingSiteId}/test_outcome?${monthQuery(monthDate)}`,
+    `/api/monthly_routes/routes/${routeId}/worksheet/locations/${locationId}/test_outcome?${monthQuery(monthDate)}`,
 
     { method: 'PUT', body: JSON.stringify({ clear: true }) },
 

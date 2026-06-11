@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { TechnicianWorksheetStop } from './monthlyRoutesShared'
+import type { TechnicianWorksheetLocation } from './monthlyRoutesShared'
 import {
   enrichStopMonitoringFromDirectory,
   loadMonitoringCompaniesCache,
@@ -7,20 +7,18 @@ import {
   saveMonitoringCompaniesCache,
 } from './monitoringCompaniesShared'
 
-function stop(patch: Partial<TechnicianWorksheetStop> = {}): TechnicianWorksheetStop {
+function stop(patch: Partial<TechnicianWorksheetLocation> = {}): TechnicianWorksheetLocation {
   return {
-    testing_site_id: 1,
     location_id: 1,
+    location_month_row_id: 0,
     stop_number: 1,
     display_address: 'Test',
     month_date: '2026-05-01',
-    history_month_row_id: 0,
     route_stop_order: null,
     session_route_stop_order: null,
     version_updated_at: null,
-    building_name: null,
-    property_management_company: null,
     label: null,
+    property_management_company: null,
     ring: null,
     key_number: null,
     annual_month: null,

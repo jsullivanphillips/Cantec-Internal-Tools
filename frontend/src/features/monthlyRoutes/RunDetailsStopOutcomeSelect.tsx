@@ -16,7 +16,7 @@ import {
 } from './runDetailsStopSiteDisplay'
 import { portalStatusPillClass } from './portalWorkflowShared'
 import { canOfficeEditOutcomes } from './runWorkflowShared'
-import type { TechnicianWorksheetRun, TechnicianWorksheetStop } from './monthlyRoutesShared'
+import type { TechnicianWorksheetRun, TechnicianWorksheetLocation } from './monthlyRoutesShared'
 import {
   OFFICE_OUTCOME_PENDING_VALUE,
   officeOutcomeSelectValue,
@@ -28,12 +28,12 @@ import {
 } from './portalWorkflowShared'
 
 type Props = {
-  stop: TechnicianWorksheetStop
+  stop: TechnicianWorksheetLocation
   run: TechnicianWorksheetRun | null
   routeId: number
   monthDate: string
   readOnly: boolean
-  onStopUpdated: (stop: TechnicianWorksheetStop) => void | Promise<void>
+  onStopUpdated: (stop: TechnicianWorksheetLocation) => void | Promise<void>
 }
 
 function pillStatusClass(selectValue: string): string {
@@ -93,7 +93,7 @@ export default function RunDetailsStopOutcomeSelect({
     ) => {
       setSaving(true)
       try {
-        const updated = await officeSetStopTestOutcome(routeId, monthDate, stop.testing_site_id, {
+        const updated = await officeSetStopTestOutcome(routeId, monthDate, stop.location_id, {
           test_outcome: outcome,
           skip_category: opts?.skipCategory,
           skip_note: opts?.skipNote,
@@ -113,13 +113,13 @@ export default function RunDetailsStopOutcomeSelect({
         setSaving(false)
       }
     },
-    [routeId, monthDate, stop.testing_site_id, onStopUpdated],
+    [routeId, monthDate, stop.location_id, onStopUpdated],
   )
 
   const applyClear = useCallback(async () => {
     setSaving(true)
     try {
-      const updated = await officeClearStopTestOutcome(routeId, monthDate, stop.testing_site_id)
+      const updated = await officeClearStopTestOutcome(routeId, monthDate, stop.location_id)
       setSelectValue(OFFICE_OUTCOME_PENDING_VALUE)
       setLocalStop(updated)
       await onStopUpdated(updated)
@@ -129,7 +129,7 @@ export default function RunDetailsStopOutcomeSelect({
     } finally {
       setSaving(false)
     }
-  }, [routeId, monthDate, stop.testing_site_id, stop, onStopUpdated])
+  }, [routeId, monthDate, stop.location_id, stop, onStopUpdated])
 
   const handleSelectChange = useCallback(
     (nextRaw: string) => {
@@ -213,12 +213,12 @@ export default function RunDetailsStopOutcomeSelect({
 
   const workflowActions = useMemo(
     () => ({
-      verifyDeficiency: async (s: TechnicianWorksheetStop, deficiencyId: number) => {
+      verifyDeficiency: async (s: TechnicianWorksheetLocation, deficiencyId: number) => {
         try {
           const updated = await officeVerifyDeficiency(
             routeId,
             monthDate,
-            s.testing_site_id,
+            s.location_id,
             deficiencyId,
           )
           setLocalStop(updated)

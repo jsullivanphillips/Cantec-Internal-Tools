@@ -5,6 +5,7 @@ from __future__ import annotations
 from app.monthly.route_inspection_csv_import import (
     _pmc_sheet_matches_db,
     canonical_street_address_key,
+    iter_street_index_keys,
     iter_street_lookup_keys,
     parse_address_block,
 )
@@ -52,6 +53,24 @@ def test_canonical_keating_x_road_matches_cross_road():
     assert canonical_street_address_key("2261 Keating Cross Road") == canonical_street_address_key(
         "2261 Keating X Road"
     )
+    assert canonical_street_address_key("2261 Keating X Rd") == canonical_street_address_key(
+        "2261 Keating Cross Road"
+    )
+
+
+def test_canonical_gorge_road_east_matches_e():
+    assert canonical_street_address_key("129 Gorge Road East") == canonical_street_address_key(
+        "129 Gorge Road E"
+    )
+
+
+def test_parse_address_block_seaport_place():
+    street, building, company = parse_address_block(
+        "9851 Seaport Place\nName: Seaport Place\nManagement: Colliers"
+    )
+    assert street == "9851 Seaport Place"
+    assert building == "Seaport Place"
+    assert company == "Colliers"
 
 
 def test_parse_address_block_standalone_building_line():
@@ -59,6 +78,15 @@ def test_parse_address_block_standalone_building_line():
     assert street == "4678 Elk Lake Drive"
     assert building == "Building B"
     assert company is None
+
+
+def test_parse_address_block_building_line_wins_over_name_for_disambiguation():
+    street, building, company = parse_address_block(
+        "681 Allandale Rd\nBuilding D\nName: Allandale District\nManagement: Sherringham Group"
+    )
+    assert street == "681 Allandale Rd"
+    assert building == "Building D"
+    assert company == "Sherringham Group"
 
 
 def test_parse_address_block_name_colon_still_sets_building():
@@ -70,6 +98,25 @@ def test_parse_address_block_name_colon_still_sets_building():
     assert company == "Equitex"
 
 
+def test_parse_address_block_inline_name_and_management():
+    street, building, company = parse_address_block(
+        "990 View & 911 Yates (London Drugs) Name: Harris Green Management:Colliers"
+    )
+    assert street == "990 View & 911 Yates (London Drugs)"
+    assert building == "Harris Green"
+    assert company == "Colliers"
+
+
+def test_parse_address_block_inline_name_and_management_multiline():
+    """Standalone ``Building …`` on a later line wins over inline ``Name:`` on the street line."""
+    street, building, company = parse_address_block(
+        "990 View & 911 Yates (London Drugs) Name: Harris Green Management:Colliers\nBuilding B"
+    )
+    assert street == "990 View & 911 Yates (London Drugs)"
+    assert building == "Building B"
+    assert company == "Colliers"
+
+
 def test_pmc_fuzzy_colliers_vs_colliers_mall():
     assert _pmc_sheet_matches_db("colliers", "colliers - mall")
     assert _pmc_sheet_matches_db("colliers - mall", "colliers") is False
@@ -77,6 +124,14 @@ def test_pmc_fuzzy_colliers_vs_colliers_mall():
 
 def test_pmc_fuzzy_sheet_longer_than_db_not_matched():
     assert _pmc_sheet_matches_db("colliers international", "colliers") is False
+
+
+def test_pmc_fuzzy_shared_lead_token_group_vs_holdings():
+    assert _pmc_sheet_matches_db("sherringham group", "sherringham holdings")
+
+
+def test_pmc_fuzzy_tpm_vs_tpm_properties():
+    assert _pmc_sheet_matches_db("tpm", "tpm properties")
 
 
 def test_pmc_no_false_match_unrelated_prefix():
@@ -96,8 +151,21 @@ def test_canonical_mills_rd_w_matches_mills_road():
 
 
 def test_canonical_civic_letter_suffix_matches_bare_number():
-    assert canonical_street_address_key("9911a McDonald Park") == canonical_street_address_key(
+    assert canonical_street_address_key("9911a McDonald Park") != canonical_street_address_key(
         "9911 McDonald Park"
+    )
+    sheet_keys = iter_street_lookup_keys("9911a McDonald Park")
+    db_keys = iter_street_index_keys("9911 McDonald Park")
+    assert canonical_street_address_key("9911 McDonald Park") in sheet_keys
+    assert sheet_keys[0] in db_keys or canonical_street_address_key("9911 McDonald Park") in db_keys
+
+
+def test_canonical_3319a_and_3319b_stay_distinct():
+    assert canonical_street_address_key("3319A Painter Road") == "3319a painter road"
+    assert canonical_street_address_key("3319B Painter Road") == "3319b painter road"
+    assert (
+        canonical_street_address_key("3319A Painter Road")
+        != canonical_street_address_key("3319B Painter Road")
     )
 
 
@@ -124,6 +192,15 @@ def test_canonical_ampersand_corners_order_insensitive():
     db = canonical_street_address_key("911 Yates Street & 990 View Street")
     assert sheet == "911 yates 990 view"
     assert db == "911 yates street 990 view street"
+
+
+def test_dual_civic_plus_matches_ampersand_label():
+    sheet = canonical_street_address_key("1209+1229 Clarke Road")
+    db = canonical_street_address_key("1209 & 1229 Clarke Road")
+    assert sheet == db
+    assert iter_street_lookup_keys("1209+1229 Clarke Road")[0] in iter_street_lookup_keys(
+        "1209 & 1229 Clarke Road"
+    )
 
 
 def test_ampersand_corner_sheet_matches_db_lookup_keys():

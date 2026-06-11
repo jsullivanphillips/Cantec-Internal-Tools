@@ -21,7 +21,7 @@ from zoneinfo import ZoneInfo
 from flask import Blueprint, jsonify, request, session
 from sqlalchemy import String, case, cast, func
 
-from app.db_models import MonthlyRoute, MonthlyRouteLocation, MonthlyRouteRun, db
+from app.db_models import MonthlyRoute, MonthlyLocation, MonthlyRouteRun, db
 
 
 technician_portal_bp = Blueprint("technician_portal", __name__, url_prefix="/api/technician_portal")
@@ -228,11 +228,11 @@ def _location_counts_for(route_ids: list[int]) -> dict[int, int]:
         return {}
     rows = (
         db.session.query(
-            MonthlyRouteLocation.monthly_route_id,
-            func.count(MonthlyRouteLocation.id),
+            MonthlyLocation.monthly_route_id,
+            func.count(MonthlyLocation.id),
         )
-        .filter(MonthlyRouteLocation.monthly_route_id.in_(route_ids))
-        .group_by(MonthlyRouteLocation.monthly_route_id)
+        .filter(MonthlyLocation.monthly_route_id.in_(route_ids))
+        .group_by(MonthlyLocation.monthly_route_id)
         .all()
     )
     return {int(rid): int(n) for rid, n in rows if rid is not None}
@@ -364,7 +364,7 @@ def portal_start_current_month_run(route_id: int):
     """Materialize (idempotently) the Pacific current-month run and worksheet rows."""
     if not session.get(SESSION_FLAG):
         return jsonify({"error": "Portal locked", "code": "portal_locked"}), 401
-    from app.monthly.worksheet_stops import (
+    from app.monthly.worksheet_locations import (
         ensure_worksheet_stops_for_route_month,
         route_month_has_worksheet_stops,
     )
@@ -412,7 +412,7 @@ def portal_regenerate_current_month_paperwork(route_id: int):
     """
     if not session.get(SESSION_FLAG):
         return jsonify({"error": "Portal locked", "code": "portal_locked"}), 401
-    from app.monthly.worksheet_stops import refresh_worksheet_stops_for_route_month
+    from app.monthly.worksheet_locations import refresh_worksheet_stops_for_route_month
     from app.routes.monthly_routes import (
         _current_pacific_month_first,
         _ensure_worksheet_rows_for_route_month,
@@ -508,18 +508,12 @@ def portal_end_current_month_run(route_id: int):
             409,
         )
     if run.field_ended_at is not None:
-        from app.monthly.field_submission import ensure_field_submission_for_run
-
-        ensure_field_submission_for_run(run)
         db.session.add(run)
         db.session.commit()
         return jsonify({"ok": True, "run": _serialize_run(run)})
 
     now = datetime.now(PACIFIC_TZ)
     mark_field_ended(run, now=now)
-    from app.monthly.field_submission import capture_field_submission_for_run
-
-    capture_field_submission_for_run(run, captured_at=now)
     db.session.add(run)
     db.session.commit()
     return jsonify({"ok": True, "run": _serialize_run(run)})

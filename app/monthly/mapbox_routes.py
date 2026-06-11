@@ -9,8 +9,8 @@ from urllib import error as url_error, parse as url_parse, request as url_reques
 from sqlalchemy.exc import IntegrityError
 
 from app.db_models import (
+    MonthlyLocation,
     MonthlyRouteCalculatedPath,
-    MonthlyRouteLocation,
     db,
 )
 
@@ -24,46 +24,37 @@ class MapboxRouteError(RuntimeError):
     """Raised when Mapbox Directions cannot return a usable route."""
 
 
-def ordered_route_locations(route_id: int) -> list[MonthlyRouteLocation]:
+def ordered_route_locations(route_id: int) -> list[MonthlyLocation]:
     return (
-        MonthlyRouteLocation.query.filter_by(monthly_route_id=route_id)
+        MonthlyLocation.query.filter_by(monthly_route_id=route_id)
         .order_by(
-            MonthlyRouteLocation.route_stop_order.asc().nulls_last(),
-            MonthlyRouteLocation.address.asc(),
-            MonthlyRouteLocation.id.asc(),
+            MonthlyLocation.route_stop_order.asc().nulls_last(),
+            MonthlyLocation.address.asc(),
+            MonthlyLocation.id.asc(),
         )
         .all()
     )
 
 
-def serialize_route_stop(loc: MonthlyRouteLocation) -> dict[str, object]:
-    from app.monthly.monthly_sites_sync import sync_testing_sites_from_legacy
-    from app.monthly.testing_site_display import (
-        billing_address_for_location,
-        location_row_display_labels,
-        testing_site_billing_subline,
-    )
+def serialize_route_stop(loc: MonthlyLocation) -> dict[str, object]:
+    from app.monthly.location_display import billing_address_for_location
 
-    ts_rows = sync_testing_sites_from_legacy(loc)
     billing = billing_address_for_location(loc, int(loc.id))
-    location_label, testing_site_labels = location_row_display_labels(loc, ts_rows)
-    primary = ts_rows[0] if len(ts_rows) == 1 else None
-    if primary is not None:
-        popup_title = location_label
-        popup_subline = testing_site_billing_subline(location_label, loc)
-    else:
-        popup_title = billing
-        popup_subline = None
+    site_label = (loc.label or "").strip()
+    popup_title = site_label or billing
+    popup_subline = None
+    if site_label and billing.casefold() != site_label.casefold():
+        popup_subline = billing
     return {
         "id": int(loc.id),
         "label": popup_title,
         "primary_label": popup_title,
         "billing_address_subline": popup_subline,
-        "testing_site_count": len(ts_rows),
-        "testing_site_labels": testing_site_labels,
+        "testing_site_count": 1,
+        "testing_site_labels": None,
         "address": loc.address,
         "display_address": loc.display_address,
-        "building": loc.building,
+        "site_label": loc.label,
         "latitude": float(loc.latitude) if loc.latitude is not None else None,
         "longitude": float(loc.longitude) if loc.longitude is not None else None,
         "route_stop_order": int(loc.route_stop_order) if loc.route_stop_order is not None else None,
@@ -71,7 +62,7 @@ def serialize_route_stop(loc: MonthlyRouteLocation) -> dict[str, object]:
     }
 
 
-def stop_signature_for_locations(locations: list[MonthlyRouteLocation]) -> str:
+def stop_signature_for_locations(locations: list[MonthlyLocation]) -> str:
     signature_rows = []
     for ordinal, loc in enumerate(locations):
         signature_rows.append(
@@ -263,7 +254,7 @@ def _apply_calculated_path_values(
 
 
 def _directions_for_locations(
-    locations: list[MonthlyRouteLocation],
+    locations: list[MonthlyLocation],
     access_token: str,
     *,
     profile: str,
@@ -305,7 +296,7 @@ def _directions_for_locations(
 
 
 def _request_mapbox_directions(
-    locations: list[MonthlyRouteLocation],
+    locations: list[MonthlyLocation],
     access_token: str,
     *,
     profile: str,
@@ -341,13 +332,13 @@ def _request_mapbox_directions(
 
 
 def _overlapping_chunks(
-    locations: list[MonthlyRouteLocation],
+    locations: list[MonthlyLocation],
     max_waypoints: int,
-) -> list[list[MonthlyRouteLocation]]:
+) -> list[list[MonthlyLocation]]:
     if len(locations) <= max_waypoints:
         return [locations]
 
-    chunks: list[list[MonthlyRouteLocation]] = []
+    chunks: list[list[MonthlyLocation]] = []
     start = 0
     while start < len(locations) - 1:
         end = min(start + max_waypoints, len(locations))

@@ -1,5 +1,31 @@
 /* Exact history — compact enterprise worksheet snapshot on Paperwork */
 
+/* Wider table: bleed into app-main padding and drop the 1480px cap on exact history. */
+.app-main.app-main--monthly-route-detail:has(.monthly-paperwork-page--exact-history) {
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+
+.monthly-paperwork-page--exact-history {
+  padding-left: 0.25rem;
+  padding-right: 0.25rem;
+  padding-bottom: 0.75rem;
+}
+
+.monthly-paperwork-page--exact-history .monthly-route-detail-container {
+  width: 100%;
+  max-width: none;
+  gap: 0.65rem;
+}
+
+.monthly-paperwork-page--exact-history .monthly-route-detail-hero {
+  padding: 0.85rem 0.75rem;
+}
+
+.monthly-paperwork-page--exact-history .paperwork-run-selector {
+  padding: 0.55rem 0.65rem;
+}
+
 .monthly-run-detail-page .run-details-history-section {
   --tw-office-col-stop: 2rem;
   --tw-office-col-address: 11.5rem;
@@ -21,6 +47,10 @@
     var(--tw-office-col-location-comments) +
     var(--tw-office-col-run-comments)
   );
+}
+
+.monthly-paperwork-page--exact-history .run-details-history-section {
+  --tw-office-col-monitoring: 12rem;
 }
 
 .monthly-run-detail-page .run-details-history-shell {

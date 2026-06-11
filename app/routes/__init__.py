@@ -12,7 +12,6 @@ from .pink_folder import pink_folder_bp
 from .webhook import webhook_bp
 from .monthly_specialists import monthly_specialist_bp
 from .monthly_routes import monthly_routes_bp
-from .monthly_sites import monthly_sites_bp
 from .monitoring_companies import monitoring_companies_bp
 from .keys import keys_bp
 from .technician_portal import technician_portal_bp
@@ -32,7 +31,6 @@ def register_blueprints(app):
     app.register_blueprint(webhook_bp)
     app.register_blueprint(monthly_specialist_bp)
     app.register_blueprint(monthly_routes_bp)
-    app.register_blueprint(monthly_sites_bp)
     app.register_blueprint(monitoring_companies_bp)
     app.register_blueprint(keys_bp)
     app.register_blueprint(technician_portal_bp)

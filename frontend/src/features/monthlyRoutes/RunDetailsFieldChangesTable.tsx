@@ -16,7 +16,7 @@ import { apiJson } from '../../lib/apiClient'
 type FieldChangeStopEntry = {
   location: MonthlyRunDetailLocation
   stopNumber: number
-  testingSiteId: number
+  locationId: number
   locationLabel: string
   siteLabel: string
   showSiteMeta: boolean
@@ -26,7 +26,7 @@ type FieldChangeStopEntry = {
 type PendingStopEntry = {
   location: MonthlyRunDetailLocation
   stopNumber: number
-  testingSiteId: number
+  locationId: number
   locationLabel: string
   siteLabel: string
   showSiteMeta: boolean
@@ -188,38 +188,38 @@ export default function RunDetailsFieldChangesTable({
   const stopsNeedingFetch = useMemo(() => {
     const out: number[] = []
     for (const location of locations) {
-      for (const stop of location.stops) {
+      for (const stop of [location]) {
         if (!stop.has_field_edits) continue
-        if (changeDetailsByStopId[stop.testing_site_id]) continue
-        out.push(stop.testing_site_id)
+        if (changeDetailsByStopId[stop.location_id]) continue
+        out.push(stop.location_id)
       }
     }
     return out
   }, [locations, changeDetailsByStopId])
 
   const loadStopDetail = useCallback(
-    async (testingSiteId: number) => {
-      setLoadingStopIds((prev) => new Set(prev).add(testingSiteId))
+    async (locationId: number) => {
+      setLoadingStopIds((prev) => new Set(prev).add(locationId))
       setLoadErrors((prev) => {
         const next = { ...prev }
-        delete next[testingSiteId]
+        delete next[locationId]
         return next
       })
       try {
         const qs = new URLSearchParams({ month: monthDate })
         const data = await apiJson<MonthlyRunDetailReviewStopDetailPayload>(
-          `/api/monthly_routes/routes/${routeId}/run_details/review/stops/${testingSiteId}?${qs.toString()}`,
+          `/api/monthly_routes/routes/${routeId}/run_details/review/stops/${locationId}?${qs.toString()}`,
         )
-        setChangeDetailsByStopId((prev) => ({ ...prev, [testingSiteId]: data.changes }))
+        setChangeDetailsByStopId((prev) => ({ ...prev, [locationId]: data.changes }))
       } catch {
         setLoadErrors((prev) => ({
           ...prev,
-          [testingSiteId]: 'Could not load changes for this stop.',
+          [locationId]: 'Could not load changes for this stop.',
         }))
       } finally {
         setLoadingStopIds((prev) => {
           const next = new Set(prev)
-          next.delete(testingSiteId)
+          next.delete(locationId)
           return next
         })
       }
@@ -228,9 +228,9 @@ export default function RunDetailsFieldChangesTable({
   )
 
   useEffect(() => {
-    for (const testingSiteId of stopsNeedingFetch) {
-      if (loadingStopIds.has(testingSiteId)) continue
-      void loadStopDetail(testingSiteId)
+    for (const locationId of stopsNeedingFetch) {
+      if (loadingStopIds.has(locationId)) continue
+      void loadStopDetail(locationId)
     }
   }, [stopsNeedingFetch, loadingStopIds, loadStopDetail])
 
@@ -240,29 +240,29 @@ export default function RunDetailsFieldChangesTable({
     const errList: string[] = []
 
     for (const location of locations) {
-      const multiStop = location.stops.length > 1
-      for (const stop of location.stops) {
+      const multiStop = false
+      for (const stop of [location]) {
         if (!stop.has_field_edits) continue
         const card = buildStopCardFromLocation(location, stop, monthDate)
         const base = {
           location,
           stopNumber: stop.stop_number,
-          testingSiteId: stop.testing_site_id,
+          locationId: stop.location_id,
           locationLabel: location.location_label,
           siteLabel: card.siteLabel,
           showSiteMeta: multiStop && card.siteCount > 1,
         }
 
-        if (loadingStopIds.has(stop.testing_site_id)) {
+        if (loadingStopIds.has(stop.location_id)) {
           pending.push(base)
           continue
         }
-        const stopError = loadErrors[stop.testing_site_id]
+        const stopError = loadErrors[stop.location_id]
         if (stopError) {
           errList.push(stopError)
           continue
         }
-        const loaded = changeDetailsByStopId[stop.testing_site_id]
+        const loaded = changeDetailsByStopId[stop.location_id]
         if (!loaded) {
           pending.push(base)
           continue
@@ -332,7 +332,7 @@ export default function RunDetailsFieldChangesTable({
             </tr>
           ) : null}
           {readyStops.map((entry, index) => (
-            <FieldChangeStopPairRows key={entry.testingSiteId} entry={entry} pairIndex={index} />
+            <FieldChangeStopPairRows key={entry.locationId} entry={entry} pairIndex={index} />
           ))}
         </tbody>
       </Table>

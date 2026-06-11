@@ -1,4 +1,4 @@
-"""Populate ``monthly_key_bridge`` from legacy locations and v2 testing sites (before a monthly wipe).
+"""Populate ``monthly_key_bridge`` from flat ``MonthlyLocation`` rows (before a monthly wipe).
 
     python -m app.scripts.backfill_monthly_key_bridge --dry-run
     python -m app.scripts.backfill_monthly_key_bridge --execute
@@ -14,79 +14,40 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from flask import has_app_context
-from sqlalchemy.orm import joinedload
 
 from app import create_app, db
-from app.db_models import MonthlyKeyBridge, MonthlyRouteLocation, MonthlySite, MonthlyTestingSite
+from app.db_models import MonthlyKeyBridge, MonthlyLocation
 
 
 def _run_body(*, execute: bool, write_csv: bool) -> int:
-    legacy_rows = (
-        MonthlyRouteLocation.query.filter(MonthlyRouteLocation.key_id.isnot(None))
-        .order_by(MonthlyRouteLocation.id.asc())
-        .all()
-    )
-    testing_rows = (
-        MonthlyTestingSite.query.options(
-            joinedload(MonthlyTestingSite.monthly_site).joinedload(MonthlySite.legacy_location)
-        )
-        .filter(MonthlyTestingSite.key_id.isnot(None))
-        .order_by(MonthlyTestingSite.id.asc())
+    location_rows = (
+        MonthlyLocation.query.filter(MonthlyLocation.key_id.isnot(None))
+        .order_by(MonthlyLocation.id.asc())
         .all()
     )
 
     bridge_objs: list[MonthlyKeyBridge] = []
     now = datetime.now(timezone.utc)
 
-    for loc in legacy_rows:
+    for loc in location_rows:
         bridge_objs.append(
             MonthlyKeyBridge(
                 key_id=int(loc.key_id),
                 service_trade_site_location_id=loc.service_trade_site_location_id,
                 address_normalized=loc.address_normalized,
                 property_management_company_normalized=loc.property_management_company_normalized,
-                building_normalized=loc.building_normalized,
+                building_normalized=loc.label_normalized,
                 display_address=loc.display_address or loc.address,
-                legacy_monthly_route_location_id=int(loc.id),
-                legacy_testing_site_id=None,
+                legacy_monthly_route_location_id=loc.legacy_monthly_route_location_id,
+                legacy_testing_site_id=loc.legacy_monthly_testing_site_id,
                 keys_text=loc.keys,
                 barcode_text=loc.barcode,
-                source="legacy_location",
+                source="monthly_location",
                 exported_at=now,
             )
         )
 
-    for ts in testing_rows:
-        loc: MonthlyRouteLocation | None = None
-        if ts.monthly_site and ts.monthly_site.legacy_location:
-            loc = ts.monthly_site.legacy_location
-        bridge_objs.append(
-            MonthlyKeyBridge(
-                key_id=int(ts.key_id),
-                service_trade_site_location_id=(
-                    int(loc.service_trade_site_location_id)
-                    if loc and loc.service_trade_site_location_id is not None
-                    else None
-                ),
-                address_normalized=loc.address_normalized if loc else None,
-                property_management_company_normalized=(
-                    loc.property_management_company_normalized if loc else None
-                ),
-                building_normalized=loc.building_normalized if loc else None,
-                display_address=(loc.display_address or loc.address) if loc else None,
-                legacy_monthly_route_location_id=int(loc.id) if loc else None,
-                legacy_testing_site_id=int(ts.id),
-                keys_text=ts.keys,
-                barcode_text=ts.barcode,
-                source="testing_site",
-                exported_at=now,
-            )
-        )
-
-    print(
-        f"[monthly_key_bridge] Prepared {len(bridge_objs)} rows "
-        f"({len(legacy_rows)} legacy_location, {len(testing_rows)} testing_site)."
-    )
+    print(f"[monthly_key_bridge] Prepared {len(bridge_objs)} rows from monthly_location.")
 
     if write_csv:
         logs_dir = Path("logs")

@@ -33,9 +33,8 @@ function runDetailsPayload(monthIso: string): MonthlyRunDetailPayload {
       skipped_count: 0,
     },
     specialists_month: null,
-    billing_locations: [],
-    review_meta: { stop_count: 0 },
     locations: [],
+    review_meta: { stop_count: 0 },
   }
 }
 

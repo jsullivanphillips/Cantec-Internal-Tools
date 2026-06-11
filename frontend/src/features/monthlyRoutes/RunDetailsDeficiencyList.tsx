@@ -17,7 +17,7 @@ export default function RunDetailsDeficiencyList({
   modalContext,
   routeId,
   monthDate,
-  testingSiteId,
+  locationId,
   readOnly,
   onDeficiencyUpdated,
   compact,
@@ -27,10 +27,10 @@ export default function RunDetailsDeficiencyList({
   modalContext?: RunDetailsDeficiencyModalContext
   routeId: number
   monthDate: string
-  testingSiteId: number
+  locationId: number
   readOnly?: boolean
   onDeficiencyUpdated?: (
-    testingSiteId: number,
+    locationId: number,
     updated: MonthlyRunDetailDeficiencySummary,
   ) => void | Promise<void>
   compact?: boolean
@@ -90,11 +90,11 @@ export default function RunDetailsDeficiencyList({
         context={modalContext}
         routeId={routeId}
         monthDate={monthDate}
-        testingSiteId={testingSiteId}
+        locationId={locationId}
         readOnly={readOnly}
         onHide={() => setSelected(null)}
         onSaved={async (updated) => {
-          await onDeficiencyUpdated?.(testingSiteId, updated)
+          await onDeficiencyUpdated?.(locationId, updated)
           setSelected(null)
         }}
       />

@@ -4,7 +4,7 @@
  */
 import type {
   TechnicianWorksheetPayload,
-  TechnicianWorksheetStop,
+  TechnicianWorksheetLocation,
 } from './monthlyRoutesShared'
 
 export const PORTAL_WORKSHEET_DEMO_ROUTE_ID = 'demo'
@@ -13,10 +13,11 @@ export function isPortalWorksheetDemoRoute(routeId: string | undefined): boolean
   return (routeId || '').trim().toLowerCase() === PORTAL_WORKSHEET_DEMO_ROUTE_ID
 }
 
-function demoStops(monthIso: string): TechnicianWorksheetStop[] {
+function demoStops(monthIso: string): TechnicianWorksheetLocation[] {
   const base = {
     month_date: monthIso,
-    history_month_row_id: 0,
+    property_management_company: null,
+    location_month_row_id: 0,
     route_stop_order: null,
     session_route_stop_order: null,
     version_updated_at: null,
@@ -24,14 +25,11 @@ function demoStops(monthIso: string): TechnicianWorksheetStop[] {
   return [
     {
       ...base,
-      testing_site_id: 1001,
-      location_id: 501,
+      location_id: 1001,
       stop_number: 1,
       display_address: '1045 Pandora Ave',
       latitude: 48.4284,
       longitude: -123.3656,
-      building_name: 'Parkade Level P2',
-      property_management_company: 'Coast Property Mgmt',
       label: 'FACP — East stair',
       ring: 'R-12',
       key_number: 'KEY-4421',
@@ -57,14 +55,11 @@ function demoStops(monthIso: string): TechnicianWorksheetStop[] {
     },
     {
       ...base,
-      testing_site_id: 1002,
-      location_id: 502,
+      location_id: 1002,
       stop_number: 2,
       display_address: '1045 Pandora Ave',
       latitude: 48.4284,
       longitude: -123.3656,
-      building_name: 'Tower A',
-      property_management_company: 'Coast Property Mgmt',
       label: 'FACP — Roof mechanical',
       ring: 'R-12B',
       key_number: 'KEY-4421',
@@ -90,14 +85,11 @@ function demoStops(monthIso: string): TechnicianWorksheetStop[] {
     },
     {
       ...base,
-      testing_site_id: 1003,
-      location_id: 503,
+      location_id: 1003,
       stop_number: 3,
       display_address: '2200 Douglas St — Units 4-9',
       latitude: 48.4289,
       longitude: -123.3659,
-      building_name: null,
-      property_management_company: 'Quadra Properties',
       label: null,
       ring: 'R-3',
       key_number: 'KEY-1188',
@@ -122,14 +114,11 @@ function demoStops(monthIso: string): TechnicianWorksheetStop[] {
     },
     {
       ...base,
-      testing_site_id: 1004,
-      location_id: 504,
+      location_id: 1004,
       stop_number: 4,
       display_address: '891 Johnson St',
       latitude: 48.4268,
       longitude: -123.3677,
-      building_name: 'Parkade',
-      property_management_company: null,
       label: 'FACP only',
       ring: 'R-8',
       key_number: 'KEY-9002',
@@ -156,14 +145,11 @@ function demoStops(monthIso: string): TechnicianWorksheetStop[] {
     },
     {
       ...base,
-      testing_site_id: 1005,
-      location_id: 505,
+      location_id: 1005,
       stop_number: 5,
       display_address: '1450 Government St',
       latitude: 48.4198,
       longitude: -123.3692,
-      building_name: 'Annex',
-      property_management_company: 'BC Housing',
       label: null,
       ring: 'R-1',
       key_number: 'KEY-2200',
@@ -200,6 +186,7 @@ export function buildPortalWorksheetDemoPayload(monthIso: string): TechnicianWor
       weekday_iso: 0,
       week_occurrence: 1,
       label: 'R99 · 1st Monday',
+      technician_note: 'Demo note: stop 3 has an annual — allow extra time at the FACP.',
     },
     month_date: monthIso,
     run: {
@@ -215,15 +202,5 @@ export function buildPortalWorksheetDemoPayload(monthIso: string): TechnicianWor
     },
     rows: [],
     stops: demoStops(monthIso),
-    prior_month_pace: {
-      available: true,
-      prior_month_label: 'May',
-      comparison_day: 9,
-      as_of_time_label: '10:00 AM',
-      current_tested_count: 3,
-      prior_tested_count: 4,
-      delta: -1,
-      status: 'behind',
-    },
   }
 }

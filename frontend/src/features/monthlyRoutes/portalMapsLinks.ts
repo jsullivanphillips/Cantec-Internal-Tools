@@ -1,6 +1,6 @@
 import {
   normalizeMapCoordinates,
-  type TechnicianWorksheetStop,
+  type TechnicianWorksheetLocation,
 } from './monthlyRoutesShared'
 
 export type PortalMapsProvider = 'apple' | 'google'
@@ -26,7 +26,7 @@ export function setPortalMapsProvider(provider: PortalMapsProvider): void {
 }
 
 export function resolveStopMapsTarget(
-  stop: Pick<TechnicianWorksheetStop, 'display_address' | 'latitude' | 'longitude'>,
+  stop: Pick<TechnicianWorksheetLocation, 'display_address' | 'latitude' | 'longitude'>,
 ): PortalMapsTarget | null {
   const query = (stop.display_address || '').trim() || null
   const coords = normalizeMapCoordinates(stop.latitude, stop.longitude)
@@ -72,7 +72,7 @@ export function buildMapsUrl(
 
 export function openMapsLocation(
   provider: PortalMapsProvider,
-  stop: Pick<TechnicianWorksheetStop, 'display_address' | 'latitude' | 'longitude'>,
+  stop: Pick<TechnicianWorksheetLocation, 'display_address' | 'latitude' | 'longitude'>,
 ): boolean {
   const target = resolveStopMapsTarget(stop)
   if (!target) return false

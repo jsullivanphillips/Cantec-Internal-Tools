@@ -563,6 +563,8 @@ class MonthlyRoute(db.Model):
         unique=True,
         index=True,
     )
+    #: Office note shown to technicians on the portal worksheet header (route-level).
+    technician_note = db.Column(db.Text, nullable=True)
 
     created_at = db.Column(
         db.DateTime(timezone=True),
@@ -577,9 +579,9 @@ class MonthlyRoute(db.Model):
     )
 
     locations = db.relationship(
-        "MonthlyRouteLocation",
+        "MonthlyLocation",
         back_populates="monthly_route",
-        foreign_keys="MonthlyRouteLocation.monthly_route_id",
+        foreign_keys="MonthlyLocation.monthly_route_id",
     )
     route_comments = db.relationship(
         "MonthlyRouteComment",
@@ -720,52 +722,14 @@ class MonthlyRouteRun(db.Model):
     )
 
     monthly_route = db.relationship("MonthlyRoute", back_populates="runs")
-    history_rows = db.relationship(
-        "MonthlyRouteTestHistory",
+    location_month_rows = db.relationship(
+        "MonthlyLocationMonth",
         back_populates="run",
-        foreign_keys="MonthlyRouteTestHistory.run_id",
-    )
-    field_submission = db.relationship(
-        "MonthlyRouteRunFieldSubmission",
-        back_populates="run",
-        uselist=False,
-        cascade="all, delete-orphan",
+        foreign_keys="MonthlyLocationMonth.run_id",
     )
 
     def __repr__(self):
         return f"<MonthlyRouteRun route={self.monthly_route_id} month={self.month_date}>"
-
-
-class MonthlyRouteRunFieldSubmission(db.Model):
-    """Frozen technician worksheet at the latest portal field end (one row per run)."""
-
-    __tablename__ = "monthly_route_run_field_submission"
-    __table_args__ = (
-        db.UniqueConstraint("run_id", name="uq_monthly_route_run_field_submission_run_id"),
-    )
-
-    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
-    run_id = db.Column(
-        db.BigInteger,
-        db.ForeignKey("monthly_route_run.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    captured_at = db.Column(db.DateTime(timezone=True), nullable=False)
-    payload_json = db.Column(db.JSON, nullable=False)
-    created_at = db.Column(
-        db.DateTime(timezone=True),
-        server_default=db.func.now(),
-        nullable=False,
-    )
-    updated_at = db.Column(
-        db.DateTime(timezone=True),
-        server_default=db.func.now(),
-        onupdate=db.func.now(),
-        nullable=False,
-    )
-
-    run = db.relationship("MonthlyRouteRun", back_populates="field_submission")
 
 
 class MonthlyRouteSpecialistMonth(db.Model):
@@ -837,9 +801,9 @@ class MonitoringCompany(db.Model):
     )
 
     monthly_locations = db.relationship(
-        "MonthlyRouteLocation",
+        "MonthlyLocation",
         back_populates="monitoring_company",
-        foreign_keys="MonthlyRouteLocation.monitoring_company_id",
+        foreign_keys="MonthlyLocation.monitoring_company_id",
     )
     proposals_resulting = db.relationship(
         "MonitoringCompanyProposal",
@@ -888,42 +852,43 @@ class MonitoringCompanyProposal(db.Model):
         foreign_keys=[resulting_monitoring_company_id],
     )
     pending_locations = db.relationship(
-        "MonthlyRouteLocation",
+        "MonthlyLocation",
         back_populates="pending_monitoring_proposal",
-        foreign_keys="MonthlyRouteLocation.pending_monitoring_company_proposal_id",
+        foreign_keys="MonthlyLocation.pending_monitoring_company_proposal_id",
     )
 
 
-class MonthlyRouteLocation(db.Model):
+
+class MonthlyLocation(db.Model):
     """
-    Real monthly site (address/building). Optional ``service_trade_site_location_id``
-    maps this row to a ServiceTrade *building* location when you maintain one —
-    separate from the route-level pseudo-location on ``MonthlyRoute``.
+    Flat monthly library site: one row per physical stop on a route.
+    ``address`` is for navigation/maps; ``label`` is for display everywhere.
     """
 
-    __tablename__ = "monthly_route_location"
+    __tablename__ = "monthly_location"
     __table_args__ = (
         db.UniqueConstraint(
             "address_normalized",
             "property_management_company_normalized",
-            "building_normalized",
-            name="uq_monthly_route_location_address_company_building_normalized",
+            "label_normalized",
+            name="uq_monthly_location_address_pmc_label_normalized",
         ),
-        db.Index("ix_monthly_route_location_status_normalized", "status_normalized"),
+        db.Index("ix_monthly_location_status_normalized", "status_normalized"),
         db.CheckConstraint(
             "(monitoring_company_id IS NULL OR pending_monitoring_company_proposal_id IS NULL)",
-            name="ck_mrl_monitoring_company_xor_pending_proposal",
+            name="ck_ml_monitoring_company_xor_pending_proposal",
         ),
     )
 
     id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
     address = db.Column(db.String(255), nullable=False)
     address_normalized = db.Column(db.String(255), nullable=False)
+    label = db.Column(db.String(255), nullable=False)
+    label_normalized = db.Column(db.String(255), nullable=False)
+    building_name = db.Column(db.String(255), nullable=True)
 
     property_management_company = db.Column(db.String(255), nullable=True)
     property_management_company_normalized = db.Column(db.String(255), nullable=False, default="")
-    building = db.Column(db.String(255), nullable=True)
-    building_normalized = db.Column(db.String(255), nullable=False, default="")
     notes = db.Column(db.Text, nullable=True)
     billing_comments = db.Column(db.Text, nullable=True)
     barcode = db.Column(db.String(64), nullable=True)
@@ -947,10 +912,9 @@ class MonthlyRouteLocation(db.Model):
         nullable=True,
         index=True,
     )
-    #: 0-based stop index among locations on ``monthly_route_id``; NULL when not on a route.
     route_stop_order = db.Column(db.SmallInteger, nullable=True)
 
-    service_trade_site_location_id = db.Column(db.BigInteger, nullable=True, unique=True, index=True)
+    service_trade_site_location_id = db.Column(db.BigInteger, nullable=True, index=True)
 
     key_id = db.Column(
         db.BigInteger,
@@ -972,16 +936,23 @@ class MonthlyRouteLocation(db.Model):
         index=True,
     )
 
-    #: Technician proposal for ``annual_month`` pending office approval (canonical remains ``annual_month``).
     annual_month_pending = db.Column(db.String(64), nullable=True)
     annual_month_pending_submitted_at = db.Column(db.DateTime(timezone=True), nullable=True)
     annual_month_pending_submitted_by_name = db.Column(db.String(255), nullable=True)
 
     ring_detail = db.Column(db.Text, nullable=True)
     facp_detail = db.Column(db.Text, nullable=True)
+    panel = db.Column(db.Text, nullable=True)
+    panel_location = db.Column(db.String(255), nullable=True)
+    door_code = db.Column(db.String(255), nullable=True)
     testing_procedures = db.Column(db.Text, nullable=True)
-    #: Technician-facing sheet notes (distinct from library ``notes`` when office uses that separately).
     inspection_tech_notes = db.Column(db.Text, nullable=True)
+    monitoring_account_number = db.Column(db.String(64), nullable=True)
+    monitoring_password = db.Column(db.String(64), nullable=True)
+    monitoring_notes = db.Column(db.Text, nullable=True)
+
+    legacy_monthly_route_location_id = db.Column(db.BigInteger, nullable=True, index=True)
+    legacy_monthly_testing_site_id = db.Column(db.BigInteger, nullable=True, index=True)
 
     monthly_route = db.relationship(
         "MonthlyRoute",
@@ -990,7 +961,7 @@ class MonthlyRouteLocation(db.Model):
     )
     linked_key = db.relationship(
         "Key",
-        back_populates="monthly_route_locations",
+        back_populates="monthly_locations",
         foreign_keys=[key_id],
     )
     monitoring_company = db.relationship(
@@ -1016,186 +987,44 @@ class MonthlyRouteLocation(db.Model):
         nullable=False,
     )
 
-    monthly_history = db.relationship(
-        "MonthlyRouteTestHistory",
+    month_rows = db.relationship(
+        "MonthlyLocationMonth",
         back_populates="location",
         cascade="all, delete-orphan",
-        lazy="select",
+        lazy="dynamic",
     )
     comments = db.relationship(
-        "MonthlyRouteLocationComment",
+        "MonthlyLocationComment",
         back_populates="location",
-        cascade="all, delete-orphan",
-        lazy="dynamic",
-    )
-    inspection_revisions = db.relationship(
-        "MonthlyRouteLocationInspectionRevision",
-        back_populates="location",
-        cascade="all, delete-orphan",
-        lazy="dynamic",
-    )
-    monthly_site = db.relationship(
-        "MonthlySite",
-        back_populates="legacy_location",
-        foreign_keys="MonthlySite.legacy_monthly_route_location_id",
-        uselist=False,
-    )
-
-
-class MonthlySite(db.Model):
-    """
-    V2 monthly billing anchor, bridged to legacy ``MonthlyRouteLocation`` until cutover completes.
-
-    Testing stops and per-stop pricing live on ``MonthlyTestingSite`` children.
-    """
-
-    __tablename__ = "monthly_site"
-    __table_args__ = (
-        db.UniqueConstraint(
-            "legacy_monthly_route_location_id",
-            name="uq_monthly_site_legacy_monthly_route_location_id",
-        ),
-    )
-
-    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
-    legacy_monthly_route_location_id = db.Column(
-        db.BigInteger,
-        db.ForeignKey("monthly_route_location.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
-
-    created_at = db.Column(
-        db.DateTime(timezone=True),
-        server_default=db.func.now(),
-        nullable=False,
-    )
-    updated_at = db.Column(
-        db.DateTime(timezone=True),
-        server_default=db.func.now(),
-        onupdate=db.func.now(),
-        nullable=False,
-    )
-
-    legacy_location = db.relationship(
-        "MonthlyRouteLocation",
-        back_populates="monthly_site",
-        foreign_keys=[legacy_monthly_route_location_id],
-    )
-    testing_sites = db.relationship(
-        "MonthlyTestingSite",
-        back_populates="monthly_site",
-        cascade="all, delete-orphan",
-        order_by="MonthlyTestingSite.sort_order",
-    )
-
-
-class MonthlyTestingSite(db.Model):
-    """V2 physical testing stop; owns per-stop display fields, pricing, procedures, and ``key_id``."""
-
-    __tablename__ = "monthly_testing_site"
-    __table_args__ = (
-        db.UniqueConstraint(
-            "monthly_site_id",
-            "sort_order",
-            name="uq_monthly_testing_site_site_sort_order",
-        ),
-        db.Index("ix_monthly_testing_site_monthly_site_id", "monthly_site_id"),
-        db.Index("ix_monthly_testing_site_key_id", "key_id"),
-        db.Index("ix_monthly_testing_site_monitoring_company_id", "monitoring_company_id"),
-    )
-
-    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
-    monthly_site_id = db.Column(
-        db.BigInteger,
-        db.ForeignKey("monthly_site.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    sort_order = db.Column(db.SmallInteger, nullable=False, default=0)
-    label = db.Column(db.String(255), nullable=True)
-    price_per_month = db.Column(db.Numeric(10, 2), nullable=True)
-    ring_detail = db.Column(db.Text, nullable=True)
-    #: Fire alarm control panel (legacy column name ``facp_detail`` retained for imports).
-    facp_detail = db.Column(db.Text, nullable=True)
-    panel = db.Column(db.Text, nullable=True)
-    panel_location = db.Column(db.String(255), nullable=True)
-    door_code = db.Column(db.String(255), nullable=True)
-    annual_month = db.Column(db.String(32), nullable=True)
-    property_management_company = db.Column(db.String(255), nullable=True)
-    building_name = db.Column(db.String(255), nullable=True)
-    testing_procedures = db.Column(db.Text, nullable=True)
-    inspection_tech_notes = db.Column(db.Text, nullable=True)
-
-    key_id = db.Column(
-        db.BigInteger,
-        db.ForeignKey("keys.id", ondelete="SET NULL"),
-        nullable=True,
-    )
-    keys = db.Column(db.Text, nullable=True)
-    barcode = db.Column(db.String(64), nullable=True)
-    monitoring_company_id = db.Column(
-        db.BigInteger,
-        db.ForeignKey("monitoring_company.id", ondelete="SET NULL"),
-        nullable=True,
-    )
-    monitoring_account_number = db.Column(db.String(64), nullable=True)
-    monitoring_password = db.Column(db.String(64), nullable=True)
-    monitoring_notes = db.Column(db.Text, nullable=True)
-
-    created_at = db.Column(
-        db.DateTime(timezone=True),
-        server_default=db.func.now(),
-        nullable=False,
-    )
-    updated_at = db.Column(
-        db.DateTime(timezone=True),
-        server_default=db.func.now(),
-        onupdate=db.func.now(),
-        nullable=False,
-    )
-
-    monthly_site = db.relationship("MonthlySite", back_populates="testing_sites")
-    linked_key = db.relationship(
-        "Key",
-        back_populates="monthly_testing_sites",
-        foreign_keys=[key_id],
-    )
-    monitoring_company = db.relationship(
-        "MonitoringCompany",
-        foreign_keys=[monitoring_company_id],
-    )
-    month_rows = db.relationship(
-        "MonthlyTestingSiteMonth",
-        back_populates="testing_site",
         cascade="all, delete-orphan",
         lazy="dynamic",
     )
     deficiencies = db.relationship(
-        "MonthlyTestingSiteDeficiency",
-        back_populates="testing_site",
+        "MonthlyLocationDeficiency",
+        back_populates="location",
         cascade="all, delete-orphan",
         lazy="dynamic",
     )
 
 
-class MonthlyTestingSiteMonth(db.Model):
-    """V2 per-calendar-month snapshot for a testing site (parallel to ``MonthlyRouteTestHistory`` grain)."""
+class MonthlyLocationMonth(db.Model):
+    """Per-calendar-month snapshot for a monthly location (worksheet + billing grain)."""
 
-    __tablename__ = "monthly_testing_site_month"
+    __tablename__ = "monthly_location_month"
     __table_args__ = (
         db.UniqueConstraint(
-            "monthly_testing_site_id",
+            "monthly_location_id",
             "month_date",
-            name="uq_mtsm_testing_site_month",
+            name="uq_mlm_location_month",
         ),
-        db.Index("ix_mtsm_month_date", "month_date"),
-        db.Index("ix_mtsm_run_id", "run_id"),
+        db.Index("ix_mlm_month_date", "month_date"),
+        db.Index("ix_mlm_run_id", "run_id"),
     )
 
     id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
-    monthly_testing_site_id = db.Column(
+    monthly_location_id = db.Column(
         db.BigInteger,
-        db.ForeignKey("monthly_testing_site.id", ondelete="CASCADE"),
+        db.ForeignKey("monthly_location.id", ondelete="CASCADE"),
         nullable=False,
     )
     month_date = db.Column(db.Date, nullable=False)
@@ -1219,28 +1048,21 @@ class MonthlyTestingSiteMonth(db.Model):
     panel_location = db.Column(db.String(255), nullable=True)
     door_code = db.Column(db.String(255), nullable=True)
     property_management_company = db.Column(db.String(255), nullable=True)
-    building_name = db.Column(db.String(255), nullable=True)
     ring = db.Column(db.String(255), nullable=True)
     key_number = db.Column(db.String(255), nullable=True)
     annual_month = db.Column(db.String(32), nullable=True)
     testing_procedures = db.Column(db.Text, nullable=True)
     inspection_tech_notes = db.Column(db.Text, nullable=True)
-    #: This-run-only notes (portal); never seeded from prior month or mirrored to library master.
     run_comments = db.Column(db.Text, nullable=True)
-    #: Office-only instruction for technicians on this run month (prep); shown in portal when set.
     office_job_comment = db.Column(db.Text, nullable=True)
-    #: Office flagged this stop for technician attention until a test outcome is recorded.
     office_attention = db.Column(db.Boolean, nullable=False, default=False)
-    #: Office dismissed the prior-month out-of-order prep hint for this stop-month row.
     prior_month_out_of_order_dismissed = db.Column(db.Boolean, nullable=False, default=False)
     sheet_time_in_raw = db.Column(db.String(64), nullable=True)
     sheet_time_out_raw = db.Column(db.String(64), nullable=True)
-    #: Portal test result: all_good, passed_with_problems, failed, skipped.
     test_outcome = db.Column(db.String(32), nullable=True)
     skip_category = db.Column(db.String(64), nullable=True)
     skip_note = db.Column(db.Text, nullable=True)
     confirmed_no_deficiencies = db.Column(db.Boolean, nullable=False, default=False)
-    #: Run-month monitoring company label (free text; may differ from library FK).
     monitoring_company_name = db.Column(db.String(255), nullable=True)
     monitoring_company_id = db.Column(
         db.BigInteger,
@@ -1251,6 +1073,7 @@ class MonthlyTestingSiteMonth(db.Model):
     monitoring_account_number = db.Column(db.String(64), nullable=True)
     monitoring_password = db.Column(db.String(64), nullable=True)
     monitoring_notes = db.Column(db.Text, nullable=True)
+    billing_status = db.Column(db.String(16), nullable=True)
 
     created_at = db.Column(
         db.DateTime(timezone=True),
@@ -1264,20 +1087,21 @@ class MonthlyTestingSiteMonth(db.Model):
         nullable=False,
     )
 
-    testing_site = db.relationship("MonthlyTestingSite", back_populates="month_rows")
+    location = db.relationship("MonthlyLocation", back_populates="month_rows")
     monitoring_company = db.relationship(
         "MonitoringCompany",
         foreign_keys=[monitoring_company_id],
     )
     clock_events = db.relationship(
         "MonthlyStopClockEvent",
-        back_populates="stop_month",
+        back_populates="location_month",
         cascade="all, delete-orphan",
         lazy="dynamic",
         order_by="MonthlyStopClockEvent.sort_order",
     )
     run = db.relationship(
         "MonthlyRouteRun",
+        back_populates="location_month_rows",
         foreign_keys=[run_id],
     )
     test_monthly_route = db.relationship(
@@ -1287,17 +1111,17 @@ class MonthlyTestingSiteMonth(db.Model):
 
 
 class MonthlyStopClockEvent(db.Model):
-    """One clock-in / clock-out pair for a portal worksheet stop visit."""
+    """One clock-in / clock-out pair for a portal worksheet location visit."""
 
     __tablename__ = "monthly_stop_clock_event"
     __table_args__ = (
-        db.Index("ix_monthly_stop_clock_event_mtsm_id", "monthly_testing_site_month_id"),
+        db.Index("ix_monthly_stop_clock_event_mlm_id", "monthly_location_month_id"),
     )
 
     id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
-    monthly_testing_site_month_id = db.Column(
+    monthly_location_month_id = db.Column(
         db.BigInteger,
-        db.ForeignKey("monthly_testing_site_month.id", ondelete="CASCADE"),
+        db.ForeignKey("monthly_location_month.id", ondelete="CASCADE"),
         nullable=False,
     )
     sort_order = db.Column(db.SmallInteger, nullable=False, default=0)
@@ -1317,22 +1141,22 @@ class MonthlyStopClockEvent(db.Model):
         nullable=False,
     )
 
-    stop_month = db.relationship("MonthlyTestingSiteMonth", back_populates="clock_events")
+    location_month = db.relationship("MonthlyLocationMonth", back_populates="clock_events")
 
 
-class MonthlyTestingSiteDeficiency(db.Model):
-    """App-only deficiency tied to a testing stop; persists across runs."""
+class MonthlyLocationDeficiency(db.Model):
+    """App-only deficiency tied to a monthly location; persists across runs."""
 
-    __tablename__ = "monthly_testing_site_deficiency"
+    __tablename__ = "monthly_location_deficiency"
     __table_args__ = (
-        db.Index("ix_monthly_testing_site_deficiency_site_id", "monthly_testing_site_id"),
-        db.Index("ix_monthly_testing_site_deficiency_created_run_id", "created_run_id"),
+        db.Index("ix_monthly_location_deficiency_location_id", "monthly_location_id"),
+        db.Index("ix_monthly_location_deficiency_created_run_id", "created_run_id"),
     )
 
     id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
-    monthly_testing_site_id = db.Column(
+    monthly_location_id = db.Column(
         db.BigInteger,
-        db.ForeignKey("monthly_testing_site.id", ondelete="CASCADE"),
+        db.ForeignKey("monthly_location.id", ondelete="CASCADE"),
         nullable=False,
     )
     created_run_id = db.Column(
@@ -1361,15 +1185,129 @@ class MonthlyTestingSiteDeficiency(db.Model):
         nullable=False,
     )
 
-    testing_site = db.relationship("MonthlyTestingSite", back_populates="deficiencies")
+    location = db.relationship("MonthlyLocation", back_populates="deficiencies")
     created_run = db.relationship("MonthlyRouteRun", foreign_keys=[created_run_id])
+
+
+class MonthlyMigrationConflict(db.Model):
+    """Rows that could not be migrated automatically; require manual intervention."""
+
+    __tablename__ = "monthly_migration_conflict"
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    legacy_monthly_route_location_id = db.Column(db.BigInteger, nullable=True, index=True)
+    legacy_monthly_testing_site_id = db.Column(db.BigInteger, nullable=True, index=True)
+    intended_address = db.Column(db.String(255), nullable=True)
+    intended_label = db.Column(db.String(255), nullable=True)
+    intended_pmc = db.Column(db.String(255), nullable=True)
+    reason = db.Column(db.String(255), nullable=False)
+    detail = db.Column(db.Text, nullable=True)
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        nullable=False,
+    )
+
+
+class MonthlyLocationQuarterBilled(db.Model):
+    """Billing team tracker: location invoiced for a calendar quarter."""
+
+    __tablename__ = "monthly_location_quarter_billed"
+    __table_args__ = (
+        db.UniqueConstraint(
+            "location_id",
+            "year",
+            "quarter",
+            name="uq_monthly_location_quarter_billed_loc_year_q",
+        ),
+        db.Index("ix_monthly_location_quarter_billed_year_quarter", "year", "quarter"),
+    )
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    location_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monthly_location.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    year = db.Column(db.SmallInteger, nullable=False)
+    quarter = db.Column(db.SmallInteger, nullable=False)
+    billed_at = db.Column(db.DateTime(timezone=True), nullable=False)
+    billed_by_username = db.Column(db.String(255), nullable=True)
+
+    location = db.relationship("MonthlyLocation", backref="quarter_billed_flags")
+
+
+class MonthlyRouteWorksheetAuditEvent(db.Model):
+    """Append-only field-level audit trail for technician worksheet edits."""
+
+    __tablename__ = "monthly_route_worksheet_audit_event"
+    __table_args__ = (
+        db.Index(
+            "ix_mr_worksheet_audit_route_month",
+            "monthly_route_id",
+            "month_date",
+            "changed_at",
+        ),
+        db.Index(
+            "ix_mr_worksheet_audit_location_month",
+            "location_id",
+            "month_date",
+            "changed_at",
+        ),
+        db.Index(
+            "ix_mr_worksheet_audit_location_month_row",
+            "location_month_row_id",
+            "field_name",
+            "changed_at",
+        ),
+        db.UniqueConstraint("client_mutation_id", name="uq_mr_worksheet_audit_client_mutation"),
+    )
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    monthly_route_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monthly_route.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    location_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monthly_location.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    location_month_row_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monthly_location_month.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    month_date = db.Column(db.Date, nullable=False, index=True)
+    field_name = db.Column(db.String(64), nullable=False)
+    old_value = db.Column(db.JSON, nullable=True)
+    new_value = db.Column(db.JSON, nullable=True)
+    source = db.Column(db.String(32), nullable=False, server_default="technician_app")
+    changed_by_username = db.Column(db.String(255), nullable=True)
+    changed_by_name = db.Column(db.String(255), nullable=True)
+    client_mutation_id = db.Column(db.String(64), nullable=True)
+    changed_at_client = db.Column(db.DateTime(timezone=True), nullable=True)
+    changed_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        nullable=False,
+    )
+
+    location_month_row = db.relationship("MonthlyLocationMonth")
+    location = db.relationship("MonthlyLocation")
+    route = db.relationship("MonthlyRoute")
 
 
 class MonthlyKeyBridge(db.Model):
     """
     Archive of key-to-site associations before monthly location wipes.
 
-    Does not FK to ``monthly_route_location`` / ``monthly_testing_site``—legacy ids are snapshots only.
+    Does not FK to monthly library rows — legacy ids are snapshots only.
     """
 
     __tablename__ = "monthly_key_bridge"
@@ -1404,7 +1342,6 @@ class MonthlyKeyBridge(db.Model):
     legacy_testing_site_id = db.Column(db.BigInteger, nullable=True)
     keys_text = db.Column(db.Text, nullable=True)
     barcode_text = db.Column(db.String(64), nullable=True)
-    #: legacy_location | testing_site
     source = db.Column(db.String(32), nullable=False)
     exported_at = db.Column(
         db.DateTime(timezone=True),
@@ -1415,251 +1352,15 @@ class MonthlyKeyBridge(db.Model):
     key = db.relationship("Key", back_populates="monthly_key_bridges")
 
 
-class MonthlyRouteLocationInspectionRevision(db.Model):
-    """
-    Append-only audit log for technician/office edits to inspection sheet fields.
-    Do not UPDATE or DELETE rows in application code (insert only); migrations exceptional.
-    """
+class MonthlyLocationComment(db.Model):
+    """Staff-authored notes on a monthly library location."""
 
-    __tablename__ = "monthly_route_location_inspection_revision"
-    __table_args__ = (
-        db.Index(
-            "ix_monthly_rloc_ins_rev_loc_field_edited",
-            "location_id",
-            "field_key",
-            "edited_at",
-        ),
-        db.Index("ix_monthly_rloc_ins_rev_loc_edited", "location_id", "edited_at"),
-    )
+    __tablename__ = "monthly_location_comment"
 
     id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
     location_id = db.Column(
         db.BigInteger,
-        db.ForeignKey("monthly_route_location.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    field_key = db.Column(db.String(64), nullable=False)
-    value_previous = db.Column(JSONB, nullable=True)
-    value_new = db.Column(JSONB, nullable=True)
-    edited_at = db.Column(
-        db.DateTime(timezone=True),
-        server_default=db.func.now(),
-        nullable=False,
-    )
-    edited_at_client = db.Column(db.DateTime(timezone=True), nullable=True)
-    actor_name = db.Column(db.String(255), nullable=False)
-    #: technician | office | system | import
-    actor_role = db.Column(db.String(32), nullable=False)
-    route_session_id = db.Column(db.BigInteger, nullable=True, index=True)
-    client_mutation_id = db.Column(db.String(36), nullable=True, unique=True)
-    restored_from_revision_id = db.Column(
-        db.BigInteger,
-        db.ForeignKey("monthly_route_location_inspection_revision.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
-
-    location = db.relationship("MonthlyRouteLocation", back_populates="inspection_revisions")
-
-
-class MonthlyRouteTestHistory(db.Model):
-    __tablename__ = "monthly_route_test_history"
-    __table_args__ = (
-        db.UniqueConstraint("location_id", "month_date", name="uq_monthly_route_test_history_location_month"),
-        db.Index("ix_monthly_route_test_history_month_date", "month_date"),
-        db.Index("ix_monthly_route_test_history_result_status", "result_status"),
-    )
-
-    id = db.Column(db.BigInteger, primary_key=True)
-    location_id = db.Column(
-        db.BigInteger,
-        db.ForeignKey("monthly_route_location.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    month_date = db.Column(db.Date, nullable=False)
-    #: Nullable: NULL means "not yet tested" for rows materialized when a technician
-    #: opens the worksheet; CSV imports and worksheet edits set this to "tested" or "skipped".
-    result_status = db.Column(db.String(32), nullable=True)
-    skip_reason = db.Column(db.String(255), nullable=True)
-    source_value_raw = db.Column(db.String(255), nullable=True)
-    #: Monthly route the stop belonged to when this month cell was recorded (CSV import / UI truth).
-    #: Differs from ``MonthlyRouteLocation.monthly_route_id`` after reassignment.
-    test_monthly_route_id = db.Column(
-        db.BigInteger,
-        db.ForeignKey("monthly_route.id", ondelete="SET NULL"),
-        nullable=True,
-    )
-    #: 0-based index from the sheet ``#`` column (CSV import). Historical per
-    #: ``(location, month)``; technician worksheet sorts by this when set, else
-    #: falls back to ``MonthlyRouteLocation.route_stop_order``.
-    session_route_stop_order = db.Column(db.SmallInteger, nullable=True)
-
-    #: Run-scoped snapshot fields. NULL until set during a run; copied forward to
-    #: the next month's row on materialize. Reads always come from these columns
-    #: so old months stay faithful to what was true at that time.
-    #: Run-scoped FACP snapshot (often multi-line; mirrors ``MonthlyRouteLocation.facp_detail``).
-    facp = db.Column(db.Text, nullable=True)
-    ring = db.Column(db.String(255), nullable=True)
-    key_number = db.Column(db.String(255), nullable=True)
-    annual_month = db.Column(db.String(32), nullable=True)
-    #: Sheet ``Testing Procedures`` snapshot for this month (run-scoped, like FACP).
-    testing_procedures = db.Column(db.Text, nullable=True)
-    #: Sheet ``Tech Comments & Notes`` snapshot for this month.
-    inspection_tech_notes = db.Column(db.Text, nullable=True)
-    #: Technician worksheet ``Time In`` raw value for this route-month row.
-    sheet_time_in_raw = db.Column(db.String(64), nullable=True)
-    #: Technician worksheet ``Time Out`` raw value for this route-month row.
-    sheet_time_out_raw = db.Column(db.String(64), nullable=True)
-    #: Office processor billing decision: bill, do_not_bill, unset, legacy.
-    billing_status = db.Column(db.String(16), nullable=True)
-    #: Free-form monitoring block from the technician sheet CSV (signals, acct #, etc.).
-    #: The worksheet shows this when set; otherwise falls back to ``MonitoringCompany`` on the location.
-    monitoring_notes = db.Column(db.Text, nullable=True)
-
-    #: FK to the parent ``MonthlyRouteRun`` (one row per (route, month_date)).
-    #: Nullable because legacy rows may not yet be linked, or the route attribution may be ambiguous.
-    run_id = db.Column(
-        db.BigInteger,
-        db.ForeignKey("monthly_route_run.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
-
-    created_at = db.Column(
-        db.DateTime(timezone=True),
-        server_default=db.func.now(),
-        nullable=False,
-    )
-    updated_at = db.Column(
-        db.DateTime(timezone=True),
-        server_default=db.func.now(),
-        onupdate=db.func.now(),
-        nullable=False,
-    )
-
-    location = db.relationship("MonthlyRouteLocation", back_populates="monthly_history")
-    test_monthly_route = db.relationship(
-        "MonthlyRoute",
-        foreign_keys=[test_monthly_route_id],
-    )
-    run = db.relationship(
-        "MonthlyRouteRun",
-        back_populates="history_rows",
-        foreign_keys=[run_id],
-    )
-    worksheet_audit_events = db.relationship(
-        "MonthlyRouteWorksheetAuditEvent",
-        back_populates="history_row",
-        cascade="all, delete-orphan",
-        lazy="dynamic",
-    )
-
-
-class MonthlyLocationQuarterBilled(db.Model):
-    """Billing team tracker: address invoiced for a calendar quarter (separate from processor ``billing_status``)."""
-
-    __tablename__ = "monthly_location_quarter_billed"
-    __table_args__ = (
-        db.UniqueConstraint(
-            "location_id",
-            "year",
-            "quarter",
-            name="uq_monthly_location_quarter_billed_loc_year_q",
-        ),
-        db.Index("ix_monthly_location_quarter_billed_year_quarter", "year", "quarter"),
-    )
-
-    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
-    location_id = db.Column(
-        db.BigInteger,
-        db.ForeignKey("monthly_route_location.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    year = db.Column(db.SmallInteger, nullable=False)
-    quarter = db.Column(db.SmallInteger, nullable=False)
-    billed_at = db.Column(db.DateTime(timezone=True), nullable=False)
-    billed_by_username = db.Column(db.String(255), nullable=True)
-
-    location = db.relationship("MonthlyRouteLocation", backref="quarter_billed_flags")
-
-
-class MonthlyRouteWorksheetAuditEvent(db.Model):
-    """Append-only field-level audit trail for technician worksheet edits."""
-
-    __tablename__ = "monthly_route_worksheet_audit_event"
-    __table_args__ = (
-        db.Index(
-            "ix_mr_worksheet_audit_route_month",
-            "monthly_route_id",
-            "month_date",
-            "changed_at",
-        ),
-        db.Index(
-            "ix_mr_worksheet_audit_location_month",
-            "location_id",
-            "month_date",
-            "changed_at",
-        ),
-        db.Index(
-            "ix_mr_worksheet_audit_history_field",
-            "history_row_id",
-            "field_name",
-            "changed_at",
-        ),
-        db.UniqueConstraint("client_mutation_id", name="uq_mr_worksheet_audit_client_mutation"),
-    )
-
-    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
-    monthly_route_id = db.Column(
-        db.BigInteger,
-        db.ForeignKey("monthly_route.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    location_id = db.Column(
-        db.BigInteger,
-        db.ForeignKey("monthly_route_location.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    history_row_id = db.Column(
-        db.BigInteger,
-        db.ForeignKey("monthly_route_test_history.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    month_date = db.Column(db.Date, nullable=False, index=True)
-    field_name = db.Column(db.String(64), nullable=False)
-    old_value = db.Column(db.JSON, nullable=True)
-    new_value = db.Column(db.JSON, nullable=True)
-    source = db.Column(db.String(32), nullable=False, server_default="technician_app")
-    changed_by_username = db.Column(db.String(255), nullable=True)
-    changed_by_name = db.Column(db.String(255), nullable=True)
-    client_mutation_id = db.Column(db.String(64), nullable=True)
-    changed_at_client = db.Column(db.DateTime(timezone=True), nullable=True)
-    changed_at = db.Column(
-        db.DateTime(timezone=True),
-        server_default=db.func.now(),
-        nullable=False,
-    )
-
-    history_row = db.relationship("MonthlyRouteTestHistory", back_populates="worksheet_audit_events")
-    location = db.relationship("MonthlyRouteLocation")
-    route = db.relationship("MonthlyRoute")
-
-
-class MonthlyRouteLocationComment(db.Model):
-    """Staff-authored notes on a monthly library location (separate from legacy ``notes``)."""
-
-    __tablename__ = "monthly_route_location_comment"
-
-    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
-    location_id = db.Column(
-        db.BigInteger,
-        db.ForeignKey("monthly_route_location.id", ondelete="CASCADE"),
+        db.ForeignKey("monthly_location.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -1678,25 +1379,25 @@ class MonthlyRouteLocationComment(db.Model):
         nullable=False,
     )
 
-    location = db.relationship("MonthlyRouteLocation", back_populates="comments")
+    location = db.relationship("MonthlyLocation", back_populates="comments")
 
 
 LOCATION_TICKET_STATUSES = ("open", "email_sent", "resolved")
 
 
 class MonthlyLocationTicket(db.Model):
-    """Office follow-up task for a billing location (keys, monitoring email, etc.)."""
+    """Office follow-up task for a monthly location (keys, monitoring email, etc.)."""
 
     __tablename__ = "monthly_location_ticket"
     __table_args__ = (
-        db.Index("ix_monthly_location_ticket_location_id", "monthly_route_location_id"),
+        db.Index("ix_monthly_location_ticket_location_id", "monthly_location_id"),
         db.Index("ix_monthly_location_ticket_status", "status"),
     )
 
     id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
-    monthly_route_location_id = db.Column(
+    monthly_location_id = db.Column(
         db.BigInteger,
-        db.ForeignKey("monthly_route_location.id", ondelete="CASCADE"),
+        db.ForeignKey("monthly_location.id", ondelete="CASCADE"),
         nullable=False,
     )
     run_id = db.Column(
@@ -1722,7 +1423,7 @@ class MonthlyLocationTicket(db.Model):
         nullable=False,
     )
 
-    location = db.relationship("MonthlyRouteLocation", backref=db.backref("tickets", lazy="dynamic"))
+    location = db.relationship("MonthlyLocation", backref=db.backref("tickets", lazy="dynamic"))
     run = db.relationship("MonthlyRouteRun")
     events = db.relationship(
         "MonthlyLocationTicketEvent",
@@ -1858,16 +1559,10 @@ class Key(db.Model):
         order_by="desc(KeyStatus.inserted_at)",  # newest first
     )
 
-    monthly_route_locations = relationship(
-        "MonthlyRouteLocation",
+    monthly_locations = relationship(
+        "MonthlyLocation",
         back_populates="linked_key",
-        foreign_keys="MonthlyRouteLocation.key_id",
-    )
-
-    monthly_testing_sites = relationship(
-        "MonthlyTestingSite",
-        back_populates="linked_key",
-        foreign_keys="MonthlyTestingSite.key_id",
+        foreign_keys="MonthlyLocation.key_id",
     )
 
     monthly_key_bridges = relationship(

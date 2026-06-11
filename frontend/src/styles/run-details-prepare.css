@@ -934,3 +934,23 @@
   min-height: 1.6rem;
   padding: 0.25rem 0.45rem;
 }
+
+.monthly-run-detail-page .run-details-prepare-annual-schedule {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.monthly-run-detail-page .run-details-prepare-annual-schedule__pill {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fbbf24;
+  font-weight: 500;
+}
+
+.monthly-run-detail-page .run-details-prepare-annual-schedule__link {
+  font-size: 0.6875rem;
+  line-height: 1.2;
+  padding: 0.15rem 0.45rem;
+}

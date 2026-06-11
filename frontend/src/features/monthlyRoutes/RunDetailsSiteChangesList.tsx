@@ -20,7 +20,7 @@ export default function RunDetailsSiteChangesList({
   filter: RunReviewFilter
   onFilterChange: (filter: RunReviewFilter) => void
   routeId: number
-  onCardDetailLoaded: (testingSiteId: number, changes: NotableChangeItem[]) => void
+  onCardDetailLoaded: (locationId: number, changes: NotableChangeItem[]) => void
 }) {
   const filtered = useMemo(
     () => filterRunReviewCards(cards, filter, monthDate),
@@ -46,7 +46,7 @@ export default function RunDetailsSiteChangesList({
           <ul className="monthly-run-detail-changes__list list-unstyled mb-0">
             {flatList.map((card) => (
               <li
-                key={`${card.locationId}:${card.stop.testing_site_id}`}
+                key={`${card.locationId}:${card.stop.location_id}`}
                 id={runReviewStopDomId(card)}
               >
                 <RunDetailsSiteChangeCard

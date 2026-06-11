@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { TechnicianWorksheetStop } from './monthlyRoutesShared'
+import type { TechnicianWorksheetLocation } from './monthlyRoutesShared'
 import {
   evaluatePortalEndRunPreflight,
   projectedOpenClockStops,
@@ -7,35 +7,33 @@ import {
 } from './portalEndRunPreflight'
 import type { PortalWorkflowQueueItem } from './worksheetOfflineStore'
 
-function baseStop(overrides: Partial<TechnicianWorksheetStop> = {}): TechnicianWorksheetStop {
+function baseStop(overrides: Partial<TechnicianWorksheetLocation> = {}): TechnicianWorksheetLocation {
   return {
-    testing_site_id: 1,
     location_id: 1,
-    stop_number: 1,
-    display_address: '100 Main St',
+    location_month_row_id: 0,
     month_date: '2026-05-01',
-    history_month_row_id: 0,
-    route_stop_order: null,
-    session_route_stop_order: null,
-    version_updated_at: null,
-    building_name: null,
-    property_management_company: null,
+    display_address: '123 Main St',
     label: null,
+    property_management_company: null,
+    panel: null,
+    panel_location: null,
+    door_code: null,
     ring: null,
     key_number: null,
     annual_month: null,
-    door_code: null,
-    panel: null,
-    panel_location: null,
     monitoring_company: null,
     monitoring_notes: null,
+    result_status: null,
+    skip_reason: null,
     testing_procedures: null,
     inspection_tech_notes: null,
     run_comments: null,
     time_in: null,
     time_out: null,
-    result_status: null,
-    skip_reason: null,
+    route_stop_order: null,
+    session_route_stop_order: null,
+    stop_number: 1,
+    version_updated_at: null,
     ...overrides,
   }
 }
@@ -45,13 +43,13 @@ const MONTH = '2026-05-01'
 
 describe('stopsMissingTestOutcome', () => {
   it('includes stops without test_outcome', () => {
-    const stops = [baseStop({ testing_site_id: 1 }), baseStop({ testing_site_id: 2, test_outcome: 'all_good' })]
+    const stops = [baseStop({ location_id: 1 }), baseStop({ location_id: 2, test_outcome: 'all_good' })]
     expect(stopsMissingTestOutcome(stops, MONTH)).toHaveLength(1)
-    expect(stopsMissingTestOutcome(stops, MONTH)[0].testing_site_id).toBe(1)
+    expect(stopsMissingTestOutcome(stops, MONTH)[0].location_id).toBe(1)
   })
 
   it('excludes annual-month stops for the run month', () => {
-    const stops = [baseStop({ testing_site_id: 1, annual_month: 'May' })]
+    const stops = [baseStop({ location_id: 1, annual_month: 'May' })]
     expect(stopsMissingTestOutcome(stops, MONTH)).toHaveLength(0)
   })
 })
@@ -63,14 +61,14 @@ describe('projectedOpenClockStops', () => {
   })
 
   it('clears open clock when clock_out is queued', () => {
-    const stops = [baseStop({ testing_site_id: 42, time_in: '9:00 AM', time_out: null })]
+    const stops = [baseStop({ location_id: 42, time_in: '9:00 AM', time_out: null })]
     const queue: PortalWorkflowQueueItem[] = [
       {
         id: 'q1',
         action: 'clock_out',
         routeId: ROUTE_ID,
         monthIso: MONTH,
-        testingSiteId: 42,
+        locationId: 42,
         payload: { time_out: '10:00 AM' },
         attempts: 0,
         nextAttemptAt: 0,
@@ -84,15 +82,15 @@ describe('projectedOpenClockStops', () => {
 describe('evaluatePortalEndRunPreflight', () => {
   it('prioritizes open clock over untested', () => {
     const stops = [
-      baseStop({ testing_site_id: 1, time_in: '9:00 AM', time_out: null }),
-      baseStop({ testing_site_id: 2, stop_number: 2 }),
+      baseStop({ location_id: 1, time_in: '9:00 AM', time_out: null }),
+      baseStop({ location_id: 2, stop_number: 2 }),
     ]
     const result = evaluatePortalEndRunPreflight(stops, MONTH)
     expect(result?.kind).toBe('open_clock')
   })
 
   it('returns untested when no open clocks', () => {
-    const stops = [baseStop({ testing_site_id: 1 }), baseStop({ testing_site_id: 2, stop_number: 2 })]
+    const stops = [baseStop({ location_id: 1 }), baseStop({ location_id: 2, stop_number: 2 })]
     const result = evaluatePortalEndRunPreflight(stops, MONTH)
     expect(result?.kind).toBe('untested')
     expect(result && result.kind === 'untested' ? result.stops : []).toHaveLength(2)

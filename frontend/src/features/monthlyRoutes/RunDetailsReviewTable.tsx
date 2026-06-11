@@ -26,7 +26,7 @@ import type {
   MonthlyRunDetailDeficiencySummary,
   MonthlyRunDetailLocation,
   TechnicianWorksheetRun,
-  TechnicianWorksheetStop,
+  TechnicianWorksheetLocation,
 } from './monthlyRoutesShared'
 import {
   runReviewDeficiencySummaries,
@@ -70,11 +70,13 @@ function ReviewLocationResultCell({
   routeId: number
   run: TechnicianWorksheetRun | null
   readOnly: boolean
-  onStopUpdated: (stop: TechnicianWorksheetStop) => void | Promise<void>
-  onOpenSite: (testingSiteId: number) => void
+  onStopUpdated: (stop: TechnicianWorksheetLocation) => void | Promise<void>
+  onOpenSite: (locationId: number) => void
   onOpenTickets?: (locationId: number, locationLabel: string) => void
 }) {
-  const { stop, locationLabel, siteCount } = row
+  const stop = row.location
+  const locationLabel = row.location.location_label
+  const siteCount = 1
   const ws = locationStopAsWorksheetStop(stop, locationLabel)
   const headline = runReviewOutcomeHeadline(ws, monthDate)
   const badgeClass = runReviewOutcomeBadgeClass(ws, monthDate)
@@ -87,7 +89,7 @@ function ReviewLocationResultCell({
   return (
     <div className="run-details-review-location-result">
       <Link
-        to={`/monthlies/locations/${row.locationId}`}
+        to={`/monthlies/locations/${row.location.location_id}`}
         className="run-details-prepare-address-link"
         onClick={(e) => e.stopPropagation()}
       >
@@ -116,7 +118,7 @@ function ReviewLocationResultCell({
           <button
             type="button"
             className="btn btn-link btn-sm p-0 run-details-review-location-result__details-link"
-            onClick={() => onOpenSite(stop.testing_site_id)}
+            onClick={() => onOpenSite(stop.location_id)}
           >
             Site details
           </button>
@@ -125,7 +127,7 @@ function ReviewLocationResultCell({
         <button
           type="button"
           className="run-details-review-location-result__outcome-btn"
-          onClick={() => onOpenSite(stop.testing_site_id)}
+          onClick={() => onOpenSite(stop.location_id)}
         >
           {headline ? (
             <RunReviewOutcomeLabel
@@ -147,7 +149,7 @@ function ReviewLocationResultCell({
         <button
           type="button"
           className="btn btn-link btn-sm p-0 mt-1 run-details-review-tickets-link"
-          onClick={() => onOpenTickets(row.locationId, locationLabel)}
+          onClick={() => onOpenTickets(row.location.location_id, locationLabel)}
         >
           Tickets{row.openTickets > 0 ? ` (${row.openTickets} open)` : ''}
         </button>
@@ -175,9 +177,9 @@ export default function RunDetailsReviewTable({
   showBillingColumn: boolean
   onBillingPatched: (locationId: number, billingStatus: string) => void
   stopPatch: RunDetailsStopPatchApi
-  onStopMergedFromWorksheet: (stop: TechnicianWorksheetStop, scope?: 'full' | 'deficiency') => void
+  onStopMergedFromWorksheet: (stop: TechnicianWorksheetLocation, scope?: 'full' | 'deficiency') => void
   onDeficiencyUpdated?: (
-    testingSiteId: number,
+    locationId: number,
     updated: MonthlyRunDetailDeficiencySummary,
   ) => void | Promise<void>
   onTicketsChanged?: () => void
@@ -197,14 +199,14 @@ export default function RunDetailsReviewTable({
     const meta = new Map<number, { isFirst: boolean; rowSpan: number }>()
     const byLocation = new Map<number, RunDetailReviewRow[]>()
     for (const row of rows) {
-      const list = byLocation.get(row.locationId) ?? []
+      const list = byLocation.get(row.location.location_id) ?? []
       list.push(row)
-      byLocation.set(row.locationId, list)
+      byLocation.set(row.location.location_id, list)
     }
     for (const locRows of byLocation.values()) {
       const span = locRows.length
       locRows.forEach((row, index) => {
-        meta.set(row.stop.testing_site_id, { isFirst: index === 0, rowSpan: span })
+        meta.set(row.location.location_id, { isFirst: index === 0, rowSpan: span })
       })
     }
     return meta
@@ -292,8 +294,12 @@ export default function RunDetailsReviewTable({
               </tr>
             ) : (
               rows.map((row) => {
-                const { stop, locationLabel, siteCount, locationId, billingStatus } = row
-                const sid = stop.testing_site_id
+                const stop = row.location
+    const locationLabel = row.location.location_label
+    const siteCount = 1
+    const locationId = row.location.location_id
+    const billingStatus = row.location.billing_status
+                const sid = stop.location_id
                 if (locationId !== lastLocationId) {
                   locationRowCounter += 1
                   lastLocationId = locationId
@@ -323,11 +329,11 @@ export default function RunDetailsReviewTable({
                         {showBillingColumn && isFirstAtLocation ? (
                           <RunDetailsLocationBillingControl
                             layout="vertical"
-                            billingStatus={billingStatus}
+                            billingStatus={billingStatus ?? null}
                             readOnly={readOnly}
                             error={billingErrors[locationId] ?? null}
                             onChange={(status) =>
-                              void setBilling(locationId, status, billingStatus)
+                              void setBilling(locationId, status, billingStatus ?? null)
                             }
                           />
                         ) : null}
@@ -380,7 +386,7 @@ export default function RunDetailsReviewTable({
                         deficiencies={openDeficiencies}
                         routeId={routeId}
                         monthDate={monthDate}
-                        testingSiteId={sid}
+                        locationId={sid}
                         compact
                         readOnly={readOnly}
                         onDeficiencyUpdated={onDeficiencyUpdated}
@@ -422,7 +428,7 @@ export default function RunDetailsReviewTable({
 
       <RunDetailsStopSiteModal
         show={siteModalStopId != null}
-        testingSiteId={siteModalStopId}
+        locationId={siteModalStopId}
         routeId={routeId}
         monthDate={monthDate}
         run={run}

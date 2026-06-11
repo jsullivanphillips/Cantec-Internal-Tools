@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react'
 import { Button, Form } from 'react-bootstrap'
-import type { TechnicianWorksheetStop } from './monthlyRoutesShared'
+import type { TechnicianWorksheetLocation } from './monthlyRoutesShared'
 import type { PortalDeficiencySummary } from './portalWorkflowShared'
 
 const VISIBLE_STATUSES = new Set(['new', 'verified'])
 
 type Props = {
-  stop: TechnicianWorksheetStop
+  stop: TechnicianWorksheetLocation
   readOnly: boolean
   onAdd: () => void
   onEdit: (def: PortalDeficiencySummary) => void
@@ -66,7 +66,7 @@ export default function PortalDeficienciesCard({
         {hiddenCount > 0 ? (
           <Form.Check
             type="switch"
-            id={`def-hidden-${stop.testing_site_id}`}
+            id={`def-hidden-${stop.location_id}`}
             className="pw-portal-def-ghost-toggle small"
             label="Show invalid / fixed"
             checked={showHidden}

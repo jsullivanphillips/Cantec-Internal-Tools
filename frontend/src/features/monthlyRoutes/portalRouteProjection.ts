@@ -3,7 +3,7 @@
  * Used for UI gating (open clock) and refresh merge so intent wins over stale server snapshots.
  */
 
-import { worksheetStopIsOpenClockIn, type TechnicianWorksheetStop } from './monthlyRoutesShared'
+import { worksheetLocationIsOpenClockIn, type TechnicianWorksheetLocation } from './monthlyRoutesShared'
 import {
   optimisticCancelClockInPatch,
   optimisticClockInPatch,
@@ -24,10 +24,10 @@ import {
 } from './worksheetOfflineStore'
 
 export function applyWorkflowActionToStop(
-  stop: TechnicianWorksheetStop,
+  stop: TechnicianWorksheetLocation,
   action: PortalWorkflowAction,
   payload: Record<string, unknown>,
-): TechnicianWorksheetStop {
+): TechnicianWorksheetLocation {
   switch (action) {
     case 'clock_in': {
       const timeIn = String(payload.time_in || portalHhmmNow())
@@ -101,19 +101,19 @@ function routeQueueItems(
 }
 
 export function projectStopsWithWorkflowQueue(
-  stops: TechnicianWorksheetStop[],
+  stops: TechnicianWorksheetLocation[],
   routeId: number,
   monthIso: string,
   queue?: PortalWorkflowQueueItem[],
-): TechnicianWorksheetStop[] {
+): TechnicianWorksheetLocation[] {
   const items = routeQueueItems(routeId, monthIso, queue)
   if (!items.length) return stops
 
-  const byId = new Map(stops.map((s) => [s.testing_site_id, { ...s }]))
+  const byId = new Map(stops.map((s) => [s.location_id, { ...s }]))
   for (const item of items) {
     if (item.action === 'transition_clock') {
-      const fromId = Number(item.payload.from_testing_site_id)
-      const toId = Number(item.payload.to_testing_site_id)
+      const fromId = Number(item.payload.from_location_id)
+      const toId = Number(item.payload.to_location_id)
       const timeOut = String(item.payload.time_out || portalHhmmNow())
       const timeIn = String(item.payload.time_in || portalHhmmNow())
       const fromStop = byId.get(fromId)
@@ -126,65 +126,65 @@ export function projectStopsWithWorkflowQueue(
       }
       continue
     }
-    const current = byId.get(item.testingSiteId)
+    const current = byId.get(item.locationId)
     if (!current) continue
     byId.set(
-      item.testingSiteId,
+      item.locationId,
       applyWorkflowActionToStop(current, item.action, item.payload),
     )
   }
 
-  return stops.map((s) => byId.get(s.testing_site_id) ?? s)
+  return stops.map((s) => byId.get(s.location_id) ?? s)
 }
 
 export function projectedOpenClockSiteId(
-  stops: TechnicianWorksheetStop[],
+  stops: TechnicianWorksheetLocation[],
   routeId: number,
   monthIso: string,
   queue?: PortalWorkflowQueueItem[],
 ): number | null {
   const items = routeQueueItems(routeId, monthIso, queue)
   const projected = projectStopsWithWorkflowQueue(stops, routeId, monthIso, items)
-  const openStops = projected.filter(worksheetStopIsOpenClockIn)
+  const openStops = projected.filter(worksheetLocationIsOpenClockIn)
   if (openStops.length === 0) return null
-  if (openStops.length === 1) return openStops[0].testing_site_id
+  if (openStops.length === 1) return openStops[0].location_id
 
   for (let i = items.length - 1; i >= 0; i--) {
     const item = items[i]
     if (item.action === 'clock_in') {
-      const id = item.testingSiteId
-      if (openStops.some((s) => s.testing_site_id === id)) return id
+      const id = item.locationId
+      if (openStops.some((s) => s.location_id === id)) return id
     }
     if (item.action === 'transition_clock') {
-      const id = Number(item.payload.to_testing_site_id)
-      if (openStops.some((s) => s.testing_site_id === id)) return id
+      const id = Number(item.payload.to_location_id)
+      if (openStops.some((s) => s.location_id === id)) return id
     }
   }
-  return openStops[openStops.length - 1].testing_site_id
+  return openStops[openStops.length - 1].location_id
 }
 
 export function projectedOpenClockStop(
-  stops: TechnicianWorksheetStop[],
+  stops: TechnicianWorksheetLocation[],
   routeId: number,
   monthIso: string,
   queue?: PortalWorkflowQueueItem[],
-): TechnicianWorksheetStop | null {
+): TechnicianWorksheetLocation | null {
   const id = projectedOpenClockSiteId(stops, routeId, monthIso, queue)
   if (id == null) return null
   return projectStopsWithWorkflowQueue(stops, routeId, monthIso, queue).find(
-    (s) => s.testing_site_id === id,
+    (s) => s.location_id === id,
   ) ?? null
 }
 
 export function projectedClockInBlockedForStop(
-  stop: TechnicianWorksheetStop,
-  stops: TechnicianWorksheetStop[],
+  stop: TechnicianWorksheetLocation,
+  stops: TechnicianWorksheetLocation[],
   routeId: number,
   monthIso: string,
   queue?: PortalWorkflowQueueItem[],
 ): boolean {
   const openId = projectedOpenClockSiteId(stops, routeId, monthIso, queue)
-  return openId != null && openId !== stop.testing_site_id
+  return openId != null && openId !== stop.location_id
 }
 
 /** True when clock_in is queued ahead of an earlier clock_out on another site (transient server lag). */
@@ -192,7 +192,7 @@ export function isTransientClockInConflict(
   item: PortalWorkflowQueueItem,
   routeId: number,
   monthIso: string,
-  stops: TechnicianWorksheetStop[],
+  stops: TechnicianWorksheetLocation[],
   queue?: PortalWorkflowQueueItem[],
 ): boolean {
   if (item.action !== 'clock_in') return false
@@ -202,14 +202,14 @@ export function isTransientClockInConflict(
   const prior = items.slice(0, idx)
   const hasPriorClockOutElsewhere = prior.some((q) => {
     if (q.action === 'clock_out') {
-      return q.testingSiteId !== item.testingSiteId
+      return q.locationId !== item.locationId
     }
     if (q.action === 'transition_clock') {
-      return Number(q.payload.to_testing_site_id) === item.testingSiteId
+      return Number(q.payload.to_location_id) === item.locationId
     }
     return false
   })
   if (hasPriorClockOutElsewhere) return true
   const openId = projectedOpenClockSiteId(stops, routeId, monthIso, items)
-  return openId == null || openId === item.testingSiteId
+  return openId == null || openId === item.locationId
 }

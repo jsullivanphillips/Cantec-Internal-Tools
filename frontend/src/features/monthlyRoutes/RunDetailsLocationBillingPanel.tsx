@@ -6,7 +6,7 @@ import {
   type OfficeBillingStatus,
 } from './officeRunReviewShared'
 import type {
-  MonthlyRunDetailBillingLocation,
+  MonthlyRunDetailLocation,
   TechnicianWorksheetRun,
 } from './monthlyRoutesShared'
 import { apiJson } from '../../lib/apiClient'
@@ -28,7 +28,7 @@ export default function RunDetailsLocationBillingPanel({
 }: {
   routeId: number
   monthDate: string
-  billingLocations: MonthlyRunDetailBillingLocation[]
+  billingLocations: MonthlyRunDetailLocation[]
   run: TechnicianWorksheetRun | null
   onBillingUpdated: () => Promise<void>
 }) {

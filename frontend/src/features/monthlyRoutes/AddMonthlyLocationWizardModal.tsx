@@ -1,17 +1,15 @@
 import type { CSSProperties } from 'react'
 import { useCallback, useEffect, useState } from 'react'
-import { Button, Card, Form, Modal } from 'react-bootstrap'
+import { Button, Form, Modal } from 'react-bootstrap'
 import { apiJson, isAbortError } from '../../lib/apiClient'
 import {
   STATUS_OPTIONS,
-  createEmptyTestingSiteDraft,
-  testingSitePayloadFromDraft,
   type CreateLocationStep1Form,
   type GeocodeCandidate,
   type LibraryLocation,
+  type LocationEditForm,
   type MonthlyLocationDetailPayload,
   type MonthlyLocationWizardStep,
-  type TestingSiteDraft,
 } from './monthlyRoutesShared'
 
 const GEOCODE_DEBOUNCE_MS = 250
@@ -30,9 +28,31 @@ export type AddMonthlyLocationWizardModalProps = {
 
 function defaultStep1Form(): CreateLocationStep1Form {
   return {
+    label: '',
     property_management_company: '',
     status_raw: 'active',
     test_day: '',
+  }
+}
+
+function defaultInspectionForm(): LocationEditForm {
+  return {
+    label: '',
+    keys: '',
+    barcode: '',
+    price_per_month: '',
+    ring_detail: '',
+    facp_detail: '',
+    panel_location: '',
+    door_code: '',
+    property_management_company: '',
+    annual_month: '',
+    monitoring_company_id: '',
+    monitoring_account_number: '',
+    monitoring_password: '',
+    monitoring_notes: '',
+    testing_procedures: '',
+    inspection_tech_notes: '',
   }
 }
 
@@ -53,7 +73,7 @@ export default function AddMonthlyLocationWizardModal({
   const [selectedCandidate, setSelectedCandidate] = useState<GeocodeCandidate | null>(null)
 
   const [step1Form, setStep1Form] = useState<CreateLocationStep1Form>(defaultStep1Form)
-  const [testingDrafts, setTestingDrafts] = useState<TestingSiteDraft[]>([createEmptyTestingSiteDraft()])
+  const [inspectionForm, setInspectionForm] = useState<LocationEditForm>(defaultInspectionForm)
 
   const resetWizard = useCallback(() => {
     setStep(1)
@@ -65,7 +85,7 @@ export default function AddMonthlyLocationWizardModal({
     setLookupError(null)
     setSelectedCandidate(null)
     setStep1Form(defaultStep1Form())
-    setTestingDrafts([createEmptyTestingSiteDraft()])
+    setInspectionForm(defaultInspectionForm())
   }, [])
 
   useEffect(() => {
@@ -90,8 +110,8 @@ export default function AddMonthlyLocationWizardModal({
       setLookupError(null)
       const params = new URLSearchParams({ q: query })
       apiJson<{ candidates: GeocodeCandidate[] }>(
-        `/api/monthly_sites/geocode_candidates?${params.toString()}`,
-        { signal: controller.signal }
+        `/api/monthly_routes/geocode_candidates?${params.toString()}`,
+        { signal: controller.signal },
       )
         .then((data) => {
           if (active) setCandidates(data.candidates || [])
@@ -117,18 +137,9 @@ export default function AddMonthlyLocationWizardModal({
   const validateStep1 = (): string | null => {
     const addressLine = (selectedCandidate?.display_address || addressQuery || '').trim()
     if (!addressLine) return 'Address is required.'
+    if (!step1Form.label.trim()) return 'Label is required.'
     if (!step1Form.property_management_company.trim()) {
       return 'Property management company is required.'
-    }
-    return null
-  }
-
-  const validateStep2 = (): string | null => {
-    if (testingDrafts.length < 1) return 'Add at least one testing location.'
-    for (let i = 0; i < testingDrafts.length; i += 1) {
-      if (!testingDrafts[i].label.trim()) {
-        return `Testing location ${i + 1}: label is required.`
-      }
     }
     return null
   }
@@ -140,6 +151,7 @@ export default function AddMonthlyLocationWizardModal({
       return
     }
     setError(null)
+    setInspectionForm((prev) => ({ ...prev, label: step1Form.label.trim() }))
     setStep(2)
   }
 
@@ -148,29 +160,7 @@ export default function AddMonthlyLocationWizardModal({
     setStep(1)
   }
 
-  const updateDraft = (clientId: string, patch: Partial<TestingSiteDraft>) => {
-    setTestingDrafts((prev) =>
-      prev.map((d) => (d.clientId === clientId ? { ...d, ...patch } : d))
-    )
-  }
-
-  const addTestingDraft = () => {
-    setTestingDrafts((prev) => [...prev, createEmptyTestingSiteDraft()])
-  }
-
-  const removeTestingDraft = (clientId: string) => {
-    setTestingDrafts((prev) => {
-      if (prev.length <= 1) return prev
-      return prev.filter((d) => d.clientId !== clientId)
-    })
-  }
-
   const submitFinish = async () => {
-    const step2Err = validateStep2()
-    if (step2Err) {
-      setError(step2Err)
-      return
-    }
     const step1Err = validateStep1()
     if (step1Err) {
       setError(step1Err)
@@ -178,19 +168,24 @@ export default function AddMonthlyLocationWizardModal({
       return
     }
 
-    const addressLine = (
-      selectedCandidate?.display_address ||
-      addressQuery ||
-      ''
-    ).trim()
+    const addressLine = (selectedCandidate?.display_address || addressQuery || '').trim()
 
     setSaving(true)
     setError(null)
     try {
       const payload: Record<string, unknown> = {
         address: addressLine,
+        label: step1Form.label.trim(),
         property_management_company: step1Form.property_management_company.trim(),
         status_raw: step1Form.status_raw,
+        keys: inspectionForm.keys.trim() || null,
+        price_per_month: inspectionForm.price_per_month.trim() || null,
+        ring_detail: inspectionForm.ring_detail.trim() || null,
+        facp_detail: inspectionForm.facp_detail.trim() || null,
+        panel_location: inspectionForm.panel_location.trim() || null,
+        door_code: inspectionForm.door_code.trim() || null,
+        testing_procedures: inspectionForm.testing_procedures.trim() || null,
+        inspection_tech_notes: inspectionForm.inspection_tech_notes.trim() || null,
       }
       const routeTrimmed = (step1Form.test_day || '').trim()
       if (routeTrimmed) payload.test_day = routeTrimmed
@@ -200,33 +195,13 @@ export default function AddMonthlyLocationWizardModal({
         payload.longitude = selectedCandidate.longitude
       }
 
-      const createRes = await apiJson<{ location: LibraryLocation }>('/api/monthly_sites/library', {
+      const createRes = await apiJson<{ location: LibraryLocation }>('/api/monthly_routes/library', {
         method: 'POST',
         body: JSON.stringify(payload),
       })
-      const locationId = createRes.location.id
-      const primaryId = createRes.location.testing_sites?.[0]?.id
-
-      if (primaryId == null) {
-        throw new Error('Server did not return a primary testing location.')
-      }
-
-      const [firstDraft, ...extraDrafts] = testingDrafts
-
-      await apiJson(`/api/monthly_sites/testing_sites/${primaryId}`, {
-        method: 'PATCH',
-        body: JSON.stringify(testingSitePayloadFromDraft(firstDraft)),
-      })
-
-      for (const draft of extraDrafts) {
-        await apiJson(`/api/monthly_sites/library/${locationId}/testing_sites`, {
-          method: 'POST',
-          body: JSON.stringify(testingSitePayloadFromDraft(draft)),
-        })
-      }
 
       const detail = await apiJson<MonthlyLocationDetailPayload>(
-        `/api/monthly_sites/library/${locationId}`
+        `/api/monthly_routes/library/${createRes.location.id}`,
       )
       onCreated(detail.location)
       onHide()
@@ -253,13 +228,9 @@ export default function AddMonthlyLocationWizardModal({
           className="d-flex flex-wrap align-items-center gap-2 text-muted"
           aria-label="Setup steps"
         >
-          <span className={step === 1 ? 'fw-semibold text-primary' : ''}>
-            1. Monthly location
-          </span>
+          <span className={step === 1 ? 'fw-semibold text-primary' : ''}>1. Address & label</span>
           <span aria-hidden>→</span>
-          <span className={step === 2 ? 'fw-semibold text-primary' : ''}>
-            2. Testing locations
-          </span>
+          <span className={step === 2 ? 'fw-semibold text-primary' : ''}>2. Inspection fields</span>
         </div>
 
         {error ? <div className="text-danger">{error}</div> : null}
@@ -314,6 +285,15 @@ export default function AddMonthlyLocationWizardModal({
               ) : null}
             </Form.Group>
             <Form.Group>
+              <Form.Label className="small mb-1">Label</Form.Label>
+              <Form.Control
+                size="sm"
+                value={step1Form.label}
+                placeholder="Display name for this stop"
+                onChange={(e) => setStep1Form((prev) => ({ ...prev, label: e.target.value }))}
+              />
+            </Form.Group>
+            <Form.Group>
               <Form.Label className="small mb-1">Route (optional)</Form.Label>
               <Form.Select
                 size="sm"
@@ -363,126 +343,84 @@ export default function AddMonthlyLocationWizardModal({
         ) : (
           <>
             <p className="text-muted mb-0">
-              Add one or more testing stops for this monthly location. Each stop needs a label.
+              Optional inspection fields for <strong>{step1Form.label.trim()}</strong>.
             </p>
-            {testingDrafts.map((draft, index) => (
-              <Card key={draft.clientId} className="border shadow-sm">
-                <Card.Header className="py-2 d-flex justify-content-between align-items-center bg-white">
-                  <span className="fw-semibold">Testing location {index + 1}</span>
-                  {testingDrafts.length > 1 ? (
-                    <Button
-                      type="button"
-                      variant="outline-danger"
-                      size="sm"
-                      onClick={() => removeTestingDraft(draft.clientId)}
-                      disabled={saving}
-                    >
-                      Remove
-                    </Button>
-                  ) : null}
-                </Card.Header>
-                <Card.Body className="d-flex flex-column gap-2 py-2">
-                  <Form.Group>
-                    <Form.Label className="small mb-1">Label</Form.Label>
-                    <Form.Control
-                      size="sm"
-                      value={draft.label}
-                      placeholder="e.g. Main panel, Suite 200"
-                      onChange={(e) => updateDraft(draft.clientId, { label: e.target.value })}
-                    />
-                  </Form.Group>
-                  <Form.Group>
-                    <Form.Label className="small mb-1">Keys (optional)</Form.Label>
-                    <Form.Control
-                      size="sm"
-                      value={draft.keys}
-                      onChange={(e) => updateDraft(draft.clientId, { keys: e.target.value })}
-                    />
-                  </Form.Group>
-                  <Form.Group>
-                    <Form.Label className="small mb-1">Price / month (optional)</Form.Label>
-                    <Form.Control
-                      size="sm"
-                      type="text"
-                      inputMode="decimal"
-                      value={draft.price_per_month}
-                      onChange={(e) =>
-                        updateDraft(draft.clientId, { price_per_month: e.target.value })
-                      }
-                    />
-                  </Form.Group>
-                  <Form.Group>
-                    <Form.Label className="small mb-1">Ring (optional)</Form.Label>
-                    <Form.Control
-                      size="sm"
-                      as="textarea"
-                      rows={2}
-                      value={draft.ring_detail}
-                      onChange={(e) =>
-                        updateDraft(draft.clientId, { ring_detail: e.target.value })
-                      }
-                    />
-                  </Form.Group>
-                  <Form.Group>
-                    <Form.Label className="small mb-1">FACP (optional)</Form.Label>
-                    <Form.Control
-                      size="sm"
-                      as="textarea"
-                      rows={2}
-                      value={draft.facp_detail}
-                      onChange={(e) =>
-                        updateDraft(draft.clientId, { facp_detail: e.target.value })
-                      }
-                    />
-                  </Form.Group>
-                  <Form.Group>
-                    <Form.Label className="small mb-1">Testing procedures (optional)</Form.Label>
-                    <Form.Control
-                      size="sm"
-                      as="textarea"
-                      rows={2}
-                      value={draft.testing_procedures}
-                      onChange={(e) =>
-                        updateDraft(draft.clientId, { testing_procedures: e.target.value })
-                      }
-                    />
-                  </Form.Group>
-                  <Form.Group>
-                    <Form.Label className="small mb-1">Location comments (optional)</Form.Label>
-                    <Form.Control
-                      size="sm"
-                      as="textarea"
-                      rows={2}
-                      value={draft.inspection_tech_notes}
-                      onChange={(e) =>
-                        updateDraft(draft.clientId, { inspection_tech_notes: e.target.value })
-                      }
-                    />
-                  </Form.Group>
-                </Card.Body>
-              </Card>
-            ))}
-            <Button
-              type="button"
-              variant="outline-primary"
-              size="sm"
-              className="align-self-start"
-              onClick={addTestingDraft}
-              disabled={saving}
-            >
-              Add another testing location
-            </Button>
+            <Form.Group>
+              <Form.Label className="small mb-1">Keys (optional)</Form.Label>
+              <Form.Control
+                size="sm"
+                value={inspectionForm.keys}
+                onChange={(e) =>
+                  setInspectionForm((prev) => ({ ...prev, keys: e.target.value }))
+                }
+              />
+            </Form.Group>
+            <Form.Group>
+              <Form.Label className="small mb-1">Price / month (optional)</Form.Label>
+              <Form.Control
+                size="sm"
+                type="text"
+                inputMode="decimal"
+                value={inspectionForm.price_per_month}
+                onChange={(e) =>
+                  setInspectionForm((prev) => ({ ...prev, price_per_month: e.target.value }))
+                }
+              />
+            </Form.Group>
+            <Form.Group>
+              <Form.Label className="small mb-1">Ring (optional)</Form.Label>
+              <Form.Control
+                size="sm"
+                as="textarea"
+                rows={2}
+                value={inspectionForm.ring_detail}
+                onChange={(e) =>
+                  setInspectionForm((prev) => ({ ...prev, ring_detail: e.target.value }))
+                }
+              />
+            </Form.Group>
+            <Form.Group>
+              <Form.Label className="small mb-1">FACP (optional)</Form.Label>
+              <Form.Control
+                size="sm"
+                as="textarea"
+                rows={2}
+                value={inspectionForm.facp_detail}
+                onChange={(e) =>
+                  setInspectionForm((prev) => ({ ...prev, facp_detail: e.target.value }))
+                }
+              />
+            </Form.Group>
+            <Form.Group>
+              <Form.Label className="small mb-1">Testing procedures (optional)</Form.Label>
+              <Form.Control
+                size="sm"
+                as="textarea"
+                rows={2}
+                value={inspectionForm.testing_procedures}
+                onChange={(e) =>
+                  setInspectionForm((prev) => ({ ...prev, testing_procedures: e.target.value }))
+                }
+              />
+            </Form.Group>
+            <Form.Group>
+              <Form.Label className="small mb-1">Location comments (optional)</Form.Label>
+              <Form.Control
+                size="sm"
+                as="textarea"
+                rows={2}
+                value={inspectionForm.inspection_tech_notes}
+                onChange={(e) =>
+                  setInspectionForm((prev) => ({ ...prev, inspection_tech_notes: e.target.value }))
+                }
+              />
+            </Form.Group>
           </>
         )}
 
         <div className="d-flex justify-content-end gap-2 mt-1 flex-wrap">
           {step === 2 ? (
-            <Button
-              size="sm"
-              variant="outline-secondary"
-              onClick={handleBack}
-              disabled={saving}
-            >
+            <Button size="sm" variant="outline-secondary" onClick={handleBack} disabled={saving}>
               Back
             </Button>
           ) : null}

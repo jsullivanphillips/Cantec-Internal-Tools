@@ -1,7 +1,7 @@
-import type { TechnicianWorksheetStop } from './monthlyRoutesShared'
+import type { TechnicianWorksheetLocation } from './monthlyRoutesShared'
 
 type Props = {
-  stop: TechnicianWorksheetStop
+  stop: TechnicianWorksheetLocation
 }
 
 export default function PortalClockEventsCard({ stop }: Props) {

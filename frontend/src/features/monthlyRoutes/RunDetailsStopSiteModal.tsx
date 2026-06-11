@@ -12,27 +12,27 @@ import {
   runDetailsStopDisplayStatus,
   runDetailsStopHeaderBandClass,
 } from './runDetailsStopSiteDisplay'
-import { TestingSiteStopHeading } from './testingSiteDisplay'
+import { LocationHeading } from './locationDisplay'
 import { useRunDetailsWorksheetStops } from './useRunDetailsWorksheetStops'
 import type { RunDetailsStopPatchApi } from './useRunDetailsStopPatch'
-import type { TechnicianWorksheetRun, TechnicianWorksheetStop } from './monthlyRoutesShared'
+import type { TechnicianWorksheetRun, TechnicianWorksheetLocation } from './monthlyRoutesShared'
 import { portalOutcomeDisplay, portalStopHasTestOutcome } from './portalWorkflowShared'
 import { runDetailsOfficeReviewReadOnly } from './runWorkflowShared'
 
 type Props = {
   show: boolean
-  testingSiteId: number | null
+  locationId: number | null
   routeId: number
   monthDate: string
   run: TechnicianWorksheetRun | null
   onHide: () => void
   stopPatch: RunDetailsStopPatchApi
-  onStopMergedFromWorksheet: (stop: TechnicianWorksheetStop, scope?: 'full' | 'deficiency') => void
+  onStopMergedFromWorksheet: (stop: TechnicianWorksheetLocation, scope?: 'full' | 'deficiency') => void
 }
 
 export default function RunDetailsStopSiteModal({
   show,
-  testingSiteId,
+  locationId,
   routeId,
   monthDate,
   run,
@@ -45,13 +45,13 @@ export default function RunDetailsStopSiteModal({
   const [loadFailed, setLoadFailed] = useState(false)
 
   useEffect(() => {
-    if (!show || testingSiteId == null) return
+    if (!show || locationId == null) return
     setLoadFailed(false)
-    void ensureStopLoaded(testingSiteId, { fresh: true }).catch(() => setLoadFailed(true))
-  }, [show, testingSiteId, ensureStopLoaded])
+    void ensureStopLoaded(locationId, { fresh: true }).catch(() => setLoadFailed(true))
+  }, [show, locationId, ensureStopLoaded])
 
-  const stop: TechnicianWorksheetStop | undefined =
-    testingSiteId != null ? getStop(testingSiteId) : undefined
+  const stop: TechnicianWorksheetLocation | undefined =
+    locationId != null ? getStop(locationId) : undefined
   const readOnly = runDetailsOfficeReviewReadOnly(run)
   const displayStatus = stop ? runDetailsStopDisplayStatus(stop) : 'pending'
   const activeSkipLabel = stop ? runDetailsSkipReasonDisplay(stop) : null
@@ -59,10 +59,10 @@ export default function RunDetailsStopSiteModal({
   const activeMonitoringDisplay = stop ? runDetailsHeaderMonitoringDisplay(stop) : ''
   const activeHeaderTimes = stop ? runDetailsHeaderTimesDisplay(stop) : null
   const outcomeBanner = stop && portalStopHasTestOutcome(stop) ? portalOutcomeDisplay(stop) : null
-  const refreshing = loading && testingSiteId != null && loadingId === testingSiteId && stop != null
+  const refreshing = loading && locationId != null && loadingId === locationId && stop != null
 
   const handleStopPatched = useCallback(
-    (updated: TechnicianWorksheetStop) => {
+    (updated: TechnicianWorksheetLocation) => {
       replaceStop(updated)
       onStopMergedFromWorksheet(updated)
     },
@@ -83,7 +83,7 @@ export default function RunDetailsStopSiteModal({
         <Modal.Title className="h6 mb-0">Site on this run</Modal.Title>
       </Modal.Header>
       <Modal.Body className="run-details-stop-site-modal__body">
-        {loading && testingSiteId != null && loadingId === testingSiteId && !stop ? (
+        {loading && locationId != null && loadingId === locationId && !stop ? (
           <div className="run-details-stop-site-modal__loading p-4 text-center">
             <Spinner animation="border" size="sm" className="me-2" aria-hidden />
             Loading site details…
@@ -119,14 +119,14 @@ export default function RunDetailsStopSiteModal({
                   onStopUpdated={handleStopPatched}
                 />
               </div>
-              <TestingSiteStopHeading
+              <LocationHeading
                 stop={stop}
                 as="h2"
                 primaryClassName="pw-mock-header-address h5 mb-0"
                 sublineClassName="pw-mock-header-line text-muted"
               />
-              {stop.building_name ? (
-                <div className="pw-mock-header-line">{stop.building_name}</div>
+              {stop.label ? (
+                <div className="pw-mock-header-line">{stop.label}</div>
               ) : null}
               <div className="pw-mock-header-line text-muted">{activeMonitoringDisplay}</div>
               {activePanelDisplay ? (

@@ -4,9 +4,9 @@ import { Alert, Badge, Button, Spinner } from 'react-bootstrap'
 import {
   WORKSHEET_CLOCK_IN_BLOCKED_MESSAGE,
   isAnnualForMonth,
-  worksheetStopIsOpenClockIn,
-  worksheetStopSkipIsAnnual,
-  type TechnicianWorksheetStop,
+  worksheetLocationIsOpenClockIn,
+  worksheetLocationSkipIsAnnual,
+  type TechnicianWorksheetLocation,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
 import { isPortalWorksheetDemoRoute } from '../features/monthlyRoutes/portalWorksheetDemo'
 import PortalBlockingOverlay from '../features/monthlyRoutes/PortalBlockingOverlay'
@@ -50,9 +50,9 @@ import PortalDeficiencyModal from '../features/monthlyRoutes/PortalDeficiencyMod
 import PortalKeyViewModal from '../features/monthlyRoutes/PortalKeyViewModal'
 import {
   testingSitePositionAtLocation,
-  testingSitePrimaryLabel,
-  TestingSiteStopHeading,
-} from '../features/monthlyRoutes/testingSiteDisplay'
+  locationPrimaryLabel,
+  LocationHeading,
+} from '../features/monthlyRoutes/locationDisplay'
 import {
   portalHeaderBandClass,
   portalNavStopStatusClass,
@@ -70,14 +70,12 @@ import {
   type PortalDeficiencySummary,
   type PortalSkipCategory,
 } from '../features/monthlyRoutes/portalWorkflowShared'
-import { PortalRunPaceMetric } from '../features/monthlyRoutes/PortalRunPaceMetric'
-
 type StopDisplayStatus = 'pending' | 'in_progress' | 'tested' | 'skipped'
 
 const NAV_EXPAND_TRANSITION_MS = 220
 const PORTAL_WORKSHEET_PHONE_LAYOUT_MEDIA = '(max-width: 767.98px)'
 
-function stopDisplayStatus(stop: TechnicianWorksheetStop): StopDisplayStatus {
+function stopDisplayStatus(stop: TechnicianWorksheetLocation): StopDisplayStatus {
   if (portalStopHasTestOutcome(stop)) {
     const outcome = (stop.test_outcome || '').trim().toLowerCase()
     if (outcome === 'skipped') return 'skipped'
@@ -88,32 +86,32 @@ function stopDisplayStatus(stop: TechnicianWorksheetStop): StopDisplayStatus {
     if (rs === 'tested') return 'tested'
     if (rs === 'skipped') return 'skipped'
   }
-  if (worksheetStopIsOpenClockIn(stop)) return 'in_progress'
+  if (worksheetLocationIsOpenClockIn(stop)) return 'in_progress'
   return 'pending'
 }
 
-function statusLabel(status: StopDisplayStatus, stop: TechnicianWorksheetStop): string {
+function statusLabel(status: StopDisplayStatus, stop: TechnicianWorksheetLocation): string {
   const outcomeLabel = portalOutcomeDisplay(stop)
   if (outcomeLabel && portalStopHasTestOutcome(stop)) return outcomeLabel
   if (status === 'tested') return 'Tested'
   if (status === 'skipped') {
-    return worksheetStopSkipIsAnnual(stop) ? 'Annual skip' : 'Skipped'
+    return worksheetLocationSkipIsAnnual(stop) ? 'Annual skip' : 'Skipped'
   }
   if (status === 'in_progress') return 'In progress'
   return 'Pending'
 }
 
 function showAnnualMonthPill(
-  stop: TechnicianWorksheetStop,
+  stop: TechnicianWorksheetLocation,
   runMonthIso: string,
   status: StopDisplayStatus,
 ): boolean {
   if (portalStopHasTestOutcome(stop)) return false
-  if (status === 'skipped') return worksheetStopSkipIsAnnual(stop)
+  if (status === 'skipped') return worksheetLocationSkipIsAnnual(stop)
   return isAnnualForMonth(stop.annual_month, runMonthIso)
 }
 
-function skipReasonDisplay(stop: TechnicianWorksheetStop): string | null {
+function skipReasonDisplay(stop: TechnicianWorksheetLocation): string | null {
   if (portalStopHasTestOutcome(stop) && (stop.test_outcome || '').toLowerCase() === 'skipped') {
     const cat = skipCategoryLabel(stop.skip_category)
     const note = (stop.skip_note || '').trim()
@@ -129,7 +127,7 @@ function skipReasonDisplay(stop: TechnicianWorksheetStop): string | null {
   return reason
 }
 
-function headerTimesDisplay(stop: TechnicianWorksheetStop): ReactNode | null {
+function headerTimesDisplay(stop: TechnicianWorksheetLocation): ReactNode | null {
   const events = stop.clock_events ?? []
   if (events.length > 0) {
     const open = events.find((ev) => ev.time_in && !ev.time_out?.trim())
@@ -145,7 +143,7 @@ function headerTimesDisplay(stop: TechnicianWorksheetStop): ReactNode | null {
     )
   }
   const rs = (stop.result_status || '').trim().toLowerCase()
-  if (rs === 'skipped' && worksheetStopSkipIsAnnual(stop)) {
+  if (rs === 'skipped' && worksheetLocationSkipIsAnnual(stop)) {
     return <span>ANNUAL</span>
   }
   const tin = (stop.time_in || '').trim()
@@ -261,6 +259,7 @@ export default function TechnicianPortalWorksheetPage() {
   )
 
   const [activeId, setActiveId] = useState<number | null>(null)
+  const [technicianNoteExpanded, setTechnicianNoteExpanded] = useState(true)
   const [navExpanded, setNavExpanded] = useState(false)
   const [navItemsExpanded, setNavItemsExpanded] = useState(false)
   const [phoneLayout, setPhoneLayout] = useState(
@@ -280,10 +279,10 @@ export default function TechnicianPortalWorksheetPage() {
     unregisterFieldEditActions,
   } = usePortalFieldEditActionRegistry(editingField)
   const [mapsChoiceOpen, setMapsChoiceOpen] = useState(false)
-  const [mapsPendingStop, setMapsPendingStop] = useState<TechnicianWorksheetStop | null>(null)
+  const [mapsPendingStop, setMapsPendingStop] = useState<TechnicianWorksheetLocation | null>(null)
 
   const openMapsForStop = useCallback(
-    (stop: TechnicianWorksheetStop, forceChoice = false) => {
+    (stop: TechnicianWorksheetLocation, forceChoice = false) => {
       if (!resolveStopMapsTarget(stop)) return
       const provider = forceChoice ? null : getPortalMapsProvider()
       if (provider) {
@@ -309,7 +308,7 @@ export default function TechnicianPortalWorksheetPage() {
   )
 
   const handleMapsPinClick = useCallback(
-    (event: MouseEvent, stop: TechnicianWorksheetStop) => {
+    (event: MouseEvent, stop: TechnicianWorksheetLocation) => {
       event.preventDefault()
       event.stopPropagation()
       openMapsForStop(stop)
@@ -318,7 +317,7 @@ export default function TechnicianPortalWorksheetPage() {
   )
 
   const handleMapsPinContextMenu = useCallback(
-    (event: MouseEvent, stop: TechnicianWorksheetStop) => {
+    (event: MouseEvent, stop: TechnicianWorksheetLocation) => {
       event.preventDefault()
       event.stopPropagation()
       openMapsForStop(stop, true)
@@ -327,7 +326,7 @@ export default function TechnicianPortalWorksheetPage() {
   )
 
   const renderMonitoringCallButton = useCallback(
-    (stop: TechnicianWorksheetStop, extraClassName = '') => {
+    (stop: TechnicianWorksheetLocation, extraClassName = '') => {
       if (!phoneLayout) return null
       const phone = stopMonitoringCallPhone(stop)
       if (!phone) return null
@@ -348,7 +347,7 @@ export default function TechnicianPortalWorksheetPage() {
   )
 
   const renderMapsPinButton = useCallback(
-    (stop: TechnicianWorksheetStop, extraClassName = '') => {
+    (stop: TechnicianWorksheetLocation, extraClassName = '') => {
       if (!resolveStopMapsTarget(stop)) return null
       return (
         <button
@@ -367,7 +366,7 @@ export default function TechnicianPortalWorksheetPage() {
   )
 
   const renderHeroDirectionsButton = useCallback(
-    (stop: TechnicianWorksheetStop) => {
+    (stop: TechnicianWorksheetLocation) => {
       const mapsTarget = resolveStopMapsTarget(stop)
       const monitoringCall = renderMonitoringCallButton(stop, ' pw-mock-header-directions-btn pw-mock-nav-stop--active')
       if (!mapsTarget && !monitoringCall) return null
@@ -400,13 +399,13 @@ export default function TechnicianPortalWorksheetPage() {
       setActiveId(null)
       return
     }
-    if (activeId != null && displayStops.some((s) => s.testing_site_id === activeId)) return
+    if (activeId != null && displayStops.some((s) => s.location_id === activeId)) return
     const firstOpen = displayStops.find((s) => stopDisplayStatus(s) === 'pending')
-    setActiveId((firstOpen ?? displayStops[0]).testing_site_id)
+    setActiveId((firstOpen ?? displayStops[0]).location_id)
   }, [displayStops, activeId])
 
   const active = useMemo(
-    () => displayStops.find((s) => s.testing_site_id === activeId) ?? displayStops[0] ?? null,
+    () => displayStops.find((s) => s.location_id === activeId) ?? displayStops[0] ?? null,
     [displayStops, activeId],
   )
 
@@ -423,7 +422,7 @@ export default function TechnicianPortalWorksheetPage() {
     const annual = projectedStops.filter(
       (s) =>
         isAnnualForMonth(s.annual_month, runMonthIso) ||
-        (stopDisplayStatus(s) === 'skipped' && worksheetStopSkipIsAnnual(s)),
+        (stopDisplayStatus(s) === 'skipped' && worksheetLocationSkipIsAnnual(s)),
     ).length
     const open = projectedStops.length - tested - skipped
     return { tested, skipped, annual, open, total: projectedStops.length }
@@ -444,7 +443,7 @@ export default function TechnicianPortalWorksheetPage() {
 
   useEffect(() => {
     setEditingField(null)
-  }, [active?.testing_site_id])
+  }, [active?.location_id])
 
   useLayoutEffect(() => {
     if (!activeFieldEditActions) return undefined
@@ -480,7 +479,7 @@ export default function TechnicianPortalWorksheetPage() {
   const handleClockIn = useCallback(() => {
     if (!active || workflowReadOnly) return
     if (clockInBlockedForStop(active)) {
-      if (openClockInStop && openClockInStop.testing_site_id !== active.testing_site_id) {
+      if (openClockInStop && openClockInStop.location_id !== active.location_id) {
         void workflowActions.transitionClock(openClockInStop, active)
         return
       }
@@ -497,7 +496,7 @@ export default function TechnicianPortalWorksheetPage() {
       setResultsModalOpen(false)
       setResultsForClockOut(false)
 
-      const projected: TechnicianWorksheetStop = {
+      const projected: TechnicianWorksheetLocation = {
         ...active,
         ...optimisticOutcomePatch(active, outcome, { confirmedNoDeficiencies }),
       }
@@ -510,9 +509,9 @@ export default function TechnicianPortalWorksheetPage() {
       }
 
       if (!portalStopHasOpenClock(afterStop)) {
-        const idx = projectedStops.findIndex((s) => s.testing_site_id === active.testing_site_id)
+        const idx = projectedStops.findIndex((s) => s.location_id === active.location_id)
         const next = projectedStops.slice(idx + 1).find((s) => !portalStopVisitComplete(s))
-        if (next) setActiveId(next.testing_site_id)
+        if (next) setActiveId(next.location_id)
       }
     },
     [active, workflowActions, projectedStops, resultsForClockOut],
@@ -543,11 +542,11 @@ export default function TechnicianPortalWorksheetPage() {
       if (!active || workflowReadOnly) return
       setSkipModalOpen(false)
 
-      const idx = stops.findIndex((s) => s.testing_site_id === active.testing_site_id)
+      const idx = stops.findIndex((s) => s.location_id === active.location_id)
       const next = stops.slice(idx + 1).find((s) => !portalStopVisitComplete(s))
-      if (next) setActiveId(next.testing_site_id)
+      if (next) setActiveId(next.location_id)
 
-      const projected: TechnicianWorksheetStop = {
+      const projected: TechnicianWorksheetLocation = {
         ...active,
         ...optimisticOutcomePatch(active, 'skipped', { skipCategory: category, skipNote: note }),
       }
@@ -675,17 +674,17 @@ export default function TechnicianPortalWorksheetPage() {
   }, [])
 
   const selectStop = useCallback(
-    (testingSiteId: number) => {
-      setActiveId(testingSiteId)
+    (locationId: number) => {
+      setActiveId(locationId)
       if (phoneLayout) setNavExpanded(false)
     },
     [phoneLayout],
   )
 
-  const renderNavStop = (stop: TechnicianWorksheetStop) => {
-    const isActive = stop.testing_site_id === activeId
+  const renderNavStop = (stop: TechnicianWorksheetLocation) => {
+    const isActive = stop.location_id === activeId
     const statusClass = portalNavStopStatusClass(stop, runMonthIso)
-    const clockedIn = worksheetStopIsOpenClockIn(stop)
+    const clockedIn = worksheetLocationIsOpenClockIn(stop)
     const activeClass = isActive ? ' pw-mock-nav-stop--active' : ''
     const statusSuffix = statusClass ? ` ${statusClass}` : ''
     const displayStatus = stopDisplayStatus(stop)
@@ -693,7 +692,7 @@ export default function TechnicianPortalWorksheetPage() {
     const hasMonitoring = stopHasMonitoring(stop)
     const { siteCount, siteIndex } = testingSitePositionAtLocation(stop, displayStops)
     const collapsedTitleParts = [
-      `#${stop.stop_number} — ${testingSitePrimaryLabel(stop, { siteCount, siteIndex, compact: true })}`,
+      `#${stop.stop_number} — ${locationPrimaryLabel(stop, { siteCount, siteIndex, compact: true })}`,
       hasMonitoring || monitoring.phones.length > 0
         ? [
             monitoring.company !== '—' ? monitoring.company : null,
@@ -709,10 +708,10 @@ export default function TechnicianPortalWorksheetPage() {
     if (!navItemsExpanded) {
       return (
         <button
-          key={stop.testing_site_id}
+          key={stop.location_id}
           type="button"
           className={`pw-mock-nav-stop pw-mock-nav-stop--collapsed${statusSuffix}${activeClass}`}
-          onClick={() => selectStop(stop.testing_site_id)}
+          onClick={() => selectStop(stop.location_id)}
           title={collapsedTitleParts.join(' · ')}
           aria-label={`Stop ${stop.stop_number}, ${clockedIn ? 'Clocked in' : statusLabel(displayStatus, stop)}`}
           aria-current={isActive ? 'true' : undefined}
@@ -723,15 +722,15 @@ export default function TechnicianPortalWorksheetPage() {
     }
 
     return (
-      <div key={stop.testing_site_id} className="pw-mock-nav-stop-row">
+      <div key={stop.location_id} className="pw-mock-nav-stop-row">
         <button
           type="button"
           className={`pw-mock-nav-stop pw-mock-nav-stop--expanded${statusSuffix}${activeClass}`}
-          onClick={() => selectStop(stop.testing_site_id)}
+          onClick={() => selectStop(stop.location_id)}
           aria-current={isActive ? 'true' : undefined}
         >
           <span className="pw-mock-nav-stop-address">
-            {testingSitePrimaryLabel(stop, { siteCount, siteIndex, compact: true })}
+            {locationPrimaryLabel(stop, { siteCount, siteIndex, compact: true })}
           </span>
           <PortalStopSummaryDetail stop={stop} />
         </button>
@@ -862,6 +861,7 @@ export default function TechnicianPortalWorksheetPage() {
   }
 
   const routeLabel = payload?.route.label || `Route ${payload?.route.route_number ?? routeId}`
+  const technicianNote = (payload?.route.technician_note ?? '').trim()
   const activeStatus = active ? stopDisplayStatus(active) : 'pending'
   const activeSkipLabel = active ? skipReasonDisplay(active) : null
   const activeHeaderTimes = active ? headerTimesDisplay(active) : null
@@ -895,8 +895,8 @@ export default function TechnicianPortalWorksheetPage() {
       <PortalEndRunModals
         modal={endRunModal}
         onDismiss={dismissEndRunModal}
-        onGoToClockedInStop={(testingSiteId) => {
-          setActiveId(testingSiteId)
+        onGoToClockedInStop={(locationId) => {
+          setActiveId(locationId)
           dismissEndRunModal()
         }}
         onConfirmSkipUntestedAndEnd={() => void confirmSkipUntestedAndEndRun()}
@@ -913,8 +913,30 @@ export default function TechnicianPortalWorksheetPage() {
               {monthHeading} run · {progress.total} stops
             </div>
           </div>
-          {!phoneLayout && payload?.prior_month_pace?.available ? (
-            <PortalRunPaceMetric pace={payload.prior_month_pace} />
+          {technicianNote ? (
+            <div className="pw-mock-chrome-center">
+              {technicianNoteExpanded ? (
+                <div className="pw-mock-tech-note pw-mock-tech-note--expanded">
+                  <button
+                    type="button"
+                    className="pw-mock-tech-note__hide"
+                    aria-label="Hide note"
+                    onClick={() => setTechnicianNoteExpanded(false)}
+                  >
+                    ×
+                  </button>
+                  <div className="pw-mock-tech-note__body">{technicianNote}</div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="pw-mock-tech-note pw-mock-tech-note--collapsed"
+                  onClick={() => setTechnicianNoteExpanded(true)}
+                >
+                  Note
+                </button>
+              )}
+            </div>
           ) : null}
           <div className="pw-mock-chrome-actions">
             {showStartRun ? (
@@ -1078,7 +1100,7 @@ export default function TechnicianPortalWorksheetPage() {
                     {statusLabel(activeStatus, active)}
                   </span>
                 </div>
-                <TestingSiteStopHeading
+                <LocationHeading
                   stop={active}
                   siteCount={activeSitePosition.siteCount}
                   siteIndex={activeSitePosition.siteIndex}
@@ -1105,7 +1127,7 @@ export default function TechnicianPortalWorksheetPage() {
                   <div className="pw-mock-header-skip">
                     {activeSkipLabel
                       ? `Skipped: ${activeSkipLabel}`
-                      : worksheetStopSkipIsAnnual(active)
+                      : worksheetLocationSkipIsAnnual(active)
                         ? 'Skipped: Annual'
                         : 'Skipped'}
                   </div>
@@ -1124,10 +1146,10 @@ export default function TechnicianPortalWorksheetPage() {
                     {...fieldEditProps}
                   />
                   <PortalEditableFieldRow
-                    fieldKey="building_name"
+                    fieldKey="label"
                     label="Building"
-                    value={active.building_name ?? ''}
-                    onSave={saveField('building_name')}
+                    value={active.label ?? ''}
+                    onSave={saveField('label')}
                     {...fieldEditProps}
                   />
                 </div>

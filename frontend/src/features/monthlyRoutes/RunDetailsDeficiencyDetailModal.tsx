@@ -29,7 +29,7 @@ type Props = {
   context?: RunDetailsDeficiencyModalContext
   routeId: number
   monthDate: string
-  testingSiteId: number
+  locationId: number
   readOnly?: boolean
   onHide: () => void
   onSaved?: (updated: MonthlyRunDetailDeficiencySummary) => void | Promise<void>
@@ -75,7 +75,7 @@ export default function RunDetailsDeficiencyDetailModal({
   context,
   routeId,
   monthDate,
-  testingSiteId,
+  locationId,
   readOnly = false,
   onHide,
   onSaved,
@@ -148,7 +148,7 @@ export default function RunDetailsDeficiencyDetailModal({
     try {
       const qs = new URLSearchParams({ month: monthDate })
       const data = await apiJson<PatchDeficiencyResponse>(
-        `/api/monthly_routes/routes/${routeId}/worksheet/stops/${testingSiteId}/deficiencies/${deficiency.id}?${qs.toString()}`,
+        `/api/monthly_routes/routes/${routeId}/worksheet/locations/${locationId}/deficiencies/${deficiency.id}?${qs.toString()}`,
         {
           method: 'PATCH',
           body: JSON.stringify({

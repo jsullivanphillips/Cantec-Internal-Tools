@@ -1,4 +1,6 @@
-"""Create ``MonthlySite`` + primary ``MonthlyTestingSite`` for every legacy ``MonthlyRouteLocation``.
+"""DEPRECATED — pre-flat-model script. Legacy tables removed after Alembic z11 cutover.
+
+Create ``MonthlySite`` + primary ``MonthlyTestingSite`` for every legacy ``MonthlyRouteLocation``.
 
     python -m app.scripts.backfill_monthly_v2_sites
     python -m app.scripts.backfill_monthly_v2_sites --execute

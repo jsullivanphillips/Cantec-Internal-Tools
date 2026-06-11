@@ -89,11 +89,14 @@ export function usePortalFieldEditActionRegistry(editingField: string | null) {
   const [registryVersion, setRegistryVersion] = useState(0)
 
   const registerFieldEditActions = useCallback((actions: PortalFieldEditActions) => {
+    const alreadyRegistered = registryRef.current.has(actions.fieldKey)
     registryRef.current.set(actions.fieldKey, {
       cancel: actions.cancel,
       save: actions.save,
     })
-    setRegistryVersion((version) => version + 1)
+    if (!alreadyRegistered) {
+      setRegistryVersion((version) => version + 1)
+    }
   }, [])
 
   const unregisterFieldEditActions = useCallback((fieldKey: string) => {

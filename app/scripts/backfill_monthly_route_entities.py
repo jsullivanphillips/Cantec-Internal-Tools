@@ -1,5 +1,5 @@
 """
-Backfill ``monthly_route`` and ``monthly_route_location.monthly_route_id`` from ``TEST DAY``.
+Backfill ``monthly_route`` and ``monthly_location.monthly_route_id`` from ``TEST DAY``.
 
 Does **not** modify ``keys``, ``key_addresses``, or ``key_status``.
 
@@ -27,7 +27,7 @@ import sys
 from sqlalchemy import update
 
 from app import create_app
-from app.db_models import MonthlyRoute, MonthlyRouteLocation, db
+from app.db_models import MonthlyLocation, MonthlyRoute, db
 from app.monthly.route_backfill import (
     assigned_location_ids,
     classify_monthly_locations,
@@ -62,7 +62,7 @@ def main(argv: list[str] | None = None) -> int:
 
     app = create_app()
     with app.app_context():
-        locations = MonthlyRouteLocation.query.order_by(MonthlyRouteLocation.id.asc()).all()
+        locations = MonthlyLocation.query.order_by(MonthlyLocation.id.asc()).all()
         existing_routes = MonthlyRoute.query.order_by(MonthlyRoute.route_number.asc()).all()
         route_by_id = {r.id: r for r in existing_routes}
         existing_by_rn = {r.route_number: r for r in existing_routes}
@@ -147,8 +147,8 @@ def main(argv: list[str] | None = None) -> int:
                 if not ids:
                     continue
                 result = db.session.execute(
-                    update(MonthlyRouteLocation)
-                    .where(MonthlyRouteLocation.id.in_(ids))
+                    update(MonthlyLocation)
+                    .where(MonthlyLocation.id.in_(ids))
                     .values(monthly_route_id=mr.id)
                 )
                 rc = result.rowcount or 0
@@ -164,10 +164,10 @@ def main(argv: list[str] | None = None) -> int:
                 if assigned:
                     print("Clearing monthly_route_id on unassigned locations...", flush=True)
                     res = db.session.execute(
-                        update(MonthlyRouteLocation)
+                        update(MonthlyLocation)
                         .where(
-                            MonthlyRouteLocation.id.not_in(assigned),
-                            MonthlyRouteLocation.monthly_route_id.isnot(None),
+                            MonthlyLocation.id.not_in(assigned),
+                            MonthlyLocation.monthly_route_id.isnot(None),
                         )
                         .values(monthly_route_id=None)
                     )

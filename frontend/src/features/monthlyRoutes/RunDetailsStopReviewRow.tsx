@@ -7,12 +7,12 @@ import type {
   MonthlyRunDetailReviewStopDetailPayload,
 } from './monthlyRoutesShared'
 import type { NotableChangeItem, NotableStopChangeCard } from './notableStopChanges'
-import { worksheetStopDisplaySubline } from './testingSiteDisplay'
+import { locationDisplaySubline } from './locationDisplay'
 import RunReviewOutcomeLabel from './RunReviewOutcomeLabel'
 import RunDetailsStopOutcomeSelect from './RunDetailsStopOutcomeSelect'
 import { runReviewResultHeadlineClass } from './notableStopChanges'
 import { stopShowsNoDeficienciesConfirmedPill } from './runDetailsDeficiencyDisplay'
-import type { TechnicianWorksheetRun, TechnicianWorksheetStop } from './monthlyRoutesShared'
+import type { TechnicianWorksheetRun, TechnicianWorksheetLocation } from './monthlyRoutesShared'
 import { canOfficeEditOutcomes } from './runWorkflowShared'
 import { apiJson } from '../../lib/apiClient'
 
@@ -33,7 +33,7 @@ export function RunDetailsStopTestBlock({
   run?: TechnicianWorksheetRun | null
   routeId?: number
   readOnly?: boolean
-  onStopUpdated?: (stop: TechnicianWorksheetStop) => void | Promise<void>
+  onStopUpdated?: (stop: TechnicianWorksheetLocation) => void | Promise<void>
 }) {
   const { resultHeadline, stop, siteLabel, siteIndex, siteCount, stopNumber } = card
   const monthIso = stop.month_date
@@ -47,7 +47,7 @@ export function RunDetailsStopTestBlock({
 
   const siteSubline =
     showSiteMeta
-      ? worksheetStopDisplaySubline(stop, {
+      ? locationDisplaySubline(stop, {
           siteCount,
           siteIndex: siteIndex - 1,
           primaryLabel: siteLabel,
@@ -153,14 +153,14 @@ export function RunDetailsStopDeficienciesBlock({
   monthDate: string
   readOnly?: boolean
   onDeficiencyUpdated?: (
-    testingSiteId: number,
+    locationId: number,
     updated: MonthlyRunDetailDeficiencySummary,
   ) => void | Promise<void>
 }) {
   const { siteLabel, siteIndex, siteCount, stopNumber } = card
   const showSiteMeta = showSiteLabel && siteCount > 1
   const siteSubline = showSiteMeta
-    ? worksheetStopDisplaySubline(card.stop, {
+    ? locationDisplaySubline(card.stop, {
         siteCount,
         siteIndex: siteIndex - 1,
         primaryLabel: siteLabel,
@@ -184,7 +184,7 @@ export function RunDetailsStopDeficienciesBlock({
         deficiencies={deficiencies}
         routeId={routeId}
         monthDate={monthDate}
-        testingSiteId={card.stop.testing_site_id}
+        locationId={card.stop.location_id}
         readOnly={readOnly}
         onDeficiencyUpdated={onDeficiencyUpdated}
         modalContext={{
@@ -211,7 +211,7 @@ export function RunDetailsStopFollowUpBlock({
   showSiteLabel: boolean
   /** When false, only job comments are shown (run review table). */
   showFieldChanges?: boolean
-  onDetailLoaded: (testingSiteId: number, changes: NotableChangeItem[]) => void
+  onDetailLoaded: (locationId: number, changes: NotableChangeItem[]) => void
 }) {
   const { changes, stopNumber, stop, siteLabel, siteIndex, siteCount } = card
   const bodyId = useId()
@@ -223,7 +223,7 @@ export function RunDetailsStopFollowUpBlock({
   const runComment = (stop.run_comments || '').trim()
   const showSiteMeta = showSiteLabel && siteCount > 1
   const siteSubline = showSiteMeta
-    ? worksheetStopDisplaySubline(stop, {
+    ? locationDisplaySubline(stop, {
         siteCount,
         siteIndex: siteIndex - 1,
         primaryLabel: siteLabel,
@@ -237,15 +237,15 @@ export function RunDetailsStopFollowUpBlock({
     try {
       const qs = new URLSearchParams({ month: monthDate })
       const data = await apiJson<MonthlyRunDetailReviewStopDetailPayload>(
-        `/api/monthly_routes/routes/${routeId}/run_details/review/stops/${stop.testing_site_id}?${qs.toString()}`,
+        `/api/monthly_routes/routes/${routeId}/run_details/review/stops/${stop.location_id}?${qs.toString()}`,
       )
-      onDetailLoaded(stop.testing_site_id, data.changes)
+      onDetailLoaded(stop.location_id, data.changes)
     } catch {
       setDetailError('Could not load site changes.')
     } finally {
       setDetailLoading(false)
     }
-  }, [needsDetailFetch, detailLoading, monthDate, routeId, stop.testing_site_id, onDetailLoaded])
+  }, [needsDetailFetch, detailLoading, monthDate, routeId, stop.location_id, onDetailLoaded])
 
   useEffect(() => {
     if (needsDetailFetch) void loadDetail()
@@ -306,7 +306,7 @@ export default function RunDetailsStopReviewRow({
   monthDate: string
   hideIdentity?: boolean
   showSiteLabel?: boolean
-  onDetailLoaded: (testingSiteId: number, changes: NotableChangeItem[]) => void
+  onDetailLoaded: (locationId: number, changes: NotableChangeItem[]) => void
 }) {
   if (hideIdentity) {
     return (

@@ -17,7 +17,12 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { Alert, Table } from 'react-bootstrap'
 import { Link } from 'react-router-dom'
-import { annualMonthHint, stopAnnualDueThisMonth } from './annualMonthHint'
+import { annualMonthHint } from './annualMonthHint'
+import RunDetailsPrepareAnnualSchedulePill from './RunDetailsPrepareAnnualSchedulePill'
+import {
+  mergePrepAnnualScheduleRow,
+  prepRowAnnualDueForStop,
+} from './prepAnnualSchedule'
 import { monitoringCompanyDisplayName } from './MonitoringCompanySelect'
 import {
   PrepAnnualMonthField,
@@ -33,11 +38,15 @@ import {
   renumberPrepRowStopNumbers,
   type RunDetailPrepRow,
 } from './runDetailsLocationReview'
-import type { MonthlyRunDetailDeficiencySummary } from './monthlyRoutesShared'
+import type {
+  AnnualScheduleCheckLocation,
+  AnnualScheduleCheckStatus,
+  MonthlyRunDetailDeficiencySummary,
+} from './monthlyRoutesShared'
 import type { RunDetailsStopPatchApi } from './useRunDetailsStopPatch'
 import { useMonitoringCompanies } from './useMonitoringCompanies'
 import { apiJson } from '../../lib/apiClient'
-import { shortStreetAddress } from './testingSiteDisplay'
+import { shortStreetAddress } from './locationDisplay'
 
 type PrepDragHandleProps = Pick<ReturnType<typeof useSortable>, 'attributes' | 'listeners'>
 
@@ -136,7 +145,7 @@ function SortableLocationPrepRows({
   ) => ReactNode
 }) {
   const primary = locationRows[0]
-  const locationId = primary?.stop.location_id ?? 0
+  const locationId = primary?.location.location_id ?? 0
   const sortable = useSortable({
     id: locationId,
     disabled: !reorderEnabled || orderSaving,
@@ -174,24 +183,30 @@ export default function RunDetailsPrepareTable({
   prepEditsDisabled = false,
   reorderDisabled = false,
   onRouteOrderChanged,
+  annualScheduleStatus = 'idle',
+  annualScheduleByLocationId = null,
+  onAnnualScheduleRefresh,
 }: {
   rows: RunDetailPrepRow[]
   routeId: number
   monthDate: string
   stopPatch: RunDetailsStopPatchApi
   onDeficiencyUpdated?: (
-    testingSiteId: number,
+    locationId: number,
     updated: MonthlyRunDetailDeficiencySummary,
   ) => void | Promise<void>
   prepEditsDisabled?: boolean
   reorderDisabled?: boolean
   onRouteOrderChanged?: (orderedLocationIds: number[]) => void | Promise<void>
+  annualScheduleStatus?: AnnualScheduleCheckStatus
+  annualScheduleByLocationId?: Record<number, AnnualScheduleCheckLocation> | null
+  onAnnualScheduleRefresh?: () => void | Promise<void>
 }) {
   const [activeFieldKey, setActiveFieldKey] = useState<string | null>(null)
   const [optimisticRows, setOptimisticRows] = useState<RunDetailPrepRow[] | null>(null)
   const [orderSaving, setOrderSaving] = useState(false)
   const [orderError, setOrderError] = useState<string | null>(null)
-  const { patchStopForRow, error, isFieldSaving } = stopPatch
+  const { patchStop: commitStopPatch, patchStopForRow, error, isFieldSaving } = stopPatch
   const { companies, loading: companiesLoading, refresh, appendCompany } = useMonitoringCompanies()
 
   const reorderEnabled = !prepEditsDisabled && !reorderDisabled
@@ -220,7 +235,7 @@ export default function RunDetailsPrepareTable({
     let current: RunDetailPrepRow[] = []
     let currentLocationId: number | null = null
     for (const row of displayRows) {
-      const locationId = row.stop.location_id
+      const locationId = row.location.location_id
       if (currentLocationId !== locationId) {
         if (current.length > 0) blocks.push(current)
         current = [row]
@@ -287,7 +302,7 @@ export default function RunDetailsPrepareTable({
     [displayRows, orderSaving, persistRouteOrder, reorderEnabled],
   )
 
-  const fieldKey = (testingSiteId: number, suffix: string) => `${testingSiteId}-${suffix}`
+  const fieldKey = (locationId: number, suffix: string) => `${locationId}-${suffix}`
 
   const renderPrepRow = useCallback(
     (
@@ -300,9 +315,10 @@ export default function RunDetailsPrepareTable({
         style?: CSSProperties
       },
     ) => {
-      const { stop, locationLabel, siteCount } = row
+      const stop = row.location
+    const locationLabel = row.location.location_label
       const displayLocationLabel = shortStreetAddress(locationLabel)
-      const sid = stop.testing_site_id
+      const sid = stop.location_id
       const siteLabel = (stop.label || '').trim() || 'Primary testing location'
       const companyId = stop.monitoring_company_id ?? null
       const companyName =
@@ -310,10 +326,20 @@ export default function RunDetailsPrepareTable({
         stop.monitoring_company?.trim() ||
         monitoringCompanyDisplayName(companyId, companies, stop.monitoring_company)
       const openDeficiencies = openDeficiencySummaries(stop.deficiency_summaries)
-      const multiSite = siteCount > 1
-      const annualDue = stopAnnualDueThisMonth(stop, locationLabel, monthDate)
+      const multiSite = false
+      const annualDue = prepRowAnnualDueForStop(
+        annualScheduleStatus,
+        annualScheduleByLocationId?.[sid] ?? null,
+        stop.annual_month,
+        monthDate,
+      )
+      const scheduleRow = mergePrepAnnualScheduleRow(
+        annualScheduleByLocationId?.[sid] ?? null,
+        stop.annual_month,
+        monthDate,
+      )
       const fk = (suffix: string) => fieldKey(sid, suffix)
-      const patchStop = patchStopForRow(stop.stop_number)
+      const patchRow = patchStopForRow(stop.stop_number)
       const officeComment = (stop.office_job_comment || '').trim()
       const highlighted = officeComment.length > 0
 
@@ -345,6 +371,9 @@ export default function RunDetailsPrepareTable({
                 Edited last month
               </span>
             ) : null}
+            {options.isPrimaryForLocation ? (
+              <RunDetailsPrepareAnnualSchedulePill schedule={scheduleRow} />
+            ) : null}
             {multiSite ? (
               <div
                 className={`run-details-prepare-site-label text-muted small${multiSite ? ' run-details-prepare-site-label--multi' : ''}`}
@@ -364,7 +393,7 @@ export default function RunDetailsPrepareTable({
                 onActivate={setActiveFieldKey}
                 disabled={prepEditsDisabled}
                 onCommit={(next) =>
-                  void patchStop(sid, fk('ring'), { ring: next.trim() || null }, { ring: stop.ring })
+                  void patchRow(sid, fk('ring'), { ring: next.trim() || null }, { ring: stop.ring })
                 }
               />
               <PrepCompactField
@@ -376,7 +405,7 @@ export default function RunDetailsPrepareTable({
                 onActivate={setActiveFieldKey}
                 disabled={prepEditsDisabled}
                 onCommit={(next) =>
-                  void patchStop(
+                  void patchRow(
                     sid,
                     fk('key'),
                     { key_number: next.trim() || null },
@@ -393,7 +422,7 @@ export default function RunDetailsPrepareTable({
                 onActivate={setActiveFieldKey}
                 disabled={prepEditsDisabled}
                 onCommit={(next) =>
-                  void patchStop(
+                  void patchRow(
                     sid,
                     fk('door'),
                     { door_code: next.trim() || null },
@@ -411,12 +440,13 @@ export default function RunDetailsPrepareTable({
                 hint={annualMonthHint(stop, locationLabel, monthDate) ?? undefined}
                 disabled={prepEditsDisabled}
                 onCommit={(next) =>
-                  void patchStop(
+                  void commitStopPatch(
                     sid,
                     fk('annual'),
                     { annual_month: next.trim() || null },
                     { annual_month: stop.annual_month },
-                  )
+                    stop.stop_number,
+                  ).then(() => onAnnualScheduleRefresh?.())
                 }
               />
             </div>
@@ -435,7 +465,7 @@ export default function RunDetailsPrepareTable({
                 onActivate={setActiveFieldKey}
                 disabled={prepEditsDisabled}
                 onCommit={(nextId) =>
-                  void patchStop(
+                  void patchRow(
                     sid,
                     fk('company'),
                     { monitoring_company_id: nextId },
@@ -460,7 +490,7 @@ export default function RunDetailsPrepareTable({
                 onActivate={setActiveFieldKey}
                 disabled={prepEditsDisabled}
                 onCommit={(next) =>
-                  void patchStop(
+                  void patchRow(
                     sid,
                     fk('account'),
                     { monitoring_account_number: next.trim() || null },
@@ -477,7 +507,7 @@ export default function RunDetailsPrepareTable({
                 onActivate={setActiveFieldKey}
                 disabled={prepEditsDisabled}
                 onCommit={(next) =>
-                  void patchStop(
+                  void patchRow(
                     sid,
                     fk('password'),
                     { monitoring_password: next.trim() || null },
@@ -495,7 +525,7 @@ export default function RunDetailsPrepareTable({
                 multiline
                 disabled={prepEditsDisabled}
                 onCommit={(next) =>
-                  void patchStop(
+                  void patchRow(
                     sid,
                     fk('mon-notes'),
                     { monitoring_notes: next.trim() || null },
@@ -510,7 +540,7 @@ export default function RunDetailsPrepareTable({
               deficiencies={openDeficiencies}
               routeId={routeId}
               monthDate={monthDate}
-              testingSiteId={sid}
+              locationId={sid}
               compact
               onDeficiencyUpdated={onDeficiencyUpdated}
               modalContext={{
@@ -529,7 +559,7 @@ export default function RunDetailsPrepareTable({
               onActivate={setActiveFieldKey}
               disabled={prepEditsDisabled}
               onCommit={(next) =>
-                void patchStop(
+                void patchRow(
                   sid,
                   fk('office-job-comment'),
                   { office_job_comment: next },
@@ -547,7 +577,7 @@ export default function RunDetailsPrepareTable({
               onActivate={setActiveFieldKey}
               disabled={prepEditsDisabled}
               onCommit={(next) =>
-                void patchStop(
+                void patchRow(
                   sid,
                   fk('procedures'),
                   { testing_procedures: next },
@@ -565,7 +595,7 @@ export default function RunDetailsPrepareTable({
               onActivate={setActiveFieldKey}
               disabled={prepEditsDisabled}
               onCommit={(next) =>
-                void patchStop(
+                void patchRow(
                   sid,
                   fk('loc-notes'),
                   { inspection_tech_notes: next },
@@ -579,11 +609,15 @@ export default function RunDetailsPrepareTable({
     },
     [
       activeFieldKey,
+      annualScheduleByLocationId,
+      annualScheduleStatus,
       appendCompany,
+      commitStopPatch,
       companies,
       companiesLoading,
       isFieldSaving,
       monthDate,
+      onAnnualScheduleRefresh,
       onDeficiencyUpdated,
       orderSaving,
       patchStopForRow,
@@ -600,7 +634,7 @@ export default function RunDetailsPrepareTable({
   const tableBody = (
     <tbody>
       {locationBlocks.map((locationRows) => {
-        const locationId = locationRows[0]?.stop.location_id ?? 0
+        const locationId = locationRows[0]?.location.location_id ?? 0
         if (reorderEnabled) {
           return (
             <SortableLocationPrepRows

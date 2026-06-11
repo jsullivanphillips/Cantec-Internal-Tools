@@ -23,20 +23,79 @@ def serialize_monitoring_company(mc: MonitoringCompany | None) -> dict[str, obje
     }
 
 
+def normalize_monitoring_company_name(name: str | None) -> str:
+    return (name or "").strip().casefold()
+
+
+def _monitoring_name_prefix_match(shorter: str, longer: str) -> bool:
+    """True when ``longer`` extends ``shorter`` at a word boundary (``Telus`` → ``Telus Security``)."""
+    if not shorter or not longer:
+        return False
+    if shorter == longer:
+        return True
+    if not longer.startswith(shorter):
+        return False
+    if len(longer) == len(shorter):
+        return True
+    return longer[len(shorter)] in " -–—:/"
+
+
+def monitoring_company_names_compatible(query: str, directory_name: str) -> bool:
+    """Whether a parsed sheet company string can match a directory row name."""
+    q = normalize_monitoring_company_name(query)
+    d = normalize_monitoring_company_name(directory_name)
+    if not q or not d:
+        return False
+    if q == d:
+        return True
+    return _monitoring_name_prefix_match(q, d) or _monitoring_name_prefix_match(d, q)
+
+
 def find_active_monitoring_company_by_name(name: str) -> MonitoringCompany | None:
     folded = normalize_monitoring_company_name(name)
     if not folded:
         return None
-    row = MonitoringCompany.query.filter(
-        db.func.lower(MonitoringCompany.name) == folded,
-        MonitoringCompany.active.is_(True),
-    ).first()
-    if row is not None:
-        return row
-    for candidate in MonitoringCompany.query.filter(MonitoringCompany.active.is_(True)).limit(1000).all():
-        if normalize_monitoring_company_name(candidate.name) == folded:
-            return candidate
-    return None
+    active = (
+        MonitoringCompany.query.filter(MonitoringCompany.active.is_(True))
+        .order_by(MonitoringCompany.name.asc())
+        .all()
+    )
+    exact = [mc for mc in active if normalize_monitoring_company_name(mc.name) == folded]
+    if exact:
+        return exact[0]
+
+    compatible = [
+        mc for mc in active if monitoring_company_names_compatible(folded, mc.name or "")
+    ]
+    if not compatible:
+        return None
+    if len(compatible) == 1:
+        return compatible[0]
+
+    query_extends_directory = [
+        mc
+        for mc in compatible
+        if _monitoring_name_prefix_match(normalize_monitoring_company_name(mc.name), folded)
+    ]
+    if len(query_extends_directory) == 1:
+        return query_extends_directory[0]
+
+    directory_extends_query = [
+        mc
+        for mc in compatible
+        if _monitoring_name_prefix_match(folded, normalize_monitoring_company_name(mc.name))
+    ]
+    if len(directory_extends_query) == 1:
+        return directory_extends_query[0]
+
+    compatible.sort(
+        key=lambda mc: (
+            abs(len(normalize_monitoring_company_name(mc.name)) - len(folded)),
+            len(normalize_monitoring_company_name(mc.name)),
+            normalize_monitoring_company_name(mc.name),
+        )
+    )
+    return compatible[0]
 
 
 def _next_sqlite_bigint_id(model) -> int | None:

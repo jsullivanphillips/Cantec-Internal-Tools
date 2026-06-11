@@ -17,7 +17,7 @@ from collections import defaultdict
 from sqlalchemy.orm import selectinload
 
 from app import create_app
-from app.db_models import Key, MonthlyRoute, MonthlyRouteLocation, MonthlyRouteSnapshot
+from app.db_models import Key, MonthlyLocation, MonthlyRoute, MonthlyRouteSnapshot
 from app.monthly.monthly_keys_keycode import (
     canonical_keycode_from_monthly_keys_field,
     monthly_keys_field_indicates_no_key,
@@ -52,11 +52,10 @@ def _barcode_to_int(barcode: str | None) -> int | None:
         return None
 
 
-def _check_test_days(locations: list[MonthlyRouteLocation]) -> dict[str, object]:
+def _check_test_days(locations: list[MonthlyLocation]) -> dict[str, object]:
     parse_errors: list[tuple[int, str, str]] = []
     blank_test_day: list[int] = []
     cancelled_test_day: list[int] = []
-    # route_number -> set of (weekday_iso, occurrence)
     patterns_by_route: dict[int, set[tuple[int, int]]] = defaultdict(set)
     parsed_rows: list[tuple[int, object]] = []
 
@@ -94,7 +93,7 @@ def _check_test_days(locations: list[MonthlyRouteLocation]) -> dict[str, object]
     }
 
 
-def _check_keys_barcode(locations: list[MonthlyRouteLocation], keys_by_barcode: dict[int, Key]) -> dict[str, object]:
+def _check_keys_barcode(locations: list[MonthlyLocation], keys_by_barcode: dict[int, Key]) -> dict[str, object]:
     mismatches: list[dict[str, object]] = []
     legacy_suffix_ok: list[int] = []
     missing_key_row: list[int] = []
@@ -141,7 +140,7 @@ def _check_keys_barcode(locations: list[MonthlyRouteLocation], keys_by_barcode: 
 
 
 def _check_keys_address_keycode(
-    locations: list[MonthlyRouteLocation],
+    locations: list[MonthlyLocation],
     keys_by_keycode: dict[str, Key],
 ) -> dict[str, object]:
     """Locations without barcode: compare KEYS column to keys.keycode + address on key."""
@@ -173,7 +172,7 @@ def _check_keys_address_keycode(
                     "monthly_keys_column": loc.keys,
                     "monthly_address": loc.address,
                     "monthly_display_address": loc.display_address,
-                    "monthly_building": loc.building,
+                    "monthly_label": loc.label,
                     "monthly_property_management_company": loc.property_management_company,
                     "monthly_address_normalized": addr_norm,
                     "key_addresses_on_file": key_addr_raw,
@@ -188,15 +187,10 @@ def _check_keys_address_keycode(
 
 
 def _check_service_trade_linkage(
-    locations: list[MonthlyRouteLocation],
+    locations: list[MonthlyLocation],
     monthly_routes: list[MonthlyRoute],
     snapshots: list[MonthlyRouteSnapshot],
 ) -> dict[str, object]:
-    """
-    Specialists snapshots use ServiceTrade *route* pseudo-location ids.
-    Optional per-building ST ids live on ``MonthlyRouteLocation.service_trade_site_location_id``.
-    """
-
     site_st_ids = {
         loc.service_trade_site_location_id
         for loc in locations
@@ -213,9 +207,9 @@ def _check_service_trade_linkage(
     snapshots_not_linked_routes = len(snapshot_st_ids) - snapshots_linked_to_route_entity
 
     return {
-        "monthly_site_rows_total": len(locations),
-        "monthly_site_rows_with_service_trade_site_location_id": len(site_st_ids),
-        "monthly_site_rows_without_service_trade_site_location_id": len(locations) - len(site_st_ids),
+        "monthly_location_rows_total": len(locations),
+        "monthly_location_rows_with_service_trade_site_location_id": len(site_st_ids),
+        "monthly_location_rows_without_service_trade_site_location_id": len(locations) - len(site_st_ids),
         "monthly_route_entities_total": len(monthly_routes),
         "monthly_route_entities_with_service_trade_route_location_id": len(route_clock_st_ids),
         "snapshot_rows_total": len(snapshots),
@@ -226,7 +220,7 @@ def _check_service_trade_linkage(
 
 def run_report(limit_detail: int) -> None:
     locations = (
-        MonthlyRouteLocation.query.options(selectinload(MonthlyRouteLocation.monthly_route)).all()
+        MonthlyLocation.query.options(selectinload(MonthlyLocation.monthly_route)).all()
     )
     keys_list = Key.query.options(selectinload(Key.addresses)).all()
     snapshots = MonthlyRouteSnapshot.query.all()
@@ -291,8 +285,8 @@ def run_report(limit_detail: int) -> None:
         print(f"        monthly address (library): {row['monthly_address']!r}")
         if row.get("monthly_display_address"):
             print(f"        monthly display_address: {row['monthly_display_address']!r}")
-        if row.get("monthly_building"):
-            print(f"        monthly building: {row['monthly_building']!r}")
+        if row.get("monthly_label"):
+            print(f"        monthly label: {row['monthly_label']!r}")
         if row.get("monthly_property_management_company"):
             print(f"        monthly PM company: {row['monthly_property_management_company']!r}")
         print(f"        monthly address (normalized compare): {row['monthly_address_normalized']!r}")
@@ -308,7 +302,7 @@ def run_report(limit_detail: int) -> None:
         " (see MonthlyRouteSnapshot); compare to MonthlyRoute.service_trade_route_location_id."
     )
     print(
-        "  Optional real-building ST ids: MonthlyRouteLocation.service_trade_site_location_id"
+        "  Optional real-building ST ids: MonthlyLocation.service_trade_site_location_id"
         " (separate backfill)."
     )
     for k, v in st.items():
@@ -318,7 +312,7 @@ def run_report(limit_detail: int) -> None:
     mr_count = MonthlyRoute.query.count()
     print(f"  monthly_route rows: {mr_count}")
     fk_set = sum(1 for loc in locations if loc.monthly_route_id is not None)
-    print(f"  monthly_route_location.monthly_route_id non-null: {fk_set} (expect 0 until backfill)")
+    print(f"  monthly_location.monthly_route_id non-null: {fk_set}")
 
 
 def main(argv: list[str] | None = None) -> int:

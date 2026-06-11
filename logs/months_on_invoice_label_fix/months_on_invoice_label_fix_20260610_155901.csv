@@ -1,0 +1,6 @@
+location_id,address,old_label,new_label,old_billing_comments,new_billing_comments,status,detail
+38,1035 Belmont Avenue,Months on invoice,1035 Belmont Ave,,Months on invoice,update_candidate,
+59,1088 Johnson Street,Months on invoice,1088 Johnson St,,Months on invoice,update_candidate,
+139,131 Gorge Road E,months on invoice,131 Gorge Rd E,,Months on invoice,update_candidate,
+150,133 Gorge Road E,months on invoice,133 Gorge Rd E,,Months on invoice,update_candidate,
+152,1340 Sussex Road,months on invoice,1340 Sussex Rd,,Months on invoice,update_candidate,

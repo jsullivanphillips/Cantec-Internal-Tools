@@ -7,7 +7,7 @@ import {
   WORKSHEET_CLOCK_IN_BLOCKED_MESSAGE,
   type TechnicianWorksheetPayload,
   type TechnicianWorksheetRun,
-  type TechnicianWorksheetStop,
+  type TechnicianWorksheetLocation,
 } from './monthlyRoutesShared'
 import {
   canPortalEditRun,
@@ -107,11 +107,11 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
 
   const stops = useMemo(() => payload?.stops ?? [], [payload?.stops])
 
-  const updateLocalStop = useCallback((testingSiteId: number, patch: WorksheetStopChangeSet) => {
+  const updateLocalStop = useCallback((locationId: number, patch: WorksheetStopChangeSet) => {
     setPayload((prev) => {
       if (!prev?.stops?.length) return prev
-      const nextStops = prev.stops.map((s) =>
-        s.testing_site_id === testingSiteId ? { ...s, ...patch } : s,
+      const nextStops = (prev.locations ?? []).map((s) =>
+        s.location_id === locationId ? { ...s, ...patch } : s,
       )
       const next = { ...prev, stops: nextStops }
       saveWorksheetCache(next)
@@ -123,7 +123,7 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
     () =>
       loadWorkflowSyncQueue()
         .filter((item) => item.routeId === routeId && item.monthIso === monthIso)
-        .map((item) => `${item.id}:${item.action}:${item.testingSiteId}`)
+        .map((item) => `${item.id}:${item.action}:${item.locationId}`)
         .join('|'),
     [stops, syncState, routeId, monthIso],
   )
@@ -144,7 +144,7 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
   }, [projectedStops, routeId, monthIso])
 
   const clockInBlockedForStop = useCallback(
-    (stop: TechnicianWorksheetStop): boolean =>
+    (stop: TechnicianWorksheetLocation): boolean =>
       projectedClockInBlockedForStop(stop, stops, routeId, monthIso),
     [stops, routeId, monthIso, workflowQueueRevision],
   )
@@ -265,11 +265,11 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
   }, [refreshInBackground])
 
   const queueStopChanges = useCallback(
-    (stop: TechnicianWorksheetStop, changes: WorksheetStopChangeSet) => {
-      updateLocalStop(stop.testing_site_id, changes)
+    (stop: TechnicianWorksheetLocation, changes: WorksheetStopChangeSet) => {
+      updateLocalStop(stop.location_id, changes)
       enqueueWorksheetChange({
         routeId,
-        testingSiteId: stop.testing_site_id,
+        locationId: stop.location_id,
         monthIso,
         expectedUpdatedAt: stop.version_updated_at,
         clientMutatedAt: new Date().toISOString(),
@@ -295,12 +295,12 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
     for (const item of queue) {
       if (item.nextAttemptAt > Date.now()) continue
       if (item.routeId !== routeId || item.monthIso !== monthIso) continue
-      const testingSiteId = item.testingSiteId
-      if (testingSiteId == null) continue
+      const locationId = item.locationId
+      if (locationId == null) continue
       try {
         const qs = new URLSearchParams({ month: item.monthIso, tech_portal: '1' })
-        const res = await apiJson<{ stop: TechnicianWorksheetStop }>(
-          `/api/monthly_routes/routes/${item.routeId}/worksheet/stops/${testingSiteId}?${qs.toString()}`,
+        const res = await apiJson<{ stop: TechnicianWorksheetLocation }>(
+          `/api/monthly_routes/routes/${item.routeId}/worksheet/locations/${locationId}?${qs.toString()}`,
           {
             method: 'PATCH',
             body: JSON.stringify({
@@ -312,10 +312,10 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
             }),
           },
         )
-        let mergedStopForQueue: TechnicianWorksheetStop = res.stop
+        let mergedStopForQueue: TechnicianWorksheetLocation = res.stop
         setPayload((prev) => {
           if (!prev?.stops?.length) return prev
-          const prevStop = prev.stops.find((s) => s.testing_site_id === testingSiteId)
+          const prevStop = (prev.locations ?? []).find((s) => s.location_id === locationId)
           const mergedStop = applyServerStopWithPending(
             res.stop,
             item.routeId,
@@ -324,8 +324,8 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
             prevStop,
           )
           mergedStopForQueue = mergedStop
-          const nextStops = prev.stops.map((s) =>
-            s.testing_site_id === testingSiteId ? mergedStop : s,
+          const nextStops = (prev.locations ?? []).map((s) =>
+            s.location_id === locationId ? mergedStop : s,
           )
           const next = { ...prev, stops: nextStops }
           saveWorksheetCache(next)
@@ -337,7 +337,7 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
           .map((q) =>
             q.routeId === item.routeId &&
             q.monthIso === item.monthIso &&
-            q.testingSiteId === testingSiteId
+            q.locationId === locationId
               ? { ...q, expectedUpdatedAt: mergedStopForQueue.version_updated_at }
               : q,
           )

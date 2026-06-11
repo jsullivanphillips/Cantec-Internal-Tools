@@ -9,20 +9,18 @@ import pytest
 
 from app import create_app
 from app.db_models import (
+    MonthlyLocationMonth,
     MonthlyLocationQuarterBilled,
     MonthlyRoute,
-    MonthlyRouteLocation,
     MonthlyRouteRun,
-    MonthlyRouteTestHistory,
-    MonthlySite,
-    MonthlyTestingSite,
-    MonthlyTestingSiteMonth,
     db,
 )
 from app.monthly.billing_board import quarter_from_anchor_month
-from app.monthly.monthly_sites_sync import sync_testing_sites_from_legacy
+from tests.monthly_location_helpers import WORKSHEET_TABLES, make_location
 
 PACIFIC_TZ = ZoneInfo("America/Vancouver")
+
+BILLING_TABLES = WORKSHEET_TABLES + [MonthlyLocationQuarterBilled.__table__]
 
 
 @pytest.fixture
@@ -33,26 +31,15 @@ def billing_board_client(monkeypatch):
     app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///:memory:"
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-    tables = [
-        MonthlyRoute.__table__,
-        MonthlyRouteLocation.__table__,
-        MonthlyRouteRun.__table__,
-        MonthlyRouteTestHistory.__table__,
-        MonthlySite.__table__,
-        MonthlyTestingSite.__table__,
-        MonthlyTestingSiteMonth.__table__,
-        MonthlyLocationQuarterBilled.__table__,
-    ]
-
     with app.app_context():
-        db.metadata.create_all(db.engine, tables=tables)
+        db.metadata.create_all(db.engine, tables=BILLING_TABLES)
         with app.test_client() as client:
             with client.session_transaction() as sess:
                 sess["username"] = "billing.user"
                 sess["authenticated"] = True
             yield client, app
         db.session.remove()
-        db.metadata.drop_all(db.engine, tables=list(reversed(tables)))
+        db.metadata.drop_all(db.engine, tables=list(reversed(BILLING_TABLES)))
 
 
 def test_quarter_from_anchor_month():
@@ -64,53 +51,33 @@ def test_quarter_from_anchor_month():
 
 def _seed_location_with_may_billing():
     route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
-    loc = MonthlyRouteLocation(
+    loc = make_location(
         id=101,
         address="123 Test St",
-        address_normalized="123 test st",
+        label="123 Test St",
         property_management_company="Acme",
         property_management_company_normalized="acme",
-        building=None,
-        building_normalized="",
-        status_normalized="active",
-        status_raw="Active",
         monthly_route_id=1,
         test_day="Tuesday",
         annual_month="May",
     )
-    hist = MonthlyRouteTestHistory(
+    mlm = MonthlyLocationMonth(
         id=5001,
-        location_id=101,
+        monthly_location_id=101,
         month_date=date(2026, 5, 1),
         result_status="tested",
         test_monthly_route_id=1,
         billing_status="bill",
+        test_outcome="all_good",
     )
-    inactive = MonthlyRouteLocation(
+    inactive = make_location(
         id=102,
         address="999 Inactive St",
-        address_normalized="999 inactive st",
-        property_management_company="",
-        property_management_company_normalized="",
-        building=None,
-        building_normalized="",
+        label="999 Inactive St",
         status_normalized="inactive",
         status_raw="Inactive",
     )
-    db.session.add_all([route, loc, hist, inactive])
-    db.session.commit()
-    sync_testing_sites_from_legacy(loc)
-    site = MonthlySite.query.filter_by(legacy_monthly_route_location_id=101).one()
-    ts = MonthlyTestingSite.query.filter_by(monthly_site_id=site.id).one()
-    mtsm = MonthlyTestingSiteMonth(
-        id=93001,
-        monthly_testing_site_id=ts.id,
-        month_date=date(2026, 5, 1),
-        test_monthly_route_id=1,
-        test_outcome="all_good",
-        result_status="tested",
-    )
-    db.session.add(mtsm)
+    db.session.add_all([route, loc, mlm, inactive])
     db.session.commit()
     return loc
 
@@ -184,29 +151,17 @@ def test_billing_board_invalid_quarter_params(billing_board_client):
 def _seed_two_routes_for_filter():
     route10 = MonthlyRoute(id=10, route_number=10, weekday_iso=2, week_occurrence=1)
     route16 = MonthlyRoute(id=16, route_number=16, weekday_iso=3, week_occurrence=2)
-    loc10 = MonthlyRouteLocation(
+    loc10 = make_location(
         id=201,
         address="On R10",
-        address_normalized="on r10",
-        property_management_company="",
-        property_management_company_normalized="",
-        building=None,
-        building_normalized="",
-        status_normalized="active",
-        status_raw="Active",
+        label="On R10",
         monthly_route_id=10,
         test_day="W1-R10",
     )
-    loc16 = MonthlyRouteLocation(
+    loc16 = make_location(
         id=202,
         address="On R16",
-        address_normalized="on r16",
-        property_management_company="",
-        property_management_company_normalized="",
-        building=None,
-        building_normalized="",
-        status_normalized="active",
-        status_raw="Active",
+        label="On R16",
         monthly_route_id=16,
         test_day="TH2-R16",
     )
@@ -241,45 +196,26 @@ def test_billing_board_search_route_token_suffix_only(billing_board_client):
 def test_billing_board_do_not_bill_includes_skip_reason_category(billing_board_client):
     client, _app = billing_board_client
     route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
-    loc = MonthlyRouteLocation(
+    loc = make_location(
         id=301,
         address="Annual Skip St",
-        address_normalized="annual skip st",
-        property_management_company="",
-        property_management_company_normalized="",
-        building=None,
-        building_normalized="",
-        status_normalized="active",
-        status_raw="Active",
+        label="Annual Skip St",
         monthly_route_id=1,
         test_day="Tuesday",
         annual_month="May",
     )
-    hist = MonthlyRouteTestHistory(
+    mlm = MonthlyLocationMonth(
         id=5002,
-        location_id=301,
+        monthly_location_id=301,
         month_date=date(2026, 5, 1),
         result_status="skipped",
-        skip_reason="annual",
+        skip_reason="testing_not_required",
         test_monthly_route_id=1,
         billing_status="do_not_bill",
-    )
-    db.session.add_all([route, loc, hist])
-    db.session.commit()
-    sync_testing_sites_from_legacy(loc)
-    site = MonthlySite.query.filter_by(legacy_monthly_route_location_id=301).one()
-    ts = MonthlyTestingSite.query.filter_by(monthly_site_id=site.id).one()
-    mtsm = MonthlyTestingSiteMonth(
-        id=93002,
-        monthly_testing_site_id=ts.id,
-        month_date=date(2026, 5, 1),
-        test_monthly_route_id=1,
         test_outcome="skipped",
-        result_status="skipped",
         skip_category="testing_not_required",
-        skip_reason="testing_not_required",
     )
-    db.session.add(mtsm)
+    db.session.add_all([route, loc, mlm])
     db.session.commit()
 
     r = client.get("/api/monthly_routes/billing_board?anchor_month=2026-05-01&q=annual")
@@ -293,16 +229,10 @@ def test_billing_board_do_not_bill_includes_skip_reason_category(billing_board_c
 def test_billing_board_unset_before_field_end_reports_field_work_ended_false(billing_board_client):
     client, _app = billing_board_client
     route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
-    loc = MonthlyRouteLocation(
+    loc = make_location(
         id=401,
         address="Open Run St",
-        address_normalized="open run st",
-        property_management_company="",
-        property_management_company_normalized="",
-        building=None,
-        building_normalized="",
-        status_normalized="active",
-        status_raw="Active",
+        label="Open Run St",
         monthly_route_id=1,
         test_day="Tuesday",
     )
@@ -315,15 +245,15 @@ def test_billing_board_unset_before_field_end_reports_field_work_ended_false(bil
         status="open",
         source="technician_app",
     )
-    hist = MonthlyRouteTestHistory(
+    mlm = MonthlyLocationMonth(
         id=5003,
-        location_id=401,
+        monthly_location_id=401,
         month_date=date(2026, 5, 1),
-        result_status=None,
         test_monthly_route_id=1,
+        run_id=9001,
         billing_status="unset",
     )
-    db.session.add_all([route, loc, run, hist])
+    db.session.add_all([route, loc, run, mlm])
     db.session.commit()
 
     r = client.get("/api/monthly_routes/billing_board?anchor_month=2026-05-01&q=open")
@@ -336,16 +266,10 @@ def test_billing_board_unset_before_field_end_reports_field_work_ended_false(bil
 def test_billing_board_unset_after_field_end_reports_field_work_ended_true(billing_board_client):
     client, _app = billing_board_client
     route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
-    loc = MonthlyRouteLocation(
+    loc = make_location(
         id=402,
         address="Ended Run St",
-        address_normalized="ended run st",
-        property_management_company="",
-        property_management_company_normalized="",
-        building=None,
-        building_normalized="",
-        status_normalized="active",
-        status_raw="Active",
+        label="Ended Run St",
         monthly_route_id=1,
         test_day="Tuesday",
     )
@@ -358,15 +282,16 @@ def test_billing_board_unset_after_field_end_reports_field_work_ended_true(billi
         status="open",
         source="technician_app",
     )
-    hist = MonthlyRouteTestHistory(
+    mlm = MonthlyLocationMonth(
         id=5004,
-        location_id=402,
+        monthly_location_id=402,
         month_date=date(2026, 5, 1),
         result_status="tested",
         test_monthly_route_id=1,
+        run_id=9002,
         billing_status="unset",
     )
-    db.session.add_all([route, loc, run, hist])
+    db.session.add_all([route, loc, run, mlm])
     db.session.commit()
 
     r = client.get("/api/monthly_routes/billing_board?anchor_month=2026-05-01&q=ended")

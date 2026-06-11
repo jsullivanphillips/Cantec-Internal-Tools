@@ -1,6 +1,6 @@
 import { useCallback, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
 import { apiJson } from '../../lib/apiClient'
-import type { TechnicianWorksheetPayload, TechnicianWorksheetStop } from './monthlyRoutesShared'
+import type { TechnicianWorksheetPayload, TechnicianWorksheetLocation } from './monthlyRoutesShared'
 import {
   optimisticCancelClockInPatch,
   optimisticClockInPatch,
@@ -54,11 +54,11 @@ export function usePortalWorkflowActions({
   triggerSyncRef,
 }: WorkflowHookParams) {
   const mergeStop = useCallback(
-    (stop: TechnicianWorksheetStop) => {
+    (stop: TechnicianWorksheetLocation) => {
       setPayload((prev) => {
-        if (!prev?.stops?.length) return prev
-        const nextStops = prev.stops.map((s) =>
-          s.testing_site_id === stop.testing_site_id ? stop : s,
+        if (!prev?.locations?.length) return prev
+        const nextStops = prev.locations.map((s) =>
+          s.location_id === stop.location_id ? stop : s,
         )
         const next = { ...prev, stops: nextStops }
         saveWorksheetCache(next)
@@ -71,11 +71,11 @@ export function usePortalWorkflowActions({
   )
 
   const patchStopLocal = useCallback(
-    (testingSiteId: number, patch: Partial<TechnicianWorksheetStop>) => {
+    (locationId: number, patch: Partial<TechnicianWorksheetLocation>) => {
       setPayload((prev) => {
-        if (!prev?.stops?.length) return prev
-        const nextStops = prev.stops.map((s) =>
-          s.testing_site_id === testingSiteId ? { ...s, ...patch } : s,
+        if (!prev?.locations?.length) return prev
+        const nextStops = prev.locations.map((s) =>
+          s.location_id === locationId ? { ...s, ...patch } : s,
         )
         const next = { ...prev, stops: nextStops }
         saveWorksheetCache(next)
@@ -88,21 +88,21 @@ export function usePortalWorkflowActions({
 
   const runAction = useCallback(
     async (
-      stop: TechnicianWorksheetStop,
+      stop: TechnicianWorksheetLocation,
       action: PortalWorkflowAction,
       payload: Record<string, unknown>,
-      optimistic?: Partial<TechnicianWorksheetStop>,
+      optimistic?: Partial<TechnicianWorksheetLocation>,
       options?: { awaitServer?: boolean },
-    ): Promise<{ ok: boolean; stop?: TechnicianWorksheetStop; queued?: boolean }> => {
+    ): Promise<{ ok: boolean; stop?: TechnicianWorksheetLocation; queued?: boolean }> => {
       if (optimistic) {
-        patchStopLocal(stop.testing_site_id, optimistic)
+        patchStopLocal(stop.location_id, optimistic)
       }
 
       const item = enqueuePortalWorkflowAction({
         action,
         routeId,
         monthIso,
-        testingSiteId: stop.testing_site_id,
+        locationId: stop.location_id,
         payload: {
           ...payload,
           stop_number: stop.stop_number,
@@ -124,7 +124,7 @@ export function usePortalWorkflowActions({
   )
 
   const clockIn = useCallback(
-    async (stop: TechnicianWorksheetStop) => {
+    async (stop: TechnicianWorksheetLocation) => {
       const timeIn = portalHhmmNow()
       return runAction(stop, 'clock_in', { time_in: timeIn }, optimisticClockInPatch(stop, timeIn))
     },
@@ -132,7 +132,7 @@ export function usePortalWorkflowActions({
   )
 
   const clockOut = useCallback(
-    async (stop: TechnicianWorksheetStop, opts?: { awaitServer?: boolean }) => {
+    async (stop: TechnicianWorksheetLocation, opts?: { awaitServer?: boolean }) => {
       const timeOut = portalHhmmNow()
       return runAction(
         stop,
@@ -146,21 +146,21 @@ export function usePortalWorkflowActions({
   )
 
   const cancelClockIn = useCallback(
-    async (stop: TechnicianWorksheetStop) => {
+    async (stop: TechnicianWorksheetLocation) => {
       const queue = routeWorkflowQueueItems(routeId, monthIso)
-      const pendingClockIn = pendingClockInForStop(queue, stop.testing_site_id)
+      const pendingClockIn = pendingClockInForStop(queue, stop.location_id)
 
       if (pendingClockIn) {
         const revertPatch = cancelClockInRevertPatch(stop, pendingClockIn)
 
         if (isPendingClockInQueueHead(queue, pendingClockIn)) {
-          patchStopLocal(stop.testing_site_id, revertPatch)
+          patchStopLocal(stop.location_id, revertPatch)
 
           const cancelItem = enqueuePortalWorkflowAction({
             action: 'cancel_clock_in',
             routeId,
             monthIso,
-            testingSiteId: stop.testing_site_id,
+            locationId: stop.location_id,
             payload: {},
           })
 
@@ -179,7 +179,7 @@ export function usePortalWorkflowActions({
 
         saveWorkflowSyncQueue(queue.filter((q) => q.id !== pendingClockIn.id))
         resolveWorkflowQueueItem(pendingClockIn.id, { ok: true })
-        patchStopLocal(stop.testing_site_id, revertPatch)
+        patchStopLocal(stop.location_id, revertPatch)
         extendSuppressWhileWorkflowPending(suppressRemoteRefreshUntilRef, routeId, monthIso)
         triggerSyncRef.current()
         return { ok: true }
@@ -199,22 +199,22 @@ export function usePortalWorkflowActions({
   )
 
   const transitionClock = useCallback(
-    async (fromStop: TechnicianWorksheetStop, toStop: TechnicianWorksheetStop) => {
+    async (fromStop: TechnicianWorksheetLocation, toStop: TechnicianWorksheetLocation) => {
       const timeOut = portalHhmmNow()
       const timeIn = portalHhmmNow()
       const fromPatch = optimisticClockOutPatch(fromStop, timeOut)
       const toPatch = optimisticClockInPatch(toStop, timeIn)
-      patchStopLocal(fromStop.testing_site_id, fromPatch)
-      patchStopLocal(toStop.testing_site_id, toPatch)
+      patchStopLocal(fromStop.location_id, fromPatch)
+      patchStopLocal(toStop.location_id, toPatch)
 
       const item = enqueuePortalWorkflowAction({
         action: 'transition_clock',
         routeId,
         monthIso,
-        testingSiteId: toStop.testing_site_id,
+        locationId: toStop.location_id,
         payload: {
-          from_testing_site_id: fromStop.testing_site_id,
-          to_testing_site_id: toStop.testing_site_id,
+          from_location_id: fromStop.location_id,
+          to_location_id: toStop.location_id,
           time_out: timeOut,
           time_in: timeIn,
           from_stop_number: fromStop.stop_number,
@@ -241,7 +241,7 @@ export function usePortalWorkflowActions({
 
   const setTestOutcome = useCallback(
     async (
-      stop: TechnicianWorksheetStop,
+      stop: TechnicianWorksheetLocation,
       testOutcome: PortalTestOutcome,
       opts?: {
         skipCategory?: PortalSkipCategory
@@ -265,7 +265,7 @@ export function usePortalWorkflowActions({
 
   const createDeficiency = useCallback(
     async (
-      stop: TechnicianWorksheetStop,
+      stop: TechnicianWorksheetLocation,
       body: { title: string; severity: string; status: string; description?: string },
     ) =>
       runAction(
@@ -279,7 +279,7 @@ export function usePortalWorkflowActions({
 
   const updateDeficiency = useCallback(
     async (
-      stop: TechnicianWorksheetStop,
+      stop: TechnicianWorksheetLocation,
       deficiencyId: number,
       body: { title?: string; severity?: string; status?: string; description?: string },
     ) =>
@@ -293,7 +293,7 @@ export function usePortalWorkflowActions({
   )
 
   const verifyDeficiency = useCallback(
-    async (stop: TechnicianWorksheetStop, deficiencyId: number, note?: string) =>
+    async (stop: TechnicianWorksheetLocation, deficiencyId: number, note?: string) =>
       runAction(
         stop,
         'verify_deficiency',
@@ -304,20 +304,20 @@ export function usePortalWorkflowActions({
   )
 
   const resetStop = useCallback(
-    async (stop: TechnicianWorksheetStop) => {
+    async (stop: TechnicianWorksheetLocation) => {
       const resetPatch = optimisticResetStopPatch()
-      const removed = purgePendingWorkflowForStop(routeId, monthIso, stop.testing_site_id)
+      const removed = purgePendingWorkflowForStop(routeId, monthIso, stop.location_id)
       for (const item of removed) {
         resolveWorkflowQueueItem(item.id, { ok: true })
       }
-      purgePendingFieldChangesForStop(routeId, monthIso, stop.testing_site_id)
-      patchStopLocal(stop.testing_site_id, resetPatch)
+      purgePendingFieldChangesForStop(routeId, monthIso, stop.location_id)
+      patchStopLocal(stop.location_id, resetPatch)
 
       const resetItem = enqueuePortalWorkflowAction({
         action: 'reset_stop',
         routeId,
         monthIso,
-        testingSiteId: stop.testing_site_id,
+        locationId: stop.location_id,
         payload: {
           stop_number: stop.stop_number,
         },
@@ -345,16 +345,16 @@ export function usePortalWorkflowActions({
   )
 
   const refreshDeficiencies = useCallback(
-    async (stop: TechnicianWorksheetStop, includeHidden: boolean) => {
+    async (stop: TechnicianWorksheetLocation, includeHidden: boolean) => {
       const qs = new URLSearchParams({
         month: monthIso,
         tech_portal: '1',
         include_hidden: includeHidden ? '1' : '0',
       })
-      const data = await apiJson<{ deficiencies: TechnicianWorksheetStop['deficiencies'] }>(
-        `/api/monthly_routes/routes/${routeId}/worksheet/stops/${stop.testing_site_id}/deficiencies?${qs.toString()}`,
+      const data = await apiJson<{ deficiencies: TechnicianWorksheetLocation['deficiencies'] }>(
+        `/api/monthly_routes/routes/${routeId}/worksheet/locations/${stop.location_id}/deficiencies?${qs.toString()}`,
       )
-      patchStopLocal(stop.testing_site_id, { deficiencies: data.deficiencies ?? [] })
+      patchStopLocal(stop.location_id, { deficiencies: data.deficiencies ?? [] })
     },
     [routeId, monthIso, patchStopLocal],
   )

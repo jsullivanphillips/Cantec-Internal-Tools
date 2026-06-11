@@ -29,6 +29,8 @@ export type MonthlyRouteSummary = {
   service_trade_route_location_id?: number | null
   /** Deep link to ServiceTrade web UI for that location (when id is set). */
   service_trade_route_location_url?: string | null
+  /** Office note shown to technicians on the portal worksheet header. */
+  technician_note?: string | null
   location_count?: number
 }
 
@@ -39,7 +41,7 @@ export type LinkedKeySummary = {
   barcode: number | null
 }
 
-/** Canonical monitoring company on a testing site (``monitoring_company_id`` FK). */
+/** Canonical monitoring company linked to a monthly location. */
 export type MonitoringCompanySummary = {
   id: number
   name: string | null
@@ -48,46 +50,16 @@ export type MonitoringCompanySummary = {
   active?: boolean
 }
 
-/** V2 testing stop (``MonthlyTestingSite``); one worksheet row / billing line item. */
-export type TestingSiteSummary = {
-  id: number
-  monthly_site_id: number
-  sort_order: number
-  label: string | null
-  price_per_month: number | null
-  /** Ring detail (API also exposes ``ring`` alias). */
-  ring_detail: string | null
-  ring?: string | null
-  /** Spreadsheet / legacy key text. */
-  keys: string | null
-  barcode: string | null
-  key_id?: number | null
-  key?: LinkedKeySummary | null
-  annual_month: string | null
-  property_management_company: string | null
-  building_name: string | null
-  panel: string | null
-  panel_location: string | null
-  door_code: string | null
-  /** Legacy import column; prefer ``panel`` for new data. */
-  facp_detail: string | null
-  monitoring_company_id?: number | null
-  monitoring_company?: MonitoringCompanySummary | null
-  monitoring_account_number?: string | null
-  monitoring_password?: string | null
-  monitoring_notes: string | null
-  testing_procedures: string | null
-  inspection_tech_notes: string | null
-  latest_run_comment?: string | null
-  latest_run_comment_month?: string | null
-}
-
+/** Flat monthly library location (``MonthlyLocation``); one row per route stop. */
 export type LibraryLocation = {
   id: number
   address: string
   display_address?: string | null
+  /** Display name separate from navigation address. */
+  label: string
+  /** Building name from paperwork ``Name:`` lines; separate from label. */
+  building_name?: string | null
   property_management_company: string | null
-  building: string | null
   notes: string | null
   billing_comments?: string | null
   price_per_month: number | null
@@ -107,49 +79,48 @@ export type LibraryLocation = {
   /** FK to ``MonthlyRoute``; source of truth with ``monthly_route``. */
   monthly_route_id?: number | null
   monthly_route?: MonthlyRouteSummary | null
-  /** 0-based stop index when on a monthly route; from ``MonthlyRouteLocation.route_stop_order``. */
+  /** 0-based stop index when on a monthly route. */
   route_stop_order?: number | null
   months: Record<string, MonthCell>
-  /** V2 bridge: ``MonthlySite.id`` when present. */
-  monthly_site_id?: number | null
-  /** Sum of ``testing_sites[].price_per_month`` when any are set. */
-  rollup_price_per_month?: number | null
-  /** V2 testing stops for this legacy library row. */
-  testing_sites?: TestingSiteSummary[]
+  ring_detail?: string | null
+  facp_detail?: string | null
+  panel?: string | null
+  panel_location?: string | null
+  door_code?: string | null
+  testing_procedures?: string | null
+  inspection_tech_notes?: string | null
+  monitoring_company_id?: number | null
+  monitoring_company?: MonitoringCompanySummary | null
+  monitoring_account_number?: string | null
+  monitoring_password?: string | null
+  monitoring_notes?: string | null
+  latest_run_comment?: string | null
+  latest_run_comment_month?: string | null
+  /** ServiceTrade building location id (real site, not route pseudo-location). */
+  service_trade_site_location_id?: number | null
+  service_trade_site_location_url?: string | null
 }
 
 /** Row from ``GET/PUT .../routes/:id`` locations list (no month grid). */
-export type RouteLocationTestingSiteListItem = {
-  id: number
-  sort_order: number
-  label: string | null
-  annual_month?: string | null
-}
-
 export type RouteLocationListItem = {
   id: number
   address: string
   display_address?: string | null
-  building?: string | null
+  label?: string | null
+  building_name?: string | null
   status_normalized: string
   annual_month?: string | null
   latitude?: number | null
   longitude?: number | null
   route_stop_order: number | null
   monthly_route_id?: number | null
-  testing_sites?: RouteLocationTestingSiteListItem[]
 }
 
 export type MonthlyRouteCalculatedPathStop = {
   id: number
   label: string
-  primary_label?: string | null
-  billing_address_subline?: string | null
-  testing_site_count?: number
-  testing_site_labels?: string[] | null
   address: string | null
   display_address: string | null
-  building: string | null
   latitude: number | null
   longitude: number | null
   route_stop_order: number | null
@@ -181,7 +152,6 @@ export type RouteGeocodeMissingRow = {
   id: number
   label: string
   address: string
-  building: string | null
 }
 
 export type RouteGeocodeMissingResult = {
@@ -344,7 +314,7 @@ export type RouteTestingSessionStop = {
   result_status: string
   skip_reason: string | null
   source_value_raw: string | null
-  /** Month-specific from ``MonthlyRouteTestHistory`` after CSV import; else ``MonthlyRouteLocation`` fallback. */
+  /** Month-specific from ``MonthlyLocationMonth`` after CSV import; else location fallback. */
   testing_procedures?: string | null
   /** Month-specific tech notes from history when captured at import; else location fallback. */
   inspection_tech_notes?: string | null
@@ -384,14 +354,7 @@ export type MonthlyRunDetailLocationFieldChange = {
 export type MonthlyRunDetailLocationFieldChanges = {
   location_id: number
   location_label: string
-  building: string | null
   changes: MonthlyRunDetailLocationFieldChange[]
-}
-
-export type MonthlyRunDetailBillingLocation = {
-  location_id: number
-  location_label: string
-  billing_status: string | null
 }
 
 export type MonthlyRunDetailReviewMeta = {
@@ -400,7 +363,7 @@ export type MonthlyRunDetailReviewMeta = {
 
 export type MonthlyRunDetailDeficiencySummary = {
   id: number
-  monthly_testing_site_id?: number
+  monthly_location_id?: number
   created_run_id?: number | null
   title: string | null
   severity: string | null
@@ -425,14 +388,13 @@ export type MonthlyRunDetailLocationAttentionFlags = {
   needs_attention: boolean
 }
 
-export type MonthlyRunDetailLocationStop = {
-  testing_site_id: number
+/** One worksheet location for run details / portal (flat ``MonthlyLocationMonth`` grain). */
+export type MonthlyRunDetailLocation = {
   location_id: number
+  location_label: string
   stop_number: number
   display_address: string
   label: string | null
-  primary_label?: string | null
-  billing_address_subline?: string | null
   month_date: string
   result_status: string | null
   test_outcome?: string | null
@@ -453,12 +415,9 @@ export type MonthlyRunDetailLocationStop = {
   office_job_comment?: string | null
   office_attention?: boolean
   prior_month_out_of_order?: boolean
-  /** Address visited immediately before this stop on the prior month field run. */
   prior_month_tested_after_address?: string | null
-  /** Office dismissed the prior-month out-of-order prep hint. */
   prior_month_out_of_order_dismissed?: boolean
   prior_month_field_edits?: boolean
-  /** Testing site was not on this route's prior-month worksheet. */
   prior_month_new_to_route?: boolean
   testing_procedures: string | null
   inspection_tech_notes: string | null
@@ -468,28 +427,39 @@ export type MonthlyRunDetailLocationStop = {
   review_kind: 'with_changes' | 'tested_only'
   deficiency_summaries: MonthlyRunDetailDeficiencySummary[]
   has_active_deficiencies: boolean
-  /** Comment fields newly added on this field run (run_comments, etc.). */
   new_comment_fields?: string[]
+  attention_flags: MonthlyRunDetailLocationAttentionFlags
 }
 
-export type MonthlyRunDetailLocation = {
+export type PrepAnnualScheduleWarning =
+  | 'no_annual_scheduled'
+  | 'no_servicetrade_link'
+  | 'annual_scheduled_wrong_month'
+
+export type AnnualScheduleCheckLocation = {
   location_id: number
-  location_label: string
-  billing_status: string | null
-  first_stop_number: number
-  last_stop_number: number
-  attention_flags: MonthlyRunDetailLocationAttentionFlags
-  stops: MonthlyRunDetailLocationStop[]
+  annual_month_matches_run: boolean
+  has_service_trade_link: boolean
+  service_trade_site_location_url: string | null
+  has_scheduled_annual_in_month: boolean
+  prep_warning: PrepAnnualScheduleWarning | null
 }
+
+export type AnnualScheduleCheckResponse = {
+  route_id: number
+  month_date: string
+  checked_at: string
+  warning_count: number
+  locations: Record<string, AnnualScheduleCheckLocation>
+}
+
+export type AnnualScheduleCheckStatus = 'idle' | 'loading' | 'ready' | 'error'
 
 export type RunReviewStopSummary = {
-  testing_site_id: number
   location_id: number
   stop_number: number
   display_address: string
   label: string | null
-  primary_label?: string | null
-  billing_address_subline?: string | null
   month_date: string
   result_status: string | null
   test_outcome?: string | null
@@ -528,7 +498,6 @@ export type RunReviewStopDetailChange = {
 }
 
 export type MonthlyRunDetailReviewStopDetailPayload = {
-  testing_site_id: number
   location_id: number
   changes: RunReviewStopDetailChange[]
 }
@@ -546,9 +515,8 @@ export type MonthlyRunDetailPayload = {
   field_submission?: MonthlyRunDetailFieldSubmissionMeta
   counts: MonthlyRunDetailCounts
   specialists_month: MonthlyRouteSpecialistMonthPayload | null
-  billing_locations: MonthlyRunDetailBillingLocation[]
   review_meta: MonthlyRunDetailReviewMeta
-  locations?: MonthlyRunDetailLocation[]
+  locations: MonthlyRunDetailLocation[]
   review_summary?: RunReviewSummaryPayload
 }
 
@@ -557,7 +525,9 @@ export type TechnicianWorksheetRow = {
   history_row_id: number
   month_date: string
   display_address: string
-  building: string | null
+  label?: string | null
+  building?: string | null
+  building_name?: string | null
   property_management_company: string | null
   annual_month: string | null
   ring: string | null
@@ -649,20 +619,17 @@ export function worksheetOfficeRunActivity(run: TechnicianWorksheetRun | null | 
 import type { PortalClockEvent, PortalDeficiencySummary } from './portalWorkflowShared'
 import { portalStopHasOpenClock } from './portalWorkflowShared'
 
-/** V2 portal worksheet stop (``MonthlyTestingSiteMonth`` grain). */
-export type TechnicianWorksheetStop = {
-  testing_site_id: number
+/** Portal worksheet location (``MonthlyLocationMonth`` grain). */
+export type TechnicianWorksheetLocation = {
   location_id: number
-  history_month_row_id: number
+  location_month_row_id: number
   month_date: string
   display_address: string
   latitude?: number | null
   longitude?: number | null
-  building_name: string | null
   property_management_company: string | null
   label: string | null
-  primary_label?: string | null
-  billing_address_subline?: string | null
+  building_name?: string | null
   panel: string | null
   panel_location: string | null
   door_code: string | null
@@ -690,13 +657,9 @@ export type TechnicianWorksheetStop = {
   is_legacy_run?: boolean
   testing_procedures: string | null
   inspection_tech_notes: string | null
-  /** This-run-only notes; not carried to the next month. */
   run_comments: string | null
-  /** Comment fields newly added on this field run (exact history / review highlight). */
   new_comment_fields?: string[]
-  /** Office instruction for technicians on this run month (read-only in portal). */
   office_job_comment?: string | null
-  /** Office flagged this stop until a test outcome is recorded. */
   office_attention?: boolean
   prior_month_out_of_order_dismissed?: boolean
   time_in: string | null
@@ -707,29 +670,32 @@ export type TechnicianWorksheetStop = {
   version_updated_at: string | null
 }
 
-export type PortalPriorMonthPaceStatus = 'ahead' | 'behind' | 'even'
-
-export type PortalPriorMonthPace = {
-  available: boolean
-  prior_month_label?: string
-  comparison_day?: number
-  as_of_time_label?: string
-  current_tested_count?: number
-  prior_tested_count?: number
-  delta?: number
-  status?: PortalPriorMonthPaceStatus
-}
-
 export type TechnicianWorksheetPayload = {
   route: MonthlyRouteSummary
   month_date: string
   /** ``null`` for routes with no locations; otherwise the run header for ``month_date``. */
   run: TechnicianWorksheetRun | null
   rows: TechnicianWorksheetRow[]
-  /** Portal worksheet (``tech_portal=1``): one stop per testing site. */
-  stops?: TechnicianWorksheetStop[]
-  /** Pacific current-month field pace vs prior month (portal worksheet header). */
-  prior_month_pace?: PortalPriorMonthPace | null
+  /** Portal worksheet (``tech_portal=1``): one row per location. */
+  locations?: TechnicianWorksheetLocation[]
+  /** Legacy API alias; normalized to ``locations`` on load. */
+  stops?: TechnicianWorksheetLocation[]
+}
+
+/** Normalize worksheet payload from API (``stops`` alias, legacy field names). */
+export function normalizeWorksheetPayload(
+  payload: TechnicianWorksheetPayload,
+): TechnicianWorksheetPayload {
+  const rawLocations = payload.locations ?? payload.stops ?? []
+  const locations = rawLocations.map((row) => ({
+    ...row,
+    location_id: row.location_id,
+    location_month_row_id:
+      row.location_month_row_id ??
+      (row as { history_month_row_id?: number }).history_month_row_id ??
+      0,
+  }))
+  return { ...payload, locations, stops: undefined }
 }
 
 export function monthlyCommentAuthorsMatch(session: string | null, author: string | null): boolean {
@@ -905,6 +871,7 @@ export type GeocodeCandidate = {
 
 export type CreateLocationForm = {
   address: string
+  label: string
   property_management_company: string
   status_raw: string
   keys: string
@@ -915,57 +882,86 @@ export type CreateLocationForm = {
 /** Wizard step index for add-location flow. */
 export type MonthlyLocationWizardStep = 1 | 2
 
-/** Step 1 fields (monthly library row); keys live on testing stops in step 2. */
+/** Step 1 fields (monthly library row). */
 export type CreateLocationStep1Form = {
+  label: string
   property_management_company: string
   status_raw: string
   /** Monthly route (test_day); omit or empty for unassigned */
   test_day?: string
 }
 
-/** Client-only id for React list keys in the add-location wizard. */
-export type TestingSiteDraft = {
-  clientId: string
+/** Edit form for an existing library location (detail page / library modal). */
+export type LocationEditForm = {
   label: string
   keys: string
+  barcode: string
   price_per_month: string
   ring_detail: string
   facp_detail: string
+  panel_location: string
+  door_code: string
+  property_management_company: string
+  annual_month: string
+  monitoring_company_id: string
+  monitoring_account_number: string
+  monitoring_password: string
+  monitoring_notes: string
   testing_procedures: string
   inspection_tech_notes: string
 }
 
-export function createEmptyTestingSiteDraft(): TestingSiteDraft {
+export function buildLocationEditForm(loc: LibraryLocation): LocationEditForm {
   return {
-    clientId: `ts-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-    label: '',
-    keys: '',
-    price_per_month: '',
-    ring_detail: '',
-    facp_detail: '',
-    testing_procedures: '',
-    inspection_tech_notes: '',
+    label: loc.label ?? '',
+    keys: loc.keys ?? '',
+    barcode: loc.barcode ?? '',
+    price_per_month: loc.price_per_month != null ? String(loc.price_per_month) : '',
+    ring_detail: (loc.ring_detail ?? '').trim(),
+    facp_detail: (loc.panel ?? loc.facp_detail ?? '').trim(),
+    panel_location: loc.panel_location ?? '',
+    door_code: loc.door_code ?? '',
+    property_management_company: loc.property_management_company ?? '',
+    annual_month: normalizeAnnualMonthForSelect(loc.annual_month),
+    monitoring_company_id:
+      loc.monitoring_company_id != null ? String(loc.monitoring_company_id) : '',
+    monitoring_account_number: loc.monitoring_account_number ?? '',
+    monitoring_password: loc.monitoring_password ?? '',
+    monitoring_notes: loc.monitoring_notes ?? '',
+    testing_procedures: loc.testing_procedures ?? '',
+    inspection_tech_notes: loc.inspection_tech_notes ?? '',
   }
 }
 
-/** Build API payload for PATCH/POST testing site from a wizard draft. */
-export function testingSitePayloadFromDraft(draft: TestingSiteDraft): Record<string, unknown> {
-  const payload: Record<string, unknown> = {
-    label: draft.label.trim(),
+export function locationPayloadFromEditForm(form: LocationEditForm): Record<string, unknown> {
+  const mcidRaw = form.monitoring_company_id.trim()
+  let monitoring_company_id: number | null = null
+  if (mcidRaw) {
+    const parsed = parseInt(mcidRaw, 10)
+    if (!Number.isNaN(parsed)) monitoring_company_id = parsed
   }
-  const keys = draft.keys.trim()
-  if (keys) payload.keys = keys
-  const price = draft.price_per_month.trim()
-  if (price) payload.price_per_month = price
-  const ring = draft.ring_detail.trim()
-  if (ring) payload.ring_detail = ring
-  const facp = draft.facp_detail.trim()
-  if (facp) payload.facp_detail = facp
-  const proc = draft.testing_procedures.trim()
-  if (proc) payload.testing_procedures = proc
-  const notes = draft.inspection_tech_notes.trim()
-  if (notes) payload.inspection_tech_notes = notes
-  return payload
+  return {
+    label: form.label.trim() || null,
+    keys: form.keys.trim() || null,
+    barcode: form.barcode.trim() || null,
+    price_per_month: form.price_per_month.trim() || null,
+    ring_detail: form.ring_detail.trim() || null,
+    facp_detail: form.facp_detail.trim() || null,
+    panel_location: form.panel_location.trim() || null,
+    door_code: form.door_code.trim() || null,
+    property_management_company: form.property_management_company.trim() || null,
+    annual_month: form.annual_month.trim() || null,
+    monitoring_company_id,
+    monitoring_account_number: form.monitoring_account_number.trim() || null,
+    monitoring_password: form.monitoring_password.trim() || null,
+    monitoring_notes: form.monitoring_notes.trim() || null,
+    testing_procedures: form.testing_procedures.trim() || null,
+    inspection_tech_notes: form.inspection_tech_notes.trim() || null,
+  }
+}
+
+export function libraryDisplayPricePerMonth(loc: LibraryLocation): number | null {
+  return loc.price_per_month
 }
 
 /** No annual inspection at this site (not a calendar month). */
@@ -1039,99 +1035,6 @@ export function normalizeAnnualMonthForSelect(raw: string | null | undefined): s
   }
 
   return trimmed
-}
-
-/** Edit form for an existing v2 testing stop (location detail / library modal). */
-export type TestingSiteEditForm = {
-  id: number
-  sort_order: number
-  label: string
-  keys: string
-  barcode: string
-  price_per_month: string
-  ring_detail: string
-  facp_detail: string
-  panel_location: string
-  door_code: string
-  building_name: string
-  property_management_company: string
-  annual_month: string
-  monitoring_company_id: string
-  monitoring_account_number: string
-  monitoring_password: string
-  monitoring_notes: string
-  testing_procedures: string
-  inspection_tech_notes: string
-}
-
-export function buildTestingSiteEditForm(
-  ts: TestingSiteSummary,
-  loc?: LibraryLocation | null
-): TestingSiteEditForm {
-  const annualRaw =
-    ts.annual_month?.trim() ||
-    (ts.sort_order === 0 ? loc?.annual_month?.trim() : undefined) ||
-    ''
-  return {
-    id: ts.id,
-    sort_order: ts.sort_order,
-    label: ts.label ?? '',
-    keys: ts.keys ?? '',
-    barcode: ts.barcode ?? '',
-    price_per_month: ts.price_per_month != null ? String(ts.price_per_month) : '',
-    ring_detail: (ts.ring_detail ?? ts.ring ?? '').trim(),
-    facp_detail: (ts.panel ?? ts.facp_detail ?? '').trim(),
-    panel_location: ts.panel_location ?? '',
-    door_code: ts.door_code ?? '',
-    building_name: ts.building_name ?? '',
-    property_management_company: ts.property_management_company ?? '',
-    annual_month: normalizeAnnualMonthForSelect(annualRaw),
-    monitoring_company_id:
-      ts.monitoring_company_id != null ? String(ts.monitoring_company_id) : '',
-    monitoring_account_number: ts.monitoring_account_number ?? '',
-    monitoring_password: ts.monitoring_password ?? '',
-    monitoring_notes: ts.monitoring_notes ?? '',
-    testing_procedures: ts.testing_procedures ?? '',
-    inspection_tech_notes: ts.inspection_tech_notes ?? '',
-  }
-}
-
-export function testingSitePayloadFromEditForm(form: TestingSiteEditForm): Record<string, unknown> {
-  const mcidRaw = form.monitoring_company_id.trim()
-  let monitoring_company_id: number | null = null
-  if (mcidRaw) {
-    const parsed = parseInt(mcidRaw, 10)
-    if (!Number.isNaN(parsed)) monitoring_company_id = parsed
-  }
-  return {
-    label: form.label.trim() || null,
-    keys: form.keys.trim() || null,
-    barcode: form.barcode.trim() || null,
-    price_per_month: form.price_per_month.trim() || null,
-    ring_detail: form.ring_detail.trim() || null,
-    facp_detail: form.facp_detail.trim() || null,
-    panel_location: form.panel_location.trim() || null,
-    door_code: form.door_code.trim() || null,
-    building_name: form.building_name.trim() || null,
-    property_management_company: form.property_management_company.trim() || null,
-    annual_month: form.annual_month.trim() || null,
-    monitoring_company_id,
-    monitoring_account_number: form.monitoring_account_number.trim() || null,
-    monitoring_password: form.monitoring_password.trim() || null,
-    monitoring_notes: form.monitoring_notes.trim() || null,
-    testing_procedures: form.testing_procedures.trim() || null,
-    inspection_tech_notes: form.inspection_tech_notes.trim() || null,
-  }
-}
-
-export function sortedTestingSites(loc: LibraryLocation): TestingSiteSummary[] {
-  const sites = loc.testing_sites ?? []
-  return [...sites].sort((a, b) => a.sort_order - b.sort_order)
-}
-
-export function libraryDisplayPricePerMonth(loc: LibraryLocation): number | null {
-  if (loc.rollup_price_per_month != null) return loc.rollup_price_per_month
-  return loc.price_per_month
 }
 
 export const STATUS_OPTIONS: Array<{ value: string; label: string }> = [
@@ -1539,35 +1442,35 @@ export function looksLikeExplicitTimeValue(raw: string | null | undefined): bool
   return EXPLICIT_TIME_VALUE_RE.test(s)
 }
 
-/** Whether a portal stop has any recorded outcome (tested, skipped, or visit times). */
-export function stopsHaveRecordedOutcomes(stops: TechnicianWorksheetStop[]): boolean {
-  return stops.some((stop) => {
-    const rs = (stop.result_status || '').trim().toLowerCase()
+/** Whether a portal location has any recorded outcome (tested, skipped, or visit times). */
+export function locationsHaveRecordedOutcomes(locations: TechnicianWorksheetLocation[]): boolean {
+  return locations.some((loc) => {
+    const rs = (loc.result_status || '').trim().toLowerCase()
     if (rs === 'tested' || rs === 'skipped') return true
-    if ((stop.time_in || '').trim()) return true
-    if ((stop.time_out || '').trim()) return true
+    if ((loc.time_in || '').trim()) return true
+    if ((loc.time_out || '').trim()) return true
     return false
   })
 }
 
 /** Skipped for annual / annual_booked (matches office ``sheetSkipReasonIsAnnual``). */
-export function worksheetStopSkipIsAnnual(stop: TechnicianWorksheetStop): boolean {
-  if ((stop.result_status || '').trim().toLowerCase() !== 'skipped') return false
-  const reason = (stop.skip_reason || '').trim().toLowerCase()
+export function worksheetLocationSkipIsAnnual(loc: TechnicianWorksheetLocation): boolean {
+  if ((loc.result_status || '').trim().toLowerCase() !== 'skipped') return false
+  const reason = (loc.skip_reason || '').trim().toLowerCase()
   if (reason === 'annual' || reason === 'annual_booked') return true
-  const tin = (stop.time_in || '').trim().toLowerCase()
+  const tin = (loc.time_in || '').trim().toLowerCase()
   return tin.includes('annual')
 }
 
-/** Open visit on a portal stop: clock time in, no time out, not tested/skipped. */
-export function worksheetStopIsOpenClockIn(stop: TechnicianWorksheetStop): boolean {
-  if (Array.isArray(stop.clock_events) && stop.clock_events.length > 0) {
-    return portalStopHasOpenClock(stop)
+/** Open visit on a portal location: clock time in, no time out, not tested/skipped. */
+export function worksheetLocationIsOpenClockIn(loc: TechnicianWorksheetLocation): boolean {
+  if (Array.isArray(loc.clock_events) && loc.clock_events.length > 0) {
+    return portalStopHasOpenClock(loc)
   }
-  const rs = (stop.result_status || '').trim().toLowerCase()
+  const rs = (loc.result_status || '').trim().toLowerCase()
   if (rs === 'tested' || rs === 'skipped') return false
-  const tin = (stop.time_in || '').trim()
-  const tout = (stop.time_out || '').trim()
+  const tin = (loc.time_in || '').trim()
+  const tout = (loc.time_out || '').trim()
   if (!tin || tout) return false
   return looksLikeExplicitTimeValue(tin)
 }
@@ -1575,3 +1478,13 @@ export function worksheetStopIsOpenClockIn(stop: TechnicianWorksheetStop): boole
 /** Shown when the technician tries to clock in while another stop is still open. */
 export const WORKSHEET_CLOCK_IN_BLOCKED_MESSAGE =
   "Can't clock in while already clocked into another site."
+
+
+export function sortedLibraryLocations(loc: LibraryLocation): LibraryLocation[] {
+  return [loc]
+}
+
+/** @deprecated Flat library: the location is the only row. */
+export function sortedTestingSites(loc: LibraryLocation): LibraryLocation[] {
+  return sortedLibraryLocations(loc)
+}

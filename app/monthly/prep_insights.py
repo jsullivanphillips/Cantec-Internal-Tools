@@ -5,9 +5,8 @@ from __future__ import annotations
 from collections.abc import Iterable
 from datetime import date
 
-from app.db_models import MonthlyRouteLocation, MonthlyRouteRun
-from app.monthly.field_submission import get_field_submission_for_run
-from app.monthly.worksheet_stops import worksheet_stops_for_route_month
+from app.db_models import MonthlyLocation, MonthlyRouteRun
+from app.monthly.worksheet_locations import worksheet_locations_for_route_month
 
 
 def _prior_month_first(month_first: date) -> date:
@@ -65,14 +64,7 @@ def _prior_month_visit_context(
     if prior_run is None:
         return None
 
-    submission = get_field_submission_for_run(int(prior_run.id))
-    if submission is not None and isinstance(submission.payload_json, dict):
-        stops = submission.payload_json.get("stops")
-        if isinstance(stops, list):
-            visit_rank = _visit_order_from_submission_stops(stops)
-            return stops, visit_rank
-
-    stops = worksheet_stops_for_route_month(int(route_id), prior, include_portal_extras=False)
+    stops = worksheet_locations_for_route_month(int(route_id), prior, include_portal_extras=False)
     if not stops:
         return None
 
@@ -152,7 +144,7 @@ def _prior_month_route_testing_site_ids(route_id: int, month_first: date) -> set
     ).one_or_none()
     if prior_run is None:
         return None
-    stops = worksheet_stops_for_route_month(int(route_id), prior, include_portal_extras=False)
+    stops = worksheet_locations_for_route_month(int(route_id), prior, include_portal_extras=False)
     if not stops:
         return set()
     return {
@@ -213,7 +205,7 @@ def _normalize_prep_address(value: str) -> str:
     return " ".join((value or "").strip().casefold().split())
 
 
-def _location_display_address(loc: MonthlyRouteLocation) -> str:
+def _location_display_address(loc: MonthlyLocation) -> str:
     return _normalize_prep_address((loc.display_address or loc.address or "").strip())
 
 
@@ -244,8 +236,8 @@ def site_ids_out_of_order_resolved_by_library_order(
     }
 
     loc_rows = (
-        MonthlyRouteLocation.query.filter(
-            MonthlyRouteLocation.id.in_([int(lid) for lid in ordered_location_ids])
+        MonthlyLocation.query.filter(
+            MonthlyLocation.id.in_([int(lid) for lid in ordered_location_ids])
         ).all()
         if ordered_location_ids
         else []

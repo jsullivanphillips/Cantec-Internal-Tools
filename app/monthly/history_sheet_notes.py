@@ -1,4 +1,4 @@
-"""Run-scoped testing procedures / tech notes: history vs library "current" display."""
+"""Run-scoped testing procedures / tech notes: month snapshot vs library "current" display."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from datetime import date
 
 from sqlalchemy import func
 
-from app.db_models import MonthlyRouteLocation, MonthlyRouteTestHistory, MonthlyTestingSite, db
+from app.db_models import MonthlyLocation, MonthlyLocationMonth, db
 
 
 def _normalize_note(value: str | None) -> str | None:
@@ -14,22 +14,22 @@ def _normalize_note(value: str | None) -> str | None:
     return text or None
 
 
-def latest_history_row_for_location(location_id: int) -> MonthlyRouteTestHistory | None:
-    """Most recent ``MonthlyRouteTestHistory`` row by ``month_date`` (any route)."""
+def latest_history_row_for_location(location_id: int) -> MonthlyLocationMonth | None:
+    """Most recent ``MonthlyLocationMonth`` row by ``month_date`` (any route)."""
     return (
-        MonthlyRouteTestHistory.query.filter(
-            MonthlyRouteTestHistory.location_id == int(location_id),
+        MonthlyLocationMonth.query.filter(
+            MonthlyLocationMonth.monthly_location_id == int(location_id),
         )
-        .order_by(MonthlyRouteTestHistory.month_date.desc())
+        .order_by(MonthlyLocationMonth.month_date.desc())
         .first()
     )
 
 
 def is_latest_history_month_for_location(location_id: int, month_first: date) -> bool:
-    """True when ``month_first`` is at or after the latest history month for ``location_id``."""
+    """True when ``month_first`` is at or after the latest run month for ``location_id``."""
     latest = (
-        db.session.query(func.max(MonthlyRouteTestHistory.month_date))
-        .filter(MonthlyRouteTestHistory.location_id == int(location_id))
+        db.session.query(func.max(MonthlyLocationMonth.month_date))
+        .filter(MonthlyLocationMonth.monthly_location_id == int(location_id))
         .execution_options(autoflush=False)
         .scalar()
     )
@@ -37,7 +37,7 @@ def is_latest_history_month_for_location(location_id: int, month_first: date) ->
 
 
 def sheet_notes_from_history_row(
-    row: MonthlyRouteTestHistory | None,
+    row: MonthlyLocationMonth | None,
 ) -> tuple[str | None, str | None]:
     if row is None:
         return None, None
@@ -49,26 +49,28 @@ def latest_run_notes_for_location(location_id: int) -> tuple[str | None, str | N
     return sheet_notes_from_history_row(latest_history_row_for_location(location_id))
 
 
-def mirror_location_sheet_notes_from_latest_history(loc: MonthlyRouteLocation) -> None:
-    """Copy latest-run procedures/notes onto legacy location + primary v2 testing site."""
-    from sqlalchemy import inspect as sa_inspect
-
+def mirror_location_sheet_notes_from_latest_history(loc: MonthlyLocation) -> None:
+    """Copy latest-run procedures/notes onto the library location master."""
     tp, tn = latest_run_notes_for_location(int(loc.id))
     loc.testing_procedures = tp
     loc.inspection_tech_notes = tn
-    if not sa_inspect(db.engine).has_table(MonthlyTestingSite.__tablename__):
-        return
-    site = loc.monthly_site
-    if site is None:
-        return
-    primary = (
-        MonthlyTestingSite.query.filter_by(monthly_site_id=int(site.id))
-        .order_by(MonthlyTestingSite.sort_order.asc())
-        .first()
-    )
-    if primary is not None:
-        primary.testing_procedures = tp
-        primary.inspection_tech_notes = tn
+
+
+def mirror_master_sheet_notes_to_latest_history(loc: MonthlyLocation) -> bool:
+    """After a library master edit, copy procedures/notes onto the latest run-month row."""
+    latest = latest_history_row_for_location(int(loc.id))
+    if latest is None:
+        return False
+    tp = _normalize_note(loc.testing_procedures)
+    tn = _normalize_note(loc.inspection_tech_notes)
+    changed = False
+    if latest.testing_procedures != tp:
+        latest.testing_procedures = tp
+        changed = True
+    if latest.inspection_tech_notes != tn:
+        latest.inspection_tech_notes = tn
+        changed = True
+    return changed
 
 
 def apply_latest_run_notes_to_location_payload(payload: dict[str, object], location_id: int) -> None:

@@ -10,7 +10,7 @@ from urllib import error as url_error, parse as url_parse, request as url_reques
 from sqlalchemy import select
 
 from app import create_app, db
-from app.db_models import MonthlyRouteLocation
+from app.db_models import MonthlyLocation
 
 PROGRESS_EVERY = 25
 VICTORIA_PROXIMITY_LNG = -123.3656
@@ -21,7 +21,7 @@ VICTORIA_MAX_DISTANCE_KM = 80.0
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Backfill missing latitude/longitude for MonthlyRouteLocation using Mapbox geocoding."
+        description="Backfill missing latitude/longitude for MonthlyLocation using Mapbox geocoding."
     )
     parser.add_argument(
         "--commit",
@@ -43,8 +43,8 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _build_query(loc: MonthlyRouteLocation) -> str:
-    parts = [loc.address, loc.building, loc.property_management_company]
+def _build_query(loc: MonthlyLocation) -> str:
+    parts = [loc.address, loc.label, loc.property_management_company]
     tokens = [str(part).strip() for part in parts if part and str(part).strip()]
     tokens.append("Victoria, BC, Canada")
     return ", ".join(tokens)
@@ -106,9 +106,9 @@ def run_backfill(*, dry_run: bool, limit: int, sleep_ms: int) -> None:
     if not token:
         raise SystemExit("MAPBOX_ACCESS_TOKEN is required in environment.")
 
-    stmt = select(MonthlyRouteLocation).where(
-        (MonthlyRouteLocation.latitude.is_(None)) | (MonthlyRouteLocation.longitude.is_(None))
-    ).order_by(MonthlyRouteLocation.id.asc())
+    stmt = select(MonthlyLocation).where(
+        (MonthlyLocation.latitude.is_(None)) | (MonthlyLocation.longitude.is_(None))
+    ).order_by(MonthlyLocation.id.asc())
     if limit > 0:
         stmt = stmt.limit(limit)
 
@@ -155,6 +155,8 @@ def run_backfill(*, dry_run: bool, limit: int, sleep_ms: int) -> None:
 
 def main() -> None:
     args = parse_args()
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"), override=True)
     app = create_app()
     with app.app_context():
         run_backfill(dry_run=not args.commit, limit=max(args.limit, 0), sleep_ms=max(args.sleep_ms, 0))

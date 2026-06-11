@@ -33,7 +33,7 @@ export default function MonthlyLocationBillingCommentsPanel({
     setSaveError(null)
     try {
       const res = await apiJson<{ location: LibraryLocation }>(
-        `/api/monthly_sites/library/${locationId}`,
+        `/api/monthly_routes/library/${locationId}`,
         {
           method: 'PATCH',
           body: JSON.stringify({ billing_comments: value }),

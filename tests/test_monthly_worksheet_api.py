@@ -3,24 +3,29 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from app import create_app
-from app.monthly.monthly_sites_sync import sync_testing_sites_from_legacy
 from app.db_models import (
     Key,
     MonitoringCompany,
+    MonthlyLocation,
+    MonthlyLocationComment,
+    MonthlyLocationDeficiency,
+    MonthlyLocationMonth,
     MonthlyRoute,
-    MonthlyRouteLocation,
-    MonthlyRouteLocationComment,
+    MonthlyRouteComment,
     MonthlyRouteRun,
-    MonthlyRouteTestHistory,
     MonthlyRouteWorksheetAuditEvent,
-    MonthlySite,
     MonthlyStopClockEvent,
-    MonthlyTestingSite,
-    MonthlyTestingSiteDeficiency,
-    MonthlyTestingSiteMonth,
-    db,
+    db
 )
+from tests.monthly_location_helpers import (
+    WORKSHEET_TABLES,
+    make_location,
+    make_location_month,
+    seed_route_with_one_stop,
+    seed_route_with_two_stops
+)
+
+from app import create_app
 
 PACIFIC_TZ = ZoneInfo("America/Vancouver")
 
@@ -46,19 +51,7 @@ def worksheet_client(monkeypatch):
     app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///:memory:"
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-    worksheet_tables = [
-        MonthlyRoute.__table__,
-        Key.__table__,
-        MonitoringCompany.__table__,
-        MonthlyRouteLocation.__table__,
-        MonthlyRouteLocationComment.__table__,
-        MonthlyRouteRun.__table__,
-        MonthlyRouteTestHistory.__table__,
-        MonthlyRouteWorksheetAuditEvent.__table__,
-        MonthlySite.__table__,
-        MonthlyTestingSite.__table__,
-        MonthlyTestingSiteMonth.__table__,
-    ]
+    worksheet_tables = WORKSHEET_TABLES
 
     with app.app_context():
         db.metadata.create_all(db.engine, tables=worksheet_tables)
@@ -81,18 +74,7 @@ def hybrid_portal_staff_client(monkeypatch):
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
     with app.app_context():
-        hybrid_tables = [
-            MonthlyRoute.__table__,
-            Key.__table__,
-            MonitoringCompany.__table__,
-            MonthlyRouteLocation.__table__,
-            MonthlyRouteRun.__table__,
-            MonthlyRouteTestHistory.__table__,
-            MonthlyRouteWorksheetAuditEvent.__table__,
-            MonthlySite.__table__,
-            MonthlyTestingSite.__table__,
-            MonthlyTestingSiteMonth.__table__,
-        ]
+        hybrid_tables = WORKSHEET_TABLES
         db.metadata.create_all(db.engine, tables=hybrid_tables)
         with app.test_client() as client:
             with client.session_transaction() as sess:
@@ -114,20 +96,7 @@ def portal_only_client(monkeypatch):
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
     with app.app_context():
-        portal_tables = [
-            MonthlyRoute.__table__,
-            Key.__table__,
-            MonitoringCompany.__table__,
-            MonthlyRouteLocation.__table__,
-            MonthlyRouteRun.__table__,
-            MonthlyRouteTestHistory.__table__,
-            MonthlyRouteWorksheetAuditEvent.__table__,
-            MonthlySite.__table__,
-            MonthlyTestingSite.__table__,
-            MonthlyTestingSiteMonth.__table__,
-            MonthlyStopClockEvent.__table__,
-            MonthlyTestingSiteDeficiency.__table__,
-        ]
+        portal_tables = WORKSHEET_TABLES
         db.metadata.create_all(db.engine, tables=portal_tables)
         with app.test_client() as client:
             with client.session_transaction() as sess:
@@ -141,29 +110,29 @@ def portal_only_client(monkeypatch):
 
 def _seed_basic_route_data():
     route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
-    loc = MonthlyRouteLocation(
+    loc = MonthlyLocation(
         id=101,
         address="123 Test St",
         address_normalized="123 test st",
         property_management_company="Acme",
         property_management_company_normalized="acme",
-        building=None,
-        building_normalized="",
+        label="123 Test St",
+        label_normalized="123 test st",
         status_normalized="active",
         status_raw="Active",
         monthly_route_id=1,
-        annual_month="May",
-    )
-    hist = MonthlyRouteTestHistory(
-        id=5001,
-        location_id=101,
+        annual_month="May"
+)
+    mlm = MonthlyLocationMonth(
+                id=5001,
+                monthly_location_id=101,
         month_date=date(2026, 5, 1),
         result_status="tested",
-        test_monthly_route_id=1,
-    )
-    db.session.add_all([route, loc, hist])
+        test_monthly_route_id=1
+)
+    db.session.add_all([route, loc, mlm])
     db.session.commit()
-    return route, loc, hist
+    return route, loc, mlm
 
 
 def test_get_worksheet_returns_rows(worksheet_client):
@@ -184,36 +153,36 @@ def test_monthly_location_history_cell_includes_worksheet_link_route(worksheet_c
     with app.app_context():
         historical_route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
         current_route = MonthlyRoute(id=2, route_number=3, weekday_iso=1, week_occurrence=2)
-        loc = MonthlyRouteLocation(
+        loc = MonthlyLocation(
             id=101,
             address="123 Test St",
             address_normalized="123 test st",
             property_management_company="Acme",
             property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
+        label="123 Test St",
+        label_normalized="123 test st",
             status_normalized="active",
             status_raw="Active",
             monthly_route_id=2,
-            annual_month="May",
-        )
+            annual_month="May"
+)
         run = MonthlyRouteRun(
             id=7001,
             monthly_route_id=1,
-            month_date=date(2026, 4, 1),
-        )
-        hist = MonthlyRouteTestHistory(
-            id=5001,
-            location_id=101,
+            month_date=date(2026, 4, 1)
+)
+        mlm = MonthlyLocationMonth(
+                id=5001,
+                monthly_location_id=101,
             month_date=date(2026, 4, 1),
             result_status="tested",
             test_monthly_route_id=1,
-            run_id=7001,
-        )
-        db.session.add_all([historical_route, current_route, loc, run, hist])
+            run_id=7001
+)
+        db.session.add_all([historical_route, current_route, loc, run, mlm])
         db.session.commit()
 
-    res = client.get("/api/monthly_sites/library/101")
+    res = client.get("/api/monthly_routes/library/101")
     assert res.status_code == 200
     cell = res.get_json()["location"]["months"]["2026-04-01"]
     assert cell["worksheet_route_id"] == 1
@@ -225,37 +194,37 @@ def test_library_location_month_billing_status_get_and_patch(worksheet_client):
     client, app = worksheet_client
     with app.app_context():
         route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
-        loc = MonthlyRouteLocation(
+        loc = MonthlyLocation(
             id=101,
             address="123 Test St",
             address_normalized="123 test st",
             property_management_company="Acme",
             property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
+        label="123 Test St",
+        label_normalized="123 test st",
             status_normalized="active",
             status_raw="Active",
-            monthly_route_id=1,
-        )
-        hist = MonthlyRouteTestHistory(
-            id=5001,
-            location_id=101,
+            monthly_route_id=1
+)
+        mlm = MonthlyLocationMonth(
+                id=5001,
+                monthly_location_id=101,
             month_date=date(2026, 3, 1),
             result_status="tested",
             test_monthly_route_id=1,
-            billing_status="unset",
-        )
-        db.session.add_all([route, loc, hist])
+            billing_status="unset"
+)
+        db.session.add_all([route, loc, mlm])
         db.session.commit()
 
-    res = client.get("/api/monthly_sites/library/101")
+    res = client.get("/api/monthly_routes/library/101")
     assert res.status_code == 200
     assert res.get_json()["location"]["months"]["2026-03-01"]["billing_status"] == "unset"
 
     patch = client.patch(
-        "/api/monthly_sites/library/101",
-        json={"months": {"2026-03-01": {"billing_status": "bill"}}},
-    )
+        "/api/monthly_routes/library/101",
+        json={"months": {"2026-03-01": {"billing_status": "bill"}}}
+)
     assert patch.status_code == 200
     assert patch.get_json()["location"]["months"]["2026-03-01"]["billing_status"] == "bill"
 
@@ -264,58 +233,58 @@ def test_worksheet_reset_run_clears_non_annual_preserves_annual(worksheet_client
     client, app = worksheet_client
     with app.app_context():
         route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
-        loc_a = MonthlyRouteLocation(
+        loc_a = MonthlyLocation(
             id=101,
             address="111 Oak St",
             address_normalized="111 oak st",
             property_management_company="Acme",
             property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
+        label="111 Oak St",
+        label_normalized="111 oak st",
             status_normalized="active",
             status_raw="Active",
-            monthly_route_id=1,
-        )
-        loc_b = MonthlyRouteLocation(
+            monthly_route_id=1
+)
+        loc_b = MonthlyLocation(
             id=102,
             address="222 Elm St",
             address_normalized="222 elm st",
             property_management_company="Acme",
             property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
+        label="222 Elm St",
+        label_normalized="222 elm st",
             status_normalized="active",
             status_raw="Active",
-            monthly_route_id=1,
-        )
+            monthly_route_id=1
+)
         run = MonthlyRouteRun(
             id=9001,
             monthly_route_id=1,
             month_date=date(2026, 5, 1),
             started_at=datetime(2026, 5, 2, 10, 0, 0, tzinfo=PACIFIC_TZ),
             status="open",
-            source="technician_app",
-        )
-        h_clear = MonthlyRouteTestHistory(
-            id=8001,
-            location_id=101,
+            source="technician_app"
+)
+        mlm_clear = MonthlyLocationMonth(
+                id=8001,
+                monthly_location_id=101,
             month_date=date(2026, 5, 1),
             result_status="tested",
             sheet_time_in_raw="8am",
             sheet_time_out_raw="9am",
             billing_status="bill",
-            test_monthly_route_id=1,
-        )
-        h_annual = MonthlyRouteTestHistory(
-            id=8002,
-            location_id=102,
+            test_monthly_route_id=1
+)
+        mlm_annual = MonthlyLocationMonth(
+                id=8002,
+                monthly_location_id=102,
             month_date=date(2026, 5, 1),
             result_status="skipped",
             skip_reason="annual",
             billing_status="do_not_bill",
-            test_monthly_route_id=1,
-        )
-        db.session.add_all([route, loc_a, loc_b, run, h_clear, h_annual])
+            test_monthly_route_id=1
+)
+        db.session.add_all([route, loc_a, loc_b, run, mlm_clear, mlm_annual])
         db.session.commit()
 
     res = client.post("/api/monthly_routes/routes/1/worksheet/reset_run?month=2026-05-01", json={})
@@ -334,13 +303,13 @@ def test_worksheet_reset_run_clears_non_annual_preserves_annual(worksheet_client
     assert rows_by_loc[102]["skip_reason"] is None
 
     with app.app_context():
-        r1 = db.session.get(MonthlyRouteTestHistory, 8001)
+        r1 = db.session.get(MonthlyLocationMonth, 8001)
         assert r1 is not None
         assert r1.result_status is None
         assert r1.sheet_time_in_raw is None
         assert r1.sheet_time_out_raw is None
         assert r1.billing_status is None
-        r2 = db.session.get(MonthlyRouteTestHistory, 8002)
+        r2 = db.session.get(MonthlyLocationMonth, 8002)
         assert r2 is not None
         assert r2.result_status is None
         assert (r2.skip_reason or "").strip() == ""
@@ -355,35 +324,35 @@ def test_worksheet_reset_run_clears_master_sheet_legacy_history(worksheet_client
     client, app = worksheet_client
     with app.app_context():
         route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
-        loc = MonthlyRouteLocation(
+        loc = MonthlyLocation(
             id=101,
             address="123 Test St",
             address_normalized="123 test st",
             property_management_company="Acme",
             property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
+        label="123 Test St",
+        label_normalized="123 test st",
             status_normalized="active",
             status_raw="Active",
-            monthly_route_id=1,
-        )
+            monthly_route_id=1
+)
         run = MonthlyRouteRun(
             id=9001,
             monthly_route_id=1,
             month_date=date(2026, 5, 1),
             started_at=datetime(2026, 5, 2, 10, 0, 0, tzinfo=PACIFIC_TZ),
             status="open",
-            source="technician_app",
-        )
-        hist = MonthlyRouteTestHistory(
+            source="technician_app"
+)
+        mlm = MonthlyLocationMonth(
             id=8001,
-            location_id=101,
+            monthly_location_id=101,
             month_date=date(2026, 5, 1),
             result_status="tested",
             source_value_raw="Y",
-            test_monthly_route_id=None,
+            test_monthly_route_id=1,
         )
-        db.session.add_all([route, loc, run, hist])
+        db.session.add_all([route, loc, run, mlm])
         db.session.commit()
 
     res = client.post("/api/monthly_routes/routes/1/worksheet/reset_run?month=2026-05-01", json={})
@@ -391,7 +360,7 @@ def test_worksheet_reset_run_clears_master_sheet_legacy_history(worksheet_client
     assert res.get_json()["cleared_rows"] == 1
 
     with app.app_context():
-        row = db.session.get(MonthlyRouteTestHistory, 8001)
+        row = db.session.get(MonthlyLocationMonth, 8001)
         assert row is not None
         assert row.result_status is None
         assert row.source_value_raw is None
@@ -405,42 +374,42 @@ def test_worksheet_reset_run_preserves_legacy_billing(worksheet_client):
     client, app = worksheet_client
     with app.app_context():
         route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
-        loc = MonthlyRouteLocation(
+        loc = MonthlyLocation(
             id=101,
             address="123 Test St",
             address_normalized="123 test st",
             property_management_company="Acme",
             property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
+        label="123 Test St",
+        label_normalized="123 test st",
             status_normalized="active",
             status_raw="Active",
-            monthly_route_id=1,
-        )
+            monthly_route_id=1
+)
         run = MonthlyRouteRun(
             id=9002,
             monthly_route_id=1,
             month_date=date(2026, 5, 1),
             started_at=datetime(2026, 5, 2, 10, 0, 0, tzinfo=PACIFIC_TZ),
             status="open",
-            source="technician_app",
-        )
-        hist = MonthlyRouteTestHistory(
-            id=8003,
-            location_id=101,
+            source="technician_app"
+)
+        mlm = MonthlyLocationMonth(
+                id=8003,
+                monthly_location_id=101,
             month_date=date(2026, 5, 1),
             result_status="tested",
             billing_status="legacy",
-            test_monthly_route_id=1,
-        )
-        db.session.add_all([route, loc, run, hist])
+            test_monthly_route_id=1
+)
+        db.session.add_all([route, loc, run, mlm])
         db.session.commit()
 
     res = client.post("/api/monthly_routes/routes/1/worksheet/reset_run?month=2026-05-01", json={})
     assert res.status_code == 200
 
     with app.app_context():
-        row = db.session.get(MonthlyRouteTestHistory, 8003)
+        row = db.session.get(MonthlyLocationMonth, 8003)
         assert row is not None
         assert row.result_status is None
         assert row.billing_status == "legacy"
@@ -450,35 +419,35 @@ def test_worksheet_reset_run_rejects_completed(worksheet_client):
     client, app = worksheet_client
     with app.app_context():
         route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
-        loc = MonthlyRouteLocation(
+        loc = MonthlyLocation(
             id=101,
             address="123 Test St",
             address_normalized="123 test st",
             property_management_company="Acme",
             property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
+        label="123 Test St",
+        label_normalized="123 test st",
             status_normalized="active",
             status_raw="Active",
-            monthly_route_id=1,
-        )
+            monthly_route_id=1
+)
         run = MonthlyRouteRun(
             id=9101,
             monthly_route_id=1,
             month_date=date(2026, 5, 1),
             status="completed",
             completed_at=datetime.now(PACIFIC_TZ),
-            source="technician_app",
-        )
-        hist = MonthlyRouteTestHistory(
-            id=9201,
-            location_id=101,
+            source="technician_app"
+)
+        mlm = MonthlyLocationMonth(
+                id=9201,
+                monthly_location_id=101,
             month_date=date(2026, 5, 1),
             result_status="tested",
             sheet_time_in_raw="7am",
-            test_monthly_route_id=1,
-        )
-        db.session.add_all([route, loc, run, hist])
+            test_monthly_route_id=1
+)
+        db.session.add_all([route, loc, run, mlm])
         db.session.commit()
 
     res = client.post("/api/monthly_routes/routes/1/worksheet/reset_run?month=2026-05-01", json={})
@@ -489,37 +458,37 @@ def test_get_routes_overview_returns_route_links_payload(worksheet_client):
     client, app = worksheet_client
     with app.app_context():
         route = MonthlyRoute(id=31, route_number=31, weekday_iso=0, week_occurrence=1)
-        loc = MonthlyRouteLocation(
+        loc = MonthlyLocation(
             id=3101,
             address="310 Test St",
             address_normalized="310 test st",
             property_management_company="Acme",
             property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
+        label="310 Test St",
+        label_normalized="310 test st",
             status_normalized="active",
             status_raw="Active",
-            monthly_route_id=31,
-        )
+            monthly_route_id=31
+)
         db.session.add_all(
             [
                 route,
                 loc,
-                MonthlyRouteTestHistory(
-                    id=31001,
-                    location_id=3101,
+                MonthlyLocationMonth(
+                id=31001,
+                monthly_location_id=3101,
                     month_date=date(2026, 1, 1),
                     result_status="skipped",
                     skip_reason="no access",
-                    test_monthly_route_id=31,
-                ),
-                MonthlyRouteTestHistory(
-                    id=31002,
-                    location_id=3101,
+                    test_monthly_route_id=31
+),
+                MonthlyLocationMonth(
+                id=31002,
+                monthly_location_id=3101,
                     month_date=date(2025, 12, 1),
                     result_status="tested",
-                    test_monthly_route_id=31,
-                ),
+                    test_monthly_route_id=31
+),
             ]
         )
         db.session.commit()
@@ -540,53 +509,53 @@ def test_get_worksheet_orders_by_session_route_stop_order(worksheet_client):
     client, app = worksheet_client
     with app.app_context():
         route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
-        loc_a = MonthlyRouteLocation(
+        loc_a = MonthlyLocation(
             id=101,
             address="AAA First St",
             address_normalized="aaa first st",
             property_management_company="Acme",
             property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
+        label="AAA First St",
+        label_normalized="aaa first st",
             status_normalized="active",
             status_raw="Active",
             monthly_route_id=1,
-            route_stop_order=0,
-        )
-        loc_b = MonthlyRouteLocation(
+            route_stop_order=0
+)
+        loc_b = MonthlyLocation(
             id=102,
             address="BBB Second St",
             address_normalized="bbb second st",
             property_management_company="Acme",
             property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
+        label="BBB Second St",
+        label_normalized="bbb second st",
             status_normalized="active",
             status_raw="Active",
             monthly_route_id=1,
-            route_stop_order=1,
-        )
+            route_stop_order=1
+)
         db.session.add_all(
             [
                 route,
                 loc_a,
                 loc_b,
-                MonthlyRouteTestHistory(
-                    id=5001,
-                    location_id=101,
+                MonthlyLocationMonth(
+                id=5001,
+                monthly_location_id=101,
                     month_date=date(2026, 5, 1),
                     result_status=None,
                     test_monthly_route_id=1,
-                    session_route_stop_order=1,
-                ),
-                MonthlyRouteTestHistory(
-                    id=5002,
-                    location_id=102,
+                    session_route_stop_order=1
+),
+                MonthlyLocationMonth(
+                id=5002,
+                monthly_location_id=102,
                     month_date=date(2026, 5, 1),
                     result_status=None,
                     test_monthly_route_id=1,
-                    session_route_stop_order=0,
-                ),
+                    session_route_stop_order=0
+),
             ]
         )
         db.session.commit()
@@ -603,76 +572,74 @@ def test_sync_session_route_stop_order_from_library_route(worksheet_client):
     """Library ``route_stop_order`` must drive worksheet session order (prep drag / refetch)."""
     _client, app = worksheet_client
     with app.app_context():
-        from app.monthly.worksheet_stops import (
+        from app.monthly.worksheet_locations import (
             sync_session_route_stop_order_from_library_route,
-            worksheet_stops_for_route_month,
-        )
+            worksheet_stops_for_route_month
+)
         route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
-        loc_a = MonthlyRouteLocation(
+        loc_a = MonthlyLocation(
             id=101,
             address="AAA First St",
             address_normalized="aaa first st",
             property_management_company="Acme",
             property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
+        label="AAA First St",
+        label_normalized="aaa first st",
             status_normalized="active",
             status_raw="Active",
             monthly_route_id=1,
-            route_stop_order=0,
-        )
-        loc_b = MonthlyRouteLocation(
+            route_stop_order=0
+)
+        loc_b = MonthlyLocation(
             id=102,
             address="BBB Second St",
             address_normalized="bbb second st",
             property_management_company="Acme",
             property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
+        label="BBB Second St",
+        label_normalized="bbb second st",
             status_normalized="active",
             status_raw="Active",
             monthly_route_id=1,
-            route_stop_order=1,
-        )
+            route_stop_order=1
+)
         run = MonthlyRouteRun(
             id=5200,
             monthly_route_id=1,
             month_date=date(2026, 5, 1),
             status="scheduled",
-            source="office_manual",
-        )
+            source="office_manual"
+)
         db.session.add_all([route, loc_a, loc_b, run])
         db.session.commit()
-        sync_testing_sites_from_legacy(loc_a)
-        sync_testing_sites_from_legacy(loc_b)
         ts_a = (
-            MonthlyTestingSite.query.join(MonthlySite)
-            .filter(MonthlySite.legacy_monthly_route_location_id == 101)
+            MonthlyLocation.query
+            .filter(MonthlyLocation.id == 101)
             .one()
         )
         ts_b = (
-            MonthlyTestingSite.query.join(MonthlySite)
-            .filter(MonthlySite.legacy_monthly_route_location_id == 102)
+            MonthlyLocation.query
+            .filter(MonthlyLocation.id == 102)
             .one()
         )
         db.session.add_all(
             [
-                MonthlyTestingSiteMonth(
+                MonthlyLocationMonth(
                     id=5201,
-                    monthly_testing_site_id=int(ts_a.id),
+                    monthly_location_id=101,
                     month_date=date(2026, 5, 1),
                     test_monthly_route_id=1,
                     run_id=5200,
-                    session_route_stop_order=1,
-                ),
-                MonthlyTestingSiteMonth(
+                    session_route_stop_order=1
+),
+                MonthlyLocationMonth(
                     id=5202,
-                    monthly_testing_site_id=int(ts_b.id),
+                    monthly_location_id=102,
                     month_date=date(2026, 5, 1),
                     test_monthly_route_id=1,
                     run_id=5200,
-                    session_route_stop_order=0,
-                ),
+                    session_route_stop_order=0
+),
             ]
         )
         db.session.commit()
@@ -685,8 +652,8 @@ def test_sync_session_route_stop_order_from_library_route(worksheet_client):
 
         stops = worksheet_stops_for_route_month(1, date(2026, 5, 1), include_portal_extras=False)
         assert [int(s["location_id"]) for s in stops] == [101, 102]
-        mtsm_a = db.session.get(MonthlyTestingSiteMonth, 5201)
-        mtsm_b = db.session.get(MonthlyTestingSiteMonth, 5202)
+        mtsm_a = db.session.get(MonthlyLocationMonth, 5201)
+        mtsm_b = db.session.get(MonthlyLocationMonth, 5202)
         assert mtsm_a.session_route_stop_order == 0
         assert mtsm_b.session_route_stop_order == 1
 
@@ -695,35 +662,35 @@ def test_patch_worksheet_row_clear_skipped_resets_outcome(worksheet_client):
     client, app = worksheet_client
     with app.app_context():
         route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
-        loc = MonthlyRouteLocation(
+        loc = MonthlyLocation(
             id=101,
             address="123 Test St",
             address_normalized="123 test st",
             property_management_company="Acme",
             property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
+        label="123 Test St",
+        label_normalized="123 test st",
             status_normalized="active",
             status_raw="Active",
-            monthly_route_id=1,
-        )
-        hist = MonthlyRouteTestHistory(
-            id=5001,
-            location_id=101,
+            monthly_route_id=1
+)
+        mlm = MonthlyLocationMonth(
+                id=5001,
+                monthly_location_id=101,
             month_date=date(2026, 5, 1),
             result_status="skipped",
             skip_reason="Gate locked",
             sheet_time_in_raw="note",
             sheet_time_out_raw="10:00",
-            test_monthly_route_id=1,
-        )
-        db.session.add_all([route, loc, hist])
+            test_monthly_route_id=1
+)
+        db.session.add_all([route, loc, mlm])
         db.session.commit()
 
     res = client.patch(
         "/api/monthly_routes/routes/1/worksheet/rows/101?month=2026-05-01",
-        json={"changes": {"result_status": None}},
-    )
+        json={"changes": {"result_status": None}}
+)
     assert res.status_code == 200
     body = res.get_json()
     assert body["ok"] is True
@@ -739,35 +706,35 @@ def test_patch_worksheet_row_time_in_clears_prior_skip(worksheet_client):
     client, app = worksheet_client
     with app.app_context():
         route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
-        loc = MonthlyRouteLocation(
+        loc = MonthlyLocation(
             id=101,
             address="123 Test St",
             address_normalized="123 test st",
             property_management_company="Acme",
             property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
+        label="123 Test St",
+        label_normalized="123 test st",
             status_normalized="active",
             status_raw="Active",
-            monthly_route_id=1,
-        )
-        hist = MonthlyRouteTestHistory(
-            id=5002,
-            location_id=101,
+            monthly_route_id=1
+)
+        mlm = MonthlyLocationMonth(
+                id=5002,
+                monthly_location_id=101,
             month_date=date(2026, 5, 1),
             result_status="skipped",
             skip_reason="No access — gate stuck",
             sheet_time_in_raw=None,
             sheet_time_out_raw=None,
-            test_monthly_route_id=1,
-        )
-        db.session.add_all([route, loc, hist])
+            test_monthly_route_id=1
+)
+        db.session.add_all([route, loc, mlm])
         db.session.commit()
 
     res = client.patch(
         "/api/monthly_routes/routes/1/worksheet/rows/101?month=2026-05-01",
-        json={"changes": {"time_in": "10:15"}},
-    )
+        json={"changes": {"time_in": "10:15"}}
+)
     assert res.status_code == 200
     body = res.get_json()
     assert body["ok"] is True
@@ -782,57 +749,57 @@ def test_patch_worksheet_row_time_in_rejects_second_open_clock_in(worksheet_clie
     client, app = worksheet_client
     with app.app_context():
         route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
-        loc_a = MonthlyRouteLocation(
+        loc_a = MonthlyLocation(
             id=101,
             address="101 A St",
             address_normalized="101 a st",
             property_management_company="Acme",
             property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
+        label="101 A St",
+        label_normalized="101 a st",
             status_normalized="active",
             status_raw="Active",
-            monthly_route_id=1,
-        )
-        loc_b = MonthlyRouteLocation(
+            monthly_route_id=1
+)
+        loc_b = MonthlyLocation(
             id=102,
             address="102 B St",
             address_normalized="102 b st",
             property_management_company="Acme",
             property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
+        label="102 B St",
+        label_normalized="102 b st",
             status_normalized="active",
             status_raw="Active",
-            monthly_route_id=1,
-        )
-        hist_a = MonthlyRouteTestHistory(
-            id=5003,
-            location_id=101,
+            monthly_route_id=1
+)
+        mlm_a = MonthlyLocationMonth(
+                id=5003,
+                monthly_location_id=101,
             month_date=date(2026, 5, 1),
             result_status=None,
             skip_reason=None,
             sheet_time_in_raw="9:00",
             sheet_time_out_raw=None,
-            test_monthly_route_id=1,
-        )
-        hist_b = MonthlyRouteTestHistory(
-            id=5004,
-            location_id=102,
+            test_monthly_route_id=1
+)
+        mlm_b = MonthlyLocationMonth(
+                id=5004,
+                monthly_location_id=102,
             month_date=date(2026, 5, 1),
             result_status="skipped",
             skip_reason="Gate locked",
             sheet_time_in_raw=None,
             sheet_time_out_raw=None,
-            test_monthly_route_id=1,
-        )
-        db.session.add_all([route, loc_a, loc_b, hist_a, hist_b])
+            test_monthly_route_id=1
+)
+        db.session.add_all([route, loc_a, loc_b, mlm_a, mlm_b])
         db.session.commit()
 
     res = client.patch(
         "/api/monthly_routes/routes/1/worksheet/rows/102?month=2026-05-01",
-        json={"changes": {"time_in": "10:15"}},
-    )
+        json={"changes": {"time_in": "10:15"}}
+)
     assert res.status_code == 409
     body = res.get_json()
     assert body.get("code") == "open_clock_in_conflict"
@@ -842,8 +809,8 @@ def test_patch_worksheet_row_time_in_rejects_second_open_clock_in(worksheet_clie
 def test_patch_worksheet_row_writes_audit(worksheet_client):
     client, app = worksheet_client
     with app.app_context():
-        _, _, hist = _seed_basic_route_data()
-        expected = hist.updated_at.isoformat() if hist.updated_at else None
+        _, _, mlm = _seed_basic_route_data()
+        expected = mlm.updated_at.isoformat() if mlm.updated_at else None
 
     res = client.patch(
         "/api/monthly_routes/routes/1/worksheet/rows/101?month=2026-05-01",
@@ -851,8 +818,8 @@ def test_patch_worksheet_row_writes_audit(worksheet_client):
             "expected_updated_at": expected,
             "client_mutation_id": "mut-1",
             "changes": {"testing_procedures": "TURN OFF BREAKER", "time_in": "9:48"},
-        },
-    )
+        }
+)
     assert res.status_code == 200
     body = res.get_json()
     assert body["ok"] is True
@@ -872,34 +839,35 @@ def test_patch_worksheet_row_monitoring_writes_monitoring_notes(worksheet_client
 
     res = client.patch(
         "/api/monthly_routes/routes/1/worksheet/rows/101?month=2026-05-01",
-        json={"changes": {"monitoring": "Central station updated"}},
-    )
+        json={"changes": {"monitoring": "Central station updated"}}
+)
     assert res.status_code == 200
     body = res.get_json()
     assert body["ok"] is True
     assert body["row"]["monitoring"] == "Central station updated"
 
     with app.app_context():
-        row = MonthlyRouteTestHistory.query.filter_by(location_id=101).one()
+        row = MonthlyLocationMonth.query.filter_by(
+                monthly_location_id=101).one()
         assert (row.monitoring_notes or "").strip() == "Central station updated"
 
 
 def test_patch_worksheet_row_stale_version_client_wins(worksheet_client):
     client, app = worksheet_client
     with app.app_context():
-        _, _, hist = _seed_basic_route_data()
-        hist.testing_procedures = "server change"
+        _, _, mlm = _seed_basic_route_data()
+        mlm.testing_procedures = "server change"
         db.session.commit()
         stale_expected = "2026-01-01T00:00:00+00:00"
-        assert hist.updated_at is not None
+        assert mlm.updated_at is not None
 
     res = client.patch(
         "/api/monthly_routes/routes/1/worksheet/rows/101?month=2026-05-01",
         json={
             "expected_updated_at": stale_expected,
             "changes": {"testing_procedures": "client change"},
-        },
-    )
+        }
+)
     assert res.status_code == 200
     body = res.get_json()
     assert body["ok"] is True
@@ -912,34 +880,34 @@ def test_patch_worksheet_row_outcome_rejected_when_run_completed(worksheet_clien
     current = _current_pacific_month_first()
     with app.app_context():
         loc_id = _seed_route_for_month(11, current, status="completed")
-        hist = MonthlyRouteTestHistory(
-            id=119999,
-            location_id=loc_id,
+        mlm = MonthlyLocationMonth(
+                id=119999,
+                monthly_location_id=loc_id,
             month_date=current,
             result_status=None,
-            test_monthly_route_id=11,
-        )
-        db.session.add(hist)
+            test_monthly_route_id=11
+)
+        db.session.add(mlm)
         db.session.commit()
 
     month_q = current.isoformat()
     res = client.patch(
         f"/api/monthly_routes/routes/11/worksheet/rows/{loc_id}?month={month_q}",
-        json={"changes": {"result_status": "tested"}},
-    )
+        json={"changes": {"result_status": "tested"}}
+)
     assert res.status_code == 409
     assert res.get_json().get("code") == "run_completed_outcome_locked"
 
     res_skip_key = client.patch(
         f"/api/monthly_routes/routes/11/worksheet/rows/{loc_id}?month={month_q}",
-        json={"changes": {"skip_reason": "annual"}},
-    )
+        json={"changes": {"skip_reason": "annual"}}
+)
     assert res_skip_key.status_code == 409
 
     res_facp = client.patch(
         f"/api/monthly_routes/routes/11/worksheet/rows/{loc_id}?month={month_q}",
-        json={"changes": {"facp": "Panel OK"}},
-    )
+        json={"changes": {"facp": "Panel OK"}}
+)
     assert res_facp.status_code == 200
     assert res_facp.get_json()["row"]["facp"] == "Panel OK"
 
@@ -953,21 +921,21 @@ def test_patch_outcome_rejected_office_when_field_run_active(worksheet_client):
         run = MonthlyRouteRun.query.filter_by(monthly_route_id=12, month_date=current).one()
         run.started_at = datetime.now(timezone.utc)
         db.session.add(
-            MonthlyRouteTestHistory(
+            MonthlyLocationMonth(
                 id=129999,
-                location_id=loc_id,
+                monthly_location_id=loc_id,
                 month_date=current,
                 result_status=None,
-                test_monthly_route_id=12,
-            )
+                test_monthly_route_id=12
+)
         )
         db.session.commit()
 
     month_q = current.isoformat()
     res = client.patch(
         f"/api/monthly_routes/routes/12/worksheet/rows/{loc_id}?month={month_q}",
-        json={"changes": {"result_status": "tested"}},
-    )
+        json={"changes": {"result_status": "tested"}}
+)
     assert res.status_code == 409
     assert res.get_json().get("code") == "run_active_office_outcome_locked"
 
@@ -981,21 +949,21 @@ def test_patch_outcome_allowed_tech_portal_query_when_field_run_active(worksheet
         run = MonthlyRouteRun.query.filter_by(monthly_route_id=13, month_date=current).one()
         run.started_at = datetime.now(timezone.utc)
         db.session.add(
-            MonthlyRouteTestHistory(
+            MonthlyLocationMonth(
                 id=139999,
-                location_id=loc_id,
+                monthly_location_id=loc_id,
                 month_date=current,
                 result_status=None,
-                test_monthly_route_id=13,
-            )
+                test_monthly_route_id=13
+)
         )
         db.session.commit()
 
     month_q = current.isoformat()
     res = client.patch(
         f"/api/monthly_routes/routes/13/worksheet/rows/{loc_id}?month={month_q}&tech_portal=1",
-        json={"changes": {"result_status": "tested"}},
-    )
+        json={"changes": {"result_status": "tested"}}
+)
     assert res.status_code == 200
     assert res.get_json()["row"]["result_status"] == "tested"
 
@@ -1009,60 +977,64 @@ def test_patch_outcome_allowed_portal_only_when_field_run_active(portal_only_cli
         run = MonthlyRouteRun.query.filter_by(monthly_route_id=14, month_date=current).one()
         run.started_at = datetime.now(timezone.utc)
         db.session.add(
-            MonthlyRouteTestHistory(
+            MonthlyLocationMonth(
                 id=149999,
-                location_id=loc_id,
+                monthly_location_id=loc_id,
                 month_date=current,
                 result_status=None,
-                test_monthly_route_id=14,
-            )
+                test_monthly_route_id=14
+)
         )
         db.session.commit()
 
     month_q = current.isoformat()
     res = client.patch(
         f"/api/monthly_routes/routes/14/worksheet/rows/{loc_id}?month={month_q}",
-        json={"changes": {"result_status": "tested"}},
-    )
+        json={"changes": {"result_status": "tested"}}
+)
     assert res.status_code == 200
 
 
-def test_get_worksheet_hydrates_missing_snapshot_fields_from_prior_run(worksheet_client):
+def test_get_worksheet_hydrates_missing_snapshot_fields_from_prior_run(worksheet_client, monkeypatch):
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
+
     client, app = worksheet_client
     with app.app_context():
         route = MonthlyRoute(id=21, route_number=21, weekday_iso=0, week_occurrence=1)
-        loc = MonthlyRouteLocation(
+        loc = make_location(
             id=2101,
             address="210 Seed St",
-            address_normalized="210 seed st",
-            property_management_company="Acme",
-            property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
-            status_normalized="active",
-            status_raw="Active",
             monthly_route_id=21,
+        )
+        run = MonthlyRouteRun(
+            id=21003,
+            monthly_route_id=21,
+            month_date=date(2026, 5, 1),
+            status="open",
         )
         db.session.add_all(
             [
                 route,
                 loc,
-                MonthlyRouteTestHistory(
+                run,
+                MonthlyLocationMonth(
                     id=21001,
-                    location_id=2101,
+                    monthly_location_id=2101,
                     month_date=date(2026, 4, 1),
                     result_status="tested",
                     test_monthly_route_id=21,
                     testing_procedures="Prev Proc",
                     inspection_tech_notes="Prev Note",
                 ),
-                # Existing current-month row (e.g. legacy/import) with missing snapshots.
-                MonthlyRouteTestHistory(
+                MonthlyLocationMonth(
                     id=21002,
-                    location_id=2101,
+                    monthly_location_id=2101,
                     month_date=date(2026, 5, 1),
                     result_status=None,
                     test_monthly_route_id=21,
+                    run_id=21003,
                     testing_procedures=None,
                     inspection_tech_notes=None,
                 ),
@@ -1082,16 +1054,10 @@ def _seed_route_for_month(route_id: int, month_first: date, *, status: str = "op
     route = MonthlyRoute(
         id=route_id, route_number=route_id + 100, weekday_iso=0, week_occurrence=1
     )
-    loc = MonthlyRouteLocation(
+    loc = make_location(
         id=route_id * 100 + 1,
         address=f"{route_id} Hist St",
-        address_normalized=f"{route_id} hist st",
-        property_management_company="Acme",
-        property_management_company_normalized="acme",
-        building=None,
-        building_normalized="",
-        status_normalized="active",
-        status_raw="Active",
+        label=f"{route_id} Hist St",
         monthly_route_id=route_id,
     )
     run = MonthlyRouteRun(
@@ -1160,18 +1126,18 @@ def test_staff_worksheet_auto_creates_run_when_missing(worksheet_client, monkeyp
     client, app = worksheet_client
     with app.app_context():
         route = MonthlyRoute(id=96, route_number=96, weekday_iso=0, week_occurrence=1)
-        loc = MonthlyRouteLocation(
+        loc = MonthlyLocation(
             id=9601,
             address="96 Staff Auto Run St",
             address_normalized="96 staff auto run st",
             property_management_company="Acme",
             property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
+        label="96 Staff Auto Run St",
+        label_normalized="96 staff auto run st",
             status_normalized="active",
             status_raw="Active",
-            monthly_route_id=96,
-        )
+            monthly_route_id=96
+)
         db.session.add_all([route, loc])
         db.session.commit()
 
@@ -1191,18 +1157,18 @@ def test_past_month_no_records_returns_empty(worksheet_client, monkeypatch):
     client, app = worksheet_client
     with app.app_context():
         route = MonthlyRoute(id=10, route_number=10, weekday_iso=0, week_occurrence=1)
-        loc = MonthlyRouteLocation(
+        loc = MonthlyLocation(
             id=1001,
             address="10 Past Empty St",
             address_normalized="10 past empty st",
             property_management_company="Acme",
             property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
+        label="10 Past Empty St",
+        label_normalized="10 past empty st",
             status_normalized="active",
             status_raw="Active",
-            monthly_route_id=10,
-        )
+            monthly_route_id=10
+)
         db.session.add_all([route, loc])
         db.session.commit()
 
@@ -1214,7 +1180,7 @@ def test_past_month_no_records_returns_empty(worksheet_client, monkeypatch):
 
     with app.app_context():
         assert MonthlyRouteRun.query.filter_by(monthly_route_id=10, month_date=date(2026, 3, 1)).count() == 0
-        assert MonthlyRouteTestHistory.query.filter_by(month_date=date(2026, 3, 1)).count() == 0
+        assert MonthlyLocationMonth.query.filter_by(month_date=date(2026, 3, 1)).count() == 0
 
 
 def test_past_month_shows_stamped_row_after_site_moved(worksheet_client, monkeypatch):
@@ -1228,34 +1194,34 @@ def test_past_month_shows_stamped_row_after_site_moved(worksheet_client, monkeyp
     with app.app_context():
         route_a = MonthlyRoute(id=20, route_number=20, weekday_iso=0, week_occurrence=1)
         route_b = MonthlyRoute(id=21, route_number=21, weekday_iso=1, week_occurrence=1)
-        loc = MonthlyRouteLocation(
+        loc = MonthlyLocation(
             id=2001,
             address="20 Moved Site St",
             address_normalized="20 moved site st",
             property_management_company="Acme",
             property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
+        label="20 Moved Site St",
+        label_normalized="20 moved site st",
             status_normalized="active",
             status_raw="Active",
-            monthly_route_id=21,
-        )
+            monthly_route_id=21
+)
         run = MonthlyRouteRun(
             id=20001,
             monthly_route_id=20,
             month_date=march,
             status="completed",
-            source="technician_app",
-        )
-        hist = MonthlyRouteTestHistory(
-            id=30001,
-            location_id=2001,
+            source="technician_app"
+)
+        mlm = MonthlyLocationMonth(
+                id=30001,
+                monthly_location_id=2001,
             month_date=march,
             result_status="tested",
             test_monthly_route_id=20,
-            run_id=20001,
-        )
-        db.session.add_all([route_a, route_b, loc, run, hist])
+            run_id=20001
+)
+        db.session.add_all([route_a, route_b, loc, run, mlm])
         db.session.commit()
 
     res = client.get("/api/monthly_routes/routes/20/worksheet?month=2026-03-01")
@@ -1276,46 +1242,46 @@ def test_past_month_does_not_show_site_added_later(worksheet_client, monkeypatch
     march = date(2026, 3, 1)
     with app.app_context():
         route = MonthlyRoute(id=30, route_number=30, weekday_iso=0, week_occurrence=1)
-        loc_a = MonthlyRouteLocation(
+        loc_a = MonthlyLocation(
             id=3001,
             address="30A March Only St",
             address_normalized="30a march only st",
             property_management_company="Acme",
             property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
+        label="30A March Only St",
+        label_normalized="30a march only st",
             status_normalized="active",
             status_raw="Active",
-            monthly_route_id=30,
-        )
-        loc_b = MonthlyRouteLocation(
+            monthly_route_id=30
+)
+        loc_b = MonthlyLocation(
             id=3002,
             address="30B Added Later St",
             address_normalized="30b added later st",
             property_management_company="Acme",
             property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
+        label="30B Added Later St",
+        label_normalized="30b added later st",
             status_normalized="active",
             status_raw="Active",
-            monthly_route_id=30,
-        )
+            monthly_route_id=30
+)
         run = MonthlyRouteRun(
             id=30001,
             monthly_route_id=30,
             month_date=march,
             status="completed",
-            source="technician_app",
-        )
-        hist_a = MonthlyRouteTestHistory(
-            id=40001,
-            location_id=3001,
+            source="technician_app"
+)
+        mlm_a = MonthlyLocationMonth(
+                id=40001,
+                monthly_location_id=3001,
             month_date=march,
             result_status="tested",
             test_monthly_route_id=30,
-            run_id=30001,
-        )
-        db.session.add_all([route, loc_a, loc_b, run, hist_a])
+            run_id=30001
+)
+        db.session.add_all([route, loc_a, loc_b, run, mlm_a])
         db.session.commit()
 
     res = client.get("/api/monthly_routes/routes/30/worksheet?month=2026-03-01")
@@ -1326,8 +1292,8 @@ def test_past_month_does_not_show_site_added_later(worksheet_client, monkeypatch
 
     with app.app_context():
         assert (
-            MonthlyRouteTestHistory.query.filter_by(
-                location_id=3002, month_date=march
+            MonthlyLocationMonth.query.filter_by(
+                monthly_location_id=3002, month_date=march
             ).count()
             == 0
         )
@@ -1342,19 +1308,19 @@ def test_portal_worksheet_preview_without_monthly_route_run(portal_only_client, 
     client, app = portal_only_client
     with app.app_context():
         route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
-        loc = MonthlyRouteLocation(
+        loc = MonthlyLocation(
             id=101,
             address="123 Test St",
             address_normalized="123 test st",
             property_management_company="Acme",
             property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
+        label="123 Test St",
+        label_normalized="123 test st",
             status_normalized="active",
             status_raw="Active",
             monthly_route_id=1,
-            annual_month="May",
-        )
+            annual_month="May"
+)
         db.session.add_all([route, loc])
         db.session.commit()
 
@@ -1375,19 +1341,19 @@ def test_portal_post_runs_then_get_worksheet(portal_only_client, monkeypatch):
     client, app = portal_only_client
     with app.app_context():
         route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
-        loc = MonthlyRouteLocation(
+        loc = MonthlyLocation(
             id=101,
             address="123 Test St",
             address_normalized="123 test st",
             property_management_company="Acme",
             property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
+        label="123 Test St",
+        label_normalized="123 test st",
             status_normalized="active",
             status_raw="Active",
             monthly_route_id=1,
-            annual_month="May",
-        )
+            annual_month="May"
+)
         db.session.add_all([route, loc])
         db.session.commit()
 
@@ -1413,19 +1379,19 @@ def test_portal_reopen_completed_run_forbidden(portal_only_client, monkeypatch):
     client, app = portal_only_client
     with app.app_context():
         route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
-        loc = MonthlyRouteLocation(
+        loc = MonthlyLocation(
             id=101,
             address="123 Test St",
             address_normalized="123 test st",
             property_management_company="Acme",
             property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
+        label="123 Test St",
+        label_normalized="123 test st",
             status_normalized="active",
             status_raw="Active",
             monthly_route_id=1,
-            annual_month="May",
-        )
+            annual_month="May"
+)
         run = MonthlyRouteRun(
             id=5001,
             monthly_route_id=1,
@@ -1434,16 +1400,16 @@ def test_portal_reopen_completed_run_forbidden(portal_only_client, monkeypatch):
             started_at=datetime(2026, 5, 1, 10, 5, tzinfo=PACIFIC_TZ),
             completed_at=datetime(2026, 5, 1, 14, 0, tzinfo=PACIFIC_TZ),
             status="completed",
-            source="technician_app",
-        )
+            source="technician_app"
+)
         db.session.add_all([route, loc, run])
         db.session.commit()
 
     res = client.post(
         "/api/technician_portal/routes/1/runs/reopen_field",
         json={},
-        content_type="application/json",
-    )
+        content_type="application/json"
+)
     assert res.status_code == 409
     assert res.get_json().get("code") == "run_completed"
 
@@ -1456,40 +1422,40 @@ def test_portal_patch_blocked_when_run_completed(portal_only_client, monkeypatch
     client, app = portal_only_client
     with app.app_context():
         route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
-        loc = MonthlyRouteLocation(
+        loc = MonthlyLocation(
             id=101,
             address="123 Test St",
             address_normalized="123 test st",
             property_management_company="Acme",
             property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
+        label="123 Test St",
+        label_normalized="123 test st",
             status_normalized="active",
             status_raw="Active",
             monthly_route_id=1,
-            annual_month="May",
-        )
+            annual_month="May"
+)
         run = MonthlyRouteRun(
             id=5002,
             monthly_route_id=1,
             month_date=date(2026, 5, 1),
             status="completed",
             completed_at=datetime(2026, 5, 2, 12, 0, tzinfo=PACIFIC_TZ),
-            source="technician_app",
-        )
-        hist = MonthlyRouteTestHistory(
-            id=5003,
-            location_id=101,
+            source="technician_app"
+)
+        mlm = MonthlyLocationMonth(
+                id=5003,
+                monthly_location_id=101,
             month_date=date(2026, 5, 1),
-            test_monthly_route_id=1,
-        )
-        db.session.add_all([route, loc, run, hist])
+            test_monthly_route_id=1
+)
+        db.session.add_all([route, loc, run, mlm])
         db.session.commit()
 
     res = client.patch(
         "/api/monthly_routes/routes/1/worksheet/rows/101?month=2026-05-01&tech_portal=1",
-        json={"changes": {"facp": "Panel A"}},
-    )
+        json={"changes": {"facp": "Panel A"}}
+)
     assert res.status_code == 409
     assert res.get_json().get("code") == "run_completed_locked"
 
@@ -1502,25 +1468,25 @@ def test_portal_route_summary(portal_only_client, monkeypatch):
     client, app = portal_only_client
     with app.app_context():
         route = MonthlyRoute(id=1, route_number=16, weekday_iso=0, week_occurrence=1)
-        loc = MonthlyRouteLocation(
+        loc = MonthlyLocation(
             id=101,
             address="R16 St",
             address_normalized="r16 st",
             property_management_company="Acme",
             property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
+        label="R16 St",
+        label_normalized="r16 st",
             status_normalized="active",
             status_raw="Active",
-            monthly_route_id=1,
-        )
+            monthly_route_id=1
+)
         prior = MonthlyRouteRun(
             id=9001,
             monthly_route_id=1,
             month_date=date(2026, 4, 1),
             status="open",
-            source="technician_app",
-        )
+            source="technician_app"
+)
         db.session.add_all([route, loc, prior])
         db.session.commit()
 
@@ -1548,8 +1514,8 @@ def test_portal_route_summary_includes_pre_run_message(portal_only_client, monke
             month_date=date(2026, 5, 1),
             status="open",
             source="office_manual",
-            pre_run_message="Do not skip 99 Oak",
-        )
+            pre_run_message="Do not skip 99 Oak"
+)
         db.session.add_all([route, run])
         db.session.commit()
 
@@ -1568,33 +1534,33 @@ def test_hybrid_staff_portal_uses_tech_portal_param_for_lazy_worksheet(monkeypat
     client, app = hybrid_portal_staff_client
     with app.app_context():
         route = MonthlyRoute(id=79, route_number=79, weekday_iso=0, week_occurrence=1)
-        loc = MonthlyRouteLocation(
+        loc = MonthlyLocation(
             id=7901,
             address="Hybrid Lazy St",
             address_normalized="hybrid lazy st",
             property_management_company="Acme",
             property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
+        label="Hybrid Lazy St",
+        label_normalized="hybrid lazy st",
             status_normalized="active",
             status_raw="Active",
             monthly_route_id=79,
-            annual_month="May",
-        )
+            annual_month="May"
+)
         run = MonthlyRouteRun(
             id=79001,
             monthly_route_id=79,
             month_date=date(2026, 5, 1),
             started_at=None,
             status="open",
-            source="office_manual",
-        )
+            source="office_manual"
+)
         db.session.add_all([route, loc, run])
         db.session.commit()
 
     res_lazy = client.get(
-        "/api/monthly_routes/routes/79/worksheet?month=2026-05-01&tech_portal=1",
-    )
+        "/api/monthly_routes/routes/79/worksheet?month=2026-05-01&tech_portal=1"
+)
     assert res_lazy.status_code == 200
     lazy_body = res_lazy.get_json()
     assert lazy_body["run"] is not None
@@ -1616,8 +1582,8 @@ def test_hybrid_staff_portal_uses_tech_portal_param_for_lazy_worksheet(monkeypat
         db.session.commit()
 
     res_lazy_after = client.get(
-        "/api/monthly_routes/routes/79/worksheet?month=2026-05-01&tech_portal=1",
-    )
+        "/api/monthly_routes/routes/79/worksheet?month=2026-05-01&tech_portal=1"
+)
     assert res_lazy_after.get_json()["run"]["started_at"] is None
     with app.app_context():
         run_row = MonthlyRouteRun.query.filter_by(monthly_route_id=79, month_date=date(2026, 5, 1)).one()
@@ -1678,29 +1644,11 @@ def test_legacy_worksheet_row_patch_syncs_snapshot_fields_to_mtsm(worksheet_clie
     """Staff office worksheet row edits must appear on the technician portal stop list."""
     client, app = worksheet_client
     with app.app_context():
-        route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
-        loc = MonthlyRouteLocation(
-            id=101,
-            address="123 Test St",
-            address_normalized="123 test st",
-            property_management_company="Acme",
-            property_management_company_normalized="acme",
-            building=None,
-            building_normalized="",
-            status_normalized="active",
-            status_raw="Active",
-            monthly_route_id=1,
-            testing_procedures="Library proc",
-            inspection_tech_notes="Library notes",
-        )
-        hist = MonthlyRouteTestHistory(
-            id=5100,
-            location_id=101,
-            month_date=date(2026, 5, 1),
-            test_monthly_route_id=1,
-            testing_procedures="Library proc",
-            inspection_tech_notes="Library notes",
-        )
+        seed_route_with_one_stop(route_id=1, location_id=101)
+        loc = db.session.get(MonthlyLocation, 101)
+        assert loc is not None
+        loc.testing_procedures = "Library proc"
+        loc.inspection_tech_notes = "Library notes"
         run = MonthlyRouteRun(
             id=5101,
             monthly_route_id=1,
@@ -1708,26 +1656,18 @@ def test_legacy_worksheet_row_patch_syncs_snapshot_fields_to_mtsm(worksheet_clie
             status="scheduled",
             source="office_manual",
         )
-        db.session.add_all([route, loc, hist, run])
-        db.session.commit()
-        sync_testing_sites_from_legacy(loc)
-        ts = (
-            MonthlyTestingSite.query.filter_by(monthly_site_id=MonthlySite.query.one().id)
-            .order_by(MonthlyTestingSite.sort_order.asc(), MonthlyTestingSite.id.asc())
-            .first()
-        )
-        mtsm = MonthlyTestingSiteMonth(
-            id=5102,
-            monthly_testing_site_id=int(ts.id),
+        mlm = MonthlyLocationMonth(
+            id=5100,
+            monthly_location_id=101,
             month_date=date(2026, 5, 1),
             test_monthly_route_id=1,
             run_id=5101,
             testing_procedures="Stale proc",
             inspection_tech_notes="Stale notes",
         )
-        db.session.add(mtsm)
+        db.session.add_all([run, mlm])
         db.session.commit()
-        ts_id = int(ts.id)
+        ts_id = 101
 
     res = client.patch(
         "/api/monthly_routes/routes/1/worksheet/rows/101?month=2026-05-01",
@@ -1741,15 +1681,14 @@ def test_legacy_worksheet_row_patch_syncs_snapshot_fields_to_mtsm(worksheet_clie
     assert res.status_code == 200
 
     with app.app_context():
-        row = db.session.get(MonthlyTestingSiteMonth, 5102)
+        row = db.session.get(MonthlyLocationMonth, 5100)
+        assert row is not None
         assert row.testing_procedures == "Office sheet procedures"
         assert row.inspection_tech_notes == "Office location comments"
-        from app.monthly.worksheet_stops import serialize_worksheet_stop
+        from app.monthly.worksheet_locations import serialize_worksheet_location
 
-        loc = db.session.get(MonthlyRouteLocation, 101)
-        ts = db.session.get(MonthlyTestingSite, ts_id)
-        stop = serialize_worksheet_stop(
-            ts,
+        loc = db.session.get(MonthlyLocation, 101)
+        stop = serialize_worksheet_location(
             loc,
             row,
             route_id=1,

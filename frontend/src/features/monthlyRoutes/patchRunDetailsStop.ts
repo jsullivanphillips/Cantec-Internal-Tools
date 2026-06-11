@@ -1,5 +1,5 @@
 import { apiJson } from '../../lib/apiClient'
-import type { TechnicianWorksheetStop } from './monthlyRoutesShared'
+import type { TechnicianWorksheetLocation } from './monthlyRoutesShared'
 import {
   worksheetStopChangesForSync,
   type WorksheetStopChangeSet,
@@ -10,18 +10,18 @@ export type RunDetailsStopPatchChanges = Record<string, string | number | boolea
 export async function patchRunDetailsStop(
   routeId: number,
   monthDate: string,
-  testingSiteId: number,
+  locationId: number,
   changes: WorksheetStopChangeSet | RunDetailsStopPatchChanges,
   options?: { clientMutationId?: string; stopNumber?: number },
-): Promise<TechnicianWorksheetStop> {
+): Promise<TechnicianWorksheetLocation> {
   const syncChanges = worksheetStopChangesForSync(
     changes as WorksheetStopChangeSet,
   ) as RunDetailsStopPatchChanges
   const qs = new URLSearchParams({ month: monthDate })
   const clientMutationId =
-    options?.clientMutationId ?? `run-prep-${testingSiteId}-${Date.now()}`
-  const body = await apiJson<{ ok: boolean; stop: TechnicianWorksheetStop }>(
-    `/api/monthly_routes/routes/${routeId}/worksheet/stops/${testingSiteId}?${qs.toString()}`,
+    options?.clientMutationId ?? `run-prep-${locationId}-${Date.now()}`
+  const body = await apiJson<{ ok: boolean; stop: TechnicianWorksheetLocation }>(
+    `/api/monthly_routes/routes/${routeId}/worksheet/locations/${locationId}?${qs.toString()}`,
     {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },

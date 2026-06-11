@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, type CSSProperties, type ReactNode } from 'react'
 import { Table } from 'react-bootstrap'
 import { Link } from 'react-router-dom'
-import type { TechnicianWorksheetStop } from './monthlyRoutesShared'
+import type { TechnicianWorksheetLocation } from './monthlyRoutesShared'
 import {
   auditChangeForCompactLabel,
   auditChangeForLongTextField,
@@ -29,7 +29,7 @@ import {
   type OfficeStopStatus,
   type OfficeWorksheetChangeColumnVisibility,
 } from './officeWorksheetTableShared'
-import { testingSitePrimaryLabel, worksheetStopDisplaySubline } from './testingSiteDisplay'
+import { locationPrimaryLabel, locationDisplaySubline } from './locationDisplay'
 import { stopMonitoringDisplay } from './stopMonitoringDisplay'
 import { stopHasNewCommentField, type RunDetailNewCommentField } from './runDetailsLocationReview'
 
@@ -119,7 +119,7 @@ function OfficeLongTextCell({
   highlightUpdatedCells,
   highlightNewComments,
 }: {
-  stop: TechnicianWorksheetStop
+  stop: TechnicianWorksheetLocation
   locationId: number
   fieldKey: RunDetailNewCommentField
   fieldChangesByLocation?: Map<number, OfficeFieldChange[]>
@@ -152,9 +152,7 @@ function OfficeLongTextCell({
 }
 
 function OfficeStopTableRow({
-  group,
   stop,
-  indexInGroup,
   monthDate,
   fieldChangesByLocation,
   columns,
@@ -163,9 +161,7 @@ function OfficeStopTableRow({
   highlightNewComments,
   closedRun,
 }: {
-  group: OfficeStopGroup
-  stop: TechnicianWorksheetStop
-  indexInGroup: number
+  stop: TechnicianWorksheetLocation
   monthDate: string
   fieldChangesByLocation?: Map<number, OfficeFieldChange[]>
   columns: OfficeWorksheetChangeColumnVisibility
@@ -183,16 +179,14 @@ function OfficeStopTableRow({
     !worksheetSkipReasonDuplicatesTimeInNote(skipReasonDisplayBlock, stop.result_status, displayTimeIn)
   const showWorksheetTimeOutLine =
     displayTimeOut.length > 0 && shouldShowWorksheetTimeOutRow(displayTimeIn, displayTimeOut)
-  const stopLabel = testingSitePrimaryLabel(stop, {
-    siteCount: group.stops.length,
-    siteIndex: indexInGroup,
-  })
-  const stopSubline = worksheetStopDisplaySubline(stop, {
-    siteCount: group.stops.length,
-    siteIndex: indexInGroup,
-    primaryLabel: stopLabel,
-  })
-  const isFirstInGroup = indexInGroup === 0
+  const primaryLabel = locationPrimaryLabel(stop)
+  const addressSubline = locationDisplaySubline(stop, { primaryLabel })
+  const buildingDisplay = (() => {
+    const raw = (stop.building_name ?? '').trim()
+    if (!raw) return null
+    if (raw.toLowerCase() === primaryLabel.trim().toLowerCase()) return null
+    return raw
+  })()
   const timeSummaryParts = [
     showWorksheetTimeInLine ? worksheetTimeInOutDisplayLine('in', displayTimeIn) : null,
     showWorksheetTimeOutLine ? worksheetTimeInOutDisplayLine('out', displayTimeOut) : null,
@@ -203,7 +197,7 @@ function OfficeStopTableRow({
   ].filter((part): part is string => part != null)
   if (resultDetailLines.length === 0) resultDetailLines.push('No times recorded')
 
-  const lid = group.locationId
+  const lid = stop.location_id
   const accessUpdated = highlightUpdatedCells && officeAccessCellUpdated(lid, fieldChangesByLocation)
   const panelUpdated = highlightUpdatedCells && officePanelCellUpdated(lid, fieldChangesByLocation)
   const monitoringUpdated =
@@ -232,10 +226,7 @@ function OfficeStopTableRow({
     : 'tw-office-sticky tw-office-sticky-order tabular-nums'
 
   return (
-    <tr
-      className={`tw-office-table-row tw-office-table-row--${status}${isFirstInGroup ? '' : ' tw-office-table-row--continuation'}`}
-      title={inclusionTitle}
-    >
+    <tr className={`tw-office-table-row tw-office-table-row--${status}`} title={inclusionTitle}>
       <td className={orderCellClass}>{stop.stop_number}</td>
       <td
         className={officeCellClassName(
@@ -243,44 +234,32 @@ function OfficeStopTableRow({
           'tw-office-sticky tw-office-sticky-address',
         )}
       >
-        {isFirstInGroup ? (
-          <div className="tw-office-address-cell">
-            <Link to={`/monthlies/locations/${group.locationId}`} className="tw-office-location-link">
-              {group.displayAddress}
-            </Link>
-            <div className="tw-office-address-meta">
-              {addressUpdated &&
-              auditChangeForCompactLabel(lid, 'Building', fieldChangesByLocation) ? (
-                <span className="tw-office-cell-updated-value">
-                  {renderFieldChangeInline(
-                    auditChangeForCompactLabel(lid, 'Building', fieldChangesByLocation)!,
-                  )}
-                </span>
-              ) : (
-                <span>{worksheetReadOnlyDisplay(group.buildingName)}</span>
-              )}
-              {addressUpdated &&
-              auditChangeForCompactLabel(lid, 'PMC', fieldChangesByLocation) ? (
-                <span className="tw-office-cell-updated-value">
-                  {renderFieldChangeInline(
-                    auditChangeForCompactLabel(lid, 'PMC', fieldChangesByLocation)!,
-                  )}
-                </span>
-              ) : (
-                <span>{worksheetReadOnlyDisplay(group.propertyManagementCompany)}</span>
-              )}
-            </div>
-            {group.stops.length > 1 ? (
-              <div className="tw-office-address-count">{group.stops.length} testing sites</div>
-            ) : null}
+        <div className="tw-office-address-cell">
+          <Link to={`/monthlies/locations/${lid}`} className="tw-office-location-link">
+            {primaryLabel}
+          </Link>
+          <div className="tw-office-address-meta">
+            {addressUpdated && auditChangeForCompactLabel(lid, 'Building', fieldChangesByLocation) ? (
+              <span className="tw-office-cell-updated-value">
+                {renderFieldChangeInline(
+                  auditChangeForCompactLabel(lid, 'Building', fieldChangesByLocation)!,
+                )}
+              </span>
+            ) : (
+              <span>{worksheetReadOnlyDisplay(buildingDisplay)}</span>
+            )}
+            {addressUpdated && auditChangeForCompactLabel(lid, 'PMC', fieldChangesByLocation) ? (
+              <span className="tw-office-cell-updated-value">
+                {renderFieldChangeInline(
+                  auditChangeForCompactLabel(lid, 'PMC', fieldChangesByLocation)!,
+                )}
+              </span>
+            ) : (
+              <span>{worksheetReadOnlyDisplay(stop.property_management_company)}</span>
+            )}
           </div>
-        ) : (
-          <div className="tw-office-address-continuation">same address</div>
-        )}
-        <div className="tw-office-site-cell">
-          <div className="tw-office-site-label fw-semibold">{stopLabel}</div>
-          {stopSubline ? (
-            <div className="tw-office-site-subline text-muted small">{stopSubline}</div>
+          {addressSubline ? (
+            <div className="tw-office-address-subline text-muted small">{addressSubline}</div>
           ) : null}
         </div>
       </td>
@@ -438,7 +417,7 @@ function OfficeStopTableRow({
 }
 
 export type OfficeWorksheetReadOnlyTableProps = {
-  stops: TechnicianWorksheetStop[]
+  stops: TechnicianWorksheetLocation[]
   monthDate: string
   fieldChangesByLocation?: Map<number, OfficeFieldChange[]>
   /** ``dashboard``: split header/body scroll like full office worksheet; ``embedded``: single scroll region. */
@@ -455,7 +434,7 @@ export type OfficeWorksheetReadOnlyTableProps = {
   highlightNewComments?: boolean
   /** Completed run — pending stops show "No Results Submitted". */
   closedRun?: boolean
-  /** Exact history: keep API stop order; only group consecutive rows at the same address. */
+  /** Exact history: keep API stop order (one row per location; no same-address merge). */
   preserveSubmissionStopOrder?: boolean
 }
 
@@ -504,12 +483,10 @@ export default function OfficeWorksheetReadOnlyTable({
   }, [])
 
   const bodyRows = groups.flatMap((group) =>
-    group.stops.map((stop, index) => (
+    group.stops.map((stop) => (
       <OfficeStopTableRow
-        key={`office-stop-row:${stop.testing_site_id}-${stop.month_date}`}
-        group={group}
+        key={`office-stop-row:${stop.location_id}-${stop.month_date}-${stop.stop_number}`}
         stop={stop}
-        indexInGroup={index}
         monthDate={monthDate}
         fieldChangesByLocation={fieldChangesByLocation}
         columns={changeColumns}

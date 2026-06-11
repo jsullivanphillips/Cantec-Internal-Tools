@@ -15,13 +15,13 @@ import type {
   MonthlyRunDetailDeficiencySummary,
   MonthlyRunDetailLocation,
   TechnicianWorksheetRun,
-  TechnicianWorksheetStop,
+  TechnicianWorksheetLocation,
 } from './monthlyRoutesShared'
 import type { RunDetailsStopPatchApi } from './useRunDetailsStopPatch'
 import type { NotableChangeItem } from './notableStopChanges'
 import { mergeStopDetailChanges } from './notableStopChanges'
 import {
-  buildStopCardFromLocation,
+  buildLocationCard,
   locationIdentityTone,
   locationIsCompact,
   locationPrimaryOutcomeDisplay,
@@ -58,26 +58,20 @@ function stopNumberColumnLabel(location: MonthlyRunDetailLocation): {
   primary: string
   secondary: string | null
 } {
-  const first = location.first_stop_number
-  const last = location.last_stop_number
-  if (first > 0 && last > 0 && first !== last) {
-    return { primary: String(first), secondary: String(last) }
-  }
-  if (first > 0) return { primary: String(first), secondary: null }
-  return { primary: '—', secondary: null }
+  const n = location.stop_number
+  if (n > 0) return { primary: String(n), secondary: null }
+  return { primary: '-', secondary: null }
 }
 
 function locationHasDeficiencies(
   location: MonthlyRunDetailLocation,
   run: TechnicianWorksheetRun | null,
 ): boolean {
-  return location.stops.some(
-    (stop) => runReviewDeficiencySummaries(stop.deficiency_summaries, run).length > 0,
-  )
+  return runReviewDeficiencySummaries(location.deficiency_summaries, run).length > 0
 }
 
 function stopReviewDeficiencies(
-  stop: MonthlyRunDetailLocation['stops'][number],
+  stop: MonthlyRunDetailLocation,
   run: TechnicianWorksheetRun | null,
 ) {
   return runReviewDeficiencySummaries(stop.deficiency_summaries, run)
@@ -104,12 +98,12 @@ export default function RunDetailsLocationCard({
   runCompleted: boolean
   forceExpanded?: boolean
   changeDetailsByStopId: Record<number, NotableChangeItem[]>
-  onDetailLoaded: (testingSiteId: number, changes: NotableChangeItem[]) => void
+  onDetailLoaded: (locationId: number, changes: NotableChangeItem[]) => void
   onBillingPatched: (locationId: number, billingStatus: string) => void
   stopPatch: RunDetailsStopPatchApi
-  onStopMergedFromWorksheet: (stop: TechnicianWorksheetStop, scope?: 'full' | 'deficiency') => void
+  onStopMergedFromWorksheet: (stop: TechnicianWorksheetLocation, scope?: 'full' | 'deficiency') => void
   onDeficiencyUpdated?: (
-    testingSiteId: number,
+    locationId: number,
     updated: MonthlyRunDetailDeficiencySummary,
   ) => void | Promise<void>
 }) {
@@ -122,7 +116,7 @@ export default function RunDetailsLocationCard({
   const [siteModalStopId, setSiteModalStopId] = useState<number | null>(null)
   const domId = runLocationReviewDomId(location.location_id)
   const flags = location.attention_flags
-  const multiStop = location.stops.length > 1
+  const multiStop = false
 
   const primaryOutcome = useMemo(
     () => locationPrimaryOutcomeDisplay(location, monthDate),
@@ -151,15 +145,11 @@ export default function RunDetailsLocationCard({
     return () => window.removeEventListener(RUN_LOCATION_EXPAND_EVENT, onExpand)
   }, [domId])
 
-  const stopCards = useMemo(
-    () =>
-      location.stops.map((stop) => {
-        const base = buildStopCardFromLocation(location, stop, monthDate)
-        const loaded = changeDetailsByStopId[stop.testing_site_id]
-        return loaded ? mergeStopDetailChanges(base, loaded) : base
-      }),
-    [location, monthDate, changeDetailsByStopId],
-  )
+  const stopCards = useMemo(() => {
+    const base = buildLocationCard(location, monthDate)
+    const loaded = changeDetailsByStopId[location.location_id]
+    return [loaded ? mergeStopDetailChanges(base, loaded) : base]
+  }, [location, monthDate, changeDetailsByStopId])
 
   const setBilling = useCallback(
     async (billing_status: OfficeBillingStatus) => {
@@ -195,11 +185,11 @@ export default function RunDetailsLocationCard({
 
   const changesColVisible = changesExpanded || !compact || forceExpanded
 
-  const openSiteModal = useCallback((testingSiteId: number) => {
-    setSiteModalStopId(testingSiteId)
+  const openSiteModal = useCallback((locationId: number) => {
+    setSiteModalStopId(locationId)
   }, [])
 
-  const primaryTestingSiteId = stopCards[0]?.stop.testing_site_id
+  const primarylocationId = stopCards[0]?.stop.location_id
 
   return (
     <article
@@ -234,33 +224,33 @@ export default function RunDetailsLocationCard({
 
         <div
           className={`run-location-card__test-col run-location-card__test-col--tone-${identityTone}${
-            !multiStop && primaryTestingSiteId != null && !canEditOutcome
+            !multiStop && primarylocationId != null && !canEditOutcome
               ? ' run-location-card__test-col--clickable'
               : ''
           }`}
           role={
-            !multiStop && primaryTestingSiteId != null && !canEditOutcome ? 'button' : undefined
+            !multiStop && primarylocationId != null && !canEditOutcome ? 'button' : undefined
           }
           tabIndex={
-            !multiStop && primaryTestingSiteId != null && !canEditOutcome ? 0 : undefined
+            !multiStop && primarylocationId != null && !canEditOutcome ? 0 : undefined
           }
           onClick={
-            !multiStop && primaryTestingSiteId != null && !canEditOutcome
-              ? () => openSiteModal(primaryTestingSiteId)
+            !multiStop && primarylocationId != null && !canEditOutcome
+              ? () => openSiteModal(primarylocationId)
               : undefined
           }
           onKeyDown={
-            !multiStop && primaryTestingSiteId != null && !canEditOutcome
+            !multiStop && primarylocationId != null && !canEditOutcome
               ? (e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault()
-                    openSiteModal(primaryTestingSiteId)
+                    openSiteModal(primarylocationId)
                   }
                 }
               : undefined
           }
           aria-label={
-            !multiStop && primaryTestingSiteId != null && !canEditOutcome
+            !multiStop && primarylocationId != null && !canEditOutcome
               ? `View site details for ${location.location_label}`
               : undefined
           }
@@ -274,15 +264,15 @@ export default function RunDetailsLocationCard({
           </Link>
           {multiStop ? (
             <div className="run-location-card__test-stops">
-              {stopCards.map((card, idx) => (
+              {stopCards.map((card) => (
                 <RunDetailsStopTestBlock
-                  key={card.stop.testing_site_id}
+                  key={card.stop.location_id}
                   card={card}
                   showSiteLabel
                   activeDeficiencyCount={
-                    stopReviewDeficiencies(location.stops[idx], run).length
+                    stopReviewDeficiencies(location, run).length
                   }
-                  onOpen={() => openSiteModal(card.stop.testing_site_id)}
+                  onOpen={() => openSiteModal(card.stop.location_id)}
                   run={run}
                   routeId={routeId}
                   readOnly={readOnly}
@@ -316,11 +306,11 @@ export default function RunDetailsLocationCard({
                   className="run-location-card__outcome"
                 />
               ) : null}
-              {canEditOutcome && primaryTestingSiteId != null ? (
+              {canEditOutcome && primarylocationId != null ? (
                 <button
                   type="button"
                   className="btn btn-link btn-sm p-0 align-self-start run-location-card__test-site-link"
-                  onClick={() => openSiteModal(primaryTestingSiteId)}
+                  onClick={() => openSiteModal(primarylocationId)}
                 >
                   Site details
                 </button>
@@ -328,7 +318,7 @@ export default function RunDetailsLocationCard({
               {stopCards[0] &&
               stopShowsNoDeficienciesConfirmedPill(
                 stopCards[0].stop,
-                stopReviewDeficiencies(location.stops[0], run).length,
+                stopReviewDeficiencies(location, run).length,
               ) ? (
                 <span className="run-details-stop-row__no-def-pill">No deficiencies confirmed</span>
               ) : null}
@@ -339,7 +329,7 @@ export default function RunDetailsLocationCard({
         {showBilling ? (
           <div className="run-location-card__billing-col">
             <RunDetailsLocationBillingControl
-              billingStatus={location.billing_status}
+              billingStatus={location.billing_status ?? null}
               readOnly={readOnly}
               error={billingError}
               onChange={(status) => void setBilling(status)}
@@ -353,11 +343,11 @@ export default function RunDetailsLocationCard({
         >
           {hasDeficiencies ? (
             <div className="run-location-card__deficiencies-stops">
-              {stopCards.map((card, idx) => (
+              {stopCards.map((card) => (
                 <RunDetailsStopDeficienciesBlock
-                  key={card.stop.testing_site_id}
+                  key={card.stop.location_id}
                   card={card}
-                  deficiencies={stopReviewDeficiencies(location.stops[idx], run)}
+                  deficiencies={stopReviewDeficiencies(location, run)}
                   showSiteLabel={multiStop}
                   locationLabel={location.location_label}
                   routeId={routeId}
@@ -389,7 +379,7 @@ export default function RunDetailsLocationCard({
               <div className="run-location-card__changes-stops">
                 {stopCards.map((card) => (
                   <RunDetailsStopFollowUpBlock
-                    key={card.stop.testing_site_id}
+                    key={card.stop.location_id}
                     card={card}
                     routeId={routeId}
                     monthDate={monthDate}
@@ -413,7 +403,7 @@ export default function RunDetailsLocationCard({
 
       <RunDetailsStopSiteModal
         show={siteModalStopId != null}
-        testingSiteId={siteModalStopId}
+        locationId={siteModalStopId}
         routeId={routeId}
         monthDate={monthDate}
         run={run}

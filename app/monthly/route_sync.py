@@ -1,5 +1,5 @@
 """
-Keep ``MonthlyRouteLocation.monthly_route_id`` aligned with ``test_day``.
+Keep ``MonthlyLocation.monthly_route_id`` aligned with ``test_day``.
 
 Does not touch ``keys`` / ``key_status``.
 """
@@ -8,11 +8,11 @@ from __future__ import annotations
 
 from sqlalchemy import func
 
-from app.db_models import MonthlyRoute, MonthlyRouteLocation, db
+from app.db_models import MonthlyLocation, MonthlyRoute, db
 from app.monthly.test_day import monthly_test_day_is_cancelled, parse_test_day
 
 
-def sync_monthly_route_fk_for_location(loc: MonthlyRouteLocation) -> None:
+def sync_monthly_route_fk_for_location(loc: MonthlyLocation) -> None:
     """
     Set ``loc.monthly_route_id`` from ``loc.test_day``.
 

@@ -4,6 +4,7 @@ import { apiFetch } from '../lib/apiClient'
 import { Button, Offcanvas } from 'react-bootstrap'
 import CollapsibleAppSidebar from './CollapsibleAppSidebar'
 import { SidebarNav } from './SidebarNav'
+import MonthlyLocationHeaderSearch from './MonthlyLocationHeaderSearch'
 
 export default function AppLayout() {
   const nav = useNavigate()
@@ -84,9 +85,12 @@ export default function AppLayout() {
             )}
           </Link>
         </div>
-        <Button variant="outline-secondary" size="sm" type="button" onClick={logout}>
-          Log out
-        </Button>
+        <div className="app-topbar-actions d-flex align-items-center gap-2 flex-shrink-0">
+          <MonthlyLocationHeaderSearch />
+          <Button variant="outline-secondary" size="sm" type="button" onClick={logout}>
+            Log out
+          </Button>
+        </div>
       </header>
 
       <div className="app-body d-flex flex-grow-1">

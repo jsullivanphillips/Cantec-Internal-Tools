@@ -1,0 +1,33 @@
+monthly_location_id,label,address,property_management_company,monthly_route_id,status_normalized,reason,street_key,candidate_count
+40,1036 Stellys Cross Road,1036 Stellys Cross Road,Devon Properties,36,active,no_service_trade_candidate,1036 STELLYS CROSS,0
+47,10461 Resthaven Drive,10461 Resthaven Drive,Proline,40,active,no_service_trade_candidate,10461 RESTHAVEN,0
+75,single panel share with 702 Fort Street,1125 Douglas Street,Arpeg Holdings Cactus Club,39,active,no_service_trade_candidate,1125 DOUGLAS,0
+129,1275 Oscar Street,1275 Oscar Street,1275 Oscar Street Holdings Ltd,37,active,no_service_trade_candidate,1275 OSCAR,0
+130,months on invoice,129 Gorge Road E,Belmont Properties,46,active,no_service_trade_candidate,129 GORGE EAST,0
+146,1321 Fernwood Road,1321 Fernwood Road,Victoria Native Friendship Centre,32,active,no_service_trade_candidate,1321 FERNWOOD,0
+153,months on invoice,135 Gorge Road E,Belmont Properties,46,active,no_service_trade_candidate,135 GORGE EAST,0
+170,1435 Elford Street,1435 Elford Street,TPM Management,25,active,no_service_trade_candidate,1435 ELFORD,0
+232,$65/month (A). PO & Months Required,1901 Mt. Newton Cross Road,Central Saanich Municipality,36,active,no_service_trade_candidate,1901 MT NEWTON,0
+233,$65/month (A). PO & Months Required,1903 Mt Newton Cross Road,Central Saanich Municipality,36,active,no_service_trade_candidate,1903 MT NEWTON,0
+250,2050 White Birch Drive,2050 White Birch Drive,Marina Park Apartments,40,active,no_service_trade_candidate,2050 WHITE BIRCH,0
+271,2210 Cadboro Bay Road,2210 Cadboro Bay Road,Brown Bros.,38,active,no_service_trade_candidate,2210 CADBORO BAY,0
+281,Discontinue after Dec 2025,2290 Henry Avenue,Trillium Communites,40,active,no_service_trade_candidate,2290 HENRY,0
+284,Discontinue after Dec 2025,2300 Henry Avenue,Trillium Communites,40,active,no_service_trade_candidate,2300 HENRY,0
+303,$65/month (A),2476 Mt. Newton Cross Road,Quality Inn,36,active,no_service_trade_candidate,2476 MT NEWTON,0
+307,2512 Douglas Street,2512 Douglas Street,Capital West,43,active,no_service_trade_candidate,2512 DOUGLAS,0
+308,2530 Mt Newton Cross Road,2530 Mt Newton Cross Road,Starlight/Devon,36,active,no_service_trade_candidate,2530 MT NEWTON,0
+335,2771 Jacklin Road,2771 Jacklin Road,Groupe Denux,29,active,no_service_trade_candidate,2771 JACKLIN,0
+387,3610 + 3614 Richmond Road & 1696 Pear Street,3610 + 3614 Richmond Road & 1696 Pear Street,Firm Management,47,active,no_service_trade_candidate,3610 3614 RICHMOND,0
+415,425 Wilson Street,425 Wilson Street,Century 21 Queenswood,31,active,no_service_trade_candidate,425 WILSON,0
+440,506 Fort Street,506 Fort Street,Homesphere Properties,39,active,no_service_trade_candidate,506 FORT,0
+443,5100 Pat Bay Highway,5100 Pat Bay Highway,Victoria Rowing Society,36,active,no_service_trade_candidate,5100 PAT BAY,0
+450,Months on invoice,532 & 536 Herald Street,Belmont Properties,45,active,no_service_trade_candidate,532 HERALD,0
+525,Invoice Monthly starting Apr. 1/21 @ $275 (no TC06) Inv.23887 - Mar.31/21 @ $55 + TC06,777 Royal Oak Drive (100),Thrifty Foods,41,active,multiple_service_trade_candidates,777 ROYAL OAK,2
+566,895 Fort Street,895 Fort Street,Pacific Arbour,26,active,no_service_trade_candidate,895 FORT,0
+575,NO PO Required $55/month,911 Yates Street & 990 View Street,Colliers,32,active,no_service_trade_candidate,911 YATES 990,0
+584,938 Dunford Ave,938 Dunford Ave,Tribe Management,29,active,no_service_trade_candidate,938 DUNFORD,0
+591,9710 2nd Street,9710 2nd Street,Pemberton Holmes,40,active,no_service_trade_candidate,9710 2ND,0
+592,9762 Third Street,9762 Third Street,Devon Properties,40,active,no_service_trade_candidate,9762 THIRD,0
+597,9838 Second Street,"9838 Second Street, Sidney, British Columbia V8L 3C6, Canada",Devon Properties,34,active,no_service_trade_candidate,9838 SECOND,0
+615,9950 4th Street,9950 4th Street,Freelance Strata Management,34,active,no_service_trade_candidate,9950 4TH,0
+616,9960 4th Street,9960 4th Street,Freelance Strata Management,34,active,no_service_trade_candidate,9960 4TH,0

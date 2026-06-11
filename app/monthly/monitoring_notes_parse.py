@@ -22,9 +22,22 @@ _PROSE_PASSWORD_RE = re.compile(
     re.I,
 )
 _HEADER_RE = re.compile(
-    r"^(COMPANY|SIGNALS|ACCT|ACCOUNT|PHONE|PASSWORD|PASS|PW)\s*:\s*(.*)$",
+    r"^(COMPANY|MONITORING|SIGNALS?|ACCT|ACCOUNT|PHONE|PASSWORD|PASS|PW)\s*:\s*(.*)$",
     re.I,
 )
+
+_HEADER_KEY_BY_TAG = {
+    "COMPANY": "company",
+    "MONITORING": "company",
+    "SIGNALS": "signals",
+    "SIGNAL": "signals",
+    "ACCT": "acct",
+    "ACCOUNT": "acct",
+    "PHONE": "phone",
+    "PASSWORD": "password",
+    "PASS": "password",
+    "PW": "password",
+}
 
 
 def _merge(prev: str | None, incoming: str) -> str:
@@ -48,6 +61,11 @@ def parse_monitoring_notes(raw: str | None) -> MonitoringNotesParsed:
             structured_idx = idx
             break
     if structured_idx < 0:
+        stripped = text.strip()
+        if stripped and "\n" not in stripped:
+            none_markers = {"none", "n/a", "na", "nil"}
+            if stripped.casefold().strip(".") not in none_markers:
+                return MonitoringNotesParsed(company=stripped)
         return MonitoringNotesParsed(remainder_notes=text.strip() or None)
 
     before = "\n\n".join(p.strip() for p in paragraphs[:structured_idx] if p.strip()).strip()
@@ -71,16 +89,7 @@ def parse_monitoring_notes(raw: str | None) -> MonitoringNotesParsed:
             if m:
                 tag = m.group(1).upper()
                 rest = m.group(2)
-                key = {
-                    "COMPANY": "company",
-                    "SIGNALS": "signals",
-                    "ACCT": "acct",
-                    "ACCOUNT": "acct",
-                    "PHONE": "phone",
-                    "PASSWORD": "password",
-                    "PASS": "password",
-                    "PW": "password",
-                }.get(tag)
+                key = _HEADER_KEY_BY_TAG.get(tag)
                 if key:
                     values[key] = _merge(values.get(key), rest)
                 continue

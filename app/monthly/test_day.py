@@ -98,3 +98,26 @@ def parse_test_day(raw: str | None) -> ParsedTestDay | None:
 def pattern_key(parsed: ParsedTestDay) -> tuple[int, int]:
     """Canonical (weekday, occurrence) pair for consistency checks."""
     return (parsed.weekday_iso, parsed.week_occurrence)
+
+
+_ISO_TO_PREFIX: dict[int, str] = {
+    0: "M",
+    1: "TU",
+    2: "W",
+    3: "TH",
+    4: "F",
+    5: "SA",
+    6: "SU",
+}
+
+
+def format_test_day_token(*, weekday_iso: int, week_occurrence: int, route_number: int) -> str:
+    """Build a canonical TEST DAY token (e.g. ``W1-R7``) for route assignment dropdowns."""
+    if not 0 <= weekday_iso <= 6:
+        raise ValueError(f"weekday_iso must be 0..6, got {weekday_iso}")
+    if week_occurrence < 1 or week_occurrence > 5:
+        raise ValueError(f"week_occurrence must be 1..5, got {week_occurrence}")
+    if route_number < 1:
+        raise ValueError(f"route_number must be positive, got {route_number}")
+    prefix = _ISO_TO_PREFIX[weekday_iso]
+    return f"{prefix}{week_occurrence}-R{route_number}"

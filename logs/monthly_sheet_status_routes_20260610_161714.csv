@@ -1,0 +1,672 @@
+row_number,location_id,address,property_management_company,label,match_mode,status,detail,old_status_normalized,new_status_normalized,old_test_day,new_test_day,old_route_id,new_route_id
+2,1,#103-4475 Viewmont,Hansbraun,MONTHLY EXT & ELU TESTS - Cancelled in November 2025,address_pmc_label,unchanged,,cancelled,cancelled,-,-,,
+3,2,10 Paul Kane/11 Cooperage Place,Proline,,address_pmc_label,unchanged,,active,active,W1-R7,W1-R7,31,31
+4,3,1000 Mckenzie Avenue,Starlight/Devon,Increase to $65 after January 2026,address_pmc,unchanged,,active,active,W1-R6,W1-R6,30,30
+5,4,1000-1012 Douglas Street,Itziar Management Ltd. (0824606 BC Ltd.),New keys received May 2026,address_pmc,unchanged,,active,active,TH2-R15,TH2-R15,39,39
+6,5,1001 Wharf Street,Pastoral Developments Ltd.,,address_pmc_label,unchanged,,active,active,TH2-R15,TH2-R15,39,39
+7,6,10016 3rd Street,Cornerstone,,address_pmc_label,unchanged,,active,active,F2-R16,F2-R16,40,40
+8,7,10017 Avenger Way,Lumberworld Operations Ltd.,Cancelled April 2026 - R16,address_pmc,updated,,active,cancelled,F2-R16,-,40,
+9,8,1002 Mckenzie Avenue,Starlight/Devon,Increase to $65 after January 2026,address_pmc,unchanged,,active,active,W1-R6,W1-R6,30,30
+10,9,1002 Pakington,Proline,,address_pmc_label,unchanged,,active,active,TU3-R18,TU3-R18,42,42
+11,10,1002 Wharf Street,Malahat Properties,,address_pmc_label,unchanged,,active,active,TH2-R15,TH2-R15,39,39
+12,11,10025 Resthaven Drive,Inken Roller c/o Richmond Property Group,,address_pmc_label,unchanged,,active,active,F2-R16,F2-R16,40,40
+13,12,10030 Resthaven Drive,Raven Property Management Ltd.,,address_pmc_label,unchanged,,active,active,F2-R16,F2-R16,40,40
+14,13,1004 Pemberton Road,Raul Caballero,,address_pmc_label,unchanged,,active,active,M1-R1,M1-R1,25,25
+15,14,1005 & 1009 McKenzie Avenue,Firm Management,$60 before May 2026,address_pmc,unchanged,,active,active,TU1-R4,TU1-R4,28,28
+16,15,1005 Broad Street,Richmond Property Group,,address_pmc_label,unchanged,,active,active,TH2-R15,TH2-R15,39,39
+17,16,1005 Pakington Street,Century 21 Queenswood,,address_pmc_label,unchanged,,active,active,TU3-R18,TU3-R18,42,42
+18,17,1005 St. Charles Street,Bross Holdings,,address_pmc_label,unchanged,,active,active,TH1-R9,TH1-R9,33,33
+19,18,1006 Fort Street,Colliers,,address_pmc_label,unchanged,,active,active,M1-R2,M1-R2,26,26
+20,19,1006 Tolmie Avenue,Century 21 Queenswood,$63.00 credit in QB to be applied to Q2,address_pmc,unchanged,,active,active,M1-R1,M1-R1,25,25
+21,20,1007 Esquimalt Road,Starlight Properties,Increase to $65 after January 2026,address_pmc,unchanged,,active,active,W1-R7,W1-R7,31,31
+22,21,101 Ontario Street,Proline Property Management,,address_pmc_label,unchanged,,active,active,W3-R20,W3-R20,44,44
+23,22,1010 Mckenzie Avenue,Starlight/Devon,Increase to $65 after January 2026,address_pmc,unchanged,,active,active,W1-R6,W1-R6,30,30
+24,23,1012 Collinson Street,Hutton,,address_pmc_label,unchanged,,active,active,TH1-R9,TH1-R9,33,33
+25,24,1013 Vancouver Street,Devon Properties,,address_pmc_label,unchanged,,active,active,TH1-R8,TH1-R8,32,32
+26,25,1015 Kings Road,Darioush Diba,,address_pmc_label,unchanged,,active,active,M1-R3,M1-R3,27,27
+27,26,10159 Third Street,Realstar Management,,address_pmc_label,unchanged,,active,active,F2-R16,F2-R16,40,40
+28,27,1017 Queens Avenue,Starlight/Devon,Increase to $65 after January 2026,address_pmc,unchanged,,active,active,M1-R3,M1-R3,27,27
+29,28,1019 McClure Street,Strata Plan VIS 308,,address_pmc_label,unchanged,,active,active,TH1-R9,TH1-R9,33,33
+30,,1019 Rockland Avenue,Proline,,,missing,,,,,M1-R2,,
+31,30,1020 Park Boulevard,Pemberton Holmes,,address_pmc_label,unchanged,,active,active,TU3-R18,TU3-R18,42,42
+32,31,1020 Pembroke Street,Brown Bros.,,address_pmc_label,unchanged,,active,active,M1-R3,M1-R3,27,27
+33,32,1024 Fairfield Road,Firm Management,,address_pmc_label,unchanged,,active,active,TH1-R9,TH1-R9,33,33
+34,33,1025 Johnson Street,Devon Properties,,address_pmc_label,unchanged,,active,active,TH1-R8,TH1-R8,32,32
+35,34,1026 Johnson Street,Firm Management,Cancelled February 2026 - Previously R8,address_pmc,updated,,active,cancelled,TH1-R8,-,32,
+36,35,1030 Pendergast Street,Starlight/Devon,,address_pmc_label,unchanged,,active,active,TU3-R18,TU3-R18,42,42
+37,36,1031 Burdett Avenue,Hutton,cancelled service- Nov 8/24 (tw),address_pmc_label,unchanged,,cancelled,cancelled,-,-,,
+38,,1032 North Park,Pacific Quorum $55,,,missing,,,,,M1-R3,,
+39,38,1035 Belmont Avenue,Belmont Properties,,address_pmc,unchanged,,active,active,TH1-R9,TH1-R9,33,33
+40,625,1035 North Park / 1720 Cook Street,First Service Residential,,address_pmc_label,unchanged,,active,active,M1-R3,M1-R3,27,27
+41,39,1035 Pendergast Street,Starlight/Devon,,address_pmc_label,unchanged,,active,active,TU3-R18,TU3-R18,42,42
+42,,1036 Stellys Cross Road,Aleutian Property Management Ltd,"2026 1st quarter, sent. Mgt change",,missing,,,,,TU2-R12,,
+43,,1039 Linden Avenue,Hutton Condominium Services Ltd,,,missing,,,,,TU2-R13,,
+44,41,104 Dallas Road,Strata #1374 The Dolphins,,address_pmc_label,unchanged,,active,active,W3-R20,W3-R20,44,44
+45,,1040 Stellys Cross Road,Aleutian Property Management Ltd,"2026 1st quarter, sent. Mgt change",,missing,,,,,TU2-R12,,
+46,43,1041 Fairfield Road,Pemberton Holmes,,address_pmc_label,unchanged,,active,active,M1-R2,M1-R2,26,26
+47,44,1041 Richardson Road,Capital West,,address_pmc_label,unchanged,,active,active,TH1-R9,TH1-R9,33,33
+48,45,1045 McClure Street,Brown Bros.,Last test done March 2026,address_pmc,updated,,cancelled,cancelled,M1-R2,-,26,
+49,46,10459 Resthaven Drive,Proline,,address_pmc_label,unchanged,,active,active,F2-R16,F2-R16,40,40
+50,47,10461 Resthaven Drive,Proline,,address_pmc_label,unchanged,,active,active,F2-R16,F2-R16,40,40
+51,48,1049 Southgate Street,Devon Properties,,address_pmc_label,unchanged,,active,active,TU3-R18,TU3-R18,42,42
+52,49,105 Wilson Street,Pacifica Housing,,address_pmc_label,unchanged,,active,active,W1-R7,W1-R7,31,31
+53,50,1050 Park Boulevard,Hutton,"$60/month (incl. hose, ext, mag lock check)",address_pmc_label,unchanged,,active,active,M2-R11,M2-R11,35,35
+54,51,10520 McDonald Park,Complete Residential Property Management,,address_pmc_label,unchanged,,active,active,F2-R16,F2-R16,40,40
+55,52,1055 Hillside Avenue,Firm Management,,address_pmc_label,unchanged,,active,active,W1-R6,W1-R6,30,30
+56,53,1057 Moss Street,Tim Slater,Charge CC in ST and email receipt,address_pmc_label,unchanged,,active,active,TH1-R9,TH1-R9,33,33
+57,54,1060 Craigdarroch Road,Pemberton Holmes,Increase to $65 after January 2026,address_pmc,unchanged,,active,active,TH1-R9,TH1-R9,33,33
+58,55,1060 Goldstream Avenue,Centurion Properties,Months on invoice,address_pmc,unchanged,,active,active,TU1-R5,TU1-R5,29,29
+59,56,1060 Southgate Street,Southgate Manor,,address_pmc_label,unchanged,,active,active,TU3-R18,TU3-R18,42,42
+60,57,1066 Foul Bay Road,Newport Property,,address_pmc_label,unchanged,,active,active,TU2-R13,TU2-R13,37,37
+61,58,1069 Southgate Street,Newport Property Management,,address_pmc_label,unchanged,,active,active,M1-R2,M1-R2,26,26
+62,640,1080 Cypress Road,Storyoga Inc.,,address_pmc_label,unchanged,,active,active,F1-R10,F1-R10,34,34
+63,59,1088 Johnson Street,Centurion Property Associates Inc.,,address_pmc,unchanged,,active,active,TH1-R8,TH1-R8,32,32
+64,60,109 Wilson Street,Pacifica Housing,,address_pmc_label,unchanged,,active,active,W1-R7,W1-R7,31,31
+65,61,1090 Johnson Street,Firm Management,,address_pmc_label,unchanged,,active,active,TH1-R8,TH1-R8,32,32
+66,62,1097 View Street,Firm Management,,address_pmc_label,unchanged,,active,active,TH1-R9,TH1-R9,33,33
+67,63,110 Douglas Street,Devon Properties,,address_pmc_label,unchanged,,active,active,TU3-R18,TU3-R18,42,42
+68,64,1106 Balmoral Road,Peter Hejjas,$52.50 credit - apply to Q2,address_pmc,unchanged,,active,active,M1-R3,M1-R3,27,27
+69,65,1110 Samar Crescent,Breakwater Realty Inc.,Building A,address_pmc,unchanged,,active,active,TU1-R5,TU1-R5,29,29
+70,,1111 Hillside Avenue,Century 21,,,missing,,,,,M1-R1,,
+71,67,1114 Samar Crescent,Breakwater Realty Inc.,Building B,address_pmc,unchanged,,active,active,TU1-R5,TU1-R5,29,29
+72,68,1115 Craigflower Road,Proline,$65/month (A),address_pmc_label,unchanged,,active,active,W2-R22,W2-R22,46,46
+73,,1118 Balmoral Road,Devon Properties Ltd.,,,missing,,,,,M1-R3,,
+74,69,1120 Blanshard Street,Equitex,,address_pmc_label,unchanged,,active,active,TH2-R15,TH2-R15,39,39
+75,70,1120 Burdett Ave,Devon Properties,,address_pmc_label,unchanged,,active,active,TH1-R9,TH1-R9,33,33
+76,71,1120 Richardson Street,Gibraltar,,address_pmc_label,unchanged,,active,active,TH1-R9,TH1-R9,33,33
+77,72,1120 Yates Street,Colliers,,address_pmc_label,unchanged,,active,active,TH1-R8,TH1-R8,32,32
+78,73,1122 Hilda Street,Pemberton Strata,,address_pmc_label,unchanged,,active,active,TU2-R13,TU2-R13,37,37
+79,74,1122 McKenzie Street,Pemberton Holmes,,address_pmc_label,unchanged,,active,active,M1-R2,M1-R2,26,26
+80,75,1125 Douglas Street,Arpeg Holdings Cactus Club,single panel share with 702 Fort Street,address_pmc,unchanged,,active,active,TH2-R15,TH2-R15,39,39
+81,76,1125 Hillside Avenue,Devon Properties,,address_pmc_label,unchanged,,cancelled,cancelled,-,-,,
+82,77,1126 Rockland Avenue,Starlight/Devon,,address_pmc_label,unchanged,,active,active,TH1-R9,TH1-R9,33,33
+83,78,1127 Wharf Street,Darcy's Pub,,address_pmc_label,unchanged,,active,active,TH2-R15,TH2-R15,39,39
+84,79,1130 Fort Street,Pacifica Housing,,address_pmc_label,unchanged,,active,active,TH1-R9,TH1-R9,33,33
+85,,1130 Pandora Avenue,Devon Properties Ltd.,,,missing,,,,,TH1-R8,,
+86,80,1132 McClure Street,Devon Properties,,address_pmc_label,unchanged,,active,active,TH1-R9,TH1-R9,33,33
+87,81,1133A Reynolds Road,Abbeyfield St. Peters,,address_pmc_label,unchanged,,active,active,TU1-R4,TU1-R4,28,28
+88,82,1137-1139 Yates Street,Equitex Property Management,,address_pmc_label,unchanged,,active,active,M1-R1,M1-R1,25,25
+89,83,1145 Bay Street,Ashton Oaks c/o Gateway Prop,,address_pmc_label,unchanged,,active,active,M1-R3,M1-R3,27,27
+90,84,1150 Hilda Street,Devon Properties,,address_pmc_label,unchanged,,active,active,M1-R2,M1-R2,26,26
+91,85,1150 Queens Avenue,Pacific Quorum,,address_pmc_label,unchanged,,active,active,M1-R1,M1-R1,25,25
+92,86,1150 Rockland Avenue,Pemberton Holmes,,address_pmc_label,unchanged,,active,active,M1-R2,M1-R2,26,26
+93,87,1160 Esquimalt Road,Starlight/Devon,,address_pmc_label,unchanged,,active,active,W1-R7,W1-R7,31,31
+94,88,1160 Richardson Street,Lee & Sharpe,$52.50 credit - apply to Q2,address_pmc,unchanged,,active,active,M1-R2,M1-R2,26,26
+95,89,1165 Meares Street,Pemberton Holmes (new June 13/24),,address_pmc_label,unchanged,,active,active,M1-R2,M1-R2,26,26
+96,90,1165 Yates Street,Devon properties,Cancelled in May 2026 - Previously R1,address_pmc,updated,,cancelled,cancelled,M1-R1,-,25,
+97,91,1166 Rockland Avenue,Freelance,,address_pmc_label,unchanged,,active,active,TH1-R9,TH1-R9,33,33
+98,92,1177 Esquimalt Road,Devon Properties,,address_pmc_label,unchanged,,active,active,W1-R7,W1-R7,31,31
+99,93,1178 Beach Drive,Devon Properties,,address_pmc_label,unchanged,,active,active,TU2-R13,TU2-R13,37,37
+100,94,118 Croft Street,Brown Bros.,,address_pmc_label,unchanged,,active,active,W3-R20,W3-R20,44,44
+101,95,1180 Colville Road,Starlight Properties c/o Devon Properties,,address_pmc_label,unchanged,,active,active,W2-R22,W2-R22,46,46
+102,,1180 Fort Street,Western Pacific Property Group,,,missing,,,,,TH1-R8,,
+103,96,1180 View Street,Devon Properties,,address_pmc_label,unchanged,,active,active,M1-R1,M1-R1,25,25
+104,97,1185 Yates Street,Devon Properties,,address_pmc_label,unchanged,,active,active,TH1-R9,TH1-R9,33,33
+105,98,1190 May Street,Devon Properties,,address_pmc_label,unchanged,,active,active,TU2-R13,TU2-R13,37,37
+106,99,1194 Esquimalt Road,Capital West,,address_pmc_label,unchanged,,active,active,W1-R7,W1-R7,31,31
+107,100,1196 Clovelly Terrace,1196 Strata Corp VIS5164,,address_pmc_label,unchanged,,active,active,W1-R6,W1-R6,30,30
+108,101,1196 Sluggett Road,Firm Management,,address_pmc_label,unchanged,,active,active,TU2-R12,TU2-R12,36,36
+109,,1198 Esquimalt Road,Proline Property Management Ltd.,,,missing,,,,,W1-R7,,
+110,102,120 Douglas Street,Oakwood,,address_pmc_label,unchanged,,active,active,TU3-R18,TU3-R18,42,42
+111,103,"120 Gorge Road East - Building ""A""",Victoria Native Friendship Centre,,address_pmc_label,unchanged,,active,active,W2-R22,W2-R22,46,46
+112,104,"120 Gorge Road East - Building ""B""",Victoria Native Friendship Centre,,address_pmc_label,unchanged,,active,active,W2-R22,W2-R22,46,46
+113,624,1205 Rudlin Street,Starlight Properties c/o Devon Properties Ltd.,,address_pmc_label,unchanged,,active,active,M1-R1,M1-R1,25,25
+114,105,1208 Rockland Avenue,Devon Properties,,address_pmc_label,unchanged,,active,active,TH1-R9,TH1-R9,33,33
+115,106,1209 & 1229 Clarke Road,Central Saanich Municipality,$65/month (A). PO & Months Required,address_pmc_label,unchanged,,active,active,TU2-R12,TU2-R12,36,36
+116,107,1210 Tattersall Drive,Bross Holdings,,address_pmc_label,unchanged,,active,active,W1-R6,W1-R6,30,30
+117,108,1216 Johnson Street,Devon Properties,Previously R8 - Changed in November 2025,address_pmc_label,unchanged,,active,active,TH1-R9,TH1-R9,33,33
+118,109,1217 Pandora Avenue,South Island Property Management,,address_pmc_label,unchanged,,active,active,TH1-R8,TH1-R8,32,32
+119,110,1220 Pandora Avenue,Devon Properties,Increase to $65 after January 2026,address_pmc,unchanged,,active,active,M1-R3,M1-R3,27,27
+120,111,1222 Douglas Street,Firm Management,,address_pmc_label,unchanged,,active,active,TH2-R15,TH2-R15,39,39
+121,,1224 Balmoral Road,Devon Properties,,,missing,,,,,M1-R3,,
+122,113,1226 Johnson Street,Pemberton Holmes - Residential,Previously R8 - Changed in November 2025,address_pmc_label,unchanged,,active,active,TH1-R9,TH1-R9,33,33
+123,114,1229 Esquimalt Road,Township of Esquimalt,,address_pmc_label,unchanged,,active,active,W1-R7,W1-R7,31,31
+124,115,1230 Fort Street,Pacific Quorum,Cancelled November 2025 - keys in X binder,address_pmc,unchanged,,cancelled,cancelled,-,-,,
+125,116,1230 Verdier Avenue,Starlight/Devon,Increase to $65 after January 2026,address_pmc_label,unchanged,,active,active,TU2-R12,TU2-R12,36,36
+126,117,1233 Fairfield Road,Starlight/Devon,Increase to $65 after January 2026,address_pmc,unchanged,,active,active,TU2-R13,TU2-R13,37,37
+127,118,1234 Fort Street,Hutton,Previously R8 - Changed in May 2025,address_pmc_label,unchanged,,active,active,TH1-R9,TH1-R9,33,33
+128,119,1234 Wharf Street,Complete Residential,,address_pmc_label,unchanged,,cancelled,cancelled,-,-,,
+129,,1235 Johnson Street,Century 21 Queenswood Realty Ltd.,First 3 months are free - Projects,,missing,,,,,TH1-R8,,
+130,120,1236 Pandora Avenue,Starlight/Devon,Increase to $65 after January 2026,address_pmc,unchanged,,active,active,M1-R3,M1-R3,27,27
+131,121,1236 Verdier Avenue,Starlight/Devon,Increase to $65 after January 2026,address_pmc_label,unchanged,,active,active,TU2-R12,TU2-R12,36,36
+132,,1249 Rockland Avenue,Sanpra Real Estate Inc.,$52.50 credit - apply to Q2,,missing,,,,,M1-R2,,
+133,123,125 Croft Street,Pacific Cove,,address_pmc_label,unchanged,,active,active,W3-R20,W3-R20,44,44
+134,,1250 Balmoral Road,Victoria Native Friendship Centre,,,missing,,,,,TH3-R21,,
+135,124,1250 Wharf Street,Servissio Property Services Ltd.,,address_pmc_label,unchanged,,active,active,TH3-R21,TH3-R21,45,45
+136,125,1252 Pandora Avenue,Brown Bros.,,address_pmc_label,unchanged,,active,active,M1-R3,M1-R3,27,27
+137,126,1255 Denman Street,Devon Properties,,address_pmc_label,unchanged,,active,active,M1-R3,M1-R3,27,27
+138,127,127 Howe Street,Newport Property,,address_pmc_label,unchanged,,active,active,TU2-R13,TU2-R13,37,37
+139,,1270 Beach Drive,Associa BC,Free of charge for 3 months (Jan-Mar 2026),,missing,,,,,TU2-R13,,
+140,129,1275 Oscar Street,1275 Oscar Street Holdings Ltd,$57.75 credit - apply to Q2,address_pmc,unchanged,,active,active,TU2-R13,TU2-R13,37,37
+141,130,129 Gorge Road E,Belmont Properties,months on invoice,address_pmc,unchanged,,active,active,W2-R22,W2-R22,46,46
+142,131,1291 Craigflower Road,Devon Properties,,address_pmc_label,unchanged,,active,active,W2-R22,W2-R22,46,46
+143,132,1293 Craigflower Road,Devon Properties,,address_pmc_label,unchanged,,active,active,W2-R22,W2-R22,46,46
+144,133,1295 Craigflower Road,Devon Properties,,address_pmc_label,unchanged,,active,active,W2-R22,W2-R22,46,46
+145,134,1297 Craigflower Road,Devon Properties,,address_pmc_label,unchanged,,active,active,W2-R22,W2-R22,46,46
+146,135,1300 Yates Street,Pacific Cove,,address_pmc_label,unchanged,,active,active,TH1-R8,TH1-R8,32,32
+147,136,1301 Fort Street,Proline,,address_pmc_label,unchanged,,active,active,M1-R2,M1-R2,26,26
+148,137,1301 Pandora,Devon Properties,,address_pmc_label,unchanged,,active,active,TH1-R8,TH1-R8,32,32
+149,138,1308-1312 Douglas Street,Exchequer,,address_pmc_label,unchanged,,active,active,TH3-R21,TH3-R21,45,45
+150,139,131 Gorge Road E,Belmont Properties,months on invoice,address_pmc,unchanged,,active,active,W2-R22,W2-R22,46,46
+151,140,1312 Beach Drive,South Island,,address_pmc_label,unchanged,,active,active,TU2-R13,TU2-R13,37,37
+152,141,1312 Blanshard Street,Richmond Property Group,,address_pmc_label,unchanged,,active,active,TH3-R21,TH3-R21,45,45
+153,142,1317 Hillside,Vince Collard,,address_pmc_label,unchanged,,active,active,M1-R1,M1-R1,25,25
+154,143,1319 Newport Avenue,Christiane Selenz,,address_pmc_label,unchanged,,active,active,TU2-R13,TU2-R13,37,37
+155,144,1320 Rockland Avenue,Brown Bros.,We missed doing this during merger. Re-added to MBT in Dec/23,address_pmc_label,unchanged,,active,active,TH1-R9,TH1-R9,33,33
+156,145,1321 Broad Street,Richmond Property Group Ltd.,,address_pmc_label,unchanged,,active,active,TH3-R21,TH3-R21,45,45
+157,146,1321 Fernwood Road,Victoria Native Friendship Centre,Site sold in Feb 2026 - keep testing until further notice,address_pmc,unchanged,,active,active,TH1-R8,TH1-R8,32,32
+158,147,1322 Blanshard Street,Devon Properties,,address_pmc_label,unchanged,,active,active,TH3-R21,TH3-R21,45,45
+159,148,1325 Franklin Terrace,Newport Property Management,,address_pmc_label,unchanged,,active,active,M1-R2,M1-R2,26,26
+160,149,1325 Government Street,Wing Lee Holdings Ltd.,,address_pmc_label,unchanged,,active,active,TH3-R21,TH3-R21,45,45
+161,150,133 Gorge Road E,Belmont Properties,months on invoice,address_pmc,unchanged,,cancelled,cancelled,-,-,,
+162,151,1337 Saunders Street,Belmont Properties,months on invoice,address_pmc,unchanged,,active,active,W1-R7,W1-R7,31,31
+163,152,1340 Sussex Road,Belmont Properties,months on invoice,address_pmc,unchanged,,active,active,W1-R7,W1-R7,31,31
+164,153,135 Gorge Road E,Belmont Properties,months on invoice,address_pmc,unchanged,,active,active,W2-R22,W2-R22,46,46
+165,154,1350 Stanley Avenue,Capital West,,address_pmc_label,unchanged,,active,active,TH1-R8,TH1-R8,32,32
+166,155,1354 Craigdarroch Road,Newport Property management,,address_pmc_label,unchanged,,active,active,M1-R1,M1-R1,25,25
+167,156,1368 Pandora Avenue,Capital West,,address_pmc_label,unchanged,,active,active,M1-R3,M1-R3,27,27
+168,157,1369 Mitchell Street,Oak Bay United Church,,address_pmc_label,unchanged,,active,active,TU2-R13,TU2-R13,37,37
+169,158,1392 Rockland Avenue,Gibraltar,,address_pmc_label,unchanged,,active,active,M1-R1,M1-R1,25,25
+170,159,1399 Stanley Avenue,Belmont Properties,months on invoice,address_pmc,unchanged,,active,active,TH1-R8,TH1-R8,32,32
+171,160,1400 Beach Drive,Capital West,,address_pmc_label,unchanged,,active,active,TU2-R13,TU2-R13,37,37
+172,161,1400 Quadra Street,Starlight Properties c/o Devon Properties Ltd.,Kane sent an email about the by inhibit situation. Put on hold. 26 June 2025,address_pmc_label,unchanged,,active,active,TH1-R8,TH1-R8,32,32
+173,162,1407 Fort Street,Proline,,address_pmc_label,unchanged,,active,active,TH1-R8,TH1-R8,32,32
+174,163,1407 Government Street,South Island Property Mgmt,,address_pmc_label,unchanged,,active,active,TH3-R21,TH3-R21,45,45
+175,164,1410 Fort Street,Devon,,address_pmc_label,unchanged,,active,active,M1-R2,M1-R2,26,26
+176,165,1414 Hillside Avenue,Brown Bros.,,address_pmc_label,unchanged,,active,active,W1-R6,W1-R6,30,30
+177,166,1419 Fort Street,Newport Property,,address_pmc_label,unchanged,,active,active,M1-R1,M1-R1,25,25
+178,,1419 Stadacona Avenue & 1545 Pandora Avenue,Gibraltar + Colliers,,,missing,,,,,M1-R3,,
+179,168,1430 Stadacona Avenue,Starlight/Devon,Increase to $75 after January 2026,address_pmc,unchanged,,active,active,M1-R1,M1-R1,25,25
+180,,1433 Faircliff Lane,Oakwood Property Management,,,missing,,,,,TU2-R13,,
+181,170,1435 Elford Street,TPM Management,,address_pmc_label,unchanged,,active,active,M1-R1,M1-R1,25,25
+182,171,1436 Harrison Street,Firm Management,,address_pmc_label,unchanged,,active,active,TH1-R8,TH1-R8,32,32
+183,172,1445 Fort Street,Brown Bros.,,address_pmc_label,unchanged,,active,active,TH1-R8,TH1-R8,32,32
+184,,1450-1452 Elford Street,Beacon Community Services,3 free months promotion - starting May 2026,,missing,,,,,TU2-R13,,
+185,173,146 Clarence Street,Century 21,,address_pmc_label,unchanged,,active,active,W3-R20,W3-R20,44,44
+186,174,1461 Blanshard Street,Congregation Emanu-el,,address_pmc_label,unchanged,,active,active,TH1-R8,TH1-R8,32,32
+187,175,1465 Fort Street,Brown Brothers Property Management,Previously R1,address_pmc,unchanged,,active,active,TU2-R13,TU2-R13,37,37
+188,176,1468 Vancouver Street,Townline,Credit of $131.25 from Q1 MBT,address_pmc,unchanged,,active,active,TH2-R15,TH2-R15,39,39
+189,177,1483 Douglas Street,Porte Realty,,address_pmc_label,unchanged,,active,active,TH3-R21,TH3-R21,45,45
+190,178,1485 Fort Street,Peter Hejjas,$68.25 credit - apply to Q2,address_pmc,unchanged,,active,active,M1-R1,M1-R1,25,25
+191,179,1488 Cook Street,Centurion Properties,Month on invoice,address_pmc_label,unchanged,,active,active,TH1-R8,TH1-R8,32,32
+192,180,1490 Garnet Road,Complete Residential,,address_pmc_label,unchanged,,active,active,TH2-R23,TH2-R23,47,47
+193,181,1495 Admirals Road,Thrifty Foods,Invoice Monthly starting Apr. 1/21 @ $275 (no TC06) Inv.23882 - Mar.31/21 @ $55 + TC06,address_pmc_label,unchanged,,active,active,M3-R17,M3-R17,41,41
+194,182,1501 Laurel Lane,SRL Fire Protection,,address_pmc_label,unchanged,,active,active,TH1-R9,TH1-R9,33,33
+195,,1504 Church Avenue,Proline Property Management Ltd.,,,missing,,,,,TH2-R23,,
+196,184,1505 Belcher Avenue,Brown Bros.,,address_pmc_label,unchanged,,active,active,W2-R14,W2-R14,38,38
+197,185,1505 Morrison Street,Newport Property management,,address_pmc_label,unchanged,,active,active,M1-R1,M1-R1,25,25
+198,186,151 St. Andrews Street,Devon Properties,,address_pmc_label,unchanged,,active,active,TU3-R18,TU3-R18,42,42
+199,187,1510 / 1520 McKenzie Avenue,Greystar,$157.50 credit in QB to apply to Q2,address_pmc,unchanged,,active,active,TH2-R23,TH2-R23,47,47
+200,188,1510 Hillside Avenue,South Island Property Mgmt,,address_pmc_label,unchanged,,active,active,W1-R6,W1-R6,30,30
+201,189,1510 Jubilee Avenue,Pemberton Holmes,,address_pmc_label,unchanged,,active,active,M1-R1,M1-R1,25,25
+202,190,1512 Keating Cross Road,Central Saanich Municipality,Billed under one MBT (QB)- Central saanich PO & Months Required,address_pmc_label,unchanged,,active,active,TU2-R12,TU2-R12,36,36
+203,191,1520 Belcher Avenue,Pemberton Holmes,Free of charge for 3 months after September 2025 - Projects,address_pmc_label,unchanged,,active,active,W2-R14,W2-R14,38,38
+204,192,1520 Jubilee Avenue,Pemberton Holmes,,address_pmc_label,unchanged,,active,active,W2-R14,W2-R14,38,38
+205,193,1527 Cedar Hill Cross Road,Devon Properties,,address_pmc_label,unchanged,,active,active,TH2-R23,TH2-R23,47,47
+206,194,1527 Fort Street,Pemberton Holmes Ltd.,,address_pmc_label,unchanged,,active,active,M1-R1,M1-R1,25,25
+207,195,1530 Belcher Avenue,Newport Bornemann,,address_pmc_label,unchanged,,cancelled,cancelled,-,-,,
+208,196,1535 Jubilee Avenue,Szlanko Family Trust,,address_pmc_label,unchanged,,active,active,M1-R1,M1-R1,25,25
+209,197,1536 Wilmot Place,Devon Properties Ltd.,,address_pmc_label,unchanged,,active,active,TU2-R13,TU2-R13,37,37
+210,,1550 Richmond Avenue,Itziar Management,,,missing,,,,,W2-R14,,
+211,199,1550 Stockton Crescent,Devon Properties,,address_pmc_label,unchanged,,active,active,TH2-R23,TH2-R23,47,47
+212,200,1555 Jubilee Avenue,Devon Properties,,address_pmc_label,unchanged,,active,active,M1-R1,M1-R1,25,25
+213,,1555 Richmond Avenue,Devon Properties,,,missing,,,,,W2-R14,,
+214,202,1573/1575 Begbie Street,Devon Properties,,address_pmc_label,unchanged,,active,active,M1-R3,M1-R3,27,27
+215,203,1580 Hillside Avenue,Thrifty Foods,Invoice Monthly starting Apr. 1/21 @ $275 (no TC06),address_pmc_label,unchanged,,active,active,M3-R17,M3-R17,41,41
+216,204,1581 Hillside Avenue,Brown Brothers Property Management,,address_pmc_label,unchanged,,active,active,W1-R6,W1-R6,30,30
+217,205,1585 Oak Bay Avenue,Pemberton Holmes,,address_pmc_label,unchanged,,active,active,M1-R1,M1-R1,25,25
+218,206,1590 Fairfield Road,Thrifty Foods,Invoice Monthly starting Apr. 1/21 @ $275 (no TC06) Inv.23883 - Dec.1/20-Mar.31/21 @ $55 + TC06,address_pmc_label,unchanged,,active,active,M2-R11,M2-R11,35,35
+219,207,1595 Rockland Avenue,J Gordon Enterprises Ltd,,address_pmc_label,unchanged,,active,active,M1-R1,M1-R1,25,25
+220,,1597 Mortimer Street,Firm Management Corporation,,,missing,,,,,TH2-R23,,
+221,208,160 Wilson Street,Proline,$57.75 credit - apply to Q2,address_pmc,updated,,active,active,W1-R7,W2-R22,31,46
+222,,1612 Quadra Street,Yeung's Family Holdings,Apply credit from QB to invoices,,missing,,,,,M1-R2,,
+223,210,1615 Belcher Avenue,Strata Plan VIS 457,,address_pmc_label,unchanged,,active,active,W2-R14,W2-R14,38,38
+224,211,1625 Richmond Road,Devon Properties,,address_pmc_label,unchanged,,active,active,W2-R14,W2-R14,38,38
+225,,1640 Oak Bay Avenue,Itziar Management Ltd.,,,missing,,,,,M1-R3,,
+226,212,1653 Oak Bay Ave,Century 21,,address_pmc_label,unchanged,,active,active,M1-R1,M1-R1,25,25
+227,213,1655 Begbie Street,Proline,$57.75 credit - apply to Q2,address_pmc,unchanged,,active,active,M1-R3,M1-R3,27,27
+228,214,1655 Chambers Street,Pacific Cove Properties,,address_pmc_label,unchanged,,active,active,M1-R3,M1-R3,27,27
+229,215,1660 Fort Street,Century 21,,address_pmc_label,unchanged,,active,active,M1-R1,M1-R1,25,25
+230,216,1669 Fairfield Road,Newport Property Management,,address_pmc_label,unchanged,,active,active,M1-R1,M1-R1,25,25
+231,217,1677 Hollywood Crescent,Newport Property,,address_pmc_label,unchanged,,active,active,M2-R11,M2-R11,35,35
+232,218,1678 Fort Street,Cascadia Comm. Solutions new late 2022) (was TPM Properties),,address_pmc_label,unchanged,,active,active,M1-R3,M1-R3,27,27
+233,,1701 Cedar Hill X Road #1,First Service Residential,,,missing,,,,,TH2-R23,,
+234,,1701 Cedar Hill X Road #2,First Service Residential,,,missing,,,,,TH2-R23,,
+235,219,1720 Richmond Avenue,Proline,,address_pmc_label,unchanged,,active,active,M1-R1,M1-R1,25,25
+236,220,1721 Quadra Street,Strata Plan Vis 5799,,address_pmc_label,unchanged,,active,active,M1-R3,M1-R3,27,27
+237,221,1731 Cook Street,Tri-Eagle,,address_pmc_label,unchanged,,active,active,M1-R3,M1-R3,27,27
+238,222,1760 Fort Street,Pemberton Holmes,,address_pmc_label,unchanged,,active,active,M1-R1,M1-R1,25,25
+239,223,1791 Rockland Avenue,Devon Properties,,address_pmc_label,unchanged,,active,active,W2-R14,W2-R14,38,38
+240,,1801 Fern Street,Oakwood Property Management,,,missing,,,,,W2-R14,,
+241,224,1802-1826 Government Street,Devon Properties,,address_pmc_label,unchanged,,active,active,TH3-R21,TH3-R21,45,45
+242,225,1809 Hovey Road,Panorma Recreation Centre,,address_pmc_label,unchanged,,active,active,TU2-R12,TU2-R12,36,36
+243,,1810 Selenite Place,Proline Property Management Ltd.,,,missing,,,,,TU1-R5,,
+244,226,1821 Cook Street,Cornerstone,,address_pmc_label,unchanged,,active,active,M1-R3,M1-R3,27,27
+245,227,1830 Oak Bay Avenue,Richmond Property Group,R14 changed to R15 in Sep/24,address_pmc_label,unchanged,,active,active,TH2-R15,TH2-R15,39,39
+246,228,1841 Oak Bay Avenue,Starlight Properties c/o Devon Properties,,address_pmc_label,unchanged,,active,active,W2-R14,W2-R14,38,38
+247,229,1860 Island Highway,Thrifty Foods,Invoice Monthly starting Apr. 1/21 @ $275 (no TC06),address_pmc_label,unchanged,,active,active,M3-R17,M3-R17,41,41
+248,230,188 Douglas Street,Hutton,,address_pmc_label,unchanged,,cancelled,cancelled,-,-,,
+249,231,1885 Forest Park Drive,Panorama Leisure,,address_pmc_label,unchanged,,active,active,F2-R16,F2-R16,40,40
+250,232,1901 Mt. Newton Cross Road,Central Saanich Municipality,$65/month (A). PO & Months Required,address_pmc,unchanged,,active,active,TU2-R12,TU2-R12,36,36
+251,233,1903 Mt Newton Cross Road,Central Saanich Municipality,$65/month (A). PO & Months Required,address_pmc,unchanged,,active,active,TU2-R12,TU2-R12,36,36
+252,234,1928 Lee Avenue,Starlight/Devon,Increase to $65 after January 2026,address_pmc,unchanged,,active,active,W2-R14,W2-R14,38,38
+253,235,1939 Lee Avenue,TPM Property management,,address_pmc_label,unchanged,,active,active,W2-R14,W2-R14,38,38
+254,236,1950-1952 Blanshard Street,RealHomes Management Corp.,,address_pmc_label,unchanged,,active,active,TH3-R21,TH3-R21,45,45
+255,237,1964 Fort Street,Hutton,,address_pmc_label,unchanged,,active,active,W2-R14,W2-R14,38,38
+256,,1975 Bee Street,Corporation of the District of Oak Bay,,,missing,,,,,W2-R14,,
+257,238,1975 Lee Avenue,Hutton,,address_pmc_label,unchanged,,active,active,W2-R14,W2-R14,38,38
+258,239,1990 Fort Street,Devon Properties,,address_pmc_label,unchanged,,active,active,W2-R14,W2-R14,38,38
+259,240,20 Olympia Avenue,Devon Properties,,address_pmc_label,unchanged,,active,active,W3-R20,W3-R20,44,44
+260,241,200 Dallas Road,Devon Properties,,address_pmc_label,unchanged,,active,active,W3-R20,W3-R20,44,44
+261,,2000 West Park Lane,Strata Corp EPS 8048,,,missing,,,,,F1-R24,,
+262,242,2006 Sooke Road,Pacifica Housing,Previously R5 & R22,address_pmc,updated,,active,active,W2-R22,F1-R24,46,48
+263,243,2020 Richmond Road,Brown Bros.,,address_pmc_label,unchanged,,active,active,TH2-R15,TH2-R15,39,39
+264,244,203 Kimta Road,Firm Management,,address_pmc_label,unchanged,,active,active,W1-R7,W1-R7,31,31
+265,245,2030 Malaview Drive,Slegg L.P.,,address_pmc_label,unchanged,,active,active,F2-R16,F2-R16,40,40
+266,246,2035 Mills Road,Axys,,address_pmc_label,unchanged,,active,active,M3-R17,M3-R17,41,41
+267,247,2040 White Birch Drive,Marina Park Apartments,,address_pmc_label,unchanged,,active,active,F2-R16,F2-R16,40,40
+268,248,2045 Carrick / 2060 Haultain,St. Patrick's Church/ St. Clare Villa,$55/month for both sites (quoted by TW),address_pmc_label,unchanged,,active,active,W2-R14,W2-R14,38,38
+269,249,205 Kimta Road,Firm Management,,address_pmc_label,unchanged,,active,active,W1-R7,W1-R7,31,31
+270,250,2050 White Birch Drive,Marina Park Apartments,,address_pmc_label,unchanged,,active,active,F2-R16,F2-R16,40,40
+271,251,206 Oswego Street,Dorset Realty,,address_pmc_label,unchanged,,active,active,M1-R2,M1-R2,26,26
+272,252,2065 Oak Bay Avenue,Brown Bros.,,address_pmc_label,unchanged,,active,active,TU2-R13,TU2-R13,37,37
+273,253,2067 Cadboro Bay,Devon Properties,,address_pmc_label,unchanged,,active,active,W2-R14,W2-R14,38,38
+274,254,209 Cook Street,Pemberton Holmes,,address_pmc_label,unchanged,,active,active,TU3-R18,TU3-R18,42,42
+275,255,2100 Cadboro Bay,Pemberton Holmes,,address_pmc_label,unchanged,,active,active,W2-R14,W2-R14,38,38
+276,256,2120 Cadboro Bay,TPM Properties,,address_pmc_label,unchanged,,active,active,W2-R14,W2-R14,38,38
+277,257,2129 Florence Street,Devon Properties,,address_pmc_label,unchanged,,active,active,W2-R14,W2-R14,38,38
+278,258,2136 Ridge Road,Brown Bros.,,address_pmc_label,unchanged,,active,active,M1-R1,M1-R1,25,25
+279,259,214 Moss Street,Century 21 Queenswood,,address_pmc_label,unchanged,,active,active,TU2-R13,TU2-R13,37,37
+280,260,2140 Cadboro Bay,TPM Properties,,address_pmc_label,unchanged,,active,active,W2-R14,W2-R14,38,38
+281,261,215 Oswego Street,Belmont Properties,Months on invoices,address_pmc,unchanged,,active,active,W3-R20,W3-R20,44,44
+282,262,2150 Cadboro Bay,Century 21 Queenswood,,address_pmc_label,unchanged,,active,active,W2-R14,W2-R14,38,38
+283,263,2151 Haultain Street,Devon Properties,,address_pmc_label,unchanged,,active,active,W2-R14,W2-R14,38,38
+284,264,2151 Lannon Way,Panorama Leisure,,address_pmc_label,unchanged,,active,active,F2-R16,F2-R16,40,40
+285,265,2161 Haultain Street,Brookridge,On hold due construction.,address_pmc,unchanged,,on_hold,on_hold,W2-R14,W2-R14,38,38
+286,266,217 Cook Street,Brown Bros.,,address_pmc_label,unchanged,,cancelled,cancelled,-,-,,
+287,267,2170 Haultain Street,750 Pemberton Developments Ltd.,,address_pmc_label,unchanged,,active,active,W2-R14,W2-R14,38,38
+288,268,2181 Haultain Street,Belmont Properties,Months on invoices,address_pmc,unchanged,,active,active,W2-R14,W2-R14,38,38
+289,269,2184 Cadboro Bay Road,Devon Properties,,address_pmc_label,unchanged,,active,active,W2-R14,W2-R14,38,38
+290,270,220 Douglas Street,Devon Properties,,address_pmc_label,unchanged,,active,active,TU3-R18,TU3-R18,42,42
+291,271,2210 Cadboro Bay Road,Brown Bros.,Cancelled January 2026,address_pmc,updated,,cancelled,cancelled,W2-R14,-,38,
+292,272,2211 Shelbourne Street,South Island Property Mgmt,,address_pmc_label,unchanged,,active,active,M1-R3,M1-R3,27,27
+293,273,2230 Cadboro Bay Road,Devon Properties,,address_pmc_label,unchanged,,active,active,W2-R14,W2-R14,38,38
+294,274,2233 Bowker Avenue,Devon Properties,,address_pmc_label,unchanged,,active,active,W2-R14,W2-R14,38,38
+295,275,2243 Beacon Avenue,Mary Winspear Centre,,address_pmc,unchanged,,active,active,F1-R10,F1-R10,34,34
+296,,225 Bellville Street,Brown Bros.,,,missing,,,,,W3-R20,,
+297,277,2250 Oak Bay Avenue,Colliers,PO Required $55/month,address_pmc_label,unchanged,,active,active,TU2-R13,TU2-R13,37,37
+298,278,2261 Keating Cross Road,Vancouver Island Commercial (VIC) Properties,$65/month (A) Apply credit on Q2,address_pmc,unchanged,,active,active,TU2-R12,TU2-R12,36,36
+299,279,2270 Harbour Road,Harbour Haven Marina & Self-Storage,,address_pmc_label,unchanged,,active,active,F2-R16,F2-R16,40,40
+300,280,2286 Henry Avenue,Claridge House,,address_pmc_label,unchanged,,active,active,F2-R16,F2-R16,40,40
+301,281,2290 Henry Avenue,Trillium Communites,Cancelled January 2026,address_pmc,updated,,cancelled,cancelled,F2-R16,-,40,
+302,282,230 Cook Street,Richmond Property Group,,address_pmc_label,unchanged,,active,active,TU3-R18,TU3-R18,42,42
+303,283,230 Oswego Street,Dorset Realty,,address_pmc_label,unchanged,,active,active,M1-R2,M1-R2,26,26
+304,284,2300 Henry Avenue,Trillium Communites,Cancelled January 2026,address_pmc,updated,,cancelled,cancelled,F2-R16,-,40,
+305,285,231 Regina Avenue,Victoria Native Friendship Centre,,address_pmc_label,unchanged,,active,active,W2-R22,W2-R22,46,46
+306,,2310 Quadra Street,Devon Properties Ltd.,,,missing,,,,,M1-R2,,
+307,286,2311 Mills Road,Complete Residential,$65/month (A),address_pmc_label,unchanged,,active,active,F2-R16,F2-R16,40,40
+308,,2318 James White,Colyvan Pacific,,,missing,,,,,F1-R10,,
+309,288,2326 Harbour Road,Miraloma Strata Council VIS 5766,,address_pmc_label,unchanged,,active,active,F2-R16,F2-R16,40,40
+310,289,2330 Cook Street,Devon Properties,,address_pmc_label,unchanged,,active,active,M1-R3,M1-R3,27,27
+311,290,2339 Beacon Avenue,Richmond Property Group,,address_pmc_label,unchanged,,active,active,F2-R16,F2-R16,40,40
+312,291,235 Cook Street,Pacific Quorum,,address_pmc_label,unchanged,,active,active,TU3-R18,TU3-R18,42,42
+313,292,235 Michigan Street,Brown Brothers Property Management,,address_pmc,unchanged,,active,active,W3-R20,W3-R20,44,44
+314,293,2380 Brethour Avenue,Pemberton Strata,,address_pmc_label,unchanged,,active,active,F1-R10,F1-R10,34,34
+315,294,2390 City Gate Boulevard,High Street,,address_pmc_label,unchanged,,active,active,TU1-R5,TU1-R5,29,29
+316,295,240 Douglas Street,Devon Properties,,address_pmc_label,unchanged,,active,active,TU3-R18,TU3-R18,42,42
+317,296,2421 Sidney Avenue,Complete Residential,,address_pmc_label,unchanged,,active,active,F1-R10,F1-R10,34,34
+318,297,2427 Amherst Avenue,Colyvan Pacific,,address_pmc_label,unchanged,,active,active,F2-R16,F2-R16,40,40
+319,298,2433 Malaview Avenue,Starlight Properties,Increase to $65 after January 2026,address_pmc,unchanged,,active,active,F2-R16,F2-R16,40,40
+320,299,2440 Oakville Avenue,Colyvan Pacific,,address_pmc_label,unchanged,,active,active,F2-R16,F2-R16,40,40
+321,300,2447 Henry Avenue,Converge Condo Management,Price change approved in February 2026,address_pmc,unchanged,,active,active,F1-R10,F1-R10,34,34
+322,301,2471 Sidney Avenue,Devon Properties,,address_pmc_label,unchanged,,active,active,F1-R10,F1-R10,34,34
+323,,247-271 Cook Street,Devon properties,Moved to R2 in August 2025 (was R18),,missing,,,,,M1-R2,,
+324,,2475 Mount Newton Cross Road,"Island NIL/TU,O Child & Family Services",,,missing,,,,,TU2-R12,,
+325,303,2476 Mt. Newton Cross Road,Quality Inn,$65/month (A),address_pmc,unchanged,,active,active,TU2-R12,TU2-R12,36,36
+326,304,2490 Bevan Avenue,Ocean Court,,address_pmc_label,unchanged,,active,active,F2-R16,F2-R16,40,40
+327,305,250 Oswego Street,Starlight Properties c/o Devon Properties Ltd.,Increase to $65 after January 2026,address_pmc,unchanged,,active,active,W3-R20,W3-R20,44,44
+328,,2500-2512 Douglas Street,Capital West,,,missing,,,,,TU3-R19,,
+329,306,2511 Quadra Street,Complete Residential,,address_pmc_label,unchanged,,active,active,M1-R3,M1-R3,27,27
+330,627,252 Gorge Road E,First Service Residential,,address_pmc_label,updated,,unknown,active,,W2-R22,,46
+331,308,2530 Mt Newton Cross Road,Starlight/Devon,Increase to $65 after January 2026. NEW PO: 1441287,address_pmc,unchanged,,active,active,TU2-R12,TU2-R12,36,36
+332,630,2533 Dowler Place,First Service Residential,,address_pmc_label,unchanged,,active,active,M1-R3,M1-R3,27,27
+333,628,254 Gorge Road E,First Service Residential,,address_pmc_label,updated,,unknown,active,,W2-R22,,46
+334,309,2545 Oakville Avenue,Strata 1952,,address_pmc_label,unchanged,,active,active,F2-R16,F2-R16,40,40
+335,310,2549 Dowler Place,Century 21 Queenswood,,address_pmc_label,unchanged,,active,active,M1-R3,M1-R3,27,27
+336,311,2550 Bevan Avenue,Pemberton Holmes - Strata (Sidney),Graham Wright - 250 885 4917 (monitoring),address_pmc_label,unchanged,,active,active,F2-R16,F2-R16,40,40
+337,312,2565 Beach Drive,Starlight/Devon,Increase to $65 after January 2026,address_pmc,unchanged,,active,active,W2-R14,W2-R14,38,38
+338,629,258 Gorge Road E,First Service Residential,,address_pmc_label,updated,,unknown,active,,W2-R22,,46
+339,313,2580 Cadboro Bay,Strata Plan 4934,,address_pmc_label,unchanged,,active,active,W2-R14,W2-R14,38,38
+340,314,260 Michigan Street,Starlight/Devon,Increase to $65 after January 2026,address_pmc,unchanged,,active,active,W3-R20,W3-R20,44,44
+341,315,2605 Windsor Road,South Island Property Mgmt,,address_pmc_label,unchanged,,active,active,TU2-R13,TU2-R13,37,37
+342,316,2608 Prior Street,South Island Prop.,,address_pmc_label,unchanged,,active,active,W1-R6,W1-R6,30,30
+343,317,2610 Graham Street,Graham Manor c/o Raven Property,,address_pmc_label,unchanged,,active,active,W1-R6,W1-R6,30,30
+344,318,2626 Blackwood Street,Firm Management,,address_pmc_label,unchanged,,active,active,W1-R6,W1-R6,30,30
+345,319,2630 Cook Street,Devon Properties,Cancelled before start tests in April 2025,address_pmc_label,unchanged,,cancelled,cancelled,-,-,,
+346,320,2631 Prior Street,Strata Plan #787,,address_pmc_label,unchanged,,active,active,W1-R6,W1-R6,30,30
+347,321,2644 Prior Street,Belmont Properties,Months on invoices $55 after June 2025,address_pmc,unchanged,,active,active,W1-R6,W1-R6,30,30
+348,322,2646 Cook Street,Devon Properties,Cancelled before start tests in April 2025,address_pmc_label,unchanged,,cancelled,cancelled,-,-,,
+349,323,2647 Graham Street,Complete Residential,,address_pmc_label,unchanged,,active,active,W1-R6,W1-R6,30,30
+350,324,2648 Graham Street,Starlight/Devon,Increase to $65 after January 2026,address_pmc,unchanged,,active,active,W1-R6,W1-R6,30,30
+351,,2676 Wilfert Road - Building A,Mainline Living Property Management,Previously R22,,missing,,,,,F1-R24,,
+352,,2676 Wilfert Road - Building B,Mainline Living Property Management,Previously R22,,missing,,,,,F1-R24,,
+353,,2676 Wilfert Road - Building C,Mainline Living Property Management,Previously R22,,missing,,,,,F1-R24,,
+354,325,268 Superior Street,Hadden Investments,CHARGE CC IN QB,address_pmc_label,unchanged,,active,active,W3-R20,W3-R20,44,44
+355,326,2680 Blanshard Street,Groupe Denux,,address_pmc_label,unchanged,,cancelled,cancelled,-,-,,
+356,327,2680 Prior Street,Century 21 Queenswood,,address_pmc_label,unchanged,,active,active,M1-R1,M1-R1,25,25
+357,328,2705 Cook Street,Devon Properties,,address_pmc_label,unchanged,,active,active,W1-R6,W1-R6,30,30
+358,329,2718 Strathmore Road,Pemberton Holmes,,address_pmc_label,unchanged,,active,active,TU1-R5,TU1-R5,29,29
+359,330,2720 Mill Bay Road,Thrifty Foods,Quoted $375 per month - May 2021 (sd') Invoice monthly,address_pmc_label,unchanged,,active,active,M2-R11,M2-R11,35,35
+360,331,2747 Quadra Street,Colyvan Pacific,,address_pmc_label,unchanged,,active,active,W1-R6,W1-R6,30,30
+361,,2747 Quadra Street,Proline Property Management Ltd.,,,missing,,,,,TU1-R5,,
+362,333,275 Burnside Road W,Starlight Properties c/o Devon Properties,Increase to $65 after January 2026 New PO #1736352,address_pmc,unchanged,,active,active,W2-R22,W2-R22,46,46
+363,334,2751 Shelbourne Street,Devon Properties,,address_pmc_label,unchanged,,active,active,W1-R6,W1-R6,30,30
+364,335,2771 Jacklin Road,Groupe Denux,Cancelled January 2026,address_pmc,updated,,cancelled,cancelled,TU1-R5,-,29,
+365,336,2785 Quadra Street,Pacific Cove Property Management Ltd.,,address_pmc_label,unchanged,,active,active,W1-R6,W1-R6,30,30
+366,337,2790 Cedar Hill Road,Century 21 Queenswood,,address_pmc_label,unchanged,,active,active,W1-R6,W1-R6,30,30
+367,338,280 Douglas Street,Oakwood Property,,address_pmc_label,unchanged,,active,active,TU3-R18,TU3-R18,42,42
+368,339,2821 Quesnel Street,Colyvan Pacific,,address_pmc_label,unchanged,,active,active,TU3-R19,TU3-R19,43,43
+369,340,283 Michigan Street,Starlight/Devon,,address_pmc,unchanged,,active,active,W3-R20,W3-R20,44,44
+370,341,2830 Peatt Road,Boardwalk General Partnership,,address_pmc_label,unchanged,,active,active,TU1-R5,TU1-R5,29,29
+371,342,2840 Nanaimo Street,Devon,,address_pmc_label,unchanged,,active,active,TU3-R19,TU3-R19,43,43
+372,343,2840 Peatt Road,Cornerstone,,address_pmc_label,unchanged,,active,active,TU1-R5,TU1-R5,29,29
+373,344,2849 Bryn Maur Road,Centurion Property Associates,Month on invoice,address_pmc,unchanged,,active,active,TU1-R5,TU1-R5,29,29
+374,345,2854 Peatt Road,Centurion Properties,Month on invoice,address_pmc,unchanged,,active,active,TU1-R5,TU1-R5,29,29
+375,346,2861 Quadra Street,Pacific Cove Property Management Ltd.,Price changed in July 2025 - keys attached with 2785 Quadra Street in May 2026,address_pmc,unchanged,,active,active,W1-R6,W1-R6,30,30
+376,347,2915 Douglas Street,PHS,,address_pmc_label,unchanged,,active,active,TU3-R19,TU3-R19,43,43
+377,348,2931 Qu'Appelle Street,Castera Properties,,address_pmc_label,unchanged,,active,active,W2-R22,W2-R22,46,46
+378,349,2947 Qu'Appelle Street,Castera Properties,,address_pmc_label,unchanged,,active,active,W2-R22,W2-R22,46,46
+379,350,2994 Douglas Street,BCGEU,Increase to $65 after June 2025 PO Required,address_pmc_label,unchanged,,active,active,TU3-R19,TU3-R19,43,43
+380,351,3005 Cook Street,Kiwanis Village Society,,address_pmc_label,unchanged,,active,active,W1-R6,W1-R6,30,30
+381,352,3008-3010 Washington Avenue,Proline,$57.75 credit - apply to Q2,address_pmc,unchanged,,active,active,W2-R22,W2-R22,46,46
+382,353,3011 Merchant Way,Thrifty Foods,Invoice Monthly starting Apr. 1/21 @ $275 (no TC06) Inv.23884 - Mar.31/21 @ $65 + TC07,address_pmc_label,unchanged,,active,active,M3-R17,M3-R17,41,41
+383,354,3033 Cook Street,Kiwanis Village Society,,address_pmc_label,unchanged,,active,active,W1-R6,W1-R6,30,30
+384,355,3035 Cook Street,Kiwanis Village Society,,address_pmc_label,unchanged,,active,active,W1-R6,W1-R6,30,30
+385,356,3045 Douglas Street,Richmond Property Group,,address_pmc_label,unchanged,,active,active,TU3-R19,TU3-R19,43,43
+386,357,31 Bastion Square,Colliers,,address_pmc_label,unchanged,,active,active,M2-R11,M2-R11,35,35
+387,358,314 Cook Street,Pacific Quorum,,address_pmc_label,unchanged,,active,active,TU3-R18,TU3-R18,42,42
+388,359,3157 Tillicum Road,Firm Management,,address_pmc_label,unchanged,,active,active,W2-R22,W2-R22,46,46
+389,360,3159 Shelbourne Street,Brown Bros.,,address_pmc_label,unchanged,,active,active,W1-R6,W1-R6,30,30
+390,361,3160 Albina Street,Firm Management,,address_pmc_label,unchanged,,active,active,W2-R22,W2-R22,46,46
+391,,3177 Harriet Road,Associa British Columbia Inc.,,,missing,,,,,M1-R1,,
+392,362,3185 Tillicum Road,Starlight Properties c/o Devon Properties,Increase to $65 after January 2026 New PO #1736352,address_pmc,unchanged,,active,active,W2-R22,W2-R22,46,46
+393,363,3187 Shelbourne Street,Devon,,address_pmc_label,unchanged,,active,active,W1-R6,W1-R6,30,30
+394,631,3205 Wetherby Road,First Service Residential,,address_pmc,updated,,unknown,active,,TH2-R23,,47
+395,632,3215 Wetherby Road,First Service Residential,,address_pmc,updated,,unknown,active,,TH2-R23,,47
+396,364,3221 Cedar Hill Cross Road,Beacon Community Services,,address_pmc_label,unchanged,,active,active,TH2-R23,TH2-R23,47,47
+397,365,3226 Alder Street,Pacifica Housing,,address_pmc_label,unchanged,,active,active,TU3-R19,TU3-R19,43,43
+398,366,323 Michigan Street,Devon Properties,,address_pmc_label,unchanged,,active,active,W3-R20,W3-R20,44,44
+399,633,3255 Cook Street,First Service Residential,,address_pmc_label,updated,,unknown,active,W1-R6,W1-R6,30,30
+400,367,3255 Quadra Street,Devon Properties,,address_pmc_label,unchanged,,active,active,TU3-R19,TU3-R19,43,43
+401,368,3277 Glasgow Avenue,South Island Property Management,,address_pmc_label,unchanged,,active,active,TU3-R19,TU3-R19,43,43
+402,369,328-454 Burnside Road W & 3528-3628 Tillicum Road,Pemberton Holmes (new July 31/22),$195/month 7 FA Panels,address_pmc_label,unchanged,,active,active,M2-R11,M2-R11,35,35
+403,370,331/333 Robert Street,Hutton,,address_pmc_label,unchanged,,active,active,W1-R7,W1-R7,31,31
+404,371,3319A Painter Road,Pemberton Holmes,Previously R5 & R22,address_pmc,updated,,active,active,W2-R22,F1-R24,46,48
+405,372,3319B Painter Road,Pemberton Holmes,Previously R5 & R22,address_pmc,updated,,active,active,W2-R22,F1-R24,46,48
+406,373,335 St. James Street,Devon Properties,Increase to $65 after January 2026,address_pmc,unchanged,,active,active,W3-R20,W3-R20,44,44
+407,374,337 St. James Street,Devon Properties,Increase to $65 after January 2026,address_pmc,unchanged,,active,active,W3-R20,W3-R20,44,44
+408,375,3381 Whittier Avenue,Centurion Properties,Month on invoice,address_pmc_label,unchanged,,active,active,TU3-R19,TU3-R19,43,43
+409,376,3400 Davidson Avenue,Colliers,PO Required $55/month,address_pmc_label,unchanged,,active,active,TU3-R19,TU3-R19,43,43
+410,377,341 Latoria Boulevard,Devon Properties,Previously R5 & R22,address_pmc,updated,,active,active,W2-R22,F1-R24,46,48
+411,378,343 Simcoe Street,Brown Brothers Property Management,,address_pmc_label,unchanged,,active,active,W3-R20,W3-R20,44,44
+412,379,344 Goldstream Avenue,Pemberton Holmes,Previously R5 & R17,address_pmc,updated,,active,active,M3-R17,F1-R24,41,48
+416,380,345 Latoria Boulevard,Warrington PCI Managment,Cancelled January 2026,address_pmc,updated,,active,cancelled,W2-R22,-,46,
+417,,345-349 Cook Street,AQP Property Management (was Burr),Feb 25/26- Updated tw Cantec to takeover annual- (was MBT only - Annual done by others),,missing,,,,,TU3-R18,,
+418,381,3475 Quadra Street,Thrifty Foods,Invoice Monthly starting Apr. 1/21 @ $275 (no TC06) Inv.23885 - Mar.31/21 @ $55 + TC06,address_pmc_label,unchanged,,active,active,M3-R17,M3-R17,41,41
+419,383,350 Douglas Street,Starlight/Devon,Increase to $65 after January 2026,address_pmc,unchanged,,active,active,TU3-R18,TU3-R18,42,42
+420,384,360 Dallas Road,Complete Residenial Property Management,,address_pmc_label,unchanged,,active,active,W3-R20,W3-R20,44,44
+421,385,360 Douglas Street,Starlight/Devon,Increase to $65 after January 2026,address_pmc,unchanged,,active,active,TU3-R18,TU3-R18,42,42
+422,386,360 Gorge Road E,Pacifica Housing,,address_pmc_label,unchanged,,cancelled,cancelled,-,-,,
+423,,3610 + 3614 Richmond Road & 1696 Pear Street,Firm Management,Increase to $65 after January 2026,,missing,,,,,TH2-R23,,
+424,388,364 Moss Street,Gibraltar Management Ltd.,,address_pmc_label,unchanged,,active,active,TU2-R13,TU2-R13,37,37
+425,389,3724 Harriet Road,Proline Property Management Ltd.,,address_pmc_label,unchanged,,active,active,TU3-R19,TU3-R19,43,43
+426,390,3861 Shelbourne Street,Century 21 Queenswood,,address_pmc_label,unchanged,,active,active,TH2-R23,TH2-R23,47,47
+427,634,3868 Shelbourne Street,First Service Residential,,address_pmc_label,updated,,unknown,active,TH2-R23,TH2-R23,47,47
+428,,3880 Quadra Street,Associa British Columbia Inc.,,,missing,,,,,TU1-R4,,
+429,391,3880 Shelbourne Street,Complete Residential,,address_pmc_label,unchanged,,active,active,TH2-R23,TH2-R23,47,47
+430,392,3905 Quadra Street,Brown Bros.,,address_pmc_label,unchanged,,active,active,M3-R17,M3-R17,41,41
+431,393,3914 Shelbourne Street,Devon Properties,,address_pmc_label,unchanged,,active,active,TH2-R23,TH2-R23,47,47
+432,394,3915 Carey Road,Firm Management,$65/month (A),address_pmc_label,unchanged,,active,active,M2-R11,M2-R11,35,35
+433,395,3949 Shelbourne Street,"HS Canada 3949 Shelbourne Street, L.P",,address_pmc_label,unchanged,,active,active,TH2-R23,TH2-R23,47,47
+434,396,3958 Cedar Hill Road,Firm Management,,address_pmc_label,unchanged,,active,active,TH2-R23,TH2-R23,47,47
+435,623,3960-3962 Borden Street,Borden House Corporation,CC on file,address_pmc,unchanged,,active,active,TU1-R4,TU1-R4,28,28
+436,397,3962 Cedar Hill Road,Firm Management,,address_pmc_label,unchanged,,active,active,TH2-R23,TH2-R23,47,47
+437,398,4026 Quadra Street,Starlight/Devon,Increase to $65 after January 2026,address_pmc,unchanged,,active,active,W1-R6,W1-R6,30,30
+438,399,4030 Shelbourne Street,Pemberton Holmes Ltd.,,address_pmc_label,unchanged,,active,active,TH2-R23,TH2-R23,47,47
+439,400,4036 Quadra Street,Devon Properties,,address_pmc_label,unchanged,,active,active,W1-R6,W1-R6,30,30
+440,401,4038 Quadra Street,Devon Properties,,address_pmc_label,unchanged,,active,active,W1-R6,W1-R6,30,30
+441,402,404 Dundas Street,Devon Properties,,address_pmc_label,unchanged,,active,active,W1-R7,W1-R7,31,31
+442,403,404 Linden Avenue,Steve Calder,,address_pmc_label,unchanged,,active,active,TU2-R13,TU2-R13,37,37
+443,404,410 Garbally Road,Richmond Property Group,,address_pmc_label,unchanged,,active,active,TU3-R19,TU3-R19,43,43
+444,405,4144 Wilkinson Road,Colliers,PO Required $55/month,address_pmc_label,unchanged,,active,active,M2-R11,M2-R11,35,35
+445,406,415 Dunedin Avenue,Richmond Property Group,,address_pmc_label,unchanged,,active,active,TU3-R19,TU3-R19,43,43
+446,407,415 Linden Avenue,Gibraltar Management Ltd.,,address_pmc_label,unchanged,,active,active,M1-R2,M1-R2,26,26
+447,408,415 Michigan Street,Starlight/Devon,Increase to $65 after January 2026 PO 700000,address_pmc,unchanged,,active,active,W3-R20,W3-R20,44,44
+448,409,420 Catherine Street,Pemberton Holmes,,address_pmc_label,unchanged,,active,active,W1-R7,W1-R7,31,31
+449,410,420 Parry Street,Firm Management,Cancelled on June 2025 - R20,address_pmc_label,unchanged,,cancelled,cancelled,-,-,,
+450,411,421 Vancouver Street,Bross Holdings,,address_pmc_label,unchanged,,active,active,TU3-R18,TU3-R18,42,42
+451,,423 Superior Street,Brown Brothers Property Management,Change Provider in February 2026 - price increase to $75 (January billed already to previous mgt) - new keys received May 2026,,missing,,,,,M1-R2,,
+452,413,4230 Commerce Circle,Newport Property management,NEW Jan/24,address_pmc,unchanged,,active,active,TU1-R4,TU1-R4,28,28
+453,414,425 Michigan Street,Starlight Properties c/o Devon Properties Ltd.,,address_pmc_label,unchanged,,active,active,W3-R20,W3-R20,44,44
+454,415,425 Wilson Street,Century 21 Queenswood,Previously R7,address_pmc,updated,,on_hold,on_hold,W1-R7,W2-R22,31,46
+455,,427 Belleville Street,Days Inn Victoria On The Harbour,,,missing,,,,,M1-R2,,
+456,416,429 Linden Avenue,Gibraltar now Colyvan Pacific,,address_pmc_label,unchanged,,active,active,TU2-R13,TU2-R13,37,37
+457,417,435 Michigan Street,Starlight/Devon,Increase to $65 after January 2026,address_pmc,unchanged,,active,active,W3-R20,W3-R20,44,44
+458,,4398 W. Saanich Rd,Devon Properties,,,missing,,,,,TU1-R4,,
+459,419,440 Parry Street,Oakwood Properties,,address_pmc_label,unchanged,,active,active,W3-R20,W3-R20,44,44
+460,420,4420 Chatterton Way,Colliers,PO Required $55/month. Panel replaced in June 25. 3 free months after June 2025,address_pmc,unchanged,,active,active,TU1-R4,TU1-R4,28,28
+461,421,4420 West Saanich Road,IIBG DBA COUNTRY GROCER [4420 WEST SAANICH],,address_pmc_label,unchanged,,active,active,TU1-R4,TU1-R4,28,28
+462,422,4480 Chatterton Way,Cornerstone,$175/mth total for 5 building. 1/5,address_pmc,unchanged,,active,active,TU1-R4,TU1-R4,28,28
+463,423,4484 Chatterton Way,Cornerstone,$175/mth total for 5 building. 2/5,address_pmc,unchanged,,active,active,TU1-R4,TU1-R4,28,28
+464,424,4488 Chatterton Way,Cornerstone,$175/mth total for 5 building. 3/5,address_pmc,unchanged,,active,active,TU1-R4,TU1-R4,28,28
+465,425,4490 Chatterton Way,Cornerstone,$175/mth total for 5 building. 4/5,address_pmc,unchanged,,active,active,TU1-R4,TU1-R4,28,28
+466,426,4494 Chatterton Way,Cornerstone,$175/mth total for 5 building. 5/5,address_pmc,unchanged,,active,active,TU1-R4,TU1-R4,28,28
+467,637,45 Gorge Road,Devon Properties Ltd.,,address_pmc_label,unchanged,,active,active,W2-R22,W2-R22,46,46
+468,427,465 Niagara Street,Devon Properties,Increase to $65 after January 2026,address_pmc,unchanged,,active,active,M1-R2,M1-R2,26,26
+469,428,4678 Elk Lake Drive,Complete Residential,Building A,address_pmc_label,unchanged,,active,active,TU2-R12,TU2-R12,36,36
+470,429,4678 Elk Lake Drive,Complete Residential,Building B,address_pmc_label,unchanged,,active,active,TU2-R12,TU2-R12,36,36
+471,430,4678 Elk Lake Drive,Complete Residential,Building C,address_pmc_label,unchanged,,active,active,TU2-R12,TU2-R12,36,36
+472,431,4678 Elk Lake Drive,Complete Residential,Building D,address_pmc_label,unchanged,,active,active,TU2-R12,TU2-R12,36,36
+473,432,4678 Elk Lake Drive,Complete Residential,Building E,address_pmc_label,unchanged,,active,active,TU2-R12,TU2-R12,36,36
+474,433,470 Belleville Street,Equitex Realty Ltd.,,address_pmc_label,unchanged,,active,active,W3-R20,W3-R20,44,44
+475,434,493 Burnside Road East,Devon Properties,,address_pmc_label,unchanged,,active,active,TU3-R19,TU3-R19,43,43
+476,435,500 Fort Street,The Keg (Says Crest on ST),,address_pmc_label,unchanged,,active,active,TH2-R15,TH2-R15,39,39
+477,436,500 Rithet Street,Belmont Properties,Months on invoices,address_pmc,unchanged,,active,active,W3-R20,W3-R20,44,44
+478,437,502 Dallas Road,Brown Bros.,,address_pmc_label,unchanged,,active,active,W3-R20,W3-R20,44,44
+479,438,505 Quadra Street,Surfside Holdings Ltd. (Analogue Projects),,address_pmc,unchanged,,active,active,M2-R11,M2-R11,35,35
+480,439,505 Su'it Street,Devon Properties,Formerly 505 Trutch,address_pmc_label,unchanged,,active,active,TH1-R9,TH1-R9,33,33
+481,440,506 Fort Street,Homesphere Properties,,address_pmc_label,updated,,on_hold,on_hold,TH2-R15,TH2-R15,39,39
+482,441,507 Government Street,The Garth Homer Society,,address_pmc_label,unchanged,,active,active,W3-R20,W3-R20,44,44
+483,442,508 Toronto Street,AQP Management,Back to Cantec in May 2026,address_pmc,updated,,cancelled,active,-,W3-R20,,44
+484,443,5100 Pat Bay Highway,Victoria Rowing Society,,address_pmc_label,unchanged,,active,active,TU2-R12,TU2-R12,36,36
+485,444,516 Quadra Street,Douglas Mgmt Corp. (was Hugh & McKinnon - but same owner),$57.75 credit - apply to Q2,address_pmc,unchanged,,active,active,M1-R2,M1-R2,26,26
+486,445,517 Fisgard Street & 528 Pandora Avenue,Proline,cancelled service- Oct 8/24 (tw),address_pmc_label,unchanged,,cancelled,cancelled,-,-,,
+487,446,520 Cook Street,Newport,,address_pmc_label,unchanged,,active,active,TH1-R9,TH1-R9,33,33
+488,447,520 Rithet Street,Newport Property management,,address_pmc_label,unchanged,,active,active,M1-R2,M1-R2,26,26
+489,448,524 Culduthel Road,Devon Properties,,address_pmc_label,unchanged,,active,active,M1-R1,M1-R1,25,25
+490,449,531 West Bay Terrace,Starlight Properties c/o Devon Properties Ltd.,May 2025 PO 1367338 June 2025PO 1367341,address_pmc,unchanged,,active,active,W1-R7,W1-R7,31,31
+491,,532 & 536 Herald Street,Belmont Properties,Months on invoice,,missing,,,,,TH3-R21,,
+492,451,5332 Sayward Hill Crescent,Firm Management,,address_pmc,unchanged,,active,active,TU2-R12,TU2-R12,36,36
+493,452,539-545 Fisgard Street,Servissio,,address_pmc_label,unchanged,,active,active,TH3-R21,TH3-R21,45,45
+494,453,540 Pandora Avenue,Pemberton Holmes,,address_pmc_label,unchanged,,active,active,TH3-R21,TH3-R21,45,45
+495,,540 West Bay Terrace,Belmont Properties,Increase price in June 2026 - it was $65 before that date,,missing,,,,,W1-R7,,
+496,455,545 Johnson Street,Devon Properties,,address_pmc_label,unchanged,,active,active,TH3-R21,TH3-R21,45,45
+497,456,546 Pandora Avenue,Servissio,Approved Dec/23,address_pmc_label,unchanged,,active,active,TH3-R21,TH3-R21,45,45
+498,635,55 Bay Street,First Service Residential,,address_pmc_label,updated,,active,active,W1-R7,W1-R7,31,31
+499,457,55 Songhees Road,Brown Bros.,,address_pmc_label,unchanged,,active,active,W1-R7,W1-R7,31,31
+500,458,553/563 Johnson Street,Devon Properties,,address_pmc_label,unchanged,,active,active,TH3-R21,TH3-R21,45,45
+501,459,556 Herald Street,Devon Properties,,address_pmc_label,unchanged,,active,active,TH3-R21,TH3-R21,45,45
+502,460,565 Manchester Road,Belmont Properties,$50/m for 2024 Belmont sold - effective end of day September 6/24-tw),address_pmc_label,unchanged,,cancelled,cancelled,-,-,,
+503,461,565 Toronto Street,Devon Properties,,address_pmc_label,unchanged,,active,active,W3-R20,W3-R20,44,44
+504,462,60 Dallas Road,South Island Property Mgmt,,address_pmc_label,unchanged,,active,active,W3-R20,W3-R20,44,44
+505,463,600 Douglas Street,Nexcan Enterprises,,address_pmc_label,unchanged,,active,active,M2-R11,M2-R11,35,35
+506,,600 Richmond Avenue,St. Matthias Angelican Church,,,missing,,,,,M2-R11,,
+507,465,601 Canteen Road,Township of Esquimalt,,address_pmc_label,unchanged,,active,active,W1-R7,W1-R7,31,31
+508,466,605 Cook Street,Brown Bros.,,address_pmc_label,unchanged,,active,active,TH1-R9,TH1-R9,33,33
+509,639,612 Constance Avenue,Devon Properties Ltd.,New keys received May 2026,address_pmc,unchanged,,active,active,W1-R7,W1-R7,31,31
+510,467,612 Goldstream Avenue,Pacifica Housing,,address_pmc_label,unchanged,,active,active,TU1-R5,TU1-R5,29,29
+511,468,614 Esquimalt Road,Horizon Contracting Ltd,,address_pmc_label,unchanged,,active,active,W1-R7,W1-R7,31,31
+512,469,616 Goldstream Avenue,Pacifica Housing,,address_pmc_label,unchanged,,active,active,TU1-R5,TU1-R5,29,29
+513,470,620 View Street,Equitex,$65 noted starting April 2025. Previously $50 - Not really sure when it changed,address_pmc,unchanged,,active,active,M1-R2,M1-R2,26,26
+514,471,622 Admirals Road,Chartwell Retirement Residences,Keys returned November 2025,address_pmc_label,unchanged,,cancelled,cancelled,-,-,,
+515,472,623 Fort Street,Fort Street Properties (Colliers),,address_pmc_label,unchanged,,active,active,TH2-R15,TH2-R15,39,39
+516,473,625 Fernhill Road,Belmont Properties,$50/m for 2024 $55 after June 2025,address_pmc_label,unchanged,,active,active,W1-R7,W1-R7,31,31
+517,474,625 Hillside Avenue,Devon,Keys delivered May 2025,address_pmc_label,unchanged,,cancelled,cancelled,-,-,,
+518,,630 Foul Bay Road,Shelmarie Care Home,,,missing,,,,,TU2-R13,,
+519,475,635 Battery Street,Newport Property Management,,address_pmc_label,unchanged,,active,active,M1-R2,M1-R2,26,26
+520,476,636 Dallas Road,Devon Properties,,address_pmc_label,unchanged,,active,active,M1-R2,M1-R2,26,26
+521,477,636 Fisgard Street,Vic Chinese School,$55/month no testing in July or August as school is closed,address_pmc_label,unchanged,,active,active,TH3-R21,TH3-R21,45,45
+522,638,640 Dallas Road,Starlight Properties c/o Devon Properties Ltd.,,address_pmc_label,unchanged,,active,active,M1-R2,M1-R2,26,26
+523,478,640 Michigan Street,Tribe Management Inc,,address_pmc_label,unchanged,,active,active,W3-R20,W3-R20,44,44
+524,479,644 Linden Avenue,Brown Bros.,,address_pmc_label,unchanged,,cancelled,cancelled,-,-,,
+525,480,645 Fort Street,Newport Property,,address_pmc_label,unchanged,,active,active,TH2-R15,TH2-R15,39,39
+526,622,646 Fairway Avenue,Brown Brothers Property Management,,address_pmc_label,updated,,unknown,active,TU1-R5,TU1-R5,29,29
+527,621,647 Goldstream Avenue,Brown Brothers Property Management,,address_pmc_label,updated,,unknown,active,TU1-R5,TU1-R5,29,29
+528,481,650 View Street,Servissio,"(includes 658 View, 1203 & 1205 Broad)",address_pmc_label,unchanged,,active,active,TH2-R15,TH2-R15,39,39
+529,482,651 Jolly Place,Cornerstone,,address_pmc_label,unchanged,,active,active,TU1-R4,TU1-R4,28,28
+530,483,654 Granderson Road,Pemberton Holmes - Residential,,address_pmc_label,unchanged,,active,active,TU1-R5,TU1-R5,29,29
+531,484,655 Douglas Street,Concert Properties,,address_pmc_label,unchanged,,active,active,TU3-R18,TU3-R18,42,42
+532,485,655 Herald Street,Brown Bros.,,address_pmc_label,unchanged,,active,active,TH3-R21,TH3-R21,45,45
+533,486,663 Goldstream Avenue,Proline,$65/month (A),address_pmc,unchanged,,active,active,TU1-R5,TU1-R5,29,29
+534,487,6649 Butler Cresecent,TPM Properties,$65/month (A),address_pmc_label,unchanged,,active,active,TU2-R12,TU2-R12,36,36
+535,488,670 Dallas Road,Proline,,address_pmc_label,unchanged,,active,active,W3-R20,W3-R20,44,44
+536,489,6772 Oldfield Road,Capital West,PO Required $60/month,address_pmc_label,unchanged,,active,active,TU2-R12,TU2-R12,36,36
+537,490,6776 Oldfield Road,Capital West,PO Required $60/month,address_pmc_label,unchanged,,active,active,TU2-R12,TU2-R12,36,36
+538,491,681 Allandale Road,Sherringham Holdings,Building B,address_pmc_label,unchanged,,active,active,F1-R24,F1-R24,48,48
+539,492,681 Allandale Road,Sherringham Holdings,Building C,address_pmc_label,unchanged,,active,active,F1-R24,F1-R24,48,48
+540,493,681 Allandale Road,Sherringham Holdings,Building D,address_pmc_label,unchanged,,active,active,F1-R24,F1-R24,48,48
+541,494,681 Allandale Road,Sherringham Holdings,Building E,address_pmc_label,unchanged,,active,active,F1-R24,F1-R24,48,48
+542,,7 Gorge Road West,Hutton Condominium Services Ltd,3 free months promotion - starting April 2026,,missing,,,,,TU3-R19,,
+543,495,703 Broughton Street,Devon Properties,"single panel share with 933 Douglas Street. Effective April 2025, managed by Devon",address_pmc_label,unchanged,,active,active,TH2-R15,TH2-R15,39,39
+544,636,707 Esquimalt Road,First Service Residential,,address_pmc_label,updated,,active,active,W1-R7,W1-R7,31,31
+545,496,7088 Wallace Drive,Capital West,,address_pmc_label,unchanged,,active,active,TU2-R12,TU2-R12,36,36
+546,497,709-715 Yates Street,Churchill on Yates GP C/O Daniel Belanger,,address_pmc_label,unchanged,,active,active,TH2-R15,TH2-R15,39,39
+547,498,710 Fort Street,Ritz Hotel -Arpeg Group of Companies,,address_pmc_label,unchanged,,active,active,TH2-R15,TH2-R15,39,39
+548,499,710 Redbrick Street,710 Redbrick Joint Venture,,address_pmc_label,unchanged,,active,active,TU3-R19,TU3-R19,43,43
+549,500,711 Hillside Avenue,Pacific Cove Property Management Ltd.,,address_pmc_label,unchanged,,active,active,TU3-R19,TU3-R19,43,43
+550,501,712 Yates Street,Concert Realty Services Ltd.,PO Required $55/month,address_pmc_label,unchanged,,active,active,TH3-R21,TH3-R21,45,45
+551,502,7161 West Saanich Road,Cornerstone,$65/month (A),address_pmc_label,unchanged,,active,active,TU2-R12,TU2-R12,36,36
+552,503,719-725 Yates Street,PCPM as Agent for the Churchill on Yates,,address_pmc_label,unchanged,,active,active,TH2-R15,TH2-R15,39,39
+553,504,720 Vancouver Street,Century 21 Queenswood,,address_pmc_label,unchanged,,active,active,TH1-R9,TH1-R9,33,33
+554,505,722 Johnson Street,722 Johnson Street Joint Venture,,address_pmc_label,unchanged,,active,active,TH3-R21,TH3-R21,45,45
+555,506,723 Field Street,Pemberton Holmes,,address_pmc_label,unchanged,,active,active,TH3-R21,TH3-R21,45,45
+556,507,727 Fisgard Street,Colliers,PO Required $55/month,address_pmc_label,unchanged,,cancelled,cancelled,-,-,,
+557,508,728 Yates Street,Tribe Management,,address_pmc_label,unchanged,,active,active,TH3-R21,TH3-R21,45,45
+558,509,730 Vancouver Street,Devon Properties,,address_pmc_label,unchanged,,active,active,TH1-R9,TH1-R9,33,33
+559,510,733 Goldstream Avenue,Starlight/Devon,Increase to $65 after January 2026,address_pmc,unchanged,,active,active,TU1-R5,TU1-R5,29,29
+560,511,734 - 736 Broughton Street,Richmond Property Group,,address_pmc_label,unchanged,,active,active,TH2-R15,TH2-R15,39,39
+561,512,738 Sayward Hill,Firm Management,,address_pmc_label,unchanged,,active,active,TU2-R12,TU2-R12,36,36
+562,513,747 Fort Street,Associated Building Credits Ltd. c/o Breakwater Realty Inc.,,address_pmc_label,unchanged,,active,active,TH2-R15,TH2-R15,39,39
+563,514,750 Pemberton Road,750 Pemberton Developments Ltd.,,address_pmc_label,unchanged,,active,active,M1-R1,M1-R1,25,25
+564,515,755 Market Street,TPM $45,,address_pmc_label,unchanged,,active,active,TU3-R19,TU3-R19,43,43
+565,516,760 Johnson Street,Tribe Management,Keys returned November 2025,address_pmc_label,unchanged,,cancelled,cancelled,-,-,,
+566,517,7611 Central Saanich Road,Victoria Native Friendship Centre,,address_pmc_label,unchanged,,active,active,TU2-R12,TU2-R12,36,36
+567,518,765 Hockley Avenue,Centurion Property Associates,Month on invoice,address_pmc,unchanged,,active,active,TU1-R5,TU1-R5,29,29
+568,519,765 Vanalman Avenue,Bosa Properties,,address_pmc_label,unchanged,,active,active,TU1-R4,TU1-R4,28,28
+569,520,770 Cormorant Street,Firm Management,,address_pmc_label,unchanged,,active,active,TH3-R21,TH3-R21,45,45
+570,521,772 Hockley Avenue,Centurion Property Associates,Month on invoice,address_pmc,unchanged,,active,active,TU1-R5,TU1-R5,29,29
+571,522,777 Blanshard Street,Proline,,address_pmc_label,unchanged,,active,active,TH2-R15,TH2-R15,39,39
+572,523,777 Cook Street,Devon Properties,,address_pmc_label,unchanged,,active,active,TH1-R9,TH1-R9,33,33
+573,524,777 Hockley Avenue,Centurion Property Associates,Month on invoice,address_pmc,unchanged,,active,active,TU1-R5,TU1-R5,29,29
+574,525,777 Royal Oak Drive (100),Thrifty Foods,Invoice Monthly starting Apr. 1/21 @ $275 (no TC06) Inv.23887 - Mar.31/21 @ $55 + TC06,address_pmc,unchanged,,active,active,M3-R17,M3-R17,41,41
+575,526,778 Hockley Avenue,Centurion Property Associates,Month on invoice,address_pmc,unchanged,,active,active,TU1-R5,TU1-R5,29,29
+576,527,780 Kings Road,Chek TV,,address_pmc_label,unchanged,,active,active,M2-R11,M2-R11,35,35
+577,528,784 Hockley Avenue,Centurion Property Associates,Month on invoice,address_pmc,unchanged,,active,active,TU1-R5,TU1-R5,29,29
+578,529,7840 Lochside Drive,Starlight/Devon,Increase to $65 after January 2026 New PO #1442838,address_pmc,unchanged,,active,active,TU2-R12,TU2-R12,36,36
+579,530,7860 Wallace Drive,Thrifty Foods,Invoice Monthly starting Apr. 1/21 @ $275 (no TC06) Inv.23887 - Mar.31/21 @ $65 + TC07. Was TH4,address_pmc_label,unchanged,,active,active,M3-R17,M3-R17,41,41
+580,531,7878 E. Saanich Road,Devon Properties,,address_pmc_label,unchanged,,active,active,TU2-R12,TU2-R12,36,36
+581,532,790 Hockley Avenue,Centurion Property Associates,Month on invoice,address_pmc,unchanged,,active,active,TU1-R5,TU1-R5,29,29
+582,533,8 Bastion Square,Servissio,$55/month.,address_pmc_label,unchanged,,active,active,TH2-R15,TH2-R15,39,39
+583,534,800 Johnson Street,357689 BC LTD.,,address_pmc_label,unchanged,,active,active,TH1-R8,TH1-R8,32,32
+584,535,803 Esquimalt Road,Capital West,,address_pmc_label,unchanged,,active,active,W1-R7,W1-R7,31,31
+585,536,805 Academy Close,TPM,,address_pmc_label,unchanged,,active,active,TU3-R18,TU3-R18,42,42
+586,537,810 Blanshard Street,Colliers,NO PO Required $55/month,address_pmc_label,unchanged,,active,active,TH2-R15,TH2-R15,39,39
+587,538,815 Queens Avenue,Devon Properties,,address_pmc_label,unchanged,,active,active,M1-R3,M1-R3,27,27
+588,539,818 Broughton Street,Hardal Management,Cancelled December 2025,address_pmc_label,unchanged,,cancelled,cancelled,-,-,,
+589,540,818 Fort Street,818 Fort Holdings c/o Servissio Property Services Ltd.,,address_pmc_label,unchanged,,active,active,TH2-R15,TH2-R15,39,39
+590,641,820 Craigflower Road,Starlight Properties c/o Devon Properties Ltd.,,address_pmc_label,unchanged,,active,active,W2-R22,W2-R22,46,46
+591,541,821 Hockley Avenue,Centurion Properties,Month on invoice,address_pmc,unchanged,,active,active,TU1-R5,TU1-R5,29,29
+592,542,825 Cook Street,Devon Properties,,address_pmc_label,unchanged,,active,active,TH1-R9,TH1-R9,33,33
+593,,829 Admirals Road,Associa British Columbia Inc.,,,missing,,,,,TU1-R4,,
+594,543,829 Fisgard Street,Pacifica Housing,,address_pmc_label,unchanged,,active,active,M1-R3,M1-R3,27,27
+595,544,830 Pembroke Street,Devon Properties 45,Increase to $65 after January 2026,address_pmc,unchanged,,active,active,M1-R3,M1-R3,27,27
+596,545,831 Dunsmuir Road,Belmont Properties,,address_pmc,unchanged,,active,active,W1-R7,W1-R7,31,31
+597,,831 Ellery Street,M.R.B. Holdings Ltd.,,,missing,,,,,W2-R22,,
+598,546,831 Fisgard Street,1134819 BC LTD.,,address_pmc_label,unchanged,,active,active,M1-R3,M1-R3,27,27
+599,547,836 Yates Street,Colliers,,address_pmc_label,unchanged,,active,active,TH1-R8,TH1-R8,32,32
+600,548,837 Ellery Street,Devon Properties Ltd.,,address_pmc,unchanged,,active,active,W2-R22,W2-R22,46,46
+601,,838 Fort Street,Martello Property Services,$173.25 credit in QB - apply to Q2,,missing,,,,,M1-R2,,
+602,550,840 Fort Street,Servisso Property Service,,address_pmc_label,unchanged,,active,active,TH2-R15,TH2-R15,39,39
+603,551,840 Humboldt Street,Devon Properties,Apr/24: ownership changed. On hold until we hear back- put cancelled per not hearing anything back - September 2025,address_pmc_label,unchanged,,cancelled,cancelled,-,-,,
+604,552,843 Craigflower Road,Belmont Properties,Months on invoice,address_pmc,unchanged,,active,active,W2-R22,W2-R22,46,46
+605,553,844 Courtney Street,Richmond Property Group,,address_pmc_label,unchanged,,active,active,TH2-R15,TH2-R15,39,39
+606,642,844 Fisgard Road,North Park Manor Society,,address_pmc_label,unchanged,,active,active,M1-R3,M1-R3,27,27
+607,554,845 Yates Street,Firm Management,Cancelled October 2025,address_pmc_label,unchanged,,cancelled,cancelled,-,-,,
+608,555,847 Fisgard Street,Kuta Realty Consultants Ltd.,First 3 months are $65 - change to $75 after that,address_pmc_label,unchanged,,active,active,TH3-R21,TH3-R21,45,45
+609,556,850 Cook Street,Newport C. Selenz,,address_pmc_label,unchanged,,active,active,TH1-R9,TH1-R9,33,33
+610,557,853 Burdett Avenue,TPM,,address_pmc_label,unchanged,,active,active,TH2-R15,TH2-R15,39,39
+611,558,855 Ellery Street,Devon Properties,Increase to $65 after January 2026,address_pmc,unchanged,,active,active,W2-R22,W2-R22,46,46
+612,559,866 Craigflower Road,Belmont Properties,Months on invoice,address_pmc,unchanged,,active,active,W2-R22,W2-R22,46,46
+613,560,875 North Park Street,North Park Manor Society,,address_pmc_label,unchanged,,active,active,M1-R3,M1-R3,27,27
+614,561,877 Goldstream Avenue,Richmond Property Group,$65/month (A),address_pmc_label,unchanged,,cancelled,cancelled,-,-,,
+615,562,879 Esquimalt Road,Brown Bros.,,address_pmc_label,unchanged,,active,active,W1-R7,W1-R7,31,31
+616,563,880 McKenzie Avenue,St. Andrew's Regional High School,Previously R19 - changed in April 26,address_pmc,unchanged,,active,active,W1-R6,W1-R6,30,30
+617,564,890 Academy Close,Breakwater Realty,PO Required $55/month,address_pmc_label,unchanged,,active,active,TU3-R18,TU3-R18,42,42
+618,565,894 Vernon Avenue,Firm Management,,address_pmc_label,unchanged,,active,active,TU3-R19,TU3-R19,43,43
+619,566,895 Fort Street,Pacific Arbour,Jan 2026 (tw) - we do not service this location annually!,address_pmc,unchanged,,active,active,M1-R2,M1-R2,26,26
+620,567,898 Vernon Avneue,Firm Management,,address_pmc_label,unchanged,,active,active,TU3-R19,TU3-R19,43,43
+621,568,899 Darwin Avenue,Firm Management,,address_pmc_label,unchanged,,active,active,TU3-R19,TU3-R19,43,43
+622,569,903 Esquimalt Road,Proline Management,,address_pmc_label,unchanged,,active,active,W1-R7,W1-R7,31,31
+623,570,906 Southgate Street,South Island Property Mgmt (was Strata Plan Vis 742,,address_pmc_label,unchanged,,active,active,TU3-R18,TU3-R18,42,42
+624,571,908 Market Street,Starlight Properties c/o Devon Properties,Increase to $65 after January 2026,address_pmc,unchanged,,active,active,M1-R1,M1-R1,25,25
+625,572,908 Pandora Avenue,Colliers,"Annual in Dec/23, Service starts Jan/24",address_pmc_label,unchanged,,active,active,TH2-R15,TH2-R15,39,39
+626,573,909 Fairfield Road,Red Cross,,address_pmc_label,unchanged,,active,active,TU3-R18,TU3-R18,42,42
+627,574,909 Pendergast Street,Devon Properties,Moved to R2 in August 2025 (was R18),address_pmc,unchanged,,active,active,M1-R2,M1-R2,26,26
+628,,911 Yates Street & 990 View Street,Colliers,NO PO Required $55/month,,missing,,,,,TH1-R8,,
+629,576,912 Selkirk Avenue,Century 21 Queenswood Realty Ltd.,,address_pmc_label,unchanged,,active,active,W2-R22,W2-R22,46,46
+630,577,914 Yates Street,Colliers,PO Required $55/month,address_pmc_label,unchanged,,active,active,TH1-R8,TH1-R8,32,32
+631,578,915 Cook Street,Devon Properties,,address_pmc_label,unchanged,,active,active,TH1-R9,TH1-R9,33,33
+632,579,919 Fort Street,Newport,,address_pmc_label,unchanged,,active,active,TH1-R8,TH1-R8,32,32
+633,580,919 Market Street,Pemberton Residential,,address_pmc_label,unchanged,,active,active,TU3-R19,TU3-R19,43,43
+634,581,920 Hillside Avenue,Tetcum Property,,address_pmc_label,unchanged,,active,active,TU3-R19,TU3-R19,43,43
+635,582,925 Esquimalt Road,Belmont Properties,Months on invoice,address_pmc,unchanged,,active,active,W1-R7,W1-R7,31,31
+636,583,931 Foul Bay Road,Abbeyfield Legacy Society,Apply credit to 2nd quarter invoice - $57.75,address_pmc,unchanged,,active,active,TU2-R13,TU2-R13,37,37
+637,584,938 Dunford Ave,Tribe Management,Cancelled in April 2026 - R5,address_pmc,updated,,cancelled,cancelled,TU1-R5,-,29,
+638,585,942 Preston Way,Pemberton Holmes - Residential,,address_pmc_label,unchanged,,active,active,TU1-R5,TU1-R5,29,29
+639,586,945 Reunion Avenue,Killam Apartments REIT,Shares panel with & 955 Reunion Avenue ($50 per building) - Previously R5 & R17,address_pmc,updated,,active,active,M3-R17,F1-R24,41,48
+640,587,950 Rockland Avenue,Pacific Cove Property Management Ltd as Agent,,address_pmc_label,unchanged,,active,active,TH1-R8,TH1-R8,32,32
+641,588,955 Cook Street,Devon Properties,,address_pmc_label,unchanged,,active,active,TH1-R9,TH1-R9,33,33
+642,589,964 Heywood Avenue,Devon Properties,,address_pmc_label,unchanged,,active,active,TU3-R18,TU3-R18,42,42
+643,,9667 First Street,Island Views,,,missing,,,,,F2-R16,,
+644,590,971 Finlayson Street,Pacific Quorum,,address_pmc_label,unchanged,,active,active,TU3-R19,TU3-R19,43,43
+645,591,9710 2nd Street,Pemberton Holmes,,address_pmc_label,unchanged,,active,active,F2-R16,F2-R16,40,40
+646,,976 Inverness Road,Inverness Court,,,missing,,,,,TU3-R19,,
+647,592,9762 Third Street,Devon Properties,,address_pmc_label,unchanged,,active,active,F2-R16,F2-R16,40,40
+648,593,9810 Seventh Street,Thrifty Foods,Invoice Monthly starting Apr. 1/21 @ $275 (no TC06) Inv.23888 - Mar.31/21 @ $65 + TC07.,address_pmc_label,unchanged,,active,active,M3-R17,M3-R17,41,41
+649,,9810 Seventh Street,Colliers - Mall,PO Required $65/month,,missing,,,,,F1-R10,,
+650,,9824-9830 Fourth Street,RealHomes Management Corp.,$65/month (A),,missing,,,,,F1-R10,,
+651,596,9830 Second Street,Firm Management,,address_pmc_label,unchanged,,active,active,F1-R10,F1-R10,34,34
+652,,9838 Second Street,Devon Properties,,,missing,,,,,F1-R10,,
+653,598,984 Mckenzie Avenue,Starlight/Devon,Increase to $65 after January 2026,address_pmc,unchanged,,active,active,W1-R6,W1-R6,30,30
+654,,9843 Second Street,Devon Properties,Devon took over July 2025 $65/Month,,missing,,,,,F1-R10,,
+655,,9851 Seaport Place,Shops at the Port of Sidney C/O The Marker Group,PO Required $65/month,,missing,,,,,F1-R10,,
+656,601,9851 Second Street,Firm Management,,address_pmc_label,unchanged,,active,active,F1-R10,F1-R10,34,34
+657,602,9858 Fifth Street,Wexford Condominiums,,address_pmc_label,unchanged,,active,active,F1-R10,F1-R10,34,34
+658,603,9861 Fifth Street,Brown Bros.,,address_pmc_label,unchanged,,active,active,F1-R10,F1-R10,34,34
+659,604,9861 Third Street,Colyvan Pacific,"Effective 02/28/25, Associa no longer manage location",address_pmc,unchanged,,active,active,F1-R10,F1-R10,34,34
+660,605,9870 Second Street,Gibraltar,,address_pmc_label,unchanged,,active,active,F1-R10,F1-R10,34,34
+661,606,9871 Second Street,Harbour Front,,address_pmc_label,unchanged,,active,active,F1-R10,F1-R10,34,34
+662,,9880 Fourth Street,Associa British Columbia Inc.,,,missing,,,,,F1-R10,,
+663,,9891 Seaport Place,Shops at the Port of Sidney C/O The Marker Group,PO Required $65/month,,missing,,,,,F1-R10,,
+664,609,990 Fort Street,Devon Properties,,address_pmc_label,unchanged,,active,active,TH1-R8,TH1-R8,32,32
+665,610,9900 Fifth Street,Edgeware Place,,address_pmc_label,unchanged,,active,active,F1-R10,F1-R10,34,34
+666,611,9905 Fifth Street,Pemberton Holmes,Starting Jan/24,address_pmc,unchanged,,active,active,F1-R10,F1-R10,34,34
+667,612,9911 McDonald Park,Sherringham Industries,,address_pmc_label,unchanged,,active,active,M3-R17,M3-R17,41,41
+668,613,9919 Fourth Street,Colyvan Pacific,,address_pmc_label,unchanged,,active,active,F1-R10,F1-R10,34,34
+669,614,9924 Third Street,Beacon Community Services,$65/month (A),address_pmc,unchanged,,active,active,F1-R10,F1-R10,34,34
+670,615,9950 4th Street,Freelance Strata Management,,address_pmc_label,unchanged,,active,active,F1-R10,F1-R10,34,34
+671,616,9960 4th Street,Freelance Strata Management,,address_pmc_label,unchanged,,active,active,F1-R10,F1-R10,34,34
+672,617,9960 Third Street,Highstreet Fourth Street (2023) LP,,address_pmc_label,unchanged,,cancelled,cancelled,-,-,,
+673,618,9972 Third Street,Highstreet Fourth Street (2023) LP,Cancelled in November 2025,address_pmc_label,unchanged,,cancelled,cancelled,-,-,,
+674,,9975 Fifth Street,Strata Corporation VIS 2278,,,missing,,,,,F1-R10,,
+675,620,9993 Fourth Street,Complete Residential,,address_pmc_label,unchanged,,active,active,F1-R10,F1-R10,34,34

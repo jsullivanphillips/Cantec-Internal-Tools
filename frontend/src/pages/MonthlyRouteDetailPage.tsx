@@ -18,14 +18,16 @@ import {
   type ReactNode,
 } from 'react'
 import { Chart } from 'react-chartjs-2'
-import { Accordion, Alert, Badge, Button, Card, Col, Form, Modal, Row, Spinner, Table } from 'react-bootstrap'
+import { Accordion, Alert, Badge, Button, Col, Form, Modal, Row, Spinner, Table } from 'react-bootstrap'
 import { Link, useParams } from 'react-router-dom'
 import MonthlyLibraryCommentsPanel from '../features/monthlyRoutes/MonthlyLibraryCommentsPanel'
+import RouteTechnicianNoteCard from '../features/monthlyRoutes/RouteTechnicianNoteCard'
 import MonthlyRouteMapCard from '../features/monthlyRoutes/MonthlyRouteMapCard'
 import {
   activeRouteLocations,
   libraryLocationHasMapCoordinates,
   mergeVisibleRouteLocationReorder,
+  monthFirstIsoPacificToday,
   parseYearMonth,
   toMonthKey,
   type MonthlyLocationComment,
@@ -34,16 +36,20 @@ import {
   type MonthlyRouteSummary,
   type MonthlySpecialistTechRow,
   type RouteLocationListItem,
-  type RouteLocationTestingSiteListItem,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
 import {
-  buildRouteRunTableRows,
+  availableRunsCardYears,
+  buildRunsCardRowsForYear,
+  defaultRunsCardYear,
   formatRunDisplayDate,
+  formatRunsCardStageLabel,
   formatSitesTestedRatio,
+  routeRunSummaryFromApi,
 } from '../features/monthlyRoutes/routeRunsDisplay'
-import { shortStreetAddress, testingSitePrimaryLabel } from '../features/monthlyRoutes/testingSiteDisplay'
+import { locationAddressSubline, locationPrimaryLabel } from '../features/monthlyRoutes/locationDisplay'
 import { apiJson, apiPostFormData, isAbortError } from '../lib/apiClient'
 import { formatCurrencyCad } from '../lib/formatCurrencyCad'
+import MonthlyRouteDetailPageSkeleton from './MonthlyRouteDetailPageSkeleton'
 
 function formatMonthHeading(monthIso: string): string {
   const [y, m] = monthIso.split('-').map(Number)
@@ -116,33 +122,49 @@ function siteStatusBadgeVariant(status: string): string {
   }
 }
 
-function testingSitesForRouteLocation(loc: RouteLocationListItem): RouteLocationTestingSiteListItem[] {
-  const sites = [...(loc.testing_sites ?? [])].sort((a, b) => a.sort_order - b.sort_order)
-  if (sites.length > 0) return sites
-  return [
-    {
-      id: -loc.id,
-      sort_order: 0,
-      label: null,
-      annual_month: loc.annual_month ?? null,
-    },
-  ]
+type RouteSiteRow = { id: number; sort_order: number; label: string | null; annual_month: string | null }
+function testingSitesForRouteLocation(loc: RouteLocationListItem): RouteSiteRow[] {
+  return [{ id: loc.id, sort_order: 0, label: loc.label ?? null, annual_month: loc.annual_month ?? null }]
 }
 
 function routeLocationStopCount(loc: RouteLocationListItem): number {
   return Math.max(1, testingSitesForRouteLocation(loc).length)
 }
 
-function routeTestingSiteTitle(
-  site: RouteLocationTestingSiteListItem,
+function routeLocationTitle(
+  site: RouteSiteRow,
   index: number,
   total: number,
-  locLabel: string
+  loc: RouteLocationListItem,
 ): string {
-  return testingSitePrimaryLabel(
-    { label: site.label, display_address: locLabel },
+  return locationPrimaryLabel(
+    {
+      label: site.label,
+      display_address: loc.display_address ?? loc.address,
+      address: loc.address,
+    },
     { siteCount: total, siteIndex: index },
   )
+}
+
+function routeLocationSubtext(loc: RouteLocationListItem, primaryLabel: string): {
+  buildingName: string | null
+  navigationAddress: string | null
+} {
+  const buildingRaw = (loc.building_name ?? '').trim()
+  const buildingName =
+    buildingRaw && buildingRaw.toLowerCase() !== primaryLabel.trim().toLowerCase()
+      ? buildingRaw
+      : null
+  const navigationAddress = locationAddressSubline(
+    {
+      label: loc.label,
+      display_address: loc.display_address ?? loc.address,
+      address: loc.address,
+    },
+    primaryLabel,
+  )
+  return { buildingName, navigationAddress }
 }
 
 function SortableRouteSiteRow({
@@ -163,17 +185,20 @@ function SortableRouteSiteRow({
     transition,
     opacity: isDragging ? 0.72 : undefined,
   }
-  const line1 = shortStreetAddress(
-    (loc.display_address || loc.address || '').trim() || `Location ${loc.id}`,
-  )
-  const blockLine = (loc.building || '').trim()
+  const locationLabel = locationPrimaryLabel({
+    label: loc.label,
+    display_address: loc.display_address ?? loc.address,
+    address: loc.address,
+  })
   const testingSites = testingSitesForRouteLocation(loc)
 
   return (
     <>
       {testingSites.map((site, siteIndex) => {
         const isPrimaryRow = siteIndex === 0
-        const siteTitle = routeTestingSiteTitle(site, siteIndex, testingSites.length, line1)
+        const siteLabel = routeLocationTitle(site, siteIndex, testingSites.length, loc)
+        const rowLabel = testingSites.length > 1 ? siteLabel : locationLabel
+        const { buildingName, navigationAddress } = routeLocationSubtext(loc, rowLabel)
         const annual = site.annual_month?.trim() || loc.annual_month?.trim() || ''
 
         return (
@@ -190,7 +215,7 @@ function SortableRouteSiteRow({
                   className="btn btn-link p-0 text-muted monthly-route-site-drag-handle"
                   style={{ cursor: orderSaving ? 'not-allowed' : 'grab' }}
                   disabled={orderSaving}
-                  aria-label={`Drag to reorder: ${line1}`}
+                  aria-label={`Drag to reorder: ${locationLabel}`}
                   {...attributes}
                   {...listeners}
                 >
@@ -200,24 +225,15 @@ function SortableRouteSiteRow({
             </td>
             <td className="text-center tabular-nums fw-semibold">{stopStart + siteIndex}</td>
             <td>
-              {isPrimaryRow ? (
-                <>
-                  <Link className="link-primary text-break fw-semibold" to={`/monthlies/locations/${loc.id}`}>
-                    {line1}
-                  </Link>
-                  {blockLine ? <div className="small text-muted text-break">{blockLine}</div> : null}
-                  {testingSites.length > 1 || site.label?.trim() ? (
-                    <div className="small text-muted text-break">{siteTitle}</div>
-                  ) : null}
-                </>
-              ) : (
-                <>
-                  <div className="fw-semibold text-break">{siteTitle}</div>
-                  <Link className="small text-muted text-decoration-none text-break" to={`/monthlies/locations/${loc.id}`}>
-                    {line1}
-                  </Link>
-                </>
-              )}
+              <Link className="link-primary text-break fw-semibold" to={`/monthlies/locations/${loc.id}`}>
+                {rowLabel}
+              </Link>
+              {buildingName ? (
+                <div className="small text-muted text-break">{buildingName}</div>
+              ) : null}
+              {navigationAddress ? (
+                <div className="small text-muted text-break">{navigationAddress}</div>
+              ) : null}
             </td>
             <td className="small text-nowrap">
               {annual ? <span className="text-body">{annual}</span> : <span className="text-muted">—</span>}
@@ -280,6 +296,8 @@ type UploadRunFromCsvModalProps = {
   routeId: number
   routeNumber: number
   routeLabel: string
+  targetMonthIso?: string | null
+  onUploaded?: (result: UploadRunResponse) => void
 }
 
 function UploadRunFromCsvModal({
@@ -288,6 +306,8 @@ function UploadRunFromCsvModal({
   routeId,
   routeNumber,
   routeLabel,
+  targetMonthIso = null,
+  onUploaded,
 }: UploadRunFromCsvModalProps) {
   const [file, setFile] = useState<File | null>(null)
   const [syncStopOrder, setSyncStopOrder] = useState(false)
@@ -328,7 +348,14 @@ function UploadRunFromCsvModal({
         `/api/monthly_routes/routes/${routeId}/runs/import_csv`,
         fd
       )
+      if (targetMonthIso && res.month_date !== targetMonthIso) {
+        setError(
+          `This CSV is dated ${formatMonthHeading(res.month_date)} but you opened upload for ${formatMonthHeading(targetMonthIso)}. Choose a CSV for the correct month.`
+        )
+        return
+      }
       setResult(res)
+      onUploaded?.(res)
     } catch (e) {
       const body = typeof e === 'object' && e != null ? (e as Record<string, unknown>) : null
       const message =
@@ -347,12 +374,13 @@ function UploadRunFromCsvModal({
     } finally {
       setSubmitting(false)
     }
-  }, [file, routeId, syncStopOrder])
+  }, [file, routeId, syncStopOrder, targetMonthIso, onUploaded])
 
   const formattedMonth = result?.month_date
     ? formatMonthHeading(result.month_date)
     : null
   const monthIso = result?.month_date ?? null
+  const targetMonthLabel = targetMonthIso ? formatMonthHeading(targetMonthIso) : null
 
   return (
     <Modal show={show} onHide={onClose} size="lg" backdrop={submitting ? 'static' : true}>
@@ -360,6 +388,11 @@ function UploadRunFromCsvModal({
         <Modal.Title>Upload run from CSV</Modal.Title>
       </Modal.Header>
       <Modal.Body>
+        {targetMonthLabel ? (
+          <Alert variant="info" className="mb-3">
+            CSV must be dated <strong>{targetMonthLabel}</strong> (check the sheet DATE row).
+          </Alert>
+        ) : null}
         {result ? (
           <>
             <Alert variant="success" className="mb-3">
@@ -395,7 +428,7 @@ function UploadRunFromCsvModal({
                   <>
                     {' '}
                     (<strong className="tabular-nums">{result.session_stop_order_applied}</strong>{' '}
-                    worksheet stop
+                    worksheet location
                     {(result.session_stop_order_applied ?? 0) === 1 ? '' : 's'} reordered for this
                     month)
                   </>
@@ -551,13 +584,101 @@ function UploadRunFromCsvModal({
   )
 }
 
+type SkipRunConfirmModalProps = {
+  show: boolean
+  monthIso: string | null
+  submitting: boolean
+  error: string | null
+  onClose: () => void
+  onConfirm: () => void
+}
+
+function SkipRunConfirmModal({
+  show,
+  monthIso,
+  submitting,
+  error,
+  onClose,
+  onConfirm,
+}: SkipRunConfirmModalProps) {
+  const monthLabel = monthIso ? formatMonthHeading(monthIso) : null
+  return (
+    <Modal show={show} onHide={onClose} backdrop={submitting ? 'static' : true}>
+      <Modal.Header closeButton={!submitting}>
+        <Modal.Title>Skip run</Modal.Title>
+      </Modal.Header>
+      <Modal.Body>
+        {monthLabel ? (
+          <p className="mb-3">
+            Mark <strong>{monthLabel}</strong> as skipped? Every site on this route will be set to
+            skipped with billing status <strong>Do not bill</strong>, and the month will be closed.
+          </p>
+        ) : null}
+        {error ? <Alert variant="danger">{error}</Alert> : null}
+      </Modal.Body>
+      <Modal.Footer>
+        <Button variant="outline-secondary" onClick={onClose} disabled={submitting}>
+          Cancel
+        </Button>
+        <Button variant="primary" onClick={onConfirm} disabled={submitting || !monthIso}>
+          {submitting ? (
+            <>
+              <Spinner size="sm" animation="border" role="status" className="me-2" />
+              Skipping…
+            </>
+          ) : (
+            'Skip run'
+          )}
+        </Button>
+      </Modal.Footer>
+    </Modal>
+  )
+}
+
+function runsStageBadgeClass(stageLabel: string, hasRunData: boolean): string {
+  if (!hasRunData || stageLabel.trim().toLowerCase() === 'no data') {
+    return 'monthly-route-stage-badge monthly-route-stage-badge--empty'
+  }
+  const normalized = stageLabel.trim().toLowerCase()
+  if (normalized.includes('complete') || normalized.includes('review')) {
+    return 'monthly-route-stage-badge monthly-route-stage-badge--success'
+  }
+  if (normalized.includes('skip')) {
+    return 'monthly-route-stage-badge monthly-route-stage-badge--muted'
+  }
+  return 'monthly-route-stage-badge monthly-route-stage-badge--info'
+}
+
+function RouteMetricCard({
+  label,
+  value,
+  meta,
+  tone,
+}: {
+  label: string
+  value: ReactNode
+  meta?: ReactNode
+  tone?: 'success' | 'info' | 'warning'
+}) {
+  const className = `monthly-route-metric-card${tone ? ` monthly-route-metric-card--${tone}` : ''}`
+  return (
+    <div className={className}>
+      <div className="monthly-route-metric-label">{label}</div>
+      <div className="monthly-route-metric-value">{value}</div>
+      {meta ? <div className="monthly-route-metric-meta">{meta}</div> : null}
+    </div>
+  )
+}
+
 function RouteSectionHeader({
   icon,
   title,
+  subtitle,
   badge,
 }: {
   icon: string
   title: string
+  subtitle?: string
   badge?: ReactNode
 }) {
   return (
@@ -567,8 +688,11 @@ function RouteSectionHeader({
       </span>
       <span className="monthly-route-section-copy">
         <span className="monthly-route-section-title">{title}</span>
+        {subtitle ? <span className="monthly-route-section-subtitle">{subtitle}</span> : null}
       </span>
-      {badge ? <span className="monthly-route-section-badge">{badge}</span> : null}
+      {badge ? (
+        <span className="monthly-route-section-badge tabular-nums">{badge}</span>
+      ) : null}
     </div>
   )
 }
@@ -634,7 +758,12 @@ export default function MonthlyRouteDetailPage() {
   const [sessionUsername, setSessionUsername] = useState<string | null>(null)
   const [activeTechNames, setActiveTechNames] = useState<Set<string> | null>(null)
   const [historyViewYear, setHistoryViewYear] = useState<number | null>(null)
+  const [runsViewYear, setRunsViewYear] = useState<number | null>(null)
   const [uploadRunOpen, setUploadRunOpen] = useState(false)
+  const [uploadTargetMonthIso, setUploadTargetMonthIso] = useState<string | null>(null)
+  const [skipConfirmMonthIso, setSkipConfirmMonthIso] = useState<string | null>(null)
+  const [skipSubmitting, setSkipSubmitting] = useState(false)
+  const [skipError, setSkipError] = useState<string | null>(null)
   const [orderedSites, setOrderedSites] = useState<RouteLocationListItem[]>([])
   const [orderSaving, setOrderSaving] = useState(false)
   const [orderError, setOrderError] = useState<string | null>(null)
@@ -719,7 +848,73 @@ export default function MonthlyRouteDetailPage() {
 
   useEffect(() => {
     setHistoryViewYear(null)
+    setRunsViewYear(null)
   }, [routeId])
+
+  const currentMonthIso = monthFirstIsoPacificToday()
+
+  const patchRunsByMonthFromApiRun = useCallback(
+    (monthIso: string, apiRun: Record<string, unknown>) => {
+      const summary = routeRunSummaryFromApi(apiRun as Parameters<typeof routeRunSummaryFromApi>[0])
+      setRunsByMonth((prev) => ({ ...prev, [monthIso]: summary }))
+    },
+    []
+  )
+
+  const handleCsvUploaded = useCallback(
+    (result: UploadRunResponse) => {
+      if (!result.month_date || !result.run) return
+      patchRunsByMonthFromApiRun(result.month_date, result.run as Record<string, unknown>)
+    },
+    [patchRunsByMonthFromApiRun]
+  )
+
+  const openUploadCsv = useCallback((monthIso: string | null = null) => {
+    setUploadTargetMonthIso(monthIso)
+    setUploadRunOpen(true)
+  }, [])
+
+  const closeUploadCsv = useCallback(() => {
+    setUploadRunOpen(false)
+    setUploadTargetMonthIso(null)
+  }, [])
+
+  const openSkipConfirm = useCallback((monthIso: string) => {
+    setSkipError(null)
+    setSkipConfirmMonthIso(monthIso)
+  }, [])
+
+  const closeSkipConfirm = useCallback(() => {
+    if (skipSubmitting) return
+    setSkipConfirmMonthIso(null)
+    setSkipError(null)
+  }, [skipSubmitting])
+
+  const confirmSkipRun = useCallback(async () => {
+    if (!skipConfirmMonthIso || Number.isNaN(idNum)) return
+    setSkipSubmitting(true)
+    setSkipError(null)
+    try {
+      const body = await apiJson<{
+        ok: boolean
+        run: Record<string, unknown>
+        month_date: string
+      }>(
+        `/api/monthly_routes/routes/${idNum}/runs/skip?month=${encodeURIComponent(skipConfirmMonthIso)}`,
+        { method: 'POST' }
+      )
+      patchRunsByMonthFromApiRun(body.month_date, body.run)
+      setSkipConfirmMonthIso(null)
+    } catch (e) {
+      const message =
+        typeof e === 'object' && e != null && 'error' in e
+          ? String((e as { error?: unknown }).error)
+          : 'Unable to skip this month.'
+      setSkipError(message)
+    } finally {
+      setSkipSubmitting(false)
+    }
+  }, [skipConfirmMonthIso, idNum, patchRunsByMonthFromApiRun])
 
   const persistRouteOrder = useCallback(
     async (next: RouteLocationListItem[]) => {
@@ -751,9 +946,34 @@ export default function MonthlyRouteDetailPage() {
   )
 
   const visibleSites = useMemo(() => activeRouteLocations(orderedSites), [orderedSites])
-  const runRows = useMemo(
-    () => buildRouteRunTableRows(runsByMonth, specialistsByMonth),
-    [runsByMonth, specialistsByMonth],
+
+  const runsCardYears = useMemo(
+    () => availableRunsCardYears(currentMonthIso, runsByMonth, testingByMonth),
+    [currentMonthIso, runsByMonth, testingByMonth]
+  )
+
+  const effectiveRunsYear = useMemo(() => {
+    if (runsCardYears.length === 0) return null
+    if (runsViewYear != null && runsCardYears.includes(runsViewYear)) return runsViewYear
+    return defaultRunsCardYear(runsCardYears, currentMonthIso)
+  }, [runsCardYears, runsViewYear, currentMonthIso])
+
+  const runsCardYearIndex =
+    effectiveRunsYear != null ? runsCardYears.indexOf(effectiveRunsYear) : -1
+
+  const runsCardRows = useMemo(() => {
+    if (effectiveRunsYear == null) return []
+    return buildRunsCardRowsForYear(
+      effectiveRunsYear,
+      currentMonthIso,
+      runsByMonth,
+      specialistsByMonth
+    )
+  }, [effectiveRunsYear, currentMonthIso, runsByMonth, specialistsByMonth])
+
+  const runsWithDataCount = useMemo(
+    () => runsCardRows.filter((row) => row.hasRunData).length,
+    [runsCardRows]
   )
 
   const routeStopStartByLocationId = useMemo(() => {
@@ -871,28 +1091,32 @@ export default function MonthlyRouteDetailPage() {
 
   if (!routeId || Number.isNaN(idNum)) {
     return (
-      <div className="container py-4">
-        <Alert variant="warning">Invalid route.</Alert>
-        <Link to="/monthlies/routes">Back to Monthly Routes</Link>
+      <div className="monthly-route-detail-page">
+        <div className="monthly-route-detail-container">
+          <Alert variant="warning">Invalid route.</Alert>
+          <Link to="/monthlies" className="monthly-location-back-link">
+            <i className="bi bi-chevron-left" aria-hidden />
+            Monthlies
+          </Link>
+        </div>
       </div>
     )
   }
 
   if (loading) {
-    return (
-      <div className="d-flex justify-content-center align-items-center py-5">
-        <Spinner animation="border" role="status">
-          <span className="visually-hidden">Loading…</span>
-        </Spinner>
-      </div>
-    )
+    return <MonthlyRouteDetailPageSkeleton />
   }
 
   if (error || !route) {
     return (
-      <div className="container py-4">
-        <Alert variant="danger">{error || 'Route not found.'}</Alert>
-        <Link to="/monthlies/routes">Back to Monthly Routes</Link>
+      <div className="monthly-route-detail-page">
+        <div className="monthly-route-detail-container">
+          <Alert variant="danger">{error || 'Route not found.'}</Alert>
+          <Link to="/monthlies" className="monthly-location-back-link">
+            <i className="bi bi-chevron-left" aria-hidden />
+            Monthlies
+          </Link>
+        </div>
       </div>
     )
   }
@@ -917,86 +1141,97 @@ export default function MonthlyRouteDetailPage() {
   const routeMapOrderSignature = visibleSites
     .map((loc) => `${loc.id}:${loc.route_stop_order ?? ''}:${loc.latitude ?? ''}:${loc.longitude ?? ''}`)
     .join('|')
+  const metricsRevenueYear = effectiveHistoryYear ?? new Date().getFullYear()
+  const metricsRunsYear = effectiveRunsYear ?? new Date().getFullYear()
 
   return (
     <div className="monthly-route-detail-page">
       <div className="monthly-route-detail-container">
-        <Link to="/monthlies/routes" className="monthly-location-back-link">
-          ← Monthly Routes library
+        <Link to="/monthlies" className="monthly-location-back-link">
+          <i className="bi bi-chevron-left" aria-hidden />
+          Monthlies
         </Link>
 
-        <section className="monthly-route-detail-hero monthly-location-detail-surface">
-          <div className="monthly-route-detail-hero__copy">
-            <div className="monthly-location-detail-eyebrow">Monthly route</div>
+        <section className="monthly-route-detail-hero monthly-location-detail-hero monthly-location-detail-surface">
+          <div className="monthly-location-detail-hero-main">
+            <div className="monthly-location-hero-topline">
+              <span className="monthly-location-detail-eyebrow">Monthly route</span>
+              <span className="monthly-location-hero-id">R{route.route_number}</span>
+            </div>
             <h1 className="monthly-location-detail-title">{route.label}</h1>
-            <div className="monthly-route-detail-hero__meta">
-              <Badge bg="light" text="dark" className="monthly-route-pill">
-                Locations: <span className="tabular-nums">{routeLocationCount}</span>
-              </Badge>
-              <Badge bg="light" text="dark" className="monthly-route-pill">
-                Tested Revenue: {formatCurrencyCad(selectedYearRevenue)}
-                {testedSitesMissingPriceYear > 0 ? (
-                  <span className="small text-muted ms-2">
-                    {testedSitesMissingPriceYear} missing {testedSitesMissingPriceYear === 1 ? 'price' : 'prices'}
-                  </span>
-                ) : null}
-              </Badge>
-            </div>
-          </div>
-          <div className="monthly-route-detail-hero__right">
-            <div className="monthly-route-detail-actions">
-              <Button
-                variant="outline-secondary"
-                size="sm"
-                className="monthly-location-detail-action"
-                onClick={() => setUploadRunOpen(true)}
-              >
-                <i className="bi bi-upload" aria-hidden />
-                Upload CSV
-              </Button>
-              {stUrl ? (
-                <Button
-                  href={stUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  variant="outline-primary"
-                  size="sm"
-                  className="monthly-location-detail-action"
-                >
-                  <i className="bi bi-box-arrow-up-right" aria-hidden />
-                  ServiceTrade
-                </Button>
-              ) : null}
-            </div>
             {heroTopSpecialists.length > 0 ? (
-              <div className="monthly-route-detail-hero__specialists" aria-label="Top monthly specialists">
-                <span className="monthly-route-detail-hero__specialists-label">Specialists:</span>
+              <div className="monthly-location-hero-meta monthly-route-detail-hero__specialists" aria-label="Top monthly specialists">
+                <span className="monthly-route-detail-hero__specialists-label">
+                  <i className="bi bi-award" aria-hidden />
+                  Top specialists
+                </span>
                 {heroTopSpecialists.map((tech, index) => (
-                  <Badge
+                  <span
                     key={`${specialistTechLabel(tech)}:${index}`}
-                    bg="light"
-                    text="dark"
-                    className={`monthly-route-pill monthly-tech-badge ${specialistBadgeClass(specialistTechJobs(tech))}`}
+                    className={`monthly-route-detail-hero__specialist-chip monthly-tech-badge ${specialistBadgeClass(specialistTechJobs(tech))}`}
                     title={`${specialistBadgeTier(specialistTechJobs(tech))} tier`}
-                    aria-label={`${specialistTechLabel(tech)}, ${specialistTechJobs(tech)} completions`}
                   >
-                    {specialistTechLabel(tech)} ({specialistTechJobs(tech)})
-                  </Badge>
+                    {specialistTechLabel(tech)}
+                    <span className="tabular-nums">({specialistTechJobs(tech)})</span>
+                  </span>
                 ))}
               </div>
             ) : null}
           </div>
+          <div className="monthly-location-hero-actions">
+            <Link
+              to={`/monthlies/routes/${idNum}/paperwork`}
+              className="btn btn-primary btn-sm monthly-location-detail-action"
+            >
+              <i className="bi bi-folder2-open" aria-hidden />
+              Paperwork
+            </Link>
+            <Button
+              variant="outline-secondary"
+              size="sm"
+              className="monthly-location-detail-action"
+              onClick={() => openUploadCsv(null)}
+            >
+              <i className="bi bi-upload" aria-hidden />
+              Upload CSV
+            </Button>
+            {stUrl ? (
+              <Button
+                href={stUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                variant="outline-secondary"
+                size="sm"
+                className="monthly-location-detail-action"
+              >
+                <i className="bi bi-box-arrow-up-right" aria-hidden />
+                ServiceTrade
+              </Button>
+            ) : null}
+          </div>
         </section>
 
-        <Link
-          to={`/monthlies/routes/${idNum}/paperwork`}
-          className="btn btn-primary w-100 monthly-route-paperwork-entry"
-        >
-          <i className="bi bi-folder2-open me-2" aria-hidden />
-          Paperwork
-        </Link>
+        <div className="monthly-route-metric-grid" aria-label="Route summary">
+          <RouteMetricCard label="Locations" value={<span className="tabular-nums">{routeLocationCount}</span>} />
+          <RouteMetricCard label="Stops" value={<span className="tabular-nums">{routeStopTotal}</span>} />
+          <RouteMetricCard
+            label={`Tested revenue (${metricsRevenueYear})`}
+            value={formatCurrencyCad(selectedYearRevenue)}
+            tone="success"
+            meta={
+              testedSitesMissingPriceYear > 0
+                ? `${testedSitesMissingPriceYear} missing ${testedSitesMissingPriceYear === 1 ? 'price' : 'prices'}`
+                : undefined
+            }
+          />
+          <RouteMetricCard
+            label={`Runs with data (${metricsRunsYear})`}
+            value={<span className="tabular-nums">{runsWithDataCount}</span>}
+            tone="info"
+          />
+        </div>
 
-        <Accordion defaultActiveKey={['map']} alwaysOpen className="monthly-location-detail-accordion monthly-route-detail-accordion">
+        <Accordion defaultActiveKey={[]} alwaysOpen className="monthly-location-detail-accordion monthly-route-detail-accordion">
         <Accordion.Item
           eventKey="map"
           id="route-map"
@@ -1006,6 +1241,7 @@ export default function MonthlyRouteDetailPage() {
             <RouteSectionHeader
               icon="bi-map"
               title="Route map"
+              subtitle="Stop order and map pins for assigned locations"
               badge={`${routeStopTotal} stops`}
             />
           </Accordion.Header>
@@ -1026,6 +1262,7 @@ export default function MonthlyRouteDetailPage() {
             <RouteSectionHeader
               icon="bi-signpost-split"
               title="Sites on this route"
+              subtitle="Drag to reorder; saves automatically"
               badge={`${routeStopTotal} stops`}
             />
           </Accordion.Header>
@@ -1040,8 +1277,14 @@ export default function MonthlyRouteDetailPage() {
             ) : (
               <>
                 <div className="monthly-route-detail-note">
-                  <span>{visibleSites.length} assigned locations</span>
-                  <span>Order saves automatically after drop</span>
+                  <span>
+                    <i className="bi bi-info-circle" aria-hidden />
+                    {visibleSites.length} assigned locations
+                  </span>
+                  <span>
+                    <i className="bi bi-arrow-repeat" aria-hidden />
+                    Order saves automatically after drop
+                  </span>
                 </div>
                 <div className="monthly-route-detail-table-shell">
                   <DndContext
@@ -1059,7 +1302,7 @@ export default function MonthlyRouteDetailPage() {
                           <th style={{ width: '4rem' }} className="text-center">
                             Stop
                           </th>
-                          <th>Location / testing site</th>
+                          <th>Location</th>
                           <th style={{ width: '6.5rem' }} className="text-nowrap">
                             Annual
                           </th>
@@ -1097,33 +1340,88 @@ export default function MonthlyRouteDetailPage() {
             <RouteSectionHeader
               icon="bi-calendar-check"
               title="Runs"
-              badge={runRows.length}
+              subtitle="Monthly paperwork and CSV upload history"
+              badge={runsWithDataCount}
             />
           </Accordion.Header>
           <Accordion.Body className="monthly-location-testing-history-body">
-            {runRows.length === 0 ? (
-              <p className="monthly-location-empty-state mb-0">No runs recorded for this route yet.</p>
+            {runsCardYears.length > 0 ? (
+              <div className="monthly-route-detail-section-toolbar">
+                <p className="monthly-route-detail-section-toolbar__intro mb-0">
+                  Review run dates, testing progress, and paperwork for each month.
+                </p>
+                <RouteYearToolbar
+                  year={effectiveRunsYear}
+                  yearIndex={runsCardYearIndex}
+                  years={runsCardYears}
+                  onChangeYear={setRunsViewYear}
+                />
+              </div>
+            ) : null}
+            {runsCardRows.length === 0 ? (
+              <p className="monthly-location-empty-state mb-0">No months available for this year.</p>
             ) : (
               <div className="monthly-route-detail-table-shell">
-                <Table size="sm" className="monthly-route-detail-table mb-0 align-middle">
+                <Table size="sm" className="monthly-route-detail-table monthly-route-detail-runs-table mb-0 align-middle">
                   <thead>
                     <tr className="small text-muted text-uppercase">
                       <th>Month</th>
                       <th>Date</th>
                       <th className="text-nowrap">Sites tested</th>
                       <th>Stage</th>
+                      <th className="text-end">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {runRows.map(({ monthIso, run, specialistMonth }) => (
+                    {runsCardRows.map(({ monthIso, run, specialistMonth, hasRunData }) => (
                       <tr key={monthIso}>
                         <td className="fw-semibold">{formatMonthHeading(monthIso)}</td>
-                        <td className="text-nowrap">{formatRunDisplayDate(run, specialistMonth)}</td>
-                        <td className="tabular-nums">{formatSitesTestedRatio(run)}</td>
+                        <td className="text-nowrap">
+                          {run ? formatRunDisplayDate(run, specialistMonth) : '—'}
+                        </td>
+                        <td className="tabular-nums">
+                          {run ? formatSitesTestedRatio(run) : '—'}
+                        </td>
                         <td>
-                          <Badge bg="light" text="dark" className="monthly-route-pill">
-                            {run.workflow_stage_label || '—'}
-                          </Badge>
+                          {(() => {
+                            const stageLabel = formatRunsCardStageLabel({
+                              monthIso,
+                              run,
+                              specialistMonth,
+                              hasRunData,
+                            })
+                            const stageClass = runsStageBadgeClass(stageLabel, hasRunData)
+                            return <span className={stageClass}>{stageLabel}</span>
+                          })()}
+                        </td>
+                        <td className="text-end">
+                          {hasRunData && run ? (
+                            <Link
+                              to={`/monthlies/routes/${idNum}/paperwork?month=${encodeURIComponent(monthIso)}`}
+                              className="btn btn-outline-primary btn-sm"
+                            >
+                              Open paperwork
+                            </Link>
+                          ) : (
+                            <div className="d-inline-flex flex-wrap gap-2 justify-content-end">
+                              <Button
+                                type="button"
+                                variant="outline-secondary"
+                                size="sm"
+                                onClick={() => openSkipConfirm(monthIso)}
+                              >
+                                Skip run
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline-secondary"
+                                size="sm"
+                                onClick={() => openUploadCsv(monthIso)}
+                              >
+                                Upload CSV
+                              </Button>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -1138,70 +1436,74 @@ export default function MonthlyRouteDetailPage() {
           eventKey="performance"
           className="monthly-location-testing-history-card monthly-route-detail-section monthly-route-detail-performance monthly-location-detail-surface"
         >
-          <Accordion.Header className="monthly-location-testing-history-card-header monthly-route-detail-performance-header">
+          <Accordion.Header className="monthly-location-testing-history-card-header">
             <RouteSectionHeader
               icon="bi-bar-chart"
               title="Performance"
+              subtitle="Tested-site revenue by calendar year"
               badge={formatCurrencyCad(selectedYearRevenue)}
             />
           </Accordion.Header>
           <Accordion.Body className="monthly-location-testing-history-body">
-            <Card className="monthly-route-detail-performance__revenue-card">
-              <Card.Body className="p-3 p-md-4">
-                <div className="monthly-route-detail-performance__summary">
-                  <div>
-                    <div className="monthly-route-detail-performance__revenue-card-title">
-                      Revenue by month
-                    </div>
-                    <p className="monthly-route-detail-performance__intro mb-0">
-                      Sums Price/month for locations tested in the selected year. Locations without a price are excluded.
-                    </p>
+            <div className="monthly-route-detail-performance__content">
+              <div className="monthly-route-detail-performance__summary">
+                <div>
+                  <div className="monthly-route-detail-performance__revenue-card-title">
+                    Revenue by month
                   </div>
-                  <div className="monthly-route-detail-performance__stat">
-                    <span>Total tested revenue</span>
-                    <strong>{formatCurrencyCad(selectedYearRevenue)}</strong>
-                  </div>
+                  <p className="monthly-route-detail-performance__intro mb-0">
+                    Sums Price/month for locations tested in the selected year. Locations without a price are excluded.
+                  </p>
                 </div>
-                {testingHistoryYears.length > 0 ? (
-                  <>
+                <div className="monthly-route-detail-performance__stat">
+                  <span>Total tested revenue</span>
+                  <strong>{formatCurrencyCad(selectedYearRevenue)}</strong>
+                </div>
+              </div>
+              {testingHistoryYears.length > 0 ? (
+                <>
+                  <div className="monthly-route-detail-section-toolbar">
+                    <p className="monthly-route-detail-section-toolbar__intro mb-0">
+                      Compare monthly tested revenue across the selected calendar year.
+                    </p>
                     <RouteYearToolbar
                       year={effectiveHistoryYear}
                       yearIndex={testingHistoryYearIndex}
                       years={testingHistoryYears}
                       onChangeYear={setHistoryViewYear}
                     />
-                    <div className="monthly-route-detail-performance__chart">
-                      {testedRevenueChart ? (
-                        <>
-                          <div className="monthly-route-detail-performance__chart-surface">
-                            <div className="monthly-route-detail-performance__chart-area">
-                              <Chart type="bar" data={testedRevenueChart.data} options={testedRevenueChart.options} />
-                            </div>
-                          </div>
-                          {testedSitesMissingPriceYear > 0 ? (
-                            <p className="monthly-route-detail-callout mt-2 mb-0">
-                              {testedSitesMissingPriceYear} tested{' '}
-                              {testedSitesMissingPriceYear === 1 ? 'site has' : 'sites have'} no Price/month set for
-                              months in {effectiveHistoryYear}.
-                            </p>
-                          ) : null}
-                        </>
-                      ) : (
+                  </div>
+                  <div className="monthly-route-detail-performance__chart">
+                    {testedRevenueChart ? (
+                      <>
                         <div className="monthly-route-detail-performance__chart-surface">
-                          <div className="monthly-route-detail-performance__empty d-flex align-items-center justify-content-center">
-                            No monthly sheet data for this calendar year.
+                          <div className="monthly-route-detail-performance__chart-area">
+                            <Chart type="bar" data={testedRevenueChart.data} options={testedRevenueChart.options} />
                           </div>
                         </div>
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  <div className="monthly-route-detail-callout mb-0">
-                    Revenue chart appears when monthly sheet testing history exists for this route.
+                        {testedSitesMissingPriceYear > 0 ? (
+                          <p className="monthly-route-detail-callout mt-2 mb-0">
+                            {testedSitesMissingPriceYear} tested{' '}
+                            {testedSitesMissingPriceYear === 1 ? 'site has' : 'sites have'} no Price/month set for
+                            months in {effectiveHistoryYear}.
+                          </p>
+                        ) : null}
+                      </>
+                    ) : (
+                      <div className="monthly-route-detail-performance__chart-surface">
+                        <div className="monthly-route-detail-performance__empty d-flex align-items-center justify-content-center">
+                          No monthly sheet data for this calendar year.
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
-              </Card.Body>
-            </Card>
+                </>
+              ) : (
+                <div className="monthly-route-detail-callout mb-0">
+                  Revenue chart appears when monthly sheet testing history exists for this route.
+                </div>
+              )}
+            </div>
           </Accordion.Body>
         </Accordion.Item>
 
@@ -1213,10 +1515,19 @@ export default function MonthlyRouteDetailPage() {
             <RouteSectionHeader
               icon="bi-chat-left-text"
               title="Comments"
+              subtitle="Office notes for this route"
               badge={comments.length}
             />
           </Accordion.Header>
           <Accordion.Body className="monthly-location-comments-body">
+            <RouteTechnicianNoteCard
+              routeId={idNum}
+              technicianNote={route.technician_note}
+              onTechnicianNotePatched={(technicianNote) =>
+                setRoute((prev) => (prev ? { ...prev, technician_note: technicianNote } : prev))
+              }
+            />
+            <hr className="monthly-location-comments-divider" />
             <MonthlyLibraryCommentsPanel
               commentsApiPrefix={`/api/monthly_routes/routes/${idNum}`}
               comments={comments}
@@ -1230,10 +1541,20 @@ export default function MonthlyRouteDetailPage() {
       </div>
       <UploadRunFromCsvModal
         show={uploadRunOpen}
-        onClose={() => setUploadRunOpen(false)}
+        onClose={closeUploadCsv}
         routeId={idNum}
         routeNumber={route.route_number}
         routeLabel={route.label}
+        targetMonthIso={uploadTargetMonthIso}
+        onUploaded={handleCsvUploaded}
+      />
+      <SkipRunConfirmModal
+        show={skipConfirmMonthIso != null}
+        monthIso={skipConfirmMonthIso}
+        submitting={skipSubmitting}
+        error={skipError}
+        onClose={closeSkipConfirm}
+        onConfirm={() => void confirmSkipRun()}
       />
     </div>
   )

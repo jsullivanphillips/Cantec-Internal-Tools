@@ -8,6 +8,8 @@ import RunDetailsPrepareTable from './RunDetailsPrepareTable'
 import RunDetailsReviewTable from './RunDetailsReviewTable'
 
 import type {
+  AnnualScheduleCheckLocation,
+  AnnualScheduleCheckStatus,
   MonthlyRunDetailDeficiencySummary,
   MonthlyRunDetailLocation,
   TechnicianWorksheetRun,
@@ -17,10 +19,12 @@ import {
   computeRunDetailsProgress,
   countRunDetailFieldEditLocations,
   filterRunDetailFieldEditLocations,
+  filterRunDetailLocationsByOutcomes,
   flattenRunDetailPrepRows,
   listAutoOfficeBillingUpdates,
   type RunDetailReviewSectionTab,
 } from './runDetailsLocationReview'
+import type { PortalTestOutcome } from './portalWorkflowShared'
 import type { OfficeBillingStatus } from './officeRunReviewShared'
 import { apiJson } from '../../lib/apiClient'
 
@@ -28,7 +32,7 @@ import { canOfficeEditBilling, runInOfficePrepPhase, worksheetRunFieldInProgress
 
 import type { RunDetailsStopPatchApi } from './useRunDetailsStopPatch'
 
-import type { TechnicianWorksheetStop } from './monthlyRoutesShared'
+import type { TechnicianWorksheetLocation } from './monthlyRoutesShared'
 
 import type { PaperworkViewMode } from './paperworkViewMode'
 
@@ -41,13 +45,19 @@ export type RunReviewOutcomeCounts = {
 
 const REVIEW_OUTCOME_PROGRESS: {
   key: keyof RunReviewOutcomeCounts
+  filter: PortalTestOutcome
   label: string
   modifier: string
 }[] = [
-  { key: 'all_good_count', label: 'all good', modifier: 'all-good' },
-  { key: 'passed_with_problems_count', label: 'passed w/ problems', modifier: 'passed-problems' },
-  { key: 'failed_count', label: 'failed', modifier: 'failed' },
-  { key: 'skipped_count', label: 'skipped', modifier: 'skipped' },
+  { key: 'all_good_count', filter: 'all_good', label: 'all good', modifier: 'all-good' },
+  {
+    key: 'passed_with_problems_count',
+    filter: 'passed_with_problems',
+    label: 'passed w/ problems',
+    modifier: 'passed-problems',
+  },
+  { key: 'failed_count', filter: 'failed', label: 'failed', modifier: 'failed' },
+  { key: 'skipped_count', filter: 'skipped', label: 'skipped', modifier: 'skipped' },
 ]
 
 type BillingPatchResponse = {
@@ -91,6 +101,9 @@ export default function RunDetailsLocationReviewList({
   prepEditsDisabled = false,
   outcomeCounts,
   onRouteOrderChanged,
+  annualScheduleStatus = 'idle',
+  annualScheduleByLocationId = null,
+  onAnnualScheduleRefresh,
 }: {
   locations: MonthlyRunDetailLocation[]
   monthDate: string
@@ -101,13 +114,13 @@ export default function RunDetailsLocationReviewList({
   onSectionTabChange?: (tab: RunDetailReviewSectionTab) => void
   onBillingPatched: (locationId: number, billingStatus: string) => void
   stopPatch: RunDetailsStopPatchApi
-  onStopMergedFromWorksheet: (stop: TechnicianWorksheetStop, scope?: 'full' | 'deficiency') => void
+  onStopMergedFromWorksheet: (stop: TechnicianWorksheetLocation, scope?: 'full' | 'deficiency') => void
   onDeficiencyUpdated?: (
-    testingSiteId: number,
+    locationId: number,
     updated: MonthlyRunDetailDeficiencySummary,
   ) => void | Promise<void>
   showHistoryTab?: boolean
-  historyStops?: TechnicianWorksheetStop[]
+  historyStops?: TechnicianWorksheetLocation[]
   historyLoading?: boolean
   historyCapturedAt?: string | null
   historyFieldWorkReopened?: boolean
@@ -118,9 +131,13 @@ export default function RunDetailsLocationReviewList({
   prepEditsDisabled?: boolean
   outcomeCounts?: RunReviewOutcomeCounts
   onRouteOrderChanged?: (orderedLocationIds: number[]) => void | Promise<void>
+  annualScheduleStatus?: AnnualScheduleCheckStatus
+  annualScheduleByLocationId?: Record<number, AnnualScheduleCheckLocation> | null
+  onAnnualScheduleRefresh?: () => void | Promise<void>
 }) {
   const [autoBillingBusy, setAutoBillingBusy] = useState(false)
   const [autoBillingError, setAutoBillingError] = useState<string | null>(null)
+  const [activeOutcomeFilters, setActiveOutcomeFilters] = useState<PortalTestOutcome[]>([])
 
   const prepPhase = paperworkViewMode === 'preparation' || runInOfficePrepPhase(run)
   const showBillingColumn = canOfficeEditBilling(run) && !runCompleted
@@ -157,6 +174,17 @@ export default function RunDetailsLocationReviewList({
     () => (showBillingColumn && showRunReview ? listAutoOfficeBillingUpdates(locations, monthDate) : []),
     [locations, monthDate, showBillingColumn, showRunReview],
   )
+
+  const filteredReviewLocations = useMemo(
+    () => filterRunDetailLocationsByOutcomes(locations, activeOutcomeFilters, monthDate),
+    [locations, activeOutcomeFilters, monthDate],
+  )
+
+  const toggleOutcomeFilter = useCallback((filter: PortalTestOutcome) => {
+    setActiveOutcomeFilters((prev) =>
+      prev.includes(filter) ? prev.filter((item) => item !== filter) : [...prev, filter],
+    )
+  }, [])
 
   const onAutoSetBilling = useCallback(async () => {
     if (autoBillingUpdates.length === 0 || autoBillingBusy) return
@@ -229,6 +257,9 @@ export default function RunDetailsLocationReviewList({
           onDeficiencyUpdated={onDeficiencyUpdated}
           prepEditsDisabled={prepEditsDisabled}
           onRouteOrderChanged={onRouteOrderChanged}
+          annualScheduleStatus={annualScheduleStatus}
+          annualScheduleByLocationId={annualScheduleByLocationId}
+          onAnnualScheduleRefresh={onAnnualScheduleRefresh}
         />
       </section>
     )
@@ -267,15 +298,21 @@ export default function RunDetailsLocationReviewList({
               </span>
             ) : null}
             {outcomeCounts
-              ? REVIEW_OUTCOME_PROGRESS.map(({ key, label, modifier }) => (
-                  <span
-                    key={key}
-                    className={`monthly-run-detail-progress__item monthly-run-detail-progress__item--${modifier}`}
-                  >
-                    <strong className="tabular-nums">{outcomeCounts[key]}</strong>
-                    <span className="text-muted"> {label}</span>
-                  </span>
-                ))
+              ? REVIEW_OUTCOME_PROGRESS.map(({ key, filter, label, modifier }) => {
+                  const active = activeOutcomeFilters.includes(filter)
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      aria-pressed={active}
+                      className={`monthly-run-detail-progress__item monthly-run-detail-progress__item--filter monthly-run-detail-progress__item--${modifier}${active ? ' monthly-run-detail-progress__item--filter-active' : ''}`}
+                      onClick={() => toggleOutcomeFilter(filter)}
+                    >
+                      <strong className="tabular-nums">{outcomeCounts[key]}</strong>
+                      <span className="text-muted"> {label}</span>
+                    </button>
+                  )
+                })
               : null}
             {runCompleted && progress.prepRemainingCount > 0 ? (
               <span className="monthly-run-detail-progress__item">
@@ -384,18 +421,22 @@ export default function RunDetailsLocationReviewList({
       ) : null}
 
       {showRunReview ? (
-        <RunDetailsReviewTable
-          locations={locations}
-          routeId={routeId}
-          monthDate={monthDate}
-          run={run}
-          showBillingColumn={showBillingColumn}
-          onBillingPatched={onBillingPatched}
-          stopPatch={stopPatch}
-          onStopMergedFromWorksheet={onStopMergedFromWorksheet}
-          onDeficiencyUpdated={onDeficiencyUpdated}
-          onTicketsChanged={onTicketsChanged}
-        />
+        filteredReviewLocations.length === 0 && activeOutcomeFilters.length > 0 ? (
+          <p className="monthly-run-detail-empty mb-0">No stops match the selected outcome filters.</p>
+        ) : (
+          <RunDetailsReviewTable
+            locations={filteredReviewLocations}
+            routeId={routeId}
+            monthDate={monthDate}
+            run={run}
+            showBillingColumn={showBillingColumn}
+            onBillingPatched={onBillingPatched}
+            stopPatch={stopPatch}
+            onStopMergedFromWorksheet={onStopMergedFromWorksheet}
+            onDeficiencyUpdated={onDeficiencyUpdated}
+            onTicketsChanged={onTicketsChanged}
+          />
+        )
       ) : showFieldChanges ? (
         <RunDetailsFieldChangesTable
           locations={fieldChangeLocations}

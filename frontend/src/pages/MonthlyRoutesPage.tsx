@@ -269,7 +269,7 @@ export default function MonthlyRoutesPage() {
       unpaginated: false,
     })
 
-    apiJson<LibraryPayload>(`/api/monthly_sites/library?${qs}`, {
+    apiJson<LibraryPayload>(`/api/monthly_routes/library?${qs}`, {
       signal: controller.signal,
     })
       .then((data) => {
@@ -324,7 +324,7 @@ export default function MonthlyRoutesPage() {
         pageSize: LIBRARY_PAGE_SIZE,
         unpaginated: true,
       })
-      const data = await apiJson<LibraryPayload>(`/api/monthly_sites/library?${qs}`)
+      const data = await apiJson<LibraryPayload>(`/api/monthly_routes/library?${qs}`)
       let rows = data.locations ?? []
       if (hideCancelledMbtLocations) {
         rows = rows.filter((loc) => (loc.status_normalized || '').trim().toLowerCase() !== 'cancelled')
@@ -390,7 +390,7 @@ export default function MonthlyRoutesPage() {
       setAnnualSavingLocationId(locationId)
       try {
         const response = await apiJson<{ location: LibraryLocation }>(
-          `/api/monthly_sites/library/${locationId}`,
+          `/api/monthly_routes/library/${locationId}`,
           {
             method: 'PATCH',
             body: JSON.stringify({

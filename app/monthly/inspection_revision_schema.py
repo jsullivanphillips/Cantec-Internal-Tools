@@ -15,13 +15,13 @@ Monitoring (structured):
 
 Annual pending (technician proposal for office approval):
   - Same as plain text for ``annual_month`` pending pipeline; canonical ``annual_month``
-    on ``MonthlyRouteLocation`` updates only after office approval.
+    on ``MonthlyLocation`` updates only after office approval.
 
 Restore:
   - Set ``restored_from_revision_id`` on the new revision row to the revision whose
     effective value was reapplied.
 
-Actor roles (``MonthlyRouteLocationInspectionRevision.actor_role``):
+Actor roles (``MonthlyLocationInspectionRevision.actor_role``):
   ``technician``, ``office``, ``system``, ``import``
 
 Monitoring proposal statuses (``MonitoringCompanyProposal.status``):

@@ -4,6 +4,7 @@ import MonitoringCompanySelect, {
   monitoringCompanyPhonesText,
 } from './MonitoringCompanySelect'
 import type { PortalFieldEditActions } from './PortalEditableFieldRow'
+import PortalFieldEditActionButtons from './PortalFieldEditActionButtons'
 import { schedulePortalFieldRowScroll } from './portalFieldEditRegistry'
 import type { MonitoringCompanySummary } from './monthlyRoutesShared'
 
@@ -18,7 +19,7 @@ type PortalMonitoringCompanyFieldProps = {
   readOnly?: boolean
   editingField: string | null
   onEditingFieldChange: (key: string | null) => void
-  onSave: (companyId: number | null) => void
+  onSave: (companyId: number | null) => void | Promise<void>
   onCompanyCreated?: (company: MonitoringCompanySummary) => void
   onRegisterFieldEditActions?: (actions: PortalFieldEditActions) => void
   onUnregisterFieldEditActions?: (fieldKey: string) => void
@@ -46,6 +47,7 @@ export default function PortalMonitoringCompanyField({
   const inputId = useId()
   const rowRef = useRef<HTMLDivElement>(null)
   const [draftId, setDraftId] = useState<number | null>(companyId)
+  const [saving, setSaving] = useState(false)
   const editing = !readOnly && editingField === fieldKey
 
   const displayName =
@@ -55,18 +57,44 @@ export default function PortalMonitoringCompanyField({
   const phones = monitoringCompanyPhonesText(companyRecord ?? companies.find((row) => row.id === companyId))
 
   useEffect(() => {
-    if (!editing) setDraftId(companyId)
+    if (!editing) {
+      setDraftId(companyId)
+      setSaving(false)
+    }
   }, [companyId, editing])
 
-  const commit = useCallback(() => {
-    if (draftId !== companyId) onSave(draftId)
-    onEditingFieldChange(null)
-  }, [companyId, draftId, onEditingFieldChange, onSave])
+  const commit = useCallback(async () => {
+    if (saving) return
+    if (draftId === companyId) {
+      onEditingFieldChange(null)
+      return
+    }
+    setSaving(true)
+    try {
+      await onSave(draftId)
+      onEditingFieldChange(null)
+    } catch {
+      // Parent surfaces save errors; keep edit mode open.
+    } finally {
+      setSaving(false)
+    }
+  }, [companyId, draftId, onEditingFieldChange, onSave, saving])
 
   const cancel = useCallback(() => {
+    if (saving) return
     setDraftId(companyId)
     onEditingFieldChange(null)
-  }, [companyId, onEditingFieldChange])
+  }, [companyId, onEditingFieldChange, saving])
+
+  const handleEditBlur = useCallback(
+    (e: React.FocusEvent) => {
+      if (saving) return
+      const related = e.relatedTarget as Node | null
+      if (related && rowRef.current?.contains(related)) return
+      cancel()
+    },
+    [cancel, saving],
+  )
 
   const commitRef = useRef(commit)
   const cancelRef = useRef(cancel)
@@ -84,7 +112,7 @@ export default function PortalMonitoringCompanyField({
     const actions: PortalFieldEditActions = {
       fieldKey,
       cancel: () => cancelRef.current(),
-      save: () => commitRef.current(),
+      save: () => void commitRef.current(),
     }
     if (onRegisterFieldEditActions) {
       onRegisterFieldEditActions(actions)
@@ -143,13 +171,13 @@ export default function PortalMonitoringCompanyField({
       <label className="pw-mock-field-label" htmlFor={inputId}>
         {label}
       </label>
-      <div className="pw-mock-field-value">
+      <div className="pw-mock-field-value" onBlur={handleEditBlur}>
         <MonitoringCompanySelect
           id={inputId}
           className="pw-mock-field-input"
           companies={companies}
           value={draftId}
-          disabled={companiesLoading}
+          disabled={companiesLoading || saving}
           onChange={setDraftId}
           onCompanyCreated={onCompanyCreated}
         />
@@ -158,18 +186,11 @@ export default function PortalMonitoringCompanyField({
             {monitoringCompanyPhonesText(companies.find((row) => row.id === draftId))}
           </div>
         ) : null}
-        <div className="pw-mock-field-edit-actions">
-          <button type="button" className="pw-mock-field-edit-btn" onClick={cancel}>
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="pw-mock-field-edit-btn pw-mock-field-edit-btn--primary"
-            onClick={commit}
-          >
-            Save
-          </button>
-        </div>
+        <PortalFieldEditActionButtons
+          saving={saving}
+          onCancel={cancel}
+          onSubmit={() => void commit()}
+        />
       </div>
     </div>
   )

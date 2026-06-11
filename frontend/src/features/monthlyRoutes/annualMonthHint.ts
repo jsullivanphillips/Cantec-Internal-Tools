@@ -1,19 +1,22 @@
-import type { MonthlyRunDetailLocationStop } from './monthlyRoutesShared'
-import { locationStopAsWorksheetStop } from './runDetailsLocationReview'
+import type { MonthlyRunDetailLocation } from './monthlyRoutesShared'
+import { runDetailLocationAsWorksheetLocation } from './runDetailsLocationReview'
 import { officeStopStatus } from './officeWorksheetTableShared'
 
 export function stopAnnualDueThisMonth(
-  stop: MonthlyRunDetailLocationStop,
+  stop: MonthlyRunDetailLocation,
   locationLabel: string,
   monthDate: string,
 ): boolean {
-  const ws = locationStopAsWorksheetStop(stop, locationLabel)
+  const ws = runDetailLocationAsWorksheetLocation({
+    ...stop,
+    display_address: stop.display_address || locationLabel,
+  })
   return officeStopStatus(ws, monthDate) === 'annual'
 }
 
 /** Optional hint under the annual month field when unset. */
 export function annualMonthHint(
-  stop: MonthlyRunDetailLocationStop,
+  stop: MonthlyRunDetailLocation,
   _locationLabel: string,
   _monthDate: string,
 ): string | undefined {

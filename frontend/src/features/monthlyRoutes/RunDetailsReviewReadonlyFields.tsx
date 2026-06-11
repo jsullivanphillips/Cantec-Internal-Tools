@@ -1,5 +1,5 @@
 import { worksheetReadOnlyDisplay } from './officeWorksheetTableShared'
-import type { MonthlyRunDetailLocationStop } from './monthlyRoutesShared'
+import type { MonthlyRunDetailLocation } from './monthlyRoutesShared'
 import { stopHasNewCommentField, type RunDetailNewCommentField } from './runDetailsLocationReview'
 
 export function ReviewReadonlyDisplay({
@@ -54,7 +54,7 @@ export function ReviewReadonlyCommentCell({
   field,
   value,
 }: {
-  stop: MonthlyRunDetailLocationStop
+  stop: MonthlyRunDetailLocation
   field: RunDetailNewCommentField
   value: string | null | undefined
 }) {

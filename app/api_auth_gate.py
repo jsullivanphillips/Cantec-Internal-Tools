@@ -9,7 +9,7 @@ from flask import jsonify, request, session
 #   GET   /api/monthly_routes/routes/<id>/worksheet
 #   GET   /api/monthly_routes/routes/<id>/worksheet/stream   (SSE)
 #   PATCH /api/monthly_routes/routes/<id>/worksheet/rows/<locId>
-#   PATCH /api/monthly_routes/routes/<id>/worksheet/stops/<testingSiteId>
+#   PATCH /api/monthly_routes/routes/<id>/worksheet/locations/<testingSiteId>
 #   POST  /api/monthly_routes/routes/<id>/worksheet/reset_run
 #   GET   /api/monthly_routes/routes/<id>/worksheet/rows/<locId>/audit
 _PORTAL_WORKSHEET_PATH_RE = re.compile(

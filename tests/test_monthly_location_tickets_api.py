@@ -8,13 +8,14 @@ import pytest
 
 from app import create_app
 from app.db_models import (
+    MonthlyLocation,
     MonthlyLocationTicket,
     MonthlyLocationTicketEvent,
     MonthlyRoute,
-    MonthlyRouteLocation,
     MonthlyRouteRun,
     db,
 )
+from tests.monthly_location_helpers import make_location
 
 
 @pytest.fixture
@@ -29,7 +30,7 @@ def ticket_client():
 
     tables = [
         MonthlyRoute.__table__,
-        MonthlyRouteLocation.__table__,
+        MonthlyLocation.__table__,
         MonthlyRouteRun.__table__,
         MonthlyLocationTicket.__table__,
         MonthlyLocationTicketEvent.__table__,
@@ -38,16 +39,11 @@ def ticket_client():
     with app.app_context():
         db.metadata.create_all(db.engine, tables=tables)
         route = MonthlyRoute(id=1, route_number=1, weekday_iso=0, week_occurrence=1)
-        loc = MonthlyRouteLocation(
+        loc = make_location(
             id=10,
             address="1 Main",
-            address_normalized="1 main",
             property_management_company="x",
             property_management_company_normalized="x",
-            building=None,
-            building_normalized="",
-            status_normalized="active",
-            status_raw="Active",
             monthly_route_id=1,
         )
         run = MonthlyRouteRun(

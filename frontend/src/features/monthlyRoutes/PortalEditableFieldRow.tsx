@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { annualMonthSelectChoiceValues, normalizeAnnualMonthForSelect } from './monthlyRoutesShared'
+import PortalFieldEditActionButtons from './PortalFieldEditActionButtons'
 import { schedulePortalFieldRowScroll } from './portalFieldEditRegistry'
 
 export type PortalFieldEditActions = {
@@ -12,23 +13,29 @@ type PortalEditableFieldRowProps = {
   fieldKey: string
   label: string
   value: string
+  /** Short helper shown under the field label. */
+  hint?: string
   multiline?: boolean
   readOnly?: boolean
   editingField: string | null
   onEditingFieldChange: (key: string | null) => void
-  onSave: (next: string) => void
+  onSave: (next: string) => void | Promise<void>
   onRegisterFieldEditActions?: (actions: PortalFieldEditActions) => void
   onUnregisterFieldEditActions?: (fieldKey: string) => void
   /** @deprecated Use onRegisterFieldEditActions / onUnregisterFieldEditActions */
   onEditActionsChange?: (actions: PortalFieldEditActions | null) => void
   /** When true, edit with a month-of-year dropdown instead of free text. */
   monthSelect?: boolean
+  /** When true, open the month select dropdown as soon as edit mode starts (requires user gesture). */
+  autoOpenSelect?: boolean
+  onAutoOpenSelectDone?: () => void
 }
 
 export default function PortalEditableFieldRow({
   fieldKey,
   label,
   value,
+  hint,
   multiline,
   readOnly,
   editingField,
@@ -38,12 +45,15 @@ export default function PortalEditableFieldRow({
   onUnregisterFieldEditActions,
   onEditActionsChange,
   monthSelect = false,
+  autoOpenSelect = false,
+  onAutoOpenSelectDone,
 }: PortalEditableFieldRowProps) {
   const inputId = useId()
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(null)
   const rowRef = useRef<HTMLDivElement>(null)
   const normalizedValue = monthSelect ? normalizeAnnualMonthForSelect(value) : value.trim()
   const [draft, setDraft] = useState(normalizedValue)
+  const [saving, setSaving] = useState(false)
   const editing = !readOnly && editingField === fieldKey
   const display = monthSelect ? normalizedValue || '—' : value.trim() || '—'
 
@@ -53,7 +63,10 @@ export default function PortalEditableFieldRow({
   }, [monthSelect, value])
 
   useEffect(() => {
-    if (!editing) setDraft(monthSelect ? normalizeAnnualMonthForSelect(value) : value)
+    if (!editing) {
+      setDraft(monthSelect ? normalizeAnnualMonthForSelect(value) : value)
+      setSaving(false)
+    }
   }, [value, editing, monthSelect])
 
   useLayoutEffect(() => {
@@ -61,22 +74,48 @@ export default function PortalEditableFieldRow({
     return schedulePortalFieldRowScroll(rowRef)
   }, [editing])
 
-  const commit = useCallback(() => {
+  const commit = useCallback(async () => {
+    if (saving) return
     const next = draft.trim()
     const committed = monthSelect ? normalizeAnnualMonthForSelect(value) : value.trim()
-    if (next !== committed) onSave(next)
-    onEditingFieldChange(null)
-  }, [draft, monthSelect, onEditingFieldChange, onSave, value])
+    if (next === committed) {
+      onEditingFieldChange(null)
+      return
+    }
+    setSaving(true)
+    try {
+      await onSave(next)
+      onEditingFieldChange(null)
+    } catch {
+      // Parent surfaces save errors; keep edit mode open.
+    } finally {
+      setSaving(false)
+    }
+  }, [draft, monthSelect, onEditingFieldChange, onSave, saving, value])
 
   const cancel = useCallback(() => {
+    if (saving) return
     setDraft(monthSelect ? normalizeAnnualMonthForSelect(value) : value)
     onEditingFieldChange(null)
-  }, [monthSelect, onEditingFieldChange, value])
+  }, [monthSelect, onEditingFieldChange, saving, value])
+
+  const handleEditBlur = useCallback(
+    (e: React.FocusEvent) => {
+      if (saving) return
+      const related = e.relatedTarget as Node | null
+      if (related && rowRef.current?.contains(related)) return
+      cancel()
+    },
+    [cancel, saving],
+  )
 
   const commitRef = useRef(commit)
   const cancelRef = useRef(cancel)
   commitRef.current = commit
   cancelRef.current = cancel
+
+  const onAutoOpenSelectDoneRef = useRef(onAutoOpenSelectDone)
+  onAutoOpenSelectDoneRef.current = onAutoOpenSelectDone
 
   useLayoutEffect(() => {
     if (!editing) return undefined
@@ -88,10 +127,25 @@ export default function PortalEditableFieldRow({
       input?.focus()
     }
 
+    if (monthSelect && autoOpenSelect && input instanceof HTMLSelectElement) {
+      try {
+        input.showPicker()
+      } catch {
+        // showPicker may fail outside a user gesture or on unsupported browsers.
+      }
+      onAutoOpenSelectDoneRef.current?.()
+    }
+
+    return undefined
+  }, [editing, monthSelect, autoOpenSelect])
+
+  useLayoutEffect(() => {
+    if (!editing) return undefined
+
     const actions: PortalFieldEditActions = {
       fieldKey,
       cancel: () => cancelRef.current(),
-      save: () => commitRef.current(),
+      save: () => void commitRef.current(),
     }
     if (onRegisterFieldEditActions) {
       onRegisterFieldEditActions(actions)
@@ -120,6 +174,15 @@ export default function PortalEditableFieldRow({
     onEditingFieldChange(fieldKey)
   }
 
+  const labelBlock = hint ? (
+    <>
+      <span>{label}</span>
+      <span className="pw-mock-field-hint">{hint}</span>
+    </>
+  ) : (
+    label
+  )
+
   if (!editing) {
     return (
       <div
@@ -137,7 +200,7 @@ export default function PortalEditableFieldRow({
           }
         }}
       >
-        <div className="pw-mock-field-label">{label}</div>
+        <div className="pw-mock-field-label">{labelBlock}</div>
         <div className="pw-mock-field-value">{display}</div>
       </div>
     )
@@ -151,9 +214,9 @@ export default function PortalEditableFieldRow({
       }`}
     >
       <label className="pw-mock-field-label" htmlFor={inputId}>
-        {label}
+        {labelBlock}
       </label>
-      <div className="pw-mock-field-value">
+      <div className="pw-mock-field-value" onBlur={handleEditBlur}>
         {multiline ? (
           <textarea
             ref={inputRef as RefObject<HTMLTextAreaElement>}
@@ -161,6 +224,7 @@ export default function PortalEditableFieldRow({
             className="pw-mock-field-input"
             rows={4}
             value={draft}
+            disabled={saving}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Escape') {
@@ -179,6 +243,7 @@ export default function PortalEditableFieldRow({
             id={inputId}
             className="pw-mock-field-input pw-mock-field-select"
             value={draft}
+            disabled={saving}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
@@ -204,6 +269,7 @@ export default function PortalEditableFieldRow({
             type="text"
             className="pw-mock-field-input"
             value={draft}
+            disabled={saving}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
@@ -217,18 +283,11 @@ export default function PortalEditableFieldRow({
             }}
           />
         )}
-        <div className="pw-mock-field-edit-actions">
-          <button type="button" className="pw-mock-field-edit-btn" onClick={cancel}>
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="pw-mock-field-edit-btn pw-mock-field-edit-btn--primary"
-            onClick={commit}
-          >
-            Save
-          </button>
-        </div>
+        <PortalFieldEditActionButtons
+          saving={saving}
+          onCancel={cancel}
+          onSubmit={() => void commit()}
+        />
       </div>
     </div>
   )

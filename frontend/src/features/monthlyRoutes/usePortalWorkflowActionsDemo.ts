@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from 'react'
-import type { TechnicianWorksheetStop } from './monthlyRoutesShared'
+import type { TechnicianWorksheetLocation } from './monthlyRoutesShared'
 import {
   PORTAL_OUTCOME_VALIDATION_MESSAGES,
   portalStopActiveDeficiencies,
@@ -17,12 +17,12 @@ function hhmmNow(): string {
   return `${h}:${m} ${ampm}`
 }
 
-type PatchStop = (testingSiteId: number, patch: Partial<TechnicianWorksheetStop>) => void
+type PatchStop = (locationId: number, patch: Partial<TechnicianWorksheetLocation>) => void
 
 function mergeStopPatch(
-  stop: TechnicianWorksheetStop,
-  patch: Partial<TechnicianWorksheetStop>,
-): TechnicianWorksheetStop {
+  stop: TechnicianWorksheetLocation,
+  patch: Partial<TechnicianWorksheetLocation>,
+): TechnicianWorksheetLocation {
   return { ...stop, ...patch }
 }
 
@@ -31,12 +31,12 @@ export function usePortalWorkflowActionsDemo(
   runId: number | null = null,
 ) {
   const mergeStop = useCallback(
-    (stop: TechnicianWorksheetStop) => patchStop(stop.testing_site_id, stop),
+    (stop: TechnicianWorksheetLocation) => patchStop(stop.location_id, stop),
     [patchStop],
   )
 
   const clockIn = useCallback(
-    async (stop: TechnicianWorksheetStop) => {
+    async (stop: TechnicianWorksheetLocation) => {
       const timeIn = hhmmNow()
       const events = [...(stop.clock_events ?? [])]
       const maxSort = events.reduce((m, ev) => Math.max(m, ev.sort_order), 0)
@@ -49,14 +49,14 @@ export function usePortalWorkflowActionsDemo(
         time_out: null,
         has_run_changes: true,
       }
-      patchStop(stop.testing_site_id, patch)
+      patchStop(stop.location_id, patch)
       return { ok: true, stop: mergeStopPatch(stop, patch) }
     },
     [patchStop],
   )
 
   const clockOut = useCallback(
-    async (stop: TechnicianWorksheetStop) => {
+    async (stop: TechnicianWorksheetLocation) => {
       const timeOut = hhmmNow()
       const events = (stop.clock_events ?? []).map((ev) =>
         ev.time_in && !ev.time_out?.trim() ? { ...ev, time_out: timeOut } : ev,
@@ -66,14 +66,14 @@ export function usePortalWorkflowActionsDemo(
         time_out: timeOut,
         has_run_changes: true,
       }
-      patchStop(stop.testing_site_id, patch)
+      patchStop(stop.location_id, patch)
       return { ok: true, stop: mergeStopPatch(stop, patch) }
     },
     [patchStop],
   )
 
   const cancelClockIn = useCallback(
-    async (stop: TechnicianWorksheetStop) => {
+    async (stop: TechnicianWorksheetLocation) => {
       const events = (stop.clock_events ?? []).filter((ev) => ev.time_out?.trim())
       const closed = events.filter((ev) => ev.time_out?.trim())
       const lastClosed = closed.length > 0 ? closed[closed.length - 1] : null
@@ -83,7 +83,7 @@ export function usePortalWorkflowActionsDemo(
         time_out: lastClosed?.time_out ?? null,
         has_run_changes: events.length > 0 || Boolean(stop.test_outcome),
       }
-      patchStop(stop.testing_site_id, patch)
+      patchStop(stop.location_id, patch)
       return { ok: true, stop: mergeStopPatch(stop, patch) }
     },
     [patchStop],
@@ -91,7 +91,7 @@ export function usePortalWorkflowActionsDemo(
 
   const setTestOutcome = useCallback(
     async (
-      stop: TechnicianWorksheetStop,
+      stop: TechnicianWorksheetLocation,
       testOutcome: PortalTestOutcome,
       opts?: {
         skipCategory?: PortalSkipCategory
@@ -127,7 +127,7 @@ export function usePortalWorkflowActionsDemo(
         confirmed_no_deficiencies: opts?.confirmedNoDeficiencies ?? false,
         has_run_changes: true,
       }
-      patchStop(stop.testing_site_id, patch)
+      patchStop(stop.location_id, patch)
       return { ok: true, stop: mergeStopPatch(stop, patch) }
     },
     [patchStop, runId],
@@ -135,13 +135,13 @@ export function usePortalWorkflowActionsDemo(
 
   const createDeficiency = useCallback(
     async (
-      stop: TechnicianWorksheetStop,
+      stop: TechnicianWorksheetLocation,
       body: { title: string; severity: string; status: string; description?: string },
     ) => {
       const list = [...(stop.deficiencies ?? [])]
       const row: PortalDeficiencySummary = {
         id: Date.now(),
-        monthly_testing_site_id: stop.testing_site_id,
+        monthly_location_id: stop.location_id,
         created_run_id: runId,
         title: body.title,
         severity: body.severity,
@@ -149,7 +149,7 @@ export function usePortalWorkflowActionsDemo(
         description: body.description ?? null,
         verification_notes: null,
       }
-      const patch: Partial<TechnicianWorksheetStop> = {
+      const patch: Partial<TechnicianWorksheetLocation> = {
         deficiencies: [...list, row],
         has_run_changes: true,
       }
@@ -157,7 +157,7 @@ export function usePortalWorkflowActionsDemo(
         patch.test_outcome = 'passed_with_problems'
         patch.confirmed_no_deficiencies = false
       }
-      patchStop(stop.testing_site_id, patch)
+      patchStop(stop.location_id, patch)
       return { ok: true, stop: mergeStopPatch(stop, patch) }
     },
     [patchStop, runId],
@@ -165,32 +165,32 @@ export function usePortalWorkflowActionsDemo(
 
   const updateDeficiency = useCallback(
     async (
-      stop: TechnicianWorksheetStop,
+      stop: TechnicianWorksheetLocation,
       deficiencyId: number,
       body: { title?: string; severity?: string; status?: string; description?: string },
     ) => {
       const list = (stop.deficiencies ?? []).map((d) =>
         d.id === deficiencyId ? { ...d, ...body } : d,
       )
-      patchStop(stop.testing_site_id, { deficiencies: list, has_run_changes: true })
+      patchStop(stop.location_id, { deficiencies: list, has_run_changes: true })
       return { ok: true }
     },
     [patchStop],
   )
 
   const verifyDeficiency = useCallback(
-    async (stop: TechnicianWorksheetStop, deficiencyId: number) => {
+    async (stop: TechnicianWorksheetLocation, deficiencyId: number) => {
       const list = (stop.deficiencies ?? []).map((d) =>
         d.id === deficiencyId ? { ...d, status: 'verified' } : d,
       )
-      patchStop(stop.testing_site_id, { deficiencies: list, has_run_changes: true })
+      patchStop(stop.location_id, { deficiencies: list, has_run_changes: true })
       return { ok: true }
     },
     [patchStop],
   )
 
-  const resetStop = useCallback(async (stop: TechnicianWorksheetStop) => {
-    patchStop(stop.testing_site_id, {
+  const resetStop = useCallback(async (stop: TechnicianWorksheetLocation) => {
+    patchStop(stop.location_id, {
       test_outcome: null,
       skip_category: null,
       skip_note: null,
@@ -208,19 +208,19 @@ export function usePortalWorkflowActionsDemo(
   const refreshDeficiencies = useCallback(async () => {}, [])
 
   const transitionClock = useCallback(
-    async (fromStop: TechnicianWorksheetStop, toStop: TechnicianWorksheetStop) => {
+    async (fromStop: TechnicianWorksheetLocation, toStop: TechnicianWorksheetLocation) => {
       const timeOut = hhmmNow()
       const timeIn = hhmmNow()
       const fromEvents = (fromStop.clock_events ?? []).map((ev) =>
         ev.time_in && !ev.time_out?.trim() ? { ...ev, time_out: timeOut } : ev,
       )
-      patchStop(fromStop.testing_site_id, {
+      patchStop(fromStop.location_id, {
         clock_events: fromEvents.length ? fromEvents : fromStop.clock_events,
         time_out: timeOut,
       })
       const toEvents = [...(toStop.clock_events ?? [])]
       const maxSort = toEvents.reduce((m, ev) => Math.max(m, ev.sort_order), 0)
-      patchStop(toStop.testing_site_id, {
+      patchStop(toStop.location_id, {
         clock_events: [
           ...toEvents,
           { id: -Date.now(), sort_order: maxSort + 1, time_in: timeIn, time_out: null },

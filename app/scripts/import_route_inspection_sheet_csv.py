@@ -95,10 +95,10 @@ def _run_cli(
         from app.monthly.field_submission import capture_field_submission_for_run
         from app.monthly.run_workflow import (
             close_historical_run_from_csv_import,
-            is_historical_run_month,
+            should_auto_close_run_from_csv_import,
         )
 
-        if is_historical_run_month(month_date):
+        if should_auto_close_run_from_csv_import(month_date):
             now = datetime.now(ZoneInfo("America/Vancouver"))
             close_historical_run_from_csv_import(
                 run,
@@ -107,7 +107,7 @@ def _run_cli(
             )
             capture_field_submission_for_run(run, captured_at=now)
             db.session.commit()
-            print("[inspection-csv] Historical month — run marked completed.", flush=True)
+            print("[inspection-csv] Run marked completed after CSV import.", flush=True)
 
     print(
         f"[inspection-csv] route_number={result.route_number} route_id={result.route_id} "

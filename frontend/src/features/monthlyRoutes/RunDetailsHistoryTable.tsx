@@ -1,5 +1,5 @@
 import OfficeWorksheetReadOnlyTable from './OfficeWorksheetReadOnlyTable'
-import type { TechnicianWorksheetStop } from './monthlyRoutesShared'
+import type { TechnicianWorksheetLocation } from './monthlyRoutesShared'
 
 function formatCapturedAt(iso: string): string {
   return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(
@@ -14,7 +14,7 @@ export default function RunDetailsHistoryTable({
   fieldWorkReopened,
   runCompleted,
 }: {
-  stops: TechnicianWorksheetStop[]
+  stops: TechnicianWorksheetLocation[]
   monthDate: string
   capturedAt: string | null
   fieldWorkReopened: boolean

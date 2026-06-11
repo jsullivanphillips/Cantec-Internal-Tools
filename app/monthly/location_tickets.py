@@ -8,9 +8,9 @@ from sqlalchemy.exc import OperationalError, ProgrammingError
 
 from app.db_models import (
     LOCATION_TICKET_STATUSES,
+    MonthlyLocation,
     MonthlyLocationTicket,
     MonthlyLocationTicketEvent,
-    MonthlyRouteLocation,
     MonthlyRouteRun,
     db,
 )
@@ -42,7 +42,7 @@ def _validate_status(status: str) -> str | None:
 def serialize_ticket(ticket: MonthlyLocationTicket) -> dict[str, object]:
     return {
         "id": int(ticket.id),
-        "location_id": int(ticket.monthly_route_location_id),
+        "location_id": int(ticket.monthly_location_id),
         "run_id": int(ticket.run_id) if ticket.run_id is not None else None,
         "month_date": ticket.month_date.isoformat() if ticket.month_date else None,
         "title": ticket.title,
@@ -69,7 +69,7 @@ def serialize_ticket_event(event: MonthlyLocationTicketEvent) -> dict[str, objec
 
 def list_tickets_for_location(location_id: int) -> list[dict[str, object]]:
     rows = (
-        MonthlyLocationTicket.query.filter_by(monthly_route_location_id=int(location_id))
+        MonthlyLocationTicket.query.filter_by(monthly_location_id=int(location_id))
         .order_by(
             MonthlyLocationTicket.status.asc(),
             MonthlyLocationTicket.updated_at.desc(),
@@ -85,20 +85,20 @@ def count_open_tickets_for_location(location_id: int) -> int:
 
 
 def count_open_tickets_by_location(location_ids: list[int]) -> dict[int, int]:
-    """Open ticket counts keyed by ``monthly_route_location_id`` (one query)."""
+    """Open ticket counts keyed by ``monthly_location_id`` (one query)."""
     if not location_ids:
         return {}
     try:
         rows = (
             db.session.query(
-                MonthlyLocationTicket.monthly_route_location_id,
+                MonthlyLocationTicket.monthly_location_id,
                 db.func.count(MonthlyLocationTicket.id),
             )
             .filter(
-                MonthlyLocationTicket.monthly_route_location_id.in_([int(i) for i in location_ids]),
+                MonthlyLocationTicket.monthly_location_id.in_([int(i) for i in location_ids]),
                 MonthlyLocationTicket.status != "resolved",
             )
-            .group_by(MonthlyLocationTicket.monthly_route_location_id)
+            .group_by(MonthlyLocationTicket.monthly_location_id)
             .all()
         )
     except (OperationalError, ProgrammingError):
@@ -116,11 +116,11 @@ def create_location_ticket(
     run: MonthlyRouteRun | None = None,
     month_first: date | None = None,
 ) -> MonthlyLocationTicket:
-    loc = db.session.get(MonthlyRouteLocation, int(location_id))
+    loc = db.session.get(MonthlyLocation, int(location_id))
     if loc is None:
         raise ValueError("location_not_found")
     ticket_kwargs: dict = {
-        "monthly_route_location_id": int(location_id),
+        "monthly_location_id": int(location_id),
         "run_id": int(run.id) if run is not None else None,
         "month_date": month_first,
         "title": title.strip(),

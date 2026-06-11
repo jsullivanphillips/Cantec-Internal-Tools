@@ -13,9 +13,16 @@ from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert
 
 from app import create_app, db
-from app.db_models import MonthlyRouteLocation, MonthlyRouteTestHistory
+from app.db_models import MonthlyLocation, MonthlyLocationMonth
 from app.monthly.key_resolve import keycode_cf_to_key_id_map, resolve_key_id_for_monthly_fields
-from app.monthly.monthly_sites_sync import refresh_primary_testing_site_from_legacy
+from app.monthly.location_identity import normalize_address, normalize_label, normalize_pmc
+from app.monthly.route_inspection_csv_import import (
+    load_locations_by_canonical_street,
+    lookup_locations_for_sheet_street,
+    parse_address_block,
+    resolve_monthly_location_by_sheet_identity,
+)
+from app.monthly.route_sync import sync_monthly_route_fk_for_location
 
 LOG = logging.getLogger("upload_monthly_sheet")
 
@@ -41,7 +48,7 @@ class MissingReasonLog:
 class SkipReasonOverride:
     address: str
     property_management_company: str | None
-    building: str | None
+    building: str | None  # legacy CSV column name; stored as location label
     month_date: date
     skip_reason: str
     source_row_number: int
@@ -55,16 +62,17 @@ def _normalize_space(value: str | None) -> str:
     return " ".join((value or "").strip().split())
 
 
+def _normalize_building(value: str | None) -> str:
+    """Legacy alias: sheet NOTES column maps to location label."""
+    return normalize_label(value)
+
+
 def _normalize_address(value: str | None) -> str:
-    return _normalize_space(value).casefold()
+    return normalize_address(value)
 
 
 def _normalize_company(value: str | None) -> str:
-    return _normalize_space(value).casefold()
-
-
-def _normalize_building(value: str | None) -> str:
-    return _normalize_space(value).casefold()
+    return normalize_pmc(value)
 
 
 def _normalize_status(value: str | None) -> str:
@@ -291,13 +299,19 @@ def _upsert_location(
         keys_text,
         keycode_cf_index=keycode_cf_index,
     )
+    street, building_from_block, mgmt_in_block = parse_address_block(row.get("ADDRESS"))
+    address_line = street or _normalize_space(row.get("ADDRESS"))
+    building_name = _clean_text(building_from_block)
+    pmc_raw = _clean_text(row.get("PROPERTY MANAGEMENT COMPANY")) or _clean_text(mgmt_in_block)
+    label = _clean_text(row.get("NOTES")) or address_line
     payload = {
-        "address": _normalize_space(row.get("ADDRESS")),
-        "address_normalized": _normalize_address(row.get("ADDRESS")),
-        "property_management_company": _clean_text(row.get("PROPERTY MANAGEMENT COMPANY")),
-        "property_management_company_normalized": _normalize_company(row.get("PROPERTY MANAGEMENT COMPANY")),
-        "building": _clean_text(row.get("NOTES")),
-        "building_normalized": _normalize_building(row.get("NOTES")),
+        "address": address_line,
+        "address_normalized": _normalize_address(address_line),
+        "label": label,
+        "label_normalized": _normalize_building(row.get("NOTES")) or _normalize_address(address_line),
+        "building_name": building_name,
+        "property_management_company": pmc_raw,
+        "property_management_company_normalized": _normalize_company(pmc_raw),
         "notes": _clean_text(row.get("NOTES")),
         "barcode": barcode,
         "price_per_month": _parse_price(row.get("Price/month")),
@@ -312,15 +326,16 @@ def _upsert_location(
         "updated_at": now,
     }
 
-    stmt = insert(MonthlyRouteLocation).values(**payload)
+    stmt = insert(MonthlyLocation).values(**payload)
     stmt = stmt.on_conflict_do_update(
-        constraint="uq_monthly_route_location_address_company_building_normalized",
+        constraint="uq_monthly_location_address_pmc_label_normalized",
         set_={
             "address": stmt.excluded.address,
+            "label": stmt.excluded.label,
+            "label_normalized": stmt.excluded.label_normalized,
+            "building_name": stmt.excluded.building_name,
             "property_management_company": stmt.excluded.property_management_company,
             "property_management_company_normalized": stmt.excluded.property_management_company_normalized,
-            "building": stmt.excluded.building,
-            "building_normalized": stmt.excluded.building_normalized,
             "notes": stmt.excluded.notes,
             "barcode": stmt.excluded.barcode,
             "price_per_month": stmt.excluded.price_per_month,
@@ -334,7 +349,7 @@ def _upsert_location(
             "key_id": stmt.excluded.key_id,
             "updated_at": stmt.excluded.updated_at,
         },
-    ).returning(MonthlyRouteLocation.id)
+    ).returning(MonthlyLocation.id)
     return int(db.session.execute(stmt).scalar_one())
 
 
@@ -348,8 +363,8 @@ def _upsert_history(
     test_monthly_route_id: int | None = None,
 ) -> None:
     now = datetime.now(timezone.utc)
-    stmt = insert(MonthlyRouteTestHistory).values(
-        location_id=location_id,
+    stmt = insert(MonthlyLocationMonth).values(
+        monthly_location_id=location_id,
         month_date=month_date,
         result_status=result_status,
         skip_reason=skip_reason,
@@ -368,30 +383,39 @@ def _upsert_history(
     if test_monthly_route_id is not None:
         set_["test_monthly_route_id"] = stmt.excluded.test_monthly_route_id
     stmt = stmt.on_conflict_do_update(
-        constraint="uq_monthly_route_test_history_location_month",
+        constraint="uq_mlm_location_month",
         set_=set_,
     )
     db.session.execute(stmt)
 
 
+def _sheet_row_identity(row: dict[str, str]) -> tuple[str, str, str, str]:
+    """Parsed master-sheet identity: address_norm, pmc_norm, label_norm, street_display."""
+    street, _, mgmt_in_block = parse_address_block(row.get("ADDRESS"))
+    address_line = street or _normalize_space(row.get("ADDRESS"))
+    pmc_raw = _clean_text(row.get("PROPERTY MANAGEMENT COMPANY")) or mgmt_in_block
+    notes_raw = _clean_text(row.get("NOTES"))
+    aid = _normalize_address(address_line)
+    cid = _normalize_company(pmc_raw)
+    lid = _normalize_building(notes_raw) or _normalize_building(address_line) or aid
+    return aid, cid, lid, address_line
+
+
 def _resolve_location_id_for_history_row(row: dict[str, str]) -> tuple[int | None, str | None]:
     """
-    Resolve ``MonthlyRouteLocation.id`` using the same normalized triple as
-    ``uq_monthly_route_location_address_company_building_normalized``.
+    Resolve ``MonthlyLocation.id`` using normalized address + PMC + label (NOTES column).
 
     Returns (location_id, None) on success, or (None, 'missing'/'ambiguous').
     """
-    aid = _normalize_address(row.get("ADDRESS"))
-    cid = _normalize_company(row.get("PROPERTY MANAGEMENT COMPANY"))
-    bid = _normalize_building(row.get("NOTES"))
+    aid, cid, lid, _street_display = _sheet_row_identity(row)
     if not aid:
         return None, "missing"
 
     location_ids = db.session.execute(
-        select(MonthlyRouteLocation.id).where(
-            MonthlyRouteLocation.address_normalized == aid,
-            MonthlyRouteLocation.property_management_company_normalized == cid,
-            MonthlyRouteLocation.building_normalized == bid,
+        select(MonthlyLocation.id).where(
+            MonthlyLocation.address_normalized == aid,
+            MonthlyLocation.property_management_company_normalized == cid,
+            MonthlyLocation.label_normalized == lid,
         )
     ).scalars().all()
 
@@ -400,6 +424,109 @@ def _resolve_location_id_for_history_row(row: dict[str, str]) -> tuple[int | Non
     if not location_ids:
         return None, "missing"
     return None, "ambiguous"
+
+
+def _resolve_location_id_for_status_routes_row(
+    row: dict[str, str],
+    *,
+    canonical_index: dict[str, list[MonthlyLocation]] | None = None,
+) -> tuple[int | None, str | None, str | None]:
+    """
+    Resolve an existing ``MonthlyLocation.id`` for status/route sync rows.
+
+    Tries strict address + PMC + label, then street-label + PMC, address + PMC,
+    and finally canonical street + PMC when technician-sheet addressing differs
+    from the library navigation address.
+    """
+    aid, cid, lid, street_display = _sheet_row_identity(row)
+    street_label = _normalize_building(street_display)
+
+    strict_id, strict_err = _resolve_location_id_for_history_row(row)
+    if strict_err is None:
+        return strict_id, None, "address_pmc_label"
+    if strict_err == "ambiguous":
+        return None, strict_err, None
+
+    if street_label and cid:
+        location_ids = db.session.execute(
+            select(MonthlyLocation.id).where(
+                MonthlyLocation.label_normalized == street_label,
+                MonthlyLocation.property_management_company_normalized == cid,
+            )
+        ).scalars().all()
+        if len(location_ids) == 1:
+            return int(location_ids[0]), None, "street_label_pmc"
+        if len(location_ids) > 1:
+            return None, "ambiguous", None
+
+    if aid and cid:
+        location_ids = db.session.execute(
+            select(MonthlyLocation.id).where(
+                MonthlyLocation.address_normalized == aid,
+                MonthlyLocation.property_management_company_normalized == cid,
+            )
+        ).scalars().all()
+        if len(location_ids) == 1:
+            return int(location_ids[0]), None, "address_pmc"
+        if len(location_ids) > 1:
+            return None, "ambiguous", None
+
+    if canonical_index is not None and street_display and cid:
+        at_address = lookup_locations_for_sheet_street(canonical_index, street_display)
+        if at_address:
+            loc, match_err, _detail = resolve_monthly_location_by_sheet_identity(
+                at_address=at_address,
+                property_management_company_normalized=cid,
+                label_normalized=street_label or lid,
+                street_display=street_display,
+                company_display=_clean_text(row.get("PROPERTY MANAGEMENT COMPANY")),
+                label_display=street_display,
+                match_basis="street",
+                sheet_building_key="",
+            )
+            if loc is not None:
+                return int(loc.id), None, "canonical_street_pmc"
+            if match_err == "ambiguous":
+                return None, "ambiguous", None
+
+    return None, "missing", None
+
+
+def _status_and_test_day_from_row(row: dict[str, str]) -> tuple[str, str | None, str | None]:
+    status_raw = _clean_text(row.get("STATUS- (ACTIVE, CANCELLED, ON HOLD)"))
+    return (
+        _normalize_status(row.get("STATUS- (ACTIVE, CANCELLED, ON HOLD)")),
+        status_raw,
+        _clean_text(row.get("TEST DAY")),
+    )
+
+
+def _apply_status_and_routes_update(
+    loc: MonthlyLocation,
+    row: dict[str, str],
+) -> tuple[bool, str | None]:
+    """Update only status + TEST DAY, then sync ``monthly_route_id`` when TEST DAY changed."""
+    new_status_normalized, new_status_raw, new_test_day = _status_and_test_day_from_row(row)
+    changed = False
+    if loc.status_normalized != new_status_normalized:
+        loc.status_normalized = new_status_normalized
+        changed = True
+    if (loc.status_raw or None) != new_status_raw:
+        loc.status_raw = new_status_raw
+        changed = True
+
+    test_day_changed = (loc.test_day or None) != new_test_day
+    if test_day_changed:
+        loc.test_day = new_test_day
+        changed = True
+
+    route_error: str | None = None
+    if test_day_changed:
+        try:
+            sync_monthly_route_fk_for_location(loc)
+        except ValueError as exc:
+            route_error = str(exc)
+    return changed, route_error
 
 
 def _apply_overrides_only(
@@ -419,26 +546,26 @@ def _apply_overrides_only(
 
     ambiguous_locations: list[dict[str, Any]] = []
 
-    for idx, ((address_normalized, company_normalized, building_normalized, month_date), override) in enumerate(override_items, start=1):
-        if building_normalized:
+    for idx, ((address_normalized, company_normalized, label_normalized, month_date), override) in enumerate(override_items, start=1):
+        if label_normalized:
             location_ids = db.session.execute(
-                select(MonthlyRouteLocation.id).where(
-                    MonthlyRouteLocation.address_normalized == address_normalized,
-                    MonthlyRouteLocation.property_management_company_normalized == company_normalized,
-                    MonthlyRouteLocation.building_normalized == building_normalized,
+                select(MonthlyLocation.id).where(
+                    MonthlyLocation.address_normalized == address_normalized,
+                    MonthlyLocation.property_management_company_normalized == company_normalized,
+                    MonthlyLocation.label_normalized == label_normalized,
                 )
             ).scalars().all()
         elif company_normalized:
             location_ids = db.session.execute(
-                select(MonthlyRouteLocation.id).where(
-                    MonthlyRouteLocation.address_normalized == address_normalized,
-                    MonthlyRouteLocation.property_management_company_normalized == company_normalized,
+                select(MonthlyLocation.id).where(
+                    MonthlyLocation.address_normalized == address_normalized,
+                    MonthlyLocation.property_management_company_normalized == company_normalized,
                 )
             ).scalars().all()
         else:
             location_ids = db.session.execute(
-                select(MonthlyRouteLocation.id).where(
-                    MonthlyRouteLocation.address_normalized == address_normalized
+                select(MonthlyLocation.id).where(
+                    MonthlyLocation.address_normalized == address_normalized
                 )
             ).scalars().all()
 
@@ -541,19 +668,19 @@ def _remap_existing_skip_reasons() -> tuple[int, int]:
     unmatched = 0
     for row in rows:
         location_ids = db.session.execute(
-            select(MonthlyRouteLocation.id).where(
-                MonthlyRouteLocation.address_normalized == row["address_normalized"],
-                MonthlyRouteLocation.property_management_company_normalized == row["property_management_company_normalized"],
-                MonthlyRouteLocation.building_normalized == _normalize_building(row.get("building", "")),
+            select(MonthlyLocation.id).where(
+                MonthlyLocation.address_normalized == row["address_normalized"],
+                MonthlyLocation.property_management_company_normalized == row["property_management_company_normalized"],
+                MonthlyLocation.label_normalized == _normalize_building(row.get("building", "")),
             )
         ).scalars().all()
 
         if not location_ids:
-            # Backward compatibility with backups that predate building_normalized.
+            # Backward compatibility with backups that predate label_normalized.
             location_ids = db.session.execute(
-                select(MonthlyRouteLocation.id).where(
-                    MonthlyRouteLocation.address_normalized == row["address_normalized"],
-                    MonthlyRouteLocation.property_management_company_normalized == row["property_management_company_normalized"],
+                select(MonthlyLocation.id).where(
+                    MonthlyLocation.address_normalized == row["address_normalized"],
+                    MonthlyLocation.property_management_company_normalized == row["property_management_company_normalized"],
                 )
             ).scalars().all()
 
@@ -563,9 +690,9 @@ def _remap_existing_skip_reasons() -> tuple[int, int]:
         location_id = location_ids[0]
 
         existing = db.session.execute(
-            select(MonthlyRouteTestHistory).where(
-                MonthlyRouteTestHistory.location_id == location_id,
-                MonthlyRouteTestHistory.month_date == row["month_date"],
+            select(MonthlyLocationMonth).where(
+                MonthlyLocationMonth.monthly_location_id == location_id,
+                MonthlyLocationMonth.month_date == row["month_date"],
             )
         ).scalar_one_or_none()
         if existing is None:
@@ -600,10 +727,13 @@ def run_upload(
     duplicates_csv_path: Path | None = None,
     history_only: bool = False,
     locations_only: bool = False,
+    status_and_routes_only: bool = False,
     month_years: frozenset[int] | None = None,
 ) -> None:
     if history_only and locations_only:
         raise ValueError("Cannot use history_only and locations_only together.")
+    if status_and_routes_only and (history_only or locations_only):
+        raise ValueError("Cannot combine --status-and-routes-only with --history-only or --locations-only.")
     mode = "dry-run (no DB commit)" if dry_run else "commit"
     print(f"[monthly-sheet] Starting upload ({mode}) …", flush=True)
     print(f"[monthly-sheet] Reading CSV: {csv_path}", flush=True)
@@ -624,7 +754,7 @@ def run_upload(
     print(f"[monthly-sheet] Parsed {len(rows)} data rows from file.", flush=True)
 
     month_columns: list[tuple[str, date]] = []
-    if not locations_only:
+    if not locations_only and not status_and_routes_only:
         for header in headers:
             parsed = _parse_month_header(header)
             if parsed:
@@ -653,10 +783,17 @@ def run_upload(
                 flush=True,
             )
     else:
-        print(
-            "[monthly-sheet] Locations-only mode: skipping month columns and test history import.",
-            flush=True,
-        )
+        if status_and_routes_only:
+            print(
+                "[monthly-sheet] Status-and-routes-only mode: updating STATUS and TEST DAY only; "
+                "skipping month columns and all other library fields.",
+                flush=True,
+            )
+        else:
+            print(
+                "[monthly-sheet] Locations-only mode: skipping month columns and test history import.",
+                flush=True,
+            )
 
     deduped: dict[str, tuple[dict[str, str], int]] = {}
     conflicts: list[RowConflict] = []
@@ -689,6 +826,8 @@ def run_upload(
         + (
             "Resolving existing locations and upserting monthly history only (no location upserts) …"
             if history_only
+            else "Updating STATUS and TEST DAY only (route FK sync when TEST DAY changes) …"
+            if status_and_routes_only
             else "Upserting library locations only (no test history) …"
             if locations_only
             else "Upserting locations and monthly history (this may take a minute) …"
@@ -700,8 +839,14 @@ def run_upload(
     invalid_rows: list[dict[str, Any]] = []
     history_missing_locations: list[dict[str, Any]] = []
     history_ambiguous_locations: list[dict[str, Any]] = []
+    status_routes_rows: list[dict[str, Any]] = []
     location_upserts = 0
     history_upserts = 0
+    status_routes_updated = 0
+    status_routes_unchanged = 0
+    status_routes_missing = 0
+    status_routes_ambiguous = 0
+    status_routes_route_errors = 0
     override_forced_history_rows = 0
 
     deduped_items = list(deduped.values())
@@ -713,8 +858,17 @@ def run_upload(
         )
     total_locations = len(deduped_items)
 
+    canonical_street_index: dict[str, list[MonthlyLocation]] | None = None
+    if status_and_routes_only:
+        canonical_street_index = load_locations_by_canonical_street()
+        print(
+            f"[monthly-sheet] Loaded canonical street index "
+            f"({len(canonical_street_index)} key(s)) for fallback matching.",
+            flush=True,
+        )
+
     keycode_cf_index: dict[str, int] = {}
-    if not history_only:
+    if not history_only and not status_and_routes_only:
         keycode_cf_index = keycode_cf_to_key_id_map()
         print(
             f"[monthly-sheet] Loaded {len(keycode_cf_index)} keycode index entr(y/ies) for key_id resolution.",
@@ -736,7 +890,67 @@ def run_upload(
             )
             continue
 
-        if history_only:
+        if status_and_routes_only:
+            resolved_id, resolve_err, match_mode = _resolve_location_id_for_status_routes_row(
+                row,
+                canonical_index=canonical_street_index,
+            )
+            row_result: dict[str, Any] = {
+                "row_number": row_number,
+                "location_id": resolved_id,
+                "address": address,
+                "property_management_company": _normalize_space(row.get("PROPERTY MANAGEMENT COMPANY")),
+                "label": _normalize_space(row.get("NOTES")),
+                "match_mode": match_mode,
+                "old_status_normalized": None,
+                "new_status_normalized": None,
+                "old_test_day": None,
+                "new_test_day": _clean_text(row.get("TEST DAY")),
+                "old_route_id": None,
+                "new_route_id": None,
+                "status": "",
+                "detail": None,
+            }
+            if resolve_err == "missing":
+                row_result["status"] = "missing"
+                status_routes_missing += 1
+                status_routes_rows.append(row_result)
+                continue
+            if resolve_err == "ambiguous":
+                row_result["status"] = "ambiguous"
+                status_routes_ambiguous += 1
+                status_routes_rows.append(row_result)
+                continue
+
+            loc = db.session.get(MonthlyLocation, int(resolved_id))
+            if loc is None:
+                row_result["status"] = "missing"
+                row_result["detail"] = "location_row_deleted"
+                status_routes_missing += 1
+                status_routes_rows.append(row_result)
+                continue
+
+            row_result["location_id"] = int(loc.id)
+            row_result["old_status_normalized"] = loc.status_normalized
+            row_result["old_test_day"] = loc.test_day
+            row_result["old_route_id"] = loc.monthly_route_id
+            new_status_normalized, _, new_test_day = _status_and_test_day_from_row(row)
+            row_result["new_status_normalized"] = new_status_normalized
+
+            changed, route_error = _apply_status_and_routes_update(loc, row)
+            row_result["new_route_id"] = loc.monthly_route_id
+            if route_error:
+                row_result["status"] = "route_error"
+                row_result["detail"] = route_error
+                status_routes_route_errors += 1
+            elif changed:
+                row_result["status"] = "updated"
+                status_routes_updated += 1
+            else:
+                row_result["status"] = "unchanged"
+                status_routes_unchanged += 1
+            status_routes_rows.append(row_result)
+        elif history_only:
             resolved_id, resolve_err = _resolve_location_id_for_history_row(row)
             if resolve_err == "missing":
                 history_missing_locations.append(
@@ -762,9 +976,16 @@ def run_upload(
         else:
             location_id = _upsert_location(row, keycode_cf_index=keycode_cf_index)
             location_upserts += 1
-            loc_row = db.session.get(MonthlyRouteLocation, location_id)
-            if loc_row is not None:
-                refresh_primary_testing_site_from_legacy(loc_row)
+
+        if status_and_routes_only:
+            if idx == 1 or idx == total_locations or idx % PROGRESS_EVERY_N_LOCATIONS == 0:
+                pct = (100 * idx // total_locations) if total_locations else 100
+                print(
+                    f"[monthly-sheet] Progress: {idx}/{total_locations} locations "
+                    f"({pct}%) — status/route rows updated so far: {status_routes_updated}",
+                    flush=True,
+                )
+            continue
 
         if not locations_only:
             for month_col, month_date in month_columns:
@@ -879,17 +1100,40 @@ def run_upload(
             ["row_number", "address", "property_management_company", "building"],
             history_ambiguous_locations,
         )
+    if status_routes_rows:
+        _write_csv(
+            logs_dir / f"monthly_sheet_status_routes_{timestamp}.csv",
+            [
+                "row_number",
+                "location_id",
+                "address",
+                "property_management_company",
+                "label",
+                "match_mode",
+                "status",
+                "detail",
+                "old_status_normalized",
+                "new_status_normalized",
+                "old_test_day",
+                "new_test_day",
+                "old_route_id",
+                "new_route_id",
+            ],
+            status_routes_rows,
+        )
 
     remap_applied = 0
     remap_unmatched = 0
     if duplicates_only:
         print("[monthly-sheet] Duplicates-only mode: skipping preserved-reason remap pass.", flush=True)
-    elif history_only or locations_only:
+    elif history_only or locations_only or status_and_routes_only:
         print(
             "[monthly-sheet] "
             + (
                 "History-only mode: skipping preserved-reason remap pass."
                 if history_only
+                else "Status-and-routes-only mode: skipping preserved-reason remap pass."
+                if status_and_routes_only
                 else "Locations-only mode: skipping preserved-reason remap pass."
             ),
             flush=True,
@@ -921,20 +1165,36 @@ def run_upload(
     LOG.info("Skip-reason overrides forced rows: %s", override_forced_history_rows)
     LOG.info("History-only missing DB location rows: %s", len(history_missing_locations))
     LOG.info("History-only ambiguous DB location rows: %s", len(history_ambiguous_locations))
+    if status_and_routes_only:
+        LOG.info("Status/routes updated: %s", status_routes_updated)
+        LOG.info("Status/routes unchanged: %s", status_routes_unchanged)
+        LOG.info("Status/routes missing: %s", status_routes_missing)
+        LOG.info("Status/routes ambiguous: %s", status_routes_ambiguous)
+        LOG.info("Status/routes route errors: %s", status_routes_route_errors)
 
     print(
         "[monthly-sheet] Summary — "
-        f"locations: {location_upserts}, "
-        f"history upserts: {history_upserts}, "
-        f"conflicts: {len(conflicts)}, "
-        f"X pending reasons: {len(missing_reason_logs)}, "
-        f"invalid: {len(invalid_rows)}, "
-        f"history-only unmatched location: {len(history_missing_locations)}, "
-        f"history-only ambiguous location: {len(history_ambiguous_locations)}, "
-        f"override used: {len(used_override_keys)}/{len(skip_reason_overrides)}, "
-        f"override-forced rows: {override_forced_history_rows}, "
-        f"remapped reasons: {remap_applied}, "
-        f"unmatched remap: {remap_unmatched}",
+        + (
+            f"status/routes updated: {status_routes_updated}, "
+            f"unchanged: {status_routes_unchanged}, "
+            f"missing: {status_routes_missing}, "
+            f"ambiguous: {status_routes_ambiguous}, "
+            f"route errors: {status_routes_route_errors}, "
+            f"conflicts: {len(conflicts)}, "
+            f"invalid: {len(invalid_rows)}"
+            if status_and_routes_only
+            else f"locations: {location_upserts}, "
+            f"history upserts: {history_upserts}, "
+            f"conflicts: {len(conflicts)}, "
+            f"X pending reasons: {len(missing_reason_logs)}, "
+            f"invalid: {len(invalid_rows)}, "
+            f"history-only unmatched location: {len(history_missing_locations)}, "
+            f"history-only ambiguous location: {len(history_ambiguous_locations)}, "
+            f"override used: {len(used_override_keys)}/{len(skip_reason_overrides)}, "
+            f"override-forced rows: {override_forced_history_rows}, "
+            f"remapped reasons: {remap_applied}, "
+            f"unmatched remap: {remap_unmatched}"
+        ),
         flush=True,
     )
 
@@ -978,7 +1238,7 @@ def parse_args() -> argparse.Namespace:
         "--history-only",
         action="store_true",
         help=(
-            "Only upsert MonthlyRouteTestHistory; do not upsert MonthlyRouteLocation "
+            "Only upsert MonthlyLocationMonth; do not upsert MonthlyLocation "
             "(each CSV row must match an existing location by address/company/building)."
         ),
     )
@@ -986,8 +1246,17 @@ def parse_args() -> argparse.Namespace:
         "--locations-only",
         action="store_true",
         help=(
-            "Only upsert MonthlyRouteLocation (and v2 testing sites); do not import "
-            "month columns or MonthlyRouteTestHistory from the master sheet."
+            "Only upsert MonthlyLocation (and v2 testing sites); do not import "
+            "month columns or MonthlyLocationMonth from the master sheet."
+        ),
+    )
+    parser.add_argument(
+        "--status-and-routes-only",
+        action="store_true",
+        help=(
+            "Only update existing MonthlyLocation STATUS and TEST DAY from the master sheet; "
+            "sync monthly_route_id when TEST DAY changes. Does not touch prices, keys, notes, "
+            "or month test-history cells."
         ),
     )
     parser.add_argument(
@@ -1014,6 +1283,10 @@ def main() -> None:
         print("[monthly-sheet] App context ready.", flush=True)
         if args.history_only and args.locations_only:
             raise SystemExit("Cannot use --history-only and --locations-only together.")
+        if args.status_and_routes_only and (args.history_only or args.locations_only):
+            raise SystemExit(
+                "Cannot combine --status-and-routes-only with --history-only or --locations-only."
+            )
         if args.duplicates_only and not args.duplicates_csv:
             raise SystemExit("--duplicates-only requires --duplicates-csv")
         month_years_arg = frozenset(args.months_years) if args.months_years else None
@@ -1026,6 +1299,7 @@ def main() -> None:
             duplicates_csv_path=Path(args.duplicates_csv) if args.duplicates_csv else None,
             history_only=args.history_only,
             locations_only=args.locations_only,
+            status_and_routes_only=args.status_and_routes_only,
             month_years=month_years_arg,
         )
         print("[monthly-sheet] Done.", flush=True)

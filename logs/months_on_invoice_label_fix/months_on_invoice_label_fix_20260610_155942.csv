@@ -1,0 +1,15 @@
+location_id,address,old_label,new_label,old_billing_comments,new_billing_comments,status,detail
+38,1035 Belmont Avenue,Months on invoice,1035 Belmont Ave,,Months on invoice,updated,
+59,1088 Johnson Street,Months on invoice,1088 Johnson St,,Months on invoice,updated,
+139,131 Gorge Road E,months on invoice,131 Gorge Rd E,,Months on invoice,updated,
+150,133 Gorge Road E,months on invoice,133 Gorge Rd E,,Months on invoice,updated,
+152,1340 Sussex Road,months on invoice,1340 Sussex Rd,,Months on invoice,updated,
+159,1399 Stanley Avenue,months on invoice 3 months free between August / October 2025 - Projects,1399 Stanley Ave,,"Months on invoice
+3 months free between August / October 2025 - Projects",updated,
+261,215 Oswego Street,Months on invoices,215 Oswego St,,Months on invoice,updated,
+268,2181 Haultain Street,Months on invoices,2181 Haultain St,,Months on invoice,updated,
+436,500 Rithet Street,Months on invoices,500 Rithet St,,Months on invoice,updated,
+545,831 Dunsmuir Road,Months on invoice,831 Dunsmuir Rd,,Months on invoice,updated,
+552,843 Craigflower Road,Months on invoice,843 Craigflower Rd,,Months on invoice,updated,
+559,866 Craigflower Road,Months on invoice,866 Craigflower Rd,,Months on invoice,updated,
+582,925 Esquimalt Road,Months on invoice,925 Esquimalt Rd,,Months on invoice,updated,

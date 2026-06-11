@@ -30,3 +30,23 @@ def test_rebuild_notes_omits_company_acct_and_password():
 def test_parse_colon_header_password():
     parsed = parse_monitoring_notes("COMPANY: Acme\nACCT: 55\nPASSWORD: secret123")
     assert parsed.password == "secret123"
+
+
+def test_parse_monitoring_header_block():
+    parsed = parse_monitoring_notes(
+        "Monitoring: Protec\n"
+        "Signal:\n"
+        "Acct: 303224\n"
+        "PW: AXIAM2021\n"
+        "Phone: 250-474-0151"
+    )
+    assert parsed.company == "Protec"
+    assert parsed.acct == "303224"
+    assert parsed.password == "AXIAM2021"
+    assert parsed.phone == "250-474-0151"
+
+
+def test_parse_plain_single_line_company():
+    parsed = parse_monitoring_notes("Telus Security")
+    assert parsed.company == "Telus Security"
+    assert parsed.remainder_notes is None

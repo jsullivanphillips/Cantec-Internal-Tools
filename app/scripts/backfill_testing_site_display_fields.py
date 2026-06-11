@@ -1,4 +1,6 @@
-"""Backfill per-testing-site display columns from legacy ``MonthlyRouteLocation`` rows.
+"""DEPRECATED — pre-flat-model script. Legacy tables removed after Alembic z11 cutover.
+
+Backfill per-testing-site display columns from legacy ``MonthlyRouteLocation`` rows.
 
 Run after migration ``z4a5b6c7d8e9``. Safe to re-run (only fills nulls where noted).
 

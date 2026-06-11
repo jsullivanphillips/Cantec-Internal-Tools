@@ -1,4 +1,4 @@
-import type { RunReviewStopSummary, TechnicianWorksheetStop } from './monthlyRoutesShared'
+import type { RunReviewStopSummary, TechnicianWorksheetLocation } from './monthlyRoutesShared'
 import {
   runReviewOutcomeBadgeClass,
   runReviewOutcomeHeadline,
@@ -17,7 +17,7 @@ import {
   worksheetReadOnlyDisplay,
   type OfficeFieldChange,
 } from './officeWorksheetTableShared'
-import { testingSitePrimaryLabel } from './testingSiteDisplay'
+import { locationPrimaryLabel } from './locationDisplay'
 
 export type NotableChangeDisplayKind =
   | 'field'
@@ -42,7 +42,7 @@ export type NotableChangeItem = {
 export type RunReviewCardKind = 'with_changes' | 'tested_only'
 
 export type NotableStopChangeCard = {
-  stop: TechnicianWorksheetStop
+  stop: TechnicianWorksheetLocation
   stopNumber: number
   displayAddress: string
   locationId: number
@@ -59,14 +59,14 @@ export type NotableStopChangeCard = {
 
 /** Inline result text for run-review card headers. */
 export function runReviewResultHeadline(
-  stop: TechnicianWorksheetStop,
+  stop: TechnicianWorksheetLocation,
   monthDate: string,
 ): string | null {
   return runReviewOutcomeHeadline(stop, monthDate)
 }
 
 export function runReviewResultHeadlineClass(
-  stop: TechnicianWorksheetStop,
+  stop: TechnicianWorksheetLocation,
   monthDate: string,
 ): string {
   return runReviewOutcomeBadgeClass(stop, monthDate)
@@ -74,7 +74,7 @@ export function runReviewResultHeadlineClass(
 
 /** True when the stop was skipped for a reason other than annual (run-review card highlight). */
 export function isNonAnnualSkippedStop(
-  stop: TechnicianWorksheetStop,
+  stop: TechnicianWorksheetLocation,
   monthDate: string,
 ): boolean {
   return officeStopStatus(stop, monthDate) === 'skipped'
@@ -140,7 +140,7 @@ function collectAuditedFieldChanges(
 }
 
 function collectStatusChange(
-  stop: TechnicianWorksheetStop,
+  stop: TechnicianWorksheetLocation,
   monthDate: string,
 ): NotableChangeItem | null {
   const status = officeStopStatus(stop, monthDate)
@@ -160,7 +160,7 @@ function collectStatusChange(
 }
 
 function collectCommentAdded(
-  stop: TechnicianWorksheetStop,
+  stop: TechnicianWorksheetLocation,
   locationId: number,
   fieldChangesByLocation?: Map<number, OfficeFieldChange[]>,
 ): NotableChangeItem | null {
@@ -179,7 +179,7 @@ function collectCommentAdded(
 
 /** Build per-stop change rows for run-details summary (deltas only). */
 export function collectNotableStopChanges(
-  stop: TechnicianWorksheetStop,
+  stop: TechnicianWorksheetLocation,
   monthDate: string,
   fieldChangesByLocation?: Map<number, OfficeFieldChange[]>,
   siteIndex = 1,
@@ -193,7 +193,7 @@ export function collectNotableStopChanges(
       (x): x is NotableChangeItem => x != null,
     ),
   ]
-  const siteLabel = testingSitePrimaryLabel(stop, { siteCount, siteIndex: siteIndex - 1 })
+  const siteLabel = locationPrimaryLabel(stop)
   const allChanges = sortChanges(items)
   const changes = allChanges.filter((item) => item.id !== 'status')
   const reviewKind: RunReviewCardKind =
@@ -220,22 +220,18 @@ function stopsAtLocationFromSummaries(
 ): RunReviewStopSummary[] {
   return stops
     .filter((s) => s.location_id === locationId)
-    .sort((a, b) => a.testing_site_id - b.testing_site_id)
+    .sort((a, b) => a.location_id - b.location_id)
 }
 
 /** Map lazy review summary row to worksheet stop shape for shared review helpers. */
-export function reviewSummaryAsWorksheetStop(summary: RunReviewStopSummary): TechnicianWorksheetStop {
+export function reviewSummaryAsWorksheetStop(summary: RunReviewStopSummary): TechnicianWorksheetLocation {
   return {
-    testing_site_id: summary.testing_site_id,
     location_id: summary.location_id,
-    history_month_row_id: 0,
+    location_month_row_id: 0,
     month_date: summary.month_date,
     display_address: summary.display_address,
-    building_name: null,
-    property_management_company: null,
     label: summary.label,
-    primary_label: summary.primary_label,
-    billing_address_subline: summary.billing_address_subline,
+    property_management_company: null,
     panel: null,
     panel_location: null,
     door_code: null,
@@ -271,7 +267,7 @@ export function buildNotableStopChangeCardsFromSummaries(
   const ordered = [...summaries].sort((a, b) => {
     const aNum = Number.isFinite(a.stop_number) ? a.stop_number : Number.MAX_SAFE_INTEGER
     const bNum = Number.isFinite(b.stop_number) ? b.stop_number : Number.MAX_SAFE_INTEGER
-    return aNum - bNum || a.location_id - b.location_id || a.testing_site_id - b.testing_site_id
+    return aNum - bNum || a.location_id - b.location_id || a.location_id - b.location_id
   })
   const locationCounts = new Map<number, number>()
   for (const stop of ordered) {
@@ -281,9 +277,9 @@ export function buildNotableStopChangeCardsFromSummaries(
     const stop = reviewSummaryAsWorksheetStop(summary)
     const atLocation = stopsAtLocationFromSummaries(ordered, summary.location_id)
     const siteIndex =
-      atLocation.findIndex((s) => s.testing_site_id === summary.testing_site_id) + 1
+      atLocation.findIndex((s) => s.location_id === summary.location_id) + 1
     const siteCount = locationCounts.get(summary.location_id) ?? 1
-    const siteLabel = testingSitePrimaryLabel(stop, { siteCount, siteIndex: siteIndex - 1 })
+    const siteLabel = locationPrimaryLabel(stop)
     return {
       stop,
       stopNumber: summary.stop_number,
@@ -307,11 +303,6 @@ export function mergeStopDetailChanges(
   return { ...card, changes: sortChanges(changes) }
 }
 
-function stopsAtLocation(stops: TechnicianWorksheetStop[], locationId: number): TechnicianWorksheetStop[] {
-  return stops
-    .filter((s) => s.location_id === locationId)
-    .sort((a, b) => a.testing_site_id - b.testing_site_id)
-}
 
 export const RUN_REVIEW_TESTED_GROUP_DOM_ID = 'run-review-tested-only-group'
 
@@ -391,7 +382,7 @@ export type RunReviewSummary = {
 }
 
 export function runReviewStopDomId(card: NotableStopChangeCard): string {
-  return `run-review-stop-${card.locationId}-${card.stop.testing_site_id}`
+  return `run-review-stop-${card.locationId}-${card.stop.location_id}`
 }
 
 export function cardIsTestedOnly(card: NotableStopChangeCard): boolean {
@@ -493,23 +484,16 @@ export function summarizeRunReviewCards(
 
 /** One card per notable stop, ordered by route stop number. */
 export function buildNotableStopChangeCards(
-  stops: TechnicianWorksheetStop[],
+  stops: TechnicianWorksheetLocation[],
   monthDate: string,
   fieldChangesByLocation?: Map<number, OfficeFieldChange[]>,
 ): NotableStopChangeCard[] {
   const ordered = [...stops].sort((a, b) => {
     const aNum = Number.isFinite(a.stop_number) ? a.stop_number : Number.MAX_SAFE_INTEGER
     const bNum = Number.isFinite(b.stop_number) ? b.stop_number : Number.MAX_SAFE_INTEGER
-    return aNum - bNum || a.location_id - b.location_id || a.testing_site_id - b.testing_site_id
+    return aNum - bNum || a.location_id - b.location_id
   })
-  const locationCounts = new Map<number, number>()
-  for (const stop of ordered) {
-    locationCounts.set(stop.location_id, (locationCounts.get(stop.location_id) ?? 0) + 1)
-  }
-  return ordered.map((stop) => {
-    const atLocation = stopsAtLocation(ordered, stop.location_id)
-    const siteIndex = atLocation.findIndex((s) => s.testing_site_id === stop.testing_site_id) + 1
-    const siteCount = locationCounts.get(stop.location_id) ?? 1
-    return collectNotableStopChanges(stop, monthDate, fieldChangesByLocation, siteIndex, siteCount)
-  })
+  return ordered.map((stop) =>
+    collectNotableStopChanges(stop, monthDate, fieldChangesByLocation, 1, 1),
+  )
 }

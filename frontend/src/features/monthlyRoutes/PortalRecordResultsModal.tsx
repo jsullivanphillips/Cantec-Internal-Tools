@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button, Modal, Spinner } from 'react-bootstrap'
-import type { TechnicianWorksheetStop } from './monthlyRoutesShared'
-import { testingSitePrimaryLabel } from './testingSiteDisplay'
+import type { TechnicianWorksheetLocation } from './monthlyRoutesShared'
+import { locationPrimaryLabel } from './locationDisplay'
 import {
   portalStopCanChooseAllGood,
   portalStopNeedsDeficiencyVerify,
@@ -19,16 +19,16 @@ export type RecordResultsCompletePayload = {
 
 type WorkflowActions = {
   verifyDeficiency: (
-    stop: TechnicianWorksheetStop,
+    stop: TechnicianWorksheetLocation,
     deficiencyId: number,
-  ) => Promise<{ ok: boolean; stop?: TechnicianWorksheetStop }>
+  ) => Promise<{ ok: boolean; stop?: TechnicianWorksheetLocation }>
 }
 
 type WizardStep = 'choose' | 'verify' | 'confirm_none'
 
 type Props = {
   show: boolean
-  stop: TechnicianWorksheetStop
+  stop: TechnicianWorksheetLocation
   runId?: number | null
   /** When true, completing the modal also clocks out (opened from Clock out). */
   recordAndClockOut?: boolean
@@ -78,8 +78,8 @@ function severityTone(severity: string): string {
   return 'default'
 }
 
-function stopAddressLabel(stop: TechnicianWorksheetStop): string {
-  return testingSitePrimaryLabel(stop) || `Stop #${stop.stop_number}`
+function stopAddressLabel(stop: TechnicianWorksheetLocation): string {
+  return locationPrimaryLabel(stop) || `Stop #${stop.stop_number}`
 }
 
 function modalHeading(recordAndClockOut: boolean): string {
@@ -121,7 +121,7 @@ export default function PortalRecordResultsModal({
       }
     }
     wasOpenRef.current = show
-  }, [show, stop.testing_site_id, stop, initialOutcome, runId])
+  }, [show, stop.location_id, stop, initialOutcome, runId])
 
   useEffect(() => {
     if (!show) return

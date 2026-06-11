@@ -3,9 +3,9 @@
 import { worksheetSkipReasonDisplayBlock } from './officeWorksheetTableShared'
 import {
   isAnnualForMonth,
-  worksheetStopIsOpenClockIn,
-  worksheetStopSkipIsAnnual,
-  type TechnicianWorksheetStop,
+  worksheetLocationIsOpenClockIn,
+  worksheetLocationSkipIsAnnual,
+  type TechnicianWorksheetLocation,
 } from './monthlyRoutesShared'
 
 export type PortalTestOutcome = 'all_good' | 'passed_with_problems' | 'failed' | 'skipped'
@@ -30,7 +30,7 @@ export type PortalClockEvent = {
 
 export type PortalDeficiencySummary = {
   id: number
-  monthly_testing_site_id: number
+  monthly_location_id: number
   created_run_id: number | null
   title: string
   severity: string
@@ -79,11 +79,11 @@ function norm(s: string | null | undefined): string {
   return (s ?? '').trim()
 }
 
-export function stopHasClockEvents(stop: TechnicianWorksheetStop): boolean {
+export function stopHasClockEvents(stop: TechnicianWorksheetLocation): boolean {
   return Array.isArray(stop.clock_events) && stop.clock_events.length > 0
 }
 
-export function portalStopHasOpenClock(stop: TechnicianWorksheetStop): boolean {
+export function portalStopHasOpenClock(stop: TechnicianWorksheetLocation): boolean {
   if (stopHasClockEvents(stop)) {
     return (stop.clock_events ?? []).some((ev) => ev.time_in && !norm(ev.time_out))
   }
@@ -93,14 +93,14 @@ export function portalStopHasOpenClock(stop: TechnicianWorksheetStop): boolean {
   return EXPLICIT_TIME_VALUE_RE.test(tin)
 }
 
-export function portalStopHasTestOutcome(stop: TechnicianWorksheetStop): boolean {
+export function portalStopHasTestOutcome(stop: TechnicianWorksheetLocation): boolean {
   return norm(stop.test_outcome).length > 0
 }
 
 /** Select value for office outcome dropdown; maps legacy result_status when test_outcome is unset. */
 export const OFFICE_OUTCOME_PENDING_VALUE = '__pending__'
 
-export function officeOutcomeSelectValue(stop: TechnicianWorksheetStop): string {
+export function officeOutcomeSelectValue(stop: TechnicianWorksheetLocation): string {
   if (portalStopHasTestOutcome(stop)) {
     return norm(stop.test_outcome).toLowerCase()
   }
@@ -110,16 +110,16 @@ export function officeOutcomeSelectValue(stop: TechnicianWorksheetStop): string 
   return OFFICE_OUTCOME_PENDING_VALUE
 }
 
-export function portalStopVisitComplete(stop: TechnicianWorksheetStop): boolean {
+export function portalStopVisitComplete(stop: TechnicianWorksheetLocation): boolean {
   return portalStopHasTestOutcome(stop) && !portalStopHasOpenClock(stop)
 }
 
 /** True when the dock may offer Reset (optimistic or server run data on this stop). */
-export function portalStopCanReset(stop: TechnicianWorksheetStop): boolean {
+export function portalStopCanReset(stop: TechnicianWorksheetLocation): boolean {
   return Boolean(stop.has_run_changes) || portalStopHasOpenClock(stop)
 }
 
-export function optimisticResetStopPatch(): Partial<TechnicianWorksheetStop> {
+export function optimisticResetStopPatch(): Partial<TechnicianWorksheetLocation> {
   return {
     test_outcome: null,
     skip_category: null,
@@ -137,7 +137,7 @@ export function optimisticResetStopPatch(): Partial<TechnicianWorksheetStop> {
 }
 
 export function portalStopDockBand(
-  stop: TechnicianWorksheetStop,
+  stop: TechnicianWorksheetLocation,
   _clockedInElsewhere: boolean,
 ): PortalDockBand {
   if (portalStopHasOpenClock(stop)) return 'B'
@@ -155,9 +155,9 @@ export function portalHhmmNow(): string {
 }
 
 export function optimisticClockInPatch(
-  stop: TechnicianWorksheetStop,
+  stop: TechnicianWorksheetLocation,
   timeIn: string = portalHhmmNow(),
-): Partial<TechnicianWorksheetStop> {
+): Partial<TechnicianWorksheetLocation> {
   if (portalStopHasOpenClock(stop)) {
     return {}
   }
@@ -175,9 +175,9 @@ export function optimisticClockInPatch(
 }
 
 export function optimisticClockOutPatch(
-  stop: TechnicianWorksheetStop,
+  stop: TechnicianWorksheetLocation,
   timeOut: string = portalHhmmNow(),
-): Partial<TechnicianWorksheetStop> {
+): Partial<TechnicianWorksheetLocation> {
   if (!portalStopHasOpenClock(stop)) {
     return {}
   }
@@ -192,8 +192,8 @@ export function optimisticClockOutPatch(
 }
 
 export function optimisticCancelClockInPatch(
-  stop: TechnicianWorksheetStop,
-): Partial<TechnicianWorksheetStop> {
+  stop: TechnicianWorksheetLocation,
+): Partial<TechnicianWorksheetLocation> {
   if (!portalStopHasOpenClock(stop)) {
     return {}
   }
@@ -209,15 +209,15 @@ export function optimisticCancelClockInPatch(
 
 /** Optimistic worksheet stop patch after the user picks a portal test outcome. */
 export function optimisticOutcomePatch(
-  stop: TechnicianWorksheetStop,
+  stop: TechnicianWorksheetLocation,
   outcome: PortalTestOutcome,
   opts?: {
     skipCategory?: PortalSkipCategory
     skipNote?: string
     confirmedNoDeficiencies?: boolean
   },
-): Partial<TechnicianWorksheetStop> {
-  const patch: Partial<TechnicianWorksheetStop> = {
+): Partial<TechnicianWorksheetLocation> {
+  const patch: Partial<TechnicianWorksheetLocation> = {
     test_outcome: outcome,
     is_legacy_outcome: false,
   }
@@ -242,7 +242,7 @@ export function optimisticOutcomePatch(
   return patch
 }
 
-export function portalOutcomeDisplay(stop: TechnicianWorksheetStop): string | null {
+export function portalOutcomeDisplay(stop: TechnicianWorksheetLocation): string | null {
   if (stop.is_legacy_outcome && !portalStopHasTestOutcome(stop)) {
     const rs = norm(stop.result_status).toLowerCase()
     if (rs === 'tested') return 'Tested (legacy)'
@@ -298,7 +298,7 @@ export function formatSkipReasonDisplayText(text: string | null | undefined): st
 }
 
 /** Category, free-text note, and legacy ``skip_reason`` for office / run-details display. */
-export function portalSkipReasonDetail(stop: TechnicianWorksheetStop): string | null {
+export function portalSkipReasonDetail(stop: TechnicianWorksheetLocation): string | null {
   const catLabel = skipCategoryLabel(stop.skip_category)
   const note = norm(stop.skip_note)
   const legacyPart = formatSkipReasonDisplayText(stop.skip_reason) ?? ''
@@ -318,7 +318,7 @@ export function portalSkipReasonDetail(stop: TechnicianWorksheetStop): string | 
   return parts.length ? parts.join(' · ') : null
 }
 
-export function portalStopWorkflowReadOnly(stop: TechnicianWorksheetStop, runCompleted: boolean): boolean {
+export function portalStopWorkflowReadOnly(stop: TechnicianWorksheetLocation, runCompleted: boolean): boolean {
   if (runCompleted) return true
   return Boolean(stop.portal_read_only)
 }
@@ -329,11 +329,11 @@ function deficiencyStatus(def: PortalDeficiencySummary): string {
   return norm(def.status).toLowerCase()
 }
 
-export function portalStopActiveDeficiencies(stop: TechnicianWorksheetStop): PortalDeficiencySummary[] {
+export function portalStopActiveDeficiencies(stop: TechnicianWorksheetLocation): PortalDeficiencySummary[] {
   return (stop.deficiencies ?? []).filter((d) => ACTIVE_DEFICIENCY_STATUSES.has(deficiencyStatus(d)))
 }
 
-export function portalStopNewDeficiencies(stop: TechnicianWorksheetStop): PortalDeficiencySummary[] {
+export function portalStopNewDeficiencies(stop: TechnicianWorksheetLocation): PortalDeficiencySummary[] {
   return (stop.deficiencies ?? []).filter((d) => deficiencyStatus(d) === 'new')
 }
 
@@ -348,19 +348,19 @@ export function deficiencyCreatedOnRun(
 
 /** New deficiencies from before this run — these must be verified before recording Failed / Passed with problems. */
 export function portalStopNewDeficienciesFromPriorRuns(
-  stop: TechnicianWorksheetStop,
+  stop: TechnicianWorksheetLocation,
   runId: number | null | undefined,
 ): PortalDeficiencySummary[] {
   return portalStopNewDeficiencies(stop).filter((d) => !deficiencyCreatedOnRun(d, runId))
 }
 
-export function portalStopCanChooseAllGood(stop: TechnicianWorksheetStop): boolean {
+export function portalStopCanChooseAllGood(stop: TechnicianWorksheetLocation): boolean {
   return portalStopActiveDeficiencies(stop).length === 0
 }
 
 export function portalStopNeedsDeficiencyVerify(
   outcome: PortalTestOutcome,
-  stop: TechnicianWorksheetStop,
+  stop: TechnicianWorksheetLocation,
   runId?: number | null,
 ): boolean {
   if (outcome !== 'passed_with_problems' && outcome !== 'failed') return false
@@ -369,19 +369,19 @@ export function portalStopNeedsDeficiencyVerify(
 
 export function portalStopNeedsNoDeficiencyConfirm(
   outcome: PortalTestOutcome,
-  stop: TechnicianWorksheetStop,
+  stop: TechnicianWorksheetLocation,
 ): boolean {
   return outcome === 'passed_with_problems' && portalStopActiveDeficiencies(stop).length === 0
 }
 
 export function optimisticCreateDeficiencyPatch(
-  stop: TechnicianWorksheetStop,
+  stop: TechnicianWorksheetLocation,
   body: { title: string; severity: string; status: string; description?: string },
   runId: number | null | undefined,
-): Partial<TechnicianWorksheetStop> {
+): Partial<TechnicianWorksheetLocation> {
   const row: PortalDeficiencySummary = {
     id: -Date.now(),
-    monthly_testing_site_id: stop.testing_site_id,
+    monthly_location_id: stop.location_id,
     created_run_id: runId ?? null,
     title: body.title,
     severity: body.severity,
@@ -389,7 +389,7 @@ export function optimisticCreateDeficiencyPatch(
     description: body.description ?? null,
     verification_notes: null,
   }
-  const patch: Partial<TechnicianWorksheetStop> = {
+  const patch: Partial<TechnicianWorksheetLocation> = {
     deficiencies: [...(stop.deficiencies ?? []), row],
     has_run_changes: true,
     confirmed_no_deficiencies: false,
@@ -401,10 +401,10 @@ export function optimisticCreateDeficiencyPatch(
 }
 
 export function optimisticUpdateDeficiencyPatch(
-  stop: TechnicianWorksheetStop,
+  stop: TechnicianWorksheetLocation,
   deficiencyId: number,
   body: { title?: string; severity?: string; status?: string; description?: string },
-): Partial<TechnicianWorksheetStop> {
+): Partial<TechnicianWorksheetLocation> {
   return {
     deficiencies: (stop.deficiencies ?? []).map((d) =>
       d.id === deficiencyId ? { ...d, ...body } : d,
@@ -414,9 +414,9 @@ export function optimisticUpdateDeficiencyPatch(
 }
 
 export function optimisticVerifyDeficiencyPatch(
-  stop: TechnicianWorksheetStop,
+  stop: TechnicianWorksheetLocation,
   deficiencyId: number,
-): Partial<TechnicianWorksheetStop> {
+): Partial<TechnicianWorksheetLocation> {
   return {
     deficiencies: (stop.deficiencies ?? []).map((d) =>
       d.id === deficiencyId ? { ...d, status: 'verified' } : d,
@@ -436,13 +436,13 @@ export type PortalStopVisualTone =
   | 'annual'
 
 export function portalStopVisualTone(
-  stop: TechnicianWorksheetStop,
+  stop: TechnicianWorksheetLocation,
   runMonthIso: string,
 ): PortalStopVisualTone {
   if (portalStopHasTestOutcome(stop)) {
     const outcome = norm(stop.test_outcome).toLowerCase()
     if (outcome === 'skipped') {
-      return worksheetStopSkipIsAnnual(stop) ? 'annual' : 'skipped'
+      return worksheetLocationSkipIsAnnual(stop) ? 'annual' : 'skipped'
     }
     if (outcome === 'passed_with_problems') return 'passed_with_problems'
     if (outcome === 'failed') return 'failed'
@@ -451,18 +451,18 @@ export function portalStopVisualTone(
   if (stop.is_legacy_outcome) {
     const rs = norm(stop.result_status).toLowerCase()
     if (rs === 'tested') return 'all_good'
-    if (rs === 'skipped') return worksheetStopSkipIsAnnual(stop) ? 'annual' : 'skipped'
+    if (rs === 'skipped') return worksheetLocationSkipIsAnnual(stop) ? 'annual' : 'skipped'
   }
-  if (worksheetStopIsOpenClockIn(stop)) return 'in_progress'
+  if (worksheetLocationIsOpenClockIn(stop)) return 'in_progress'
   if (isAnnualForMonth(stop.annual_month, runMonthIso)) return 'annual'
   return 'pending'
 }
 
-export function portalStopOfficeAttentionActive(stop: TechnicianWorksheetStop): boolean {
+export function portalStopOfficeAttentionActive(stop: TechnicianWorksheetLocation): boolean {
   return Boolean(stop.office_attention) && !portalStopHasTestOutcome(stop)
 }
 
-export function portalHeaderBandClass(stop: TechnicianWorksheetStop, runMonthIso: string): string {
+export function portalHeaderBandClass(stop: TechnicianWorksheetLocation, runMonthIso: string): string {
   const tone = portalStopVisualTone(stop, runMonthIso)
   if (tone === 'all_good') return 'pw-mock-header--tested'
   if (tone === 'passed_with_problems') return 'pw-mock-header--passed-problems'
@@ -475,7 +475,7 @@ export function portalHeaderBandClass(stop: TechnicianWorksheetStop, runMonthIso
 }
 
 /** Key view row background — recorded test outcomes only (not pending / annual / clocked-in). */
-export function portalKeyViewOutcomeStatusClass(stop: TechnicianWorksheetStop): string {
+export function portalKeyViewOutcomeStatusClass(stop: TechnicianWorksheetLocation): string {
   if (portalStopHasTestOutcome(stop)) {
     const outcome = norm(stop.test_outcome).toLowerCase()
     if (outcome === 'passed_with_problems') return 'pw-key-view-item--passed-problems'
@@ -491,8 +491,8 @@ export function portalKeyViewOutcomeStatusClass(stop: TechnicianWorksheetStop): 
   return ''
 }
 
-export function portalNavStopStatusClass(stop: TechnicianWorksheetStop, runMonthIso: string): string {
-  if (worksheetStopIsOpenClockIn(stop)) return 'pw-mock-nav-stop--clocked-in'
+export function portalNavStopStatusClass(stop: TechnicianWorksheetLocation, runMonthIso: string): string {
+  if (worksheetLocationIsOpenClockIn(stop)) return 'pw-mock-nav-stop--clocked-in'
   const tone = portalStopVisualTone(stop, runMonthIso)
   if (tone === 'all_good') return 'pw-mock-nav-stop--tested'
   if (tone === 'passed_with_problems') return 'pw-mock-nav-stop--passed-problems'
@@ -504,7 +504,7 @@ export function portalNavStopStatusClass(stop: TechnicianWorksheetStop, runMonth
 }
 
 /** Suffix for ``pw-mock-status-pill--*`` (e.g. ``passed-problems``). */
-export function portalStatusPillClass(stop: TechnicianWorksheetStop, runMonthIso: string): string {
+export function portalStatusPillClass(stop: TechnicianWorksheetLocation, runMonthIso: string): string {
   const tone = portalStopVisualTone(stop, runMonthIso)
   if (tone === 'all_good') return 'tested'
   if (tone === 'passed_with_problems') return 'passed-problems'

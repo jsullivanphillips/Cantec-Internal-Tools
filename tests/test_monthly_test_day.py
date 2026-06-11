@@ -2,12 +2,23 @@
 
 import pytest
 
-from app.monthly.test_day import ParsedTestDay, monthly_test_day_is_cancelled, parse_test_day
+from app.monthly.test_day import ParsedTestDay, format_test_day_token, monthly_test_day_is_cancelled, parse_test_day
 
 
 def test_parse_w1_r7():
     p = parse_test_day("W1-R7")
     assert p == ParsedTestDay(weekday_iso=2, week_occurrence=1, route_number=7, raw="W1-R7")
+
+
+def test_format_test_day_token_roundtrip():
+    token = format_test_day_token(weekday_iso=2, week_occurrence=1, route_number=24)
+    assert token == "W1-R24"
+    assert parse_test_day(token) == ParsedTestDay(
+        weekday_iso=2,
+        week_occurrence=1,
+        route_number=24,
+        raw="W1-R24",
+    )
 
 
 def test_parse_th2_r15_case_insensitive_r():

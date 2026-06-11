@@ -1,19 +1,19 @@
 import { Button, Modal } from 'react-bootstrap'
-import type { TechnicianWorksheetStop } from './monthlyRoutesShared'
-import { testingSitePrimaryLabel } from './testingSiteDisplay'
+import type { TechnicianWorksheetLocation } from './monthlyRoutesShared'
+import { locationPrimaryLabel } from './locationDisplay'
 import type { PortalEndRunModalState } from './portalEndRunPreflight'
 
 type Props = {
   modal: PortalEndRunModalState | null
   onDismiss: () => void
-  onGoToClockedInStop: (testingSiteId: number) => void
+  onGoToClockedInStop: (locationId: number) => void
   onConfirmSkipUntestedAndEnd: () => void
   endRunBusy: boolean
 }
 
-function stopSummaryLine(stop: TechnicianWorksheetStop): string {
+function stopSummaryLine(stop: TechnicianWorksheetLocation): string {
   const num = stop.stop_number ?? '?'
-  const addr = testingSitePrimaryLabel(stop)
+  const addr = locationPrimaryLabel(stop)
   return addr ? `Stop #${num} — ${addr}` : `Stop #${num}`
 }
 
@@ -42,7 +42,7 @@ export default function PortalEndRunModals({
               </p>
               <ul className="small mb-0">
                 {modal.stops.map((s) => (
-                  <li key={s.testing_site_id}>{stopSummaryLine(s)}</li>
+                  <li key={s.location_id}>{stopSummaryLine(s)}</li>
                 ))}
               </ul>
             </>
@@ -62,7 +62,7 @@ export default function PortalEndRunModals({
             <Button
               variant="primary"
               disabled={endRunBusy}
-              onClick={() => onGoToClockedInStop(primary.testing_site_id)}
+              onClick={() => onGoToClockedInStop(primary.location_id)}
             >
               Go to clocked-in stop
             </Button>
@@ -87,7 +87,7 @@ export default function PortalEndRunModals({
         </p>
         <ul className="small mb-0">
           {modal.stops.map((s) => (
-            <li key={s.testing_site_id}>{stopSummaryLine(s)}</li>
+            <li key={s.location_id}>{stopSummaryLine(s)}</li>
           ))}
         </ul>
       </Modal.Body>

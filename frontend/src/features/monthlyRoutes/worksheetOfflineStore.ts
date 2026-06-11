@@ -2,7 +2,7 @@ import type {
   TechnicianWorksheetPayload,
   TechnicianWorksheetRow,
   TechnicianWorksheetRun,
-  TechnicianWorksheetStop,
+  TechnicianWorksheetLocation,
 } from './monthlyRoutesShared'
 import { worksheetRunExplicitlyCompleted } from './monthlyRoutesShared'
 import { projectStopsWithWorkflowQueue } from './portalRouteProjection'
@@ -29,10 +29,10 @@ export type WorksheetChangeSet = Partial<
   >
 >
 
-/** Portal v2 stop PATCH fields (maps to ``MonthlyTestingSiteMonth``). */
+/** Portal worksheet location PATCH fields (maps to ``MonthlyLocationMonth``). */
 export type WorksheetStopChangeSet = Partial<
   Pick<
-    TechnicianWorksheetStop,
+    TechnicianWorksheetLocation,
     | 'annual_month'
     | 'ring'
     | 'key_number'
@@ -40,7 +40,7 @@ export type WorksheetStopChangeSet = Partial<
     | 'panel_location'
     | 'door_code'
     | 'property_management_company'
-    | 'building_name'
+    | 'label'
     | 'monitoring_company'
     | 'monitoring_company_id'
     | 'monitoring_account_number'
@@ -56,7 +56,7 @@ export type WorksheetStopChangeSet = Partial<
   >
 > & {
   /** Local optimistic display only; never sent to the API. */
-  monitoring_company_record?: TechnicianWorksheetStop['monitoring_company_record']
+  monitoring_company_record?: TechnicianWorksheetLocation['monitoring_company_record']
 }
 
 const LOCAL_ONLY_WORKSHEET_STOP_CHANGE_KEYS = new Set(['monitoring_company', 'monitoring_company_record'])
@@ -73,10 +73,8 @@ export function worksheetStopChangesForSync(changes: WorksheetStopChangeSet): Wo
 export type WorksheetQueueItem = {
   id: string
   routeId: number
-  /** Legacy staff worksheet row PATCH. */
+  /** Worksheet row or portal location PATCH target id. */
   locationId?: number
-  /** Portal v2 stop PATCH. */
-  testingSiteId?: number
   monthIso: string
   expectedUpdatedAt: string | null
   clientMutatedAt: string
@@ -124,7 +122,7 @@ export type PortalWorkflowQueueItem = {
   action: PortalWorkflowAction
   routeId: number
   monthIso: string
-  testingSiteId: number
+  locationId: number
   payload: Record<string, unknown>
   attempts: number
   nextAttemptAt: number
@@ -256,7 +254,7 @@ export function enqueuePortalWorkflowAction(
       !(
         q.routeId === item.routeId &&
         q.monthIso === item.monthIso &&
-        q.testingSiteId === item.testingSiteId &&
+        q.locationId === item.locationId &&
         q.action === item.action
       ),
   )
@@ -276,32 +274,32 @@ function workflowQueueItemTouchesStop(
   item: PortalWorkflowQueueItem,
   routeId: number,
   monthIso: string,
-  testingSiteId: number,
+  locationId: number,
 ): boolean {
   if (item.routeId !== routeId || item.monthIso !== monthIso) return false
   if (item.action === 'transition_clock') {
     return (
-      Number(item.payload.from_testing_site_id) === testingSiteId ||
-      Number(item.payload.to_testing_site_id) === testingSiteId
+      Number(item.payload.from_location_id) === locationId ||
+      Number(item.payload.to_location_id) === locationId
     )
   }
-  return item.testingSiteId === testingSiteId
+  return item.locationId === locationId
 }
 
 /** Drop unsynced workflow intents for one stop (e.g. before offline reset). */
 export function purgePendingWorkflowForStop(
   routeId: number,
   monthIso: string,
-  testingSiteId: number,
+  locationId: number,
 ): PortalWorkflowQueueItem[] {
   const queue = loadWorkflowSyncQueue()
   const removed = queue.filter((item) =>
-    workflowQueueItemTouchesStop(item, routeId, monthIso, testingSiteId),
+    workflowQueueItemTouchesStop(item, routeId, monthIso, locationId),
   )
   if (!removed.length) return removed
   saveWorkflowSyncQueue(
     queue.filter(
-      (item) => !workflowQueueItemTouchesStop(item, routeId, monthIso, testingSiteId),
+      (item) => !workflowQueueItemTouchesStop(item, routeId, monthIso, locationId),
     ),
   )
   return removed
@@ -311,7 +309,7 @@ export function purgePendingWorkflowForStop(
 export function purgePendingFieldChangesForStop(
   routeId: number,
   monthIso: string,
-  testingSiteId: number,
+  locationId: number,
 ): void {
   saveSyncQueue(
     loadSyncQueue().filter(
@@ -319,7 +317,7 @@ export function purgePendingFieldChangesForStop(
         !(
           item.routeId === routeId &&
           item.monthIso === monthIso &&
-          item.testingSiteId === testingSiteId
+          item.locationId === locationId
         ),
     ),
   )
@@ -338,20 +336,20 @@ export function shouldSuppressRemoteWorksheetRefresh(
 export function hasPendingSyncForStop(
   routeId: number,
   monthIso: string,
-  testingSiteId: number,
+  locationId: number,
 ): boolean {
   const fieldPending = loadSyncQueue().some(
     (item) =>
       item.routeId === routeId &&
       item.monthIso === monthIso &&
-      item.testingSiteId === testingSiteId,
+      item.locationId === locationId,
   )
   if (fieldPending) return true
   return loadWorkflowSyncQueue().some(
     (item) =>
       item.routeId === routeId &&
       item.monthIso === monthIso &&
-      item.testingSiteId === testingSiteId,
+      item.locationId === locationId,
   )
 }
 
@@ -371,7 +369,7 @@ export function countPendingSyncForRouteMonth(routeId: number, monthIso: string)
     (item) =>
       item.routeId === routeId &&
       item.monthIso === monthIso &&
-      item.testingSiteId != null,
+      item.locationId != null,
   ).length
   const workflowCount = loadWorkflowSyncQueue().filter(
     (item) => item.routeId === routeId && item.monthIso === monthIso,
@@ -386,7 +384,7 @@ export function countPendingSyncForRouteMonth(routeId: number, monthIso: string)
 export function collectPendingStopChanges(
   routeId: number,
   monthIso: string,
-  testingSiteId: number,
+  locationId: number,
   excludeItemIds?: ReadonlySet<string> | string,
 ): WorksheetStopChangeSet {
   const exclude =
@@ -398,7 +396,7 @@ export function collectPendingStopChanges(
     if (
       item.routeId !== routeId ||
       item.monthIso !== monthIso ||
-      item.testingSiteId !== testingSiteId
+      item.locationId !== locationId
     ) {
       continue
     }
@@ -409,13 +407,13 @@ export function collectPendingStopChanges(
 }
 
 export function applyServerStopWithPending(
-  serverStop: TechnicianWorksheetStop,
+  serverStop: TechnicianWorksheetLocation,
   routeId: number,
   monthIso: string,
   excludeItemId: string,
-  localStop?: TechnicianWorksheetStop,
-): TechnicianWorksheetStop {
-  const pending = collectPendingStopChanges(routeId, monthIso, serverStop.testing_site_id, excludeItemId)
+  localStop?: TechnicianWorksheetLocation,
+): TechnicianWorksheetLocation {
+  const pending = collectPendingStopChanges(routeId, monthIso, serverStop.location_id, excludeItemId)
   const merged =
     Object.keys(pending).length > 0 ? { ...serverStop, ...pending } : serverStop
   return localStop ? preserveWorksheetStopOrderFields(localStop, merged) : merged
@@ -423,9 +421,9 @@ export function applyServerStopWithPending(
 
 /** Keep route sheet stop # stable when workflow PATCH responses recalculate order. */
 export function preserveWorksheetStopOrderFields(
-  local: TechnicianWorksheetStop,
-  remote: TechnicianWorksheetStop,
-): TechnicianWorksheetStop {
+  local: TechnicianWorksheetLocation,
+  remote: TechnicianWorksheetLocation,
+): TechnicianWorksheetLocation {
   const stopNumber =
     Number.isFinite(local.stop_number) && local.stop_number > 0
       ? local.stop_number
@@ -445,14 +443,14 @@ export function mergeWorkflowQueueIntoPayload(
   monthIso: string,
   queue?: PortalWorkflowQueueItem[],
 ): TechnicianWorksheetPayload {
-  if (!payload.stops?.length) return payload
+  if (!payload.locations?.length) return payload
   const items =
     queue ??
     loadWorkflowSyncQueue().filter(
       (item) => item.routeId === routeId && item.monthIso === monthIso,
     )
   if (!items.length) return payload
-  const stops = projectStopsWithWorkflowQueue(payload.stops, routeId, monthIso, items)
+  const stops = projectStopsWithWorkflowQueue(payload.locations, routeId, monthIso, items)
   return { ...payload, stops }
 }
 
@@ -466,13 +464,13 @@ export function mergePendingChangesIntoPayload(
     (item) =>
       item.routeId === routeId &&
       item.monthIso === monthIso &&
-      item.testingSiteId != null,
+      item.locationId != null,
   )
   let next = payload
-  if (queue.length && payload.stops?.length) {
+  if (queue.length && payload.locations?.length) {
     const pendingBySite = new Map<number, WorksheetStopChangeSet>()
     for (const item of queue) {
-      const siteId = item.testingSiteId
+      const siteId = item.locationId
       if (siteId == null) continue
       pendingBySite.set(siteId, {
         ...pendingBySite.get(siteId),
@@ -480,8 +478,8 @@ export function mergePendingChangesIntoPayload(
       })
     }
 
-    const stops = payload.stops.map((stop) => {
-      const patch = pendingBySite.get(stop.testing_site_id)
+    const stops = payload.locations.map((stop) => {
+      const patch = pendingBySite.get(stop.location_id)
       return patch ? { ...stop, ...patch } : stop
     })
     next = { ...payload, stops }
@@ -524,16 +522,16 @@ export function mergeRunLifecycleQueueIntoPayload(
 
 /** Keep local intent when a background fetch is behind the workflow queue. */
 export function reconcileStopWithServer(
-  local: TechnicianWorksheetStop,
-  remote: TechnicianWorksheetStop,
+  local: TechnicianWorksheetLocation,
+  remote: TechnicianWorksheetLocation,
   routeId?: number,
   monthIso?: string,
-): TechnicianWorksheetStop {
+): TechnicianWorksheetLocation {
   if (portalStopHasTestOutcome(local) && !portalStopHasTestOutcome(remote)) {
     const keepLocalOutcome =
       routeId != null &&
       monthIso != null &&
-      hasPendingSyncForStop(routeId, monthIso, local.testing_site_id)
+      hasPendingSyncForStop(routeId, monthIso, local.location_id)
     if (keepLocalOutcome) {
       return preserveWorksheetStopOrderFields(local, {
         ...remote,
@@ -573,19 +571,19 @@ export function mergeServerWorksheetPayload(
   routeId: number,
   monthIso: string,
 ): TechnicianWorksheetPayload {
-  const serverStops = server.stops ?? []
-  const serverById = new Map(serverStops.map((s) => [s.testing_site_id, s]))
-  const prevIds = new Set((prev.stops ?? []).map((s) => s.testing_site_id))
+  const serverStops = server.locations ?? []
+  const serverById = new Map(serverStops.map((s) => [s.location_id, s]))
+  const prevIds = new Set((prev.locations ?? []).map((s) => s.location_id))
 
-  const stops: TechnicianWorksheetStop[] = []
-  for (const s of prev.stops ?? []) {
-    const remote = serverById.get(s.testing_site_id)
+  const stops: TechnicianWorksheetLocation[] = []
+  for (const s of prev.locations ?? []) {
+    const remote = serverById.get(s.location_id)
     if (!remote) {
       stops.push(s)
       continue
     }
-    const pending = collectPendingStopChanges(routeId, monthIso, s.testing_site_id)
-    const stopHasPendingSync = hasPendingSyncForStop(routeId, monthIso, s.testing_site_id)
+    const pending = collectPendingStopChanges(routeId, monthIso, s.location_id)
+    const stopHasPendingSync = hasPendingSyncForStop(routeId, monthIso, s.location_id)
     let merged = stopHasPendingSync
       ? reconcileStopWithServer(s, remote, routeId, monthIso)
       : remote
@@ -593,7 +591,7 @@ export function mergeServerWorksheetPayload(
     stops.push(merged)
   }
   for (const s of serverStops) {
-    if (!prevIds.has(s.testing_site_id)) {
+    if (!prevIds.has(s.location_id)) {
       stops.push(s)
     }
   }
@@ -606,11 +604,11 @@ export function mergeServerWorksheetPayload(
 }
 
 /** Stops with a logged visit outcome, open clock, or legacy tested/skipped status. */
-export function countStopsWithFieldProgress(stops: TechnicianWorksheetStop[] | undefined): number {
+export function countStopsWithFieldProgress(stops: TechnicianWorksheetLocation[] | undefined): number {
   return (stops ?? []).filter((stop) => stopHasFieldProgress(stop)).length
 }
 
-function stopHasFieldProgress(stop: TechnicianWorksheetStop): boolean {
+function stopHasFieldProgress(stop: TechnicianWorksheetLocation): boolean {
   if (portalStopHasTestOutcome(stop) || portalStopHasOpenClock(stop)) return true
   const rs = (stop.result_status || '').trim().toLowerCase()
   return rs === 'tested' || rs === 'skipped'
@@ -638,8 +636,8 @@ export function serverRunWasExternallyReset(
 ): boolean {
   if (!local) return false
 
-  const localStopProgress = countStopsWithFieldProgress(local.stops)
-  const serverStopProgress = countStopsWithFieldProgress(server.stops)
+  const localStopProgress = countStopsWithFieldProgress(local.locations)
+  const serverStopProgress = countStopsWithFieldProgress(server.locations)
   const localHeaderProgress = runHeaderHadFieldProgress(local.run)
   const serverHeaderProgress = runHeaderHasFieldProgress(server.run)
 
@@ -653,7 +651,7 @@ export function serverRunWasExternallyReset(
     (item) =>
       item.routeId === routeId &&
       item.monthIso === monthIso &&
-      item.testingSiteId != null,
+      item.locationId != null,
   )
   const pendingRunLifecycle = loadRunLifecycleSyncQueue().filter(
     (item) => item.routeId === routeId && item.monthIso === monthIso,

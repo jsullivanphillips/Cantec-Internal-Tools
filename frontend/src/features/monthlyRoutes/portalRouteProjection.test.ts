@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { TechnicianWorksheetPayload, TechnicianWorksheetStop } from './monthlyRoutesShared'
+import type { TechnicianWorksheetPayload, TechnicianWorksheetLocation } from './monthlyRoutesShared'
 import {
   projectedClockInBlockedForStop,
   projectedOpenClockSiteId,
@@ -8,38 +8,33 @@ import {
 import { portalStopHasOpenClock, portalStopHasTestOutcome } from './portalWorkflowShared'
 import { mergeWorkflowQueueIntoPayload } from './worksheetOfflineStore'
 import type { PortalWorkflowQueueItem } from './worksheetOfflineStore'
-function baseStop(
-  id: number,
-  overrides: Partial<TechnicianWorksheetStop> = {},
-): TechnicianWorksheetStop {
+function baseStop(overrides: Partial<TechnicianWorksheetLocation> = {}): TechnicianWorksheetLocation {
   return {
-    testing_site_id: id,
-    location_id: id,
-    stop_number: id,
-    display_address: `Site ${id}`,
+    location_id: 1,
+    location_month_row_id: 0,
     month_date: '2026-05-01',
-    history_month_row_id: 0,
-    route_stop_order: null,
-    session_route_stop_order: null,
-    version_updated_at: null,
-    building_name: null,
-    property_management_company: null,
+    display_address: '123 Main St',
     label: null,
+    property_management_company: null,
+    panel: null,
+    panel_location: null,
+    door_code: null,
     ring: null,
     key_number: null,
     annual_month: null,
-    door_code: null,
-    panel: null,
-    panel_location: null,
     monitoring_company: null,
     monitoring_notes: null,
+    result_status: null,
+    skip_reason: null,
     testing_procedures: null,
     inspection_tech_notes: null,
     run_comments: null,
     time_in: null,
     time_out: null,
-    result_status: null,
-    skip_reason: null,
+    route_stop_order: null,
+    session_route_stop_order: null,
+    stop_number: 1,
+    version_updated_at: null,
     ...overrides,
   }
 }
@@ -48,7 +43,7 @@ const ROUTE_ID = 7
 const MONTH = '2026-05-01'
 
 function queueItem(
-  overrides: Partial<PortalWorkflowQueueItem> & Pick<PortalWorkflowQueueItem, 'action' | 'testingSiteId'>,
+  overrides: Partial<PortalWorkflowQueueItem> & Pick<PortalWorkflowQueueItem, 'action' | 'locationId'>,
 ): PortalWorkflowQueueItem {
   return {
     id: overrides.id ?? 'q1',
@@ -65,23 +60,23 @@ function queueItem(
 describe('projectStopsWithWorkflowQueue', () => {
   it('clock_out A then clock_in B leaves open clock on B only', () => {
     const stops = [
-      baseStop(1, {
+      baseStop({ location_id: 1,
         clock_events: [{ id: 1, sort_order: 1, time_in: '9:00 AM', time_out: null }],
       }),
-      baseStop(2),
+      baseStop({ location_id: 2 }),
     ]
     const queue = [
       queueItem({
         id: '1',
         action: 'clock_out',
-        testingSiteId: 1,
+        locationId: 1,
         payload: { time_out: '9:30 AM' },
         enqueuedAt: 1,
       }),
       queueItem({
         id: '2',
         action: 'clock_in',
-        testingSiteId: 2,
+        locationId: 2,
         payload: { time_in: '9:35 AM' },
         enqueuedAt: 2,
       }),
@@ -95,15 +90,15 @@ describe('projectStopsWithWorkflowQueue', () => {
 
   it('clock_in B while A still open on server snapshot projects B open', () => {
     const stops = [
-      baseStop(1, {
+      baseStop({ location_id: 1,
         clock_events: [{ id: 1, sort_order: 1, time_in: '9:00 AM', time_out: null }],
       }),
-      baseStop(2),
+      baseStop({ location_id: 2 }),
     ]
     const queue = [
       queueItem({
         action: 'clock_in',
-        testingSiteId: 2,
+        locationId: 2,
         payload: { time_in: '10:00 AM' },
         enqueuedAt: 1,
       }),
@@ -113,11 +108,11 @@ describe('projectStopsWithWorkflowQueue', () => {
   })
 
   it('create_deficiency adds optimistic row while queued', () => {
-    const stops = [baseStop(1)]
+    const stops = [baseStop({ location_id: 1 })]
     const queue = [
       queueItem({
         action: 'create_deficiency',
-        testingSiteId: 1,
+        locationId: 1,
         payload: {
           title: 'Bell',
           severity: 'deficient',
@@ -134,7 +129,7 @@ describe('projectStopsWithWorkflowQueue', () => {
 
   it('cancel_clock_in removes open clock from projected stop', () => {
     const stops = [
-      baseStop(1, {
+      baseStop({ location_id: 1,
         clock_events: [
           { id: 1, sort_order: 1, time_in: '8:00 AM', time_out: '8:30 AM' },
           { id: 2, sort_order: 2, time_in: '9:00 AM', time_out: null },
@@ -144,7 +139,7 @@ describe('projectStopsWithWorkflowQueue', () => {
     const queue = [
       queueItem({
         action: 'cancel_clock_in',
-        testingSiteId: 1,
+        locationId: 1,
         payload: {},
         enqueuedAt: 1,
       }),
@@ -154,19 +149,19 @@ describe('projectStopsWithWorkflowQueue', () => {
   })
 
   it('queued clock_in then cancel_clock_in leaves stop without open clock', () => {
-    const stops = [baseStop(1)]
+    const stops = [baseStop({ location_id: 1 })]
     const queue = [
       queueItem({
         id: 'cin',
         action: 'clock_in',
-        testingSiteId: 1,
+        locationId: 1,
         payload: { time_in: '9:00 AM' },
         enqueuedAt: 1,
       }),
       queueItem({
         id: 'cancel',
         action: 'cancel_clock_in',
-        testingSiteId: 1,
+        locationId: 1,
         payload: {},
         enqueuedAt: 2,
       }),
@@ -177,19 +172,19 @@ describe('projectStopsWithWorkflowQueue', () => {
   })
 
   it('queued clock_in then reset_stop clears projected open clock', () => {
-    const stops = [baseStop(1)]
+    const stops = [baseStop({ location_id: 1 })]
     const queue = [
       queueItem({
         id: 'cin',
         action: 'clock_in',
-        testingSiteId: 1,
+        locationId: 1,
         payload: { time_in: '9:00 AM' },
         enqueuedAt: 1,
       }),
       queueItem({
         id: 'reset',
         action: 'reset_stop',
-        testingSiteId: 1,
+        locationId: 1,
         payload: {},
         enqueuedAt: 2,
       }),
@@ -201,7 +196,7 @@ describe('projectStopsWithWorkflowQueue', () => {
 
   it('reset_stop alone clears a stop after prior queued visit actions were purged', () => {
     const stops = [
-      baseStop(1, {
+      baseStop({ location_id: 1,
         test_outcome: 'all_good',
         result_status: 'tested',
         has_run_changes: true,
@@ -214,7 +209,7 @@ describe('projectStopsWithWorkflowQueue', () => {
       queueItem({
         id: 'reset',
         action: 'reset_stop',
-        testingSiteId: 1,
+        locationId: 1,
         payload: {},
         enqueuedAt: 4,
       }),
@@ -227,7 +222,7 @@ describe('projectStopsWithWorkflowQueue', () => {
 
   it('without purge, stale queued visit actions override a local reset patch', () => {
     const stops = [
-      baseStop(1, {
+      baseStop({ location_id: 1,
         test_outcome: null,
         result_status: null,
         has_run_changes: false,
@@ -238,21 +233,21 @@ describe('projectStopsWithWorkflowQueue', () => {
       queueItem({
         id: 'cin',
         action: 'clock_in',
-        testingSiteId: 1,
+        locationId: 1,
         payload: { time_in: '9:00 AM' },
         enqueuedAt: 1,
       }),
       queueItem({
         id: 'outcome',
         action: 'test_outcome',
-        testingSiteId: 1,
+        locationId: 1,
         payload: { test_outcome: 'all_good' },
         enqueuedAt: 2,
       }),
       queueItem({
         id: 'cout',
         action: 'clock_out',
-        testingSiteId: 1,
+        locationId: 1,
         payload: { time_out: '9:30 AM' },
         enqueuedAt: 3,
       }),
@@ -265,23 +260,23 @@ describe('projectStopsWithWorkflowQueue', () => {
 describe('mergeWorkflowQueueIntoPayload', () => {
   it('server A open + queue clock_out A and clock_in B yields B open only', () => {
     const stops = [
-      baseStop(1, {
+      baseStop({ location_id: 1,
         clock_events: [{ id: 1, sort_order: 1, time_in: '9:00 AM', time_out: null }],
       }),
-      baseStop(2),
+      baseStop({ location_id: 2 }),
     ]
     const queue = [
       queueItem({
         id: '1',
         action: 'clock_out',
-        testingSiteId: 1,
+        locationId: 1,
         payload: { time_out: '9:30 AM' },
         enqueuedAt: 1,
       }),
       queueItem({
         id: '2',
         action: 'clock_in',
-        testingSiteId: 2,
+        locationId: 2,
         payload: { time_in: '9:35 AM' },
         enqueuedAt: 2,
       }),
@@ -289,10 +284,10 @@ describe('mergeWorkflowQueueIntoPayload', () => {
     const payload = {
       route: { id: ROUTE_ID, route_number: 1, weekday_iso: 0, week_occurrence: 1, label: 'R1' },
       month_date: MONTH,
-      stops,
+      locations: stops,
       run: null,
     } as TechnicianWorksheetPayload
     const merged = mergeWorkflowQueueIntoPayload(payload, ROUTE_ID, MONTH, queue)
-    expect(projectedOpenClockSiteId(merged.stops ?? [], ROUTE_ID, MONTH, queue)).toBe(2)
+    expect(projectedOpenClockSiteId(merged.stops ?? merged.locations ?? [], ROUTE_ID, MONTH, queue)).toBe(2)
   })
 })

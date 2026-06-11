@@ -57,7 +57,7 @@ export default function MonthlyLocationMapPinModal({
     setPlacementError(null)
     const params = new URLSearchParams({ q: query })
     apiJson<{ candidates: GeocodeCandidate[] }>(
-      `/api/monthly_sites/geocode_candidates?${params.toString()}`,
+      `/api/monthly_routes/geocode_candidates?${params.toString()}`,
       { signal: controller.signal }
     )
       .then((data) => {
@@ -85,7 +85,7 @@ export default function MonthlyLocationMapPinModal({
       setPlacementError(null)
       try {
         await apiJson<{ location: LibraryLocation }>(
-          `/api/monthly_sites/library/${locationId}/placement`,
+          `/api/monthly_routes/library/${locationId}/placement`,
           {
             method: 'PATCH',
             body: JSON.stringify({
@@ -116,7 +116,7 @@ export default function MonthlyLocationMapPinModal({
     setPlacementError(null)
     try {
       const res = await apiJson<LibraryLocationGeocodeResult>(
-        `/api/monthly_sites/library/${locationId}/geocode`,
+        `/api/monthly_routes/library/${locationId}/geocode`,
         { method: 'POST' }
       )
       if (res.geocoded) {

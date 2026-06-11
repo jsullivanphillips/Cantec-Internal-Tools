@@ -8,25 +8,20 @@ from typing import Any
 from sqlalchemy import func, or_
 
 from app.db_models import (
-    MonthlyRouteLocation,
+    MonthlyLocation,
+    MonthlyLocationDeficiency,
+    MonthlyLocationMonth,
     MonthlyRouteRun,
-    MonthlyRouteTestHistory,
     MonthlyRouteWorksheetAuditEvent,
-    MonthlySite,
     MonthlyStopClockEvent,
-    MonthlyTestingSite,
-    MonthlyTestingSiteDeficiency,
-    MonthlyTestingSiteMonth,
     db,
 )
-from app.monthly.worksheet_stops import (
+from app.monthly.worksheet_locations import (
     WorksheetAuditEventIdAllocator,
     _cleared_outcome_fields,
     _next_sqlite_bigint_id,
-    is_primary_stop,
     load_stop_for_patch,
-    seed_stop_month_fields,
-    sync_primary_history_from_stop,
+    seed_location_month_fields,
 )
 
 TEST_OUTCOMES = frozenset({"all_good", "passed_with_problems", "failed", "skipped"})
@@ -58,89 +53,115 @@ def portal_run_is_read_only(run: MonthlyRouteRun | None) -> bool:
     if run is None:
         return False
     source = (run.source or "").strip().lower()
-    if source == "csv_import":
+    if source in {"csv_import", "office_skip"}:
         return True
     return False
 
 
-def is_legacy_outcome(mtsm: MonthlyTestingSiteMonth | None) -> bool:
-    if mtsm is None:
+def is_legacy_outcome(mlm: MonthlyLocationMonth | None) -> bool:
+    if mlm is None:
         return False
-    if _normalize_text(mtsm.test_outcome):
+    if _normalize_text(mlm.test_outcome):
         return False
-    return _normalize_text(mtsm.result_status) is not None
+    return _normalize_text(mlm.result_status) is not None
 
 
-def dual_write_legacy_result_fields(mtsm: MonthlyTestingSiteMonth) -> None:
-    """Mirror ``test_outcome`` onto legacy ``result_status`` / ``skip_reason``."""
-    outcome = (_normalize_text(mtsm.test_outcome) or "").lower()
-    if not outcome:
-        return
+def dual_write_legacy_result_fields(mlm: MonthlyLocationMonth) -> None:
+    """Keep ``result_status`` aligned with ``test_outcome`` on the month row."""
+    outcome = (_normalize_text(mlm.test_outcome) or "").lower()
     if outcome == "skipped":
-        mtsm.result_status = "skipped"
-        cat = _normalize_text(mtsm.skip_category) or ""
-        note = _normalize_text(mtsm.skip_note) or ""
-        if cat and note:
-            mtsm.skip_reason = f"{cat}: {note}"
-        elif cat:
-            mtsm.skip_reason = cat
-        else:
-            mtsm.skip_reason = note or "skipped"
-    else:
-        mtsm.result_status = "tested"
-        if outcome != "skipped":
-            mtsm.skip_reason = None
+        mlm.result_status = "skipped"
+    elif outcome in {"all_good", "passed_with_problems", "failed"}:
+        mlm.result_status = "tested"
+        mlm.skip_reason = None
+        mlm.skip_category = None
+        mlm.skip_note = None
 
 
-def sync_legacy_times_from_clock_events(mtsm: MonthlyTestingSiteMonth) -> None:
+def sync_legacy_times_from_clock_events(mlm: MonthlyLocationMonth) -> None:
     """Keep sheet time columns aligned with first in / last out of clock events."""
     events = (
-        MonthlyStopClockEvent.query.filter_by(monthly_testing_site_month_id=int(mtsm.id))
+        MonthlyStopClockEvent.query.filter_by(monthly_location_month_id=int(mlm.id))
         .order_by(MonthlyStopClockEvent.sort_order.asc(), MonthlyStopClockEvent.id.asc())
         .all()
     )
     if not events:
-        mtsm.sheet_time_in_raw = None
-        mtsm.sheet_time_out_raw = None
+        mlm.sheet_time_in_raw = None
+        mlm.sheet_time_out_raw = None
         return
-    mtsm.sheet_time_in_raw = events[0].time_in_raw
+    mlm.sheet_time_in_raw = events[0].time_in_raw
     closed = [e for e in events if _normalize_text(e.time_out_raw)]
-    mtsm.sheet_time_out_raw = closed[-1].time_out_raw if closed else None
+    mlm.sheet_time_out_raw = closed[-1].time_out_raw if closed else None
 
 
-def _testing_site_ids_for_location(loc: MonthlyRouteLocation) -> list[int]:
-    site = (
-        MonthlySite.query.filter_by(legacy_monthly_route_location_id=int(loc.id))
-        .one_or_none()
-    )
-    if site is None:
-        return []
-    rows = (
-        MonthlyTestingSite.query.filter_by(monthly_site_id=int(site.id))
-        .order_by(MonthlyTestingSite.sort_order.asc(), MonthlyTestingSite.id.asc())
-        .all()
-    )
-    return [int(r.id) for r in rows]
-
-
-def _location_history(
+def _mlm_for_location_month(
     location_id: int,
     month_first: date,
-) -> MonthlyRouteTestHistory | None:
-    return (
-        MonthlyRouteTestHistory.query.filter_by(
-            location_id=int(location_id),
-            month_date=month_first,
-        )
-        .one_or_none()
+    *,
+    route_id: int | None = None,
+) -> MonthlyLocationMonth | None:
+    q = MonthlyLocationMonth.query.filter_by(
+        monthly_location_id=int(location_id),
+        month_date=month_first,
     )
+    if route_id is not None:
+        q = q.filter(MonthlyLocationMonth.test_monthly_route_id == int(route_id))
+    return q.one_or_none()
+
+
+def _prior_mlm_for_location(location_id: int, month_first: date) -> MonthlyLocationMonth | None:
+    return (
+        MonthlyLocationMonth.query.filter(
+            MonthlyLocationMonth.monthly_location_id == int(location_id),
+            MonthlyLocationMonth.month_date < month_first,
+        )
+        .order_by(MonthlyLocationMonth.month_date.desc())
+        .first()
+    )
+
+
+def _ensure_mlm_for_billing(
+    location_id: int,
+    month_first: date,
+    route_id: int,
+    *,
+    billing_status: str | None = None,
+) -> MonthlyLocationMonth:
+    mlm = _mlm_for_location_month(location_id, month_first)
+    if mlm is not None:
+        return mlm
+
+    loc = db.session.get(MonthlyLocation, int(location_id))
+    if loc is None:
+        raise ValueError("location_not_found")
+
+    prior = _prior_mlm_for_location(location_id, month_first)
+    fields = seed_location_month_fields(
+        loc,
+        prior,
+        route_id=route_id,
+        run_id=None,
+        month_first=month_first,
+        existing_row=None,
+    )
+    if billing_status is not None:
+        fields["billing_status"] = billing_status
+    fields["monthly_location_id"] = int(location_id)
+    mlm_kw: dict[str, object] = dict(fields)
+    nid = _next_sqlite_bigint_id(MonthlyLocationMonth)
+    if nid is not None:
+        mlm_kw["id"] = nid
+    mlm = MonthlyLocationMonth(**mlm_kw)
+    db.session.add(mlm)
+    db.session.flush()
+    return mlm
 
 
 def get_location_billing_status(location_id: int, month_first: date) -> str | None:
-    hist = _location_history(location_id, month_first)
-    if hist is None:
+    mlm = _mlm_for_location_month(location_id, month_first)
+    if mlm is None:
         return None
-    return _normalize_text(hist.billing_status)
+    return _normalize_text(mlm.billing_status)
 
 
 def apply_billing_defaults_for_location(
@@ -148,55 +169,25 @@ def apply_billing_defaults_for_location(
     month_first: date,
     route_id: int,
 ) -> None:
-    """Auto-set billing: bill if any stop has a billable outcome; unset if all outcomes are skip."""
-    hist = _location_history(location_id, month_first)
-    if hist is None:
-        hist_kw: dict[str, object] = {
-            "location_id": int(location_id),
-            "month_date": month_first,
-            "test_monthly_route_id": route_id,
-            "billing_status": "unset",
-        }
-        nid = _next_sqlite_bigint_id(MonthlyRouteTestHistory)
-        if nid is not None:
-            hist_kw["id"] = nid
-        hist = MonthlyRouteTestHistory(**hist_kw)
-        db.session.add(hist)
-        db.session.flush()
+    """Auto-set billing on the location-month row from its test outcome."""
+    mlm = _mlm_for_location_month(location_id, month_first, route_id=route_id)
+    if mlm is None:
+        return
 
-    current = (_normalize_text(hist.billing_status) or "").lower()
+    current = (_normalize_text(mlm.billing_status) or "").lower()
     if current == "legacy":
         return
 
-    loc = db.session.get(MonthlyRouteLocation, int(location_id))
-    if loc is None:
-        return
-    ts_ids = _testing_site_ids_for_location(loc)
-    if not ts_ids:
+    outcome = (_normalize_text(mlm.test_outcome) or "").lower()
+    if not outcome:
         return
 
-    rows = (
-        MonthlyTestingSiteMonth.query.filter(
-            MonthlyTestingSiteMonth.monthly_testing_site_id.in_(ts_ids),
-            MonthlyTestingSiteMonth.month_date == month_first,
-            MonthlyTestingSiteMonth.test_monthly_route_id == route_id,
-        )
-        .all()
-    )
-    outcomes = [
-        (_normalize_text(r.test_outcome) or "").lower()
-        for r in rows
-        if _normalize_text(r.test_outcome)
-    ]
-    if not outcomes:
+    if outcome in BILLABLE_OUTCOMES:
+        mlm.billing_status = "bill"
         return
 
-    if any(o in BILLABLE_OUTCOMES for o in outcomes):
-        hist.billing_status = "bill"
-        return
-
-    if all(o == "skipped" for o in outcomes):
-        hist.billing_status = "unset"
+    if outcome == "skipped":
+        mlm.billing_status = "unset"
 
 
 def set_location_billing_status(
@@ -205,7 +196,7 @@ def set_location_billing_status(
     route_id: int,
     *,
     billing_status: str,
-) -> MonthlyRouteTestHistory:
+) -> MonthlyLocationMonth:
     """Office processor override for location-month billing (not auto-default)."""
     status = (_normalize_text(billing_status) or "").lower()
     if status not in BILLING_STATUSES:
@@ -213,27 +204,21 @@ def set_location_billing_status(
     if status == "legacy":
         raise ValueError("billing_legacy_locked")
 
-    hist = _location_history(location_id, month_first)
-    if hist is None:
-        hist_kw: dict[str, object] = {
-            "location_id": int(location_id),
-            "month_date": month_first,
-            "test_monthly_route_id": route_id,
-            "billing_status": status,
-        }
-        nid = _next_sqlite_bigint_id(MonthlyRouteTestHistory)
-        if nid is not None:
-            hist_kw["id"] = nid
-        hist = MonthlyRouteTestHistory(**hist_kw)
-        db.session.add(hist)
-        db.session.flush()
+    mlm = _mlm_for_location_month(location_id, month_first)
+    if mlm is None:
+        mlm = _ensure_mlm_for_billing(
+            location_id,
+            month_first,
+            route_id,
+            billing_status=status,
+        )
     else:
-        current = (_normalize_text(hist.billing_status) or "").lower()
+        current = (_normalize_text(mlm.billing_status) or "").lower()
         if current == "legacy":
             raise ValueError("billing_legacy_locked")
-        hist.billing_status = status
-        hist.test_monthly_route_id = route_id
-    return hist
+        mlm.billing_status = status
+        mlm.test_monthly_route_id = route_id
+    return mlm
 
 
 def find_open_clock_event_on_route(
@@ -241,27 +226,27 @@ def find_open_clock_event_on_route(
     month_first: date,
     *,
     exclude_testing_site_id: int | None = None,
-) -> tuple[MonthlyTestingSiteMonth, MonthlyStopClockEvent] | None:
+) -> tuple[MonthlyLocationMonth, MonthlyStopClockEvent] | None:
     rows = (
-        MonthlyTestingSiteMonth.query.filter(
-            MonthlyTestingSiteMonth.month_date == month_first,
-            MonthlyTestingSiteMonth.test_monthly_route_id == route_id,
+        MonthlyLocationMonth.query.filter(
+            MonthlyLocationMonth.month_date == month_first,
+            MonthlyLocationMonth.test_monthly_route_id == route_id,
         )
         .all()
     )
-    for mtsm in rows:
-        if exclude_testing_site_id is not None and int(mtsm.monthly_testing_site_id) == int(
+    for mlm in rows:
+        if exclude_testing_site_id is not None and int(mlm.monthly_location_id) == int(
             exclude_testing_site_id
         ):
             continue
         open_ev = (
-            MonthlyStopClockEvent.query.filter_by(monthly_testing_site_month_id=int(mtsm.id))
+            MonthlyStopClockEvent.query.filter_by(monthly_location_month_id=int(mlm.id))
             .filter(MonthlyStopClockEvent.time_out_raw.is_(None))
             .order_by(MonthlyStopClockEvent.sort_order.desc(), MonthlyStopClockEvent.id.desc())
             .first()
         )
         if open_ev is not None:
-            return mtsm, open_ev
+            return mlm, open_ev
     return None
 
 
@@ -276,9 +261,9 @@ def serialize_clock_event(ev: MonthlyStopClockEvent) -> dict[str, object]:
     }
 
 
-def list_clock_events(mtsm: MonthlyTestingSiteMonth) -> list[dict[str, object]]:
+def list_clock_events(mlm: MonthlyLocationMonth) -> list[dict[str, object]]:
     events = (
-        MonthlyStopClockEvent.query.filter_by(monthly_testing_site_month_id=int(mtsm.id))
+        MonthlyStopClockEvent.query.filter_by(monthly_location_month_id=int(mlm.id))
         .order_by(MonthlyStopClockEvent.sort_order.asc(), MonthlyStopClockEvent.id.asc())
         .all()
     )
@@ -286,14 +271,14 @@ def list_clock_events(mtsm: MonthlyTestingSiteMonth) -> list[dict[str, object]]:
 
 
 def clock_in_stop(
-    mtsm: MonthlyTestingSiteMonth,
+    mlm: MonthlyLocationMonth,
     *,
     time_in_raw: str,
     tech_id: str | None,
     tech_name: str | None,
 ) -> MonthlyStopClockEvent:
     open_ev = (
-        MonthlyStopClockEvent.query.filter_by(monthly_testing_site_month_id=int(mtsm.id))
+        MonthlyStopClockEvent.query.filter_by(monthly_location_month_id=int(mlm.id))
         .filter(MonthlyStopClockEvent.time_out_raw.is_(None))
         .first()
     )
@@ -302,11 +287,11 @@ def clock_in_stop(
 
     max_sort = (
         db.session.query(func.coalesce(func.max(MonthlyStopClockEvent.sort_order), -1))
-        .filter_by(monthly_testing_site_month_id=int(mtsm.id))
+        .filter_by(monthly_location_month_id=int(mlm.id))
         .scalar()
     )
     ev_kw: dict[str, object] = {
-        "monthly_testing_site_month_id": int(mtsm.id),
+        "monthly_location_month_id": int(mlm.id),
         "sort_order": int(max_sort or -1) + 1,
         "time_in_raw": time_in_raw.strip(),
         "time_out_raw": None,
@@ -320,25 +305,25 @@ def clock_in_stop(
     db.session.add(ev)
     db.session.flush()
 
-    outcome = (_normalize_text(mtsm.test_outcome) or "").lower()
+    outcome = (_normalize_text(mlm.test_outcome) or "").lower()
     if outcome == "skipped":
-        mtsm.test_outcome = None
-        mtsm.skip_category = None
-        mtsm.skip_note = None
-        mtsm.result_status = None
-        mtsm.skip_reason = None
+        mlm.test_outcome = None
+        mlm.skip_category = None
+        mlm.skip_note = None
+        mlm.result_status = None
+        mlm.skip_reason = None
 
-    sync_legacy_times_from_clock_events(mtsm)
+    sync_legacy_times_from_clock_events(mlm)
     return ev
 
 
 def clock_out_stop(
-    mtsm: MonthlyTestingSiteMonth,
+    mlm: MonthlyLocationMonth,
     *,
     time_out_raw: str,
 ) -> MonthlyStopClockEvent:
     open_ev = (
-        MonthlyStopClockEvent.query.filter_by(monthly_testing_site_month_id=int(mtsm.id))
+        MonthlyStopClockEvent.query.filter_by(monthly_location_month_id=int(mlm.id))
         .filter(MonthlyStopClockEvent.time_out_raw.is_(None))
         .order_by(MonthlyStopClockEvent.sort_order.desc(), MonthlyStopClockEvent.id.desc())
         .first()
@@ -346,7 +331,7 @@ def clock_out_stop(
     if open_ev is None:
         raise ValueError("no_open_clock")
     open_ev.time_out_raw = time_out_raw.strip()
-    sync_legacy_times_from_clock_events(mtsm)
+    sync_legacy_times_from_clock_events(mlm)
     return open_ev
 
 
@@ -361,14 +346,17 @@ def transition_clock_between_stops(
     tech_id: str | None,
     tech_name: str | None,
 ) -> tuple[
-    MonthlyTestingSiteMonth,
-    MonthlyTestingSiteMonth,
-    MonthlyTestingSite,
-    MonthlyRouteLocation,
-    MonthlyTestingSite,
-    MonthlyRouteLocation,
+    MonthlyLocationMonth,
+    MonthlyLocationMonth,
+    MonthlyLocation,
+    MonthlyLocation,
+    MonthlyLocation,
+    MonthlyLocation,
 ]:
-    """Atomically close open clock on ``from`` (if any) and clock in on ``to``."""
+    """Atomically close open clock on ``from`` (if any) and clock in on ``to``.
+
+    ``testing_site_id`` parameters are flat ``MonthlyLocation.id`` values (API compat).
+    """
     if int(from_testing_site_id) == int(to_testing_site_id):
         raise ValueError("same_stop")
 
@@ -378,48 +366,46 @@ def transition_clock_between_stops(
         exclude_testing_site_id=to_testing_site_id,
     )
     if conflict is not None:
-        other_mtsm, _ev = conflict
-        if int(other_mtsm.monthly_testing_site_id) != int(from_testing_site_id):
+        other_mlm, _ev = conflict
+        if int(other_mlm.monthly_location_id) != int(from_testing_site_id):
             raise ValueError("open_clock_in_conflict")
 
-    from_mtsm, from_ts, from_loc = load_stop_for_patch(
-        route_id, from_testing_site_id, month_first
-    )
-    to_mtsm, to_ts, to_loc = load_stop_for_patch(route_id, to_testing_site_id, month_first)
-    if from_mtsm is None or from_ts is None or from_loc is None:
+    from_mlm, from_loc, _ = load_stop_for_patch(route_id, from_testing_site_id, month_first)
+    to_mlm, to_loc, _ = load_stop_for_patch(route_id, to_testing_site_id, month_first)
+    if from_mlm is None or from_loc is None:
         raise ValueError("from_stop_not_found")
-    if to_mtsm is None or to_ts is None or to_loc is None:
+    if to_mlm is None or to_loc is None:
         raise ValueError("to_stop_not_found")
 
     open_on_to = (
-        MonthlyStopClockEvent.query.filter_by(monthly_testing_site_month_id=int(to_mtsm.id))
+        MonthlyStopClockEvent.query.filter_by(monthly_location_month_id=int(to_mlm.id))
         .filter(MonthlyStopClockEvent.time_out_raw.is_(None))
         .first()
     )
     if open_on_to is not None and int(from_testing_site_id) != int(to_testing_site_id):
-        return from_mtsm, to_mtsm, from_ts, from_loc, to_ts, to_loc
+        return from_mlm, to_mlm, from_loc, from_loc, to_loc, to_loc
 
     try:
-        clock_out_stop(from_mtsm, time_out_raw=time_out_raw)
+        clock_out_stop(from_mlm, time_out_raw=time_out_raw)
     except ValueError as exc:
         if str(exc) != "no_open_clock":
             raise
 
     clock_in_stop(
-        to_mtsm,
+        to_mlm,
         time_in_raw=time_in_raw,
         tech_id=tech_id,
         tech_name=tech_name,
     )
-    return from_mtsm, to_mtsm, from_ts, from_loc, to_ts, to_loc
+    return from_mlm, to_mlm, from_loc, from_loc, to_loc, to_loc
 
 
-def cancel_clock_in_stop(mtsm: MonthlyTestingSiteMonth) -> None:
+def cancel_clock_in_stop(mlm: MonthlyLocationMonth) -> None:
     """Remove the open clock-in on this stop (accidental clock-in undo)."""
-    if _normalize_text(mtsm.test_outcome):
+    if _normalize_text(mlm.test_outcome):
         raise ValueError("visit_has_outcome")
     open_ev = (
-        MonthlyStopClockEvent.query.filter_by(monthly_testing_site_month_id=int(mtsm.id))
+        MonthlyStopClockEvent.query.filter_by(monthly_location_month_id=int(mlm.id))
         .filter(MonthlyStopClockEvent.time_out_raw.is_(None))
         .order_by(MonthlyStopClockEvent.sort_order.desc(), MonthlyStopClockEvent.id.desc())
         .first()
@@ -428,50 +414,50 @@ def cancel_clock_in_stop(mtsm: MonthlyTestingSiteMonth) -> None:
         raise ValueError("no_open_clock")
     db.session.delete(open_ev)
     db.session.flush()
-    sync_legacy_times_from_clock_events(mtsm)
+    sync_legacy_times_from_clock_events(mlm)
 
 
-def _deficiency_query_for_site(testing_site_id: int):
-    return MonthlyTestingSiteDeficiency.query.filter_by(
-        monthly_testing_site_id=int(testing_site_id),
+def _deficiency_query_for_location(location_id: int):
+    return MonthlyLocationDeficiency.query.filter_by(
+        monthly_location_id=int(location_id),
     )
 
 
-def count_active_deficiencies(testing_site_id: int) -> int:
+def count_active_deficiencies(location_id: int) -> int:
     """New or Verified deficiencies visible on the portal card."""
     return (
-        _deficiency_query_for_site(testing_site_id)
-        .filter(MonthlyTestingSiteDeficiency.status.in_(tuple(DEFICIENCY_CARD_STATUSES)))
+        _deficiency_query_for_location(location_id)
+        .filter(MonthlyLocationDeficiency.status.in_(tuple(DEFICIENCY_CARD_STATUSES)))
         .count()
     )
 
 
-def count_new_deficiencies(testing_site_id: int) -> int:
+def count_new_deficiencies(location_id: int) -> int:
     return (
-        _deficiency_query_for_site(testing_site_id)
-        .filter(MonthlyTestingSiteDeficiency.status == "new")
+        _deficiency_query_for_location(location_id)
+        .filter(MonthlyLocationDeficiency.status == "new")
         .count()
     )
 
 
-def count_new_deficiencies_requiring_verify(testing_site_id: int, run_id: int | None) -> int:
+def count_new_deficiencies_requiring_verify(location_id: int, run_id: int | None) -> int:
     """New deficiencies from before this run (or with no run stamp) must be verified before outcome."""
     q = (
-        _deficiency_query_for_site(testing_site_id)
-        .filter(MonthlyTestingSiteDeficiency.status == "new")
+        _deficiency_query_for_location(location_id)
+        .filter(MonthlyLocationDeficiency.status == "new")
     )
     if run_id is not None:
         q = q.filter(
             or_(
-                MonthlyTestingSiteDeficiency.created_run_id.is_(None),
-                MonthlyTestingSiteDeficiency.created_run_id != int(run_id),
+                MonthlyLocationDeficiency.created_run_id.is_(None),
+                MonthlyLocationDeficiency.created_run_id != int(run_id),
             )
         )
     return q.count()
 
 
 def validate_test_outcome(
-    testing_site_id: int,
+    location_id: int,
     test_outcome: str,
     *,
     confirmed_no_deficiencies: bool = False,
@@ -484,8 +470,8 @@ def validate_test_outcome(
     if outcome == "skipped":
         return
 
-    active = count_active_deficiencies(testing_site_id)
-    new_count = count_new_deficiencies_requiring_verify(testing_site_id, run_id)
+    active = count_active_deficiencies(location_id)
+    new_count = count_new_deficiencies_requiring_verify(location_id, run_id)
 
     if outcome == "all_good":
         if active > 0:
@@ -508,8 +494,8 @@ def validate_test_outcome(
 
 
 def set_test_outcome(
-    mtsm: MonthlyTestingSiteMonth,
-    loc: MonthlyRouteLocation,
+    mlm: MonthlyLocationMonth,
+    loc: MonthlyLocation,
     route_id: int,
     month_first: date,
     *,
@@ -523,51 +509,61 @@ def set_test_outcome(
     if outcome not in TEST_OUTCOMES:
         raise ValueError("invalid_test_outcome")
 
-    testing_site_id = int(mtsm.monthly_testing_site_id)
+    location_id = int(loc.id)
     validate_test_outcome(
-        testing_site_id,
+        location_id,
         outcome,
         confirmed_no_deficiencies=confirmed_no_deficiencies,
         run_id=run_id,
     )
 
-    mtsm.test_outcome = outcome
-    mtsm.confirmed_no_deficiencies = bool(confirmed_no_deficiencies)
+    mlm.test_outcome = outcome
+    mlm.confirmed_no_deficiencies = bool(confirmed_no_deficiencies)
 
     if outcome == "skipped":
         cat = (_normalize_text(skip_category) or "").lower()
         if cat not in SKIP_CATEGORIES:
             raise ValueError("skip_category_required")
-        mtsm.skip_category = cat
-        mtsm.skip_note = _normalize_text(skip_note)
+        mlm.skip_category = cat
+        mlm.skip_note = _normalize_text(skip_note)
+        mlm.result_status = "skipped"
+        cat_note = _normalize_text(skip_note) or ""
+        if cat and cat_note:
+            mlm.skip_reason = f"{cat}: {cat_note}"
+        elif cat:
+            mlm.skip_reason = cat
+        else:
+            mlm.skip_reason = cat_note or "skipped"
     else:
-        mtsm.skip_category = None
-        mtsm.skip_note = None
+        mlm.skip_category = None
+        mlm.skip_note = None
+        mlm.result_status = "tested"
+        mlm.skip_reason = None
 
-    dual_write_legacy_result_fields(mtsm)
-    apply_billing_defaults_for_location(int(loc.id), month_first, route_id)
+    apply_billing_defaults_for_location(location_id, month_first, route_id)
 
 
 def clear_test_outcome(
-    mtsm: MonthlyTestingSiteMonth,
-    loc: MonthlyRouteLocation,
+    mlm: MonthlyLocationMonth,
+    loc: MonthlyLocation,
     route_id: int,
     month_first: date,
 ) -> None:
     """Office clears portal test outcome so the stop returns to pending review."""
-    mtsm.test_outcome = None
-    mtsm.skip_category = None
-    mtsm.skip_note = None
-    mtsm.confirmed_no_deficiencies = False
-    mtsm.result_status = None
-    mtsm.skip_reason = None
+    mlm.test_outcome = None
+    mlm.skip_category = None
+    mlm.skip_note = None
+    mlm.confirmed_no_deficiencies = False
+    mlm.result_status = None
+    mlm.skip_reason = None
     apply_billing_defaults_for_location(int(loc.id), month_first, route_id)
 
 
-def serialize_deficiency(d: MonthlyTestingSiteDeficiency) -> dict[str, object]:
+def serialize_deficiency(d: MonthlyLocationDeficiency) -> dict[str, object]:
     return {
         "id": int(d.id),
-        "monthly_testing_site_id": int(d.monthly_testing_site_id),
+        "monthly_location_id": int(d.monthly_location_id),
+        "testing_site_id": int(d.monthly_location_id),
         "created_run_id": int(d.created_run_id) if d.created_run_id is not None else None,
         "title": d.title,
         "severity": d.severity,
@@ -584,21 +580,19 @@ def serialize_deficiency(d: MonthlyTestingSiteDeficiency) -> dict[str, object]:
 
 
 def list_deficiencies_for_site(
-    testing_site_id: int,
+    location_id: int,
     *,
     include_hidden: bool = False,
 ) -> list[dict[str, object]]:
-    q = MonthlyTestingSiteDeficiency.query.filter_by(
-        monthly_testing_site_id=int(testing_site_id),
-    )
+    q = _deficiency_query_for_location(location_id)
     if not include_hidden:
-        q = q.filter(MonthlyTestingSiteDeficiency.status.in_(tuple(DEFICIENCY_CARD_STATUSES)))
-    rows = q.order_by(MonthlyTestingSiteDeficiency.created_at.asc()).all()
+        q = q.filter(MonthlyLocationDeficiency.status.in_(tuple(DEFICIENCY_CARD_STATUSES)))
+    rows = q.order_by(MonthlyLocationDeficiency.created_at.asc()).all()
     return [serialize_deficiency(d) for d in rows]
 
 
 def _deficiency_visible_on_run_review(
-    row: MonthlyTestingSiteDeficiency,
+    row: MonthlyLocationDeficiency,
     run: MonthlyRouteRun | None,
 ) -> bool:
     """Deficiencies reported on this run, or verified during this field visit."""
@@ -628,71 +622,74 @@ def _deficiency_visible_on_run_review(
 
 
 def list_deficiencies_for_run_review(
-    testing_site_id: int,
+    location_id: int,
     run: MonthlyRouteRun | None,
 ) -> list[dict[str, object]]:
     """Open deficiencies tied to this field run (reported or verified on the visit)."""
     if run is None:
         return []
-    return batch_deficiency_summaries_for_testing_sites([int(testing_site_id)], run=run).get(
-        int(testing_site_id),
+    return batch_deficiency_summaries_for_testing_sites([int(location_id)], run=run).get(
+        int(location_id),
         [],
     )
 
 
 def batch_deficiency_summaries_for_testing_sites(
-    testing_site_ids: list[int],
+    location_ids: list[int],
     *,
     run: MonthlyRouteRun | None = None,
 ) -> dict[int, list[dict[str, object]]]:
-    """Load card-visible deficiencies for many stops in one query."""
-    if not testing_site_ids:
+    """Load card-visible deficiencies for many stops in one query.
+
+    ``location_ids`` are flat ``MonthlyLocation.id`` values (API compat alias).
+    """
+    if not location_ids:
         return {}
-    ids = [int(i) for i in testing_site_ids]
+    ids = [int(i) for i in location_ids]
     rows = (
-        MonthlyTestingSiteDeficiency.query.filter(
-            MonthlyTestingSiteDeficiency.monthly_testing_site_id.in_(ids),
-            MonthlyTestingSiteDeficiency.status.in_(tuple(DEFICIENCY_CARD_STATUSES)),
+        MonthlyLocationDeficiency.query.filter(
+            MonthlyLocationDeficiency.monthly_location_id.in_(ids),
+            MonthlyLocationDeficiency.status.in_(tuple(DEFICIENCY_CARD_STATUSES)),
         )
         .order_by(
-            MonthlyTestingSiteDeficiency.monthly_testing_site_id.asc(),
-            MonthlyTestingSiteDeficiency.created_at.asc(),
+            MonthlyLocationDeficiency.monthly_location_id.asc(),
+            MonthlyLocationDeficiency.created_at.asc(),
         )
         .all()
     )
-    grouped: dict[int, list[MonthlyTestingSiteDeficiency]] = {}
+    grouped: dict[int, list[MonthlyLocationDeficiency]] = {}
     for row in rows:
-        grouped.setdefault(int(row.monthly_testing_site_id), []).append(row)
+        grouped.setdefault(int(row.monthly_location_id), []).append(row)
     run_scoped = run is not None and run.started_at is not None
     out: dict[int, list[dict[str, object]]] = {}
-    for ts_id in ids:
-        site_rows = grouped.get(ts_id, [])
+    for loc_id in ids:
+        site_rows = grouped.get(loc_id, [])
         if run_scoped:
             site_rows = [row for row in site_rows if _deficiency_visible_on_run_review(row, run)]
-        out[ts_id] = [serialize_deficiency(row) for row in site_rows]
+        out[loc_id] = [serialize_deficiency(row) for row in site_rows]
     return out
 
 
-def batch_site_has_open_deficiencies(testing_site_ids: list[int]) -> dict[int, bool]:
-    """True when a stop has any card-visible deficiency (site-wide, not run-scoped)."""
-    if not testing_site_ids:
+def batch_site_has_open_deficiencies(location_ids: list[int]) -> dict[int, bool]:
+    """True when a stop has any card-visible deficiency (location-wide, not run-scoped)."""
+    if not location_ids:
         return {}
-    ids = [int(i) for i in testing_site_ids]
+    ids = [int(i) for i in location_ids]
     rows = (
-        db.session.query(MonthlyTestingSiteDeficiency.monthly_testing_site_id)
+        db.session.query(MonthlyLocationDeficiency.monthly_location_id)
         .filter(
-            MonthlyTestingSiteDeficiency.monthly_testing_site_id.in_(ids),
-            MonthlyTestingSiteDeficiency.status.in_(tuple(DEFICIENCY_CARD_STATUSES)),
+            MonthlyLocationDeficiency.monthly_location_id.in_(ids),
+            MonthlyLocationDeficiency.status.in_(tuple(DEFICIENCY_CARD_STATUSES)),
         )
         .distinct()
         .all()
     )
     open_ids = {int(r[0]) for r in rows}
-    return {ts_id: ts_id in open_ids for ts_id in ids}
+    return {loc_id: loc_id in open_ids for loc_id in ids}
 
 
 def create_deficiency(
-    testing_site_id: int,
+    location_id: int,
     run_id: int | None,
     *,
     title: str,
@@ -701,7 +698,7 @@ def create_deficiency(
     description: str | None,
     tech_id: str | None,
     tech_name: str | None,
-) -> MonthlyTestingSiteDeficiency:
+) -> MonthlyLocationDeficiency:
     sev = severity.strip().lower()
     st = status.strip().lower()
     if sev not in DEFICIENCY_SEVERITIES:
@@ -710,7 +707,7 @@ def create_deficiency(
         raise ValueError("invalid_status")
 
     def_kw: dict[str, object] = {
-        "monthly_testing_site_id": int(testing_site_id),
+        "monthly_location_id": int(location_id),
         "created_run_id": int(run_id) if run_id is not None else None,
         "title": title.strip(),
         "severity": sev,
@@ -721,17 +718,17 @@ def create_deficiency(
         "last_edited_by_tech_id": _normalize_text(tech_id),
         "last_edited_by_tech_name": _normalize_text(tech_name),
     }
-    def_nid = _next_sqlite_bigint_id(MonthlyTestingSiteDeficiency)
+    def_nid = _next_sqlite_bigint_id(MonthlyLocationDeficiency)
     if def_nid is not None:
         def_kw["id"] = def_nid
-    row = MonthlyTestingSiteDeficiency(**def_kw)
+    row = MonthlyLocationDeficiency(**def_kw)
     db.session.add(row)
     db.session.flush()
     return row
 
 
 def update_deficiency(
-    deficiency: MonthlyTestingSiteDeficiency,
+    deficiency: MonthlyLocationDeficiency,
     *,
     title: str | None = None,
     severity: str | None = None,
@@ -739,7 +736,7 @@ def update_deficiency(
     description: str | None = None,
     tech_id: str | None = None,
     tech_name: str | None = None,
-) -> MonthlyTestingSiteDeficiency:
+) -> MonthlyLocationDeficiency:
     if title is not None:
         deficiency.title = title.strip()
     if severity is not None:
@@ -760,12 +757,12 @@ def update_deficiency(
 
 
 def verify_deficiency(
-    deficiency: MonthlyTestingSiteDeficiency,
+    deficiency: MonthlyLocationDeficiency,
     *,
     tech_id: str | None,
     tech_name: str | None,
     note: str | None = None,
-) -> MonthlyTestingSiteDeficiency:
+) -> MonthlyLocationDeficiency:
     deficiency.status = "verified"
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     tech_label = _normalize_text(tech_name) or _normalize_text(tech_id) or "Unknown"
@@ -779,17 +776,21 @@ def verify_deficiency(
     return deficiency
 
 
-def stop_has_run_changes(mtsm: MonthlyTestingSiteMonth, testing_site_id: int, run_id: int | None) -> bool:
-    if _normalize_text(mtsm.test_outcome) or _normalize_text(mtsm.result_status):
+def stop_has_run_changes(
+    mlm: MonthlyLocationMonth,
+    location_id: int,
+    run_id: int | None,
+) -> bool:
+    if _normalize_text(mlm.test_outcome) or _normalize_text(mlm.result_status):
         return True
-    if _normalize_text(mtsm.run_comments):
+    if _normalize_text(mlm.run_comments):
         return True
-    if MonthlyStopClockEvent.query.filter_by(monthly_testing_site_month_id=int(mtsm.id)).count() > 0:
+    if MonthlyStopClockEvent.query.filter_by(monthly_location_month_id=int(mlm.id)).count() > 0:
         return True
     if run_id is not None:
         n = (
-            MonthlyTestingSiteDeficiency.query.filter_by(
-                monthly_testing_site_id=int(testing_site_id),
+            MonthlyLocationDeficiency.query.filter_by(
+                monthly_location_id=int(location_id),
                 created_run_id=int(run_id),
             ).count()
         )
@@ -801,107 +802,87 @@ def stop_has_run_changes(mtsm: MonthlyTestingSiteMonth, testing_site_id: int, ru
 def reset_stop_on_run(
     route_id: int,
     month_first: date,
-    mtsm: MonthlyTestingSiteMonth,
-    ts: MonthlyTestingSite,
-    loc: MonthlyRouteLocation,
+    mlm: MonthlyLocationMonth,
+    loc: MonthlyLocation,
     run: MonthlyRouteRun | None,
 ) -> None:
     run_id = int(run.id) if run is not None else None
 
     MonthlyStopClockEvent.query.filter_by(
-        monthly_testing_site_month_id=int(mtsm.id),
+        monthly_location_month_id=int(mlm.id),
     ).delete(synchronize_session=False)
 
     if run_id is not None:
-        MonthlyTestingSiteDeficiency.query.filter_by(
-            monthly_testing_site_id=int(ts.id),
+        MonthlyLocationDeficiency.query.filter_by(
+            monthly_location_id=int(loc.id),
             created_run_id=run_id,
         ).delete(synchronize_session=False)
 
-    from app.monthly.worksheet_stops import primary_testing_site, _prior_mtsm_by_testing_site, _history_for_locations
-
-    ts_list = (
-        MonthlyTestingSite.query.filter_by(monthly_site_id=int(ts.monthly_site_id))
-        .order_by(MonthlyTestingSite.sort_order.asc(), MonthlyTestingSite.id.asc())
-        .all()
-    )
-    primary = primary_testing_site(ts_list)
-    prior_map = _prior_mtsm_by_testing_site([int(ts.id)], month_first)
-    prior = prior_map.get(int(ts.id))
-    hist_by_loc = _history_for_locations([int(loc.id)], month_first)
-    location_hist = hist_by_loc.get(int(loc.id))
-
-    fresh = seed_stop_month_fields(
-        ts,
+    prior = _prior_mlm_for_location(int(loc.id), month_first)
+    fresh = seed_location_month_fields(
         loc,
         prior,
         route_id=route_id,
         run_id=run_id,
         month_first=month_first,
-        primary=is_primary_stop(ts, loc),
-        location_hist=location_hist,
         existing_row=None,
     )
     for key, val in fresh.items():
-        if key in ("month_date", "monthly_testing_site_id"):
+        if key in ("month_date", "monthly_location_id"):
             continue
-        setattr(mtsm, key, val)
+        setattr(mlm, key, val)
 
-    # seed_stop_month_fields may copy sheet/history outcomes onto primary stops; reset must clear them.
     for key, val in _cleared_outcome_fields().items():
-        setattr(mtsm, key, val)
-    sync_legacy_times_from_clock_events(mtsm)
-
-    if is_primary_stop(ts, loc):
-        sync_primary_history_from_stop(mtsm, loc, route_id, month_first)
+        setattr(mlm, key, val)
+    sync_legacy_times_from_clock_events(mlm)
 
     audit_ids = WorksheetAuditEventIdAllocator()
-    hist = _location_history(int(loc.id), month_first)
-    if hist is not None:
-        db.session.add(
-            MonthlyRouteWorksheetAuditEvent(
-                **audit_ids.id_kwargs(),
-                monthly_route_id=route_id,
-                location_id=int(loc.id),
-                history_row_id=int(hist.id),
-                month_date=month_first,
-                field_name="stop_reset",
-                old_value=None,
-                new_value={"testing_site_id": int(ts.id)},
-                source="technician_app",
-            )
+    db.session.add(
+        MonthlyRouteWorksheetAuditEvent(
+            **audit_ids.id_kwargs(),
+            monthly_route_id=route_id,
+            location_id=int(loc.id),
+            location_month_row_id=int(mlm.id),
+            month_date=month_first,
+            field_name="stop_reset",
+            old_value=None,
+            new_value={"location_id": int(loc.id)},
+            source="technician_app",
         )
+    )
 
 
 def portal_workflow_extras_for_stop(
-    mtsm: MonthlyTestingSiteMonth | None,
-    ts: MonthlyTestingSite,
-    loc: MonthlyRouteLocation,
+    mlm: MonthlyLocationMonth | None,
+    loc: MonthlyLocation,
     *,
     route_id: int,
     month_first: date,
     run: MonthlyRouteRun | None,
 ) -> dict[str, Any]:
     """Fields appended to ``serialize_worksheet_stop`` payload."""
-    if mtsm is None:
+    billing_status = get_location_billing_status(int(loc.id), month_first)
+    if mlm is None:
         return {
             "clock_events": [],
-            "deficiencies": list_deficiencies_for_site(int(ts.id)),
+            "deficiencies": list_deficiencies_for_site(int(loc.id)),
             "has_run_changes": False,
-            "billing_status": get_location_billing_status(int(loc.id), month_first),
+            "billing_status": billing_status,
             "is_legacy_outcome": False,
             "portal_read_only": portal_run_is_read_only(run),
             "is_legacy_run": portal_run_is_read_only(run),
         }
 
     return {
-        "clock_events": list_clock_events(mtsm),
-        "deficiencies": list_deficiencies_for_site(int(ts.id)),
+        "clock_events": list_clock_events(mlm),
+        "deficiencies": list_deficiencies_for_site(int(loc.id)),
         "has_run_changes": stop_has_run_changes(
-            mtsm, int(ts.id), int(run.id) if run is not None else None
+            mlm,
+            int(loc.id),
+            int(run.id) if run is not None else None,
         ),
-        "billing_status": get_location_billing_status(int(loc.id), month_first),
-        "is_legacy_outcome": is_legacy_outcome(mtsm),
+        "billing_status": billing_status,
+        "is_legacy_outcome": is_legacy_outcome(mlm),
         "portal_read_only": portal_run_is_read_only(run),
         "is_legacy_run": portal_run_is_read_only(run),
     }

@@ -1,9 +1,9 @@
-import type { TechnicianWorksheetStop } from './monthlyRoutesShared'
+import type { TechnicianWorksheetLocation } from './monthlyRoutesShared'
 import { stopHasMonitoring, stopMonitoringDisplay } from './stopMonitoringDisplay'
 import PortalBootstrapIcon from './PortalBootstrapIcon'
 
 type PortalStopSummaryDetailProps = {
-  stop: TechnicianWorksheetStop
+  stop: TechnicianWorksheetLocation
   /** Worksheet header: third group with panel make/model and location. */
   includePanel?: boolean
   className?: string

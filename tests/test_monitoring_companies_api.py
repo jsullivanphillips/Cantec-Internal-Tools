@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from app import create_app
-from app.db_models import MonitoringCompany, MonthlyTestingSite, db
+from app.db_models import MonitoringCompany, db
 
 
 @pytest.fixture
@@ -15,7 +15,7 @@ def monitoring_client(monkeypatch):
     app.config["TESTING"] = True
     app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///:memory:"
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-    tables = [MonitoringCompany.__table__, MonthlyTestingSite.__table__]
+    tables = [MonitoringCompany.__table__]
 
     with app.app_context():
         db.metadata.create_all(db.engine, tables=tables)

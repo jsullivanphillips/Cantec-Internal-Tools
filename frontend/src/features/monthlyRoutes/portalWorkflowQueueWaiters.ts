@@ -1,10 +1,10 @@
 /** Resolves promises for workflow queue items awaiting server confirmation. */
 
-import type { TechnicianWorksheetStop } from './monthlyRoutesShared'
+import type { TechnicianWorksheetLocation } from './monthlyRoutesShared'
 
 export type WorkflowQueueResult = {
   ok: boolean
-  stop?: TechnicianWorksheetStop
+  stop?: TechnicianWorksheetLocation
   queued?: boolean
 }
 

@@ -4,9 +4,9 @@ import {
   monthFirstIsoPacificToday,
   parseYearMonth,
   worksheetRunExplicitlyCompleted,
-  worksheetStopIsOpenClockIn,
+  worksheetLocationIsOpenClockIn,
   type TechnicianWorksheetPayload,
-  type TechnicianWorksheetStop,
+  type TechnicianWorksheetLocation,
 } from './monthlyRoutesShared'
 import type { WorksheetStopChangeSet } from './worksheetOfflineStore'
 import type { PortalWorksheetSyncState } from './usePortalWorksheet'
@@ -44,13 +44,13 @@ export function usePortalWorksheetDemo(monthIso: string) {
   const [syncState] = useState<PortalWorksheetSyncState>('synced')
   const [syncMessage] = useState<string | null>(null)
 
-  const stops = useMemo(() => payload.stops ?? [], [payload.stops])
+  const stops = useMemo(() => payload.locations ?? [], [payload.locations])
 
-  const updateLocalStop = useCallback((testingSiteId: number, patch: WorksheetStopChangeSet) => {
+  const updateLocalStop = useCallback((locationId: number, patch: WorksheetStopChangeSet) => {
     setPayload((prev) => {
-      if (!prev.stops?.length) return prev
-      const nextStops = prev.stops.map((s) =>
-        s.testing_site_id === testingSiteId ? { ...s, ...patch } : s,
+      if (!prev.locations?.length) return prev
+      const nextStops = prev.locations.map((s) =>
+        s.location_id === locationId ? { ...s, ...patch } : s,
       )
       return { ...prev, stops: nextStops }
     })
@@ -58,20 +58,20 @@ export function usePortalWorksheetDemo(monthIso: string) {
 
   const openClockInStop = useMemo(() => {
     if (!stops.length) return null
-    return stops.find(worksheetStopIsOpenClockIn) ?? null
+    return stops.find(worksheetLocationIsOpenClockIn) ?? null
   }, [stops])
 
   const clockInBlockedForStop = useCallback(
-    (stop: TechnicianWorksheetStop): boolean =>
-      openClockInStop != null && openClockInStop.testing_site_id !== stop.testing_site_id,
+    (stop: TechnicianWorksheetLocation): boolean =>
+      openClockInStop != null && openClockInStop.location_id !== stop.location_id,
     [openClockInStop],
   )
 
   const workflowActions = usePortalWorkflowActionsDemo(updateLocalStop, payload.run?.id ?? null)
 
   const queueStopChanges = useCallback(
-    (stop: TechnicianWorksheetStop, changes: WorksheetStopChangeSet) => {
-      updateLocalStop(stop.testing_site_id, changes)
+    (stop: TechnicianWorksheetLocation, changes: WorksheetStopChangeSet) => {
+      updateLocalStop(stop.location_id, changes)
     },
     [updateLocalStop],
   )
