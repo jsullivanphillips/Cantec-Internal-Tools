@@ -571,3 +571,56 @@ def portal_complete_run_for_month(route_id: int):
 def portal_reopen_run_for_month(route_id: int):
     """Deprecated alias: use ``POST …/runs/reopen_field`` for technician field reopen."""
     return portal_reopen_field_for_current_month(route_id)
+
+
+@technician_portal_bp.get("/demo")
+def portal_demo_route_info():
+    """Training route metadata for the portal start page and worksheet banner."""
+    if not session.get(SESSION_FLAG):
+        return jsonify({"error": "Portal locked", "code": "portal_locked"}), 401
+    from app.monthly.technician_demo_route import serialize_technician_demo_portal_payload
+
+    return jsonify(serialize_technician_demo_portal_payload())
+
+
+@technician_portal_bp.post("/demo/reset")
+def portal_reset_demo_route():
+    """Restore the training route's current month to the baseline demo scenario."""
+    if not session.get(SESSION_FLAG):
+        return jsonify({"error": "Portal locked", "code": "portal_locked"}), 401
+    data = request.get_json(silent=True) or {}
+    if not data.get("confirm"):
+        return jsonify({"error": "confirm=true is required", "code": "confirm_required"}), 400
+
+    from app.monthly.technician_demo_route import (
+        get_technician_demo_route,
+        reset_technician_demo_route_month,
+    )
+    from app.routes.monthly_routes import _serialize_run
+
+    run = reset_technician_demo_route_month()
+    if run is None:
+        return (
+            jsonify(
+                {
+                    "error": "Training route is not seeded.",
+                    "code": "demo_not_seeded",
+                }
+            ),
+            404,
+        )
+    route = get_technician_demo_route()
+    return jsonify(
+        {
+            "ok": True,
+            "route": _serialize_route_for_portal(
+                route,
+                location_count=MonthlyLocation.query.filter_by(
+                    monthly_route_id=int(route.id)
+                ).count(),
+            )
+            if route
+            else None,
+            "run": _serialize_run(run),
+        }
+    )

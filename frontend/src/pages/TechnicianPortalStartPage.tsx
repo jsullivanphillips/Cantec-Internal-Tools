@@ -3,7 +3,10 @@ import { Alert, Button, Card, Form, ListGroup, Spinner } from 'react-bootstrap'
 import { useNavigate } from 'react-router-dom'
 import { apiJson, isAbortError } from '../lib/apiClient'
 import { monthFirstIsoPacificToday } from '../features/monthlyRoutes/monthlyRoutesShared'
-import { PORTAL_WORKSHEET_DEMO_ROUTE_ID } from '../features/monthlyRoutes/portalWorksheetDemo'
+import {
+  DEFAULT_TECHNICIAN_DEMO_ROUTE_NUMBER,
+  useTechnicianDemoRouteInfo,
+} from '../features/monthlyRoutes/technicianDemoRoute'
 
 type PortalRoute = {
   id: number
@@ -66,6 +69,7 @@ export default function TechnicianPortalStartPage() {
   const [suggestions, setSuggestions] = useState<PortalRoute[]>([])
   const [suggestHighlight, setSuggestHighlight] = useState(0)
   const [inputFocused, setInputFocused] = useState(false)
+  const { info: demoInfo, loading: demoLoading } = useTechnicianDemoRouteInfo()
 
   const dropdownVisible = inputFocused && suggestions.length > 0 && !lookingUp
 
@@ -137,9 +141,14 @@ export default function TechnicianPortalStartPage() {
   )
 
   const openDemoWorksheet = useCallback(() => {
-    const month = monthFirstIsoPacificToday()
-    nav(`/tech/route/${PORTAL_WORKSHEET_DEMO_ROUTE_ID}/worksheet/${month}`)
-  }, [nav])
+    if (!demoInfo?.seeded || !demoInfo.route?.id) return
+    const month = demoInfo.current_month_first || monthFirstIsoPacificToday()
+    nav(`/tech/route/${demoInfo.route.id}/worksheet/${month}`)
+  }, [demoInfo, nav])
+
+  const demoRouteNumber = demoInfo?.route_number ?? DEFAULT_TECHNICIAN_DEMO_ROUTE_NUMBER
+  const demoStopCount = demoInfo?.route?.location_count ?? 5
+  const demoSeeded = demoInfo?.seeded === true
 
   const pickSuggestion = useCallback(
     (route: PortalRoute) => {
@@ -294,30 +303,54 @@ export default function TechnicianPortalStartPage() {
 
       <div className="fw-semibold mb-2">Today’s runs</div>
 
-      <Card
-        as="button"
-        type="button"
-        className="text-start shadow-sm border border-info border-2 mb-3 tw-portal-route-card"
-        onClick={openDemoWorksheet}
-      >
-        <Card.Body className="d-flex align-items-center justify-content-between gap-3 py-3">
-          <div className="d-flex align-items-center gap-3">
-            <div
-              className="rounded-3 bg-info text-white fw-semibold d-flex align-items-center justify-content-center"
-              style={{ width: '3.25rem', height: '3.25rem', fontSize: '1.1rem' }}
-            >
-              R99
-            </div>
-            <div>
-              <div className="fw-semibold">UI demo (sample route)</div>
-              <div className="small text-muted">
-                5 sample stops · preview the new worksheet — nothing is saved
+      {demoSeeded ? (
+        <Card
+          as="button"
+          type="button"
+          className="text-start shadow-sm border border-info border-2 mb-3 tw-portal-route-card"
+          onClick={openDemoWorksheet}
+        >
+          <Card.Body className="d-flex align-items-center justify-content-between gap-3 py-3">
+            <div className="d-flex align-items-center gap-3">
+              <div
+                className="rounded-3 bg-info text-white fw-semibold d-flex align-items-center justify-content-center"
+                style={{ width: '3.25rem', height: '3.25rem', fontSize: '1.1rem' }}
+              >
+                R{demoRouteNumber}
+              </div>
+              <div>
+                <div className="fw-semibold">Training route (live sync)</div>
+                <div className="small text-muted">
+                  {demoStopCount} practice stops · changes sync like a real run
+                </div>
               </div>
             </div>
-          </div>
-          <i className="bi bi-chevron-right text-muted" aria-hidden />
-        </Card.Body>
-      </Card>
+            <i className="bi bi-chevron-right text-muted" aria-hidden />
+          </Card.Body>
+        </Card>
+      ) : (
+        <Card className="text-start shadow-sm border border-info border-2 mb-3 tw-portal-route-card opacity-75">
+          <Card.Body className="d-flex align-items-center justify-content-between gap-3 py-3">
+            <div className="d-flex align-items-center gap-3">
+              <div
+                className="rounded-3 bg-info text-white fw-semibold d-flex align-items-center justify-content-center"
+                style={{ width: '3.25rem', height: '3.25rem', fontSize: '1.1rem' }}
+              >
+                R{demoRouteNumber}
+              </div>
+              <div>
+                <div className="fw-semibold">Training route (live sync)</div>
+                <div className="small text-muted">
+                  {demoLoading
+                    ? 'Loading training route…'
+                    : demoInfo?.seed_hint ??
+                      'Training route is not set up yet — ask the office to run the seed script.'}
+                </div>
+              </div>
+            </div>
+          </Card.Body>
+        </Card>
+      )}
 
       {loading ? (
         <div className="d-flex align-items-center gap-2 text-muted py-3 mb-2">

@@ -1,8 +1,6 @@
 import { lazy } from 'react'
 import { createBrowserRouter, Navigate, useParams } from 'react-router-dom'
 import AppRouteErrorPage from './components/AppRouteErrorPage'
-import { monthFirstIsoPacificToday } from './features/monthlyRoutes/monthlyRoutesShared'
-import { PORTAL_WORKSHEET_DEMO_ROUTE_ID } from './features/monthlyRoutes/portalWorksheetDemo'
 import AppLayout from './layout/AppLayout'
 import KeysPublicLayout from './layout/KeysPublicLayout'
 import TechnicianPortalLayout from './layout/TechnicianPortalLayout'
@@ -35,16 +33,13 @@ const TechnicianPortalTechPickerPage = lazy(() => import('./pages/TechnicianPort
 const TechnicianPortalStartPage = lazy(() => import('./pages/TechnicianPortalStartPage'))
 const TechnicianPortalRoutePage = lazy(() => import('./pages/TechnicianPortalRoutePage'))
 const TechnicianPortalWorksheetPage = lazy(() => import('./pages/TechnicianPortalWorksheetPage'))
+const RedirectPortalTrainingWorksheet = lazy(
+  () => import('./pages/RedirectPortalTrainingWorksheet'),
+)
 
-/** Legacy mockup URL → live worksheet UI with in-memory demo data. */
+/** Legacy mockup URL → live training route worksheet. */
 function RedirectPortalWorksheetMockup() {
-  const month = monthFirstIsoPacificToday()
-  return (
-    <Navigate
-      to={`/tech/route/${PORTAL_WORKSHEET_DEMO_ROUTE_ID}/worksheet/${month}`}
-      replace
-    />
-  )
+  return <RedirectPortalTrainingWorksheet />
 }
 
 function paperworkUrl(routeId: string, monthIso?: string | null): string {
@@ -95,6 +90,7 @@ export const router = createBrowserRouter([
       { path: 'start', element: <TechnicianPortalStartPage /> },
       { path: 'route/:routeId', element: <TechnicianPortalRoutePage /> },
       { path: 'route/:routeId/worksheet/:monthIso', element: <TechnicianPortalWorksheetPage /> },
+      { path: 'route/demo/worksheet/:monthIso', element: <RedirectPortalTrainingWorksheet /> },
       { path: 'worksheet-mockup', element: <RedirectPortalWorksheetMockup /> },
     ],
   },

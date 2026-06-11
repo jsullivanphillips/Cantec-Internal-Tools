@@ -8,10 +8,13 @@ import {
   worksheetLocationSkipIsAnnual,
   type TechnicianWorksheetLocation,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
-import { isPortalWorksheetDemoRoute } from '../features/monthlyRoutes/portalWorksheetDemo'
 import PortalBlockingOverlay from '../features/monthlyRoutes/PortalBlockingOverlay'
 import { usePortalWorksheet } from '../features/monthlyRoutes/usePortalWorksheet'
-import { usePortalWorksheetDemo } from '../features/monthlyRoutes/usePortalWorksheetDemo'
+import {
+  isTechnicianDemoRoute,
+  resetTechnicianDemoRoute,
+  useTechnicianDemoRouteInfo,
+} from '../features/monthlyRoutes/technicianDemoRoute'
 import PortalEditableFieldRow from '../features/monthlyRoutes/PortalEditableFieldRow'
 import {
   schedulePortalFieldRowScrollForElement,
@@ -198,18 +201,21 @@ function PortalSyncStatusBadge({
 
 export default function TechnicianPortalWorksheetPage() {
   const { routeId, monthIso } = useParams<{ routeId: string; monthIso: string }>()
-  const isDemo = isPortalWorksheetDemoRoute(routeId)
-  const idNum = routeId && !isDemo ? parseInt(routeId, 10) : NaN
+  const idNum = routeId ? parseInt(routeId, 10) : NaN
   const monthQuery = (monthIso || '').trim()
 
   const routeBackPath = useMemo(() => {
-    if (isDemo || Number.isNaN(idNum)) return '/tech/start'
+    if (Number.isNaN(idNum)) return '/tech/start'
     return `/tech/route/${idNum}`
-  }, [isDemo, idNum])
+  }, [idNum])
 
-  const liveWorksheet = usePortalWorksheet(idNum, monthQuery)
-  const demoWorksheet = usePortalWorksheetDemo(monthQuery)
-  const worksheet = isDemo ? demoWorksheet : liveWorksheet
+  const worksheet = usePortalWorksheet(idNum, monthQuery)
+  const { info: demoInfo, refresh: refreshDemoInfo } = useTechnicianDemoRouteInfo()
+  const [trainingBannerOpen, setTrainingBannerOpen] = useState(true)
+  const [demoResetBusy, setDemoResetBusy] = useState(false)
+  const [demoResetError, setDemoResetError] = useState<string | null>(null)
+  const [demoResetMessage, setDemoResetMessage] = useState<string | null>(null)
+  const [copiedPaperworkLink, setCopiedPaperworkLink] = useState(false)
 
   const {
     payload,
@@ -249,6 +255,51 @@ export default function TechnicianPortalWorksheetPage() {
     setInteractiveBusy,
     workflowActions,
   } = worksheet
+
+  const isTrainingRoute = isTechnicianDemoRoute(payload?.route?.route_number)
+  const officePaperworkPath =
+    demoInfo?.office_paperwork_path ??
+    (payload?.route?.id != null && monthQuery
+      ? `/monthlies/routes/${payload.route.id}/paperwork?month=${encodeURIComponent(monthQuery)}`
+      : null)
+  const officePaperworkUrl =
+    officePaperworkPath && typeof window !== 'undefined'
+      ? `${window.location.origin}${officePaperworkPath}`
+      : officePaperworkPath
+
+  const handleCopyPaperworkLink = useCallback(async () => {
+    if (!officePaperworkUrl) return
+    try {
+      await navigator.clipboard.writeText(officePaperworkUrl)
+      setCopiedPaperworkLink(true)
+      window.setTimeout(() => setCopiedPaperworkLink(false), 2000)
+    } catch {
+      setDemoResetError('Could not copy the office link — select and copy it manually.')
+    }
+  }, [officePaperworkUrl])
+
+  const handleResetTrainingData = useCallback(async () => {
+    if (
+      !window.confirm(
+        'Reset training data for this month? This restores the starting scenario for the next class.',
+      )
+    ) {
+      return
+    }
+    setDemoResetBusy(true)
+    setDemoResetError(null)
+    setDemoResetMessage(null)
+    try {
+      await resetTechnicianDemoRoute()
+      setDemoResetMessage('Training data reset. Worksheet will refresh shortly.')
+      await refreshDemoInfo()
+      window.location.reload()
+    } catch {
+      setDemoResetError('Could not reset training data. Try again or ask the office to run the seed script.')
+    } finally {
+      setDemoResetBusy(false)
+    }
+  }, [refreshDemoInfo])
 
   const { companies: monitoringCompanies, loading: monitoringCompaniesLoading, appendCompany } =
     useMonitoringCompanies()
@@ -648,10 +699,10 @@ export default function TechnicianPortalWorksheetPage() {
 
   const handleToggleHiddenDeficiencies = useCallback(
     (includeHidden: boolean) => {
-      if (!active || isDemo) return
+      if (!active) return
       void workflowActions.refreshDeficiencies(active, includeHidden)
     },
-    [active, isDemo, workflowActions],
+    [active, workflowActions],
   )
 
   useEffect(() => {
@@ -874,7 +925,7 @@ export default function TechnicianPortalWorksheetPage() {
     .join(' ')
 
   const showAwaitingOfficePrepare =
-    !isDemo &&
+    !isTrainingRoute &&
     isCurrentMonth &&
     !viewingHistoricalRun &&
     hasRunFile &&
@@ -903,14 +954,18 @@ export default function TechnicianPortalWorksheetPage() {
         endRunBusy={runLifecycleBusy}
       />
       <header className="pw-mock-chrome">
-        <div className="pw-mock-chrome-top">
-          <Link to={routeBackPath} className="btn btn-link text-primary p-0 pw-mock-back" aria-label="Back to route">
-            <PortalBootstrapIcon name="arrow-left-circle-fill" className="pw-mock-back-icon" aria-hidden />
-          </Link>
-          <div className="pw-mock-chrome-titles">
-            <div className="pw-mock-route-title">{routeLabel}</div>
-            <div className="pw-mock-route-sub">
-              {monthHeading} run · {progress.total} stops
+        <div
+          className={`pw-mock-chrome-top${technicianNote ? ' pw-mock-chrome-top--with-note' : ''}`}
+        >
+          <div className="pw-mock-chrome-start">
+            <Link to={routeBackPath} className="btn btn-link text-primary p-0 pw-mock-back" aria-label="Back to route">
+              <PortalBootstrapIcon name="arrow-left-circle-fill" className="pw-mock-back-icon" aria-hidden />
+            </Link>
+            <div className="pw-mock-chrome-titles">
+              <div className="pw-mock-route-title">{routeLabel}</div>
+              <div className="pw-mock-route-sub">
+                {monthHeading} run · {progress.total} stops
+              </div>
             </div>
           </div>
           {technicianNote ? (
@@ -993,20 +1048,82 @@ export default function TechnicianPortalWorksheetPage() {
                 )}
               </Button>
             ) : null}
-            {isDemo ? (
+            {isTrainingRoute ? (
               <Badge bg="info" className="pw-mock-sync">
-                Demo
+                Training
               </Badge>
-            ) : (
-              <PortalSyncStatusBadge state={syncState} pendingCount={pendingSyncCount} />
-            )}
+            ) : null}
+            <PortalSyncStatusBadge state={syncState} pendingCount={pendingSyncCount} />
           </div>
         </div>
-        {isDemo ? (
-          <Alert variant="info" className="py-1 px-2 mb-0 small">
-            Sample data only — changes are not saved. For showing the new worksheet UI to coworkers.
+        {isTrainingRoute && trainingBannerOpen ? (
+          <Alert variant="info" className="py-2 px-3 mb-0 small">
+            <div className="d-flex flex-column flex-md-row align-items-md-start justify-content-between gap-2">
+              <div>
+                <div className="fw-semibold mb-1">Practice route — safe to tap everything</div>
+                <div>
+                  Changes save to the server and sync like a real run. Open office paperwork on a
+                  laptop to watch live updates during training.
+                </div>
+                {demoInfo?.training_steps?.length ? (
+                  <ul className="mb-0 mt-2 ps-3">
+                    {demoInfo.training_steps.slice(0, 3).map((step) => (
+                      <li key={step}>{step}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+              <div className="d-flex flex-wrap gap-2 flex-shrink-0">
+                {officePaperworkUrl ? (
+                  <Button
+                    size="sm"
+                    variant="outline-info"
+                    onClick={() => void handleCopyPaperworkLink()}
+                  >
+                    {copiedPaperworkLink ? 'Copied!' : 'Copy office link'}
+                  </Button>
+                ) : null}
+                <Button
+                  size="sm"
+                  variant="outline-secondary"
+                  disabled={demoResetBusy}
+                  onClick={() => void handleResetTrainingData()}
+                >
+                  {demoResetBusy ? (
+                    <>
+                      <Spinner animation="border" size="sm" className="me-1" aria-hidden />
+                      Resetting…
+                    </>
+                  ) : (
+                    'Reset training data'
+                  )}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="link"
+                  className="text-info-emphasis p-0 align-self-center"
+                  onClick={() => setTrainingBannerOpen(false)}
+                >
+                  Hide
+                </Button>
+              </div>
+            </div>
+            {demoResetError ? <div className="text-danger mt-2 mb-0">{demoResetError}</div> : null}
+            {demoResetMessage ? <div className="mt-2 mb-0">{demoResetMessage}</div> : null}
           </Alert>
         ) : null}
+        {!isTrainingRoute || trainingBannerOpen ? null : (
+          <div className="px-2 pb-1">
+            <Button
+              size="sm"
+              variant="link"
+              className="p-0 small"
+              onClick={() => setTrainingBannerOpen(true)}
+            >
+              Show training tips
+            </Button>
+          </div>
+        )}
         {workflowReadOnly && active?.portal_read_only ? (
           <Alert variant="secondary" className="py-1 px-2 mb-0 small pw-portal-readonly-banner">
             Imported run — view only. Workflow actions are disabled.

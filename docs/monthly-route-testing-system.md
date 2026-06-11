@@ -725,3 +725,44 @@ UI: ``frontend/src/pages/MonthlyBillingPage.tsx`` at ``/monthlies/billing``. Imp
 - [ ] Billing board — per-location billing PATCH
 - [ ] Portal workflow queue completes a stop
 - [ ] Keys table and `monthly_key_bridge` unchanged after wipe
+
+---
+
+## 15. Training demo walkthrough
+
+Use route **R99** (training demo) to teach technicians the portal with **real sync** — not the old in-memory mock.
+
+### Before class
+
+1. Ensure the app is deployed with `TECHNICIAN_PORTAL_PIN` set.
+2. Seed or reset the training route:
+
+   ```bash
+   python -m app.scripts.seed_technician_demo_route
+   # or, to restore the baseline scenario:
+   python -m app.scripts.seed_technician_demo_route --reset
+   ```
+
+### iPad (technicians)
+
+1. Open `/tech` → enter PIN → pick name.
+2. On `/tech/start`, tap **Training route (live sync)**.
+3. Walk through stops: clock in, record results, skip, key view, field edits.
+4. Point out the **sync badge** — it reflects real server state and pending offline queue.
+
+### Laptop (instructor — live sync demo)
+
+1. Sign in to the office SPA.
+2. Open the paperwork URL from the worksheet training banner (or `/monthlies/routes/{id}/paperwork?month=YYYY-MM-01` for R99).
+3. As technicians clock in and record outcomes on iPad, watch stop cards and KPIs update via SSE (typically within a few seconds).
+
+### Offline resilience (optional)
+
+1. Load the training worksheet online once.
+2. Enable airplane mode on the iPad.
+3. Clock in or edit a field — show **Pending sync**.
+4. Reconnect — queued changes drain automatically.
+
+### End of class
+
+- Tap **Reset training data** on the iPad worksheet banner, or run `python -m app.scripts.seed_technician_demo_route --reset` from the server.

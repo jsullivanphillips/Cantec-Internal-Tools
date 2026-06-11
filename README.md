@@ -42,6 +42,24 @@ Field technicians use a public, PIN-gated portal at `/tech` to pick today's mont
 
 The portal is a **PWA** (installable from Safari, scoped to `/tech`) so field iPads can reload the app shell offline after one online visit; worksheet data and pending edits are cached client-side. See [monthly route testing — field iPad setup](docs/monthly-route-testing-system.md).
 
+### Training route (live sync demo)
+
+Route **R99** (override with `TECHNICIAN_DEMO_ROUTE_NUMBER`) is reserved for technician training. It uses the real worksheet API, SSE sync, and offline queues — not an in-memory mock.
+
+**One-time setup** (or after deploy):
+
+```bash
+python -m app.scripts.seed_technician_demo_route
+```
+
+**Reset the current month** before or after a class:
+
+```bash
+python -m app.scripts.seed_technician_demo_route --reset
+```
+
+Technicians open it from `/tech/start` → **Training route (live sync)** after PIN and name entry. Instructors can open the office paperwork URL from the worksheet banner to demonstrate live sync on a laptop. See [Training demo walkthrough](docs/monthly-route-testing-system.md#training-demo-walkthrough) in the monthly route testing doc.
+
 ## Smoke checklist (after deploy)
 
 - Login / logout
