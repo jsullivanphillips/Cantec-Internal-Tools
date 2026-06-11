@@ -38,10 +38,11 @@ import {
   renumberPrepRowStopNumbers,
   type RunDetailPrepRow,
 } from './runDetailsLocationReview'
-import type {
-  AnnualScheduleCheckLocation,
-  AnnualScheduleCheckStatus,
-  MonthlyRunDetailDeficiencySummary,
+import {
+  isOnHoldMonthlyLocation,
+  type AnnualScheduleCheckLocation,
+  type AnnualScheduleCheckStatus,
+  type MonthlyRunDetailDeficiencySummary,
 } from './monthlyRoutesShared'
 import type { RunDetailsStopPatchApi } from './useRunDetailsStopPatch'
 import { useMonitoringCompanies } from './useMonitoringCompanies'
@@ -80,10 +81,10 @@ function PrepTableHeaderRow() {
   )
 }
 
-function prepRowClassName(annualDue: boolean, highlighted: boolean): string | undefined {
+function prepRowClassName(annualDue: boolean, highlighted: boolean, onHold: boolean): string | undefined {
   return (
     [
-      annualDue ? 'run-details-prepare-row--annual' : '',
+      onHold ? 'run-details-prepare-row--on-hold' : annualDue ? 'run-details-prepare-row--annual' : '',
       highlighted ? 'run-details-prepare-row--attention' : '',
     ]
       .filter(Boolean)
@@ -342,13 +343,14 @@ export default function RunDetailsPrepareTable({
       const patchRow = patchStopForRow(stop.stop_number)
       const officeComment = (stop.office_job_comment || '').trim()
       const highlighted = officeComment.length > 0
+      const onHold = isOnHoldMonthlyLocation(stop)
 
       return (
         <tr
           key={sid}
           ref={options.setNodeRef}
           style={options.style}
-          className={prepRowClassName(annualDue, highlighted)}
+          className={prepRowClassName(annualDue, highlighted, onHold)}
         >
           <td className="run-details-prepare-sticky-order tabular-nums align-top">
             <PrepStopOrderCell
@@ -369,6 +371,11 @@ export default function RunDetailsPrepareTable({
             {options.isPrimaryForLocation && stop.prior_month_field_edits ? (
               <span className="badge bg-light text-dark border mt-1 d-block run-details-prep-badge">
                 Edited last month
+              </span>
+            ) : null}
+            {options.isPrimaryForLocation && onHold ? (
+              <span className="badge run-details-prep-badge run-details-prep-badge--on-hold mt-1 d-block">
+                On hold
               </span>
             ) : null}
             {options.isPrimaryForLocation ? (

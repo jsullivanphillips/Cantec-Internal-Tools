@@ -305,3 +305,15 @@ describe('portalStopOfficeAttention', () => {
     expect(portalHeaderBandClass(done, '2026-05-01')).toBe('pw-mock-header--skipped')
   })
 })
+
+describe('portalStopOnHold', () => {
+  it('shows yellow nav/header styling until a test outcome is recorded', () => {
+    const onHold = baseStop({ status_normalized: 'on_hold' })
+    expect(portalNavStopStatusClass(onHold, '2026-05-01')).toBe('pw-mock-nav-stop--on-hold')
+    expect(portalHeaderBandClass(onHold, '2026-05-01')).toBe('pw-mock-header--on-hold')
+
+    const done = baseStop({ status_normalized: 'on_hold', test_outcome: 'all_good' })
+    expect(portalNavStopStatusClass(done, '2026-05-01')).toBe('pw-mock-nav-stop--tested')
+    expect(portalHeaderBandClass(done, '2026-05-01')).toBe('pw-mock-header--tested')
+  })
+})

@@ -668,12 +668,52 @@ def iter_street_lookup_keys(raw: str | None) -> list[str]:
     return keys
 
 
+def _iter_label_lookup_keys(label_style: str) -> list[str]:
+    """Longest-first normalized label keys with optional street-type suffixes dropped per ``&`` corner."""
+    label_style = _normalize_space(label_style)
+    if not label_style:
+        return []
+    if "&" not in label_style:
+        keys: list[str] = []
+        for key in _keys_from_canonical_base(label_style):
+            if key not in keys:
+                keys.append(key)
+        return keys
+    segments = [seg.strip() for seg in _AMPERSAND_STREET_SPLIT_RE.split(label_style) if seg.strip()]
+    if len(segments) < 2:
+        return _iter_label_lookup_keys(label_style.replace("&", ""))
+    per_seg: list[list[str]] = []
+    for seg in segments:
+        variant_keys: list[str] = []
+        for key in _keys_from_canonical_base(seg):
+            if key not in variant_keys:
+                variant_keys.append(key)
+        if not variant_keys:
+            return []
+        per_seg.append(variant_keys)
+    keys: list[str] = []
+    longest = " & ".join(parts[0] for parts in per_seg)
+    if longest:
+        keys.append(longest)
+    shortest = " & ".join(parts[-1] for parts in per_seg)
+    if shortest and shortest not in keys:
+        keys.append(shortest)
+    return keys
+
+
 def load_locations_by_canonical_street() -> dict[str, list[MonthlyLocation]]:
-    """Library rows indexed by every canonical street key derived from ``location.address``."""
+    """Library rows indexed by canonical street keys from ``address`` and ``label``."""
     idx: dict[str, list[MonthlyLocation]] = defaultdict(list)
     for loc in db.session.execute(select(MonthlyLocation)).scalars().all():
-        for key in iter_street_index_keys(loc.address):
-            idx[key].append(loc)
+        keys_added: set[str] = set()
+        for source in (loc.address, loc.label):
+            if not (source or "").strip():
+                continue
+            for key in iter_street_index_keys(source):
+                if key in keys_added:
+                    continue
+                keys_added.add(key)
+                idx[key].append(loc)
     return idx
 
 
@@ -690,15 +730,18 @@ def lookup_locations_for_sheet_street(
 
 
 def load_locations_by_label() -> dict[str, list[MonthlyLocation]]:
-    """Library rows indexed by normalized ``MonthlyLocation.label`` only."""
+    """Library rows indexed by normalized ``MonthlyLocation.label`` and suffix variants."""
     idx: dict[str, list[MonthlyLocation]] = defaultdict(list)
     seen: dict[str, set[int]] = defaultdict(set)
     for loc in db.session.execute(select(MonthlyLocation)).scalars().all():
-        key = loc.label_normalized or ""
-        if not key or int(loc.id) in seen[key]:
-            continue
-        seen[key].add(int(loc.id))
-        idx[key].append(loc)
+        label_keys = _iter_label_lookup_keys(loc.label_normalized or "")
+        if not label_keys and loc.label_normalized:
+            label_keys = [loc.label_normalized]
+        for key in label_keys:
+            if not key or int(loc.id) in seen[key]:
+                continue
+            seen[key].add(int(loc.id))
+            idx[key].append(loc)
     return idx
 
 
@@ -723,8 +766,9 @@ def _sheet_label_candidates(_building: str | None, street: str) -> list[str]:
     for key in _library_label_keys_from_sheet_street(street):
         keys.append(key)
     label_style = _sheet_label_style_key(street)
-    if label_style and label_style not in keys:
-        keys.append(label_style)
+    for key in _iter_label_lookup_keys(label_style):
+        if key and key not in keys:
+            keys.append(key)
     street_line = _normalize_space(street.split(",")[0])
     street_key = _normalize_building(_preprocess_sheet_street_for_match(street_line))
     if street_key and street_key not in keys:
@@ -795,7 +839,24 @@ def lookup_locations_for_sheet_labels(
 
 def _normalize_company(value: str | None) -> str:
     s = _normalize_space(value).casefold()
-    return re.sub(r"\s*/\s*", "/", s)
+    s = re.sub(r"\s*/\s*", "/", s)
+    return s.replace(".", "")
+
+
+def _pmc_token_abbrev_match(sheet_cf: str, db_cf: str) -> bool:
+    """Same token count with abbreviated sheet tokens (e.g. ``firm manag`` vs ``firm management``)."""
+    sheet_tokens = (sheet_cf or "").split()
+    db_tokens = (db_cf or "").split()
+    if not sheet_tokens or len(sheet_tokens) != len(db_tokens):
+        return False
+    for s_tok, d_tok in zip(sheet_tokens, db_tokens):
+        if s_tok == d_tok:
+            continue
+        if len(s_tok) < 5 or len(d_tok) < 5:
+            return False
+        if len(s_tok) >= len(d_tok) or not d_tok.startswith(s_tok):
+            return False
+    return True
 
 
 def _pmc_extension_prefix_match(shorter: str, longer: str) -> bool:
@@ -833,6 +894,8 @@ def _pmc_sheet_matches_db(sheet_cf: str, db_cf: str) -> bool:
     if not sheet_cf or not db_cf:
         return False
     if _pmc_extension_prefix_match(sheet_cf, db_cf):
+        return True
+    if _pmc_token_abbrev_match(sheet_cf, db_cf):
         return True
     return _pmc_shared_lead_token_match(sheet_cf, db_cf)
 

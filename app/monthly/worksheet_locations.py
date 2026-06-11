@@ -1115,6 +1115,7 @@ def serialize_worksheet_location(
         "session_route_stop_order": int(sess_order) if sess_order is not None else None,
         "stop_number": stop_number,
         "version_updated_at": version,
+        "status_normalized": (loc.status_normalized or "active").strip().lower(),
     }
     if include_portal_extras:
         stop.update(

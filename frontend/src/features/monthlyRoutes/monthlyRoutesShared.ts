@@ -429,6 +429,7 @@ export type MonthlyRunDetailLocation = {
   has_active_deficiencies: boolean
   new_comment_fields?: string[]
   attention_flags: MonthlyRunDetailLocationAttentionFlags
+  status_normalized?: string | null
 }
 
 export type PrepAnnualScheduleWarning =
@@ -668,6 +669,8 @@ export type TechnicianWorksheetLocation = {
   session_route_stop_order: number | null
   stop_number: number
   version_updated_at: string | null
+  /** Library location status (``active``, ``on_hold``, ``cancelled``, ``waiting_keys``). */
+  status_normalized?: string | null
 }
 
 export type TechnicianWorksheetPayload = {
@@ -1045,9 +1048,15 @@ export const STATUS_OPTIONS: Array<{ value: string; label: string }> = [
 ]
 
 export function isCancelledMonthlyLocation(
-  loc: Pick<RouteLocationListItem, 'status_normalized'>,
+  loc: { status_normalized?: string | null },
 ): boolean {
   return (loc.status_normalized || '').trim().toLowerCase() === 'cancelled'
+}
+
+export function isOnHoldMonthlyLocation(
+  loc: { status_normalized?: string | null },
+): boolean {
+  return (loc.status_normalized || '').trim().toLowerCase() === 'on_hold'
 }
 
 /** Route detail / map: hide cancelled library locations from active stop lists. */

@@ -872,6 +872,7 @@ def _serialize_run_detail_location(
         "has_active_deficiencies": len(deficiencies) > 0,
         "new_comment_fields": new_comment_fields,
         "attention_flags": {},
+        "status_normalized": stop.get("status_normalized"),
     }
 
 

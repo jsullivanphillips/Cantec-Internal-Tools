@@ -138,6 +138,17 @@ def test_pmc_no_false_match_unrelated_prefix():
     assert _pmc_sheet_matches_db("cent", "century") is False
 
 
+def test_pmc_abbrev_management_period():
+    assert _pmc_sheet_matches_db("firm manag", "firm management")
+
+
+def test_iter_label_lookup_keys_ampersand_street_suffix():
+    from app.monthly.route_inspection_csv_import import _iter_label_lookup_keys
+
+    keys = _iter_label_lookup_keys("3610 + 3614 richmond & 1696 pear street")
+    assert "3610 + 3614 richmond & 1696 pear" in keys
+
+
 def test_canonical_merchant_matches_merchant_way():
     sheet = canonical_street_address_key("3011 Merchant")
     db_keys = iter_street_lookup_keys("3011 Merchant Way")

@@ -9909,6 +9909,12 @@ body {
   border-color: var(--pw-annual-border);
 }
 
+.pw-mock-nav-stop--collapsed.pw-mock-nav-stop--on-hold {
+  background: #fef9c3;
+  color: #854d0e;
+  border-color: #fde047;
+}
+
 .pw-mock-nav-stop--collapsed.pw-mock-nav-stop--office-attention {
   background: #f3e8ff;
   color: #6b21a8;
@@ -9982,6 +9988,18 @@ body {
   background: var(--pw-annual-soft);
   border-color: var(--pw-annual-border);
   color: var(--pw-annual-text);
+}
+
+.pw-mock-nav-stop--expanded.pw-mock-nav-stop--on-hold {
+  background: #fef9c3;
+  border-color: #fde047;
+  color: #854d0e;
+}
+
+.pw-mock-nav-stop--expanded.pw-mock-nav-stop--on-hold .pw-mock-nav-stop-label,
+.pw-mock-nav-stop--expanded.pw-mock-nav-stop--on-hold .pw-mock-nav-stop-icon,
+.pw-mock-nav-stop--expanded.pw-mock-nav-stop--on-hold .pw-mock-nav-stop-line {
+  color: #854d0e;
 }
 
 .pw-mock-nav-stop--expanded.pw-mock-nav-stop--office-attention {
@@ -10411,6 +10429,14 @@ body {
 
 .pw-mock-header--annual::before {
   background: var(--pw-annual);
+}
+
+.pw-mock-header--on-hold {
+  background: var(--pw-card);
+}
+
+.pw-mock-header--on-hold::before {
+  background: #eab308;
 }
 
 .pw-mock-header--office-attention {

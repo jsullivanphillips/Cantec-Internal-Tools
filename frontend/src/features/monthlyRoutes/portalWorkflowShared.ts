@@ -3,6 +3,7 @@
 import { worksheetSkipReasonDisplayBlock } from './officeWorksheetTableShared'
 import {
   isAnnualForMonth,
+  isOnHoldMonthlyLocation,
   worksheetLocationIsOpenClockIn,
   worksheetLocationSkipIsAnnual,
   type TechnicianWorksheetLocation,
@@ -462,6 +463,17 @@ export function portalStopOfficeAttentionActive(stop: TechnicianWorksheetLocatio
   return Boolean(stop.office_attention) && !portalStopHasTestOutcome(stop)
 }
 
+/** Yellow pre-color for library stops marked on hold (before a test outcome is recorded). */
+export function portalStopOnHoldPrecolor(stop: TechnicianWorksheetLocation): boolean {
+  if (!isOnHoldMonthlyLocation(stop)) return false
+  if (portalStopHasTestOutcome(stop)) return false
+  if (stop.is_legacy_outcome) {
+    const rs = norm(stop.result_status).toLowerCase()
+    if (rs === 'tested' || rs === 'skipped') return false
+  }
+  return true
+}
+
 export function portalHeaderBandClass(stop: TechnicianWorksheetLocation, runMonthIso: string): string {
   const tone = portalStopVisualTone(stop, runMonthIso)
   if (tone === 'all_good') return 'pw-mock-header--tested'
@@ -470,6 +482,7 @@ export function portalHeaderBandClass(stop: TechnicianWorksheetLocation, runMont
   if (tone === 'skipped') return 'pw-mock-header--skipped'
   if (tone === 'annual') return 'pw-mock-header--annual'
   if (tone === 'in_progress') return 'pw-mock-header--progress'
+  if (portalStopOnHoldPrecolor(stop)) return 'pw-mock-header--on-hold'
   if (portalStopOfficeAttentionActive(stop)) return 'pw-mock-header--office-attention'
   return ''
 }
@@ -499,6 +512,7 @@ export function portalNavStopStatusClass(stop: TechnicianWorksheetLocation, runM
   if (tone === 'failed') return 'pw-mock-nav-stop--failed'
   if (tone === 'skipped') return 'pw-mock-nav-stop--skipped'
   if (tone === 'annual') return 'pw-mock-nav-stop--annual'
+  if (portalStopOnHoldPrecolor(stop)) return 'pw-mock-nav-stop--on-hold'
   if (portalStopOfficeAttentionActive(stop)) return 'pw-mock-nav-stop--office-attention'
   return ''
 }
