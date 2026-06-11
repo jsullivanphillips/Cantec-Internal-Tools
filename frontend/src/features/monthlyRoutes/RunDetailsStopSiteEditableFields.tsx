@@ -4,7 +4,10 @@ import PortalDeficienciesCard from './PortalDeficienciesCard'
 import PortalDeficiencyModal from './PortalDeficiencyModal'
 import PortalEditableFieldRow from './PortalEditableFieldRow'
 import PortalMonitoringCompanyField from './PortalMonitoringCompanyField'
-import { usePortalFieldEditActionRegistry } from './portalFieldEditRegistry'
+import {
+  portalFieldEditActionPointerGuard,
+  usePortalFieldEditActionRegistry,
+} from './portalFieldEditRegistry'
 import {
   officeCreateDeficiency,
   officeUpdateDeficiency,
@@ -341,10 +344,22 @@ export default function RunDetailsStopSiteEditableFields({
       </div>
       {activeFieldEditActions ? (
         <div className="run-details-stop-site-modal__edit-footer">
-          <Button variant="outline-secondary" size="sm" onClick={activeFieldEditActions.cancel}>
+          <Button
+            variant="outline-secondary"
+            size="sm"
+            onPointerDown={portalFieldEditActionPointerGuard}
+            onMouseDown={portalFieldEditActionPointerGuard}
+            onClick={activeFieldEditActions.cancel}
+          >
             Cancel
           </Button>
-          <Button variant="primary" size="sm" onClick={activeFieldEditActions.save}>
+          <Button
+            variant="primary"
+            size="sm"
+            onPointerDown={portalFieldEditActionPointerGuard}
+            onMouseDown={portalFieldEditActionPointerGuard}
+            onClick={activeFieldEditActions.save}
+          >
             Save
           </Button>
         </div>

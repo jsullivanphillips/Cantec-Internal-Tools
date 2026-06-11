@@ -1,11 +1,14 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import MonitoringCompanySelect, {
   monitoringCompanyDisplayName,
   monitoringCompanyPhonesText,
 } from './MonitoringCompanySelect'
 import type { PortalFieldEditActions } from './PortalEditableFieldRow'
 import PortalFieldEditActionButtons from './PortalFieldEditActionButtons'
-import { schedulePortalFieldRowScroll } from './portalFieldEditRegistry'
+import {
+  createPortalFieldEditBlurHandler,
+  schedulePortalFieldRowScroll,
+} from './portalFieldEditRegistry'
 import type { MonitoringCompanySummary } from './monthlyRoutesShared'
 
 type PortalMonitoringCompanyFieldProps = {
@@ -48,6 +51,7 @@ export default function PortalMonitoringCompanyField({
   const rowRef = useRef<HTMLDivElement>(null)
   const [draftId, setDraftId] = useState<number | null>(companyId)
   const [saving, setSaving] = useState(false)
+  const savingRef = useRef(false)
   const editing = !readOnly && editingField === fieldKey
 
   const displayName =
@@ -55,6 +59,10 @@ export default function PortalMonitoringCompanyField({
     monitoringCompanyDisplayName(companyId, companies, companyName) ||
     '—'
   const phones = monitoringCompanyPhonesText(companyRecord ?? companies.find((row) => row.id === companyId))
+
+  useEffect(() => {
+    savingRef.current = saving
+  }, [saving])
 
   useEffect(() => {
     if (!editing) {
@@ -86,20 +94,20 @@ export default function PortalMonitoringCompanyField({
     onEditingFieldChange(null)
   }, [companyId, onEditingFieldChange, saving])
 
-  const handleEditBlur = useCallback(
-    (e: React.FocusEvent) => {
-      if (saving) return
-      const related = e.relatedTarget as Node | null
-      if (related && rowRef.current?.contains(related)) return
-      cancel()
-    },
-    [cancel, saving],
-  )
-
   const commitRef = useRef(commit)
   const cancelRef = useRef(cancel)
   commitRef.current = commit
   cancelRef.current = cancel
+
+  const handleEditBlur = useMemo(
+    () =>
+      createPortalFieldEditBlurHandler(
+        rowRef,
+        () => savingRef.current,
+        () => cancelRef.current(),
+      ),
+    [],
+  )
 
   useLayoutEffect(() => {
     if (!editing) return undefined

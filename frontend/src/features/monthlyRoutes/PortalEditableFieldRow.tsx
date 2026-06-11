@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { annualMonthSelectChoiceValues, normalizeAnnualMonthForSelect } from './monthlyRoutesShared'
 import PortalFieldEditActionButtons from './PortalFieldEditActionButtons'
-import { schedulePortalFieldRowScroll } from './portalFieldEditRegistry'
+import {
+  createPortalFieldEditBlurHandler,
+  schedulePortalFieldRowScroll,
+} from './portalFieldEditRegistry'
 
 export type PortalFieldEditActions = {
   fieldKey: string
@@ -54,6 +57,7 @@ export default function PortalEditableFieldRow({
   const normalizedValue = monthSelect ? normalizeAnnualMonthForSelect(value) : value.trim()
   const [draft, setDraft] = useState(normalizedValue)
   const [saving, setSaving] = useState(false)
+  const savingRef = useRef(false)
   const editing = !readOnly && editingField === fieldKey
   const display = monthSelect ? normalizedValue || '—' : value.trim() || '—'
 
@@ -61,6 +65,10 @@ export default function PortalEditableFieldRow({
     if (!monthSelect) return []
     return annualMonthSelectChoiceValues(value)
   }, [monthSelect, value])
+
+  useEffect(() => {
+    savingRef.current = saving
+  }, [saving])
 
   useEffect(() => {
     if (!editing) {
@@ -99,20 +107,20 @@ export default function PortalEditableFieldRow({
     onEditingFieldChange(null)
   }, [monthSelect, onEditingFieldChange, saving, value])
 
-  const handleEditBlur = useCallback(
-    (e: React.FocusEvent) => {
-      if (saving) return
-      const related = e.relatedTarget as Node | null
-      if (related && rowRef.current?.contains(related)) return
-      cancel()
-    },
-    [cancel, saving],
-  )
-
   const commitRef = useRef(commit)
   const cancelRef = useRef(cancel)
   commitRef.current = commit
   cancelRef.current = cancel
+
+  const handleEditBlur = useMemo(
+    () =>
+      createPortalFieldEditBlurHandler(
+        rowRef,
+        () => savingRef.current,
+        () => cancelRef.current(),
+      ),
+    [],
+  )
 
   const onAutoOpenSelectDoneRef = useRef(onAutoOpenSelectDone)
   onAutoOpenSelectDoneRef.current = onAutoOpenSelectDone

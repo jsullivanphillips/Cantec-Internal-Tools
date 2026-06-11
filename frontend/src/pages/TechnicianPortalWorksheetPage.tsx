@@ -17,6 +17,7 @@ import {
 } from '../features/monthlyRoutes/technicianDemoRoute'
 import PortalEditableFieldRow from '../features/monthlyRoutes/PortalEditableFieldRow'
 import {
+  portalFieldEditActionPointerGuard,
   schedulePortalFieldRowScrollForElement,
   usePortalFieldEditActionRegistry,
 } from '../features/monthlyRoutes/portalFieldEditRegistry'
@@ -1414,6 +1415,8 @@ export default function TechnicianPortalWorksheetPage() {
                   <Button
                     variant="outline-secondary"
                     className="pw-mock-dock-btn pw-mock-dock-edit-btn"
+                    onPointerDown={portalFieldEditActionPointerGuard}
+                    onMouseDown={portalFieldEditActionPointerGuard}
                     onClick={activeFieldEditActions.cancel}
                   >
                     Cancel
@@ -1421,6 +1424,8 @@ export default function TechnicianPortalWorksheetPage() {
                   <Button
                     variant="primary"
                     className="pw-mock-dock-btn pw-mock-dock-edit-btn"
+                    onPointerDown={portalFieldEditActionPointerGuard}
+                    onMouseDown={portalFieldEditActionPointerGuard}
                     onClick={activeFieldEditActions.save}
                   >
                     Save

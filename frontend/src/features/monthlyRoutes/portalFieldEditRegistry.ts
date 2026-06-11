@@ -1,5 +1,60 @@
-import { useCallback, useMemo, useRef, useState, type RefObject } from 'react'
+import {
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  type FocusEvent,
+  type MouseEvent,
+  type PointerEvent,
+  type RefObject,
+} from 'react'
 import type { PortalFieldEditActions } from './PortalEditableFieldRow'
+
+/** Keep field focus until Save/Cancel click completes (iOS Safari blur race). */
+export function portalFieldEditActionPointerGuard(e: MouseEvent | PointerEvent): void {
+  e.preventDefault()
+}
+
+function portalFieldEditDockEl(row: HTMLElement | null): Element | null {
+  const shell = row?.closest('.pw-mock-shell')
+  return shell?.querySelector('.pw-mock-dock--field-editing') ?? null
+}
+
+function portalFieldEditModalFooterEl(row: HTMLElement | null): Element | null {
+  return (
+    row
+      ?.closest('.run-details-stop-site-modal')
+      ?.querySelector('.run-details-stop-site-modal__edit-footer') ?? null
+  )
+}
+
+/**
+ * Blur handler for inline field editors. Touch taps on Save often fire blur with
+ * relatedTarget null before the button click, which would cancel edits prematurely.
+ */
+export function createPortalFieldEditBlurHandler(
+  rowRef: RefObject<HTMLElement | null>,
+  isSaving: () => boolean,
+  onCancel: () => void,
+): (e: FocusEvent) => void {
+  return (e: FocusEvent) => {
+    if (isSaving()) return
+    const related = e.relatedTarget as Node | null
+    if (related && rowRef.current?.contains(related)) return
+
+    window.setTimeout(() => {
+      if (isSaving()) return
+      const row = rowRef.current
+      const active = document.activeElement
+      if (active && row?.contains(active)) return
+      const dock = portalFieldEditDockEl(row)
+      if (active instanceof Node && dock?.contains(active)) return
+      const modalFooter = portalFieldEditModalFooterEl(row)
+      if (active instanceof Node && modalFooter?.contains(active)) return
+      onCancel()
+    }, 0)
+  }
+}
 
 function isVerticalScrollContainer(el: HTMLElement): boolean {
   const { overflowY } = getComputedStyle(el)

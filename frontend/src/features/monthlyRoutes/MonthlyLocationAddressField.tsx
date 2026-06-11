@@ -3,6 +3,7 @@ import {
   useEffect,
   useId,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -11,7 +12,10 @@ import { apiJson, isAbortError } from '../../lib/apiClient'
 import type { GeocodeCandidate } from './monthlyRoutesShared'
 import PortalFieldEditActionButtons from './PortalFieldEditActionButtons'
 import type { PortalFieldEditActions } from './PortalEditableFieldRow'
-import { schedulePortalFieldRowScroll } from './portalFieldEditRegistry'
+import {
+  createPortalFieldEditBlurHandler,
+  schedulePortalFieldRowScroll,
+} from './portalFieldEditRegistry'
 
 const GEOCODE_DEBOUNCE_MS = 250
 
@@ -58,6 +62,11 @@ export default function MonthlyLocationAddressField({
   const [selectedCandidate, setSelectedCandidate] = useState<GeocodeCandidate | null>(null)
   const [validationError, setValidationError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const savingRef = useRef(false)
+
+  useEffect(() => {
+    savingRef.current = saving
+  }, [saving])
 
   useEffect(() => {
     if (!editing) {
@@ -161,20 +170,20 @@ export default function MonthlyLocationAddressField({
     setValidationError('Select an address from the search results.')
   }, [addressQuery, committed, onEditingFieldChange, onSave, saving, selectedCandidate])
 
-  const handleEditBlur = useCallback(
-    (e: React.FocusEvent) => {
-      if (saving) return
-      const related = e.relatedTarget as Node | null
-      if (related && rowRef.current?.contains(related)) return
-      cancel()
-    },
-    [cancel, saving],
-  )
-
   const commitRef = useRef(commit)
   const cancelRef = useRef(cancel)
   commitRef.current = commit
   cancelRef.current = cancel
+
+  const handleEditBlur = useMemo(
+    () =>
+      createPortalFieldEditBlurHandler(
+        rowRef,
+        () => savingRef.current,
+        () => cancelRef.current(),
+      ),
+    [],
+  )
 
   useLayoutEffect(() => {
     if (!editing) return undefined
