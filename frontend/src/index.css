@@ -10283,12 +10283,10 @@ body {
   border: 1px solid transparent;
   border-radius: 14px;
   background: transparent;
-  transform-origin: center center;
-  will-change: transform, opacity;
 }
 
 .pw-key-view-item--focused {
-  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.35);
+  box-shadow: inset 0 0 0 2px rgba(37, 99, 235, 0.42);
 }
 
 .pw-key-view-item--tested {
@@ -10352,6 +10350,8 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 .pw-key-view-address {

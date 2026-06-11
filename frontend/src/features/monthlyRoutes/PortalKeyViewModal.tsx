@@ -22,8 +22,6 @@ type MouseDragState = {
 const MOMENTUM_FRICTION = 0.92
 const MOMENTUM_MIN_VELOCITY = 0.35
 const MOMENTUM_FLING_THRESHOLD = 0.45
-const WHEEL_FOCUS_SCALE = 1.04
-const WHEEL_MIN_SCALE = 0.92
 const WHEEL_MIN_OPACITY = 0.4
 const WHEEL_CLEAR_NEIGHBOR_COUNT = 3
 const WHEEL_FOG_RAMP_ITEMS = 2.5
@@ -33,21 +31,18 @@ function wheelItemVisual(distancePx: number, itemHeight: number) {
   const itemDistance = Math.abs(distancePx) / rowHeight
 
   if (itemDistance <= WHEEL_CLEAR_NEIGHBOR_COUNT) {
-    const centerT = itemDistance / WHEEL_CLEAR_NEIGHBOR_COUNT
-    return {
-      scale: WHEEL_FOCUS_SCALE - centerT * (WHEEL_FOCUS_SCALE - 1),
-      opacity: 1,
-    }
+    return 1
   }
 
   const fogT = Math.min(
     (itemDistance - WHEEL_CLEAR_NEIGHBOR_COUNT) / WHEEL_FOG_RAMP_ITEMS,
     1,
   )
-  return {
-    scale: 1 - fogT * (1 - WHEEL_MIN_SCALE),
-    opacity: 1 - fogT * (1 - WHEEL_MIN_OPACITY),
-  }
+  return 1 - fogT * (1 - WHEEL_MIN_OPACITY)
+}
+
+function snapScrollTop(scroller: HTMLDivElement) {
+  scroller.scrollTop = Math.round(scroller.scrollTop)
 }
 
 export default function PortalKeyViewModal({ show, onHide, stops, activeStopId }: Props) {
@@ -59,6 +54,7 @@ export default function PortalKeyViewModal({ show, onHide, stops, activeStopId }
   const pointerActiveRef = useRef(false)
   const momentumActiveRef = useRef(false)
   const settleSnapRef = useRef(false)
+  const focusedIndexRef = useRef(0)
 
   const findNearestIndex = useCallback(() => {
     const scroller = scrollerRef.current
@@ -99,9 +95,8 @@ export default function PortalKeyViewModal({ show, onHide, stops, activeStopId }
       const el = itemRefs.current.get(item.locationId)
       if (!el) return
       const itemCenter = el.offsetTop + el.offsetHeight / 2
-      const { scale, opacity } = wheelItemVisual(itemCenter - centerY, el.offsetHeight)
+      const opacity = wheelItemVisual(itemCenter - centerY, el.offsetHeight)
       el.style.opacity = String(opacity)
-      el.style.transform = `scale(${scale})`
       el.classList.toggle(
         'pw-key-view-item--focused',
         focusedlocationId != null && item.locationId === focusedlocationId,
@@ -117,24 +112,43 @@ export default function PortalKeyViewModal({ show, onHide, stops, activeStopId }
     momentumActiveRef.current = false
   }, [])
 
-  const snapToNearest = useCallback(
-    (behavior: ScrollBehavior = 'smooth') => {
+  const scrollToIndex = useCallback(
+    (index: number, behavior: ScrollBehavior = 'smooth') => {
       const scroller = scrollerRef.current
       if (!scroller || items.length === 0) return
-      const nearest = findNearestIndex()
-      const target = items[nearest]
+      const clamped = Math.max(0, Math.min(index, items.length - 1))
+      const target = items[clamped]
       if (!target) return
       const el = itemRefs.current.get(target.locationId)
       if (!el) return
+      cancelMomentum()
       if (behavior === 'auto') {
         el.scrollIntoView({ block: 'center', behavior: 'auto' })
+        snapScrollTop(scroller)
         updateWheelVisuals()
         return
       }
       settleSnapRef.current = true
       el.scrollIntoView({ block: 'center', behavior: 'smooth' })
     },
-    [findNearestIndex, items, updateWheelVisuals],
+    [items, cancelMomentum, updateWheelVisuals],
+  )
+
+  const snapToNearest = useCallback(
+    (behavior: ScrollBehavior = 'smooth') => {
+      scrollToIndex(findNearestIndex(), behavior)
+    },
+    [findNearestIndex, scrollToIndex],
+  )
+
+  const moveSelectionBy = useCallback(
+    (delta: number) => {
+      if (items.length === 0) return
+      const next = Math.max(0, Math.min(focusedIndexRef.current + delta, items.length - 1))
+      focusedIndexRef.current = next
+      scrollToIndex(next)
+    },
+    [items.length, scrollToIndex],
   )
 
   const startMouseMomentum = useCallback(
@@ -169,11 +183,13 @@ export default function PortalKeyViewModal({ show, onHide, stops, activeStopId }
     if (!show) return
     const activeIndex = items.findIndex((item) => item.isActiveStop)
     const index = activeIndex >= 0 ? activeIndex : 0
+    focusedIndexRef.current = index
     const frame = window.requestAnimationFrame(() => {
       const target = items[index]
       if (!target) return
       const el = itemRefs.current.get(target.locationId)
       el?.scrollIntoView({ block: 'center', behavior: 'auto' })
+      if (scrollerRef.current) snapScrollTop(scrollerRef.current)
       updateWheelVisuals()
     })
     return () => window.cancelAnimationFrame(frame)
@@ -188,7 +204,9 @@ export default function PortalKeyViewModal({ show, onHide, stops, activeStopId }
       frame = window.requestAnimationFrame(updateWheelVisuals)
     }
     const onScrollEnd = () => {
+      snapScrollTop(scroller)
       updateWheelVisuals()
+      focusedIndexRef.current = findNearestIndex()
       if (pointerActiveRef.current || momentumActiveRef.current) return
       if (settleSnapRef.current) {
         settleSnapRef.current = false
@@ -204,7 +222,24 @@ export default function PortalKeyViewModal({ show, onHide, stops, activeStopId }
       window.cancelAnimationFrame(frame)
       cancelMomentum()
     }
-  }, [show, updateWheelVisuals, snapToNearest, cancelMomentum])
+  }, [show, updateWheelVisuals, snapToNearest, cancelMomentum, findNearestIndex])
+
+  useEffect(() => {
+    if (!show) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'ArrowDown') {
+        event.preventDefault()
+        moveSelectionBy(1)
+        return
+      }
+      if (event.key === 'ArrowUp') {
+        event.preventDefault()
+        moveSelectionBy(-1)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [show, moveSelectionBy])
 
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     pointerActiveRef.current = true

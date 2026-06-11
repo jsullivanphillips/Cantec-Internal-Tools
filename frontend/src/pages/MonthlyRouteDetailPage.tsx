@@ -23,6 +23,8 @@ import { Link, useParams } from 'react-router-dom'
 import MonthlyLibraryCommentsPanel from '../features/monthlyRoutes/MonthlyLibraryCommentsPanel'
 import RouteTechnicianNoteCard from '../features/monthlyRoutes/RouteTechnicianNoteCard'
 import MonthlyRouteMapCard from '../features/monthlyRoutes/MonthlyRouteMapCard'
+import PortalKeyViewModal from '../features/monthlyRoutes/PortalKeyViewModal'
+import { fetchRouteKeyViewStops } from '../features/monthlyRoutes/portalKeyViewShared'
 import {
   activeRouteLocations,
   libraryLocationHasMapCoordinates,
@@ -36,6 +38,7 @@ import {
   type MonthlyRouteSummary,
   type MonthlySpecialistTechRow,
   type RouteLocationListItem,
+  type TechnicianWorksheetLocation,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
 import {
   availableRunsCardYears,
@@ -767,6 +770,10 @@ export default function MonthlyRouteDetailPage() {
   const [orderedSites, setOrderedSites] = useState<RouteLocationListItem[]>([])
   const [orderSaving, setOrderSaving] = useState(false)
   const [orderError, setOrderError] = useState<string | null>(null)
+  const [keyViewOpen, setKeyViewOpen] = useState(false)
+  const [keyViewStops, setKeyViewStops] = useState<TechnicianWorksheetLocation[]>([])
+  const [keyViewLoading, setKeyViewLoading] = useState(false)
+  const [keyViewError, setKeyViewError] = useState<string | null>(null)
 
   const load = useCallback(
     async (signal?: AbortSignal) => {
@@ -1089,6 +1096,26 @@ export default function MonthlyRouteDetailPage() {
     }, 0)
   }, [effectiveHistoryYear, testingByMonth])
 
+  const routeStopTotal = useMemo(
+    () => visibleSites.reduce((sum, loc) => sum + routeLocationStopCount(loc), 0),
+    [visibleSites],
+  )
+
+  const openKeyView = useCallback(async () => {
+    if (Number.isNaN(idNum) || routeStopTotal === 0) return
+    setKeyViewLoading(true)
+    setKeyViewError(null)
+    try {
+      const stops = await fetchRouteKeyViewStops(idNum, monthFirstIsoPacificToday())
+      setKeyViewStops(stops)
+      setKeyViewOpen(true)
+    } catch {
+      setKeyViewError('Unable to load keys for this route.')
+    } finally {
+      setKeyViewLoading(false)
+    }
+  }, [idNum, routeStopTotal])
+
   if (!routeId || Number.isNaN(idNum)) {
     return (
       <div className="monthly-route-detail-page">
@@ -1123,7 +1150,6 @@ export default function MonthlyRouteDetailPage() {
 
   const stUrl = route.service_trade_route_location_url
   const routeLocationCount = visibleSites.length
-  const routeStopTotal = visibleSites.reduce((sum, loc) => sum + routeLocationStopCount(loc), 0)
   const selectedYearMonthKeys =
     effectiveHistoryYear != null ? monthIsoKeysForCalendarYear(effectiveHistoryYear) : []
   const selectedYearRevenue = selectedYearMonthKeys.reduce((sum, monthIso) => {
@@ -1208,8 +1234,31 @@ export default function MonthlyRouteDetailPage() {
                 ServiceTrade
               </Button>
             ) : null}
+            {routeStopTotal > 0 ? (
+              <Button
+                variant="outline-secondary"
+                size="sm"
+                className="monthly-location-detail-action"
+                onClick={() => void openKeyView()}
+                disabled={keyViewLoading}
+                aria-label="Key view"
+              >
+                {keyViewLoading ? (
+                  <Spinner animation="border" size="sm" className="me-1" aria-hidden />
+                ) : (
+                  <i className="bi bi-key" aria-hidden />
+                )}
+                Key view
+              </Button>
+            ) : null}
           </div>
         </section>
+
+        {keyViewError ? (
+          <Alert variant="danger" dismissible onClose={() => setKeyViewError(null)} className="mb-0">
+            {keyViewError}
+          </Alert>
+        ) : null}
 
         <div className="monthly-route-metric-grid" aria-label="Route summary">
           <RouteMetricCard label="Locations" value={<span className="tabular-nums">{routeLocationCount}</span>} />
@@ -1555,6 +1604,12 @@ export default function MonthlyRouteDetailPage() {
         error={skipError}
         onClose={closeSkipConfirm}
         onConfirm={() => void confirmSkipRun()}
+      />
+      <PortalKeyViewModal
+        show={keyViewOpen}
+        onHide={() => setKeyViewOpen(false)}
+        stops={keyViewStops}
+        activeStopId={null}
       />
     </div>
   )

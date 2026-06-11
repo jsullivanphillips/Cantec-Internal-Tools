@@ -1,8 +1,22 @@
-import type { TechnicianWorksheetLocation } from './monthlyRoutesShared'
+import { apiJson } from '../../lib/apiClient'
+import type { TechnicianWorksheetLocation, TechnicianWorksheetPayload } from './monthlyRoutesShared'
+import { normalizeWorksheetPayload } from './monthlyRoutesShared'
 import { portalKeyViewOutcomeStatusClass } from './portalWorkflowShared'
 import {
   locationPrimaryLabel,
 } from './locationDisplay'
+
+/** Load worksheet stops for the current route month (library master + open run snapshots). */
+export async function fetchRouteKeyViewStops(
+  routeId: number,
+  monthIso: string,
+): Promise<TechnicianWorksheetLocation[]> {
+  const qs = new URLSearchParams({ month: monthIso, include_stops: '1' })
+  const data = await apiJson<TechnicianWorksheetPayload>(
+    `/api/monthly_routes/routes/${routeId}/worksheet?${qs.toString()}`,
+  )
+  return normalizeWorksheetPayload(data).locations ?? []
+}
 
 export type KeyViewItem = {
   locationId: number
