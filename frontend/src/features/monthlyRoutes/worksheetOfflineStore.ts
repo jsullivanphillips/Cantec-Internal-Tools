@@ -4,7 +4,12 @@ import type {
   TechnicianWorksheetRun,
   TechnicianWorksheetLocation,
 } from './monthlyRoutesShared'
-import { worksheetRunExplicitlyCompleted } from './monthlyRoutesShared'
+import {
+  normalizeWorksheetPayload,
+  worksheetPayloadLocations,
+  withWorksheetLocations,
+  worksheetRunExplicitlyCompleted,
+} from './monthlyRoutesShared'
 import { projectStopsWithWorkflowQueue } from './portalRouteProjection'
 import {
   portalStopHasOpenClock,
@@ -149,13 +154,15 @@ export function cacheKey(routeId: number, monthIso: string): string {
 }
 
 export function loadWorksheetCache(routeId: number, monthIso: string): TechnicianWorksheetPayload | null {
-  return safeParse<TechnicianWorksheetPayload>(localStorage.getItem(cacheKey(routeId, monthIso)))
+  const raw = safeParse<TechnicianWorksheetPayload>(localStorage.getItem(cacheKey(routeId, monthIso)))
+  return raw ? normalizeWorksheetPayload(raw) : null
 }
 
 export function saveWorksheetCache(payload: TechnicianWorksheetPayload): void {
-  const routeId = Number(payload.route.id)
-  const monthIso = payload.month_date
-  localStorage.setItem(cacheKey(routeId, monthIso), JSON.stringify(payload))
+  const normalized = normalizeWorksheetPayload(payload)
+  const routeId = Number(normalized.route.id)
+  const monthIso = normalized.month_date
+  localStorage.setItem(cacheKey(routeId, monthIso), JSON.stringify(normalized))
 }
 
 export function clearWorksheetCache(routeId: number, monthIso: string): void {
@@ -443,15 +450,16 @@ export function mergeWorkflowQueueIntoPayload(
   monthIso: string,
   queue?: PortalWorkflowQueueItem[],
 ): TechnicianWorksheetPayload {
-  if (!payload.locations?.length) return payload
+  const baseLocations = worksheetPayloadLocations(payload)
+  if (!baseLocations.length) return payload
   const items =
     queue ??
     loadWorkflowSyncQueue().filter(
       (item) => item.routeId === routeId && item.monthIso === monthIso,
     )
   if (!items.length) return payload
-  const stops = projectStopsWithWorkflowQueue(payload.locations, routeId, monthIso, items)
-  return { ...payload, stops }
+  const stops = projectStopsWithWorkflowQueue(baseLocations, routeId, monthIso, items)
+  return withWorksheetLocations(payload, stops)
 }
 
 /** Overlay unsynced portal stop edits so SSE/GET refresh does not wipe optimistic clock-ins. */
@@ -467,7 +475,8 @@ export function mergePendingChangesIntoPayload(
       item.locationId != null,
   )
   let next = payload
-  if (queue.length && payload.locations?.length) {
+  const baseLocations = worksheetPayloadLocations(payload)
+  if (queue.length && baseLocations.length) {
     const pendingBySite = new Map<number, WorksheetStopChangeSet>()
     for (const item of queue) {
       const siteId = item.locationId
@@ -478,11 +487,11 @@ export function mergePendingChangesIntoPayload(
       })
     }
 
-    const stops = payload.locations.map((stop) => {
+    const stops = baseLocations.map((stop) => {
       const patch = pendingBySite.get(stop.location_id)
       return patch ? { ...stop, ...patch } : stop
     })
-    next = { ...payload, stops }
+    next = withWorksheetLocations(payload, stops)
   }
   return mergeRunLifecycleQueueIntoPayload(
     mergeWorkflowQueueIntoPayload(next, routeId, monthIso),
@@ -571,12 +580,13 @@ export function mergeServerWorksheetPayload(
   routeId: number,
   monthIso: string,
 ): TechnicianWorksheetPayload {
-  const serverStops = server.locations ?? []
+  const serverStops = worksheetPayloadLocations(server)
+  const prevLocations = worksheetPayloadLocations(prev)
   const serverById = new Map(serverStops.map((s) => [s.location_id, s]))
-  const prevIds = new Set((prev.locations ?? []).map((s) => s.location_id))
+  const prevIds = new Set(prevLocations.map((s) => s.location_id))
 
   const stops: TechnicianWorksheetLocation[] = []
-  for (const s of prev.locations ?? []) {
+  for (const s of prevLocations) {
     const remote = serverById.get(s.location_id)
     if (!remote) {
       stops.push(s)
@@ -597,7 +607,7 @@ export function mergeServerWorksheetPayload(
   }
 
   return mergeRunLifecycleQueueIntoPayload(
-    mergeWorkflowQueueIntoPayload({ ...server, stops }, routeId, monthIso),
+    mergeWorkflowQueueIntoPayload(withWorksheetLocations(server, stops), routeId, monthIso),
     routeId,
     monthIso,
   )
@@ -636,8 +646,8 @@ export function serverRunWasExternallyReset(
 ): boolean {
   if (!local) return false
 
-  const localStopProgress = countStopsWithFieldProgress(local.locations)
-  const serverStopProgress = countStopsWithFieldProgress(server.locations)
+  const localStopProgress = countStopsWithFieldProgress(worksheetPayloadLocations(local))
+  const serverStopProgress = countStopsWithFieldProgress(worksheetPayloadLocations(server))
   const localHeaderProgress = runHeaderHadFieldProgress(local.run)
   const serverHeaderProgress = runHeaderHasFieldProgress(server.run)
 

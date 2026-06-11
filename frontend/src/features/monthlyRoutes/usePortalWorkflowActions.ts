@@ -2,6 +2,10 @@ import { useCallback, type Dispatch, type MutableRefObject, type SetStateAction 
 import { apiJson } from '../../lib/apiClient'
 import type { TechnicianWorksheetPayload, TechnicianWorksheetLocation } from './monthlyRoutesShared'
 import {
+  withWorksheetLocations,
+  worksheetPayloadLocations,
+} from './monthlyRoutesShared'
+import {
   optimisticCancelClockInPatch,
   optimisticClockInPatch,
   optimisticClockOutPatch,
@@ -56,11 +60,12 @@ export function usePortalWorkflowActions({
   const mergeStop = useCallback(
     (stop: TechnicianWorksheetLocation) => {
       setPayload((prev) => {
-        if (!prev?.locations?.length) return prev
-        const nextStops = prev.locations.map((s) =>
+        const base = worksheetPayloadLocations(prev)
+        if (!base.length) return prev
+        const nextStops = base.map((s) =>
           s.location_id === stop.location_id ? stop : s,
         )
-        const next = { ...prev, stops: nextStops }
+        const next = withWorksheetLocations(prev!, nextStops)
         saveWorksheetCache(next)
         return next
       })
@@ -73,11 +78,12 @@ export function usePortalWorkflowActions({
   const patchStopLocal = useCallback(
     (locationId: number, patch: Partial<TechnicianWorksheetLocation>) => {
       setPayload((prev) => {
-        if (!prev?.locations?.length) return prev
-        const nextStops = prev.locations.map((s) =>
+        const base = worksheetPayloadLocations(prev)
+        if (!base.length) return prev
+        const nextStops = base.map((s) =>
           s.location_id === locationId ? { ...s, ...patch } : s,
         )
-        const next = { ...prev, stops: nextStops }
+        const next = withWorksheetLocations(prev!, nextStops)
         saveWorksheetCache(next)
         return next
       })

@@ -9,6 +9,8 @@ import {
   WORKSHEET_CLOCK_IN_BLOCKED_MESSAGE,
   type TechnicianWorksheetPayload,
   type TechnicianWorksheetLocation,
+  withWorksheetLocations,
+  worksheetPayloadLocations,
 } from './monthlyRoutesShared'
 import { classifyWorkflowError, workflowErrorMessage } from './portalWorkflowErrors'
 import { portalStopHasOpenClock } from './portalWorkflowShared'
@@ -115,8 +117,9 @@ function mergeStopIntoPayload(
   stop: TechnicianWorksheetLocation,
 ): void {
   ctx.setPayload((prev) => {
-    if (!prev?.locations?.length) return prev
-    const prevStop = prev.locations.find((s) => s.location_id === stop.location_id)
+    const base = worksheetPayloadLocations(prev)
+    if (!base.length) return prev
+    const prevStop = base.find((s) => s.location_id === stop.location_id)
     let mergedStop = stop
     if (
       prevStop &&
@@ -134,11 +137,11 @@ function mergeStopIntoPayload(
     if (prevStop) {
       mergedStop = preserveWorksheetStopOrderFields(prevStop, mergedStop)
     }
-    const nextStops = prev.locations.map((s) =>
+    const nextStops = base.map((s) =>
       s.location_id === stop.location_id ? mergedStop : s,
     )
     const next = mergeWorkflowQueueIntoPayload(
-      { ...prev, stops: nextStops },
+      withWorksheetLocations(prev!, nextStops),
       ctx.routeId,
       ctx.monthIso,
     )
@@ -172,7 +175,7 @@ function updateSyncBadge(ctx: PortalWorkflowDrainContext): void {
 
 function stopsForProjection(ctx: PortalWorkflowDrainContext): TechnicianWorksheetLocation[] {
   const cached = loadWorksheetCache(ctx.routeId, ctx.monthIso)
-  return cached?.locations ?? []
+  return worksheetPayloadLocations(cached)
 }
 
 async function processOneItem(

@@ -701,6 +701,20 @@ export function normalizeWorksheetPayload(
   return { ...payload, locations, stops: undefined }
 }
 
+/** Worksheet stop list regardless of API ``stops`` vs ``locations`` alias. */
+export function worksheetPayloadLocations(
+  payload: TechnicianWorksheetPayload | null | undefined,
+): TechnicianWorksheetLocation[] {
+  return payload?.locations ?? payload?.stops ?? []
+}
+
+export function withWorksheetLocations(
+  payload: TechnicianWorksheetPayload,
+  locations: TechnicianWorksheetLocation[],
+): TechnicianWorksheetPayload {
+  return { ...payload, locations, stops: undefined }
+}
+
 export function monthlyCommentAuthorsMatch(session: string | null, author: string | null): boolean {
   const s = session?.trim()
   const a = author?.trim()

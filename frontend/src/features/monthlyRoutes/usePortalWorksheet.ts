@@ -2,7 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import {
   monthFirstIsoPacificToday,
+  normalizeWorksheetPayload,
   parseYearMonth,
+  worksheetPayloadLocations,
+  withWorksheetLocations,
   worksheetRunExplicitlyCompleted,
   WORKSHEET_CLOCK_IN_BLOCKED_MESSAGE,
   type TechnicianWorksheetPayload,
@@ -105,15 +108,16 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
   const hasLoadedOnceRef = useRef(false)
   const suppressRemoteRefreshUntilRef = useRef(0)
 
-  const stops = useMemo(() => payload?.stops ?? [], [payload?.stops])
+  const stops = useMemo(() => worksheetPayloadLocations(payload), [payload])
 
   const updateLocalStop = useCallback((locationId: number, patch: WorksheetStopChangeSet) => {
     setPayload((prev) => {
-      if (!prev?.stops?.length) return prev
-      const nextStops = (prev.locations ?? []).map((s) =>
+      const base = worksheetPayloadLocations(prev)
+      if (!base.length) return prev
+      const nextStops = base.map((s) =>
         s.location_id === locationId ? { ...s, ...patch } : s,
       )
-      const next = { ...prev, stops: nextStops }
+      const next = withWorksheetLocations(prev!, nextStops)
       saveWorksheetCache(next)
       return next
     })
@@ -179,9 +183,11 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
           qs.set('refresh_paperwork', '1')
           markPortalPaperworkRefreshRequested(routeId, monthIso)
         }
-        const data = await apiJson<TechnicianWorksheetPayload>(
-          `/api/monthly_routes/routes/${routeId}/worksheet?${qs.toString()}`,
-          { signal },
+        const data = normalizeWorksheetPayload(
+          await apiJson<TechnicianWorksheetPayload>(
+            `/api/monthly_routes/routes/${routeId}/worksheet?${qs.toString()}`,
+            { signal },
+          ),
         )
         if (signal?.aborted) return
         const localBaseline = loadWorksheetCache(routeId, monthIso) ?? cached
@@ -314,8 +320,9 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
         )
         let mergedStopForQueue: TechnicianWorksheetLocation = res.stop
         setPayload((prev) => {
-          if (!prev?.stops?.length) return prev
-          const prevStop = (prev.locations ?? []).find((s) => s.location_id === locationId)
+          const base = worksheetPayloadLocations(prev)
+          if (!base.length) return prev
+          const prevStop = base.find((s) => s.location_id === locationId)
           const mergedStop = applyServerStopWithPending(
             res.stop,
             item.routeId,
@@ -324,10 +331,10 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
             prevStop,
           )
           mergedStopForQueue = mergedStop
-          const nextStops = (prev.locations ?? []).map((s) =>
+          const nextStops = base.map((s) =>
             s.location_id === locationId ? mergedStop : s,
           )
-          const next = { ...prev, stops: nextStops }
+          const next = withWorksheetLocations(prev!, nextStops)
           saveWorksheetCache(next)
           return next
         })
