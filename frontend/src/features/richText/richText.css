@@ -57,6 +57,10 @@
   pointer-events: none;
 }
 
+.rich-text-editor .rt-black {
+  color: var(--ml-text, #1f2937);
+}
+
 .rich-text-editor .rt-red {
   color: #c92a2a;
 }
