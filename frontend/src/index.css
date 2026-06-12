@@ -11235,6 +11235,11 @@ body {
 
 .pw-mock-dock--rich-editing {
   padding-top: 0.65rem;
+  padding-bottom: calc(0.45rem + env(safe-area-inset-bottom, 0px));
+}
+
+body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editing.pw-mock-dock--rich-editing {
+  padding-bottom: calc(0.15rem + env(safe-area-inset-bottom, 0px));
 }
 
 .pw-portal-outcome-banner {
