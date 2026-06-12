@@ -947,6 +947,7 @@ export default function TechnicianPortalWorksheetPage() {
     'pw-mock-dock',
     dockBand === 'C' ? 'pw-mock-dock--completed' : '',
     activeFieldEditActions ? 'pw-mock-dock--field-editing' : '',
+    showPortalRichTextToolbar ? 'pw-mock-dock--rich-editing' : '',
   ]
     .filter(Boolean)
     .join(' ')
@@ -984,11 +985,7 @@ export default function TechnicianPortalWorksheetPage() {
         onConfirmSkipUntestedAndEnd={() => void confirmSkipUntestedAndEndRun()}
         endRunBusy={runLifecycleBusy}
       />
-      <header
-        className={`pw-mock-chrome${
-          showPortalRichTextToolbar && !phoneLayout ? ' pw-mock-chrome--rich-editing' : ''
-        }`}
-      >
+      <header className="pw-mock-chrome">
         <div
           className={`pw-mock-chrome-top${technicianNote ? ' pw-mock-chrome-top--with-note' : ''}`}
         >
@@ -1184,11 +1181,6 @@ export default function TechnicianPortalWorksheetPage() {
             </span>
           ) : null}
         </div>
-        {showPortalRichTextToolbar && !phoneLayout ? (
-          <div className="pw-mock-chrome-rich-toolbar">
-            <RichTextToolbar editor={portalRichTextEditor} layout="grouped" />
-          </div>
-        ) : null}
       </header>
 
       {payload?.run && !showStopWorkspace && !initialLoading ? (
@@ -1295,11 +1287,6 @@ export default function TechnicianPortalWorksheetPage() {
               </div>
 
               <div className="pw-mock-fields">
-                {showPortalRichTextToolbar && phoneLayout ? (
-                  <div className="pw-mock-fields-rich-toolbar">
-                    <RichTextToolbar editor={portalRichTextEditor} layout="grouped" />
-                  </div>
-                ) : null}
                 <PortalClockEventsCard stop={active} />
                 <div className="pw-mock-field-group">
                   <div className="pw-mock-field-group-title">Site</div>
@@ -1478,6 +1465,11 @@ export default function TechnicianPortalWorksheetPage() {
                     Save
                   </Button>
                 </>
+              ) : null}
+              {showPortalRichTextToolbar ? (
+                <div className="pw-mock-dock-rich-toolbar">
+                  <RichTextToolbar editor={portalRichTextEditor} layout="grouped" />
+                </div>
               ) : null}
             </footer>
           </div>

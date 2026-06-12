@@ -177,36 +177,50 @@
   margin-bottom: 0.25rem;
 }
 
-.portal-worksheet-mockup .pw-mock-chrome-rich-toolbar {
+.portal-worksheet-mockup .pw-mock-dock-rich-toolbar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 3.75rem;
+  margin: 0.15rem -0.15rem 0;
+  padding: 0.75rem 0.35rem 0.15rem;
   border-top: 1px solid rgba(15, 23, 42, 0.08);
-  background: #f8fafc;
-  padding: 0.4rem 0.9rem;
-  margin: 0.6rem -0.9rem -0.55rem;
 }
 
-.portal-worksheet-mockup .pw-mock-chrome--rich-editing {
-  padding-bottom: 0;
-}
-
-.portal-worksheet-mockup .pw-mock-chrome-rich-toolbar .rich-text-toolbar {
+.portal-worksheet-mockup .pw-mock-dock-rich-toolbar .rich-text-toolbar {
   border: none;
   background: transparent;
   padding: 0;
-  width: auto;
+  width: 100%;
+  justify-content: center;
+  gap: 0.75rem;
 }
 
-.portal-worksheet-mockup .pw-mock-fields-rich-toolbar {
-  flex-shrink: 0;
-  padding: 0.45rem 1rem 0.35rem;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
-  background: #f8fafc;
+.portal-worksheet-mockup .pw-mock-dock-rich-toolbar .rich-text-toolbar--grouped .rich-text-toolbar__colors {
+  gap: 0.5rem;
 }
 
-.portal-worksheet-mockup .pw-mock-fields-rich-toolbar .rich-text-toolbar {
-  border: none;
-  background: transparent;
-  padding: 0;
-  width: auto;
+.portal-worksheet-mockup .pw-mock-dock-rich-toolbar .rich-text-toolbar__btn {
+  min-width: 2.85rem;
+  height: 2.85rem;
+  padding: 0 0.55rem;
+  border-radius: 0.45rem;
+  font-size: 1rem;
+}
+
+.portal-worksheet-mockup .pw-mock-dock-rich-toolbar .rich-text-toolbar__btn strong {
+  font-size: 1.2rem;
+}
+
+.portal-worksheet-mockup .pw-mock-dock-rich-toolbar .rich-text-toolbar__divider {
+  height: 2.25rem;
+}
+
+.portal-worksheet-mockup .pw-mock-dock-rich-toolbar .rich-text-toolbar__color {
+  width: 2.1rem;
+  height: 2.1rem;
+  border-width: 2px;
 }
 
 .portal-worksheet-mockup .pw-mock-field-value .rich-text-editor {
