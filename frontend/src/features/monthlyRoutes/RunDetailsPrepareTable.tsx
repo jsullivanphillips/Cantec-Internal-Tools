@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import {
   DndContext,
-  DragOverlay,
   KeyboardSensor,
   PointerSensor,
   closestCenter,
   useSensor,
   useSensors,
   type DragEndEvent,
-  type DragStartEvent,
 } from '@dnd-kit/core'
 import {
   SortableContext,
@@ -127,26 +125,6 @@ function PrepStopOrderCell({
   )
 }
 
-function PrepRowDragPreview({ locationRows }: { locationRows: RunDetailPrepRow[] }) {
-  const primary = locationRows[0]
-  if (!primary) return null
-  const stop = primary.location
-  const label = shortStreetAddress(primary.location.location_label)
-  const siteCount = locationRows.length
-
-  return (
-    <div className="run-details-prepare-drag-overlay" role="presentation">
-      <span className="run-details-prepare-stop-num">{stop.stop_number}</span>
-      <div className="run-details-prepare-drag-overlay__copy">
-        <span className="run-details-prepare-drag-overlay__label">{label}</span>
-        {siteCount > 1 ? (
-          <span className="run-details-prepare-drag-overlay__meta">{siteCount} sites</span>
-        ) : null}
-      </div>
-    </div>
-  )
-}
-
 function SortableLocationPrepRows({
   locationRows,
   reorderEnabled,
@@ -161,7 +139,6 @@ function SortableLocationPrepRows({
     options: {
       isPrimaryForLocation: boolean
       showDragHandle: boolean
-      isDragging?: boolean
       dragHandleProps?: PrepDragHandleProps
       setNodeRef?: (element: HTMLElement | null) => void
       style?: CSSProperties
@@ -176,8 +153,8 @@ function SortableLocationPrepRows({
   })
   const style: CSSProperties = {
     transform: CSS.Transform.toString(sortable.transform),
-    transition: sortable.isDragging ? undefined : sortable.transition,
-    opacity: sortable.isDragging ? 0.22 : undefined,
+    transition: sortable.transition,
+    opacity: sortable.isDragging ? 0.72 : undefined,
   }
 
   return (
@@ -187,7 +164,6 @@ function SortableLocationPrepRows({
         return renderRow(row, {
           isPrimaryForLocation: isPrimary,
           showDragHandle: isPrimary && reorderEnabled,
-          isDragging: isPrimary && sortable.isDragging,
           dragHandleProps: isPrimary
             ? { attributes: sortable.attributes, listeners: sortable.listeners }
             : undefined,
@@ -228,7 +204,6 @@ export default function RunDetailsPrepareTable({
   onAnnualScheduleRefresh?: () => void | Promise<void>
 }) {
   const [activeFieldKey, setActiveFieldKey] = useState<string | null>(null)
-  const [activeDragLocationId, setActiveDragLocationId] = useState<number | null>(null)
   const [optimisticRows, setOptimisticRows] = useState<RunDetailPrepRow[] | null>(null)
   const [orderSaving, setOrderSaving] = useState(false)
   const [orderError, setOrderError] = useState<string | null>(null)
@@ -279,17 +254,8 @@ export default function RunDetailsPrepareTable({
     [displayRows],
   )
 
-  const activeDragBlock = useMemo(() => {
-    if (activeDragLocationId == null) return null
-    return (
-      locationBlocks.find(
-        (block) => block[0]?.location.location_id === activeDragLocationId,
-      ) ?? null
-    )
-  }, [activeDragLocationId, locationBlocks])
-
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
 
@@ -337,23 +303,6 @@ export default function RunDetailsPrepareTable({
     [displayRows, orderSaving, persistRouteOrder, reorderEnabled],
   )
 
-  const handleDragStart = useCallback((event: DragStartEvent) => {
-    const id = Number(event.active.id)
-    if (Number.isFinite(id)) setActiveDragLocationId(id)
-  }, [])
-
-  const handleDragCancel = useCallback(() => {
-    setActiveDragLocationId(null)
-  }, [])
-
-  const handleDragEndWithOverlay = useCallback(
-    (event: DragEndEvent) => {
-      handleDragEnd(event)
-      setActiveDragLocationId(null)
-    },
-    [handleDragEnd],
-  )
-
   const fieldKey = (locationId: number, suffix: string) => `${locationId}-${suffix}`
 
   const renderPrepRow = useCallback(
@@ -362,7 +311,6 @@ export default function RunDetailsPrepareTable({
       options: {
         isPrimaryForLocation: boolean
         showDragHandle: boolean
-        isDragging?: boolean
         dragHandleProps?: PrepDragHandleProps
         setNodeRef?: (element: HTMLElement | null) => void
         style?: CSSProperties
@@ -402,12 +350,7 @@ export default function RunDetailsPrepareTable({
           key={sid}
           ref={options.setNodeRef}
           style={options.style}
-          className={[
-            prepRowClassName(annualDue, highlighted, onHold),
-            options.isDragging ? 'run-details-prepare-row--dragging' : '',
-          ]
-            .filter(Boolean)
-            .join(' ') || undefined}
+          className={prepRowClassName(annualDue, highlighted, onHold)}
         >
           <td className="run-details-prepare-sticky-order tabular-nums align-middle">
             <PrepStopOrderCell
@@ -765,17 +708,8 @@ export default function RunDetailsPrepareTable({
         </div>
       )}
       {reorderEnabled ? (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragStart={handleDragStart}
-          onDragCancel={handleDragCancel}
-          onDragEnd={handleDragEndWithOverlay}
-        >
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           {tableShell}
-          <DragOverlay adjustScale={false} dropAnimation={null}>
-            {activeDragBlock ? <PrepRowDragPreview locationRows={activeDragBlock} /> : null}
-          </DragOverlay>
         </DndContext>
       ) : (
         tableShell

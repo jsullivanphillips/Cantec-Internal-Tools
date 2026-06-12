@@ -12,7 +12,6 @@ import {
   ReviewReadonlyCommentCell,
   ReviewReadonlyStackField,
 } from './RunDetailsReviewReadonlyFields'
-import { notableChangesFromFieldChanges } from './notableStopChanges'
 import {
   flattenRunDetailReviewRows,
   locationStopAsWorksheetStop,
@@ -324,7 +323,6 @@ export default function RunDetailsReviewTable({
                   )
                 const openDeficiencies = runReviewDeficiencySummaries(stop.deficiency_summaries, run)
                 const multiSite = siteCount > 1
-                const fieldChanges = notableChangesFromFieldChanges(stop.field_changes)
                 const ws = locationStopAsWorksheetStop(stop, locationLabel)
                 const locationCellTone = runReviewLocationCellTone(ws, monthDate)
 
@@ -371,34 +369,30 @@ export default function RunDetailsReviewTable({
                     </td>
                     <td className="align-middle run-details-prepare-stack-cell run-details-review-stack-cell-td">
                       <div className="run-details-prepare-stack">
-                        <ReviewReadonlyStackField label="Ring" value={stop.ring} changes={fieldChanges} />
-                        <ReviewReadonlyStackField label="Key" value={stop.key_number} changes={fieldChanges} />
-                        <ReviewReadonlyStackField label="Door" value={stop.door_code} changes={fieldChanges} />
+                        <ReviewReadonlyStackField label="Ring" value={stop.ring} />
+                        <ReviewReadonlyStackField label="Key" value={stop.key_number} />
+                        <ReviewReadonlyStackField label="Door" value={stop.door_code} />
                         <ReviewReadonlyStackField
                           label="Annual month"
                           value={stop.annual_month}
-                          changes={fieldChanges}
                         />
                       </div>
                     </td>
                     <td className="align-middle run-details-prepare-stack-cell run-details-review-stack-cell-td">
                       <div className="run-details-prepare-stack">
-                        <ReviewReadonlyStackField label="Company" value={companyName} changes={fieldChanges} />
+                        <ReviewReadonlyStackField label="Company" value={companyName} />
                         <ReviewReadonlyStackField
                           label="Account #"
                           value={stop.monitoring_account_number}
-                          changes={fieldChanges}
                         />
                         <ReviewReadonlyStackField
                           label="Password"
                           value={stop.monitoring_password}
-                          changes={fieldChanges}
                         />
                         <ReviewReadonlyStackField
                           label="Notes"
                           value={stop.monitoring_notes}
                           multiline
-                          changes={fieldChanges}
                         />
                       </div>
                     </td>

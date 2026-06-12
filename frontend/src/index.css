@@ -9163,6 +9163,11 @@ body {
   color: #c2410c;
 }
 
+.technician-worksheet-page .tw-office-status-pill--on_hold {
+  background: #fed7aa;
+  color: #c2410c;
+}
+
 .technician-worksheet-page .tw-office-status-pill--pending {
   background: #f1f5f9;
   color: #475569;
@@ -9330,6 +9335,12 @@ body {
   box-shadow: 1px 0 0 #e2e8f0;
 }
 
+.technician-worksheet-page .tw-office-table-row--on_hold .tw-office-sticky-order,
+.technician-worksheet-page .tw-office-table-row--on_hold .tw-office-sticky-address,
+.technician-worksheet-page .tw-office-table-row--on_hold .tw-office-sticky-result {
+  box-shadow: 1px 0 0 #e2e8f0;
+}
+
 .technician-worksheet-page .tw-office-table-row--tested .tw-office-sticky-order {
   background: #dcfce7;
   color: #166534;
@@ -9341,6 +9352,11 @@ body {
 }
 
 .technician-worksheet-page .tw-office-table-row--annual .tw-office-sticky-order {
+  background: #fed7aa;
+  color: #c2410c;
+}
+
+.technician-worksheet-page .tw-office-table-row--on_hold .tw-office-sticky-order {
   background: #fed7aa;
   color: #c2410c;
 }
@@ -9367,6 +9383,10 @@ body {
 }
 
 .technician-worksheet-page .tw-office-table-row--continuation.tw-office-table-row--annual .tw-office-sticky-order {
+  background: #fed7aa;
+}
+
+.technician-worksheet-page .tw-office-table-row--continuation.tw-office-table-row--on_hold .tw-office-sticky-order {
   background: #fed7aa;
 }
 
@@ -10168,9 +10188,9 @@ body {
 }
 
 .pw-mock-nav-stop--collapsed.pw-mock-nav-stop--on-hold {
-  background: #fef9c3;
-  color: #854d0e;
-  border-color: #fde047;
+  background: var(--pw-annual-soft);
+  color: var(--pw-annual-text);
+  border-color: var(--pw-annual-border);
 }
 
 .pw-mock-nav-stop--collapsed.pw-mock-nav-stop--office-attention {
@@ -10249,15 +10269,15 @@ body {
 }
 
 .pw-mock-nav-stop--expanded.pw-mock-nav-stop--on-hold {
-  background: #fef9c3;
-  border-color: #fde047;
-  color: #854d0e;
+  background: var(--pw-annual-soft);
+  border-color: var(--pw-annual-border);
+  color: var(--pw-annual-text);
 }
 
 .pw-mock-nav-stop--expanded.pw-mock-nav-stop--on-hold .pw-mock-nav-stop-label,
 .pw-mock-nav-stop--expanded.pw-mock-nav-stop--on-hold .pw-mock-nav-stop-icon,
 .pw-mock-nav-stop--expanded.pw-mock-nav-stop--on-hold .pw-mock-nav-stop-line {
-  color: #854d0e;
+  color: var(--pw-annual-text);
 }
 
 .pw-mock-nav-stop--expanded.pw-mock-nav-stop--office-attention {
@@ -10694,7 +10714,7 @@ body {
 }
 
 .pw-mock-header--on-hold::before {
-  background: #eab308;
+  background: var(--pw-annual);
 }
 
 .pw-mock-header--office-attention {
@@ -10863,9 +10883,9 @@ body {
   display: inline-block;
   margin-left: 0.5rem;
   padding: 0.16rem 0.45rem;
-  background: #fef9c3;
-  color: #854d0e;
-  border: 1px solid #fde047;
+  background: var(--pw-annual-soft);
+  color: var(--pw-annual-text);
+  border: 1px solid var(--pw-annual-border);
   border-radius: 999px;
   font-size: 0.65rem;
   font-weight: 700;
