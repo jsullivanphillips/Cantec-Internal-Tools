@@ -49,6 +49,9 @@ def _sqlalchemy_engine_options(database_url: str | None) -> dict[str, object]:
     return {
         "pool_pre_ping": True,
         "pool_recycle": 280,
+        # Waitress runs 16 threads; default pool_size=5 caused QueuePool timeouts under load.
+        "pool_size": 10,
+        "max_overflow": 20,
     }
 
 

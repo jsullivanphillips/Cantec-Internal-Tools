@@ -1809,3 +1809,48 @@ def test_library_patch_skips_mtsm_after_field_work_starts(stops_client):
         refreshed = db.session.get(MonthlyLocationMonth, 95011)
         assert refreshed is not None
         assert refreshed.monitoring_notes == "Frozen during field work"
+
+
+def test_portal_worksheet_get_uses_bounded_query_count(stops_client, monkeypatch):
+    """Regression: worksheet GET must batch portal extras instead of per-stop queries."""
+    from sqlalchemy import event
+    from sqlalchemy.engine import Engine
+
+    from app.routes import monthly_routes as mr_mod
+    from tests.run_workflow_helpers import portal_start_run
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
+
+    client, app = stops_client
+    with app.app_context():
+        route_id, _primary_id, _secondary_id = _seed_route_with_two_stops()
+        for idx in range(3, 22):
+            lid = 100 + idx
+            db.session.add(
+                make_location(
+                    id=lid,
+                    address=f"{idx} Batch St",
+                    monthly_route_id=int(route_id),
+                    route_stop_order=idx,
+                )
+            )
+        db.session.commit()
+
+    portal_start_run(client)
+
+    query_count = 0
+
+    def _count_query(*_args, **_kwargs) -> None:
+        nonlocal query_count
+        query_count += 1
+
+    event.listen(Engine, "before_cursor_execute", _count_query)
+    try:
+        res = client.get("/api/monthly_routes/routes/1/worksheet?month=2026-05-01&tech_portal=1")
+    finally:
+        event.remove(Engine, "before_cursor_execute", _count_query)
+
+    assert res.status_code == 200
+    stops = res.get_json().get("stops") or []
+    assert len(stops) >= 20
+    assert query_count < 120, f"portal worksheet GET issued {query_count} SQL queries"

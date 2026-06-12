@@ -8,6 +8,7 @@ run-month snapshots on ``MonthlyLocationMonth``, deficiencies on
 from __future__ import annotations
 
 from collections.abc import Iterable
+from dataclasses import dataclass
 from datetime import date
 from typing import TYPE_CHECKING
 
@@ -452,6 +453,25 @@ def route_month_has_worksheet_stops(route_id: int, month_first: date) -> bool:
     return row is not None
 
 
+def worksheet_stops_fully_materialized(route_id: int, month_first: date) -> bool:
+    """True when every worksheet location already has a linked month row for this route."""
+    locs = _resolve_worksheet_route_locations(route_id, month_first)
+    if not locs:
+        return True
+    loc_ids = [int(loc.id) for loc in locs]
+    existing_count = (
+        db.session.query(func.count(MonthlyLocationMonth.id))
+        .filter(
+            MonthlyLocationMonth.month_date == month_first,
+            MonthlyLocationMonth.monthly_location_id.in_(loc_ids),
+            MonthlyLocationMonth.test_monthly_route_id == route_id,
+            MonthlyLocationMonth.run_id.isnot(None),
+        )
+        .scalar()
+    )
+    return int(existing_count or 0) >= len(loc_ids)
+
+
 def ensure_worksheet_stops_for_route_month(
     route_id: int,
     month_first: date,
@@ -857,6 +877,111 @@ def _list_deficiencies_for_location(location_id: int) -> list[dict[str, object]]
     return [_serialize_deficiency(r) for r in rows]
 
 
+def _batch_list_deficiencies_for_locations(
+    location_ids: list[int],
+) -> dict[int, list[dict[str, object]]]:
+    if not location_ids:
+        return {}
+    ids = [int(i) for i in location_ids]
+    rows = (
+        MonthlyLocationDeficiency.query.filter(
+            MonthlyLocationDeficiency.monthly_location_id.in_(ids),
+        )
+        .order_by(
+            MonthlyLocationDeficiency.monthly_location_id.asc(),
+            MonthlyLocationDeficiency.created_at.asc(),
+            MonthlyLocationDeficiency.id.asc(),
+        )
+        .all()
+    )
+    grouped: dict[int, list[dict[str, object]]] = {}
+    for row in rows:
+        grouped.setdefault(int(row.monthly_location_id), []).append(_serialize_deficiency(row))
+    return {loc_id: grouped.get(loc_id, []) for loc_id in ids}
+
+
+def _batch_list_clock_events(
+    mlm_ids: list[int],
+) -> dict[int, list[dict[str, object]]]:
+    if not mlm_ids:
+        return {}
+    ids = [int(i) for i in mlm_ids]
+    rows = (
+        MonthlyStopClockEvent.query.filter(
+            MonthlyStopClockEvent.monthly_location_month_id.in_(ids),
+        )
+        .order_by(
+            MonthlyStopClockEvent.monthly_location_month_id.asc(),
+            MonthlyStopClockEvent.sort_order.asc(),
+            MonthlyStopClockEvent.id.asc(),
+        )
+        .all()
+    )
+    grouped: dict[int, list[dict[str, object]]] = {}
+    for event in rows:
+        grouped.setdefault(int(event.monthly_location_month_id), []).append(
+            _serialize_clock_event(event)
+        )
+    return {mlm_id: grouped.get(mlm_id, []) for mlm_id in ids}
+
+
+def _batch_mlm_ids_with_clock_events(mlm_ids: list[int]) -> set[int]:
+    if not mlm_ids:
+        return set()
+    rows = (
+        db.session.query(MonthlyStopClockEvent.monthly_location_month_id)
+        .filter(MonthlyStopClockEvent.monthly_location_month_id.in_([int(i) for i in mlm_ids]))
+        .distinct()
+        .all()
+    )
+    return {int(r[0]) for r in rows}
+
+
+def _batch_location_ids_with_run_deficiencies(
+    location_ids: list[int],
+    run_id: int,
+) -> set[int]:
+    if not location_ids:
+        return set()
+    rows = (
+        db.session.query(MonthlyLocationDeficiency.monthly_location_id)
+        .filter(
+            MonthlyLocationDeficiency.monthly_location_id.in_([int(i) for i in location_ids]),
+            MonthlyLocationDeficiency.created_run_id == int(run_id),
+        )
+        .distinct()
+        .all()
+    )
+    return {int(r[0]) for r in rows}
+
+
+@dataclass(frozen=True)
+class _PortalWorkflowExtrasPrefetch:
+    deficiencies_by_location_id: dict[int, list[dict[str, object]]]
+    clock_events_by_mlm_id: dict[int, list[dict[str, object]]]
+    mlm_ids_with_clock_events: set[int]
+    location_ids_with_run_deficiencies: set[int]
+
+
+def _build_portal_workflow_extras_prefetch(
+    pairs: list[tuple[MonthlyLocationMonth | None, MonthlyLocation]],
+    run: MonthlyRouteRun | None,
+) -> _PortalWorkflowExtrasPrefetch:
+    location_ids = [int(loc.id) for _mlm, loc in pairs]
+    mlm_ids = [int(mlm.id) for mlm, _loc in pairs if mlm is not None]
+    run_id = int(run.id) if run is not None else None
+    return _PortalWorkflowExtrasPrefetch(
+        deficiencies_by_location_id=_batch_list_deficiencies_for_locations(location_ids),
+        clock_events_by_mlm_id=_batch_list_clock_events(mlm_ids),
+        mlm_ids_with_clock_events=_batch_mlm_ids_with_clock_events(mlm_ids),
+        location_ids_with_run_deficiencies=(
+            _batch_location_ids_with_run_deficiencies(location_ids, run_id)
+            if run_id is not None
+            else set()
+        ),
+    )
+
+
 def _is_legacy_outcome(mlm: MonthlyLocationMonth | None) -> bool:
     if mlm is None:
         return False
@@ -869,13 +994,22 @@ def _location_has_run_changes(
     mlm: MonthlyLocationMonth,
     location_id: int,
     run_id: int | None,
+    *,
+    prefetch: _PortalWorkflowExtrasPrefetch | None = None,
 ) -> bool:
     if _normalize_text(mlm.test_outcome) or _normalize_text(mlm.result_status):
         return True
     if _normalize_text(mlm.run_comments):
         return True
+    mlm_id = int(mlm.id)
+    if prefetch is not None:
+        if mlm_id in prefetch.mlm_ids_with_clock_events:
+            return True
+        if run_id is not None and int(location_id) in prefetch.location_ids_with_run_deficiencies:
+            return True
+        return False
     if (
-        MonthlyStopClockEvent.query.filter_by(monthly_location_month_id=int(mlm.id)).count()
+        MonthlyStopClockEvent.query.filter_by(monthly_location_month_id=mlm_id).count()
         > 0
     ):
         return True
@@ -898,27 +1032,42 @@ def _portal_workflow_extras_for_location(
     route_id: int,
     month_first: date,
     run: MonthlyRouteRun | None,
+    prefetch: _PortalWorkflowExtrasPrefetch | None = None,
 ) -> dict[str, object]:
     from app.monthly.portal_workflow import portal_run_is_read_only
 
     billing_status = _normalize_text(mlm.billing_status) if mlm is not None else None
+    loc_id = int(loc.id)
     if mlm is None:
+        deficiencies = (
+            prefetch.deficiencies_by_location_id.get(loc_id, [])
+            if prefetch is not None
+            else _list_deficiencies_for_location(loc_id)
+        )
         return {
             "clock_events": [],
-            "deficiencies": _list_deficiencies_for_location(int(loc.id)),
+            "deficiencies": deficiencies,
             "has_run_changes": False,
             "billing_status": billing_status,
             "is_legacy_outcome": False,
             "portal_read_only": portal_run_is_read_only(run),
             "is_legacy_run": portal_run_is_read_only(run),
         }
+    mlm_id = int(mlm.id)
+    if prefetch is not None:
+        clock_events = prefetch.clock_events_by_mlm_id.get(mlm_id, [])
+        deficiencies = prefetch.deficiencies_by_location_id.get(loc_id, [])
+    else:
+        clock_events = _list_clock_events(mlm)
+        deficiencies = _list_deficiencies_for_location(loc_id)
     return {
-        "clock_events": _list_clock_events(mlm),
-        "deficiencies": _list_deficiencies_for_location(int(loc.id)),
+        "clock_events": clock_events,
+        "deficiencies": deficiencies,
         "has_run_changes": _location_has_run_changes(
             mlm,
-            int(loc.id),
+            loc_id,
             int(run.id) if run is not None else None,
+            prefetch=prefetch,
         ),
         "billing_status": billing_status,
         "is_legacy_outcome": _is_legacy_outcome(mlm),
@@ -987,6 +1136,7 @@ def serialize_worksheet_location(
     stop_number: int,
     run: MonthlyRouteRun | None = None,
     include_portal_extras: bool = True,
+    portal_extras_prefetch: _PortalWorkflowExtrasPrefetch | None = None,
 ) -> dict[str, object]:
     company, mon_notes, mcid, mon_acct, mon_pwd, mc = _monitoring_labels(mlm, loc)
     panel = None
@@ -1125,6 +1275,7 @@ def serialize_worksheet_location(
                 route_id=route_id,
                 month_first=month_first,
                 run=run,
+                prefetch=portal_extras_prefetch,
             )
         )
     else:
@@ -1153,6 +1304,8 @@ def portal_worksheet_preview_stops(
         locs,
         key=lambda loc: (0, int(loc.route_stop_order)) if loc.route_stop_order is not None else (1, 10**9),
     )
+    pairs = [(None, loc) for loc in locs_sorted]
+    prefetch = _build_portal_workflow_extras_prefetch(pairs, None)
     stops: list[dict[str, object]] = []
     for idx, loc in enumerate(locs_sorted, start=1):
         stops.append(
@@ -1162,6 +1315,7 @@ def portal_worksheet_preview_stops(
                 route_id=route_id,
                 month_first=month_first,
                 stop_number=idx,
+                portal_extras_prefetch=prefetch,
             )
         )
     return stops
@@ -1199,6 +1353,11 @@ def worksheet_locations_from_attributed_month_rows(
         month_date=month_first,
     ).one_or_none()
 
+    prefetch = (
+        _build_portal_workflow_extras_prefetch(pairs, run)
+        if include_portal_extras
+        else None
+    )
     out: list[dict[str, object]] = []
     for idx, (mlm, loc) in enumerate(pairs, start=1):
         out.append(
@@ -1210,6 +1369,7 @@ def worksheet_locations_from_attributed_month_rows(
                 stop_number=idx,
                 run=run,
                 include_portal_extras=include_portal_extras,
+                portal_extras_prefetch=prefetch,
             )
         )
     return out
@@ -1368,6 +1528,11 @@ def worksheet_locations_for_route_month(
         month_date=month_first,
     ).one_or_none()
 
+    prefetch = (
+        _build_portal_workflow_extras_prefetch(pairs, run)
+        if include_portal_extras
+        else None
+    )
     out: list[dict[str, object]] = []
     for idx, (mlm, loc) in enumerate(pairs, start=1):
         out.append(
@@ -1379,6 +1544,7 @@ def worksheet_locations_for_route_month(
                 stop_number=idx,
                 run=run,
                 include_portal_extras=include_portal_extras,
+                portal_extras_prefetch=prefetch,
             )
         )
     return out

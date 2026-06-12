@@ -2825,6 +2825,7 @@ def _sync_worksheet_stops_for_route_month(
     from app.monthly.worksheet_locations import (
         ensure_worksheet_stops_for_route_month,
         refresh_worksheet_stops_for_route_month,
+        worksheet_stops_fully_materialized,
     )
 
     should_refresh = (
@@ -2836,6 +2837,8 @@ def _sync_worksheet_stops_for_route_month(
     if should_refresh:
         refresh_worksheet_stops_for_route_month(route_id, month_first, run_orm)
         db.session.commit()
+        return
+    if worksheet_stops_fully_materialized(route_id, month_first):
         return
     ensure_worksheet_stops_for_route_month(route_id, month_first, run_orm)
 
@@ -2939,8 +2942,12 @@ def stream_monthly_route_worksheet(route_id: int):
         poll_sec = 5.0
     poll_sec = max(1.5, min(poll_sec, 120.0))
 
+    # Heroku's router closes idle connections after 30s (H12). Heartbeats must arrive more often.
+    heartbeat_sec = min(15.0, max(5.0, poll_sec * 2))
+
     def generate():
         last_sent: str | None = None
+        last_heartbeat = time.monotonic()
         yield "retry: 15000\n\n"
         # Release the connection acquired by route-level queries; this request stays open for SSE.
         db.session.remove()
@@ -2978,14 +2985,17 @@ def stream_monthly_route_worksheet(route_id: int):
                         yield f"event: worksheet_error\ndata: {json.dumps({'error': 'Route not found'})}\n\n"
                         break
                     if token != last_sent:
-                        if last_sent is not None:
-                            payload_out = {
-                                "revision": token,
-                                "route_id": route_id,
-                                "month_date": month_first.isoformat(),
-                            }
-                            yield f"data: {json.dumps(payload_out)}\n\n"
+                        payload_out = {
+                            "revision": token,
+                            "route_id": route_id,
+                            "month_date": month_first.isoformat(),
+                        }
+                        yield f"data: {json.dumps(payload_out)}\n\n"
                         last_sent = token
+                    now = time.monotonic()
+                    if now - last_heartbeat >= heartbeat_sec:
+                        yield ": heartbeat\n\n"
+                        last_heartbeat = now
                 finally:
                     # Return connection to the pool between polls; otherwise each open worksheet tab
                     # holds one pool slot until the client disconnects (QueuePool timeout on other APIs).
