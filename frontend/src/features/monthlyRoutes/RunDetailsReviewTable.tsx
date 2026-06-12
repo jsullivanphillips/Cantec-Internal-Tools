@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { Button, Table } from 'react-bootstrap'
 import { Link } from 'react-router-dom'
-import RunDetailsTicketsSiteModalPair from './RunDetailsTicketsSiteModalPair'
+import LocationTicketsModal from './LocationTicketsModal'
 import RunDetailsDeficiencyList from './RunDetailsDeficiencyList'
 import RunDetailsLocationBillingControl from './RunDetailsLocationBillingControl'
 import RunDetailsStopSiteModal from './RunDetailsStopSiteModal'
@@ -191,7 +191,7 @@ export default function RunDetailsReviewTable({
   onTicketsChanged?: () => void
 }) {
   const [siteModalStopId, setSiteModalStopId] = useState<number | null>(null)
-  const [ticketsSitePair, setTicketsSitePair] = useState<{
+  const [ticketsModal, setTicketsModal] = useState<{
     locationId: number
     locationLabel: string
   } | null>(null)
@@ -362,7 +362,7 @@ export default function RunDetailsReviewTable({
                         onOpenTickets={
                           isFirstAtLocation
                             ? (locId, label) =>
-                                setTicketsSitePair({ locationId: locId, locationLabel: label })
+                                setTicketsModal({ locationId: locId, locationLabel: label })
                             : undefined
                         }
                       />
@@ -442,7 +442,7 @@ export default function RunDetailsReviewTable({
       </div>
 
       <RunDetailsStopSiteModal
-        show={siteModalStopId != null && ticketsSitePair == null}
+        show={siteModalStopId != null && ticketsModal == null}
         locationId={siteModalStopId}
         routeId={routeId}
         monthDate={monthDate}
@@ -451,17 +451,14 @@ export default function RunDetailsReviewTable({
         stopPatch={stopPatch}
         onStopMergedFromWorksheet={onStopMergedFromWorksheet}
       />
-      {ticketsSitePair ? (
-        <RunDetailsTicketsSiteModalPair
+      {ticketsModal ? (
+        <LocationTicketsModal
           show
           routeId={routeId}
-          locationId={ticketsSitePair.locationId}
-          locationLabel={ticketsSitePair.locationLabel}
+          locationId={ticketsModal.locationId}
+          locationLabel={ticketsModal.locationLabel}
           monthDate={monthDate}
-          run={run}
-          onHide={() => setTicketsSitePair(null)}
-          stopPatch={stopPatch}
-          onStopMergedFromWorksheet={onStopMergedFromWorksheet}
+          onHide={() => setTicketsModal(null)}
           onTicketsChanged={onTicketsChanged}
         />
       ) : null}

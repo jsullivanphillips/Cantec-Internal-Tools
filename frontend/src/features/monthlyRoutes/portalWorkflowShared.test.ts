@@ -14,7 +14,9 @@ import {
   portalStopNewDeficiencies,
   portalStopNewDeficienciesFromPriorRuns,
   officeOutcomeSelectValue,
+  OFFICE_OUTCOME_ON_HOLD_VALUE,
   OFFICE_OUTCOME_PENDING_VALUE,
+  OFFICE_OUTCOME_SKIPPED_ANNUAL_LABEL,
   OFFICE_OUTCOME_SKIPPED_ANNUAL_VALUE,
   portalHeaderBandClass,
   portalKeyViewOutcomeStatusClass,
@@ -243,6 +245,21 @@ describe('officeOutcomeSelectValue', () => {
 
   it('returns pending when no outcome is recorded', () => {
     expect(officeOutcomeSelectValue(baseStop())).toBe(OFFICE_OUTCOME_PENDING_VALUE)
+  })
+
+  it('maps auto annual-month stops without an outcome to the office annual select value', () => {
+    expect(
+      officeOutcomeSelectValue(baseStop({ annual_month: 'May' })),
+    ).toBe(OFFICE_OUTCOME_SKIPPED_ANNUAL_VALUE)
+    expect(runReviewOutcomeHeadline(baseStop({ annual_month: 'May' }), '2026-05-01')).toBe(
+      OFFICE_OUTCOME_SKIPPED_ANNUAL_LABEL,
+    )
+  })
+
+  it('maps on-hold stops without an outcome to the office on-hold select value', () => {
+    expect(
+      officeOutcomeSelectValue(baseStop({ status_normalized: 'on_hold' })),
+    ).toBe(OFFICE_OUTCOME_ON_HOLD_VALUE)
   })
 
   it('maps annual skips to the office annual select value', () => {

@@ -31,6 +31,18 @@ export function isMonthAfter(monthIso: string, currentMonthIso: string): boolean
   return compareMonthFirstIso(monthIso, currentMonthIso) > 0
 }
 
+/** True when the Pacific current-month run is fully closed. */
+export function currentMonthRunClosedForFuturePrep(
+  run: RouteRunMonthSummary | null | undefined,
+): boolean {
+  if (!run) return true
+  if ((run.completed_at ?? '').trim().length > 0) return true
+  const stage = (run.workflow_stage ?? '').trim()
+  if (stage === 'completed') return true
+  const status = (run.status ?? '').trim().toLowerCase()
+  return status === 'completed' || status === 'closed'
+}
+
 /** True when office must close the Pacific current month before prepping this month. */
 export function isFutureMonthPrepBlocked(
   monthIso: string,
@@ -38,14 +50,40 @@ export function isFutureMonthPrepBlocked(
   runsByMonth: Record<string, RouteRunMonthSummary>,
 ): boolean {
   if (!isMonthAfter(monthIso, currentMonthIso)) return false
-  const currentRun = runsByMonth[currentMonthIso]
-  if (!currentRun) return true
-  if ((currentRun.completed_at ?? '').trim().length > 0) return false
-  return (currentRun.workflow_stage ?? '') !== 'completed'
+  return !currentMonthRunClosedForFuturePrep(runsByMonth[currentMonthIso])
 }
 
 export const FUTURE_MONTH_PREP_BLOCKED_MESSAGE =
   "Close the current month's paperwork before preparing a future month."
+
+/** User-facing hint naming the Pacific current month and what step is still open. */
+export function futureMonthPrepBlockedMessage(
+  targetMonthIso: string,
+  currentMonthIso: string,
+  runsByMonth: Record<string, RouteRunMonthSummary>,
+): string | null {
+  if (!isFutureMonthPrepBlocked(targetMonthIso, currentMonthIso, runsByMonth)) return null
+  const currentRun = runsByMonth[currentMonthIso]
+  const monthLabel = new Intl.DateTimeFormat('en-US', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(`${currentMonthIso}T12:00:00Z`))
+  const stage = (currentRun?.workflow_stage ?? 'draft').trim()
+  if (!currentRun) {
+    return `Finish ${monthLabel} paperwork before preparing a future month.`
+  }
+  if (stage === 'awaiting_office_review') {
+    return `Finish office review for ${monthLabel} before preparing a future month.`
+  }
+  if (stage === 'field_in_progress' || stage === 'prepared') {
+    return `Finish the ${monthLabel} field run before preparing a future month.`
+  }
+  if (stage === 'ready_to_close') {
+    return null
+  }
+  return `Finish ${monthLabel} paperwork before preparing a future month.`
+}
 
 /** Ignore a run header left over from another month while ``run_details`` is reloading. */
 export function runForPaperworkMonth(

@@ -20,7 +20,7 @@ import {
 import {
   computeSelectablePaperworkMonths,
   derivePaperworkViewMode,
-  FUTURE_MONTH_PREP_BLOCKED_MESSAGE,
+  futureMonthPrepBlockedMessage,
   isFutureMonthPrepBlocked,
   paperworkViewModeLabel,
   resolvePaperworkMonthQuery,
@@ -35,7 +35,6 @@ import { useAnnualScheduleCheck } from '../features/monthlyRoutes/useAnnualSched
 import {
   canOfficeCompleteRun,
   canOfficeReturnRunToPrep,
-  runFieldEnded,
   runInOfficePrepPhase,
   runIsPrepared,
 } from '../features/monthlyRoutes/runWorkflowShared'
@@ -113,7 +112,7 @@ export default function MonthlyRoutePaperworkPage() {
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [runLifecycleAction, setRunLifecycleAction] = useState<
-    'prepare' | 'unprepare' | 'review_complete' | 'complete' | 'reopen' | null
+    'prepare' | 'unprepare' | 'complete' | 'reopen' | null
   >(null)
   const [resetRunModalOpen, setResetRunModalOpen] = useState(false)
   const [resetRunBusy, setResetRunBusy] = useState(false)
@@ -161,6 +160,11 @@ export default function MonthlyRoutePaperworkPage() {
 
   const futurePrepBlocked = useMemo(
     () => isFutureMonthPrepBlocked(monthQuery, currentMonthIso, routeMeta?.runs_by_month ?? {}),
+    [monthQuery, currentMonthIso, routeMeta?.runs_by_month],
+  )
+  const futurePrepBlockedMessage = useMemo(
+    () =>
+      futureMonthPrepBlockedMessage(monthQuery, currentMonthIso, routeMeta?.runs_by_month ?? {}),
     [monthQuery, currentMonthIso, routeMeta?.runs_by_month],
   )
 
@@ -422,7 +426,8 @@ export default function MonthlyRoutePaperworkPage() {
         }
         return next
       })
-      setRouteMeta((prev) => patchRouteMetaRunMonth(prev, monthQuery, run))
+      const runMonth = (run.month_date ?? monthQuery).trim() || monthQuery
+      setRouteMeta((prev) => patchRouteMetaRunMonth(prev, runMonth, run))
     },
     [monthQuery, idNum],
   )
@@ -624,32 +629,6 @@ export default function MonthlyRoutePaperworkPage() {
     }
   }, [idNum, monthQuery, payload?.run, applyWorkflowRunUpdate, runLifecycleAction])
 
-  const onMarkReviewComplete = useCallback(async () => {
-    if (!Number.isFinite(idNum) || !payload?.run) return
-    if (runLifecycleAction != null) return
-    setRunLifecycleAction('review_complete')
-    try {
-      const data = await apiJson<{ run: TechnicianWorksheetRun }>(
-        `/api/monthly_routes/routes/${idNum}/runs/review_complete`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ month_date: monthQuery }),
-        },
-      )
-      clearWorksheetCache(idNum, monthQuery)
-      applyWorkflowRunUpdate(data.run)
-    } catch (e) {
-      const msg =
-        typeof e === 'object' && e != null && 'error' in (e as Record<string, unknown>)
-          ? String((e as { error?: unknown }).error)
-          : 'Could not mark review complete. Try again.'
-      window.alert(msg)
-    } finally {
-      setRunLifecycleAction(null)
-    }
-  }, [idNum, monthQuery, payload?.run, applyWorkflowRunUpdate, runLifecycleAction])
-
   const onCompleteJob = useCallback(async () => {
     if (!Number.isFinite(idNum) || !payload?.run) return
     if (worksheetRunExplicitlyCompleted(payload.run)) return
@@ -666,8 +645,12 @@ export default function MonthlyRoutePaperworkPage() {
       )
       clearWorksheetCache(idNum, monthQuery)
       applyWorkflowRunUpdate(data.run)
-    } catch {
-      window.alert('Could not complete job. Try again.')
+    } catch (e) {
+      const msg =
+        typeof e === 'object' && e != null && 'error' in (e as Record<string, unknown>)
+          ? String((e as { error?: unknown }).error)
+          : 'Could not complete job. Try again.'
+      window.alert(msg)
     } finally {
       setRunLifecycleAction(null)
     }
@@ -820,8 +803,6 @@ export default function MonthlyRoutePaperworkPage() {
   const showMarkPrepared =
     !runCompleted && (run == null || !runIsPrepared(run)) && !futurePrepBlocked
   const showReturnToPrep = run != null && canOfficeReturnRunToPrep(run)
-  const showMarkReviewComplete =
-    run != null && !runCompleted && runFieldEnded(run) && !run?.office_review_completed_at
   const showCompleteJob = run != null && !runCompleted && canOfficeCompleteRun(run)
   const showReopenJob = run != null && runCompleted
   const showResetRun = run != null && !runCompleted
@@ -876,7 +857,13 @@ export default function MonthlyRoutePaperworkPage() {
             ) : null}
             {futurePrepBlocked && paperworkViewMode === 'preparation' ? (
               <Alert variant="warning" className="py-2 small mb-0 mt-2">
-                {FUTURE_MONTH_PREP_BLOCKED_MESSAGE}
+                {futurePrepBlockedMessage ?? 'Close the current month\'s paperwork before preparing a future month.'}{' '}
+                <Link
+                  to={`/monthlies/routes/${idNum}/paperwork?month=${encodeURIComponent(currentMonthIso)}`}
+                  className="alert-link"
+                >
+                  Open {formatMonthHeading(currentMonthIso)} paperwork
+                </Link>
               </Alert>
             ) : null}
             {prepPhase && annualScheduleStatus === 'loading' ? (
@@ -941,24 +928,6 @@ export default function MonthlyRoutePaperworkPage() {
                   )}
                 </Button>
               ) : null}
-              {showMarkReviewComplete ? (
-                <Button
-                  size="sm"
-                  variant="outline-primary"
-                  className="monthly-location-detail-action"
-                  disabled={lifecycleBusy}
-                  onClick={() => void onMarkReviewComplete()}
-                >
-                  {runLifecycleAction === 'review_complete' ? (
-                    <>
-                      <Spinner animation="border" size="sm" className="me-1" aria-hidden />
-                      Saving…
-                    </>
-                  ) : (
-                    'Mark review complete'
-                  )}
-                </Button>
-              ) : null}
               {showReopenJob ? (
                 <Button
                   size="sm"
@@ -991,7 +960,7 @@ export default function MonthlyRoutePaperworkPage() {
                       Completing…
                     </>
                   ) : (
-                    'Complete job'
+                    'Complete'
                   )}
                 </Button>
               ) : null}

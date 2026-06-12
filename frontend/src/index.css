@@ -5134,6 +5134,178 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
   outline: none;
 }
 
+.location-ticket-modal .modal-header {
+  padding: 1.25rem 1.75rem;
+}
+
+.location-ticket-modal .modal-body {
+  padding: 1.75rem;
+}
+
+.location-ticket-modal .modal-footer {
+  padding: 1rem 1.75rem 1.25rem;
+}
+
+.location-ticket-form__group {
+  margin-bottom: 1.25rem;
+}
+
+.location-ticket-form__label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+}
+
+.location-ticket-form__status {
+  margin-bottom: 1.25rem;
+}
+
+.location-ticket-form__submit {
+  font-weight: 600;
+  padding-top: 0.65rem;
+  padding-bottom: 0.65rem;
+}
+
+.location-ticket-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.location-ticket-tags__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.75rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: #f8fafc;
+  font-size: 0.875rem;
+  line-height: 1.2;
+}
+
+.location-ticket-tags__remove {
+  border: 0;
+  background: transparent;
+  color: #64748b;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+}
+
+.location-ticket-tags__add,
+.location-ticket-tags__input {
+  min-height: 2rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+}
+
+.location-ticket-tags__add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  background: #fff;
+  color: #334155;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.location-ticket-tags__input {
+  min-width: 7rem;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.875rem;
+}
+
+.location-ticket-tags__input:focus {
+  outline: 2px solid rgba(37, 99, 235, 0.35);
+  outline-offset: 1px;
+}
+
+.ticket-status-stepper {
+  width: 100%;
+}
+
+.ticket-status-stepper__list {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ticket-status-stepper__step {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  flex: 1 1 0;
+  min-width: 5.5rem;
+  color: #94a3b8;
+}
+
+.ticket-status-stepper__step:last-child {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.ticket-status-stepper__step--done {
+  color: #64748b;
+}
+
+.ticket-status-stepper__step--current {
+  color: #059669;
+}
+
+.ticket-status-stepper__label {
+  text-align: left;
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-bottom: 0.45rem;
+  white-space: nowrap;
+}
+
+.ticket-status-stepper__track {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 0.85rem;
+}
+
+.ticket-status-stepper__marker {
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 50%;
+  border: 2px solid #cbd5e1;
+  background: #fff;
+  flex-shrink: 0;
+}
+
+.ticket-status-stepper__step--done .ticket-status-stepper__marker {
+  border-color: #64748b;
+  background: #64748b;
+}
+
+.ticket-status-stepper__step--current .ticket-status-stepper__marker {
+  border-color: #059669;
+  background: #059669;
+}
+
+.ticket-status-stepper__connector {
+  flex: 1 1 auto;
+  min-width: 2.5rem;
+  height: 2px;
+  margin: 0 0.35rem 0 0.2rem;
+  background: #cbd5e1;
+}
+
+.ticket-status-stepper__connector--done {
+  background: #64748b;
+}
+
 .run-details-tickets-site-pair__backdrop {
   position: fixed;
   inset: 0;

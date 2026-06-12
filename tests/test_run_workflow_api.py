@@ -118,6 +118,29 @@ def test_prepare_future_month_blocked_until_current_closed(workflow_client, monk
     assert res.get_json().get("code") == "current_month_not_closed"
 
 
+def test_prepare_future_month_blocked_when_only_review_complete(workflow_client, monkeypatch):
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 6, 1))
+
+    client, app = workflow_client
+    with app.app_context():
+        _seed_route()
+        seed_prepared_started_run(
+            1,
+            date(2026, 6, 1),
+            field_ended=True,
+            review_complete=True,
+        )
+
+    res = client.post(
+        "/api/monthly_routes/routes/1/runs/prepare",
+        json={"month_date": "2026-07-01"},
+    )
+    assert res.status_code == 409
+    assert res.get_json().get("code") == "current_month_not_closed"
+
+
 def test_prepare_future_month_allowed_when_current_closed(workflow_client, monkeypatch):
     from app.routes import monthly_routes as mr_mod
 
@@ -164,18 +187,18 @@ def test_field_end_and_reopen_field(workflow_client, monkeypatch):
     assert body.get("workflow_stage") == "field_in_progress"
 
 
-def test_office_complete_requires_review(workflow_client):
+def test_office_complete_requires_field_end(workflow_client):
     client, app = workflow_client
     with app.app_context():
         _seed_route()
-        seed_prepared_started_run(1, date(2026, 5, 1), field_ended=True)
+        seed_prepared_started_run(1, date(2026, 5, 1), field_ended=False)
 
     complete = client.post(
         "/api/monthly_routes/routes/1/runs/complete",
         json={"month_date": "2026-05-01"},
     )
     assert complete.status_code == 409
-    assert complete.get_json().get("code") == "office_review_required"
+    assert complete.get_json().get("code") == "field_not_ended"
 
 
 def test_office_workflow_happy_path(workflow_client):
@@ -184,19 +207,15 @@ def test_office_workflow_happy_path(workflow_client):
         _seed_route()
         seed_prepared_started_run(1, date(2026, 5, 1), field_ended=True)
 
-    review = client.post(
-        "/api/monthly_routes/routes/1/runs/review_complete",
-        json={"month_date": "2026-05-01"},
-    )
-    assert review.status_code == 200
-    assert review.get_json()["run"]["office_review_completed_at"] is not None
-
     complete = client.post(
         "/api/monthly_routes/routes/1/runs/complete",
         json={"month_date": "2026-05-01"},
     )
     assert complete.status_code == 200
-    assert complete.get_json()["run"]["workflow_stage"] == "completed"
+    body = complete.get_json()["run"]
+    assert body["office_review_completed_at"] is not None
+    assert body["completed_at"] is not None
+    assert body["workflow_stage"] == "completed"
 
 
 def test_office_outcome_patch_after_field_end(workflow_client):
@@ -324,7 +343,10 @@ def test_review_complete_ignores_cancelled_location_billing(workflow_client, mon
         json={"month_date": "2026-06-01"},
     )
     assert review.status_code == 200, review.get_data(as_text=True)
-    assert review.get_json()["run"]["office_review_completed_at"] is not None
+    review_run = review.get_json()["run"]
+    assert review_run["office_review_completed_at"] is not None
+    assert review_run["completed_at"] is not None
+    assert review_run["workflow_stage"] == "completed"
 
     with app.app_context():
         hidden = MonthlyLocationMonth.query.filter_by(
@@ -383,7 +405,10 @@ def test_review_complete_after_reopen_resolves_skipped_billing(workflow_client, 
         json={"month_date": "2026-06-01"},
     )
     assert review.status_code == 200, review.get_data(as_text=True)
-    assert review.get_json()["run"]["office_review_completed_at"] is not None
+    review_run = review.get_json()["run"]
+    assert review_run["office_review_completed_at"] is not None
+    assert review_run["completed_at"] is not None
+    assert review_run["workflow_stage"] == "completed"
 
     with app.app_context():
         row = MonthlyLocationMonth.query.filter_by(

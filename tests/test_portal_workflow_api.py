@@ -497,3 +497,6 @@ def test_test_outcome_annual_skip_category(portal_client, monkeypatch):
     assert stop["test_outcome"] == "skipped"
     assert stop["skip_category"] == "annual"
     assert stop["skip_reason"] == "annual"
+
+    with app.app_context():
+        assert get_location_billing_status(101, date(2026, 5, 1)) == "do_not_bill"

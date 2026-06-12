@@ -4,10 +4,17 @@ import {
   runReviewLocationCellClass,
   runReviewLocationCellTone,
   runReviewLocationResultCardClass,
+  runReviewOutcomeHeadline,
   runReviewOutcomeIconKind,
 } from './officeRunReviewShared'
+import {
+  OFFICE_OUTCOME_ON_HOLD_LABEL,
+  OFFICE_OUTCOME_SKIPPED_ANNUAL_LABEL,
+} from './portalWorkflowShared'
+import { runDetailLocationAsWorksheetLocation } from './runDetailsLocationReview'
 
 const MONTH = '2026-05-01'
+const JUNE_MONTH = '2026-06-01'
 
 function baseStop(overrides: Partial<TechnicianWorksheetLocation> = {}): TechnicianWorksheetLocation {
   return {
@@ -79,9 +86,80 @@ describe('runReviewLocationCellTone', () => {
 
   it('uses pending for stops without a recorded outcome', () => {
     expect(runReviewLocationCellTone(baseStop(), MONTH)).toBe('pending')
-    expect(
-      runReviewLocationCellTone(baseStop({ annual_month: 'May', status_normalized: 'on_hold' }), MONTH),
-    ).toBe('pending')
+  })
+
+  it('uses annual tone for auto annual-month stops without a recorded outcome', () => {
+    expect(runReviewLocationCellTone(baseStop({ annual_month: 'May' }), MONTH)).toBe('annual')
+  })
+
+  it('shows orange on-hold styling when tech submitted no outcome', () => {
+    const ws = runDetailLocationAsWorksheetLocation({
+      location_id: 12,
+      location_label: '200 Hold St',
+      stop_number: 3,
+      display_address: '200 Hold St',
+      label: null,
+      month_date: MONTH,
+      result_status: null,
+      test_outcome: null,
+      annual_month: null,
+      status_normalized: 'on_hold',
+      run_comments: null,
+      testing_procedures: null,
+      inspection_tech_notes: null,
+      has_field_edits: false,
+      review_kind: 'with_changes',
+      deficiency_summaries: [],
+      has_active_deficiencies: false,
+      billing_status: 'unset',
+      attention_flags: {
+        billing_unset: true,
+        has_field_edits: false,
+        has_active_deficiencies: false,
+        has_job_comment: false,
+        needs_attention: true,
+      },
+    })
+    expect(runReviewLocationCellTone(ws, MONTH)).toBe('on_hold')
+    expect(runReviewLocationCellClass('on_hold')).toBe('run-details-review-location-cell--on-hold')
+    expect(runReviewOutcomeHeadline(ws, MONTH)).toBe(OFFICE_OUTCOME_ON_HOLD_LABEL)
+    expect(runReviewOutcomeIconKind(ws, MONTH)).toBe('on_hold')
+  })
+
+  it('shows orange annual styling for June run review when tech submitted no outcome', () => {
+    const ws = runDetailLocationAsWorksheetLocation({
+      location_id: 500,
+      location_label: '500 Fort Street',
+      stop_number: 7,
+      display_address: '500 Fort Street',
+      label: null,
+      month_date: JUNE_MONTH,
+      result_status: null,
+      test_outcome: null,
+      annual_month: 'June',
+      run_comments: null,
+      testing_procedures: null,
+      inspection_tech_notes: null,
+      has_field_edits: false,
+      review_kind: 'with_changes',
+      deficiency_summaries: [],
+      has_active_deficiencies: false,
+      billing_status: 'unset',
+      attention_flags: {
+        billing_unset: true,
+        has_field_edits: false,
+        has_active_deficiencies: false,
+        has_job_comment: false,
+        needs_attention: true,
+      },
+    })
+    expect(runReviewLocationCellTone(ws, JUNE_MONTH)).toBe('annual')
+    expect(runReviewLocationCellClass('annual')).toBe('run-details-review-location-cell--annual')
+    expect(runReviewLocationResultCardClass('annual')).toBe(
+      'run-details-review-location-result-card--annual',
+    )
+    expect(runReviewOutcomeHeadline(ws, JUNE_MONTH)).toBe(OFFICE_OUTCOME_SKIPPED_ANNUAL_LABEL)
+    expect(runReviewOutcomeIconKind(ws, JUNE_MONTH)).toBe('annual')
   })
 
   it('maps tone to css class suffix', () => {

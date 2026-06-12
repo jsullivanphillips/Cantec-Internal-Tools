@@ -337,7 +337,8 @@
 }
 
 .monthly-run-detail-page .run-details-prep-badge--out-of-order,
-.monthly-run-detail-page .run-details-prep-badge--new-to-route {
+.monthly-run-detail-page .run-details-prep-badge--new-to-route,
+.monthly-run-detail-page .run-details-prep-badge--prior-edits {
   align-items: flex-start;
   gap: 0.35rem;
   padding: 0.35rem 0.4rem 0.35rem 0.45rem;
@@ -345,13 +346,15 @@
 }
 
 .monthly-run-detail-page .run-details-prep-badge--out-of-order .run-details-prep-badge__body,
-.monthly-run-detail-page .run-details-prep-badge--new-to-route .run-details-prep-badge__body {
+.monthly-run-detail-page .run-details-prep-badge--new-to-route .run-details-prep-badge__body,
+.monthly-run-detail-page .run-details-prep-badge--prior-edits .run-details-prep-badge__body {
   flex: 1;
   min-width: 0;
 }
 
 .monthly-run-detail-page .run-details-prep-badge--out-of-order .run-details-prep-badge__title,
-.monthly-run-detail-page .run-details-prep-badge--new-to-route .run-details-prep-badge__title {
+.monthly-run-detail-page .run-details-prep-badge--new-to-route .run-details-prep-badge__title,
+.monthly-run-detail-page .run-details-prep-badge--prior-edits .run-details-prep-badge__title {
   display: block;
   font-weight: 700;
   line-height: 1.2;
@@ -890,7 +893,9 @@
   border-color: #ca8a04;
 }
 
-.monthly-run-detail-page .run-details-review-location-result-card--annual {
+.monthly-run-detail-page .run-details-review-location-result-card--annual,
+.monthly-run-detail-page .run-details-review-location-result-card--on-hold {
+  background-color: #fde4d0;
   border-color: #c2410c;
 }
 
@@ -1113,7 +1118,12 @@
   .run-details-review-table
   tbody
   tr.run-details-review-table-row
-  td.run-details-prepare-sticky-address.run-details-review-location-cell--annual {
+  td.run-details-prepare-sticky-address.run-details-review-location-cell--annual,
+.monthly-run-detail-page
+  .run-details-review-table
+  tbody
+  tr.run-details-review-table-row
+  td.run-details-prepare-sticky-address.run-details-review-location-cell--on-hold {
   background-color: #ed7d31;
 }
 

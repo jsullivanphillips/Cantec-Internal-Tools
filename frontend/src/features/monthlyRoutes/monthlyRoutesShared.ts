@@ -418,6 +418,8 @@ export type MonthlyRunDetailLocation = {
   prior_month_tested_after_address?: string | null
   prior_month_out_of_order_dismissed?: boolean
   prior_month_field_edits?: boolean
+  /** Display labels for worksheet fields edited during the prior month field run. */
+  prior_month_edited_fields?: string[]
   prior_month_new_to_route?: boolean
   testing_procedures: string | null
   inspection_tech_notes: string | null

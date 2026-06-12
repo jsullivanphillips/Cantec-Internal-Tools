@@ -283,5 +283,6 @@ export function detailPatchFromWorksheetStop(
     skip_category: stop.skip_category ?? null,
     skip_note: stop.skip_note ?? null,
     confirmed_no_deficiencies: stop.confirmed_no_deficiencies,
+    billing_status: stop.billing_status ?? null,
   }
 }

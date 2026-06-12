@@ -23,6 +23,9 @@ export type MonthlyDashboardRouteRow = {
 export type MonthlyDashboardPayload = {
   month_date: string
   routes: MonthlyDashboardRouteRow[]
+  open_ticket_count?: number
+  open_tickets_open?: number
+  open_tickets_in_progress?: number
 }
 
 export function dashboardRouteWorkflowStage(

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { TechnicianWorksheetRun } from './monthlyRoutesShared'
 import {
+  canOfficeCompleteRun,
   canOfficeEditBilling,
   canOfficeEditOutcomes,
   runDetailsOfficeReviewReadOnly,
@@ -44,5 +45,20 @@ describe('runDetailsOfficeReviewReadOnly', () => {
 
   it('locks csv_import runs before field end', () => {
     expect(runDetailsOfficeReviewReadOnly(run({ field_ended_at: null }))).toBe(true)
+  })
+})
+
+describe('canOfficeCompleteRun', () => {
+  it('allows complete after field end before job close', () => {
+    expect(canOfficeCompleteRun(run())).toBe(true)
+  })
+
+  it('blocks complete before field end or after job close', () => {
+    expect(canOfficeCompleteRun(run({ field_ended_at: null }))).toBe(false)
+    expect(
+      canOfficeCompleteRun(
+        run({ status: 'completed', completed_at: '2026-05-10T00:00:00Z' }),
+      ),
+    ).toBe(false)
   })
 })

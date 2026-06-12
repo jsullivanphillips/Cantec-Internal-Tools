@@ -1,6 +1,10 @@
 /** Portal workflow UI helpers (clock events, test outcomes, dock bands). */
 
-import { worksheetSkipReasonDisplayBlock, worksheetStopIsAnnualSkip } from './officeWorksheetTableShared'
+import {
+  officeStopStatus,
+  worksheetSkipReasonDisplayBlock,
+  worksheetStopIsAnnualSkip,
+} from './officeWorksheetTableShared'
 import {
   isAnnualForMonth,
   worksheetLocationIsOpenClockIn,
@@ -107,6 +111,11 @@ export const OFFICE_OUTCOME_SKIPPED_ANNUAL_VALUE = 'skipped_annual'
 
 export const OFFICE_OUTCOME_SKIPPED_ANNUAL_LABEL = 'Skipped (annual)'
 
+/** Office review only: on-hold library stop with no tech outcome (orange cell). */
+export const OFFICE_OUTCOME_ON_HOLD_VALUE = 'on_hold'
+
+export const OFFICE_OUTCOME_ON_HOLD_LABEL = 'On hold'
+
 function officeSkippedOutcomeSelectValue(stop: TechnicianWorksheetLocation): string {
   const month = norm(stop.month_date)
   if (month && worksheetStopIsAnnualSkip(stop, month)) {
@@ -124,6 +133,12 @@ export function officeOutcomeSelectValue(stop: TechnicianWorksheetLocation): str
   const rs = norm(stop.result_status).toLowerCase()
   if (rs === 'tested') return 'all_good'
   if (rs === 'skipped') return officeSkippedOutcomeSelectValue(stop)
+  const month = norm(stop.month_date)
+  if (month) {
+    const status = officeStopStatus(stop, month)
+    if (status === 'annual') return OFFICE_OUTCOME_SKIPPED_ANNUAL_VALUE
+    if (status === 'on_hold') return OFFICE_OUTCOME_ON_HOLD_VALUE
+  }
   return OFFICE_OUTCOME_PENDING_VALUE
 }
 

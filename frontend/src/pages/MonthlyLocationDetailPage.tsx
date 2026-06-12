@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Accordion, Alert, Badge, Button, Form, Modal, Spinner } from 'react-bootstrap'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import MonthlyLibraryCommentsPanel from '../features/monthlyRoutes/MonthlyLibraryCommentsPanel'
+import LocationTicketsPanel from '../features/monthlyRoutes/LocationTicketsPanel'
 import MonthlyLocationBillingCommentsPanel from '../features/monthlyRoutes/MonthlyLocationBillingCommentsPanel'
 import MonthlyLocationEditableFields, {
   type MonthlyLocationEditableFieldsHandle,
@@ -1346,6 +1347,25 @@ export default function MonthlyLocationDetailPage() {
                 />
               ) : null}
             </section>
+
+            {location?.monthly_route_id ? (
+              <section className="monthly-location-detail-panel monthly-location-tickets-panel">
+                <header className="monthly-location-section-header">
+                  <div>
+                    <h2 className="monthly-location-section-title">Tickets</h2>
+                    <p className="small text-muted mb-0">
+                      Office follow-ups for this site (keys, monitoring, deficiencies, route changes).
+                    </p>
+                  </div>
+                </header>
+                <LocationTicketsPanel
+                  routeId={location.monthly_route_id}
+                  locationId={location.id}
+                  locationLabel={(location.label || location.address || '').trim() || `Location ${location.id}`}
+                  sessionUsername={sessionUsername}
+                />
+              </section>
+            ) : null}
 
             <section className="monthly-location-detail-panel monthly-location-comments-panel">
               <header className="monthly-location-section-header">

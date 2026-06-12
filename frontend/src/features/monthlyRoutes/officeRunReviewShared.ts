@@ -33,6 +33,7 @@ export type RunReviewOutcomeIconKind =
   | 'failed'
   | 'passed_with_problems'
   | 'annual'
+  | 'on_hold'
   | 'skipped'
 
 /** Skipped because of annual month / annual skip reason (not a generic field skip). */
@@ -70,6 +71,7 @@ export function runReviewOutcomeIconKind(
   if (outcome === 'passed_with_problems') return 'passed_with_problems'
   const status = officeStopStatus(stop, monthDate)
   if (status === 'annual') return 'annual'
+  if (status === 'on_hold') return 'on_hold'
   if (status === 'tested') return 'all_good'
   return null
 }
@@ -120,7 +122,7 @@ export function runReviewOutcomeHeadline(
 
   const status = officeStopStatus(stop, monthDate)
   if (status === 'tested') return 'Tested (legacy)'
-  if (status === 'annual') return officeStopStatusLabel('annual')
+  if (status === 'annual') return OFFICE_OUTCOME_SKIPPED_ANNUAL_LABEL
   if (status === 'on_hold') return officeStopStatusLabel('on_hold')
   return null
 }
@@ -131,6 +133,7 @@ export type RunReviewLocationCellTone =
   | 'failed'
   | 'skipped'
   | 'annual'
+  | 'on_hold'
   | 'pending'
 
 const RUN_REVIEW_LOCATION_CELL_CLASS: Record<RunReviewLocationCellTone, string> = {
@@ -139,6 +142,7 @@ const RUN_REVIEW_LOCATION_CELL_CLASS: Record<RunReviewLocationCellTone, string> 
   failed: 'run-details-review-location-cell--failed',
   skipped: 'run-details-review-location-cell--skipped',
   annual: 'run-details-review-location-cell--annual',
+  on_hold: 'run-details-review-location-cell--on-hold',
   pending: 'run-details-review-location-cell--pending',
 }
 
@@ -159,6 +163,9 @@ export function runReviewLocationCellTone(
   if (rs === 'skipped') {
     return runReviewStopIsAnnualSkip(stop, monthDate) ? 'annual' : 'skipped'
   }
+  const status = officeStopStatus(stop, monthDate)
+  if (status === 'annual') return 'annual'
+  if (status === 'on_hold') return 'on_hold'
   return 'pending'
 }
 
@@ -188,8 +195,7 @@ export function runReviewOutcomeBadgeClass(
   }
   const status = officeStopStatus(stop, monthDate)
   if (status === 'tested') return 'run-detail-site-card__badge--legacy-tested'
-  if (status === 'annual') return 'run-detail-site-card__badge--annual'
-  if (status === 'on_hold') return 'run-detail-site-card__badge--on-hold'
+  if (status === 'annual' || status === 'on_hold') return 'run-detail-site-card__badge--annual'
   if (status === 'skipped') return 'run-detail-site-card__badge--skipped'
   return 'run-detail-site-card__badge--pending'
 }

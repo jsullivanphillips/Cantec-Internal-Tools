@@ -28,8 +28,6 @@ type Props = {
   onHide: () => void
   stopPatch: RunDetailsStopPatchApi
   onStopMergedFromWorksheet: (stop: TechnicianWorksheetLocation, scope?: 'full' | 'deficiency') => void
-  /** Render as a side panel (no Bootstrap Modal shell). */
-  embedded?: boolean
 }
 
 export default function RunDetailsStopSiteModal({
@@ -41,7 +39,6 @@ export default function RunDetailsStopSiteModal({
   onHide,
   stopPatch,
   onStopMergedFromWorksheet,
-  embedded = false,
 }: Props) {
   const { ensureStopLoaded, getStop, replaceStop, loading, loadingId, error } =
     useRunDetailsWorksheetStops(routeId, monthDate)
@@ -150,18 +147,6 @@ export default function RunDetailsStopSiteModal({
       )}
     </div>
   )
-
-  if (embedded) {
-    return (
-      <div className="run-details-tickets-site-pair__panel run-details-tickets-site-pair__panel--site run-details-stop-site-modal__content modal-content">
-        <div className="modal-header run-details-stop-site-modal__chrome-header run-details-tickets-site-pair__panel-header">
-          <div className="modal-title h6 mb-0">Site on this run</div>
-          <button type="button" className="btn-close" aria-label="Close" onClick={onHide} />
-        </div>
-        {body}
-      </div>
-    )
-  }
 
   return (
     <Modal

@@ -14,6 +14,7 @@ import {
   patchRunDetailPayloadRun,
   patchRouteMetaRunMonth,
   patchRunDetailPreRunMessage,
+  priorMonthFieldEditsHint,
   stopHasSubmittedTestResult,
   locationHasAllStopsSubmitted,
 } from './runDetailsLocationReview'
@@ -159,6 +160,23 @@ describe('submission helpers', () => {
   })
 })
 
+describe('priorMonthFieldEditsHint', () => {
+  it('lists edited field labels and explains they are not route order', () => {
+    const hint = priorMonthFieldEditsHint({
+      prior_month_field_edits: true,
+      prior_month_edited_fields: ['Ring', 'Door code', 'Testing procedures'],
+    })
+    expect(hint?.title).toBe('Edited last month')
+    expect(hint?.detail).toBe('Ring · Door code · Testing procedures')
+    expect(hint?.tooltip).toContain('Route stop order')
+    expect(hint?.tooltip).toContain('Ring')
+  })
+
+  it('returns null when the location was not edited last month', () => {
+    expect(priorMonthFieldEditsHint({ prior_month_field_edits: false })).toBeNull()
+  })
+})
+
 describe('listAutoOfficeBillingUpdates', () => {
   it('suggests bill for all_good outcomes', () => {
     const updates = listAutoOfficeBillingUpdates(
@@ -166,6 +184,44 @@ describe('listAutoOfficeBillingUpdates', () => {
       MONTH,
     )
     expect(updates).toEqual([{ locationId: 101, billingStatus: 'bill' }])
+  })
+
+  it('suggests do_not_bill for annual skips and auto annual-month stops', () => {
+    expect(
+      listAutoOfficeBillingUpdates(
+        [
+          baseLocation({
+            test_outcome: 'skipped',
+            result_status: 'skipped',
+            skip_category: 'annual',
+            skip_reason: 'annual',
+          }),
+        ],
+        MONTH,
+      ),
+    ).toEqual([{ locationId: 101, billingStatus: 'do_not_bill' }])
+
+    expect(
+      listAutoOfficeBillingUpdates(
+        [baseLocation({ test_outcome: null, result_status: null, annual_month: 'May' })],
+        MONTH,
+      ),
+    ).toEqual([{ locationId: 101, billingStatus: 'do_not_bill' }])
+  })
+
+  it('leaves generic skips unchanged for auto billing', () => {
+    const updates = listAutoOfficeBillingUpdates(
+      [
+        baseLocation({
+          test_outcome: 'skipped',
+          result_status: 'skipped',
+          skip_category: 'access_issues',
+          skip_reason: 'access_issues',
+        }),
+      ],
+      MONTH,
+    )
+    expect(updates).toEqual([])
   })
 })
 

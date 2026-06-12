@@ -135,7 +135,7 @@ Location create/update also runs: `sync_monthly_route_fk_for_location`, `sync_ke
 | Draft / prepared (no `started_at`) | **Run preparation** |
 | Field started, not office-completed (including after **Reopen job**) | **Run review** |
 
-**Future-month prep gate:** Office cannot **Mark prepared**, edit prep stops, or edit the pre-run message for a calendar month after the Pacific current month until the **current month run is closed** (`completed_at` / `completed` status). API returns `409` with `code: current_month_not_closed`.
+**Future-month prep gate:** Office cannot **Mark prepared**, edit prep stops, or edit the pre-run message for a calendar month **after the Pacific current month** until that **current month** run is fully closed in office (``completed_at`` / ``completed`` status). Prepping July while the calendar is still June requires June **Complete**—not merely May closed. API returns `409` with `code: current_month_not_closed` and a message naming the blocking month/stage.
 
 **Paperwork loading:**
 
@@ -151,7 +151,7 @@ Run details **KPI counts** are derived from worksheet stops for that month. Run 
 
 **Run details UI (prep vs review):** When the run is **Draft** or **Prepared** (no ``started_at``), the SPA shows a **prep table** — one row per location with sticky stop # and address columns. Fields use click-to-edit with explicit **Save** and **Cancel**; ``PATCH …/worksheet/locations/<location_id>`` persists changes. After technicians **start the run**, the UI switches to the **review card** layout. Outcome dropdown uses ``PUT …/worksheet/locations/<id>/test_outcome``.
 
-**Run lock (office completes the job):** A run is editable in the technician portal until office staff press **Complete job** on the **Paperwork** page (`POST .../runs/complete` sets `status=completed` and `completed_at`). That sets `is_historical` on the worksheet payload and blocks all portal PATCHes (`run_completed_locked`). **Reopen job** on Paperwork (`POST .../runs/reopen`) clears completion. Technicians no longer use Start/Complete run in the portal — opening the current month's worksheet materializes the run file automatically.
+**Run lock (office completes the job):** A run is editable in the technician portal until office staff press **Complete** on the **Paperwork** page (`POST .../runs/complete` applies billing defaults, enforces billing decisions, stamps office review, and sets `status=completed` / `completed_at`). That sets `is_historical` on the worksheet payload and blocks all portal PATCHes (`run_completed_locked`). **Reopen job** on Paperwork (`POST .../runs/reopen`) clears completion. Technicians no longer use Start/Complete run in the portal — opening the current month's worksheet materializes the run file automatically.
 
 ### 5.2 `technician_portal` — `app/routes/technician_portal.py`
 
@@ -348,7 +348,7 @@ Each ``MonthlyRouteRun`` moves through explicit office and field phases. The API
 | (back to draft/prep) | ``prepared_at`` cleared | Office ``POST …/runs/unprepare`` (only before ``started_at``) |
 | Field in progress | ``started_at`` | Portal ``POST …/runs`` (requires prepared) |
 | Awaiting office review | ``field_ended_at`` | Portal ``POST …/runs/end`` |
-| Ready to close | ``office_review_completed_at`` | Office ``POST …/runs/review_complete`` |
+| Ready to close | ``office_review_completed_at`` (legacy / transient) | — |
 | Completed | ``completed_at`` | Office ``POST …/runs/complete`` (requires review complete) |
 
 **Technician reopen field:** ``POST …/runs/reopen_field`` clears ``field_ended_at`` and office review-complete so techs can edit stops again.
@@ -400,7 +400,7 @@ Logic: ``app/monthly/run_workflow.py``. UI stepper: ``RunWorkflowStepper.tsx``.
        → MonthlyTestingSiteMonth + dual-write primary location history (audit FK)
   → POST /api/technician_portal/routes/:id/runs/end   (field handoff)
   → Office: review billing / outcomes on run details
-  → POST …/runs/review_complete → POST …/runs/complete
+  → POST …/runs/complete
 ```
 
 **Portal vs office worksheet:** Field technicians use `TechnicianPortalWorksheetPage` at `/tech/route/:routeId/worksheet/:monthIso` (stop-by-stop UI). Office staff keep `TechnicianWorksheetPage` (location-grain table) until a later office cutover.
@@ -621,7 +621,7 @@ Annual-month sites (for the run’s calendar month) are excluded from the untest
 |--------|------|
 | PATCH | `/api/monthly_routes/routes/<route_id>/locations/<location_id>/billing_status?month=YYYY-MM-01` |
 
-Body: `{ "billing_status": "bill" | "do_not_bill" | "unset" }`. Allowed only after technicians **end field** on the run (`office_may_edit_billing`; `409` + `code: billing_before_field_end` while field work is open). Rejects when the row is `legacy` (`code: billing_legacy_locked`). CSV-import runs use the same office review gates (technician portal remains read-only via `portal_read_only`). **Legacy outcomes** (`result_status` without `test_outcome`, e.g. CSV import) show in the run-review outcome dropdown as All good or Skip and may be changed or cleared like portal outcomes once field work has ended. **Skipped (annual)** is an extra office-only dropdown value that sets `skip_category: annual` (orange annual cell); generic **Skip** still opens the skip-reason modal. **Auto set billing** (run review button) sets **Bill** when any testing site at the location is all good, passed with problems, or legacy tested; sets **Do not bill** when every site at the location is an annual skip / annual month. Other outcomes (failed, non-annual skip, pending) are left unchanged; legacy billing rows are skipped.
+Body: `{ "billing_status": "bill" | "do_not_bill" | "unset" }`. Allowed only after technicians **end field** on the run (`office_may_edit_billing`; `409` + `code: billing_before_field_end` while field work is open). Rejects when the row is `legacy` (`code: billing_legacy_locked`). CSV-import runs use the same office review gates (technician portal remains read-only via `portal_read_only`). **Legacy outcomes** (`result_status` without `test_outcome`, e.g. CSV import) show in the run-review outcome dropdown as All good or Skip and may be changed or cleared like portal outcomes once field work has ended. **Skipped (annual)** is an extra office-only dropdown value that sets `skip_category: annual` (orange annual cell); generic **Skip** still opens the skip-reason modal. **Auto set billing** (run review button) sets **Bill** when any testing site at the location is all good, passed with problems, or legacy tested; sets **Do not bill** when every site at the location is an annual skip / annual month. Recording a portal or office **Skipped (annual)** outcome also auto-defaults billing to **Do not bill** (same as **Bill** on all good). Other outcomes (failed, non-annual skip, pending) are left unchanged; legacy billing rows are skipped.
 
 **Monthly Billing board** (staff session, company-wide — not route-scoped):
 
@@ -638,17 +638,21 @@ PATCH body: `{ "billed": true | false }` — upserts or deletes one row per ``(l
 
 UI: ``frontend/src/pages/MonthlyBillingPage.tsx`` at ``/monthlies/billing``. Implementation: ``app/monthly/billing_board.py``. Each row shows ``billing_comments`` under the address (when set); the building field is not shown on this page. Edit comments on the monthly location detail page (**Billing comments** card); persisted on ``monthly_route_location.billing_comments`` via ``PATCH /api/monthly_sites/library/<id>``.
 
-**Paperwork UI:** Single locked view per run phase (see §5.2). **Run preparation** (before `started_at`) uses **Office job comment** (`office_job_comment` on `MonthlyTestingSiteMonth`) instead of the legacy Highlight checkbox; non-empty office comments highlight the prep row purple and appear read-only in the technician portal. **Run review** shows live outcomes, billing, tickets, and deficiencies; field values use the same rich-text rendering as prep (technician edits are not highlighted separately). **Exact history** shows the frozen technician submission from `GET .../run_details/field_submission` (empty state when no snapshot exists). **Field changes** is not a Paperwork tab in this iteration. **Mark review complete** requires every billing location to be `bill` or `do_not_bill` (not `unset`).
+**Paperwork UI:** Single locked view per run phase (see §5.2). **Run preparation** (before `started_at`) uses **Office job comment** (`office_job_comment` on `MonthlyTestingSiteMonth`) instead of the legacy Highlight checkbox; non-empty office comments highlight the prep row purple and appear read-only in the technician portal. **Run review** shows live outcomes, billing, tickets, and deficiencies; field values use the same rich-text rendering as prep (technician edits are not highlighted separately). **Exact history** shows the frozen technician submission from `GET .../run_details/field_submission` (empty state when no snapshot exists). **Field changes** is not a Paperwork tab in this iteration. **Complete** (after field end) requires every billing location to be `bill` or `do_not_bill` (not `unset`); the same action stamps office review and closes the job.
 
 **Field submission:** `POST .../runs/end` (portal) stores one JSON payload per run, overwritten on each field end. Reopening field work does not delete the snapshot until the next end. If field work ended without a snapshot (legacy runs, idempotent portal end), office review/close and `GET .../field_submission` backfill from live worksheet locations using `field_ended_at` as the capture time. After field end, `GET .../worksheet` for that month serves the frozen submission locations (same order and values as Exact history) until field work is reopened.
 
-**Tickets:** Per billing location — `GET/POST .../locations/<id>/tickets`, `PATCH /api/monthly_routes/tickets/<id>` (status: `open` → `email_sent` → `resolved`).
+**Tickets:** Office follow-up queue per billing location (keys, monitoring, deficiencies, route changes). Fields: title, description, up to 16 freeform tags (64 chars each), status `open` → `in_progress` → `closed` (terminal; close reason `completed` or `invalid`). Comments are a separate thread; authors may edit/delete their own. Tickets cannot be deleted.
+
+API: `GET/POST .../routes/<id>/locations/<loc>/tickets` (optional `include_closed=1`), `GET /api/monthly_routes/tickets` (dashboard queue), `GET/PATCH /api/monthly_routes/tickets/<id>`, `POST/PATCH/DELETE .../tickets/<id>/comments/<cid>`. Dashboard `GET /api/monthly_routes/dashboard` includes `open_ticket_count`.
+
+UI: run review **Tickets** button, **Tickets** section on monthly location details, Monthlies dashboard open-ticket KPI + queue + **Create ticket** (location search).
 
 **Run prep edits:** Office prep field saves use optimistic UI; the server accepts optional ``stop_number`` on worksheet stop PATCH to avoid re-sorting the route, materializes missing stop-month rows when ``run_details`` loads (prep phase, without re-seeding existing rows), and returns a lightweight PATCH payload during prep.
 
 **Prep location order:** Dragging locations on the prep table updates library ``route_stop_order`` via ``PUT …/location_order`` and syncs ``session_route_stop_order`` on worksheet rows so refetches match the new order.
 
-**Prep insights:** **Edited last month** badge on prep rows when the prior month run had audit field edits (`prior_month_field_edits` via `app/monthly/prep_insights.py`). Prior-month visit-order / new-to-route prep badges are disabled for now.
+**Prep insights:** **Edited last month** badge on prep rows when the prior month field run had worksheet audit edits (`prior_month_field_edits` / `prior_month_edited_fields` via `app/monthly/prep_insights.py` + `prior_month_field_edit_labels_by_location` in `run_details_review.py`). The pill lists which fields changed (ring, door, panel, procedures, etc.) and clarifies that route stop order is tracked separately. Prior-month visit-order / new-to-route prep badges are disabled for now.
 
 ---
 

@@ -11,6 +11,7 @@ import {
   monthFirstIsoPacificToday,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
 import MonthlyRoutesWorkweekCalendar from '../features/monthlyRoutes/MonthlyRoutesWorkweekCalendar'
+import MonthlyTicketsQueue from '../features/monthlyRoutes/MonthlyTicketsQueue'
 import { apiJson, isAbortError } from '../lib/apiClient'
 
 function MonthlyDashboardLegend() {
@@ -93,6 +94,15 @@ export default function MonthlyHomePage() {
     [rows, monthFirstIso],
   )
   const cardToneByRouteId = useMemo(() => buildRouteOverviewCardToneMap(rows), [rows])
+  const openTicketCount = payload?.open_ticket_count ?? 0
+
+  const refreshDashboard = () => {
+    apiJson<MonthlyDashboardPayload>('/api/monthly_routes/dashboard')
+      .then((data) => setPayload(data))
+      .catch(() => {
+        /* keep existing payload */
+      })
+  }
 
   return (
     <div className="d-flex flex-column gap-3">
@@ -136,14 +146,16 @@ export default function MonthlyHomePage() {
                   <Card className="app-kpi-nested processing-tile h-100">
                     <Card.Body>
                       <div className="text-muted small mb-1">Open tickets</div>
-                      <div className="fs-3 fw-semibold">—</div>
-                      <div className="small text-muted mt-1">Coming soon</div>
+                      <div className="fs-3 fw-semibold">{openTicketCount}</div>
+                      <div className="small text-muted mt-1">Open and in progress</div>
                     </Card.Body>
                   </Card>
                 </Col>
               </Row>
 
-              <h3 className="h5 mb-3">All routes</h3>
+              <MonthlyTicketsQueue onTicketsChanged={refreshDashboard} />
+
+              <h3 className="h5 mb-3 mt-4">All routes</h3>
               <MonthlyRoutesWorkweekCalendar
                 rows={rows}
                 monthFirstIso={monthFirstIso}

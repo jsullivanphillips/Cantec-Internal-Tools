@@ -165,6 +165,30 @@ def get_location_billing_status(location_id: int, month_first: date) -> str | No
     return _normalize_text(mlm.billing_status)
 
 
+def _mlm_qualifies_for_auto_do_not_bill(
+    mlm: MonthlyLocationMonth,
+    month_first: date,
+    *,
+    loc: MonthlyLocation | None = None,
+) -> bool:
+    """Annual skip or annual month — same gate as office run-review orange cells."""
+    from app.monthly.worksheet_locations import _is_annual_for_month, _sheet_skip_reason_is_annual
+
+    if loc is None:
+        loc = MonthlyLocation.query.get(int(mlm.monthly_location_id))
+    annual_month = loc.annual_month if loc is not None else None
+
+    outcome = (_normalize_text(mlm.test_outcome) or "").lower()
+    result = (_normalize_text(mlm.result_status) or "").lower()
+    if outcome == "skipped" or result == "skipped":
+        cat = (_normalize_text(mlm.skip_category) or "").lower()
+        if cat == "annual" or _sheet_skip_reason_is_annual(mlm.skip_reason):
+            return True
+        return _is_annual_for_month(month_first, annual_month)
+
+    return _is_annual_for_month(month_first, annual_month)
+
+
 def apply_billing_defaults_for_location(
     location_id: int,
     month_first: date,
@@ -188,7 +212,11 @@ def apply_billing_defaults_for_location(
         return
 
     if outcome == "skipped":
-        mlm.billing_status = "unset"
+        loc = MonthlyLocation.query.get(int(location_id))
+        if _mlm_qualifies_for_auto_do_not_bill(mlm, month_first, loc=loc):
+            mlm.billing_status = "do_not_bill"
+        else:
+            mlm.billing_status = "unset"
 
 
 def set_location_billing_status(

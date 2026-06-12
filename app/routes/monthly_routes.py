@@ -2098,9 +2098,20 @@ def _serialize_current_month_run_summary(run: MonthlyRouteRun) -> dict[str, obje
 def monthly_routes_dashboard():
     """Dashboard landing: active routes plus current Pacific month run workflow stage."""
     month_first = _current_pacific_month_first()
+    from app.monthly.location_tickets import count_active_tickets_global
+
     route_rows = MonthlyRoute.query.order_by(MonthlyRoute.route_number.asc()).all()
     if not route_rows:
-        return jsonify({"month_date": month_first.isoformat(), "routes": []})
+        ticket_counts = count_active_tickets_global()
+        return jsonify(
+            {
+                "month_date": month_first.isoformat(),
+                "routes": [],
+                "open_ticket_count": ticket_counts["active_total"],
+                "open_tickets_open": ticket_counts["open"],
+                "open_tickets_in_progress": ticket_counts["in_progress"],
+            }
+        )
 
     count_rows = (
         db.session.query(
@@ -2145,7 +2156,16 @@ def monthly_routes_dashboard():
             row["current_month_run"] = _serialize_current_month_run_summary(run)
         out.append(row)
 
-    return jsonify({"month_date": month_first.isoformat(), "routes": out})
+    ticket_counts = count_active_tickets_global()
+    return jsonify(
+        {
+            "month_date": month_first.isoformat(),
+            "routes": out,
+            "open_ticket_count": ticket_counts["active_total"],
+            "open_tickets_open": ticket_counts["open"],
+            "open_tickets_in_progress": ticket_counts["in_progress"],
+        }
+    )
 
 
 @monthly_routes_bp.get("/api/monthly_routes/routes/<int:route_id>")
@@ -2433,6 +2453,49 @@ def get_monthly_route_field_submission(route_id: int):
     return jsonify(payload)
 
 
+def _ticket_value_error_response(exc: ValueError) -> tuple[object, int] | None:
+    code = str(exc)
+    mapping: dict[str, tuple[str, int]] = {
+        "invalid_status": ("Invalid ticket status", 400),
+        "close_reason_required": ("close_reason is required when closing a ticket", 400),
+        "invalid_tags": ("Invalid tags payload", 400),
+        "tag_too_long": ("Each tag must be 64 characters or fewer", 400),
+        "too_many_tags": ("A ticket may have at most 16 tags", 400),
+        "ticket_closed": ("Closed tickets cannot be changed", 409),
+        "comment_body_required": ("Comment body is required", 400),
+        "comment_not_owned": ("You may only edit or delete your own comments", 403),
+        "location_not_found": ("Location not found", 404),
+    }
+    if code not in mapping:
+        return None
+    message, status = mapping[code]
+    return jsonify({"error": message, "code": code}), status
+
+
+@monthly_routes_bp.get("/api/monthly_routes/tickets")
+def get_monthly_routes_tickets_queue():
+    """Dashboard queue of active tickets (open + in progress)."""
+    from app.monthly.location_tickets import list_tickets_dashboard
+
+    include_closed = (request.args.get("include_closed") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    tickets = list_tickets_dashboard(include_closed=include_closed)
+    return jsonify({"tickets": tickets, "include_closed": include_closed})
+
+
+@monthly_routes_bp.get("/api/monthly_routes/tickets/<int:ticket_id>")
+def get_monthly_location_ticket_detail(ticket_id: int):
+    from app.monthly.location_tickets import get_ticket_detail
+
+    payload = get_ticket_detail(ticket_id)
+    if payload is None:
+        return jsonify({"error": "Ticket not found"}), 404
+    return jsonify({"ticket": payload})
+
+
 @monthly_routes_bp.get(
     "/api/monthly_routes/routes/<int:route_id>/locations/<int:location_id>/tickets"
 )
@@ -2445,7 +2508,18 @@ def get_monthly_location_tickets(route_id: int, location_id: int):
         return jsonify({"error": "Location not found on this route"}), 404
     from app.monthly.location_tickets import list_tickets_for_location
 
-    return jsonify({"location_id": location_id, "tickets": list_tickets_for_location(location_id)})
+    include_closed = (request.args.get("include_closed") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    return jsonify(
+        {
+            "location_id": location_id,
+            "tickets": list_tickets_for_location(location_id, include_closed=include_closed),
+            "include_closed": include_closed,
+        }
+    )
 
 
 @monthly_routes_bp.post(
@@ -2475,11 +2549,15 @@ def post_monthly_location_ticket(route_id: int, location_id: int):
         ).one_or_none()
     from app.monthly.location_tickets import create_location_ticket, serialize_ticket
 
+    description = data.get("description")
+    if description is None and "body" in data:
+        description = data.get("body")
     try:
         ticket = create_location_ticket(
             location_id,
             title=title,
-            body=data.get("body"),
+            description=description,
+            tags=data.get("tags"),
             username=str(username),
             run=run,
             month_first=month_date,
@@ -2487,15 +2565,16 @@ def post_monthly_location_ticket(route_id: int, location_id: int):
         db.session.commit()
     except ValueError as exc:
         db.session.rollback()
-        if str(exc) == "location_not_found":
-            return jsonify({"error": "Location not found"}), 404
+        mapped = _ticket_value_error_response(exc)
+        if mapped is not None:
+            return mapped
         raise
     return jsonify({"ok": True, "ticket": serialize_ticket(ticket)}), 201
 
 
 @monthly_routes_bp.patch("/api/monthly_routes/tickets/<int:ticket_id>")
 def patch_monthly_location_ticket(ticket_id: int):
-    """Update ticket status, title, or body."""
+    """Update ticket status, title, description, or tags."""
     username = session.get("username")
     if not username:
         return jsonify({"error": "Session username required"}), 401
@@ -2506,22 +2585,117 @@ def patch_monthly_location_ticket(ticket_id: int):
     if ticket is None:
         return jsonify({"error": "Ticket not found"}), 404
     data = request.get_json(silent=True) or {}
+    description = data.get("description")
+    if description is None and "body" in data:
+        description = data.get("body")
     try:
         update_location_ticket(
             ticket,
             username=str(username),
             status=data.get("status"),
+            close_reason=data.get("close_reason"),
             title=data.get("title"),
-            body=data.get("body"),
+            description=description,
+            tags=data.get("tags") if "tags" in data else None,
             note=data.get("note"),
         )
         db.session.commit()
     except ValueError as exc:
         db.session.rollback()
-        if str(exc) == "invalid_status":
-            return jsonify({"error": "Invalid ticket status", "code": "invalid_status"}), 400
+        mapped = _ticket_value_error_response(exc)
+        if mapped is not None:
+            return mapped
         raise
     return jsonify({"ok": True, "ticket": serialize_ticket(ticket)})
+
+
+@monthly_routes_bp.post("/api/monthly_routes/tickets/<int:ticket_id>/comments")
+def post_monthly_location_ticket_comment(ticket_id: int):
+    username = session.get("username")
+    if not username:
+        return jsonify({"error": "Session username required"}), 401
+    from app.db_models import MonthlyLocationTicket
+    from app.monthly.location_tickets import add_ticket_comment, serialize_ticket_comment
+
+    ticket = db.session.get(MonthlyLocationTicket, ticket_id)
+    if ticket is None:
+        return jsonify({"error": "Ticket not found"}), 404
+    data = request.get_json(silent=True) or {}
+    try:
+        comment = add_ticket_comment(
+            ticket,
+            body=str(data.get("body") or ""),
+            username=str(username),
+        )
+        db.session.commit()
+    except ValueError as exc:
+        db.session.rollback()
+        mapped = _ticket_value_error_response(exc)
+        if mapped is not None:
+            return mapped
+        raise
+    return jsonify({"ok": True, "comment": serialize_ticket_comment(comment)}), 201
+
+
+@monthly_routes_bp.patch(
+    "/api/monthly_routes/tickets/<int:ticket_id>/comments/<int:comment_id>"
+)
+def patch_monthly_location_ticket_comment(ticket_id: int, comment_id: int):
+    username = session.get("username")
+    if not username:
+        return jsonify({"error": "Session username required"}), 401
+    from app.db_models import MonthlyLocationTicket, MonthlyLocationTicketComment
+    from app.monthly.location_tickets import serialize_ticket_comment, update_ticket_comment
+
+    ticket = db.session.get(MonthlyLocationTicket, ticket_id)
+    if ticket is None:
+        return jsonify({"error": "Ticket not found"}), 404
+    comment = db.session.get(MonthlyLocationTicketComment, comment_id)
+    if comment is None or int(comment.ticket_id) != int(ticket_id):
+        return jsonify({"error": "Comment not found"}), 404
+    data = request.get_json(silent=True) or {}
+    try:
+        update_ticket_comment(
+            comment,
+            body=str(data.get("body") or ""),
+            username=str(username),
+        )
+        db.session.commit()
+    except ValueError as exc:
+        db.session.rollback()
+        mapped = _ticket_value_error_response(exc)
+        if mapped is not None:
+            return mapped
+        raise
+    return jsonify({"ok": True, "comment": serialize_ticket_comment(comment)})
+
+
+@monthly_routes_bp.delete(
+    "/api/monthly_routes/tickets/<int:ticket_id>/comments/<int:comment_id>"
+)
+def delete_monthly_location_ticket_comment(ticket_id: int, comment_id: int):
+    username = session.get("username")
+    if not username:
+        return jsonify({"error": "Session username required"}), 401
+    from app.db_models import MonthlyLocationTicket, MonthlyLocationTicketComment
+    from app.monthly.location_tickets import delete_ticket_comment
+
+    ticket = db.session.get(MonthlyLocationTicket, ticket_id)
+    if ticket is None:
+        return jsonify({"error": "Ticket not found"}), 404
+    comment = db.session.get(MonthlyLocationTicketComment, comment_id)
+    if comment is None or int(comment.ticket_id) != int(ticket_id):
+        return jsonify({"error": "Comment not found"}), 404
+    try:
+        delete_ticket_comment(comment, username=str(username))
+        db.session.commit()
+    except ValueError as exc:
+        db.session.rollback()
+        mapped = _ticket_value_error_response(exc)
+        if mapped is not None:
+            return mapped
+        raise
+    return jsonify({"ok": True})
 
 
 @monthly_routes_bp.get("/api/monthly_routes/tickets/<int:ticket_id>/events")
@@ -4856,39 +5030,22 @@ def post_monthly_route_run_review_complete(route_id: int):
     if _run_explicitly_completed(run):
         return jsonify({"ok": True, "run": _serialize_run(run)})
 
-    if run.field_ended_at is None:
-        return (
-            jsonify(
-                {
-                    "error": "Technicians must end the field run before office review can be marked complete.",
-                    "code": "field_not_ended",
-                }
-            ),
-            409,
-        )
-
-    from app.monthly.run_workflow import (
-        count_unset_billing_for_route_month,
-        mark_office_review_complete,
-        prepare_billing_for_office_review_complete,
-    )
-
-    prepare_billing_for_office_review_complete(route_id, month_first)
-    unset_billing = count_unset_billing_for_route_month(route_id, month_first)
-    if unset_billing > 0:
-        return (
-            jsonify(
-                {
-                    "error": f"{unset_billing} location(s) still have billing unset. Set bill or do not bill for each site before marking review complete.",
-                    "code": "billing_unset_locations",
-                    "unset_count": unset_billing,
-                }
-            ),
-            409,
-        )
+    from app.monthly.run_workflow import OfficeRunCloseError, office_complete_run
 
     now = datetime.now(PACIFIC_TZ)
-    mark_office_review_complete(run, username=str(username), now=now)
+    try:
+        office_complete_run(
+            run,
+            route_id,
+            month_first,
+            username=str(username),
+            now=now,
+        )
+    except OfficeRunCloseError as exc:
+        body: dict[str, object] = {"error": exc.message, "code": exc.code}
+        if exc.unset_count is not None:
+            body["unset_count"] = exc.unset_count
+        return jsonify(body), 409
 
     db.session.add(run)
     db.session.commit()
@@ -4962,37 +5119,26 @@ def post_monthly_route_run_complete(route_id: int):
     if _run_explicitly_completed(run):
         return jsonify({"ok": True, "run": _serialize_run(run)})
 
-    if run.office_review_completed_at is None:
-        return (
-            jsonify(
-                {
-                    "error": "Mark office review complete before closing the run.",
-                    "code": "office_review_required",
-                }
-            ),
-            409,
-        )
-
-    from app.monthly.run_workflow import count_unset_billing_for_route_month
-
-    unset_billing = count_unset_billing_for_route_month(route_id, month_first)
+    from app.monthly.run_workflow import OfficeRunCloseError, office_complete_run
 
     now = datetime.now(PACIFIC_TZ)
-    run.status = "completed"
-    run.completed_at = now
+    try:
+        office_complete_run(
+            run,
+            route_id,
+            month_first,
+            username=str(username),
+            now=now,
+        )
+    except OfficeRunCloseError as exc:
+        body: dict[str, object] = {"error": exc.message, "code": exc.code}
+        if exc.unset_count is not None:
+            body["unset_count"] = exc.unset_count
+        return jsonify(body), 409
 
     db.session.add(run)
     db.session.commit()
-    body: dict[str, object] = {"ok": True, "run": _serialize_run(run)}
-    if unset_billing > 0:
-        body["warnings"] = [
-            {
-                "code": "billing_unset_locations",
-                "message": f"{unset_billing} location(s) still have billing unset.",
-                "unset_count": unset_billing,
-            }
-        ]
-    return jsonify(body)
+    return jsonify({"ok": True, "run": _serialize_run(run)})
 
 
 @monthly_routes_bp.post("/api/monthly_routes/routes/<int:route_id>/runs/reopen")

@@ -12,6 +12,7 @@ const ICON_CLASS: Record<
   passed_with_problems:
     'bi bi-exclamation-triangle-fill run-review-outcome-icon run-review-outcome-icon--passed-problems',
   annual: 'bi bi-building run-review-outcome-icon run-review-outcome-icon--annual',
+  on_hold: 'bi bi-pause-circle-fill run-review-outcome-icon run-review-outcome-icon--annual',
   skipped: 'bi bi-skip-forward-fill run-review-outcome-icon run-review-outcome-icon--skipped',
 }
 
@@ -24,6 +25,7 @@ const ICON_CLASS_SOLID: Record<
   passed_with_problems:
     'bi bi-exclamation-triangle-fill run-review-outcome-icon run-review-outcome-icon--solid',
   annual: 'bi bi-building run-review-outcome-icon run-review-outcome-icon--solid',
+  on_hold: 'bi bi-pause-circle-fill run-review-outcome-icon run-review-outcome-icon--solid',
   skipped: 'bi bi-skip-forward-fill run-review-outcome-icon run-review-outcome-icon--skipped',
 }
 

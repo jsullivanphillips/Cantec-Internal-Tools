@@ -129,6 +129,32 @@ def run_details_audit_location_ids(
     return {int(r[0]) for r in rows}
 
 
+def prior_month_field_edit_labels_by_location(
+    route_id: int,
+    month_first: date,
+) -> dict[int, list[str]]:
+    """Human-readable worksheet field labels edited during the prior month field run."""
+    from app.monthly.prep_insights import _prior_month_first
+
+    prior = _prior_month_first(month_first)
+    prior_run = _run_for_route_month(route_id, prior)
+    if prior_run is None:
+        return {}
+    loc_ids = sorted(run_details_audit_location_ids(route_id, prior, run=prior_run))
+    if not loc_ids:
+        return {}
+    changes_by_loc = _field_changes_by_location(route_id, prior, loc_ids, run=prior_run)
+    out: dict[int, list[str]] = {}
+    for lid, changes in changes_by_loc.items():
+        labels = sorted(
+            {_audit_field_display_label(str(change["field_name"])) for change in changes},
+            key=_change_sort_index,
+        )
+        if labels:
+            out[int(lid)] = labels
+    return out
+
+
 def _location_display_label(loc: MonthlyLocation | None, location_id: int) -> str:
     if loc is None:
         return f"Location {location_id}"
@@ -868,6 +894,7 @@ def _serialize_run_detail_location(
             else None
         ),
         "prior_month_field_edits": bool(stop.get("prior_month_field_edits")),
+        "prior_month_edited_fields": list(stop.get("prior_month_edited_fields") or []),
         "prior_month_new_to_route": bool(stop.get("prior_month_new_to_route")),
         "testing_procedures": stop.get("testing_procedures"),
         "inspection_tech_notes": stop.get("inspection_tech_notes"),
@@ -970,21 +997,20 @@ def run_details_locations_payload(
         empty_summary = _summarize_review_stops([], month_first)
         return [], empty_summary
 
-    from app.monthly.prep_insights import prior_month_field_edit_count_by_location
     from app.monthly.run_workflow import run_in_office_prep_phase
 
-    prior_edit_locs: set[int] = set()
+    prior_edit_labels: dict[int, list[str]] = {}
     if run_in_office_prep_phase(run):
-        prior_edit_locs = set(
-            prior_month_field_edit_count_by_location(route_id, month_first).keys()
-        )
+        prior_edit_labels = prior_month_field_edit_labels_by_location(route_id, month_first)
 
-    if prior_edit_locs:
+    if prior_edit_labels:
         enriched: list[dict[str, object]] = []
         for loc_row in all_locations:
             s = dict(loc_row)
             lid = int(s["location_id"])
-            s["prior_month_field_edits"] = lid in prior_edit_locs
+            labels = prior_edit_labels.get(lid, [])
+            s["prior_month_field_edits"] = bool(labels)
+            s["prior_month_edited_fields"] = labels
             enriched.append(s)
         all_locations = enriched
 

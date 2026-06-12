@@ -202,6 +202,21 @@ describe('isFutureMonthPrepBlocked', () => {
     ).toBe(false)
   })
 
+  it('blocks next month when current month is only ready to close', () => {
+    expect(
+      isFutureMonthPrepBlocked('2026-07-01', CURRENT, {
+        [CURRENT]: {
+          ...runSummary(CURRENT),
+          workflow_stage: 'ready_to_close',
+        },
+      }),
+    ).toBe(true)
+  })
+
+  it('allows next month when the current month has no run file yet', () => {
+    expect(isFutureMonthPrepBlocked('2026-07-01', CURRENT, {})).toBe(false)
+  })
+
   it('does not block current month prep', () => {
     expect(isFutureMonthPrepBlocked(CURRENT, CURRENT, {})).toBe(false)
   })

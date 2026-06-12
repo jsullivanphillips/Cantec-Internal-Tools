@@ -68,6 +68,7 @@ export function runDetailLocationAsWorksheetLocation(
     session_route_stop_order: null,
     stop_number: loc.stop_number,
     version_updated_at: null,
+    status_normalized: loc.status_normalized ?? null,
   }
 }
 
@@ -382,6 +383,32 @@ export function priorMonthNewToRouteHint(
   }
 }
 
+export function priorMonthFieldEditsHint(
+  location: Pick<
+    MonthlyRunDetailLocation,
+    'prior_month_field_edits' | 'prior_month_edited_fields'
+  >,
+): { title: string; detail: string; tooltip: string } | null {
+  if (!location.prior_month_field_edits) return null
+  const fields = (location.prior_month_edited_fields ?? [])
+    .map((label) => label.trim())
+    .filter((label) => label.length > 0)
+  const tooltip =
+    'Technician or office updated site paperwork during last month\'s field run. Route stop order is tracked separately.'
+  if (fields.length === 0) {
+    return {
+      title: 'Edited last month',
+      detail: 'Site details updated during last run',
+      tooltip,
+    }
+  }
+  return {
+    title: 'Edited last month',
+    detail: fields.join(' · '),
+    tooltip: `${tooltip} Fields: ${fields.join(', ')}.`,
+  }
+}
+
 export function flattenRunDetailReviewRows(
   locations: MonthlyRunDetailLocation[],
 ): RunDetailReviewRow[] {
@@ -435,7 +462,7 @@ function locationIdentityToneForLocation(
   }
   if (outcome === 'all_good') return 'all_good'
   const status = officeStopStatus(ws, monthDate)
-  if (status === 'annual') return 'annual'
+  if (status === 'annual' || status === 'on_hold') return 'annual'
   if (status === 'skipped') return 'skipped'
   if (status === 'tested') return 'all_good'
   return 'neutral'
@@ -736,11 +763,21 @@ export function stopQualifiesForAutoBill(
   return false
 }
 
+export function stopQualifiesForAutoDoNotBill(
+  loc: TechnicianWorksheetLocation,
+  monthDate: string,
+): boolean {
+  if (officeStopStatus(loc, monthDate) === 'annual') return true
+  if (runReviewStopIsAnnualSkip(loc, monthDate)) return true
+  const cat = (loc.skip_category || '').trim().toLowerCase()
+  return stopPortalOutcome(loc) === 'skipped' && cat === 'annual'
+}
+
 export function locationQualifiesForAutoDoNotBill(
   location: MonthlyRunDetailLocation,
   monthDate: string,
 ): boolean {
-  return officeStopStatus(runDetailLocationAsWorksheetLocation(location), monthDate) === 'annual'
+  return stopQualifiesForAutoDoNotBill(runDetailLocationAsWorksheetLocation(location), monthDate)
 }
 
 export function autoOfficeBillingStatusForLocation(

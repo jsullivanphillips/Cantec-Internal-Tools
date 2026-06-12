@@ -40,6 +40,10 @@ import type { TechnicianWorksheetRun, TechnicianWorksheetLocation } from './mont
 
 import {
 
+  OFFICE_OUTCOME_ON_HOLD_LABEL,
+
+  OFFICE_OUTCOME_ON_HOLD_VALUE,
+
   OFFICE_OUTCOME_PENDING_VALUE,
 
   OFFICE_OUTCOME_SKIPPED_ANNUAL_LABEL,
@@ -121,6 +125,8 @@ function pillStatusClass(selectValue: string): string {
   if (selectValue === OFFICE_OUTCOME_PENDING_VALUE) return 'pending'
 
   if (selectValue === OFFICE_OUTCOME_SKIPPED_ANNUAL_VALUE) return 'annual'
+
+  if (selectValue === OFFICE_OUTCOME_ON_HOLD_VALUE) return 'annual'
 
   if (selectValue === 'skipped') return 'skipped'
 
@@ -221,6 +227,8 @@ export default function RunDetailsStopOutcomeSelect({
     if (selectValue === OFFICE_OUTCOME_PENDING_VALUE) return 'Pending'
 
     if (selectValue === OFFICE_OUTCOME_SKIPPED_ANNUAL_VALUE) return OFFICE_OUTCOME_SKIPPED_ANNUAL_LABEL
+
+    if (selectValue === OFFICE_OUTCOME_ON_HOLD_VALUE) return OFFICE_OUTCOME_ON_HOLD_LABEL
 
     const opt = TEST_OUTCOME_OPTIONS.find((o) => o.value === selectValue)
 

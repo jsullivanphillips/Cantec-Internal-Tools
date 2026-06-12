@@ -100,7 +100,7 @@ export function runDetailsOfficeReviewReadOnly(
 
 export function canOfficeCompleteRun(run: TechnicianWorksheetRun | null | undefined): boolean {
   if (!run || runExplicitlyCompleted(run)) return false
-  return hasTs(run.office_review_completed_at)
+  return hasTs(run.field_ended_at)
 }
 
 export function worksheetRunFieldInProgress(run: TechnicianWorksheetRun | null | undefined): boolean {

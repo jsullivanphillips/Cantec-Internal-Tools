@@ -19,6 +19,7 @@ import { Alert, Table } from 'react-bootstrap'
 import { Link } from 'react-router-dom'
 import { annualMonthHint } from './annualMonthHint'
 import RunDetailsPrepareAnnualSchedulePill from './RunDetailsPrepareAnnualSchedulePill'
+import RunDetailsPreparePriorMonthEditsPill from './RunDetailsPreparePriorMonthEditsPill'
 import {
   mergePrepAnnualScheduleRow,
   prepRowAnnualDueForStop,
@@ -368,10 +369,8 @@ export default function RunDetailsPrepareTable({
             >
               {displayLocationLabel}
             </Link>
-            {options.isPrimaryForLocation && stop.prior_month_field_edits ? (
-              <span className="badge bg-light text-dark border mt-1 d-block run-details-prep-badge">
-                Edited last month
-              </span>
+            {options.isPrimaryForLocation ? (
+              <RunDetailsPreparePriorMonthEditsPill location={stop} />
             ) : null}
             {options.isPrimaryForLocation && onHold ? (
               <span className="badge run-details-prep-badge run-details-prep-badge--on-hold mt-1 d-block">

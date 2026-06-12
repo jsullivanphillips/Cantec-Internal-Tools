@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Badge } from 'react-bootstrap'
+import { Badge, Button } from 'react-bootstrap'
 import RunDetailsDeficiencyDetailModal, {
   type RunDetailsDeficiencyModalContext,
 } from './RunDetailsDeficiencyDetailModal'

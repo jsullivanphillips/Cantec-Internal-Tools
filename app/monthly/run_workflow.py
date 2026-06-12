@@ -202,6 +202,48 @@ def count_unset_billing_for_route_month(route_id: int, month_first: date) -> int
     return unset
 
 
+class OfficeRunCloseError(Exception):
+    def __init__(self, code: str, message: str, *, unset_count: int | None = None) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
+        self.unset_count = unset_count
+
+
+def office_complete_run(
+    run: MonthlyRouteRun,
+    route_id: int,
+    month_first: date,
+    *,
+    username: str,
+    now,
+) -> int:
+    """Auto-billing, billing gate, review stamp, and final job close in one office action."""
+    if run.field_ended_at is None:
+        raise OfficeRunCloseError(
+            "field_not_ended",
+            "Technicians must end the field run before the job can be completed.",
+        )
+
+    prepare_billing_for_office_review_complete(route_id, month_first)
+    unset_billing = count_unset_billing_for_route_month(route_id, month_first)
+    if unset_billing > 0:
+        raise OfficeRunCloseError(
+            "billing_unset_locations",
+            (
+                f"{unset_billing} location(s) still have billing unset. "
+                "Set bill or do not bill for each site before completing the job."
+            ),
+            unset_count=unset_billing,
+        )
+
+    mark_office_review_complete(run, username=username, now=now)
+    if not run_explicitly_completed(run):
+        run.status = "completed"
+        run.completed_at = now
+    return unset_billing
+
+
 def prepare_billing_for_office_review_complete(route_id: int, month_first: date) -> None:
     """Apply outcome-based billing defaults before the review-complete gate."""
     from app.db_models import MonthlyLocationMonth
@@ -291,6 +333,13 @@ def close_skipped_run_from_office(
     run.completed_at = now
 
 
+def current_month_run_closed_for_future_prep(run: MonthlyRouteRun | None) -> bool:
+    """True when the Pacific current-month run is fully closed."""
+    if run is None:
+        return True
+    return run_explicitly_completed(run)
+
+
 def office_future_month_prep_blocked_reason(
     route_id: int,
     month_first: date,
@@ -310,10 +359,22 @@ def office_future_month_prep_blocked_reason(
         monthly_route_id=int(route_id),
         month_date=current_month,
     ).one_or_none()
-    if run_explicitly_completed(current_run):
+    if current_month_run_closed_for_future_prep(current_run):
         return None
 
-    return (
-        "Close the current month's paperwork before preparing a future month.",
-        "current_month_not_closed",
-    )
+    month_label = current_month.strftime("%B %Y")
+    stage = derive_run_workflow_stage(current_run)
+    if stage == "awaiting_office_review":
+        message = (
+            f"Complete {month_label} paperwork before preparing a future month."
+        )
+    elif stage in {"field_in_progress", "prepared"}:
+        message = (
+            f"Finish the {month_label} field run before preparing a future month."
+        )
+    else:
+        message = (
+            f"Finish {month_label} paperwork before preparing a future month."
+        )
+
+    return (message, "current_month_not_closed")

@@ -1382,7 +1382,9 @@ class MonthlyLocationComment(db.Model):
     location = db.relationship("MonthlyLocation", back_populates="comments")
 
 
-LOCATION_TICKET_STATUSES = ("open", "email_sent", "resolved")
+LOCATION_TICKET_STATUSES = ("open", "in_progress", "closed")
+LOCATION_TICKET_CLOSE_REASONS = ("completed", "invalid")
+LOCATION_TICKET_ACTIVE_STATUSES = ("open", "in_progress")
 
 
 class MonthlyLocationTicket(db.Model):
@@ -1407,10 +1409,12 @@ class MonthlyLocationTicket(db.Model):
     )
     month_date = db.Column(db.Date, nullable=True)
     title = db.Column(db.String(255), nullable=False)
-    body = db.Column(db.Text, nullable=True)
+    description = db.Column(db.Text, nullable=True)
+    tags_json = db.Column(db.Text, nullable=True)
     status = db.Column(db.String(32), nullable=False, server_default="open")
+    close_reason = db.Column(db.String(32), nullable=True)
     created_by = db.Column(db.String(128), nullable=True)
-    resolved_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    closed_at = db.Column(db.DateTime(timezone=True), nullable=True)
     created_at = db.Column(
         db.DateTime(timezone=True),
         server_default=db.func.now(),
@@ -1430,6 +1434,12 @@ class MonthlyLocationTicket(db.Model):
         back_populates="ticket",
         cascade="all, delete-orphan",
         order_by="MonthlyLocationTicketEvent.created_at",
+    )
+    comments = db.relationship(
+        "MonthlyLocationTicketComment",
+        back_populates="ticket",
+        cascade="all, delete-orphan",
+        order_by="MonthlyLocationTicketComment.created_at",
     )
 
 
@@ -1458,6 +1468,37 @@ class MonthlyLocationTicketEvent(db.Model):
     )
 
     ticket = db.relationship("MonthlyLocationTicket", back_populates="events")
+
+
+class MonthlyLocationTicketComment(db.Model):
+    """Staff discussion thread on a location ticket."""
+
+    __tablename__ = "monthly_location_ticket_comment"
+    __table_args__ = (
+        db.Index("ix_monthly_location_ticket_comment_ticket_id", "ticket_id"),
+    )
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    ticket_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monthly_location_ticket.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    body = db.Column(db.Text, nullable=False)
+    created_by = db.Column(db.String(128), nullable=True)
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        nullable=False,
+    )
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        onupdate=db.func.now(),
+        nullable=False,
+    )
+
+    ticket = db.relationship("MonthlyLocationTicket", back_populates="comments")
 
 
 class MonthlyRouteComment(db.Model):
