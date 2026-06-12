@@ -14,6 +14,14 @@ import {
   normalizeAnnualMonthForSelect,
 } from './monthlyRoutesShared'
 import { worksheetReadOnlyDisplay } from './officeWorksheetTableShared'
+import RichTextDisplay from '../richText/RichTextDisplay'
+import RichTextEditor, { type RichTextEditorHandle } from '../richText/RichTextEditor'
+import RichTextToolbar from '../richText/RichTextToolbar'
+import {
+  normalizeRichTextComment,
+  richTextIsEmpty,
+  richTextValuesEqual,
+} from '../richText/richTextSanitize'
 
 function activateField(onActivate: (key: string | null) => void, fieldKey: string, disabled: boolean) {
   if (!disabled) onActivate(fieldKey)
@@ -346,6 +354,7 @@ export function PrepLongTextCell({
   onActivate,
   onCommit,
   emptyPlaceholder,
+  richText = false,
 }: {
   fieldKey: string
   value: string
@@ -356,24 +365,33 @@ export function PrepLongTextCell({
   onCommit: (next: string) => void
   /** When set, shown in read mode (and on the editor) instead of an em dash when empty. */
   emptyPlaceholder?: string
+  richText?: boolean
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const richEditorRef = useRef<RichTextEditorHandle>(null)
+  const [richEditorHandle, setRichEditorHandle] = useState<RichTextEditorHandle | null>(null)
   const editing = activeKey === fieldKey
   const trimmed = (value || '').trim()
-  const empty = !trimmed
+  const empty = richText ? richTextIsEmpty(trimmed) : !trimmed
   const display = empty ? (emptyPlaceholder?.trim() || '—') : trimmed
   const [draft, setDraft] = useState(value)
   const markExplicitClose = useCommitDraftWhenEditingCloses(editing, draft, value, onCommit, setDraft)
 
   useEffect(() => {
-    if (!editing) return
+    if (!editing || richText) return
     const el = textareaRef.current
     el?.focus({ preventScroll: true })
     if (el) {
       const len = el.value.length
       el.setSelectionRange(len, len)
     }
-  }, [editing])
+  }, [editing, richText])
+
+  useEffect(() => {
+    if (!editing || !richText) return
+    richEditorRef.current?.focus()
+    richEditorHandle?.focus()
+  }, [editing, richText, richEditorHandle])
 
   const cancel = useCallback(() => {
     markExplicitClose()
@@ -383,9 +401,13 @@ export function PrepLongTextCell({
 
   const save = useCallback(() => {
     markExplicitClose()
-    if (draft !== value) onCommit(draft)
+    const nextDraft = richText
+      ? richEditorHandle?.getHtml() ?? richEditorRef.current?.getHtml() ?? draft
+      : draft
+    const changed = richText ? !richTextValuesEqual(nextDraft, value) : nextDraft !== value
+    if (changed) onCommit(richText ? normalizeRichTextComment(nextDraft) ?? '' : nextDraft)
     onActivate(null)
-  }, [draft, markExplicitClose, onActivate, onCommit, value])
+  }, [draft, markExplicitClose, onActivate, onCommit, richText, value])
 
   if (!editing) {
     return (
@@ -397,7 +419,11 @@ export function PrepLongTextCell({
         onKeyDown={(e) => fieldKeyDown(e, disabled, onActivate, fieldKey)}
       >
         <div className={`run-details-prepare-cell-view${empty ? ' run-details-prepare-cell-view--empty' : ''}`}>
-          {display}
+          {richText ? (
+            <RichTextDisplay value={value} emptyPlaceholder={emptyPlaceholder?.trim() || '—'} />
+          ) : (
+            display
+          )}
         </div>
         {saving ? (
           <Spinner
@@ -408,6 +434,37 @@ export function PrepLongTextCell({
             aria-label="Saving"
           />
         ) : null}
+      </div>
+    )
+  }
+
+  if (richText) {
+    return (
+      <div className="run-details-prepare-cell-surface run-details-prepare-cell-surface--editing">
+        <RichTextToolbar
+          editor={richEditorHandle}
+          className="run-details-prepare-rich-toolbar"
+        />
+        <RichTextEditor
+          ref={richEditorRef}
+          value={draft}
+          placeholder={emptyPlaceholder}
+          disabled={disabled || saving}
+          className="run-details-prepare-cell-editor"
+          onHandleReady={setRichEditorHandle}
+          onChange={setDraft}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.preventDefault()
+              cancel()
+            }
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault()
+              save()
+            }
+          }}
+        />
+        <PrepEditActions onCancel={cancel} onSave={save} saving={saving} />
       </div>
     )
   }

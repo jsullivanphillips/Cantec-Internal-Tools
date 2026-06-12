@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { MonthlyRunDetailLocation, MonthlyRunDetailPayload, MonthlyRouteDetailPayload, TechnicianWorksheetLocation } from './monthlyRoutesShared'
 import {
   computeRunDetailsPrepSummary,
+  countBillingUnsetLocations,
   countSubmittedLocations,
   filterRunDetailLocations,
   filterRunDetailLocationsByOutcomes,
@@ -281,6 +282,27 @@ describe('filterRunDetailLocations', () => {
   })
 })
 
+describe('countBillingUnsetLocations', () => {
+  it('counts locations with billing_unset attention flag', () => {
+    const locations = [
+      baseLocation(),
+      baseLocation({
+        location_id: 102,
+        stop_number: 2,
+        billing_status: 'bill',
+        attention_flags: {
+          billing_unset: false,
+          has_field_edits: false,
+          has_active_deficiencies: false,
+          has_job_comment: false,
+          needs_attention: false,
+        },
+      }),
+    ]
+    expect(countBillingUnsetLocations(locations)).toBe(1)
+  })
+})
+
 describe('filterRunDetailLocationsByOutcomes', () => {
   it('returns all locations when no outcome filters are selected', () => {
     const locations = [
@@ -305,5 +327,39 @@ describe('filterRunDetailLocationsByOutcomes', () => {
       MONTH,
     )
     expect(failedOrSkipped.map((loc) => loc.location_id)).toEqual([102, 103])
+  })
+
+  it('filters billing_unset together with outcome filters (OR)', () => {
+    const locations = [
+      baseLocation({ location_id: 101, test_outcome: 'all_good' }),
+      baseLocation({
+        location_id: 102,
+        stop_number: 2,
+        test_outcome: 'failed',
+        billing_status: 'bill',
+        attention_flags: {
+          billing_unset: false,
+          has_field_edits: false,
+          has_active_deficiencies: false,
+          has_job_comment: false,
+          needs_attention: false,
+        },
+      }),
+      baseLocation({
+        location_id: 103,
+        stop_number: 3,
+        test_outcome: 'all_good',
+        billing_status: 'bill',
+        attention_flags: {
+          billing_unset: false,
+          has_field_edits: false,
+          has_active_deficiencies: false,
+          has_job_comment: false,
+          needs_attention: false,
+        },
+      }),
+    ]
+    const filtered = filterRunDetailLocationsByOutcomes(locations, ['billing_unset', 'failed'], MONTH)
+    expect(filtered.map((loc) => loc.location_id)).toEqual([101, 102])
   })
 })

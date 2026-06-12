@@ -35,7 +35,7 @@ export default function PortalSkipModal({ show, stopNumber, onHide, onConfirm }:
             required
           >
             <option value="">Select a reason…</option>
-            {SKIP_CATEGORIES.map((c) => (
+            {SKIP_CATEGORIES.filter((c) => c.value !== 'annual').map((c) => (
               <option key={c.value} value={c.value}>
                 {c.label}
               </option>

@@ -18,6 +18,7 @@ from app.monthly.worksheet_locations import (
     RUN_DETAILS_OFFICE_ONLY_AUDIT_FIELDS,
     RUN_DETAILS_OFFICE_PREP_AUDIT_SOURCES,
     _is_annual_for_month,
+    _is_on_hold_pending_outcome,
     _normalize_text,
     _run_details_counts_from_stops,
     _worksheet_stop_portal_outcome,
@@ -251,6 +252,8 @@ def _office_stop_status(stop: dict[str, object], month_first: date) -> str:
         return "skipped"
     if _is_annual_for_month(month_first, stop.get("annual_month")):
         return "annual"
+    if _is_on_hold_pending_outcome(stop):
+        return "on_hold"
     return "pending"
 
 
@@ -261,6 +264,8 @@ def _office_stop_status_label(status: str) -> str:
         return "Skipped"
     if status == "annual":
         return "Annual"
+    if status == "on_hold":
+        return "On hold"
     return "Pending"
 
 
@@ -286,9 +291,10 @@ def _is_notable_stop(
     rs = (str(stop.get("result_status") or "")).strip().lower()
     has_run_comments = _stop_has_run_comments(stop)
     is_annual_month = _is_annual_for_month(month_first, stop.get("annual_month"))
+    is_on_hold = _is_on_hold_pending_outcome(stop)
     has_outcome = _normalize_text(stop.get("test_outcome")) is not None
     has_updates = lid in audit_loc_ids or rs == "skipped" or has_run_comments
-    return bool(has_updates or rs == "tested" or is_annual_month or has_outcome)
+    return bool(has_updates or rs == "tested" or is_annual_month or is_on_hold or has_outcome)
 
 
 def _lean_locations_for_route_month(route_id: int, month_first: date) -> list[dict[str, object]]:
@@ -811,13 +817,15 @@ def _serialize_run_detail_location(
         deficiencies = deficiencies_by_loc.get(lid, [])
     else:
         deficiencies = _deficiency_summaries_for_location(lid, run=run)
+    loc_field_changes: list[dict[str, object]] = []
     if field_changes_by_loc is not None:
+        loc_field_changes = field_changes_by_loc.get(lid, [])
         new_comment_fields = _new_comment_fields_for_stop(
             stop,
             month_first,
             route_id,
             run=run,
-            field_changes=field_changes_by_loc.get(lid, []),
+            field_changes=loc_field_changes,
         )
     else:
         new_comment_fields = _new_comment_fields_for_stop(
@@ -871,6 +879,14 @@ def _serialize_run_detail_location(
         "deficiency_summaries": deficiencies,
         "has_active_deficiencies": len(deficiencies) > 0,
         "new_comment_fields": new_comment_fields,
+        "field_changes": [
+            {
+                "field_name": str(change["field_name"]),
+                "old_value": change.get("old_value"),
+                "new_value": change.get("new_value"),
+            }
+            for change in loc_field_changes
+        ],
         "attention_flags": {},
         "status_normalized": stop.get("status_normalized"),
     }

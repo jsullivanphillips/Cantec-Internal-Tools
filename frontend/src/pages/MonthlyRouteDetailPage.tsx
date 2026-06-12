@@ -44,6 +44,7 @@ import {
   availableRunsCardYears,
   buildRunsCardRowsForYear,
   defaultRunsCardYear,
+  findNewestRunMonthAwaitingOfficeReview,
   formatRunDisplayDate,
   formatRunsCardStageLabel,
   formatSitesTestedRatio,
@@ -983,6 +984,11 @@ export default function MonthlyRouteDetailPage() {
     [runsCardRows]
   )
 
+  const reviewPaperworkMonthIso = useMemo(
+    () => findNewestRunMonthAwaitingOfficeReview(runsByMonth),
+    [runsByMonth],
+  )
+
   const routeStopStartByLocationId = useMemo(() => {
     const out = new Map<number, number>()
     let nextStop = 1
@@ -1205,6 +1211,15 @@ export default function MonthlyRouteDetailPage() {
             ) : null}
           </div>
           <div className="monthly-location-hero-actions">
+            {reviewPaperworkMonthIso ? (
+              <Link
+                to={`/monthlies/routes/${idNum}/paperwork?month=${encodeURIComponent(reviewPaperworkMonthIso)}`}
+                className="btn btn-success btn-sm monthly-location-detail-action monthly-route-detail-hero__review-paperwork-action"
+              >
+                <i className="bi bi-clipboard-check" aria-hidden />
+                Review Run Paperwork
+              </Link>
+            ) : null}
             <Link
               to={`/monthlies/routes/${idNum}/paperwork`}
               className="btn btn-primary btn-sm monthly-location-detail-action"
@@ -1212,15 +1227,34 @@ export default function MonthlyRouteDetailPage() {
               <i className="bi bi-folder2-open" aria-hidden />
               Paperwork
             </Link>
-            <Button
-              variant="outline-secondary"
-              size="sm"
-              className="monthly-location-detail-action"
-              onClick={() => openUploadCsv(null)}
-            >
-              <i className="bi bi-upload" aria-hidden />
-              Upload CSV
-            </Button>
+            <div className="monthly-route-detail-hero__paired-actions">
+              {routeStopTotal > 0 ? (
+                <Button
+                  variant="outline-secondary"
+                  size="sm"
+                  className="monthly-location-detail-action"
+                  onClick={() => void openKeyView()}
+                  disabled={keyViewLoading}
+                  aria-label="Key view"
+                >
+                  {keyViewLoading ? (
+                    <Spinner animation="border" size="sm" className="me-1" aria-hidden />
+                  ) : (
+                    <i className="bi bi-key" aria-hidden />
+                  )}
+                  Key view
+                </Button>
+              ) : null}
+              <Button
+                variant="outline-secondary"
+                size="sm"
+                className="monthly-location-detail-action"
+                onClick={() => openUploadCsv(null)}
+              >
+                <i className="bi bi-upload" aria-hidden />
+                Upload CSV
+              </Button>
+            </div>
             {stUrl ? (
               <Button
                 href={stUrl}
@@ -1232,23 +1266,6 @@ export default function MonthlyRouteDetailPage() {
               >
                 <i className="bi bi-box-arrow-up-right" aria-hidden />
                 ServiceTrade
-              </Button>
-            ) : null}
-            {routeStopTotal > 0 ? (
-              <Button
-                variant="outline-secondary"
-                size="sm"
-                className="monthly-location-detail-action"
-                onClick={() => void openKeyView()}
-                disabled={keyViewLoading}
-                aria-label="Key view"
-              >
-                {keyViewLoading ? (
-                  <Spinner animation="border" size="sm" className="me-1" aria-hidden />
-                ) : (
-                  <i className="bi bi-key" aria-hidden />
-                )}
-                Key view
               </Button>
             ) : null}
           </div>

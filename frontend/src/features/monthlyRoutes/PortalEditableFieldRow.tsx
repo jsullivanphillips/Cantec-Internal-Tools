@@ -5,6 +5,15 @@ import {
   createPortalFieldEditBlurHandler,
   schedulePortalFieldRowScroll,
 } from './portalFieldEditRegistry'
+import RichTextDisplay from '../richText/RichTextDisplay'
+import RichTextEditor, { type RichTextEditorHandle } from '../richText/RichTextEditor'
+import RichTextToolbar from '../richText/RichTextToolbar'
+import { isRichTextField } from '../richText/richTextFields'
+import {
+  normalizeRichTextComment,
+  richTextIsEmpty,
+  richTextValuesEqual,
+} from '../richText/richTextSanitize'
 
 export type PortalFieldEditActions = {
   fieldKey: string
@@ -32,6 +41,9 @@ type PortalEditableFieldRowProps = {
   /** When true, open the month select dropdown as soon as edit mode starts (requires user gesture). */
   autoOpenSelect?: boolean
   onAutoOpenSelectDone?: () => void
+  /** Portal worksheet uses a header toolbar instead of inline formatting controls. */
+  richTextToolbarPlacement?: 'inline' | 'external'
+  onRichTextEditorHandleChange?: (handle: RichTextEditorHandle | null) => void
 }
 
 export default function PortalEditableFieldRow({
@@ -50,16 +62,23 @@ export default function PortalEditableFieldRow({
   monthSelect = false,
   autoOpenSelect = false,
   onAutoOpenSelectDone,
+  richTextToolbarPlacement = 'inline',
+  onRichTextEditorHandleChange,
 }: PortalEditableFieldRowProps) {
   const inputId = useId()
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(null)
+  const richEditorRef = useRef<RichTextEditorHandle>(null)
+  const [richEditorHandle, setRichEditorHandle] = useState<RichTextEditorHandle | null>(null)
   const rowRef = useRef<HTMLDivElement>(null)
   const normalizedValue = monthSelect ? normalizeAnnualMonthForSelect(value) : value.trim()
   const [draft, setDraft] = useState(normalizedValue)
   const [saving, setSaving] = useState(false)
   const savingRef = useRef(false)
   const editing = !readOnly && editingField === fieldKey
-  const display = monthSelect ? normalizedValue || '—' : value.trim() || '—'
+  const richText = Boolean(multiline && isRichTextField(fieldKey))
+  const showInlineRichToolbar = richText && richTextToolbarPlacement === 'inline'
+  const displayEmpty = richText ? richTextIsEmpty(value) : !value.trim()
+  const display = monthSelect ? normalizedValue || '—' : displayEmpty ? '—' : value.trim()
 
   const monthSelectChoices = useMemo(() => {
     if (!monthSelect) return []
@@ -74,8 +93,12 @@ export default function PortalEditableFieldRow({
     if (!editing) {
       setDraft(monthSelect ? normalizeAnnualMonthForSelect(value) : value)
       setSaving(false)
+      if (richText) {
+        setRichEditorHandle(null)
+        onRichTextEditorHandleChange?.(null)
+      }
     }
-  }, [value, editing, monthSelect])
+  }, [value, editing, monthSelect, richText, onRichTextEditorHandleChange])
 
   useLayoutEffect(() => {
     if (!editing) return undefined
@@ -84,9 +107,17 @@ export default function PortalEditableFieldRow({
 
   const commit = useCallback(async () => {
     if (saving) return
-    const next = draft.trim()
-    const committed = monthSelect ? normalizeAnnualMonthForSelect(value) : value.trim()
-    if (next === committed) {
+    const nextRaw = richText
+      ? richEditorHandle?.getHtml() ?? richEditorRef.current?.getHtml() ?? draft
+      : draft.trim()
+    const next = richText ? normalizeRichTextComment(nextRaw) ?? '' : nextRaw
+    const committed = richText
+      ? normalizeRichTextComment(value) ?? ''
+      : monthSelect
+        ? normalizeAnnualMonthForSelect(value)
+        : value.trim()
+    const unchanged = richText ? richTextValuesEqual(next, committed) : next === committed
+    if (unchanged) {
       onEditingFieldChange(null)
       return
     }
@@ -99,7 +130,16 @@ export default function PortalEditableFieldRow({
     } finally {
       setSaving(false)
     }
-  }, [draft, monthSelect, onEditingFieldChange, onSave, saving, value])
+  }, [
+    draft,
+    monthSelect,
+    onEditingFieldChange,
+    onSave,
+    richEditorHandle,
+    richText,
+    saving,
+    value,
+  ])
 
   const cancel = useCallback(() => {
     if (saving) return
@@ -125,8 +165,18 @@ export default function PortalEditableFieldRow({
   const onAutoOpenSelectDoneRef = useRef(onAutoOpenSelectDone)
   onAutoOpenSelectDoneRef.current = onAutoOpenSelectDone
 
+  const handleRichEditorReady = useCallback(
+    (handle: RichTextEditorHandle | null) => {
+      setRichEditorHandle(handle)
+      if (richTextToolbarPlacement === 'external') {
+        onRichTextEditorHandleChange?.(handle)
+      }
+    },
+    [onRichTextEditorHandleChange, richTextToolbarPlacement],
+  )
+
   useLayoutEffect(() => {
-    if (!editing) return undefined
+    if (!editing || richText) return undefined
 
     const input = inputRef.current
     try {
@@ -145,7 +195,13 @@ export default function PortalEditableFieldRow({
     }
 
     return undefined
-  }, [editing, monthSelect, autoOpenSelect])
+  }, [editing, monthSelect, autoOpenSelect, richText])
+
+  useLayoutEffect(() => {
+    if (!editing || !richText) return undefined
+    richEditorHandle?.focus()
+    return undefined
+  }, [editing, richText, richEditorHandle])
 
   useLayoutEffect(() => {
     if (!editing) return undefined
@@ -209,7 +265,9 @@ export default function PortalEditableFieldRow({
         }}
       >
         <div className="pw-mock-field-label">{labelBlock}</div>
-        <div className="pw-mock-field-value">{display}</div>
+        <div className="pw-mock-field-value">
+          {richText ? <RichTextDisplay value={value} /> : display}
+        </div>
       </div>
     )
   }
@@ -219,13 +277,41 @@ export default function PortalEditableFieldRow({
       ref={rowRef}
       className={`pw-mock-field-row pw-mock-field-row--editing${
         multiline ? ' pw-mock-field-row--multiline' : ''
-      }`}
+      }${richText ? ' pw-mock-field-row--rich-text' : ''}`}
     >
       <label className="pw-mock-field-label" htmlFor={inputId}>
         {labelBlock}
       </label>
-      <div className="pw-mock-field-value" onBlur={handleEditBlur}>
-        {multiline ? (
+      <div className="pw-mock-field-value" onBlur={richText ? undefined : handleEditBlur}>
+        {richText ? (
+          <>
+            {showInlineRichToolbar ? (
+              <RichTextToolbar
+                editor={richEditorHandle}
+                className="pw-mock-field-rich-toolbar"
+              />
+            ) : null}
+            <RichTextEditor
+              ref={richEditorRef}
+              id={inputId}
+              value={draft}
+              disabled={saving}
+              className="pw-mock-field-input pw-mock-field-input--rich"
+              onHandleReady={handleRichEditorReady}
+              onChange={setDraft}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  e.preventDefault()
+                  cancel()
+                }
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault()
+                  void commit()
+                }
+              }}
+            />
+          </>
+        ) : multiline ? (
           <textarea
             ref={inputRef as RefObject<HTMLTextAreaElement>}
             id={inputId}
@@ -291,11 +377,13 @@ export default function PortalEditableFieldRow({
             }}
           />
         )}
-        <PortalFieldEditActionButtons
-          saving={saving}
-          onCancel={cancel}
-          onSubmit={() => void commit()}
-        />
+        {!richText ? (
+          <PortalFieldEditActionButtons
+            saving={saving}
+            onCancel={cancel}
+            onSubmit={() => void commit()}
+          />
+        ) : null}
       </div>
     </div>
   )

@@ -1,4 +1,6 @@
 import type { NotableChangeItem } from './notableStopChanges'
+import RichTextDisplay from '../richText/RichTextDisplay'
+import { richTextIsEmpty } from '../richText/richTextSanitize'
 import {
   displayValueForSide,
   type FieldChangeDisplaySide,
@@ -10,29 +12,44 @@ function ReadonlyField({
   value,
   multiline,
   muted,
+  richTextAfter = false,
 }: {
   label: string
   value: string
   multiline?: boolean
   muted?: boolean
+  richTextAfter?: boolean
 }) {
   const empty = value === '—'
   return (
     <div className="run-details-prepare-stack__field">
       <div className="run-details-prepare-stack__label">{label}</div>
       <div className="run-details-prepare-stack__value">
-        <span
-          className={[
-            'run-details-prepare-display',
-            multiline ? 'run-details-prepare-display--multiline' : '',
-            empty ? 'run-details-prepare-display--empty' : '',
-            muted ? 'run-details-field-change-value--muted' : '',
-          ]
-            .filter(Boolean)
-            .join(' ')}
-        >
-          {value}
-        </span>
+        {richTextAfter && !empty ? (
+          <RichTextDisplay
+            value={value}
+            className={[
+              'run-details-prepare-display',
+              multiline ? 'run-details-prepare-display--multiline' : '',
+              muted ? 'run-details-field-change-value--muted' : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+          />
+        ) : (
+          <span
+            className={[
+              'run-details-prepare-display',
+              multiline ? 'run-details-prepare-display--multiline' : '',
+              empty ? 'run-details-prepare-display--empty' : '',
+              muted ? 'run-details-field-change-value--muted' : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+          >
+            {value}
+          </span>
+        )}
       </div>
     </div>
   )
@@ -61,15 +78,24 @@ export default function RunDetailsFieldChangePrepCell({
 
   return (
     <div className="run-details-prepare-stack">
-      {items.map((item) => (
-        <ReadonlyField
-          key={item.id}
-          label={item.label}
-          value={displayValueForSide(item, side)}
-          multiline={multiline}
-          muted={side === 'before' && item.kind === 'field_removed'}
-        />
-      ))}
+      {items.map((item) => {
+        const rendered = displayValueForSide(item, side)
+        return (
+          <ReadonlyField
+            key={item.id}
+            label={item.label}
+            value={rendered}
+            multiline={multiline}
+            muted={side === 'before' && item.kind === 'field_removed'}
+            richTextAfter={
+              side === 'after' &&
+              multiline &&
+              rendered !== '—' &&
+              !richTextIsEmpty(rendered)
+            }
+          />
+        )
+      })}
     </div>
   )
 }

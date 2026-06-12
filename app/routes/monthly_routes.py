@@ -3211,7 +3211,12 @@ def patch_monthly_route_worksheet_row(route_id: int, location_id: int):
         if field_name not in changes_eff:
             continue
         old_val = getattr(row, attr_name)
-        new_val = _normalize_ws_text(changes_eff.get(field_name))
+        from app.monthly.rich_text_sanitize import is_rich_text_comment_field, sanitize_rich_text_comment
+
+        if is_rich_text_comment_field(field_name):
+            new_val = sanitize_rich_text_comment(changes_eff.get(field_name))
+        else:
+            new_val = _normalize_ws_text(changes_eff.get(field_name))
         if old_val == new_val:
             continue
         setattr(row, attr_name, new_val)
@@ -5452,10 +5457,14 @@ def update_monthly_route_location(location_id: int):
             loc.monitoring_notes = (str(raw).strip() or None) if raw is not None else None
         if "testing_procedures" in payload:
             raw = payload.get("testing_procedures")
-            loc.testing_procedures = (str(raw).strip() or None) if raw is not None else None
+            from app.monthly.rich_text_sanitize import sanitize_rich_text_comment
+
+            loc.testing_procedures = sanitize_rich_text_comment(raw) if raw is not None else None
         if "inspection_tech_notes" in payload:
             raw = payload.get("inspection_tech_notes")
-            loc.inspection_tech_notes = (str(raw).strip() or None) if raw is not None else None
+            from app.monthly.rich_text_sanitize import sanitize_rich_text_comment
+
+            loc.inspection_tech_notes = sanitize_rich_text_comment(raw) if raw is not None else None
         if "facp_detail" in payload or "facp" in payload or "panel" in payload:
             raw = payload.get("facp_detail") or payload.get("facp") or payload.get("panel")
             panel_val = (str(raw).strip() or None) if raw is not None else None

@@ -69,8 +69,14 @@ export function buildRouteOverviewCardToneMap(
   return map
 }
 
+export function runAwaitingOfficePaperworkReview(
+  run: { workflow_stage?: string } | null | undefined,
+): boolean {
+  return (run?.workflow_stage ?? '').trim() === 'awaiting_office_review'
+}
+
 export function countRoutesToProcess(rows: MonthlyDashboardRouteRow[]): number {
-  return rows.filter((row) => dashboardRouteWorkflowStage(row) === 'awaiting_office_review').length
+  return rows.filter((row) => runAwaitingOfficePaperworkReview(row.current_month_run)).length
 }
 
 export function routeScheduledInMonth(

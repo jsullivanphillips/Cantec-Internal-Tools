@@ -1579,6 +1579,19 @@ def _sheet_skip_reason_is_annual(skip_reason: object) -> bool:
     return s in {"annual", "annual_booked"}
 
 
+def _is_on_hold_pending_outcome(stop: dict[str, object]) -> bool:
+    status = (str(stop.get("status_normalized") or "")).strip().lower()
+    if status != "on_hold":
+        return False
+    if _normalize_text(stop.get("test_outcome")):
+        return False
+    if stop.get("is_legacy_outcome"):
+        rs = (str(stop.get("result_status") or "")).strip().lower()
+        if rs in {"tested", "skipped"}:
+            return False
+    return True
+
+
 _PORTAL_OUTCOME_COUNT_KEYS = (
     "all_good",
     "passed_with_problems",
@@ -1684,11 +1697,12 @@ def notable_worksheet_stops_for_run_details(
         rs = (str(stop.get("result_status") or "")).strip().lower()
         has_run_comments = _normalize_text(stop.get("run_comments")) is not None
         is_annual_month = _is_annual_for_month(month_first, stop.get("annual_month"))
+        is_on_hold = _is_on_hold_pending_outcome(stop)
         has_outcome = _normalize_text(stop.get("test_outcome")) is not None
         has_updates = (
             lid in property_change_location_ids or rs == "skipped" or has_run_comments
         )
-        if has_updates or rs == "tested" or is_annual_month or has_outcome:
+        if has_updates or rs == "tested" or is_annual_month or is_on_hold or has_outcome:
             filtered.append(dict(stop))
     return filtered
 
@@ -2167,7 +2181,12 @@ def apply_worksheet_stop_field_change(
         mlm.prior_month_out_of_order_dismissed = new_bool
         return True, None
 
-    new_val = _normalize_text(raw_value)
+    from app.monthly.rich_text_sanitize import is_rich_text_comment_field, sanitize_rich_text_comment
+
+    if is_rich_text_comment_field(field_name):
+        new_val = sanitize_rich_text_comment(raw_value)
+    else:
+        new_val = _normalize_text(raw_value)
     old_val = getattr(mlm, attr_name)
     if old_val == new_val:
         return False, None

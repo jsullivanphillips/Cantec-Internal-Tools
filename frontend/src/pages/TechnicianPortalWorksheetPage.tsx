@@ -16,6 +16,9 @@ import {
   useTechnicianDemoRouteInfo,
 } from '../features/monthlyRoutes/technicianDemoRoute'
 import PortalEditableFieldRow from '../features/monthlyRoutes/PortalEditableFieldRow'
+import RichTextToolbar from '../features/richText/RichTextToolbar'
+import type { RichTextEditorHandle } from '../features/richText/RichTextEditor'
+import { isPortalRichTextEditableField } from '../features/richText/richTextFields'
 import {
   portalFieldEditActionPointerGuard,
   schedulePortalFieldRowScrollForElement,
@@ -68,6 +71,7 @@ import {
   optimisticOutcomePatch,
   portalStopHasOpenClock,
   portalStopHasTestOutcome,
+  portalStopOnHoldPrecolor,
   portalStopVisitComplete,
   portalStopWorkflowReadOnly,
   skipCategoryLabel,
@@ -325,6 +329,7 @@ export default function TechnicianPortalWorksheetPage() {
   const [defModalMode, setDefModalMode] = useState<'add' | 'edit'>('add')
   const [editingDeficiency, setEditingDeficiency] = useState<PortalDeficiencySummary | null>(null)
   const [editingField, setEditingField] = useState<string | null>(null)
+  const [portalRichTextEditor, setPortalRichTextEditor] = useState<RichTextEditorHandle | null>(null)
   const {
     activeFieldEditActions,
     registerFieldEditActions,
@@ -659,6 +664,15 @@ export default function TechnicianPortalWorksheetPage() {
     onRegisterFieldEditActions: registerFieldEditActions,
     onUnregisterFieldEditActions: unregisterFieldEditActions,
   }
+
+  const richTextFieldEditProps = {
+    ...fieldEditProps,
+    richTextToolbarPlacement: 'external' as const,
+    onRichTextEditorHandleChange: setPortalRichTextEditor,
+  }
+
+  const showPortalRichTextToolbar =
+    editingField != null && isPortalRichTextEditableField(editingField)
 
   const openDeficiencyAdd = useCallback(() => {
     setDefModalMode('add')
@@ -1073,6 +1087,11 @@ export default function TechnicianPortalWorksheetPage() {
             <PortalSyncStatusBadge state={syncState} pendingCount={pendingSyncCount} />
           </div>
         </div>
+        {showPortalRichTextToolbar ? (
+          <div className="pw-mock-chrome-rich-toolbar">
+            <RichTextToolbar editor={portalRichTextEditor} />
+          </div>
+        ) : null}
         {isTrainingRoute && trainingBannerOpen ? (
           <Alert variant="info" className="py-2 px-3 mb-0 small">
             <div className="d-flex flex-column flex-md-row align-items-md-start justify-content-between gap-2">
@@ -1226,6 +1245,9 @@ export default function TechnicianPortalWorksheetPage() {
                     Stop #{active.stop_number}
                     {showAnnualMonthPill(active, runMonthIso, activeStatus) ? (
                       <span className="pw-mock-annual-pill">Annual month</span>
+                    ) : null}
+                    {portalStopOnHoldPrecolor(active) ? (
+                      <span className="pw-mock-on-hold-pill">On hold</span>
                     ) : null}
                   </div>
                   <span
@@ -1402,7 +1424,7 @@ export default function TechnicianPortalWorksheetPage() {
                     value={active.testing_procedures ?? ''}
                     multiline
                     onSave={saveField('testing_procedures')}
-                    {...fieldEditProps}
+                    {...richTextFieldEditProps}
                   />
                   <PortalEditableFieldRow
                     fieldKey="inspection_tech_notes"
@@ -1410,7 +1432,7 @@ export default function TechnicianPortalWorksheetPage() {
                     value={active.inspection_tech_notes ?? ''}
                     multiline
                     onSave={saveField('inspection_tech_notes')}
-                    {...fieldEditProps}
+                    {...richTextFieldEditProps}
                   />
                   <PortalEditableFieldRow
                     fieldKey="run_comments"
@@ -1418,7 +1440,7 @@ export default function TechnicianPortalWorksheetPage() {
                     value={active.run_comments ?? ''}
                     multiline
                     onSave={saveField('run_comments')}
-                    {...fieldEditProps}
+                    {...richTextFieldEditProps}
                   />
                 </div>
               </div>

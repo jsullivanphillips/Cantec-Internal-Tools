@@ -7,6 +7,7 @@ import {
   formatRunDisplayDate,
   formatRunsCardStageLabel,
   formatSitesTestedRatio,
+  findNewestRunMonthAwaitingOfficeReview,
 } from './routeRunsDisplay'
 import type { RouteRunMonthSummary } from './monthlyRoutesShared'
 
@@ -121,5 +122,16 @@ describe('routeRunsDisplay', () => {
   it('defaultRunsCardYear prefers current calendar year', () => {
     expect(defaultRunsCardYear([2024, 2025, 2026], '2026-06-01')).toBe(2026)
     expect(defaultRunsCardYear([2024, 2025], '2026-06-01')).toBe(2025)
+  })
+
+  it('findNewestRunMonthAwaitingOfficeReview returns newest awaiting month', () => {
+    expect(findNewestRunMonthAwaitingOfficeReview({})).toBeNull()
+    expect(
+      findNewestRunMonthAwaitingOfficeReview({
+        '2026-04-01': run({ workflow_stage: 'completed' }),
+        '2026-05-01': run({ workflow_stage: 'awaiting_office_review' }),
+        '2026-03-01': run({ workflow_stage: 'awaiting_office_review' }),
+      }),
+    ).toBe('2026-05-01')
   })
 })

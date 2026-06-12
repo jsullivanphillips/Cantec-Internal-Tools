@@ -499,16 +499,22 @@ export function filterRunDetailLocations(
   return locations.filter((loc) => locationMatchesFilter(loc, filter, monthDate))
 }
 
-/** When ``outcomeFilters`` is empty, all locations are returned (OR semantics when non-empty). */
+export type RunDetailReviewPillFilter = PortalTestOutcome | 'billing_unset'
+
+/** When ``filters`` is empty, all locations are returned (OR semantics when non-empty). */
 export function filterRunDetailLocationsByOutcomes(
   locations: MonthlyRunDetailLocation[],
-  outcomeFilters: readonly PortalTestOutcome[],
+  filters: readonly RunDetailReviewPillFilter[],
   monthDate: string,
 ): MonthlyRunDetailLocation[] {
-  if (outcomeFilters.length === 0) return locations
+  if (filters.length === 0) return locations
   return locations.filter((loc) =>
-    outcomeFilters.some((filter) => locationMatchesFilter(loc, filter, monthDate)),
+    filters.some((filter) => locationMatchesFilter(loc, filter, monthDate)),
   )
+}
+
+export function countBillingUnsetLocations(locations: MonthlyRunDetailLocation[]): number {
+  return locations.filter((loc) => loc.attention_flags.billing_unset).length
 }
 
 export type RunDetailReviewSectionTab = 'run_history' | 'run_review' | 'field_changes'

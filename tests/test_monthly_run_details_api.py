@@ -335,6 +335,44 @@ def test_run_details_new_comment_fields_on_stop(run_details_client):
     assert "inspection_tech_notes" not in stop["new_comment_fields"]
 
 
+def test_run_details_field_changes_on_location(run_details_client):
+    """Run review locations include per-field audit deltas for red highlighting."""
+    client, app = run_details_client
+    with app.app_context():
+        _, _, mlm, run = _seed_basic_route_data()
+        field_time = datetime(2026, 5, 2, 10, 0, tzinfo=PACIFIC_TZ)
+        mlm.key_number = "NEW-KEY"
+        db.session.add(
+            MonthlyRouteWorksheetAuditEvent(
+                id=88010,
+                monthly_route_id=1,
+                location_id=101,
+                location_month_row_id=int(mlm.id),
+                month_date=date(2026, 5, 1),
+                field_name="key_number",
+                old_value="OLD-KEY",
+                new_value="NEW-KEY",
+                source="technician_app",
+                changed_at=field_time,
+            )
+        )
+        db.session.commit()
+        assert run.started_at is not None
+
+    res = client.get(BASE_URL)
+    assert res.status_code == 200
+    stop = next(
+        loc
+        for loc in res.get_json()["locations"]
+        if int(loc["location_id"]) == 101
+    )
+    assert stop["key_number"] == "NEW-KEY"
+    key_changes = [c for c in stop["field_changes"] if c["field_name"] == "key_number"]
+    assert len(key_changes) == 1
+    assert key_changes[0]["old_value"] == "OLD-KEY"
+    assert key_changes[0]["new_value"] == "NEW-KEY"
+
+
 def test_run_details_worksheet_stop_for_site_modal(run_details_client):
     client, app = run_details_client
     with app.app_context():

@@ -565,6 +565,7 @@ export default function RunDetailsPrepareTable({
               activeKey={activeFieldKey}
               onActivate={setActiveFieldKey}
               disabled={prepEditsDisabled}
+              richText
               onCommit={(next) =>
                 void patchRow(
                   sid,
@@ -583,6 +584,7 @@ export default function RunDetailsPrepareTable({
               activeKey={activeFieldKey}
               onActivate={setActiveFieldKey}
               disabled={prepEditsDisabled}
+              richText
               onCommit={(next) =>
                 void patchRow(
                   sid,
@@ -601,6 +603,7 @@ export default function RunDetailsPrepareTable({
               activeKey={activeFieldKey}
               onActivate={setActiveFieldKey}
               disabled={prepEditsDisabled}
+              richText
               onCommit={(next) =>
                 void patchRow(
                   sid,

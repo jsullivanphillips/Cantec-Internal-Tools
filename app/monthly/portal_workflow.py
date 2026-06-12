@@ -32,6 +32,7 @@ SKIP_CATEGORIES = frozenset({
     "lack_of_time",
     "testing_not_required",
     "other",
+    "annual",
 })
 DEFICIENCY_SEVERITIES = frozenset({"inoperable", "deficient", "suggested"})
 DEFICIENCY_STATUSES = frozenset({"new", "verified", "invalid", "fixed"})

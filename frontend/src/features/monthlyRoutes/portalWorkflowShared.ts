@@ -1,10 +1,10 @@
 /** Portal workflow UI helpers (clock events, test outcomes, dock bands). */
 
-import { worksheetSkipReasonDisplayBlock } from './officeWorksheetTableShared'
+import { worksheetSkipReasonDisplayBlock, worksheetStopIsAnnualSkip } from './officeWorksheetTableShared'
 import {
   isAnnualForMonth,
-  isOnHoldMonthlyLocation,
   worksheetLocationIsOpenClockIn,
+  worksheetLocationOnHoldPendingOutcome,
   worksheetLocationSkipIsAnnual,
   type TechnicianWorksheetLocation,
 } from './monthlyRoutesShared'
@@ -17,6 +17,7 @@ export type PortalSkipCategory =
   | 'lack_of_time'
   | 'testing_not_required'
   | 'other'
+  | 'annual'
 
 export type PortalDockBand = 'A' | 'B' | 'C'
 
@@ -101,13 +102,28 @@ export function portalStopHasTestOutcome(stop: TechnicianWorksheetLocation): boo
 /** Select value for office outcome dropdown; maps legacy result_status when test_outcome is unset. */
 export const OFFICE_OUTCOME_PENDING_VALUE = '__pending__'
 
+/** Office review only: skipped with annual classification (orange cell). */
+export const OFFICE_OUTCOME_SKIPPED_ANNUAL_VALUE = 'skipped_annual'
+
+export const OFFICE_OUTCOME_SKIPPED_ANNUAL_LABEL = 'Skipped (annual)'
+
+function officeSkippedOutcomeSelectValue(stop: TechnicianWorksheetLocation): string {
+  const month = norm(stop.month_date)
+  if (month && worksheetStopIsAnnualSkip(stop, month)) {
+    return OFFICE_OUTCOME_SKIPPED_ANNUAL_VALUE
+  }
+  return 'skipped'
+}
+
 export function officeOutcomeSelectValue(stop: TechnicianWorksheetLocation): string {
   if (portalStopHasTestOutcome(stop)) {
-    return norm(stop.test_outcome).toLowerCase()
+    const outcome = norm(stop.test_outcome).toLowerCase()
+    if (outcome === 'skipped') return officeSkippedOutcomeSelectValue(stop)
+    return outcome
   }
   const rs = norm(stop.result_status).toLowerCase()
   if (rs === 'tested') return 'all_good'
-  if (rs === 'skipped') return 'skipped'
+  if (rs === 'skipped') return officeSkippedOutcomeSelectValue(stop)
   return OFFICE_OUTCOME_PENDING_VALUE
 }
 
@@ -254,6 +270,9 @@ export function portalOutcomeDisplay(stop: TechnicianWorksheetLocation): string 
   const match = TEST_OUTCOME_OPTIONS.find((o) => o.value === outcome)
   if (match) return match.label
   if (outcome === 'skipped' && stop.skip_category) {
+    if (stop.skip_category === 'annual' || worksheetLocationSkipIsAnnual(stop)) {
+      return OFFICE_OUTCOME_SKIPPED_ANNUAL_LABEL
+    }
     const cat = SKIP_CATEGORIES.find((c) => c.value === stop.skip_category)
     return cat ? `Skipped — ${cat.label}` : 'Skipped'
   }
@@ -273,6 +292,7 @@ export function skipCategoryLabel(category: string | null | undefined): string {
   const raw = norm(category)
   if (!raw) return ''
   const c = raw.toLowerCase() as PortalSkipCategory
+  if (c === 'annual') return 'Annual month'
   const known = SKIP_CATEGORIES.find((x) => x.value === c)
   if (known) return known.label
   if (/^[a-z][a-z0-9_]*$/.test(c)) return formatSnakeCaseLabel(c)
@@ -465,13 +485,7 @@ export function portalStopOfficeAttentionActive(stop: TechnicianWorksheetLocatio
 
 /** Yellow pre-color for library stops marked on hold (before a test outcome is recorded). */
 export function portalStopOnHoldPrecolor(stop: TechnicianWorksheetLocation): boolean {
-  if (!isOnHoldMonthlyLocation(stop)) return false
-  if (portalStopHasTestOutcome(stop)) return false
-  if (stop.is_legacy_outcome) {
-    const rs = norm(stop.result_status).toLowerCase()
-    if (rs === 'tested' || rs === 'skipped') return false
-  }
-  return true
+  return worksheetLocationOnHoldPendingOutcome(stop)
 }
 
 export function portalHeaderBandClass(stop: TechnicianWorksheetLocation, runMonthIso: string): string {

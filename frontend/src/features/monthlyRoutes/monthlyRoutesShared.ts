@@ -428,6 +428,8 @@ export type MonthlyRunDetailLocation = {
   deficiency_summaries: MonthlyRunDetailDeficiencySummary[]
   has_active_deficiencies: boolean
   new_comment_fields?: string[]
+  /** Technician audit deltas for this location during the field run (run review red text). */
+  field_changes?: MonthlyRunDetailLocationFieldChange[]
   attention_flags: MonthlyRunDetailLocationAttentionFlags
   status_normalized?: string | null
 }
@@ -1071,6 +1073,17 @@ export function isOnHoldMonthlyLocation(
   loc: { status_normalized?: string | null },
 ): boolean {
   return (loc.status_normalized || '').trim().toLowerCase() === 'on_hold'
+}
+
+/** On-hold library stop with no portal test outcome yet (same gate as end-run preflight). */
+export function worksheetLocationOnHoldPendingOutcome(loc: TechnicianWorksheetLocation): boolean {
+  if (!isOnHoldMonthlyLocation(loc)) return false
+  if ((loc.test_outcome || '').trim()) return false
+  if (loc.is_legacy_outcome) {
+    const rs = (loc.result_status || '').trim().toLowerCase()
+    if (rs === 'tested' || rs === 'skipped') return false
+  }
+  return true
 }
 
 /** Route detail / map: hide cancelled library locations from active stop lists. */

@@ -17,18 +17,20 @@ import type {
 
 import {
   computeRunDetailsProgress,
+  countBillingUnsetLocations,
   countRunDetailFieldEditLocations,
   filterRunDetailFieldEditLocations,
   filterRunDetailLocationsByOutcomes,
   flattenRunDetailPrepRows,
   listAutoOfficeBillingUpdates,
+  type RunDetailReviewPillFilter,
   type RunDetailReviewSectionTab,
 } from './runDetailsLocationReview'
-import type { PortalTestOutcome } from './portalWorkflowShared'
 import type { OfficeBillingStatus } from './officeRunReviewShared'
 import { apiJson } from '../../lib/apiClient'
 
 import { canOfficeEditBilling, runInOfficePrepPhase, worksheetRunFieldInProgress } from './runWorkflowShared'
+import type { PortalTestOutcome } from './portalWorkflowShared'
 
 import type { RunDetailsStopPatchApi } from './useRunDetailsStopPatch'
 
@@ -43,22 +45,26 @@ export type RunReviewOutcomeCounts = {
   skipped_count: number
 }
 
-const REVIEW_OUTCOME_PROGRESS: {
+const REVIEW_OUTCOME_PILLS: {
   key: keyof RunReviewOutcomeCounts
   filter: PortalTestOutcome
   label: string
   modifier: string
 }[] = [
-  { key: 'all_good_count', filter: 'all_good', label: 'all good', modifier: 'all-good' },
+  { key: 'all_good_count', filter: 'all_good', label: 'All good', modifier: 'all-good' },
   {
     key: 'passed_with_problems_count',
     filter: 'passed_with_problems',
-    label: 'passed w/ problems',
+    label: 'Passed w/ problems',
     modifier: 'passed-problems',
   },
-  { key: 'failed_count', filter: 'failed', label: 'failed', modifier: 'failed' },
-  { key: 'skipped_count', filter: 'skipped', label: 'skipped', modifier: 'skipped' },
+  { key: 'failed_count', filter: 'failed', label: 'Failed', modifier: 'failed' },
+  { key: 'skipped_count', filter: 'skipped', label: 'Skipped', modifier: 'skipped' },
 ]
+
+function reviewPillLabel(label: string, count: number): string {
+  return `${label} (${count})`
+}
 
 type BillingPatchResponse = {
   ok: boolean
@@ -137,7 +143,7 @@ export default function RunDetailsLocationReviewList({
 }) {
   const [autoBillingBusy, setAutoBillingBusy] = useState(false)
   const [autoBillingError, setAutoBillingError] = useState<string | null>(null)
-  const [activeOutcomeFilters, setActiveOutcomeFilters] = useState<PortalTestOutcome[]>([])
+  const [activeReviewFilters, setActiveReviewFilters] = useState<RunDetailReviewPillFilter[]>([])
 
   const prepPhase = paperworkViewMode === 'preparation' || runInOfficePrepPhase(run)
   const showBillingColumn = canOfficeEditBilling(run) && !runCompleted
@@ -175,15 +181,21 @@ export default function RunDetailsLocationReviewList({
     [locations, monthDate, showBillingColumn, showRunReview],
   )
 
+  const billingUnsetCount = useMemo(() => countBillingUnsetLocations(locations), [locations])
+
   const filteredReviewLocations = useMemo(
-    () => filterRunDetailLocationsByOutcomes(locations, activeOutcomeFilters, monthDate),
-    [locations, activeOutcomeFilters, monthDate],
+    () => filterRunDetailLocationsByOutcomes(locations, activeReviewFilters, monthDate),
+    [locations, activeReviewFilters, monthDate],
   )
 
-  const toggleOutcomeFilter = useCallback((filter: PortalTestOutcome) => {
-    setActiveOutcomeFilters((prev) =>
+  const toggleReviewFilter = useCallback((filter: RunDetailReviewPillFilter) => {
+    setActiveReviewFilters((prev) =>
       prev.includes(filter) ? prev.filter((item) => item !== filter) : [...prev, filter],
     )
+  }, [])
+
+  const clearReviewFilters = useCallback(() => {
+    setActiveReviewFilters([])
   }, [])
 
   const onAutoSetBilling = useCallback(async () => {
@@ -290,38 +302,60 @@ export default function RunDetailsLocationReviewList({
 
       {showRunReview ? (
         <>
-          <div className="monthly-run-detail-progress" aria-label="Review progress">
-            {showBillingColumn ? (
-              <span className="monthly-run-detail-progress__item">
-                <strong className="tabular-nums">{progress.billingDecidedCount}</strong>
-                <span className="text-muted"> / {progress.locationCount} billing decided</span>
-              </span>
-            ) : null}
-            {outcomeCounts
-              ? REVIEW_OUTCOME_PROGRESS.map(({ key, filter, label, modifier }) => {
-                  const active = activeOutcomeFilters.includes(filter)
-                  return (
-                    <button
-                      key={key}
-                      type="button"
-                      aria-pressed={active}
-                      className={`monthly-run-detail-progress__item monthly-run-detail-progress__item--filter monthly-run-detail-progress__item--${modifier}${active ? ' monthly-run-detail-progress__item--filter-active' : ''}`}
-                      onClick={() => toggleOutcomeFilter(filter)}
-                    >
-                      <strong className="tabular-nums">{outcomeCounts[key]}</strong>
-                      <span className="text-muted"> {label}</span>
-                    </button>
-                  )
-                })
-              : null}
+          <div className="run-details-review-filter-bar">
+            <div
+              className="run-review-filter run-details-review-pill-filters"
+              role="group"
+              aria-label="Filter run review stops"
+            >
+              {showBillingColumn ? (
+                <button
+                  type="button"
+                  aria-pressed={activeReviewFilters.includes('billing_unset')}
+                  className={`run-review-filter__btn run-details-review-pill--billing-unset${activeReviewFilters.includes('billing_unset') ? ' run-review-filter__btn--active' : ''}`}
+                  onClick={() => toggleReviewFilter('billing_unset')}
+                >
+                  {reviewPillLabel('Billing not set', billingUnsetCount)}
+                </button>
+              ) : null}
+              {outcomeCounts
+                ? REVIEW_OUTCOME_PILLS.map(({ key, filter, label, modifier }) => {
+                    const active = activeReviewFilters.includes(filter)
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        aria-pressed={active}
+                        className={`run-review-filter__btn run-details-review-pill--${modifier}${active ? ' run-review-filter__btn--active' : ''}`}
+                        onClick={() => toggleReviewFilter(filter)}
+                      >
+                        {reviewPillLabel(label, outcomeCounts[key])}
+                      </button>
+                    )
+                  })
+                : null}
+              {activeReviewFilters.length > 0 ? (
+                <button
+                  type="button"
+                  className="run-review-filter__btn run-details-review-pill-filters__clear"
+                  onClick={clearReviewFilters}
+                >
+                  Clear filters
+                </button>
+              ) : null}
+            </div>
             {runCompleted && progress.prepRemainingCount > 0 ? (
-              <span className="monthly-run-detail-progress__item">
-                <strong className="tabular-nums">{progress.prepRemainingCount}</strong>
-                <span className="text-muted"> prep remaining</span>
+              <span className="run-details-review-filter-bar__meta text-muted small">
+                <strong className="tabular-nums text-body">{progress.prepRemainingCount}</strong> prep
+                remaining
               </span>
             ) : null}
             {showBillingColumn ? (
-              <span className="monthly-run-detail-progress__item monthly-run-detail-progress__item--action">
+              <div className="run-details-review-filter-bar__action">
+                <span className="run-details-review-filter-bar__meta text-muted small">
+                  <strong className="tabular-nums text-body">{progress.billingDecidedCount}</strong> /{' '}
+                  {progress.locationCount} billing decided
+                </span>
                 <Button
                   size="sm"
                   variant="outline-primary"
@@ -338,7 +372,7 @@ export default function RunDetailsLocationReviewList({
                     'Auto set billing'
                   )}
                 </Button>
-              </span>
+              </div>
             ) : null}
           </div>
           {autoBillingError ? (
@@ -421,8 +455,8 @@ export default function RunDetailsLocationReviewList({
       ) : null}
 
       {showRunReview ? (
-        filteredReviewLocations.length === 0 && activeOutcomeFilters.length > 0 ? (
-          <p className="monthly-run-detail-empty mb-0">No stops match the selected outcome filters.</p>
+        filteredReviewLocations.length === 0 && activeReviewFilters.length > 0 ? (
+          <p className="monthly-run-detail-empty mb-0">No stops match the selected filters.</p>
         ) : (
           <RunDetailsReviewTable
             locations={filteredReviewLocations}

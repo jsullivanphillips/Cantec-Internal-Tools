@@ -726,6 +726,15 @@
 }
 
 /* Run review tab: prep-style read-only table (no highlight column; billing in # column) */
+/* Outcome edit menu is portaled to document.body; lift the active row while open as a fallback */
+.monthly-run-detail-page
+  .run-details-review-table.table
+  tbody
+  tr.run-details-review-table-row:has(.run-details-review-location-result__outcome-edit-btn[aria-expanded='true']) {
+  position: relative;
+  z-index: 20;
+}
+
 .monthly-run-detail-page .run-details-review-table-shell {
   --rdp-sticky-address-left: var(--rdp-col-stop);
   --rdp-table-w: calc(
@@ -744,15 +753,36 @@
   --rdp-col-stop: 5.25rem;
 }
 
+.monthly-run-detail-page .run-details-review-table td.run-details-review-stop-cell-td {
+  vertical-align: top;
+  height: 1px;
+}
+
 .monthly-run-detail-page .run-details-review-stop-cell {
   display: flex;
   flex-direction: column;
-  align-items: stretch;
-  gap: 0.4rem;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 100%;
+  height: 100%;
+  box-sizing: border-box;
 }
 
 .monthly-run-detail-page .run-details-review-stop-cell .run-details-prepare-stop-num {
-  align-self: center;
+  flex-shrink: 0;
+  text-align: center;
+}
+
+.monthly-run-detail-page .run-details-review-stop-cell > .run-location-card__billing-control,
+.monthly-run-detail-page .run-details-review-stop-cell > .run-location-card__billing-readonly {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 0;
 }
 
 .monthly-run-detail-page .run-details-review-table .run-location-card__billing-control--vertical {
@@ -767,8 +797,8 @@
 
 .monthly-run-detail-page .run-details-review-table .run-location-card__billing-segment--vertical .btn {
   width: 100%;
-  padding-left: 0.2rem;
-  padding-right: 0.2rem;
+  min-height: 1.75rem;
+  padding: 0.38rem 0.2rem;
   font-size: 0.62rem;
   line-height: 1.15;
   white-space: normal;
@@ -780,12 +810,16 @@
 }
 
 .monthly-run-detail-page .run-details-review-table .run-location-card__billing-readonly {
-  align-self: center;
+  text-align: center;
 }
 
 /* Read-only stack cells: wrap long values (e.g. monitoring notes) inside fixed columns */
 .monthly-run-detail-page .run-details-review-table .run-details-prepare-stack-cell {
   overflow: hidden;
+}
+
+.monthly-run-detail-page .run-details-review-table td.run-details-review-stack-cell-td {
+  vertical-align: middle;
 }
 
 .monthly-run-detail-page .run-details-review-table .run-details-prepare-stack__value .run-details-prepare-display {
@@ -802,33 +836,316 @@
   color: var(--bs-danger, #dc3545);
 }
 
+.monthly-run-detail-page td.run-details-review-location-cell {
+  overflow: visible;
+  vertical-align: middle;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.monthly-run-detail-page .run-details-review-location-result-shell {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 100%;
+  box-sizing: border-box;
+}
+
+.monthly-run-detail-page .run-details-review-location-result-card {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  width: 100%;
+  margin: 0.35rem 0.45rem;
+  padding: 0.7rem 0.8rem;
+  background: #fff;
+  border: 1px solid transparent;
+  border-radius: var(--ml-radius-md, 0.65rem);
+  box-sizing: border-box;
+}
+
+.monthly-run-detail-page .run-details-review-location-result-card--all-good,
+.monthly-run-detail-page .run-details-review-location-result-card--passed-problems {
+  border-color: #4d8429;
+}
+
+.monthly-run-detail-page .run-details-review-location-result-card--failed {
+  border-color: #991b1b;
+}
+
+.monthly-run-detail-page .run-details-review-location-result-card--skipped {
+  border-color: #ca8a04;
+}
+
+.monthly-run-detail-page .run-details-review-location-result-card--annual {
+  border-color: #c2410c;
+}
+
+.monthly-run-detail-page .run-details-review-location-result-card--pending {
+  border-color: #94a3b8;
+}
+
 .monthly-run-detail-page .run-details-review-location-result {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 0.25rem;
+  align-items: stretch;
+  gap: 0.45rem;
 }
 
-.monthly-run-detail-page .run-details-review-location-result__outcome-btn {
+.monthly-run-detail-page .run-details-review-location-result__address-link {
+  font-size: 0.9375rem;
+  line-height: 1.3;
+}
+
+.monthly-run-detail-page .run-details-review-location-result__outcome {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.2rem;
-  margin: 0;
+  justify-content: flex-start;
+  width: 100%;
+}
+
+.monthly-run-detail-page .run-details-review-location-result__outcome-label {
+  width: auto;
+}
+
+.monthly-run-detail-page .run-details-review-location-result__outcome-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  padding-right: 1.85rem;
+  box-sizing: border-box;
+}
+
+.monthly-run-detail-page .run-details-review-location-result__outcome-row .run-details-review-location-result__outcome {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  justify-content: flex-start;
+}
+
+.monthly-run-detail-page .run-details-review-location-result__outcome-row .dropdown {
+  flex-shrink: 0;
+}
+
+.monthly-run-detail-page .run-details-review-location-result__outcome-edit-btn {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 1.45rem;
+  height: 1.45rem;
   padding: 0;
-  border: none;
+  font-size: 0.7rem;
+  line-height: 1;
   background: transparent;
-  text-align: left;
-  cursor: pointer;
+  box-shadow: none;
+  transform: translateY(-50%);
 }
 
-.monthly-run-detail-page .run-details-review-location-result__outcome-btn:hover .run-details-review-location-result__outcome {
-  text-decoration: underline;
+.monthly-run-detail-page .run-details-review-outcome-menu {
+  min-width: 11rem;
+  font-size: 0.8125rem;
+  max-height: none;
+  overflow: visible;
+  z-index: 1080;
 }
 
-/* Run review: gap between body rows only (not above thead) */
+.monthly-run-detail-page .run-details-review-location-result__outcome-edit-btn.dropdown-toggle::after {
+  display: none;
+}
+
+.monthly-run-detail-page .run-details-review-location-result__outcome-pending {
+  font-weight: 600;
+  color: var(--ml-muted, #64748b);
+}
+
+.monthly-run-detail-page .run-details-review-location-result__actions {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.4rem;
+  width: 100%;
+  margin-top: 0.35rem;
+}
+
+.monthly-run-detail-page .run-details-review-location-result__action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1 1 0;
+  min-width: 0;
+  gap: 0.3rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: #1a1a1a;
+  background: transparent;
+  box-shadow: none;
+}
+
+.monthly-run-detail-page .run-details-review-location-result__action-btn:hover,
+.monthly-run-detail-page .run-details-review-location-result__action-btn:focus,
+.monthly-run-detail-page .run-details-review-location-result__action-btn:active,
+.monthly-run-detail-page .run-details-review-location-result__action-btn.active {
+  color: #1a1a1a;
+  background: transparent;
+}
+
+.monthly-run-detail-page .run-details-review-outcome-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  width: fit-content;
+  max-width: 100%;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  border: none;
+  color: #1a1a1a;
+  font-weight: 600;
+  font-size: 0.65rem;
+  line-height: 1.3;
+}
+
+.monthly-run-detail-page .run-details-review-outcome-pill .run-review-outcome-label__text {
+  color: #1a1a1a;
+}
+
+.monthly-run-detail-page .run-details-review-outcome-pill .run-review-outcome-icon {
+  font-size: 0.75rem;
+}
+
+.monthly-run-detail-page .run-details-review-outcome-pill-tooltip-target {
+  display: inline-flex;
+  justify-content: flex-start;
+  max-width: 100%;
+}
+
+.monthly-run-detail-page .run-details-review-outcome-pill--has-skip-note {
+  cursor: help;
+}
+
+.monthly-run-detail-page
+  .run-details-review-outcome-pill
+  .run-review-outcome-icon--passed-problems {
+  color: var(--pw-failed, #dc2626);
+}
+
+/* Run review Location & Result: full-cell outcome backgrounds (technician palette) */
+.monthly-run-detail-page
+  .run-details-review-table
+  tbody
+  tr.run-details-review-table-row
+  td.run-details-prepare-sticky-address.run-details-review-location-cell--all-good,
+.monthly-run-detail-page
+  .run-details-review-table
+  tbody
+  tr.run-details-review-table-row
+  td.run-details-prepare-sticky-address.run-details-review-location-cell--passed-problems {
+  background-color: #70ad47;
+}
+
+.monthly-run-detail-page
+  .run-details-review-table
+  tbody
+  tr.run-details-review-table-row
+  td.run-details-prepare-sticky-address.run-details-review-location-cell--failed {
+  background-color: var(--pw-failed, #dc2626);
+}
+
+.monthly-run-detail-page
+  .run-details-review-table
+  tbody
+  tr.run-details-review-table-row
+  td.run-details-prepare-sticky-address.run-details-review-location-cell--skipped {
+  background-color: #fef08a;
+}
+
+/* Editable outcome dropdown on passed-with-problems rows (green cell) */
+.monthly-run-detail-page
+  .run-details-review-location-cell--passed-problems
+  select.form-select.pw-mock-status-pill-select.pw-mock-status-pill-select--passed-problems {
+  appearance: none;
+  background-color: var(--pw-failed, #dc2626);
+  color: #fff;
+  border-color: var(--pw-failed, #dc2626);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23ffffff' d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+}
+
+.monthly-run-detail-page
+  .run-details-review-location-cell--passed-problems
+  select.form-select.pw-mock-status-pill-select.pw-mock-status-pill-select--passed-problems:disabled {
+  background-color: var(--pw-failed, #dc2626);
+  color: #fff;
+  opacity: 0.75;
+}
+
+.monthly-run-detail-page
+  .run-details-review-table
+  select.form-select.pw-mock-status-pill-select.pw-mock-status-pill-select--annual {
+  appearance: none;
+  background-color: transparent;
+  color: #1a1a1a;
+  border: 1px solid #1a1a1a;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%231a1a1a' d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+}
+
+.monthly-run-detail-page
+  .run-details-review-table
+  tbody
+  tr.run-details-review-table-row
+  td.run-details-prepare-sticky-address.run-details-review-location-cell--annual {
+  background-color: #ed7d31;
+}
+
+.monthly-run-detail-page
+  .run-details-review-table
+  tbody
+  tr.run-details-review-table-row
+  td.run-details-prepare-sticky-address.run-details-review-location-cell--pending {
+  background-color: var(--ml-surface-muted, #f8fafc);
+}
+
+/* Run review: extra space between testing procedures and location comments */
+.monthly-run-detail-page .run-details-review-table {
+  --rd-review-procedures-comments-gap: 0.875rem;
+}
+
+.monthly-run-detail-page .run-details-review-table.table thead th.run-details-review-col-procedures {
+  padding-right: calc(0.75rem + var(--rd-review-procedures-comments-gap));
+}
+
+.monthly-run-detail-page .run-details-review-table.table thead th.run-details-review-col-location-comments {
+  padding-left: calc(0.75rem + var(--rd-review-procedures-comments-gap));
+}
+
+.monthly-run-detail-page
+  .run-details-review-table.table
+  tbody
+  tr.run-details-review-table-row
+  td.run-details-prepare-longtext-cell.run-details-review-col-procedures {
+  padding-right: calc(0.55rem + var(--rd-review-procedures-comments-gap));
+  padding-left: 0.55rem;
+}
+
+.monthly-run-detail-page
+  .run-details-review-table.table
+  tbody
+  tr.run-details-review-table-row
+  td.run-details-prepare-longtext-cell.run-details-review-col-location-comments {
+  padding-left: calc(0.55rem + var(--rd-review-procedures-comments-gap));
+  padding-right: 0.55rem;
+}
+
+/* Run review: thin divider between body rows */
 .monthly-run-detail-page .run-details-review-table.table {
-  --rd-review-row-gap: 0.5rem;
   border-collapse: separate;
   border-spacing: 0;
 }
@@ -836,19 +1153,10 @@
 .monthly-run-detail-page .run-details-review-table.table tbody tr.run-details-review-table-row td {
   padding-top: 0.7rem;
   padding-bottom: 0.7rem;
-  border-bottom: none;
+  border-bottom: 1px solid #1a1a1a;
 }
 
-.monthly-run-detail-page
-  .run-details-review-table.table
-  tbody
-  tr.run-details-review-table-row
-  + tr.run-details-review-table-row
-  td {
-  padding-top: calc(0.7rem + var(--rd-review-row-gap));
-}
-
-.monthly-run-detail-page .run-details-review-table.table tbody tr:last-child td {
+.monthly-run-detail-page .run-details-review-table.table tbody tr.run-details-review-table-row:last-child td {
   border-bottom: none;
 }
 

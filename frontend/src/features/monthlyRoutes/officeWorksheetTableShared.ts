@@ -1,11 +1,12 @@
 import {
   isAnnualMonthNotAtSite,
   parseYearMonth,
+  worksheetLocationOnHoldPendingOutcome,
   type TechnicianWorksheetLocation,
 } from './monthlyRoutesShared'
 import { locationDisplaySubline, locationPrimaryLabel } from './locationDisplay'
 
-export type OfficeStopStatus = 'tested' | 'skipped' | 'annual' | 'pending'
+export type OfficeStopStatus = 'tested' | 'skipped' | 'annual' | 'on_hold' | 'pending'
 
 export type OfficeStopGroup = {
   locationId: number
@@ -79,6 +80,7 @@ export function officeStopStatus(stop: TechnicianWorksheetLocation, monthDate: s
   if (rs === 'tested') return 'tested'
   if (rs === 'skipped') return worksheetStopIsAnnualSkip(stop, monthDate) ? 'annual' : 'skipped'
   if (isAnnualForMonth(stop.annual_month, monthDate)) return 'annual'
+  if (worksheetLocationOnHoldPendingOutcome(stop)) return 'on_hold'
   return 'pending'
 }
 
@@ -89,6 +91,7 @@ export function officeStopStatusLabel(
   if (status === 'tested') return 'Tested'
   if (status === 'skipped') return 'Skipped'
   if (status === 'annual') return 'Annual'
+  if (status === 'on_hold') return 'On hold'
   if (options?.closedRun) return 'No Results Submitted'
   return 'Pending'
 }

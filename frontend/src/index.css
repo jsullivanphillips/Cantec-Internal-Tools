@@ -753,7 +753,8 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
   gap: 1rem;
 }
 
-.monthly-paperwork-page .monthly-run-detail-locations > .monthly-run-detail-progress {
+.monthly-paperwork-page .monthly-run-detail-locations > .monthly-run-detail-progress,
+.monthly-paperwork-page .monthly-run-detail-locations > .run-details-review-filter-bar {
   margin: 0;
 }
 
@@ -4309,6 +4310,38 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
   min-width: 0;
 }
 
+.monthly-route-detail-hero__paired-actions {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 0.45rem;
+  flex: 1 1 100%;
+  width: 100%;
+  min-width: 0;
+}
+
+.monthly-route-detail-hero__paired-actions .monthly-location-detail-action {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+}
+
+.monthly-route-detail-hero__review-paperwork-action {
+  flex: 1 1 100%;
+  width: 100%;
+}
+
+.monthly-route-detail-hero .monthly-location-hero-actions .monthly-route-detail-hero__review-paperwork-action {
+  flex: 1 1 100%;
+  width: 100%;
+}
+
+.monthly-route-detail-hero .monthly-location-hero-actions .monthly-route-detail-hero__paired-actions .monthly-location-detail-action {
+  flex: 1 1 0;
+  width: auto;
+}
+
 .monthly-route-pill.badge {
   border: 1px solid var(--ml-border);
   border-radius: 999px;
@@ -5101,6 +5134,78 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
   outline: none;
 }
 
+.run-details-tickets-site-pair__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1050;
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+.run-details-tickets-site-pair {
+  position: fixed;
+  inset: 0;
+  z-index: 1055;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  pointer-events: none;
+}
+
+.run-details-tickets-site-pair__panel {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  max-height: min(94vh, 58rem);
+  border: 0;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  box-shadow: 0 0.5rem 1.5rem rgba(15, 23, 42, 0.2);
+}
+
+.run-details-tickets-site-pair__panel--tickets {
+  flex: 0 1 24rem;
+  width: min(24rem, 34vw);
+  min-width: 17rem;
+  background: #fff;
+}
+
+.run-details-tickets-site-pair__panel--site {
+  flex: 1 1 36rem;
+  width: min(48rem, 50vw);
+  max-width: 48rem;
+}
+
+.run-details-tickets-site-pair__panel-body {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.run-details-tickets-site-pair__panel--site.run-details-stop-site-modal__content {
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 900px) {
+  .run-details-tickets-site-pair {
+    flex-direction: column;
+    overflow-y: auto;
+    align-items: stretch;
+    pointer-events: auto;
+    padding: 0.75rem;
+  }
+
+  .run-details-tickets-site-pair__panel--tickets,
+  .run-details-tickets-site-pair__panel--site {
+    width: 100%;
+    max-width: none;
+    flex: 0 0 auto;
+    max-height: none;
+  }
+}
+
 .run-details-stop-site-modal__dialog {
   max-width: 48rem;
   width: calc(100% - 1.5rem);
@@ -5446,6 +5551,10 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
 
 .run-review-outcome-icon--annual {
   color: #c2410c;
+}
+
+.run-review-outcome-icon--skipped {
+  color: var(--pw-skipped, #d97706);
 }
 
 .run-location-card__outcome {
@@ -6213,6 +6322,80 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
   color: #1d4ed8;
 }
 
+.run-details-review-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem 1rem;
+  margin: 0 0 0.75rem;
+}
+
+.run-details-review-filter-bar .run-details-review-pill-filters {
+  margin-bottom: 0;
+  flex: 1 1 auto;
+}
+
+.run-details-review-filter-bar__action {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-left: auto;
+}
+
+.run-details-review-filter-bar__meta {
+  white-space: nowrap;
+}
+
+.run-details-review-pill-filters .run-review-filter__btn {
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+.run-details-review-pill-filters .run-review-filter__btn:hover {
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.1);
+}
+
+.run-details-review-pill-filters__clear {
+  border-style: dashed;
+  color: var(--ml-muted-strong, #64748b);
+  font-weight: 600;
+}
+
+.run-details-review-pill-filters__clear:hover {
+  border-color: #94a3b8;
+  color: var(--ml-text, #0f172a);
+}
+
+.run-details-review-pill--billing-unset.run-review-filter__btn--active {
+  border-color: #b45309;
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.run-details-review-pill--all-good.run-review-filter__btn--active {
+  border-color: #047857;
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.run-details-review-pill--passed-problems.run-review-filter__btn--active {
+  border-color: #db2777;
+  background: #fdf2f8;
+  color: #be185d;
+}
+
+.run-details-review-pill--failed.run-review-filter__btn--active {
+  border-color: #dc2626;
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.run-details-review-pill--skipped.run-review-filter__btn--active {
+  border-color: #64748b;
+  background: #f8fafc;
+  color: #475569;
+}
+
 .monthly-run-detail-kpi--interactive {
   width: 100%;
   cursor: pointer;
@@ -6465,6 +6648,12 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
   border-color: #fb923c;
   background: #fed7aa;
   color: #c2410c;
+}
+
+.run-detail-site-card__badge.run-detail-site-card__badge--on-hold {
+  border-color: #fde047;
+  background: #fef9c3;
+  color: #854d0e;
 }
 
 .run-detail-site-card__badge.run-detail-site-card__badge--legacy-tested {
@@ -7021,6 +7210,16 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
   .monthly-route-detail-hero .monthly-location-hero-actions .monthly-location-detail-action {
     flex: 1 1 calc(50% - 0.25rem);
     justify-content: center;
+  }
+
+  .monthly-route-detail-hero__paired-actions {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+
+  .monthly-route-detail-hero .monthly-location-hero-actions .monthly-route-detail-hero__paired-actions .monthly-location-detail-action {
+    flex: 1 1 0;
+    width: auto;
   }
 
   .monthly-route-detail-hero__specialists {
@@ -10657,6 +10856,19 @@ body {
   border: 1px solid var(--pw-annual-border);
   border-radius: 999px;
   font-size: 0.65rem;
+  vertical-align: middle;
+}
+
+.pw-mock-on-hold-pill {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.16rem 0.45rem;
+  background: #fef9c3;
+  color: #854d0e;
+  border: 1px solid #fde047;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 700;
   vertical-align: middle;
 }
 

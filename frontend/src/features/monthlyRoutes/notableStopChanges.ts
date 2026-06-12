@@ -110,11 +110,9 @@ function sortChanges(items: NotableChangeItem[]): NotableChangeItem[] {
   )
 }
 
-function collectAuditedFieldChanges(
-  locationId: number,
-  fieldChangesByLocation?: Map<number, OfficeFieldChange[]>,
+function auditedFieldChangesFromRows(
+  changes: readonly { field_name: string; old_value: unknown; new_value: unknown }[],
 ): NotableChangeItem[] {
-  const changes = fieldChangesForLocation(locationId, fieldChangesByLocation)
   const seen = new Set<string>()
   const items: NotableChangeItem[] = []
   for (const change of changes) {
@@ -137,6 +135,21 @@ function collectAuditedFieldChanges(
     })
   }
   return items
+}
+
+function collectAuditedFieldChanges(
+  locationId: number,
+  fieldChangesByLocation?: Map<number, OfficeFieldChange[]>,
+): NotableChangeItem[] {
+  return auditedFieldChangesFromRows(fieldChangesForLocation(locationId, fieldChangesByLocation))
+}
+
+/** Build display change rows from ``field_changes`` on a run-details location. */
+export function notableChangesFromFieldChanges(
+  fieldChanges: readonly { field_name: string; old_value: unknown; new_value: unknown }[] | undefined,
+): NotableChangeItem[] {
+  if (!fieldChanges?.length) return []
+  return sortChanges(auditedFieldChangesFromRows(fieldChanges))
 }
 
 function collectStatusChange(

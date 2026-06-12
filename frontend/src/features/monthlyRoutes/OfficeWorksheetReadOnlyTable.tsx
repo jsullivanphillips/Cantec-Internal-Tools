@@ -1,6 +1,8 @@
 import { useCallback, useMemo, useRef, type CSSProperties, type ReactNode } from 'react'
 import { Table } from 'react-bootstrap'
 import { Link } from 'react-router-dom'
+import RichTextDisplay from '../richText/RichTextDisplay'
+import { richTextIsEmpty } from '../richText/richTextSanitize'
 import type { TechnicianWorksheetLocation } from './monthlyRoutesShared'
 import {
   auditChangeForCompactLabel,
@@ -139,9 +141,17 @@ function OfficeLongTextCell({
   } else if (change && highlightUpdatedCells) {
     inner = <span className="tw-office-cell-updated-value">{renderFieldChangeInline(change)}</span>
   } else if (showPresentRunComment) {
-    inner = <span className="tw-office-cell-updated-value">{worksheetReadOnlyDisplay(stop.run_comments)}</span>
+    inner = (
+      <span className="tw-office-cell-updated-value">
+        <RichTextDisplay value={stop.run_comments} />
+      </span>
+    )
   } else {
-    inner = <>{worksheetReadOnlyDisplay(stop[fieldKey])}</>
+    inner = richTextIsEmpty(stop[fieldKey]) ? (
+      <>{worksheetReadOnlyDisplay(stop[fieldKey])}</>
+    ) : (
+      <RichTextDisplay value={stop[fieldKey]} />
+    )
   }
 
   if (highlightNew) {

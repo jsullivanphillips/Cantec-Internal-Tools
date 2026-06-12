@@ -473,3 +473,27 @@ def test_csv_import_run_is_portal_read_only(portal_client, monkeypatch):
     )
     assert blocked.status_code == 409
     assert blocked.get_json().get("code") == "portal_read_only"
+
+
+def test_test_outcome_annual_skip_category(portal_client, monkeypatch):
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
+
+    client, app = portal_client
+    with app.app_context():
+        route_id, _loc_id, stop_a, _stop_b = _seed_route_with_two_stops()
+
+    _start_run(client)
+    month = "2026-05-01"
+    base = f"/api/monthly_routes/routes/{route_id}/worksheet/locations/{stop_a}/test_outcome?month={month}"
+
+    res = client.put(
+        base,
+        json={"test_outcome": "skipped", "skip_category": "annual"},
+    )
+    assert res.status_code == 200
+    stop = res.get_json()["stop"]
+    assert stop["test_outcome"] == "skipped"
+    assert stop["skip_category"] == "annual"
+    assert stop["skip_reason"] == "annual"

@@ -3,6 +3,7 @@ import type {
   RouteRunMonthSummary,
   RouteTestingMonthCell,
 } from './monthlyRoutesShared'
+import { runAwaitingOfficePaperworkReview } from './monthlyDashboardShared'
 import { addCalendarMonths, parseYearMonth } from './monthlyRoutesShared'
 
 export type RouteRunTableRow = {
@@ -178,4 +179,16 @@ export function buildRouteRunTableRows(
       specialistMonth: specialistsByMonth[monthIso] ?? null,
     }))
     .sort((a, b) => b.monthIso.localeCompare(a.monthIso))
+}
+
+/** Newest calendar month with field-ended run awaiting office paperwork review. */
+export function findNewestRunMonthAwaitingOfficeReview(
+  runsByMonth: Record<string, RouteRunMonthSummary>,
+): string | null {
+  return (
+    Object.entries(runsByMonth)
+      .filter(([, run]) => runAwaitingOfficePaperworkReview(run))
+      .map(([monthIso]) => monthIso)
+      .sort((a, b) => b.localeCompare(a))[0] ?? null
+  )
 }

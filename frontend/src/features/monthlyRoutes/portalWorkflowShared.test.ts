@@ -15,6 +15,7 @@ import {
   portalStopNewDeficienciesFromPriorRuns,
   officeOutcomeSelectValue,
   OFFICE_OUTCOME_PENDING_VALUE,
+  OFFICE_OUTCOME_SKIPPED_ANNUAL_VALUE,
   portalHeaderBandClass,
   portalKeyViewOutcomeStatusClass,
   portalNavStopStatusClass,
@@ -22,7 +23,11 @@ import {
   portalStopVisitComplete,
   portalStopVisualTone,
 } from './portalWorkflowShared'
-import { runReviewOutcomeHeadline } from './officeRunReviewShared'
+import {
+  runReviewOutcomeHeadline,
+  runReviewSkippedCategoryHeadline,
+  runReviewSkippedTechNote,
+} from './officeRunReviewShared'
 import type { PortalDeficiencySummary } from './portalWorkflowShared'
 
 function baseStop(overrides: Partial<TechnicianWorksheetLocation> = {}): TechnicianWorksheetLocation {
@@ -170,6 +175,9 @@ describe('portalSkipReasonDetail', () => {
       skip_reason: 'access_issues: Gate code changed',
     })
     expect(portalSkipReasonDetail(stop)).toBe('Access issues · Gate code changed')
+    expect(runReviewSkippedCategoryHeadline(stop)).toBe('Access issues')
+    expect(runReviewSkippedTechNote(stop)).toBe('Gate code changed')
+    expect(runReviewOutcomeHeadline(stop, '2026-05-01')).toBe('Access issues')
   })
 
   it('uses legacy skip_reason when portal fields are empty', () => {
@@ -178,7 +186,7 @@ describe('portalSkipReasonDetail', () => {
       skip_reason: 'No power to panel',
     })
     expect(portalSkipReasonDetail(stop)).toBe('No power to panel')
-    expect(runReviewOutcomeHeadline(stop, '2026-05-01')).toBe('Skipped · No power to panel')
+    expect(runReviewOutcomeHeadline(stop, '2026-05-01')).toBe('No power to panel')
   })
 
   it('formats category keys in skip_reason', () => {
@@ -235,6 +243,29 @@ describe('officeOutcomeSelectValue', () => {
 
   it('returns pending when no outcome is recorded', () => {
     expect(officeOutcomeSelectValue(baseStop())).toBe(OFFICE_OUTCOME_PENDING_VALUE)
+  })
+
+  it('maps annual skips to the office annual select value', () => {
+    expect(
+      officeOutcomeSelectValue(
+        baseStop({
+          test_outcome: 'skipped',
+          result_status: 'skipped',
+          skip_category: 'annual',
+          skip_reason: 'annual',
+        }),
+      ),
+    ).toBe(OFFICE_OUTCOME_SKIPPED_ANNUAL_VALUE)
+    expect(
+      officeOutcomeSelectValue(
+        baseStop({
+          test_outcome: 'skipped',
+          result_status: 'skipped',
+          skip_category: 'access_issues',
+          skip_reason: 'access_issues',
+        }),
+      ),
+    ).toBe('skipped')
   })
 })
 

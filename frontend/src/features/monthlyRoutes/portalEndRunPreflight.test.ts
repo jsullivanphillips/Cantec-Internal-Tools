@@ -52,6 +52,11 @@ describe('stopsMissingTestOutcome', () => {
     const stops = [baseStop({ location_id: 1, annual_month: 'May' })]
     expect(stopsMissingTestOutcome(stops, MONTH)).toHaveLength(0)
   })
+
+  it('excludes on-hold stops without a test outcome', () => {
+    const stops = [baseStop({ location_id: 1, status_normalized: 'on_hold' })]
+    expect(stopsMissingTestOutcome(stops, MONTH)).toHaveLength(0)
+  })
 })
 
 describe('projectedOpenClockStops', () => {

@@ -2,7 +2,12 @@
  * Preflight checks before technicians end a field run on the portal worksheet.
  */
 
-import { isAnnualForMonth, worksheetLocationIsOpenClockIn, type TechnicianWorksheetLocation } from './monthlyRoutesShared'
+import {
+  isAnnualForMonth,
+  worksheetLocationIsOpenClockIn,
+  worksheetLocationOnHoldPendingOutcome,
+  type TechnicianWorksheetLocation,
+} from './monthlyRoutesShared'
 import { projectStopsWithWorkflowQueue } from './portalRouteProjection'
 import { portalStopHasTestOutcome } from './portalWorkflowShared'
 import type { PortalWorkflowQueueItem } from './worksheetOfflineStore'
@@ -17,7 +22,7 @@ export function projectedOpenClockStops(
   return projected.filter(worksheetLocationIsOpenClockIn)
 }
 
-/** Non-annual stops on the run that have no portal ``test_outcome`` yet. */
+/** Non-annual / non-on-hold stops on the run that have no portal ``test_outcome`` yet. */
 export function stopsMissingTestOutcome(
   stops: TechnicianWorksheetLocation[],
   runMonthIso: string,
@@ -25,6 +30,7 @@ export function stopsMissingTestOutcome(
   return stops.filter((stop) => {
     if (portalStopHasTestOutcome(stop)) return false
     if (isAnnualForMonth(stop.annual_month, runMonthIso)) return false
+    if (worksheetLocationOnHoldPendingOutcome(stop)) return false
     return true
   })
 }
