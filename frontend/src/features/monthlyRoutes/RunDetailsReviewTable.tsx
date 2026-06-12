@@ -3,6 +3,9 @@ import { Button, Table } from 'react-bootstrap'
 import { Link } from 'react-router-dom'
 import LocationTicketsModal from './LocationTicketsModal'
 import RunDetailsDeficiencyList from './RunDetailsDeficiencyList'
+import type { RunDetailsDeficiencyModalContext } from './RunDetailsDeficiencyDetailModal'
+import PortalDeficiencyModal, { type DeficiencyFormValues } from './PortalDeficiencyModal'
+import { officeCreateDeficiency } from './officeStopSiteApi'
 import RunDetailsLocationBillingControl from './RunDetailsLocationBillingControl'
 import RunDetailsStopSiteModal from './RunDetailsStopSiteModal'
 import RunReviewOutcomeLabel from './RunReviewOutcomeLabel'
@@ -191,6 +194,11 @@ export default function RunDetailsReviewTable({
   onTicketsChanged?: () => void
 }) {
   const [siteModalStopId, setSiteModalStopId] = useState<number | null>(null)
+  const [addDeficiencyTarget, setAddDeficiencyTarget] = useState<{
+    locationId: number
+    hasServiceTradeLink: boolean
+    modalContext: RunDetailsDeficiencyModalContext
+  } | null>(null)
   const [ticketsModal, setTicketsModal] = useState<{
     locationId: number
     locationLabel: string
@@ -198,6 +206,31 @@ export default function RunDetailsReviewTable({
   const [billingErrors, setBillingErrors] = useState<Record<number, string>>({})
 
   const readOnly = runDetailsOfficeReviewReadOnly(run)
+
+  const handleAddDeficiencySave = useCallback(
+    async (values: DeficiencyFormValues) => {
+      if (!addDeficiencyTarget || readOnly) return
+      const { locationId } = addDeficiencyTarget
+      const updated = await officeCreateDeficiency(routeId, monthDate, locationId, {
+        title: values.title,
+        severity: values.severity,
+        status: values.status,
+        description: values.description || undefined,
+        run_id: run?.id ?? null,
+        service_line: values.serviceLine,
+        create_on_service_trade: values.createOnServiceTrade,
+      })
+      onStopMergedFromWorksheet(updated, 'deficiency')
+    },
+    [addDeficiencyTarget, readOnly, routeId, monthDate, run?.id, onStopMergedFromWorksheet],
+  )
+
+  const siteModalHasServiceTradeLink = useMemo(() => {
+    if (siteModalStopId == null) return false
+    const loc = locations.find((row) => row.location_id === siteModalStopId)
+    if (!loc) return false
+    return loc.has_service_trade_link ?? loc.service_trade_site_location_id != null
+  }, [siteModalStopId, locations])
 
   const rows = useMemo(() => flattenRunDetailReviewRows(locations), [locations])
 
@@ -325,6 +358,9 @@ export default function RunDetailsReviewTable({
                 const multiSite = siteCount > 1
                 const ws = locationStopAsWorksheetStop(stop, locationLabel)
                 const locationCellTone = runReviewLocationCellTone(ws, monthDate)
+                const hasServiceTradeLink =
+                  stop.has_service_trade_link ??
+                  stop.service_trade_site_location_id != null
 
                 return (
                   <tr
@@ -405,6 +441,23 @@ export default function RunDetailsReviewTable({
                         compact
                         readOnly={readOnly}
                         onDeficiencyUpdated={onDeficiencyUpdated}
+                        onAdd={
+                          readOnly
+                            ? undefined
+                            : () =>
+                                setAddDeficiencyTarget({
+                                  locationId: sid,
+                                  hasServiceTradeLink,
+                                  modalContext: {
+                                    locationLabel,
+                                    stopNumber: stop.stop_number,
+                                    siteLabel: multiSite ? siteLabel : undefined,
+                                  },
+                                })
+                        }
+                        showServiceTradeDeficiencies
+                        hasServiceTradeLink={hasServiceTradeLink}
+                        locationLabel={locationLabel}
                         modalContext={{
                           locationLabel,
                           stopNumber: stop.stop_number,
@@ -447,6 +500,7 @@ export default function RunDetailsReviewTable({
         routeId={routeId}
         monthDate={monthDate}
         run={run}
+        hasServiceTradeLink={siteModalHasServiceTradeLink}
         onHide={() => setSiteModalStopId(null)}
         stopPatch={stopPatch}
         onStopMergedFromWorksheet={onStopMergedFromWorksheet}
@@ -462,6 +516,17 @@ export default function RunDetailsReviewTable({
           onTicketsChanged={onTicketsChanged}
         />
       ) : null}
+      <PortalDeficiencyModal
+        show={addDeficiencyTarget != null}
+        mode="add"
+        onHide={() => setAddDeficiencyTarget(null)}
+        onSave={handleAddDeficiencySave}
+        officeServiceTrade={
+          addDeficiencyTarget
+            ? { hasServiceTradeLink: addDeficiencyTarget.hasServiceTradeLink }
+            : null
+        }
+      />
     </>
   )
 }

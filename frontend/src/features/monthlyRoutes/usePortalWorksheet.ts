@@ -14,6 +14,7 @@ import {
 } from './monthlyRoutesShared'
 import {
   canPortalEditRun,
+  portalShowStartRun,
   runFieldEnded,
   runIsPrepared,
   worksheetRunFieldInProgress,
@@ -819,7 +820,13 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
     canPortalEditRun(payload?.run) &&
     !viewingHistoricalRun &&
     isCurrentMonth
-  const showStartRun = showPortalRunLifecycle && runPrepared && !runStarted
+  const showStartRun = portalShowStartRun({
+    showPortalRunLifecycle,
+    runPrepared,
+    runStarted,
+    isCurrentMonth,
+  })
+  const fieldStartBlocked = monthOk && monthIso > monthFirstIsoPacificToday()
   const showEndRun = showPortalRunLifecycle && worksheetRunFieldInProgress(payload?.run)
   const showReopenField = showPortalRunLifecycle && runEnded && !worksheetRunFieldInProgress(payload?.run)
   const readOnlyWorksheet = showStopWorkspace && !canEditStops
@@ -866,6 +873,7 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
     showStartRun,
     showEndRun,
     showReopenField,
+    fieldStartBlocked,
     viewingHistoricalRun,
     readOnlyWorksheet,
     canEditStops,

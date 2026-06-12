@@ -2,35 +2,30 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Badge, Button, Card, Form, OverlayTrigger, Spinner, Table, Tooltip } from 'react-bootstrap'
 import { Link } from 'react-router-dom'
 import {
+  billingBoardShowUnsetDash,
+  billingMonthPillClickable,
+  billingMonthPaperworkRouteId,
   billingStatusLabel,
   billingStatusVariant,
+  currentBillingQuarter,
   fetchBillingBoard,
   formatMonthHeader,
+  parseQuarterSelectionKey,
   patchQuarterBilled,
-  quarterTitle,
-  billingBoardShowUnsetDash,
+  quarterOptionLabel,
+  quarterSelectionKey,
+  quarterSelectionOptions,
   type BillingBoardLocationRow,
   type BillingBoardPayload,
 } from '../features/monthlyRoutes/monthlyBillingBoard'
-import { billingBoardLocationSubline, billingBoardLocationTitle } from '../features/monthlyRoutes/locationDisplay'
-import { monthFirstIsoPacificToday, parseYearMonth, toMonthKey } from '../features/monthlyRoutes/monthlyRoutesShared'
+import { billingBoardLocationTitle } from '../features/monthlyRoutes/locationDisplay'
+import BillingBoardCommentCell from '../features/monthlyRoutes/BillingBoardCommentCell'
+import BillingBoardPaperworkModal, {
+  type BillingBoardPaperworkModalContext,
+} from '../features/monthlyRoutes/BillingBoardPaperworkModal'
 import { isAbortError } from '../lib/apiClient'
 
 const PAGE_SIZE = 50
-
-function anchorMonthOptions(countBack = 18, countForward = 3): string[] {
-  const anchor = parseYearMonth(monthFirstIsoPacificToday())
-  if (!anchor) return [monthFirstIsoPacificToday()]
-  const start = { year: anchor.year, month: anchor.month }
-  const keys: string[] = []
-  for (let offset = -countBack; offset <= countForward; offset += 1) {
-    const total = start.year * 12 + (start.month - 1) + offset
-    const year = Math.floor(total / 12)
-    const month = (total % 12) + 1
-    keys.push(toMonthKey(year, month))
-  }
-  return keys.reverse()
-}
 
 function billingRouteLabel(row: BillingBoardLocationRow): string {
   if (typeof row.route_number === 'number') return `R${row.route_number}`
@@ -55,26 +50,70 @@ function BillingRouteCell({ row }: { row: BillingBoardLocationRow }) {
 }
 
 function BillingMonthCell({
+  row,
   cell,
   monthIso,
+  onOpenPaperwork,
 }: {
+  row: BillingBoardLocationRow
   cell: BillingBoardLocationRow['months'][string] | undefined
   monthIso: string
+  onOpenPaperwork: (context: BillingBoardPaperworkModalContext) => void
 }) {
   const billing = cell?.billing_status ?? 'unset'
   if (billingBoardShowUnsetDash(cell, monthIso)) {
     return <span className="text-muted">—</span>
   }
-  const skipCategory =
+  const clickable = billingMonthPillClickable(row, cell, monthIso)
+  const badge = (
+    <Badge bg={billingStatusVariant(billing)} className="text-wrap small">
+      {billingStatusLabel(billing)}
+    </Badge>
+  )
+
+  if (!clickable) {
+    return <div className="d-flex justify-content-center">{badge}</div>
+  }
+
+  const waiveReason =
     billing === 'do_not_bill' ? cell?.skip_reason_category?.trim() || null : null
+  const routeId = billingMonthPaperworkRouteId(row, cell)
+
+  const pillButton = (
+    <button
+      type="button"
+      className="btn btn-link p-0 border-0 monthly-billing-pill--clickable"
+      aria-label={
+        waiveReason
+          ? `Waive: ${waiveReason}. View paperwork for ${formatMonthHeader(monthIso)}.`
+          : `View paperwork for ${formatMonthHeader(monthIso)} (${billingStatusLabel(billing)})`
+      }
+      onClick={(e) => {
+        e.stopPropagation()
+        if (routeId == null) return
+        onOpenPaperwork({
+          locationId: row.location_id,
+          locationLabel: billingBoardLocationTitle(row),
+          monthIso,
+          routeId,
+          billingStatus: billing,
+          waiveReason,
+        })
+      }}
+    >
+      {badge}
+    </button>
+  )
+
   return (
-    <div className="d-flex flex-column align-items-center gap-1">
-      <Badge bg={billingStatusVariant(billing)} className="text-wrap small">
-        {billingStatusLabel(billing)}
-      </Badge>
-      {skipCategory ? (
-        <span className="small text-muted text-wrap">{skipCategory}</span>
-      ) : null}
+    <div className="d-flex justify-content-center">
+      {waiveReason ? (
+        <OverlayTrigger trigger={['hover', 'focus']} overlay={<Tooltip>{waiveReason}</Tooltip>}>
+          <span className="d-inline-block">{pillButton}</span>
+        </OverlayTrigger>
+      ) : (
+        pillButton
+      )}
     </div>
   )
 }
@@ -89,11 +128,10 @@ function BillingBoardTableSkeleton({ monthDates }: { monthDates: string[] }) {
       aria-busy="true"
       aria-label="Loading billing locations"
     >
-      <Table responsive className="mb-0 align-middle">
+      <Table responsive className="mb-0 align-middle monthly-billing-table">
         <thead>
           <tr>
             <th style={{ minWidth: '14rem' }}>Address</th>
-            <th style={{ minWidth: '5rem' }}>Route</th>
             {monthDates.length > 0
               ? monthDates.map((monthIso) => (
                   <th key={monthIso} className="text-center" style={{ minWidth: '7rem' }}>
@@ -109,8 +147,11 @@ function BillingBoardTableSkeleton({ monthDates }: { monthDates: string[] }) {
                   </th>
                 ))}
             <th className="text-center" style={{ minWidth: '7rem' }}>
-              Quarter
+              Invoiced
             </th>
+            <th style={{ minWidth: '5rem' }}>Route</th>
+            <th style={{ minWidth: '10rem' }}>Billing comment</th>
+            <th style={{ minWidth: '10rem' }}>Property management company</th>
           </tr>
         </thead>
         <tbody>
@@ -118,13 +159,9 @@ function BillingBoardTableSkeleton({ monthDates }: { monthDates: string[] }) {
             <tr key={rowIdx}>
               <td>
                 <span
-                  className="home-skeleton-bar d-block mb-1"
+                  className="home-skeleton-bar d-block"
                   style={{ width: '88%', height: '0.9rem' }}
                 />
-                <span className="home-skeleton-bar d-block" style={{ width: '52%', height: '0.75rem' }} />
-              </td>
-              <td>
-                <span className="home-skeleton-bar d-block" style={{ width: '2.25rem', height: '0.75rem' }} />
               </td>
               {Array.from({ length: monthCols }, (_, colIdx) => (
                 <td key={colIdx} className="text-center">
@@ -140,6 +177,15 @@ function BillingBoardTableSkeleton({ monthDates }: { monthDates: string[] }) {
                   style={{ width: '5.75rem', height: '1.85rem', borderRadius: '0.35rem' }}
                 />
               </td>
+              <td>
+                <span className="home-skeleton-bar d-block" style={{ width: '2.25rem', height: '0.75rem' }} />
+              </td>
+              <td>
+                <span className="home-skeleton-bar d-block" style={{ width: '70%', height: '0.75rem' }} />
+              </td>
+              <td>
+                <span className="home-skeleton-bar d-block" style={{ width: '75%', height: '0.75rem' }} />
+              </td>
             </tr>
           ))}
         </tbody>
@@ -148,21 +194,86 @@ function BillingBoardTableSkeleton({ monthDates }: { monthDates: string[] }) {
   )
 }
 
+type BillingBoardPagination = BillingBoardPayload['pagination']
+
+function BillingBoardPaginationBar({
+  loading,
+  paginationSummary,
+  pagination,
+  onPageChange,
+  position,
+}: {
+  loading: boolean
+  paginationSummary: string | null
+  pagination: BillingBoardPagination | undefined
+  onPageChange: (page: number) => void
+  position: 'top' | 'bottom'
+}) {
+  return (
+    <div
+      className={`d-flex flex-wrap justify-content-between align-items-center gap-2 px-3 py-2 ${
+        position === 'top' ? 'border-bottom' : 'border-top'
+      }`}
+    >
+      {loading ? (
+        <span
+          className="home-skeleton-bar d-inline-block"
+          style={{ width: '11rem', height: '0.85rem' }}
+          aria-hidden
+        />
+      ) : (
+        <span className="small text-muted">{paginationSummary}</span>
+      )}
+      <div className="d-flex gap-2">
+        <Button
+          size="sm"
+          variant="outline-secondary"
+          disabled={!pagination || pagination.page <= 1 || loading}
+          onClick={() => onPageChange(Math.max(1, (pagination?.page ?? 1) - 1))}
+        >
+          Previous
+        </Button>
+        <Button
+          size="sm"
+          variant="outline-secondary"
+          disabled={!pagination || pagination.page >= pagination.total_pages || loading}
+          onClick={() =>
+            onPageChange(pagination ? Math.min(pagination.total_pages, pagination.page + 1) : 1)
+          }
+        >
+          Next
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 export default function MonthlyBillingPage() {
-  const monthOptions = useMemo(() => anchorMonthOptions(), [])
-  const [anchorMonth, setAnchorMonth] = useState(monthFirstIsoPacificToday())
+  const quarterOptions = useMemo(() => quarterSelectionOptions(), [])
+  const initialQuarter = useMemo(() => currentBillingQuarter(), [])
+  const [selectedQuarterKey, setSelectedQuarterKey] = useState(() =>
+    quarterSelectionKey(initialQuarter.year, initialQuarter.quarter),
+  )
+  const selectedQuarter = useMemo(
+    () => parseQuarterSelectionKey(selectedQuarterKey) ?? initialQuarter,
+    [selectedQuarterKey, initialQuarter],
+  )
   const [query, setQuery] = useState('')
   const [routeFilter, setRouteFilter] = useState('')
-  const [billAnyMonth, setBillAnyMonth] = useState(false)
-  const [unsetAnyMonth, setUnsetAnyMonth] = useState(false)
+  const [doNotBillAnyMonth, setDoNotBillAnyMonth] = useState(false)
   const [notBilledQuarter, setNotBilledQuarter] = useState(false)
-  const [failedAnyMonth, setFailedAnyMonth] = useState(false)
+  const [nonEmptyBillingNotes, setNonEmptyBillingNotes] = useState(false)
   const [page, setPage] = useState(1)
   const [payload, setPayload] = useState<BillingBoardPayload | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busyLocationId, setBusyLocationId] = useState<number | null>(null)
+  const [editingBillingCommentLocationId, setEditingBillingCommentLocationId] = useState<number | null>(
+    null,
+  )
   const [trackedLocationId, setTrackedLocationId] = useState<number | null>(null)
+  const [paperworkModalContext, setPaperworkModalContext] =
+    useState<BillingBoardPaperworkModalContext | null>(null)
   const loadSeqRef = useRef(0)
 
   const load = useCallback(async () => {
@@ -172,15 +283,15 @@ export default function MonthlyBillingPage() {
     setError(null)
     try {
       const data = await fetchBillingBoard({
-        anchorMonth,
+        year: selectedQuarter.year,
+        quarter: selectedQuarter.quarter,
         q: query,
         route: routeFilter,
         page,
         pageSize: PAGE_SIZE,
-        billAnyMonth,
-        unsetAnyMonth,
+        doNotBillAnyMonth,
         notBilledQuarter,
-        failedAnyMonth,
+        nonEmptyBillingNotes,
       })
       if (loadSeqRef.current !== seq) return
       setPayload(data)
@@ -193,14 +304,14 @@ export default function MonthlyBillingPage() {
       if (loadSeqRef.current === seq) setLoading(false)
     }
   }, [
-    anchorMonth,
+    selectedQuarter.year,
+    selectedQuarter.quarter,
     query,
     routeFilter,
     page,
-    billAnyMonth,
-    unsetAnyMonth,
+    doNotBillAnyMonth,
     notBilledQuarter,
-    failedAnyMonth,
+    nonEmptyBillingNotes,
   ])
 
   useEffect(() => {
@@ -209,15 +320,12 @@ export default function MonthlyBillingPage() {
 
   useEffect(() => {
     setTrackedLocationId(null)
-  }, [page, anchorMonth, query, routeFilter, billAnyMonth, unsetAnyMonth, notBilledQuarter, failedAnyMonth])
+    setEditingBillingCommentLocationId(null)
+  }, [page, selectedQuarterKey, query, routeFilter, doNotBillAnyMonth, notBilledQuarter, nonEmptyBillingNotes])
 
   const routeOptions = payload?.meta.routes ?? []
   const monthDates = payload?.month_dates ?? []
   const pagination = payload?.pagination
-  const quarterHeading =
-    payload != null
-      ? quarterTitle(payload.year, payload.quarter, payload.month_dates)
-      : null
 
   const paginationSummary = useMemo(() => {
     if (!pagination) return null
@@ -227,10 +335,27 @@ export default function MonthlyBillingPage() {
     return `Showing ${start}–${end} of ${pagination.total}`
   }, [pagination])
 
+  const updateLocationBillingComments = useCallback((locationId: number, billingComments: string | null) => {
+    setPayload((prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        locations: prev.locations.map((loc) =>
+          loc.location_id === locationId ? { ...loc, billing_comments: billingComments } : loc,
+        ),
+      }
+    })
+  }, [])
+
   const toggleBilled = async (row: BillingBoardLocationRow) => {
     setBusyLocationId(row.location_id)
     try {
-      const result = await patchQuarterBilled(row.location_id, anchorMonth, !row.quarter_billed)
+      const result = await patchQuarterBilled(
+        row.location_id,
+        selectedQuarter.year,
+        selectedQuarter.quarter,
+        !row.quarter_billed,
+      )
       setPayload((prev) => {
         if (!prev) return prev
         return {
@@ -271,30 +396,27 @@ export default function MonthlyBillingPage() {
     <div className="monthly-page d-flex flex-column gap-3">
       <Card className="app-surface-card monthly-filters-card">
         <Card.Body className="p-3 p-md-4">
-          <h1 className="processing-page-title mb-1">Monthly Billing</h1>
-          <p className="text-muted small mb-3">
-            Processor Bill / Do not bill decisions are set on route paperwork. Use this board to
-            review billing by quarter and mark addresses as invoiced.
-          </p>
-          {quarterHeading ? (
-            <p className="fw-semibold mb-3">{quarterHeading}</p>
-          ) : null}
+          <h1 className="processing-page-title mb-3">Monthly Billing</h1>
           <div className="d-flex flex-wrap align-items-end gap-3">
             <Form.Group>
-              <Form.Label className="small text-muted mb-1">Month (sets quarter)</Form.Label>
+              <Form.Label className="small text-muted mb-1">Quarter</Form.Label>
               <Form.Select
-                value={anchorMonth}
+                value={selectedQuarterKey}
                 onChange={(e) => {
-                  setAnchorMonth(e.target.value)
+                  setSelectedQuarterKey(e.target.value)
                   setPage(1)
                 }}
-                style={{ minWidth: '11rem' }}
+                style={{ minWidth: '18rem' }}
               >
-                {monthOptions.map((key) => (
-                  <option key={key} value={key}>
-                    {formatMonthHeader(key)}
-                  </option>
-                ))}
+                {quarterOptions.map((key) => {
+                  const parsed = parseQuarterSelectionKey(key)
+                  if (!parsed) return null
+                  return (
+                    <option key={key} value={key}>
+                      {quarterOptionLabel(parsed.year, parsed.quarter)}
+                    </option>
+                  )
+                })}
               </Form.Select>
             </Form.Group>
             <Form.Group className="flex-grow-1" style={{ minWidth: '12rem', maxWidth: '22rem' }}>
@@ -330,26 +452,6 @@ export default function MonthlyBillingPage() {
           <div className="d-flex flex-wrap gap-3 mt-3">
             <Form.Check
               type="checkbox"
-              id="billing-filter-bill"
-              label="Bill in any month"
-              checked={billAnyMonth}
-              onChange={(e) => {
-                setBillAnyMonth(e.target.checked)
-                setPage(1)
-              }}
-            />
-            <Form.Check
-              type="checkbox"
-              id="billing-filter-unset"
-              label="Unset in any month"
-              checked={unsetAnyMonth}
-              onChange={(e) => {
-                setUnsetAnyMonth(e.target.checked)
-                setPage(1)
-              }}
-            />
-            <Form.Check
-              type="checkbox"
               id="billing-filter-not-billed"
               label="Not billed for quarter"
               checked={notBilledQuarter}
@@ -360,11 +462,21 @@ export default function MonthlyBillingPage() {
             />
             <Form.Check
               type="checkbox"
-              id="billing-filter-failed"
-              label="Failed in any month"
-              checked={failedAnyMonth}
+              id="billing-filter-do-not-bill"
+              label="Waive in any month"
+              checked={doNotBillAnyMonth}
               onChange={(e) => {
-                setFailedAnyMonth(e.target.checked)
+                setDoNotBillAnyMonth(e.target.checked)
+                setPage(1)
+              }}
+            />
+            <Form.Check
+              type="checkbox"
+              id="billing-filter-non-empty-notes"
+              label="Non-empty notes"
+              checked={nonEmptyBillingNotes}
+              onChange={(e) => {
+                setNonEmptyBillingNotes(e.target.checked)
                 setPage(1)
               }}
             />
@@ -380,51 +492,21 @@ export default function MonthlyBillingPage() {
             </p>
           ) : (
             <>
-              <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 px-3 py-2 border-bottom">
-                {loading ? (
-                  <span
-                    className="home-skeleton-bar d-inline-block"
-                    style={{ width: '11rem', height: '0.85rem' }}
-                    aria-hidden
-                  />
-                ) : (
-                  <span className="small text-muted">{paginationSummary}</span>
-                )}
-                <div className="d-flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline-secondary"
-                    disabled={!pagination || pagination.page <= 1 || loading}
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  >
-                    Previous
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline-secondary"
-                    disabled={
-                      !pagination ||
-                      pagination.page >= pagination.total_pages ||
-                      loading
-                    }
-                    onClick={() =>
-                      setPage((p) =>
-                        pagination ? Math.min(pagination.total_pages, p + 1) : p + 1,
-                      )
-                    }
-                  >
-                    Next
-                  </Button>
-                </div>
-              </div>
+              <BillingBoardPaginationBar
+                loading={loading}
+                paginationSummary={paginationSummary}
+                pagination={pagination}
+                onPageChange={setPage}
+                position="top"
+              />
               {loading ? (
                 <BillingBoardTableSkeleton monthDates={monthDates} />
               ) : (
-                <Table responsive hover className="mb-0 align-middle">
+                <>
+                  <Table responsive hover className="mb-0 align-middle monthly-billing-table">
                   <thead>
                     <tr>
                         <th style={{ minWidth: '14rem' }}>Address</th>
-                        <th style={{ minWidth: '5rem' }}>Route</th>
                         {monthDates.map((monthIso) => (
                           <th
                             key={monthIso}
@@ -436,14 +518,17 @@ export default function MonthlyBillingPage() {
                           </th>
                         ))}
                         <th className="text-center" style={{ minWidth: '7rem' }}>
-                          Quarter
+                          Invoiced
                         </th>
+                        <th style={{ minWidth: '5rem' }}>Route</th>
+                        <th style={{ minWidth: '10rem' }}>Billing comment</th>
+                        <th style={{ minWidth: '10rem' }}>Property management company</th>
                       </tr>
                     </thead>
                     <tbody>
                       {(payload?.locations ?? []).length === 0 ? (
                         <tr>
-                          <td colSpan={3 + monthDates.length} className="text-muted small p-3">
+                          <td colSpan={5 + monthDates.length} className="text-muted small p-3">
                             No active locations match your filters.
                           </td>
                         </tr>
@@ -451,24 +536,31 @@ export default function MonthlyBillingPage() {
                         (payload?.locations ?? []).map((row) => {
                           const billedTooltip =
                             row.quarter_billed && row.billed_at
-                              ? `Billed ${new Date(row.billed_at).toLocaleString()}${row.billed_by ? ` by ${row.billed_by}` : ''}`
-                              : 'Mark as invoiced for this quarter'
+                              ? `Invoiced ${new Date(row.billed_at).toLocaleString()}${row.billed_by ? ` by ${row.billed_by}` : ''}`
+                              : 'Invoice for this quarter'
                           const btn = (
                             <Button
                               size="sm"
-                              variant={row.quarter_billed ? 'success' : 'outline-primary'}
+                              variant={row.quarter_billed ? 'link' : 'primary'}
+                              className={row.quarter_billed ? 'p-0 text-success' : undefined}
                               disabled={busyLocationId === row.location_id}
+                              aria-label={row.quarter_billed ? 'Invoiced' : 'Invoice'}
                               onClick={(e) => {
                                 e.stopPropagation()
                                 void toggleBilled(row)
                               }}
                             >
                               {busyLocationId === row.location_id ? (
-                                <Spinner animation="border" size="sm" aria-label="Saving" />
+                                <Spinner
+                                  animation="border"
+                                  size="sm"
+                                  variant={row.quarter_billed ? undefined : 'light'}
+                                  aria-label="Saving"
+                                />
                               ) : row.quarter_billed ? (
-                                'Billed'
+                                <i className="bi bi-check-circle-fill fs-5" aria-hidden />
                               ) : (
-                                'Mark billed'
+                                'Invoice'
                               )}
                             </Button>
                           )
@@ -492,23 +584,15 @@ export default function MonthlyBillingPage() {
                                 >
                                   {billingBoardLocationTitle(row)}
                                 </Link>
-                                {billingBoardLocationSubline(row) ? (
-                                  <div className="small text-muted">
-                                    {billingBoardLocationSubline(row)}
-                                  </div>
-                                ) : null}
-                                {row.billing_comments?.trim() ? (
-                                  <div className="small text-muted text-break">
-                                    {row.billing_comments.trim()}
-                                  </div>
-                                ) : null}
-                              </td>
-                              <td className="small">
-                                <BillingRouteCell row={row} />
                               </td>
                               {monthDates.map((monthIso) => (
                                 <td key={monthIso} className="text-center">
-                                  <BillingMonthCell cell={row.months[monthIso]} monthIso={monthIso} />
+                                  <BillingMonthCell
+                                    row={row}
+                                    cell={row.months[monthIso]}
+                                    monthIso={monthIso}
+                                    onOpenPaperwork={setPaperworkModalContext}
+                                  />
                                 </td>
                               ))}
                               <td className="text-center">
@@ -516,17 +600,53 @@ export default function MonthlyBillingPage() {
                                   <span className="d-inline-block">{btn}</span>
                                 </OverlayTrigger>
                               </td>
+                              <td className="small">
+                                <BillingRouteCell row={row} />
+                              </td>
+                              <td className="small text-muted text-break">
+                                <BillingBoardCommentCell
+                                  locationId={row.location_id}
+                                  billingComments={row.billing_comments}
+                                  isEditing={editingBillingCommentLocationId === row.location_id}
+                                  onBeginEdit={() => setEditingBillingCommentLocationId(row.location_id)}
+                                  onEndEdit={() => setEditingBillingCommentLocationId(null)}
+                                  onSaved={(billingComments) =>
+                                    updateLocationBillingComments(row.location_id, billingComments)
+                                  }
+                                />
+                              </td>
+                              <td className="small text-muted text-break">
+                                {row.property_management_company?.trim() ? (
+                                  row.property_management_company.trim()
+                                ) : (
+                                  <span className="text-muted">—</span>
+                                )}
+                              </td>
                             </tr>
                           )
                         })
                       )}
                     </tbody>
                   </Table>
+                  <BillingBoardPaginationBar
+                    loading={loading}
+                    paginationSummary={paginationSummary}
+                    pagination={pagination}
+                    onPageChange={setPage}
+                    position="bottom"
+                  />
+                </>
               )}
             </>
           )}
         </Card.Body>
       </Card>
+
+      <BillingBoardPaperworkModal
+        show={paperworkModalContext != null}
+        context={paperworkModalContext}
+        onHide={() => setPaperworkModalContext(null)}
+      />
     </div>
   )
 }

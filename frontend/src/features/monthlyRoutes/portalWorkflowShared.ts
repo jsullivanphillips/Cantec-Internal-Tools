@@ -43,6 +43,8 @@ export type PortalDeficiencySummary = {
   status: string
   description: string | null
   verification_notes: string | null
+  service_line?: string | null
+  service_trade_deficiency_id?: number | null
   reported_by_tech_id?: string | null
   reported_by_tech_name?: string | null
   last_edited_by_tech_id?: string | null

@@ -333,6 +333,74 @@ def close_skipped_run_from_office(
     run.completed_at = now
 
 
+def next_month_first(month_first: date) -> date:
+    """First day of the calendar month after ``month_first``."""
+    if month_first.month == 12:
+        return date(month_first.year + 1, 1, 1)
+    return date(month_first.year, month_first.month + 1, 1)
+
+
+def resolve_portal_route_summary_months(
+    route_id: int,
+    *,
+    calendar_month: date | None = None,
+) -> tuple[date, date, MonthlyRouteRun | None, bool, list[MonthlyRouteRun]]:
+    """Resolve portal primary month, run, awaiting flag, and prior runs.
+
+    When the Pacific calendar-month run is office-closed, promote the next month
+    to the portal primary section (if prepared) and move the closed month to prior runs.
+
+    Returns ``(calendar_month, primary_month, primary_run, awaiting_office_prepare, prior_runs)``.
+    """
+    from app.db_models import MonthlyRouteRun
+    from app.routes.monthly_routes import _current_pacific_month_first
+
+    if calendar_month is None:
+        calendar_month = _current_pacific_month_first()
+
+    calendar_run = MonthlyRouteRun.query.filter_by(
+        monthly_route_id=int(route_id),
+        month_date=calendar_month,
+    ).one_or_none()
+
+    if calendar_run is not None and run_explicitly_completed(calendar_run):
+        promoted_month = next_month_first(calendar_month)
+        next_run = MonthlyRouteRun.query.filter_by(
+            monthly_route_id=int(route_id),
+            month_date=promoted_month,
+        ).one_or_none()
+        if run_is_prepared(next_run):
+            primary_month = promoted_month
+            primary_run = next_run
+            awaiting_office_prepare = False
+        else:
+            primary_month = promoted_month
+            primary_run = None
+            awaiting_office_prepare = True
+        prior_cutoff = promoted_month
+    else:
+        primary_month = calendar_month
+        primary_run = calendar_run
+        awaiting_office_prepare = False
+        prior_cutoff = calendar_month
+
+    prior_runs = (
+        MonthlyRouteRun.query.filter(
+            MonthlyRouteRun.monthly_route_id == int(route_id),
+            MonthlyRouteRun.month_date < prior_cutoff,
+        )
+        .order_by(MonthlyRouteRun.month_date.desc())
+        .all()
+    )
+    return (
+        calendar_month,
+        primary_month,
+        primary_run,
+        awaiting_office_prepare,
+        prior_runs,
+    )
+
+
 def current_month_run_closed_for_future_prep(run: MonthlyRouteRun | None) -> bool:
     """True when the Pacific current-month run is fully closed."""
     if run is None:

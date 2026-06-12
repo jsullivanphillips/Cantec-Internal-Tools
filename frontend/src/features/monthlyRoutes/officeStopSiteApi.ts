@@ -22,7 +22,15 @@ export async function officeCreateDeficiency(
 
   locationId: number,
 
-  body: { title: string; severity: string; status: string; description?: string; run_id?: number | null },
+  body: {
+    title: string
+    severity: string
+    status: string
+    description?: string
+    run_id?: number | null
+    service_line?: string
+    create_on_service_trade?: boolean
+  },
 
 ): Promise<TechnicianWorksheetLocation> {
 

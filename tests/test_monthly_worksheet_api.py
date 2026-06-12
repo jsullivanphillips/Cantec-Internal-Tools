@@ -1494,7 +1494,9 @@ def test_portal_route_summary(portal_only_client, monkeypatch):
     assert res.status_code == 200
     body = res.get_json()
     assert body["route"]["route_number"] == 16
+    assert body["calendar_month_first"] == "2026-05-01"
     assert body["current_month_first"] == "2026-05-01"
+    assert body["awaiting_office_prepare"] is False
     assert body["current_month_run"] is None
     assert len(body["prior_runs"]) == 1
     assert body["prior_runs"][0]["month_date"] == "2026-04-01"
@@ -1522,7 +1524,161 @@ def test_portal_route_summary_includes_pre_run_message(portal_only_client, monke
     res = client.get("/api/technician_portal/routes/1/portal_route_summary")
     assert res.status_code == 200
     body = res.get_json()
+    assert body["calendar_month_first"] == "2026-05-01"
+    assert body["current_month_first"] == "2026-05-01"
+    assert body["awaiting_office_prepare"] is False
     assert body["current_month_run"]["pre_run_message"] == "Do not skip 99 Oak"
+
+
+def test_portal_route_summary_promotes_when_current_closed_and_next_prepared(
+    portal_only_client, monkeypatch
+):
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 6, 1))
+
+    client, app = portal_only_client
+    with app.app_context():
+        route = MonthlyRoute(id=1, route_number=16, weekday_iso=0, week_occurrence=1)
+        now = datetime.now(PACIFIC_TZ)
+        closed_june = MonthlyRouteRun(
+            id=9101,
+            monthly_route_id=1,
+            month_date=date(2026, 6, 1),
+            status="completed",
+            completed_at=now,
+            field_ended_at=now,
+            source="technician_app",
+        )
+        prepared_july = MonthlyRouteRun(
+            id=9102,
+            monthly_route_id=1,
+            month_date=date(2026, 7, 1),
+            status="open",
+            prepared_at=now,
+            prepared_by="office",
+            source="office_manual",
+        )
+        db.session.add_all([route, closed_june, prepared_july])
+        db.session.commit()
+
+    res = client.get("/api/technician_portal/routes/1/portal_route_summary")
+    assert res.status_code == 200
+    body = res.get_json()
+    assert body["calendar_month_first"] == "2026-06-01"
+    assert body["current_month_first"] == "2026-07-01"
+    assert body["awaiting_office_prepare"] is False
+    assert body["current_month_run"]["month_date"] == "2026-07-01"
+    assert len(body["prior_runs"]) == 1
+    assert body["prior_runs"][0]["month_date"] == "2026-06-01"
+
+
+def test_portal_route_summary_waiting_when_current_closed_next_not_prepared(
+    portal_only_client, monkeypatch
+):
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 6, 1))
+
+    client, app = portal_only_client
+    with app.app_context():
+        route = MonthlyRoute(id=1, route_number=16, weekday_iso=0, week_occurrence=1)
+        now = datetime.now(PACIFIC_TZ)
+        closed_june = MonthlyRouteRun(
+            id=9201,
+            monthly_route_id=1,
+            month_date=date(2026, 6, 1),
+            status="completed",
+            completed_at=now,
+            field_ended_at=now,
+            source="technician_app",
+        )
+        db.session.add_all([route, closed_june])
+        db.session.commit()
+
+    res = client.get("/api/technician_portal/routes/1/portal_route_summary")
+    assert res.status_code == 200
+    body = res.get_json()
+    assert body["calendar_month_first"] == "2026-06-01"
+    assert body["current_month_first"] == "2026-07-01"
+    assert body["awaiting_office_prepare"] is True
+    assert body["current_month_run"] is None
+    assert len(body["prior_runs"]) == 1
+    assert body["prior_runs"][0]["month_date"] == "2026-06-01"
+
+
+def test_portal_route_summary_reopen_reverses_promotion(portal_only_client, monkeypatch):
+    from app.monthly.run_workflow import clear_office_completion
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 6, 1))
+
+    client, app = portal_only_client
+    with app.app_context():
+        route = MonthlyRoute(id=1, route_number=16, weekday_iso=0, week_occurrence=1)
+        now = datetime.now(PACIFIC_TZ)
+        june = MonthlyRouteRun(
+            id=9301,
+            monthly_route_id=1,
+            month_date=date(2026, 6, 1),
+            status="completed",
+            completed_at=now,
+            field_ended_at=now,
+            source="technician_app",
+        )
+        july = MonthlyRouteRun(
+            id=9302,
+            monthly_route_id=1,
+            month_date=date(2026, 7, 1),
+            status="open",
+            prepared_at=now,
+            prepared_by="office",
+            source="office_manual",
+        )
+        db.session.add_all([route, june, july])
+        db.session.commit()
+
+    promoted = client.get("/api/technician_portal/routes/1/portal_route_summary")
+    assert promoted.get_json()["current_month_first"] == "2026-07-01"
+
+    with app.app_context():
+        run = MonthlyRouteRun.query.get(9301)
+        clear_office_completion(run)
+        db.session.commit()
+
+    restored = client.get("/api/technician_portal/routes/1/portal_route_summary")
+    body = restored.get_json()
+    assert body["current_month_first"] == "2026-06-01"
+    assert body["current_month_run"]["month_date"] == "2026-06-01"
+    assert body["awaiting_office_prepare"] is False
+    assert all(r["month_date"] != "2026-06-01" for r in body["prior_runs"])
+
+
+def test_portal_start_blocked_when_calendar_month_run_closed(portal_only_client, monkeypatch):
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 6, 1))
+
+    client, app = portal_only_client
+    with app.app_context():
+        route = MonthlyRoute(id=1, route_number=16, weekday_iso=0, week_occurrence=1)
+        now = datetime.now(PACIFIC_TZ)
+        closed_june = MonthlyRouteRun(
+            id=9401,
+            monthly_route_id=1,
+            month_date=date(2026, 6, 1),
+            status="completed",
+            completed_at=now,
+            prepared_at=now,
+            field_ended_at=now,
+            source="technician_app",
+        )
+        db.session.add_all([route, closed_june])
+        db.session.commit()
+
+    res = client.post("/api/technician_portal/routes/1/runs")
+    assert res.status_code == 409
+    assert res.get_json().get("code") == "run_completed_locked"
 
 
 def test_hybrid_staff_portal_uses_tech_portal_param_for_lazy_worksheet(monkeypatch, hybrid_portal_staff_client):

@@ -859,6 +859,12 @@ def _serialize_deficiency(row: MonthlyLocationDeficiency) -> dict[str, object]:
         "severity": row.severity,
         "status": row.status,
         "description": row.description,
+        "service_line": row.service_line,
+        "service_trade_deficiency_id": (
+            int(row.service_trade_deficiency_id)
+            if row.service_trade_deficiency_id is not None
+            else None
+        ),
         "verification_notes": row.verification_notes,
         "reported_by_tech_id": row.reported_by_tech_id,
         "reported_by_tech_name": row.reported_by_tech_name,

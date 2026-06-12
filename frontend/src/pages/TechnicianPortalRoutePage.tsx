@@ -23,8 +23,10 @@ type PortalRoute = {
 
 type PortalRouteSummaryResponse = {
   route: PortalRoute
+  calendar_month_first: string
   current_month_first: string
   current_month_run: TechnicianWorksheetRun | null
+  awaiting_office_prepare: boolean
   prior_runs: TechnicianWorksheetRun[]
 }
 
@@ -117,6 +119,9 @@ export default function TechnicianPortalRoutePage() {
   )
 
   const monthLabel = data ? formatMonthHeading(data.current_month_first) : ''
+  const primaryIsPromotedFuture =
+    data != null && data.current_month_first > data.calendar_month_first
+  const primarySectionTitle = primaryIsPromotedFuture ? monthLabel : 'This month'
 
   const endFieldRun = useCallback(async () => {
     if (Number.isNaN(idNum)) return
@@ -161,12 +166,16 @@ export default function TechnicianPortalRoutePage() {
   }, [idNum])
 
   const currentRun = data?.current_month_run ?? null
+  const primaryIsCalendarMonth =
+    data != null && data.current_month_first === data.calendar_month_first
   const showEndRun =
+    primaryIsCalendarMonth &&
     currentRun != null &&
     (currentRun.started_at || '').trim().length > 0 &&
     !runFieldEnded(currentRun) &&
     !worksheetRunExplicitlyCompleted(currentRun)
   const showReopenField =
+    primaryIsCalendarMonth &&
     currentRun != null &&
     runFieldEnded(currentRun) &&
     !worksheetRunExplicitlyCompleted(currentRun)
@@ -196,10 +205,19 @@ export default function TechnicianPortalRoutePage() {
             </div>
           </div>
 
-          {data.current_month_run == null ? (
+          {data.awaiting_office_prepare ? (
             <Card className="shadow-sm border-primary mb-4">
               <Card.Body className="py-4">
-                <div className="fw-semibold mb-2">This month</div>
+                <div className="fw-semibold mb-2">{primarySectionTitle}</div>
+                <p className="text-muted small mb-0">
+                  The office is still preparing the run for {monthLabel}. Check back once it has been released.
+                </p>
+              </Card.Body>
+            </Card>
+          ) : data.current_month_run == null ? (
+            <Card className="shadow-sm border-primary mb-4">
+              <Card.Body className="py-4">
+                <div className="fw-semibold mb-2">{primarySectionTitle}</div>
                 <p className="text-muted small mb-3">
                   No run file exists for {monthLabel} yet. Open the worksheet to review stops, then start the run from
                   the worksheet when you are ready. Other techs on the same route will join that run.
@@ -218,7 +236,12 @@ export default function TechnicianPortalRoutePage() {
           ) : (
             <Card className="shadow-sm border-primary mb-4">
               <Card.Body className="py-4">
-                <div className="fw-semibold mb-2">This month</div>
+                <div className="fw-semibold mb-1">{primarySectionTitle}</div>
+                {primaryIsPromotedFuture ? (
+                  <p className="text-muted small mb-3">
+                    Field run starts {monthLabel}. You can review stops now; starting the run unlocks on that date.
+                  </p>
+                ) : null}
                 <RunWorkflowStepper run={data.current_month_run} className="mb-3" />
                 <Button
                   variant="primary"

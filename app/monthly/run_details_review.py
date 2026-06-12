@@ -696,6 +696,12 @@ def _serialize_deficiency(row: MonthlyLocationDeficiency) -> dict[str, object]:
         "severity": row.severity,
         "status": row.status,
         "description": _normalize_text(row.description),
+        "service_line": _normalize_text(row.service_line),
+        "service_trade_deficiency_id": (
+            int(row.service_trade_deficiency_id)
+            if row.service_trade_deficiency_id is not None
+            else None
+        ),
         "verification_notes": _normalize_text(row.verification_notes),
         "reported_by_tech_id": _normalize_text(row.reported_by_tech_id),
         "reported_by_tech_name": _normalize_text(row.reported_by_tech_name),
@@ -1063,6 +1069,11 @@ def run_details_locations_payload(
         )
         loc = loc_by_id.get(lid)
         payload["location_label"] = _location_display_label(loc, lid)
+        st_site_id = loc.service_trade_site_location_id if loc is not None else None
+        payload["service_trade_site_location_id"] = (
+            int(st_site_id) if st_site_id is not None else None
+        )
+        payload["has_service_trade_link"] = st_site_id is not None
         billing = _billing_status_for_location(lid, month_first, mlm_by_loc, stop)
         payload["billing_status"] = billing
         payload["attention_flags"] = _location_attention_flags(

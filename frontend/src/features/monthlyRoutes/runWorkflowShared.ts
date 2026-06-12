@@ -80,6 +80,21 @@ export function canPortalEditRun(run: TechnicianWorksheetRun | null | undefined)
   return hasTs(run.started_at) && !hasTs(run.field_ended_at)
 }
 
+/** Portal worksheet Start run button — only when lifecycle is active and month is Pacific today. */
+export function portalShowStartRun(params: {
+  showPortalRunLifecycle: boolean
+  runPrepared: boolean
+  runStarted: boolean
+  isCurrentMonth: boolean
+}): boolean {
+  return (
+    params.showPortalRunLifecycle &&
+    params.runPrepared &&
+    !params.runStarted &&
+    params.isCurrentMonth
+  )
+}
+
 export function canOfficeEditOutcomes(run: TechnicianWorksheetRun | null | undefined): boolean {
   if (!run || runExplicitlyCompleted(run)) return false
   return hasTs(run.field_ended_at)

@@ -243,10 +243,9 @@ def _billing_board_location_query(
     *,
     q: str,
     route: str,
-    bill_any_month: bool,
-    unset_any_month: bool,
+    do_not_bill_any_month: bool,
     not_billed_quarter: bool,
-    failed_any_month: bool,
+    non_empty_billing_notes: bool,
     year: int,
     quarter: int,
     month_dates: list[date],
@@ -270,24 +269,12 @@ def _billing_board_location_query(
         else:
             location_query = location_query.filter(MonthlyLocation.test_day == route)
 
-    if bill_any_month:
+    if do_not_bill_any_month:
         location_query = location_query.filter(
             MonthlyLocation.id.in_(
                 db.session.query(MonthlyLocationMonth.monthly_location_id).filter(
                     MonthlyLocationMonth.month_date.in_(month_dates),
-                    MonthlyLocationMonth.billing_status == "bill",
-                )
-            )
-        )
-    if unset_any_month:
-        location_query = location_query.filter(
-            MonthlyLocation.id.in_(
-                db.session.query(MonthlyLocationMonth.monthly_location_id).filter(
-                    MonthlyLocationMonth.month_date.in_(month_dates),
-                    or_(
-                        MonthlyLocationMonth.billing_status.is_(None),
-                        MonthlyLocationMonth.billing_status == "unset",
-                    ),
+                    MonthlyLocationMonth.billing_status == "do_not_bill",
                 )
             )
         )
@@ -300,14 +287,9 @@ def _billing_board_location_query(
             )
         )
         location_query = location_query.filter(~MonthlyLocation.id.in_(billed_ids))
-    if failed_any_month:
+    if non_empty_billing_notes:
         location_query = location_query.filter(
-            MonthlyLocation.id.in_(
-                db.session.query(MonthlyLocationMonth.monthly_location_id).filter(
-                    MonthlyLocationMonth.month_date.in_(month_dates),
-                    MonthlyLocationMonth.test_outcome == "failed",
-                )
-            )
+            func.coalesce(func.trim(MonthlyLocation.billing_comments), "") != "",
         )
 
     return location_query.order_by(MonthlyLocation.address.asc())
@@ -443,6 +425,7 @@ def _serialize_board_row(
         "location_label": _location_display_label(loc),
         "testing_site_labels": None,
         "building": _normalize_text(loc.label),
+        "property_management_company": loc.property_management_company,
         "billing_comments": loc.billing_comments,
         "test_day": loc.test_day,
         "route_number": route_number,
@@ -464,18 +447,16 @@ def load_billing_board(
     route: str = "",
     page: int = 1,
     page_size: int = 50,
-    bill_any_month: bool = False,
-    unset_any_month: bool = False,
+    do_not_bill_any_month: bool = False,
     not_billed_quarter: bool = False,
-    failed_any_month: bool = False,
+    non_empty_billing_notes: bool = False,
 ) -> dict[str, Any]:
     location_query = _billing_board_location_query(
         q=q.strip().casefold(),
         route=route.strip(),
-        bill_any_month=bill_any_month,
-        unset_any_month=unset_any_month,
+        do_not_bill_any_month=do_not_bill_any_month,
         not_billed_quarter=not_billed_quarter,
-        failed_any_month=failed_any_month,
+        non_empty_billing_notes=non_empty_billing_notes,
         year=year,
         quarter=quarter,
         month_dates=month_dates,

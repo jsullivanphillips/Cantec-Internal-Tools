@@ -383,13 +383,15 @@ def _months_payload_for_location(location_id: int) -> dict[str, dict[str, object
     )
     out: dict[str, dict[str, object]] = {}
     for row in history_rows:
-        # Worksheet / run-details links require a real run file (``run_id``), not master-sheet ledger only.
+        # Worksheet / run-details links: prefer run file route, else route captured on the month row.
         worksheet_route_id: int | None = None
         if row.run_id is not None:
             if row.run is not None:
                 worksheet_route_id = int(row.run.monthly_route_id)
             elif row.test_monthly_route_id is not None:
                 worksheet_route_id = int(row.test_monthly_route_id)
+        elif row.test_monthly_route_id is not None:
+            worksheet_route_id = int(row.test_monthly_route_id)
         out[row.month_date.isoformat()] = {
             "result_status": row.result_status,
             "skip_reason": row.skip_reason,
@@ -1951,10 +1953,13 @@ def get_monthly_billing_board():
     page_size = min(_parse_positive_int(request.args.get("page_size"), 50), 200)
     q = (request.args.get("q") or "").strip().casefold()
     route = (request.args.get("route") or "").strip()
-    bill_any_month = (request.args.get("bill_any_month") or "").strip().lower() == "true"
-    unset_any_month = (request.args.get("unset_any_month") or "").strip().lower() == "true"
+    do_not_bill_any_month = (
+        (request.args.get("do_not_bill_any_month") or "").strip().lower() == "true"
+    )
     not_billed_quarter = (request.args.get("not_billed_quarter") or "").strip().lower() == "true"
-    failed_any_month = (request.args.get("failed_any_month") or "").strip().lower() == "true"
+    non_empty_billing_notes = (
+        (request.args.get("non_empty_billing_notes") or "").strip().lower() == "true"
+    )
 
     payload = load_billing_board(
         year_i,
@@ -1964,10 +1969,9 @@ def get_monthly_billing_board():
         route=route,
         page=page,
         page_size=page_size,
-        bill_any_month=bill_any_month,
-        unset_any_month=unset_any_month,
+        do_not_bill_any_month=do_not_bill_any_month,
         not_billed_quarter=not_billed_quarter,
-        failed_any_month=failed_any_month,
+        non_empty_billing_notes=non_empty_billing_notes,
     )
     payload["meta"] = {"routes": _billing_board_route_options()}
     return jsonify(payload)
@@ -4326,6 +4330,34 @@ def post_worksheet_stop_deficiency(route_id: int, location_id: int):
         return jsonify({"error": "title is required"}), 400
     tech_id, tech_name = _portal_session_tech()
     run = ctx["run"]
+    loc = ctx["loc"]
+
+    service_line_raw = _normalize_ws_text(payload.get("service_line"))
+    service_line_key: str | None = None
+    if service_line_raw:
+        from app.monthly.service_trade_deficiencies import normalize_office_service_line_key
+
+        try:
+            service_line_key = normalize_office_service_line_key(service_line_raw)
+        except ValueError:
+            return jsonify({"error": "Invalid service line", "code": "invalid_service_line"}), 400
+
+    create_on_service_trade = bool(payload.get("create_on_service_trade"))
+    if create_on_service_trade:
+        if service_line_key is None:
+            return jsonify({"error": "service_line is required", "code": "service_line_required"}), 400
+        st_site_id = loc.service_trade_site_location_id if loc is not None else None
+        if st_site_id is None:
+            return (
+                jsonify(
+                    {
+                        "error": "This site is not linked to ServiceTrade.",
+                        "code": "no_servicetrade_link",
+                    }
+                ),
+                400,
+            )
+
     try:
         row = create_deficiency(
             int(ctx["ts"].id),
@@ -4336,9 +4368,59 @@ def post_worksheet_stop_deficiency(route_id: int, location_id: int):
             description=_normalize_ws_text(payload.get("description")),
             tech_id=tech_id,
             tech_name=tech_name,
+            service_line=service_line_key,
         )
     except ValueError:
         return jsonify({"error": "Invalid severity or status"}), 400
+
+    if create_on_service_trade:
+        from app.monthly.service_trade_deficiencies import (
+            OFFICE_DEFICIENCY_SERVICE_LINES,
+            create_service_trade_deficiency,
+        )
+
+        try:
+            st_def_id = create_service_trade_deficiency(
+                st_location_id=int(loc.service_trade_site_location_id),
+                service_line_key=service_line_key or "",
+                title=title,
+                severity=_normalize_ws_text(payload.get("severity")) or "deficient",
+                description=_normalize_ws_text(payload.get("description")),
+            )
+            row.service_trade_deficiency_id = int(st_def_id)
+        except ValueError as exc:
+            db.session.rollback()
+            if str(exc) == "invalid_service_line":
+                return jsonify({"error": "Invalid service line", "code": "invalid_service_line"}), 400
+            if str(exc) == "no_servicetrade_asset":
+                label = OFFICE_DEFICIENCY_SERVICE_LINES.get(service_line_key or "", {}).get("label", "selected")
+                return (
+                    jsonify(
+                        {
+                            "error": (
+                                f"No {label} asset was found at this ServiceTrade site. "
+                                "Add an asset there first, or pick a different service line."
+                            ),
+                            "code": "no_servicetrade_asset",
+                        }
+                    ),
+                    400,
+                )
+            raise
+        except RuntimeError as exc:
+            db.session.rollback()
+            return jsonify({"error": str(exc), "code": "service_trade_config"}), 503
+        except Exception as exc:
+            db.session.rollback()
+            return (
+                jsonify(
+                    {
+                        "error": f"ServiceTrade deficiency create failed: {exc}",
+                        "code": "service_trade_unavailable",
+                    }
+                ),
+                503,
+            )
 
     mtsm = ctx["mtsm"]
     if (_normalize_ws_text(mtsm.test_outcome) or "").lower() == "all_good":
@@ -5846,6 +5928,47 @@ def update_monthly_route_service_trade_link(location_id: int):
     db.session.commit()
     months_by_location = _months_payload_for_location(location_id)
     return jsonify({"location": _serialize_location_row(loc, months_by_location)})
+
+
+@monthly_routes_bp.get("/api/monthly_routes/library/<int:location_id>/service_trade_deficiencies")
+def get_monthly_location_service_trade_deficiencies(location_id: int):
+    """Open ServiceTrade deficiencies for a linked monthly library location."""
+    if not session.get("authenticated"):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    from app.monthly.service_trade_deficiencies import (
+        build_location_service_trade_deficiencies_payload,
+    )
+
+    try:
+        payload = build_location_service_trade_deficiencies_payload(location_id)
+    except LookupError:
+        return jsonify({"error": "Location not found"}), 404
+    except ValueError as exc:
+        if str(exc) == "no_servicetrade_link":
+            return (
+                jsonify(
+                    {
+                        "error": "This site is not linked to ServiceTrade.",
+                        "code": "no_servicetrade_link",
+                    }
+                ),
+                400,
+            )
+        return jsonify({"error": str(exc)}), 400
+    except RuntimeError as exc:
+        return jsonify({"error": str(exc), "code": "service_trade_config"}), 503
+    except Exception as exc:
+        return (
+            jsonify(
+                {
+                    "error": f"ServiceTrade deficiency lookup failed: {exc}",
+                    "code": "service_trade_unavailable",
+                }
+            ),
+            503,
+        )
+    return jsonify(payload)
 
 
 @monthly_routes_bp.patch("/api/monthly_routes/library/<int:location_id>/assign_route")

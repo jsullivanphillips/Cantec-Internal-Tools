@@ -4,6 +4,7 @@ import {
   canOfficeCompleteRun,
   canOfficeEditBilling,
   canOfficeEditOutcomes,
+  portalShowStartRun,
   runDetailsOfficeReviewReadOnly,
 } from './runWorkflowShared'
 
@@ -59,6 +60,30 @@ describe('canOfficeCompleteRun', () => {
       canOfficeCompleteRun(
         run({ status: 'completed', completed_at: '2026-05-10T00:00:00Z' }),
       ),
+    ).toBe(false)
+  })
+})
+
+describe('portalShowStartRun', () => {
+  it('allows start when lifecycle is active for the Pacific current month', () => {
+    expect(
+      portalShowStartRun({
+        showPortalRunLifecycle: true,
+        runPrepared: true,
+        runStarted: false,
+        isCurrentMonth: true,
+      }),
+    ).toBe(true)
+  })
+
+  it('blocks start for a future Pacific month even when prepared', () => {
+    expect(
+      portalShowStartRun({
+        showPortalRunLifecycle: true,
+        runPrepared: true,
+        runStarted: false,
+        isCurrentMonth: false,
+      }),
     ).toBe(false)
   })
 })

@@ -203,7 +203,8 @@ def test_run_details_locations_deficiency_summaries(run_details_client):
                 created_run_id=9001,
                 title="Bad battery",
                 severity="deficient",
-                status="new"
+                status="new",
+                service_trade_deficiency_id=777001,
             )
         )
         db.session.commit()
@@ -215,6 +216,7 @@ def test_run_details_locations_deficiency_summaries(run_details_client):
     assert stop["has_active_deficiencies"] is True
     assert len(stop["deficiency_summaries"]) == 1
     assert stop["deficiency_summaries"][0]["title"] == "Bad battery"
+    assert stop["deficiency_summaries"][0]["service_trade_deficiency_id"] == 777001
     assert stop["confirmed_no_deficiencies"] is False
     assert entry["attention_flags"]["has_active_deficiencies"] is True
 

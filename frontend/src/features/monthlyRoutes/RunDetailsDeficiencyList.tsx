@@ -3,6 +3,7 @@ import { Badge, Button } from 'react-bootstrap'
 import RunDetailsDeficiencyDetailModal, {
   type RunDetailsDeficiencyModalContext,
 } from './RunDetailsDeficiencyDetailModal'
+import ServiceTradeDeficienciesButton from './ServiceTradeDeficienciesButton'
 import type { MonthlyRunDetailDeficiencySummary } from './monthlyRoutesShared'
 import {
   deficiencyCardPreview,
@@ -11,6 +12,7 @@ import {
   deficiencyStatusLabel,
   deficiencyStatusVariant,
 } from './runDetailsDeficiencyDisplay'
+import ServiceTradeDeficiencyLink from './ServiceTradeDeficiencyLink'
 
 export default function RunDetailsDeficiencyList({
   deficiencies,
@@ -20,6 +22,10 @@ export default function RunDetailsDeficiencyList({
   locationId,
   readOnly,
   onDeficiencyUpdated,
+  onAdd,
+  showServiceTradeDeficiencies = false,
+  hasServiceTradeLink = false,
+  locationLabel,
   compact,
   className,
 }: {
@@ -33,12 +39,19 @@ export default function RunDetailsDeficiencyList({
     locationId: number,
     updated: MonthlyRunDetailDeficiencySummary,
   ) => void | Promise<void>
+  onAdd?: () => void
+  showServiceTradeDeficiencies?: boolean
+  hasServiceTradeLink?: boolean
+  locationLabel?: string
   compact?: boolean
   className?: string
 }) {
   const [selected, setSelected] = useState<MonthlyRunDetailDeficiencySummary | null>(null)
+  const showAdd = !readOnly && onAdd != null
+  const showStView = showServiceTradeDeficiencies
+  const showActions = showStView || showAdd
 
-  if (!deficiencies.length) {
+  if (!deficiencies.length && !showActions) {
     if (compact) {
       return <span className="run-details-deficiency-empty">None open</span>
     }
@@ -47,6 +60,34 @@ export default function RunDetailsDeficiencyList({
 
   return (
     <>
+      {showActions ? (
+        <div className="run-details-deficiency-actions-wrap">
+          {showStView ? (
+            <ServiceTradeDeficienciesButton
+              locationId={locationId}
+              hasServiceTradeLink={hasServiceTradeLink}
+              locationLabel={locationLabel ?? modalContext?.locationLabel}
+              className="run-details-deficiency-st-btn"
+            />
+          ) : null}
+          {showAdd ? (
+            <Button
+              type="button"
+              variant="outline-danger"
+              size="sm"
+              className="run-details-deficiency-add-btn"
+              onClick={onAdd}
+            >
+              Add
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+      {!deficiencies.length ? (
+        compact && !showAdd ? (
+          <span className="run-details-deficiency-empty">None open</span>
+        ) : null
+      ) : (
       <ul
         className={`run-details-deficiency-cards list-unstyled mb-0${
           compact ? ' run-details-deficiency-cards--compact' : ''
@@ -76,6 +117,15 @@ export default function RunDetailsDeficiencyList({
                 {preview ? (
                   <span className="run-details-deficiency-card__preview text-muted">{preview}</span>
                 ) : null}
+                {def.service_trade_deficiency_id != null ? (
+                  <span className="run-details-deficiency-card__st-link">
+                    <ServiceTradeDeficiencyLink
+                      deficiencyId={def.service_trade_deficiency_id}
+                      compact
+                      onClick={(event) => event.stopPropagation()}
+                    />
+                  </span>
+                ) : null}
                 <span className="run-details-deficiency-card__hint" aria-hidden>
                   <i className="bi bi-chevron-right" />
                 </span>
@@ -84,6 +134,7 @@ export default function RunDetailsDeficiencyList({
           )
         })}
       </ul>
+      )}
       <RunDetailsDeficiencyDetailModal
         show={selected != null}
         deficiency={selected}

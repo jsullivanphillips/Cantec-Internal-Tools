@@ -370,12 +370,31 @@ export type MonthlyRunDetailDeficiencySummary = {
   status: string | null
   description?: string | null
   verification_notes?: string | null
+  service_line?: string | null
+  service_trade_deficiency_id?: number | null
   reported_by_tech_id?: string | null
   reported_by_tech_name?: string | null
   last_edited_by_tech_id?: string | null
   last_edited_by_tech_name?: string | null
   created_at?: string | null
   updated_at?: string | null
+}
+
+export type ServiceTradeDeficiencySummary = {
+  deficiency_id: number
+  status: string | null
+  severity: string | null
+  description: string | null
+  reported_on: string | null
+  service_line: string | null
+  url: string
+}
+
+export type ServiceTradeDeficienciesPayload = {
+  location_id: number
+  location_label: string
+  service_trade_site_location_id: number
+  deficiencies: ServiceTradeDeficiencySummary[]
 }
 
 export type MonthlyRunDetailLocationAttentionFlags = {
@@ -434,6 +453,8 @@ export type MonthlyRunDetailLocation = {
   field_changes?: MonthlyRunDetailLocationFieldChange[]
   attention_flags: MonthlyRunDetailLocationAttentionFlags
   status_normalized?: string | null
+  service_trade_site_location_id?: number | null
+  has_service_trade_link?: boolean
 }
 
 export type PrepAnnualScheduleWarning =

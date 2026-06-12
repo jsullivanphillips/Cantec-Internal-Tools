@@ -598,6 +598,10 @@ def serialize_deficiency(d: MonthlyLocationDeficiency) -> dict[str, object]:
         "severity": d.severity,
         "status": d.status,
         "description": _normalize_text(d.description),
+        "service_line": _normalize_text(d.service_line),
+        "service_trade_deficiency_id": (
+            int(d.service_trade_deficiency_id) if d.service_trade_deficiency_id is not None else None
+        ),
         "verification_notes": _normalize_text(d.verification_notes),
         "reported_by_tech_id": _normalize_text(d.reported_by_tech_id),
         "reported_by_tech_name": _normalize_text(d.reported_by_tech_name),
@@ -727,6 +731,8 @@ def create_deficiency(
     description: str | None,
     tech_id: str | None,
     tech_name: str | None,
+    service_line: str | None = None,
+    service_trade_deficiency_id: int | None = None,
 ) -> MonthlyLocationDeficiency:
     sev = severity.strip().lower()
     st = status.strip().lower()
@@ -742,6 +748,10 @@ def create_deficiency(
         "severity": sev,
         "status": st,
         "description": _normalize_text(description),
+        "service_line": _normalize_text(service_line),
+        "service_trade_deficiency_id": (
+            int(service_trade_deficiency_id) if service_trade_deficiency_id is not None else None
+        ),
         "reported_by_tech_id": _normalize_text(tech_id),
         "reported_by_tech_name": _normalize_text(tech_name),
         "last_edited_by_tech_id": _normalize_text(tech_id),

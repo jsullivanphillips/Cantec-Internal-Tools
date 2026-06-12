@@ -8,6 +8,7 @@ import pytest
 
 from app import create_app
 from app.db_models import (
+    MonthlyLocation,
     MonthlyLocationDeficiency,
     MonthlyLocationMonth,
     MonthlyRouteRun,
@@ -309,6 +310,49 @@ def test_deficiency_verify_and_reset(portal_client, monkeypatch):
         assert MonthlyLocationDeficiency.query.filter_by(id=int(def_id)).count() == 0
         audit = MonthlyRouteWorksheetAuditEvent.query.filter_by(field_name="stop_reset").count()
         assert audit == 1
+
+
+def test_create_deficiency_with_service_trade(portal_client, monkeypatch):
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
+
+    def fake_create(**kwargs):
+        assert kwargs["st_location_id"] == 555123
+        assert kwargs["service_line_key"] == "alarm_system"
+        return 777001
+
+    monkeypatch.setattr(
+        "app.monthly.service_trade_deficiencies.create_service_trade_deficiency",
+        fake_create,
+    )
+
+    client, app = portal_client
+    with app.app_context():
+        route_id, _loc_id, stop_a, _stop_b = _seed_route_with_two_stops()
+        row = db.session.get(MonthlyLocation, int(stop_a))
+        assert row is not None
+        row.service_trade_site_location_id = 555123
+        db.session.commit()
+
+    _start_run(client)
+    month = "2026-05-01"
+    created = client.post(
+        f"/api/monthly_routes/routes/{route_id}/worksheet/locations/{stop_a}/deficiencies"
+        f"?month={month}",
+        json={
+            "title": "Bell offline",
+            "severity": "deficient",
+            "status": "new",
+            "description": "No sound",
+            "service_line": "alarm_system",
+            "create_on_service_trade": True,
+        },
+    )
+    assert created.status_code == 201, created.get_data(as_text=True)
+    deficiency = created.get_json()["deficiency"]
+    assert deficiency["service_line"] == "alarm_system"
+    assert deficiency["service_trade_deficiency_id"] == 777001
 
 
 def test_worksheet_payload_includes_portal_fields(portal_client, monkeypatch):

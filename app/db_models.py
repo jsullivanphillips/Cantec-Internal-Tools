@@ -1168,6 +1168,8 @@ class MonthlyLocationDeficiency(db.Model):
     severity = db.Column(db.String(32), nullable=False)
     status = db.Column(db.String(32), nullable=False, default="new")
     description = db.Column(db.Text, nullable=True)
+    service_line = db.Column(db.String(64), nullable=True)
+    service_trade_deficiency_id = db.Column(db.BigInteger, nullable=True, index=True)
     verification_notes = db.Column(db.Text, nullable=True)
     reported_by_tech_id = db.Column(db.String(64), nullable=True)
     reported_by_tech_name = db.Column(db.String(255), nullable=True)

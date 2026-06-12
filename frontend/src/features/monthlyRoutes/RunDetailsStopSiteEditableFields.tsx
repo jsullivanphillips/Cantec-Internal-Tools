@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Alert, Button } from 'react-bootstrap'
 import PortalDeficienciesCard from './PortalDeficienciesCard'
-import PortalDeficiencyModal from './PortalDeficiencyModal'
+import PortalDeficiencyModal, { type DeficiencyFormValues } from './PortalDeficiencyModal'
 import PortalEditableFieldRow from './PortalEditableFieldRow'
 import PortalMonitoringCompanyField from './PortalMonitoringCompanyField'
 import {
@@ -27,6 +27,7 @@ type Props = {
   monthDate: string
   runId: number | null
   readOnly: boolean
+  hasServiceTradeLink?: boolean
   stopPatch: RunDetailsStopPatchApi
   onStopMergedFromWorksheet: (stop: TechnicianWorksheetLocation, scope?: 'full' | 'deficiency') => void
 }
@@ -37,6 +38,7 @@ export default function RunDetailsStopSiteEditableFields({
   monthDate,
   runId,
   readOnly,
+  hasServiceTradeLink = false,
   stopPatch,
   onStopMergedFromWorksheet,
 }: Props) {
@@ -136,31 +138,29 @@ export default function RunDetailsStopSiteEditableFields({
   }, [])
 
   const handleDeficiencySave = useCallback(
-    async (values: { title: string; severity: string; status: string; description: string }) => {
+    async (values: DeficiencyFormValues) => {
       if (readOnly) return
-      setDefModalOpen(false)
-      setSaveError(null)
-      try {
-        const updated =
-          defModalMode === 'add'
-            ? await officeCreateDeficiency(routeId, monthDate, stop.location_id, {
-                ...values,
-                description: values.description || undefined,
-                run_id: runId,
-              })
-            : editingDeficiency
-              ? await officeUpdateDeficiency(
-                  routeId,
-                  monthDate,
-                  stop.location_id,
-                  editingDeficiency.id,
-                  values,
-                )
-              : null
-        if (updated) await applyDeficiencyStop(updated)
-      } catch (e) {
-        setSaveError(e instanceof Error ? e.message : 'Could not save deficiency.')
-      }
+      const updated =
+        defModalMode === 'add'
+          ? await officeCreateDeficiency(routeId, monthDate, stop.location_id, {
+              title: values.title,
+              severity: values.severity,
+              status: values.status,
+              description: values.description || undefined,
+              run_id: runId,
+              service_line: values.serviceLine,
+              create_on_service_trade: values.createOnServiceTrade,
+            })
+          : editingDeficiency
+            ? await officeUpdateDeficiency(
+                routeId,
+                monthDate,
+                stop.location_id,
+                editingDeficiency.id,
+                values,
+              )
+            : null
+      if (updated) await applyDeficiencyStop(updated)
     },
     [
       readOnly,
@@ -171,6 +171,7 @@ export default function RunDetailsStopSiteEditableFields({
       runId,
       editingDeficiency,
       applyDeficiencyStop,
+      hasServiceTradeLink,
     ],
   )
 
@@ -369,7 +370,8 @@ export default function RunDetailsStopSiteEditableFields({
         mode={defModalMode}
         deficiency={editingDeficiency}
         onHide={() => setDefModalOpen(false)}
-        onSave={(values) => void handleDeficiencySave(values)}
+        onSave={handleDeficiencySave}
+        officeServiceTrade={defModalMode === 'add' ? { hasServiceTradeLink } : null}
       />
     </>
   )

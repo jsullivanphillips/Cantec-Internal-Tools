@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Button, Form } from 'react-bootstrap'
 import type { TechnicianWorksheetLocation } from './monthlyRoutesShared'
 import type { PortalDeficiencySummary } from './portalWorkflowShared'
+import ServiceTradeDeficiencyLink from './ServiceTradeDeficiencyLink'
 
 const VISIBLE_STATUSES = new Set(['new', 'verified'])
 
@@ -95,6 +96,14 @@ export default function PortalDeficienciesCard({
                   </div>
                   {def.description ? (
                     <p className="pw-portal-def-description">{def.description}</p>
+                  ) : null}
+                  {def.service_trade_deficiency_id != null ? (
+                    <div className="pw-portal-def-st-link">
+                      <ServiceTradeDeficiencyLink
+                        deficiencyId={def.service_trade_deficiency_id}
+                        compact
+                      />
+                    </div>
                   ) : null}
                   {!readOnly ? (
                     <div className="pw-portal-def-actions">

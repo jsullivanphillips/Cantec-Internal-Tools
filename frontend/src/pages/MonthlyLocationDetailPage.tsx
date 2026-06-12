@@ -12,6 +12,7 @@ import MonthlyLocationServiceTradeLinkPanel, {
   MonthlyLocationServiceTradeHeroActions,
   MonthlyLocationServiceTradeLinkEditModal,
 } from '../features/monthlyRoutes/MonthlyLocationServiceTradeLinkPanel'
+import ServiceTradeDeficienciesButton from '../features/monthlyRoutes/ServiceTradeDeficienciesButton'
 import { notifyPaperworkMasterSiteUpdated } from '../features/monthlyRoutes/paperworkMasterSync'
 import { billingStatusLabel } from '../features/monthlyRoutes/officeRunReviewShared'
 import {
@@ -116,8 +117,6 @@ function monthIsoKeysForCalendarYear(year: number): string[] {
   return Array.from({ length: 12 }, (_, i) => toMonthKey(year, i + 1))
 }
 
-type HistoryEdit = { kind: 'skip_reason'; monthIso: string; value: string }
-
 type HistoryFieldEdit = { monthIso: string; field: 'result' | 'billing' }
 
 type OfficeBillingStatus = 'bill' | 'do_not_bill' | 'unset' | 'legacy'
@@ -126,6 +125,17 @@ function normalizeHistoryBillingStatus(raw: string | null | undefined): OfficeBi
   const s = (raw || '').trim().toLowerCase()
   if (s === 'bill' || s === 'do_not_bill' || s === 'legacy') return s
   return 'unset'
+}
+
+function testingHistoryWorksheetRouteId(
+  cell: MonthCell | undefined,
+  location: LibraryLocation,
+): number | null {
+  if (!cell) return null
+  if (typeof cell.worksheet_route_id === 'number') return cell.worksheet_route_id
+  if (typeof cell.test_monthly_route?.id === 'number') return cell.test_monthly_route.id
+  if (typeof location.monthly_route_id === 'number') return location.monthly_route_id
+  return null
 }
 
 function historyMonthResultStatus(cell: MonthCell | undefined): 'tested' | 'skipped' | null {
@@ -320,7 +330,6 @@ export default function MonthlyLocationDetailPage() {
   const [sessionUsername, setSessionUsername] = useState<string | null>(null)
   /** Selected calendar year for testing-history grid; ``null`` means “use default year” until user picks one. */
   const [historyViewYear, setHistoryViewYear] = useState<number | null>(null)
-  const [historyEdit, setHistoryEdit] = useState<HistoryEdit | null>(null)
   const [historyFieldEdit, setHistoryFieldEdit] = useState<HistoryFieldEdit | null>(null)
   const [historySaving, setHistorySaving] = useState(false)
   const [historySaveError, setHistorySaveError] = useState<string | null>(null)
@@ -397,7 +406,6 @@ export default function MonthlyLocationDetailPage() {
   }, [testingHistoryYears, historyViewYear])
 
   const cancelHistoryEdit = useCallback(() => {
-    setHistoryEdit(null)
     setHistoryFieldEdit(null)
     setHistorySaveError(null)
   }, [])
@@ -455,41 +463,6 @@ export default function MonthlyLocationDetailPage() {
     },
     [location],
   )
-
-  const saveHistorySkipEdit = useCallback(async () => {
-    if (!location || !historyEdit || historyEdit.kind !== 'skip_reason') return
-    const { monthIso, value } = historyEdit
-    const existing = location.months[monthIso]
-    if (!existing) return
-
-    setHistorySaving(true)
-    setHistorySaveError(null)
-    try {
-      const res = await apiJson<{ location: LibraryLocation }>(
-        `/api/monthly_routes/library/${location.id}`,
-        {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-          body: JSON.stringify({
-            months: {
-              [monthIso]: {
-                result_status: 'skipped',
-                skip_reason: value.trim() || null,
-              },
-            },
-          }),
-        }
-      )
-      setLocation(res.location)
-      cancelHistoryEdit()
-    } catch (e) {
-      const msg =
-        typeof e === 'object' && e && 'error' in e ? String((e as { error: unknown }).error) : null
-      setHistorySaveError(msg || 'Unable to save skip reason.')
-    } finally {
-      setHistorySaving(false)
-    }
-  }, [location, historyEdit, cancelHistoryEdit])
 
   const editableFieldsRef = useRef<MonthlyLocationEditableFieldsHandle>(null)
 
@@ -619,13 +592,13 @@ export default function MonthlyLocationDetailPage() {
   }, [location, navigate])
 
   useEffect(() => {
-    if ((!historyEdit && !historyFieldEdit) || historySaving) return
+    if (!historyFieldEdit || historySaving) return
     const onKey = (e: globalThis.KeyboardEvent) => {
       if (e.key === 'Escape') cancelHistoryEdit()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [historyEdit, historyFieldEdit, historySaving, cancelHistoryEdit])
+  }, [historyFieldEdit, historySaving, cancelHistoryEdit])
 
   if (!locationId || Number.isNaN(idNum)) {
     return (
@@ -694,7 +667,7 @@ export default function MonthlyLocationDetailPage() {
   const testingHistoryYearIndex =
     testingHistoryGridYear != null ? testingHistoryYears.indexOf(testingHistoryGridYear) : -1
 
-  const historyYearNavLocked = historySaving || historyEdit != null || historyFieldEdit != null
+  const historyYearNavLocked = historySaving || historyFieldEdit != null
 
   return (
     <div className="monthly-location-detail-page">
@@ -761,6 +734,12 @@ export default function MonthlyLocationDetailPage() {
             <MonthlyLocationServiceTradeHeroActions
               location={location}
               onEditLink={() => setShowStLinkEditModal(true)}
+            />
+            <ServiceTradeDeficienciesButton
+              locationId={location.id}
+              hasServiceTradeLink={location.service_trade_site_location_id != null}
+              locationLabel={(location.label || location.address || '').trim() || undefined}
+              className="monthly-location-detail-action"
             />
             <Button
               type="button"
@@ -1043,8 +1022,6 @@ export default function MonthlyLocationDetailPage() {
                           const isNextSlot = !cell && monthIso === nextTestingMonthIso
                           const isAnnualMonthRow = isAnnualMonth(monthIso, location.annual_month)
                           const canEditMonth = isMonthlyTestingHistoryEditable(monthIso, location)
-                          const editingSkip =
-                            historyEdit?.kind === 'skip_reason' && historyEdit.monthIso === monthIso
                           const billingStatus = normalizeHistoryBillingStatus(cell?.billing_status)
                           const billingLocked = billingStatus === 'legacy'
                           const resultValue = historyMonthResultStatus(cell) ?? ''
@@ -1059,36 +1036,25 @@ export default function MonthlyLocationDetailPage() {
                             historyFieldEdit?.monthIso === monthIso &&
                             historyFieldEdit.field === 'billing'
                           const canEditHistoryFields =
-                            showHistoryStatus &&
-                            canEditMonth &&
-                            !isAnnualMonthRow &&
-                            !editingSkip
+                            showHistoryStatus && canEditMonth && !isAnnualMonthRow
                           const canEditResultField = canEditHistoryFields
                           const canEditBillingField =
                             canEditHistoryFields && cell != null && !billingLocked
-                          const canEditSkip =
-                            showHistoryStatus &&
-                            canEditMonth &&
-                            cell != null &&
-                            historyMonthResultStatus(cell) === 'skipped'
                           const resultClass = showHistoryStatus
                             ? testingHistoryResultCellClass(
                                 cell,
                                 {
-                                  editing: editingSkip || editingResult,
-                                  editValue: editingSkip
-                                    ? 'skipped'
-                                    : editingResult
-                                      ? resultValue || 'tested'
-                                      : undefined,
+                                  editing: editingResult,
+                                  editValue: editingResult
+                                    ? resultValue || 'tested'
+                                    : undefined,
                                 },
                                 isAnnualMonthRow
                               )
                             : isAnnualMonthRow
                               ? 'monthly-location-testing-history-result--annual'
                               : ''
-                          const worksheetRouteId =
-                            typeof cell?.worksheet_route_id === 'number' ? cell.worksheet_route_id : null
+                          const worksheetRouteId = testingHistoryWorksheetRouteId(cell, location)
                           const cardClass = [
                             'monthly-location-testing-history-month-card',
                             resultClass,
@@ -1127,51 +1093,15 @@ export default function MonthlyLocationDetailPage() {
                                 {worksheetRouteId != null ? (
                                   <Link
                                     className="monthly-location-testing-history-worksheet-link"
-                                    to={`/monthlies/routes/${worksheetRouteId}/worksheet/${encodeURIComponent(monthIso)}`}
-                                    title={`Open worksheet for ${formatMonthHeading(monthIso)}`}
+                                    to={`/monthlies/routes/${worksheetRouteId}/paperwork?month=${encodeURIComponent(monthIso)}`}
+                                    title={`Open paperwork for ${formatMonthHeading(monthIso)}`}
                                   >
                                     Worksheet
                                   </Link>
                                 ) : null}
                               </div>
 
-                              {editingSkip && historyEdit?.kind === 'skip_reason' ? (
-                                <div className="monthly-location-testing-history-edit-stack">
-                                  <Form.Control
-                                    size="sm"
-                                    type="text"
-                                    placeholder="Reason (optional)"
-                                    value={historyEdit.value}
-                                    disabled={historySaving}
-                                    onChange={(e) =>
-                                      setHistoryEdit({ ...historyEdit, value: e.target.value })
-                                    }
-                                    aria-label="Skip reason"
-                                  />
-                                  <div className="d-flex flex-wrap gap-2">
-                                    <Button
-                                      type="button"
-                                      variant="primary"
-                                      size="sm"
-                                      disabled={historySaving}
-                                      onClick={() => void saveHistorySkipEdit()}
-                                    >
-                                      {historySaving ? 'Saving…' : 'Save'}
-                                    </Button>
-                                    <Button
-                                      type="button"
-                                      variant="outline-secondary"
-                                      size="sm"
-                                      disabled={historySaving}
-                                      onClick={cancelHistoryEdit}
-                                    >
-                                      Cancel
-                                    </Button>
-                                  </div>
-                                </div>
-                              ) : (
-                                <>
-                                  {showHistoryStatus ? (
+                              {showHistoryStatus ? (
                                   <div className="monthly-location-testing-history-fields">
                                     <Form.Group className="mb-1">
                                       <Form.Label className="monthly-location-testing-history-field-label">
@@ -1261,7 +1191,7 @@ export default function MonthlyLocationDetailPage() {
                                         >
                                           <option value="unset">Unset</option>
                                           <option value="bill">Bill</option>
-                                          <option value="do_not_bill">Do not bill</option>
+                                          <option value="do_not_bill">Waive</option>
                                         </Form.Select>
                                       ) : canEditBillingField ? (
                                         <button
@@ -1292,36 +1222,15 @@ export default function MonthlyLocationDetailPage() {
                                       )}
                                     </Form.Group>
                                   </div>
-                                  ) : null}
-                                  <div className="monthly-location-testing-history-month-meta">
-                                    {isNextSlot ? (
-                                      <div>
-                                        Next test{testDayLabel ? `: ${testDayLabel}` : ''}
-                                      </div>
-                                    ) : null}
-                                    {testingHistoryRouteContextLine(cell)}
-                                    {canEditSkip && !historyEdit ? (
-                                      <button
-                                        type="button"
-                                        className="btn btn-link btn-sm p-0 text-decoration-none"
-                                        disabled={historySaving}
-                                        onClick={() => {
-                                          if (historySaving) return
-                                          setHistorySaveError(null)
-                                          setHistoryFieldEdit(null)
-                                          setHistoryEdit({
-                                            kind: 'skip_reason',
-                                            monthIso,
-                                            value: cell?.skip_reason ?? '',
-                                          })
-                                        }}
-                                      >
-                                        Edit reason
-                                      </button>
-                                    ) : null}
+                              ) : null}
+                              <div className="monthly-location-testing-history-month-meta">
+                                {isNextSlot ? (
+                                  <div>
+                                    Next test{testDayLabel ? `: ${testDayLabel}` : ''}
                                   </div>
-                                </>
-                              )}
+                                ) : null}
+                                {testingHistoryRouteContextLine(cell)}
+                              </div>
                             </div>
                           )
                         })

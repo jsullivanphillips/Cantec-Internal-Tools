@@ -615,7 +615,7 @@ function SkipRunConfirmModal({
         {monthLabel ? (
           <p className="mb-3">
             Mark <strong>{monthLabel}</strong> as skipped? Every site on this route will be set to
-            skipped with billing status <strong>Do not bill</strong>, and the month will be closed.
+            skipped with billing status <strong>Waive</strong>, and the month will be closed.
           </p>
         ) : null}
         {error ? <Alert variant="danger">{error}</Alert> : null}

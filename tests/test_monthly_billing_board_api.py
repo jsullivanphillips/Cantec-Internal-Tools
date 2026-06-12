@@ -95,6 +95,7 @@ def test_billing_board_returns_billing_and_outcome(billing_board_client):
     assert data["pagination"]["total"] == 1
     row = data["locations"][0]
     assert row["location_id"] == 101
+    assert row["property_management_company"] == "Acme"
     may = row["months"]["2026-05-01"]
     assert may["billing_status"] == "bill"
     assert may["test_summary"]["summary_key"] == "all_good"
@@ -191,6 +192,90 @@ def test_billing_board_search_route_token_suffix_only(billing_board_client):
     data = r.get_json()
     assert data["pagination"]["total"] == 1
     assert data["locations"][0]["location_id"] == 201
+
+
+def test_billing_board_do_not_bill_any_month_filter(billing_board_client):
+    client, _app = billing_board_client
+    route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
+    bill_loc = make_location(
+        id=501,
+        address="Bill St",
+        label="Bill St",
+        monthly_route_id=1,
+        test_day="Tuesday",
+    )
+    skip_loc = make_location(
+        id=502,
+        address="Skip St",
+        label="Skip St",
+        monthly_route_id=1,
+        test_day="Tuesday",
+        annual_month="May",
+    )
+    bill_mlm = MonthlyLocationMonth(
+        id=5011,
+        monthly_location_id=501,
+        month_date=date(2026, 5, 1),
+        test_monthly_route_id=1,
+        billing_status="bill",
+    )
+    skip_mlm = MonthlyLocationMonth(
+        id=5012,
+        monthly_location_id=502,
+        month_date=date(2026, 5, 1),
+        test_monthly_route_id=1,
+        billing_status="do_not_bill",
+        skip_category="testing_not_required",
+    )
+    db.session.add_all([route, bill_loc, skip_loc, bill_mlm, skip_mlm])
+    db.session.commit()
+
+    r = client.get(
+        "/api/monthly_routes/billing_board?anchor_month=2026-05-01&do_not_bill_any_month=true"
+    )
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data["pagination"]["total"] == 1
+    assert data["locations"][0]["location_id"] == 502
+
+
+def test_billing_board_non_empty_billing_notes_filter(billing_board_client):
+    client, _app = billing_board_client
+    route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
+    with_note = make_location(
+        id=601,
+        address="Note St",
+        label="Note St",
+        monthly_route_id=1,
+        test_day="Tuesday",
+        billing_comments="Credit from QB",
+    )
+    without_note = make_location(
+        id=602,
+        address="No Note St",
+        label="No Note St",
+        monthly_route_id=1,
+        test_day="Tuesday",
+        billing_comments=None,
+    )
+    blank_note = make_location(
+        id=603,
+        address="Blank Note St",
+        label="Blank Note St",
+        monthly_route_id=1,
+        test_day="Tuesday",
+        billing_comments="   ",
+    )
+    db.session.add_all([route, with_note, without_note, blank_note])
+    db.session.commit()
+
+    r = client.get(
+        "/api/monthly_routes/billing_board?anchor_month=2026-05-01&non_empty_billing_notes=true"
+    )
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data["pagination"]["total"] == 1
+    assert data["locations"][0]["location_id"] == 601
 
 
 def test_billing_board_do_not_bill_includes_skip_reason_category(billing_board_client):

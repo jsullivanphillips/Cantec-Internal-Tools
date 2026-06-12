@@ -25,6 +25,7 @@ type Props = {
   routeId: number
   monthDate: string
   run: TechnicianWorksheetRun | null
+  hasServiceTradeLink?: boolean
   onHide: () => void
   stopPatch: RunDetailsStopPatchApi
   onStopMergedFromWorksheet: (stop: TechnicianWorksheetLocation, scope?: 'full' | 'deficiency') => void
@@ -36,6 +37,7 @@ export default function RunDetailsStopSiteModal({
   routeId,
   monthDate,
   run,
+  hasServiceTradeLink = false,
   onHide,
   stopPatch,
   onStopMergedFromWorksheet,
@@ -140,6 +142,7 @@ export default function RunDetailsStopSiteModal({
             monthDate={monthDate}
             runId={run?.id ?? null}
             readOnly={readOnly}
+            hasServiceTradeLink={hasServiceTradeLink}
             stopPatch={stopPatch}
             onStopMergedFromWorksheet={handleStopPatched}
           />

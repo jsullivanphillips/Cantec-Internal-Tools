@@ -12,7 +12,7 @@ const BILLING_CHOICES: {
   activeVariant: string
 }[] = [
   { value: 'bill', label: 'Bill', variant: 'outline-success', activeVariant: 'success' },
-  { value: 'do_not_bill', label: 'Do not bill', variant: 'outline-danger', activeVariant: 'danger' },
+  { value: 'do_not_bill', label: 'Waive', variant: 'outline-danger', activeVariant: 'danger' },
 ]
 
 type Props = {

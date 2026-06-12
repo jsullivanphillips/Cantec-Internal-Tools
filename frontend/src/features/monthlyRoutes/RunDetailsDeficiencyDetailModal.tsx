@@ -11,6 +11,7 @@ import {
   deficiencyStatusLabel,
   formatDeficiencyTimestamp,
 } from './runDetailsDeficiencyDisplay'
+import ServiceTradeDeficiencyLink from './ServiceTradeDeficiencyLink'
 
 export type RunDetailsDeficiencyModalContext = {
   locationLabel?: string
@@ -286,6 +287,11 @@ export default function RunDetailsDeficiencyDetailModal({
               <InfoPanel label="Verification notes" wide>
                 {verificationNotes}
               </InfoPanel>
+            ) : null}
+            {deficiency.service_trade_deficiency_id != null ? (
+              <div className="run-details-deficiency-modal__st-link">
+                <ServiceTradeDeficiencyLink deficiencyId={deficiency.service_trade_deficiency_id} />
+              </div>
             ) : null}
           </>
         )}

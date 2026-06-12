@@ -530,7 +530,15 @@ Legacy `result_status` / `sheet_time_in_raw` / `sheet_time_out_raw` remain for C
 
 ### Portal UI core (2026-05, Phase 2)
 
-**Routes:** PIN unlock → `/tech/technician` (tech picker) → `/tech/start` → route → worksheet. Layout redirects to the picker when `GET /api/technician_portal/session/technician` returns 404.
+**Routes:** PIN unlock → `/tech/technician` (tech picker) → `/tech/start` → route hub (`/tech/route/:routeId`) → worksheet. Layout redirects to the picker when `GET /api/technician_portal/session/technician` returns 404.
+
+**Route hub primary month** (`GET /api/technician_portal/routes/:id/portal_route_summary`):
+
+- Normally the primary card is the **Pacific calendar month** (`calendar_month_first`); older runs appear under **Previous runs**.
+- When office **final-closes** the calendar-month run (`POST …/runs/complete` → `completed_at` / `status=completed`), that month moves to **Previous runs** and the portal promotes the **next calendar month** to the primary card.
+- If the next month is **not yet prepared** (`prepared_at` unset), the primary card shows a **waiting message** only — no worksheet link until office releases the run.
+- If the next month **is prepared** but the calendar has not reached that month yet, technicians may **open the worksheet read-only** (review stops, pre-run note) but **Start run** stays hidden until Pacific `month_date` equals the worksheet month (`portalShowStartRun` / `POST …/runs` targets the calendar month only).
+- Office **Reopen job** on the closed month reverses promotion on the next summary fetch.
 
 **Worksheet dock bands** (`portalWorkflowShared.portalStopDockBand`):
 
@@ -630,7 +638,7 @@ Body: `{ "billing_status": "bill" | "do_not_bill" | "unset" }`. Allowed only aft
 | GET | `/api/monthly_routes/billing_board` |
 | PATCH | `/api/monthly_routes/billing_board/locations/<location_id>/quarter_billed` |
 
-Query: `anchor_month=YYYY-MM-01` **or** `year` + `quarter` (1–4). Optional: `q` (address/PMC; route-like tokens match TEST DAY ``-R{n}`` suffix only), `route` (``R{n}`` route number or full TEST DAY token), `page`, `page_size` (max 200), `bill_any_month`, `unset_any_month`, `not_billed_quarter`, `failed_any_month`.
+Query: `anchor_month=YYYY-MM-01` **or** `year` + `quarter` (1–4). Optional: `q` (address/PMC; route-like tokens match TEST DAY ``-R{n}`` suffix only), `route` (``R{n}`` route number or full TEST DAY token), `page`, `page_size` (max 200), `not_billed_quarter`, `do_not_bill_any_month`, `non_empty_billing_notes`.
 
 GET returns active library locations with, for each month in that **calendar quarter**: processor ``billing_status`` from ``monthly_route_test_history`` (defaults to ``unset`` when no row), and a rolled-up **test summary** from ``monthly_testing_site_month`` (worst outcome across testing sites at the address). Each month cell also includes ``field_work_ended`` (whether technicians have ended field work on that route-month run). The billing board UI shows ``—`` instead of the Unset badge while ``billing_status`` is ``unset``, ``field_work_ended`` is false, and the month is still the current or a future Pacific calendar month; past months always show Unset. Also ``quarter_billed`` from ``monthly_location_quarter_billed``.
 

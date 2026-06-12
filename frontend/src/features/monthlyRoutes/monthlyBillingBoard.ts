@@ -26,6 +26,29 @@ export function billingBoardShowUnsetDash(
   return billing === 'unset' && !fieldWorkEnded && !isPastPacificMonth(monthFirstIso, reference)
 }
 
+const BILLING_PILL_CLICKABLE_STATUSES = new Set(['bill', 'do_not_bill', 'legacy'])
+
+export function billingMonthPaperworkRouteId(
+  row: BillingBoardLocationRow,
+  cell: BillingBoardMonthCell | undefined,
+): number | null {
+  if (cell?.test_monthly_route_id != null) return cell.test_monthly_route_id
+  if (row.monthly_route_id != null) return row.monthly_route_id
+  return null
+}
+
+export function billingMonthPillClickable(
+  row: BillingBoardLocationRow,
+  cell: BillingBoardMonthCell | undefined,
+  monthFirstIso: string,
+  reference: Date = new Date(),
+): boolean {
+  if (billingBoardShowUnsetDash(cell, monthFirstIso, reference)) return false
+  const billing = (cell?.billing_status ?? 'unset').trim().toLowerCase()
+  if (!BILLING_PILL_CLICKABLE_STATUSES.has(billing)) return false
+  return billingMonthPaperworkRouteId(row, cell) != null
+}
+
 export type BillingBoardTestSummaryKey =
   | 'failed'
   | 'passed_with_problems'
@@ -43,7 +66,7 @@ export type BillingBoardMonthCell = {
     testing_site_count: number
   }
   test_monthly_route_id: number | null
-  /** Human-readable skip category when billing is do not bill (e.g. Annual). */
+  /** Human-readable skip category when billing is waive (e.g. Annual). */
   skip_reason_category?: string | null
   /** False while the route-month run is still in field work (billing not yet actionable). */
   field_work_ended?: boolean
@@ -56,6 +79,7 @@ export type BillingBoardLocationRow = {
   location_label: string
   testing_site_labels?: string[] | null
   building: string | null
+  property_management_company: string | null
   billing_comments: string | null
   test_day: string | null
   /** Resolved route number for display/filtering (``R{n}``). */
@@ -84,29 +108,81 @@ export type BillingBoardPayload = {
   }
 }
 
+export const QUARTER_MONTH_LABELS: Record<number, string> = {
+  1: 'January, February, March',
+  2: 'April, May, June',
+  3: 'July, August, September',
+  4: 'October, November, December',
+}
+
+export function quarterFromCalendarMonth(month: number): number {
+  return Math.floor((month - 1) / 3) + 1
+}
+
+export function currentBillingQuarter(reference: Date = new Date()): { year: number; quarter: number } {
+  const ym = parseYearMonth(monthFirstIsoPacificToday(reference))
+  if (!ym) {
+    const now = reference
+    return { year: now.getFullYear(), quarter: quarterFromCalendarMonth(now.getMonth() + 1) }
+  }
+  return { year: ym.year, quarter: quarterFromCalendarMonth(ym.month) }
+}
+
+export function quarterSelectionKey(year: number, quarter: number): string {
+  return `${year}-Q${quarter}`
+}
+
+export function parseQuarterSelectionKey(key: string): { year: number; quarter: number } | null {
+  const match = key.match(/^(\d{4})-Q([1-4])$/)
+  if (!match) return null
+  return { year: Number(match[1]), quarter: Number(match[2]) }
+}
+
+export function quarterOptionLabel(year: number, quarter: number): string {
+  const months = QUARTER_MONTH_LABELS[quarter] ?? ''
+  return `Q${quarter} ${year} (${months})`
+}
+
+export function quarterSelectionOptions(
+  countBackQuarters = 6,
+  countForwardQuarters = 1,
+  reference: Date = new Date(),
+): string[] {
+  const { year, quarter } = currentBillingQuarter(reference)
+  const anchorIndex = year * 4 + (quarter - 1)
+  const keys: string[] = []
+  for (let offset = -countBackQuarters; offset <= countForwardQuarters; offset += 1) {
+    const index = anchorIndex + offset
+    const optionYear = Math.floor(index / 4)
+    const optionQuarter = (index % 4) + 1
+    keys.push(quarterSelectionKey(optionYear, optionQuarter))
+  }
+  return keys.reverse()
+}
+
 export type BillingBoardQuery = {
-  anchorMonth: string
+  year: number
+  quarter: number
   q?: string
   route?: string
   page?: number
   pageSize?: number
-  billAnyMonth?: boolean
-  unsetAnyMonth?: boolean
+  doNotBillAnyMonth?: boolean
   notBilledQuarter?: boolean
-  failedAnyMonth?: boolean
+  nonEmptyBillingNotes?: boolean
 }
 
 export function billingBoardQueryString(params: BillingBoardQuery): string {
   const qs = new URLSearchParams()
-  qs.set('anchor_month', params.anchorMonth)
+  qs.set('year', String(params.year))
+  qs.set('quarter', String(params.quarter))
   if (params.q?.trim()) qs.set('q', params.q.trim())
   if (params.route?.trim()) qs.set('route', params.route.trim())
   if (params.page != null) qs.set('page', String(params.page))
   if (params.pageSize != null) qs.set('page_size', String(params.pageSize))
-  if (params.billAnyMonth) qs.set('bill_any_month', 'true')
-  if (params.unsetAnyMonth) qs.set('unset_any_month', 'true')
+  if (params.doNotBillAnyMonth) qs.set('do_not_bill_any_month', 'true')
   if (params.notBilledQuarter) qs.set('not_billed_quarter', 'true')
-  if (params.failedAnyMonth) qs.set('failed_any_month', 'true')
+  if (params.nonEmptyBillingNotes) qs.set('non_empty_billing_notes', 'true')
   return qs.toString()
 }
 
@@ -118,7 +194,8 @@ export async function fetchBillingBoard(params: BillingBoardQuery): Promise<Bill
 
 export async function patchQuarterBilled(
   locationId: number,
-  anchorMonth: string,
+  year: number,
+  quarter: number,
   billed: boolean,
 ): Promise<{
   location_id: number
@@ -128,7 +205,10 @@ export async function patchQuarterBilled(
   billed_at: string | null
   billed_by: string | null
 }> {
-  const qs = new URLSearchParams({ anchor_month: anchorMonth })
+  const qs = new URLSearchParams({
+    year: String(year),
+    quarter: String(quarter),
+  })
   return apiJson(
     `/api/monthly_routes/billing_board/locations/${locationId}/quarter_billed?${qs.toString()}`,
     {
@@ -150,9 +230,8 @@ export function formatMonthHeader(monthIso: string): string {
   }).format(new Date(Date.UTC(year, month - 1, 1)))
 }
 
-export function quarterTitle(year: number, quarter: number, monthDates: string[]): string {
-  const months = monthDates.map(formatMonthHeader).join(' – ')
-  return `Q${quarter} ${year} (${months})`
+export function quarterTitle(year: number, quarter: number): string {
+  return quarterOptionLabel(year, quarter)
 }
 
 const TEST_SUMMARY_LABELS: Record<BillingBoardTestSummaryKey, string> = {

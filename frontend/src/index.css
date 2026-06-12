@@ -4187,12 +4187,103 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
   border: 1px solid #e7eaf0;
 }
 
+.monthly-page .monthly-billing-table thead th {
+  color: var(--ml-muted-strong, #475569);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .monthly-page .monthly-billing-row {
   cursor: pointer;
 }
 
 .monthly-page .monthly-billing-row--tracked > td {
   background-color: #fff3cd;
+}
+
+.monthly-page .monthly-billing-comment-cell__display {
+  white-space: pre-wrap;
+  min-height: 1.25rem;
+  border-radius: 0.35rem;
+  margin: -0.15rem -0.35rem;
+  padding: 0.15rem 0.35rem;
+  cursor: text;
+}
+
+.monthly-page .monthly-billing-comment-cell__display:hover,
+.monthly-page .monthly-billing-comment-cell__display:focus-visible {
+  background: rgba(15, 23, 42, 0.04);
+  outline: none;
+}
+
+.monthly-page .monthly-billing-comment-cell--editing {
+  min-width: 12rem;
+}
+
+.monthly-page .monthly-billing-comment-cell__input {
+  font-size: 0.875rem;
+  resize: vertical;
+}
+
+.monthly-page .monthly-billing-comment-cell--editing .pw-mock-field-edit-btn--primary {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #fff;
+}
+
+.monthly-page .monthly-billing-comment-cell--editing .pw-mock-field-edit-btn--primary:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.monthly-page .monthly-billing-comment-cell--editing .pw-mock-field-edit-btn:not(.pw-mock-field-edit-btn--primary) {
+  border-color: var(--ml-muted-strong, #475569);
+  color: var(--ml-muted-strong, #475569);
+}
+
+.monthly-page .monthly-billing-comment-cell--editing .pw-mock-field-edit-btn:not(.pw-mock-field-edit-btn--primary):focus-visible {
+  outline: 2px solid var(--ml-muted-strong, #475569);
+  outline-offset: 2px;
+}
+
+.monthly-page .monthly-billing-pill--clickable {
+  cursor: pointer;
+  line-height: 1;
+  text-decoration: none;
+}
+
+.monthly-page .monthly-billing-pill--clickable:hover,
+.monthly-page .monthly-billing-pill--clickable:focus-visible {
+  opacity: 0.88;
+}
+
+.monthly-page .monthly-billing-pill--clickable:focus-visible {
+  outline: 2px solid var(--brand-navy, #1e3a5f);
+  outline-offset: 2px;
+  border-radius: 0.25rem;
+}
+
+.billing-board-paperwork-modal__dialog {
+  max-width: min(96vw, 1400px);
+}
+
+.billing-board-paperwork-modal__body {
+  max-height: min(80vh, 900px);
+  overflow: auto;
+}
+
+.billing-board-paperwork-modal__header {
+  border-bottom: 1px solid var(--ml-border-soft, #e2e8f0);
+}
+
+.billing-board-paperwork-modal__title {
+  font-weight: 600;
+}
+
+.billing-board-paperwork-modal__subtitle {
+  line-height: 1.35;
 }
 
 .monthly-page .table-hover > tbody > .monthly-billing-row--tracked:hover > td {
@@ -5899,6 +5990,23 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
   max-width: 42rem;
 }
 
+.portal-deficiency-modal__content {
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+.portal-deficiency-modal__header {
+  padding: 1.35rem 1.75rem 1.25rem;
+}
+
+.portal-deficiency-modal__body {
+  padding: 1.5rem 1.75rem;
+}
+
+.portal-deficiency-modal__footer {
+  padding: 1.15rem 1.75rem 1.35rem;
+}
+
 .run-details-deficiency-modal__content {
   border-radius: 0.75rem !important;
   overflow: hidden;
@@ -6074,6 +6182,10 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
 
 .run-details-deficiency-modal__meta-value {
   color: var(--ml-text, #0f172a);
+}
+
+.run-details-deficiency-modal__st-link {
+  margin-top: 0.75rem;
 }
 
 .run-details-deficiency-modal__footer {

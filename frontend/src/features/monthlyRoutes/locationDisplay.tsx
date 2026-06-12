@@ -157,31 +157,12 @@ export function streetLineFromAddress(raw: string | null | undefined): string {
   return trimmed.includes(',') ? (trimmed.split(',')[0]?.trim() ?? trimmed) : trimmed
 }
 
-/** Billing board row title: street line only. */
+/** Billing board row title: site label only. */
 export function billingBoardLocationTitle(row: {
-  location_label?: string | null
+  building?: string | null
   label?: string | null
-  display_address?: string | null
-  address?: string | null
 }): string {
-  const raw =
-    normalizeText(row.label) ||
-    normalizeText(row.location_label) ||
-    normalizeText(row.display_address) ||
-    normalizeText(row.address)
-  return streetLineFromAddress(raw) || 'Testing location'
-}
-
-export function billingBoardLocationSubline(row: {
-  display_address?: string | null
-  address?: string | null
-  location_label?: string | null
-  label?: string | null
-}): string | null {
-  const label = streetLineFromAddress(row.label || row.location_label)
-  const address = streetLineFromAddress(row.display_address || row.address)
-  if (label && address && label.toLowerCase() !== address.toLowerCase()) return address
-  return null
+  return normalizeText(row.building) || normalizeText(row.label) || 'Testing location'
 }
 
 

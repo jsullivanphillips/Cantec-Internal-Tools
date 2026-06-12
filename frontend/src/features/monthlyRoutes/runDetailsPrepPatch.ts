@@ -201,6 +201,8 @@ function deficiencySummariesFromWorksheetStop(
     status: def.status,
     description: def.description,
     verification_notes: def.verification_notes,
+    service_line: def.service_line ?? null,
+    service_trade_deficiency_id: def.service_trade_deficiency_id ?? null,
     reported_by_tech_id: def.reported_by_tech_id ?? null,
     reported_by_tech_name: def.reported_by_tech_name ?? null,
     last_edited_by_tech_id: def.last_edited_by_tech_id ?? null,

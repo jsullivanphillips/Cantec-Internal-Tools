@@ -327,33 +327,30 @@ def portal_routes_lookup():
 
 @technician_portal_bp.get("/routes/<int:route_id>/portal_route_summary")
 def portal_route_summary(route_id: int):
-    """Route hub: today's Pacific month, optional current-month run, prior runs for worksheet picks."""
+    """Route hub: portal primary month (may promote next month after office close), prior runs."""
     if not session.get(SESSION_FLAG):
         return jsonify({"error": "Portal locked", "code": "portal_locked"}), 401
-    from app.routes.monthly_routes import _current_pacific_month_first, _serialize_run
+    from app.monthly.run_workflow import resolve_portal_route_summary_months
+    from app.routes.monthly_routes import _serialize_run
 
     mr = MonthlyRoute.query.filter_by(id=route_id).one_or_none()
     if mr is None:
         return jsonify({"error": "Route not found", "code": "not_found"}), 404
     counts = _location_counts_for([int(mr.id)])
-    month_first = _current_pacific_month_first()
-    current_run = MonthlyRouteRun.query.filter_by(
-        monthly_route_id=route_id,
-        month_date=month_first,
-    ).one_or_none()
-    prior_runs = (
-        MonthlyRouteRun.query.filter(
-            MonthlyRouteRun.monthly_route_id == route_id,
-            MonthlyRouteRun.month_date < month_first,
-        )
-        .order_by(MonthlyRouteRun.month_date.desc())
-        .all()
-    )
+    (
+        calendar_month,
+        primary_month,
+        primary_run,
+        awaiting_office_prepare,
+        prior_runs,
+    ) = resolve_portal_route_summary_months(route_id)
     return jsonify(
         {
             "route": _serialize_route_for_portal(mr, location_count=counts.get(int(mr.id), 0)),
-            "current_month_first": month_first.isoformat(),
-            "current_month_run": _serialize_run(current_run),
+            "calendar_month_first": calendar_month.isoformat(),
+            "current_month_first": primary_month.isoformat(),
+            "current_month_run": _serialize_run(primary_run),
+            "awaiting_office_prepare": bool(awaiting_office_prepare),
             "prior_runs": [_serialize_run(r) for r in prior_runs],
         }
     )
@@ -373,7 +370,7 @@ def portal_start_current_month_run(route_id: int):
         _serialize_run,
     )
 
-    from app.monthly.run_workflow import run_is_prepared
+    from app.monthly.run_workflow import run_explicitly_completed, run_is_prepared
 
     mr = MonthlyRoute.query.filter_by(id=route_id).one_or_none()
     if mr is None:
@@ -383,6 +380,16 @@ def portal_start_current_month_run(route_id: int):
         monthly_route_id=route_id,
         month_date=month_first,
     ).one_or_none()
+    if run is not None and run_explicitly_completed(run):
+        return (
+            jsonify(
+                {
+                    "error": "This run is closed by the office.",
+                    "code": "run_completed_locked",
+                }
+            ),
+            409,
+        )
     if run is None or not run_is_prepared(run):
         return (
             jsonify(

@@ -235,6 +235,7 @@ export default function TechnicianPortalWorksheetPage() {
     showStartRun,
     showEndRun,
     showReopenField,
+    fieldStartBlocked,
     onPortalStartRun,
     requestPortalEndRun,
     onPortalReopenField,
@@ -1178,6 +1179,10 @@ export default function TechnicianPortalWorksheetPage() {
           ) : showAwaitingOfficePrepare ? (
             <span className="small text-muted">
               Waiting for office to release this route — tap Start run once it is prepared.
+            </span>
+          ) : fieldStartBlocked && runPrepared && !runCompleted && (payload?.run?.started_at ?? '').trim().length === 0 ? (
+            <span className="small text-muted">
+              Review stops now — field run starts {monthHeading}.
             </span>
           ) : null}
         </div>

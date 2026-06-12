@@ -206,7 +206,7 @@ export function billingStatusLabel(status: string | null | undefined): string {
     case 'bill':
       return 'Bill'
     case 'do_not_bill':
-      return 'Do not bill'
+      return 'Waive'
     case 'unset':
       return 'Unset'
     case 'legacy':

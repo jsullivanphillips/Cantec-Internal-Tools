@@ -109,7 +109,7 @@ export default function RunDetailsLocationBillingPanel({
                       disabled={disabled}
                       onClick={() => void setBilling(group.location_id, 'do_not_bill')}
                     >
-                      Do not bill
+                      Waive
                     </Button>
                     {!isLegacy && !readOnly ? (
                       <Button
