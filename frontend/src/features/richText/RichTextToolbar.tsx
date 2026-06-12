@@ -4,16 +4,24 @@ import { RICH_TEXT_COLOR_OPTIONS, type RichTextColorId } from './richTextColors'
 type RichTextToolbarProps = {
   editor: RichTextEditorHandle | null
   className?: string
+  /** Bold | divider | grouped colors (portal header). Default spreads controls across the bar. */
+  layout?: 'spread' | 'grouped'
 }
 
 function preventToolbarFocusLoss(event: React.MouseEvent | React.PointerEvent): void {
   event.preventDefault()
 }
 
-export default function RichTextToolbar({ editor, className }: RichTextToolbarProps) {
+export default function RichTextToolbar({ editor, className, layout = 'spread' }: RichTextToolbarProps) {
   return (
     <div
-      className={['rich-text-toolbar', className].filter(Boolean).join(' ')}
+      className={[
+        'rich-text-toolbar',
+        layout === 'grouped' ? 'rich-text-toolbar--grouped' : '',
+        className,
+      ]
+        .filter(Boolean)
+        .join(' ')}
       role="toolbar"
       aria-label="Text formatting"
     >
@@ -28,6 +36,7 @@ export default function RichTextToolbar({ editor, className }: RichTextToolbarPr
       >
         <strong>B</strong>
       </button>
+      <span className="rich-text-toolbar__divider" aria-hidden />
       <div className="rich-text-toolbar__colors" role="group" aria-label="Text color">
         {RICH_TEXT_COLOR_OPTIONS.map((option) => (
           <button

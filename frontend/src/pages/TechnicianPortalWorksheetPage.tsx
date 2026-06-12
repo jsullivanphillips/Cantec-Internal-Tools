@@ -984,7 +984,11 @@ export default function TechnicianPortalWorksheetPage() {
         onConfirmSkipUntestedAndEnd={() => void confirmSkipUntestedAndEndRun()}
         endRunBusy={runLifecycleBusy}
       />
-      <header className="pw-mock-chrome">
+      <header
+        className={`pw-mock-chrome${
+          showPortalRichTextToolbar && !phoneLayout ? ' pw-mock-chrome--rich-editing' : ''
+        }`}
+      >
         <div
           className={`pw-mock-chrome-top${technicianNote ? ' pw-mock-chrome-top--with-note' : ''}`}
         >
@@ -1087,11 +1091,6 @@ export default function TechnicianPortalWorksheetPage() {
             <PortalSyncStatusBadge state={syncState} pendingCount={pendingSyncCount} />
           </div>
         </div>
-        {showPortalRichTextToolbar ? (
-          <div className="pw-mock-chrome-rich-toolbar">
-            <RichTextToolbar editor={portalRichTextEditor} />
-          </div>
-        ) : null}
         {isTrainingRoute && trainingBannerOpen ? (
           <Alert variant="info" className="py-2 px-3 mb-0 small">
             <div className="d-flex flex-column flex-md-row align-items-md-start justify-content-between gap-2">
@@ -1185,6 +1184,11 @@ export default function TechnicianPortalWorksheetPage() {
             </span>
           ) : null}
         </div>
+        {showPortalRichTextToolbar && !phoneLayout ? (
+          <div className="pw-mock-chrome-rich-toolbar">
+            <RichTextToolbar editor={portalRichTextEditor} layout="grouped" />
+          </div>
+        ) : null}
       </header>
 
       {payload?.run && !showStopWorkspace && !initialLoading ? (
@@ -1291,6 +1295,11 @@ export default function TechnicianPortalWorksheetPage() {
               </div>
 
               <div className="pw-mock-fields">
+                {showPortalRichTextToolbar && phoneLayout ? (
+                  <div className="pw-mock-fields-rich-toolbar">
+                    <RichTextToolbar editor={portalRichTextEditor} layout="grouped" />
+                  </div>
+                ) : null}
                 <PortalClockEventsCard stop={active} />
                 <div className="pw-mock-field-group">
                   <div className="pw-mock-field-group-title">Site</div>
