@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Badge, Button, Card, Form, OverlayTrigger, Spinner, Table, Tooltip } from 'react-bootstrap'
+import { Button, Card, Form, OverlayTrigger, Spinner, Table, Tooltip } from 'react-bootstrap'
 import { Link } from 'react-router-dom'
 import {
+  billingBoardPillTone,
   billingBoardShowUnsetDash,
   billingMonthPillClickable,
   billingMonthPaperworkRouteId,
   billingStatusLabel,
-  billingStatusVariant,
   currentBillingQuarter,
   fetchBillingBoard,
   formatMonthHeader,
@@ -23,6 +23,7 @@ import BillingBoardCommentCell from '../features/monthlyRoutes/BillingBoardComme
 import BillingBoardPaperworkModal, {
   type BillingBoardPaperworkModalContext,
 } from '../features/monthlyRoutes/BillingBoardPaperworkModal'
+import { formatSkipReasonDisplayText } from '../features/monthlyRoutes/portalWorkflowShared'
 import { isAbortError } from '../lib/apiClient'
 
 const PAGE_SIZE = 50
@@ -64,29 +65,28 @@ function BillingMonthCell({
   if (billingBoardShowUnsetDash(cell, monthIso)) {
     return <span className="text-muted">—</span>
   }
+  const tone = billingBoardPillTone(billing)
+  const label = billingStatusLabel(billing)
   const clickable = billingMonthPillClickable(row, cell, monthIso)
-  const badge = (
-    <Badge bg={billingStatusVariant(billing)} className="text-wrap small">
-      {billingStatusLabel(billing)}
-    </Badge>
-  )
-
-  if (!clickable) {
-    return <div className="d-flex justify-content-center">{badge}</div>
-  }
-
-  const waiveReason =
+  const waiveReasonRaw =
     billing === 'do_not_bill' ? cell?.skip_reason_category?.trim() || null : null
+  const waiveReason = waiveReasonRaw
+    ? formatSkipReasonDisplayText(waiveReasonRaw) ?? waiveReasonRaw
+    : null
   const routeId = billingMonthPaperworkRouteId(row, cell)
 
-  const pillButton = (
+  const cardClass = `monthly-billing-pill-card monthly-billing-pill-card--${tone}${
+    clickable ? ' monthly-billing-pill--clickable' : ''
+  }`
+
+  const cardInner = clickable ? (
     <button
       type="button"
-      className="btn btn-link p-0 border-0 monthly-billing-pill--clickable"
+      className={cardClass}
       aria-label={
         waiveReason
           ? `Waive: ${waiveReason}. View paperwork for ${formatMonthHeader(monthIso)}.`
-          : `View paperwork for ${formatMonthHeader(monthIso)} (${billingStatusLabel(billing)})`
+          : `View paperwork for ${formatMonthHeader(monthIso)} (${label})`
       }
       onClick={(e) => {
         e.stopPropagation()
@@ -101,21 +101,25 @@ function BillingMonthCell({
         })
       }}
     >
-      {badge}
+      {label}
     </button>
+  ) : (
+    <span className={cardClass}>{label}</span>
   )
 
-  return (
-    <div className="d-flex justify-content-center">
-      {waiveReason ? (
-        <OverlayTrigger trigger={['hover', 'focus']} overlay={<Tooltip>{waiveReason}</Tooltip>}>
-          <span className="d-inline-block">{pillButton}</span>
-        </OverlayTrigger>
-      ) : (
-        pillButton
-      )}
-    </div>
+  const shell = (
+    <div className="monthly-billing-month-cell">{cardInner}</div>
   )
+
+  if (clickable && waiveReason) {
+    return (
+      <OverlayTrigger trigger={['hover', 'focus']} overlay={<Tooltip>{waiveReason}</Tooltip>}>
+        <span className="monthly-billing-month-cell-wrap d-block">{shell}</span>
+      </OverlayTrigger>
+    )
+  }
+
+  return shell
 }
 
 const BILLING_SKELETON_ROW_COUNT = 8
@@ -537,14 +541,16 @@ export default function MonthlyBillingPage() {
                           const billedTooltip =
                             row.quarter_billed && row.billed_at
                               ? `Invoiced ${new Date(row.billed_at).toLocaleString()}${row.billed_by ? ` by ${row.billed_by}` : ''}`
-                              : 'Invoice for this quarter'
+                              : 'Mark invoiced for this quarter'
                           const btn = (
                             <Button
                               size="sm"
                               variant={row.quarter_billed ? 'link' : 'primary'}
-                              className={row.quarter_billed ? 'p-0 text-success' : undefined}
+                              className={
+                                row.quarter_billed ? 'p-0 text-success' : 'monthly-billing-invoice-btn'
+                              }
                               disabled={busyLocationId === row.location_id}
-                              aria-label={row.quarter_billed ? 'Invoiced' : 'Invoice'}
+                              aria-label={row.quarter_billed ? 'Invoiced' : 'Mark invoiced'}
                               onClick={(e) => {
                                 e.stopPropagation()
                                 void toggleBilled(row)
@@ -560,7 +566,7 @@ export default function MonthlyBillingPage() {
                               ) : row.quarter_billed ? (
                                 <i className="bi bi-check-circle-fill fs-5" aria-hidden />
                               ) : (
-                                'Invoice'
+                                'Invoiced'
                               )}
                             </Button>
                           )
@@ -586,7 +592,7 @@ export default function MonthlyBillingPage() {
                                 </Link>
                               </td>
                               {monthDates.map((monthIso) => (
-                                <td key={monthIso} className="text-center">
+                                <td key={monthIso} className="text-center monthly-billing-month-td">
                                   <BillingMonthCell
                                     row={row}
                                     cell={row.months[monthIso]}

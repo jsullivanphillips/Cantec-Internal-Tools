@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Badge, Modal, Spinner } from 'react-bootstrap'
 import { apiJson, isAbortError } from '../../lib/apiClient'
 import OfficeWorksheetReadOnlyTable from './OfficeWorksheetReadOnlyTable'
+import { OFFICE_WORKSHEET_BILLING_HISTORY_COLUMNS } from './officeWorksheetTableShared'
 import {
   billingStatusLabel,
   billingStatusVariant,
@@ -128,13 +129,15 @@ export default function BillingBoardPaperworkModal({ show, context, onHide }: Pr
 
   if (!show) return null
 
+  const isWaiveModal = context?.billingStatus === 'do_not_bill'
+
   return (
     <Modal
       show={show}
       onHide={onHide}
       centered
       size="xl"
-      className="billing-board-paperwork-modal"
+      className={`billing-board-paperwork-modal${isWaiveModal ? ' billing-board-paperwork-modal--waive' : ''}`}
       dialogClassName="billing-board-paperwork-modal__dialog"
       contentClassName="billing-board-paperwork-modal__content"
     >
@@ -156,7 +159,7 @@ export default function BillingBoardPaperworkModal({ show, context, onHide }: Pr
           ) : null}
         </div>
       </Modal.Header>
-      <Modal.Body className="billing-board-paperwork-modal__body p-0 monthly-run-detail-page">
+      <Modal.Body className="billing-board-paperwork-modal__body monthly-run-detail-page">
         {loading ? (
           <div className="d-flex align-items-center justify-content-center gap-2 text-muted small py-5">
             <Spinner animation="border" size="sm" aria-hidden />
@@ -165,7 +168,7 @@ export default function BillingBoardPaperworkModal({ show, context, onHide }: Pr
         ) : emptyMessage ? (
           <p className="run-details-history-shell__empty mb-0 p-4">{emptyMessage}</p>
         ) : showTable ? (
-          <div className="run-details-history-section">
+          <div className="run-details-history-section run-details-history-section--billing">
             <div className="run-details-history-shell">
               {fieldWorkReopened ? (
                 <p className="run-details-history-shell__notice" role="status">
@@ -183,6 +186,10 @@ export default function BillingBoardPaperworkModal({ show, context, onHide }: Pr
                 hideEmptyChangeColumns={false}
                 highlightNewComments
                 closedRun
+                columnVisibility={OFFICE_WORKSHEET_BILLING_HISTORY_COLUMNS}
+                showStopColumn={false}
+                layoutVariant="billing"
+                billingStatus={context!.billingStatus}
               />
             </div>
           </div>

@@ -4248,34 +4248,113 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
   outline-offset: 2px;
 }
 
+.monthly-page .monthly-billing-month-td {
+  padding: 0.3rem;
+  vertical-align: middle;
+}
+
+.monthly-page .monthly-billing-month-cell-wrap {
+  width: 100%;
+  height: 100%;
+}
+
+.monthly-page .monthly-billing-month-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 2.75rem;
+  box-sizing: border-box;
+}
+
+.monthly-page .monthly-billing-invoice-btn {
+  border-radius: 999px;
+  padding-left: 1.1rem;
+  padding-right: 1.1rem;
+}
+
+.monthly-page .monthly-billing-pill-card {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 4.25rem;
+  min-height: 1.85rem;
+  max-width: 100%;
+  padding: 0.35rem 0.65rem;
+  background: #fff;
+  border: 5px solid transparent;
+  border-radius: var(--ml-radius-md, 0.65rem);
+  color: #1a1a1a;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 400;
+  line-height: 1.2;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.monthly-page button.monthly-billing-pill-card {
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 400;
+  line-height: 1.2;
+}
+
+.monthly-page .monthly-billing-pill-card--bill {
+  border-color: #4d8429;
+  background-color: #f2f7ef;
+}
+
+.monthly-page .monthly-billing-pill-card--do_not_bill {
+  border-color: #ed7d31;
+  background-color: #fdf6f0;
+}
+
+.monthly-page .monthly-billing-pill-card--unset {
+  border-color: #94a3b8;
+  background-color: #f5f7f9;
+}
+
+.monthly-page .monthly-billing-pill-card--legacy {
+  border-color: #64748b;
+  background-color: #f3f5f6;
+}
+
 .monthly-page .monthly-billing-pill--clickable {
   cursor: pointer;
-  line-height: 1;
-  text-decoration: none;
+  appearance: none;
+  transition:
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
 }
 
 .monthly-page .monthly-billing-pill--clickable:hover,
 .monthly-page .monthly-billing-pill--clickable:focus-visible {
-  opacity: 0.88;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.14);
 }
 
 .monthly-page .monthly-billing-pill--clickable:focus-visible {
   outline: 2px solid var(--brand-navy, #1e3a5f);
   outline-offset: 2px;
-  border-radius: 0.25rem;
 }
 
 .billing-board-paperwork-modal__dialog {
   max-width: min(96vw, 1400px);
 }
 
-.billing-board-paperwork-modal__body {
-  max-height: min(80vh, 900px);
-  overflow: auto;
+.billing-board-paperwork-modal__content {
+  overflow: hidden;
 }
 
 .billing-board-paperwork-modal__header {
-  border-bottom: 1px solid var(--ml-border-soft, #e2e8f0);
+  border-bottom: none;
+  padding: 1rem 1.25rem 0;
+}
+
+.billing-board-paperwork-modal .modal-body.billing-board-paperwork-modal__body {
+  padding: 1.75rem 1.25rem 1.25rem;
+  max-height: min(80vh, 900px);
+  overflow: auto;
 }
 
 .billing-board-paperwork-modal__title {
@@ -4284,6 +4363,200 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
 
 .billing-board-paperwork-modal__subtitle {
   line-height: 1.35;
+}
+
+.billing-board-paperwork-modal--waive .billing-board-paperwork-modal__dialog {
+  max-width: min(98vw, 1750px);
+}
+
+.billing-board-paperwork-modal--waive .billing-board-paperwork-modal__body {
+  zoom: 1.25;
+  max-height: min(82vh, 1000px);
+}
+
+@supports not (zoom: 1.25) {
+  .billing-board-paperwork-modal--waive .billing-board-paperwork-modal__body {
+    transform: scale(1.25);
+    transform-origin: top center;
+  }
+
+  .billing-board-paperwork-modal--waive .billing-board-paperwork-modal__dialog {
+    width: 80%;
+    max-width: min(78vw, 1400px);
+  }
+}
+
+/* Billing-board exact history table layout */
+.billing-board-paperwork-modal
+  .run-details-history-section--billing
+  .tw-office-stop-table
+  .tw-office-col-billing {
+  width: var(--tw-office-col-billing);
+}
+
+.billing-board-paperwork-modal .run-details-history-section--billing .tw-office-sticky-billing {
+  left: 0;
+  width: var(--tw-office-col-billing);
+  min-width: var(--tw-office-col-billing);
+}
+
+.billing-board-paperwork-modal .run-details-history-section--billing .tw-office-sticky-address {
+  left: var(--tw-office-col-billing);
+}
+
+.billing-board-paperwork-modal .run-details-history-section--billing .tw-office-sticky-result {
+  left: calc(var(--tw-office-col-billing) + var(--tw-office-col-address));
+}
+
+.billing-board-paperwork-modal
+  .run-details-history-section--billing
+  .tw-office-stop-table
+  td.tw-office-sticky-billing,
+.billing-board-paperwork-modal
+  .run-details-history-section--billing
+  .tw-office-stop-table
+  td.tw-office-sticky-address,
+.billing-board-paperwork-modal
+  .run-details-history-section--billing
+  .tw-office-stop-table
+  td.tw-office-billing-test-result-cell,
+.billing-board-paperwork-modal
+  .run-details-history-section--billing
+  .tw-office-stop-table
+  th.tw-office-sticky-billing,
+.billing-board-paperwork-modal
+  .run-details-history-section--billing
+  .tw-office-stop-table
+  th.tw-office-sticky-address,
+.billing-board-paperwork-modal
+  .run-details-history-section--billing
+  .tw-office-stop-table
+  th.tw-office-sticky-result {
+  vertical-align: middle;
+}
+
+.billing-board-paperwork-modal .tw-office-billing-status-cell {
+  text-align: center;
+}
+
+.billing-board-paperwork-modal .tw-office-billing-status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 4rem;
+  padding: 0.3rem 0.5rem;
+  border: 4px solid transparent;
+  border-radius: var(--ml-radius-md, 0.65rem);
+  color: #1a1a1a;
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1.2;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.billing-board-paperwork-modal .tw-office-billing-status-pill--bill {
+  border-color: #4d8429;
+  background-color: #f2f7ef;
+}
+
+.billing-board-paperwork-modal .tw-office-billing-status-pill--do_not_bill {
+  border-color: #ed7d31;
+  background-color: #fdf6f0;
+}
+
+.billing-board-paperwork-modal .tw-office-billing-status-pill--unset {
+  border-color: #94a3b8;
+  background-color: #f5f7f9;
+}
+
+.billing-board-paperwork-modal .tw-office-billing-status-pill--legacy {
+  border-color: #64748b;
+  background-color: #f3f5f6;
+}
+
+.billing-board-paperwork-modal .tw-office-billing-test-result-cell {
+  padding: 0.35rem 0.4rem;
+}
+
+.billing-board-paperwork-modal
+  .tw-office-billing-test-result-cell.run-details-review-location-cell--all-good,
+.billing-board-paperwork-modal
+  .tw-office-billing-test-result-cell.run-details-review-location-cell--passed-problems {
+  background-color: #70ad47;
+}
+
+.billing-board-paperwork-modal
+  .tw-office-billing-test-result-cell.run-details-review-location-cell--failed {
+  background-color: var(--pw-failed, #dc2626);
+}
+
+.billing-board-paperwork-modal
+  .tw-office-billing-test-result-cell.run-details-review-location-cell--skipped {
+  background-color: #fef08a;
+}
+
+.billing-board-paperwork-modal
+  .tw-office-billing-test-result-cell.run-details-review-location-cell--annual,
+.billing-board-paperwork-modal
+  .tw-office-billing-test-result-cell.run-details-review-location-cell--on-hold {
+  background-color: #ed7d31;
+}
+
+.billing-board-paperwork-modal
+  .tw-office-billing-test-result-cell.run-details-review-location-cell--pending {
+  background-color: var(--ml-surface-muted, #f8fafc);
+}
+
+.billing-board-paperwork-modal .tw-office-billing-test-result-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  width: 100%;
+  padding: 0.55rem 0.65rem;
+  background: #fff;
+  border: 1px solid transparent;
+  border-radius: var(--ml-radius-md, 0.65rem);
+  box-sizing: border-box;
+}
+
+.billing-board-paperwork-modal
+  .tw-office-billing-test-result-card.run-details-review-location-result-card--all-good,
+.billing-board-paperwork-modal
+  .tw-office-billing-test-result-card.run-details-review-location-result-card--passed-problems {
+  border-color: #4d8429;
+}
+
+.billing-board-paperwork-modal
+  .tw-office-billing-test-result-card.run-details-review-location-result-card--failed {
+  border-color: #991b1b;
+}
+
+.billing-board-paperwork-modal
+  .tw-office-billing-test-result-card.run-details-review-location-result-card--skipped {
+  border-color: #ca8a04;
+}
+
+.billing-board-paperwork-modal
+  .tw-office-billing-test-result-card.run-details-review-location-result-card--annual,
+.billing-board-paperwork-modal
+  .tw-office-billing-test-result-card.run-details-review-location-result-card--on-hold {
+  background-color: #fde4d0;
+  border-color: #c2410c;
+}
+
+.billing-board-paperwork-modal
+  .tw-office-billing-test-result-card.run-details-review-location-result-card--pending {
+  border-color: #94a3b8;
+}
+
+.billing-board-paperwork-modal .tw-office-billing-test-result-card .tw-office-result-detail {
+  color: #1a1a1a;
+  font-size: 0.6875rem;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .monthly-page .table-hover > tbody > .monthly-billing-row--tracked:hover > td {

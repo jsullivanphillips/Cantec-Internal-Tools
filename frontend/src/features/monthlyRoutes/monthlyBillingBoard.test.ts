@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  billingBoardPillTone,
   billingBoardShowUnsetDash,
   billingMonthPaperworkRouteId,
   billingMonthPillClickable,
@@ -114,6 +115,16 @@ describe('calendar quarter helpers', () => {
     const options = quarterSelectionOptions(2, 0, refJune2026)
     expect(options).toContain('2026-Q2')
     expect(options[0]).toBe('2026-Q2')
+  })
+})
+
+describe('billingBoardPillTone', () => {
+  it('maps billing statuses to pill tones', () => {
+    expect(billingBoardPillTone('bill')).toBe('bill')
+    expect(billingBoardPillTone('do_not_bill')).toBe('do_not_bill')
+    expect(billingBoardPillTone('legacy')).toBe('legacy')
+    expect(billingBoardPillTone('unset')).toBe('unset')
+    expect(billingBoardPillTone(null)).toBe('unset')
   })
 })
 

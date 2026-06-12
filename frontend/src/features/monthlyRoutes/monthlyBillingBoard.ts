@@ -28,6 +28,14 @@ export function billingBoardShowUnsetDash(
 
 const BILLING_PILL_CLICKABLE_STATUSES = new Set(['bill', 'do_not_bill', 'legacy'])
 
+export type BillingBoardPillTone = 'bill' | 'do_not_bill' | 'unset' | 'legacy'
+
+export function billingBoardPillTone(status: string | null | undefined): BillingBoardPillTone {
+  const s = (status ?? 'unset').trim().toLowerCase()
+  if (s === 'bill' || s === 'do_not_bill' || s === 'legacy') return s
+  return 'unset'
+}
+
 export function billingMonthPaperworkRouteId(
   row: BillingBoardLocationRow,
   cell: BillingBoardMonthCell | undefined,

@@ -367,8 +367,19 @@ export const OFFICE_WORKSHEET_ALL_CHANGE_COLUMNS_VISIBLE: OfficeWorksheetChangeC
   runComments: true,
 }
 
+/** Billing board exact-history modal: address/result plus long-text comment columns only. */
+export const OFFICE_WORKSHEET_BILLING_HISTORY_COLUMNS: OfficeWorksheetChangeColumnVisibility = {
+  access: false,
+  panel: false,
+  monitoring: false,
+  procedures: true,
+  locationComments: true,
+  runComments: true,
+}
+
 const OFFICE_COL_WIDTH_REM = {
   stop: '2.5rem',
+  billing: '5.75rem',
   address: '15rem',
   result: '10rem',
   access: '11rem',
@@ -432,7 +443,12 @@ function officeColWidth(show: boolean, width: string): string {
 /** CSS variables for table width and column sizing when optional columns are hidden. */
 export function officeWorksheetTableCssVars(
   changeColumns: OfficeWorksheetChangeColumnVisibility,
+  options?: { showStopColumn?: boolean; showBillingColumn?: boolean },
 ): Record<string, string> {
+  const showStopColumn = options?.showStopColumn !== false
+  const showBillingColumn = options?.showBillingColumn === true
+  const stopW = officeColWidth(showStopColumn, OFFICE_COL_WIDTH_REM.stop)
+  const billingW = officeColWidth(showBillingColumn, OFFICE_COL_WIDTH_REM.billing)
   const accessW = officeColWidth(changeColumns.access, OFFICE_COL_WIDTH_REM.access)
   const panelW = officeColWidth(changeColumns.panel, OFFICE_COL_WIDTH_REM.panel)
   const monitoringW = officeColWidth(changeColumns.monitoring, OFFICE_COL_WIDTH_REM.monitoring)
@@ -443,7 +459,8 @@ export function officeWorksheetTableCssVars(
   )
   const runCommentsW = officeColWidth(changeColumns.runComments, OFFICE_COL_WIDTH_REM.runComments)
   return {
-    '--tw-office-col-stop': OFFICE_COL_WIDTH_REM.stop,
+    '--tw-office-col-stop': stopW,
+    '--tw-office-col-billing': billingW,
     '--tw-office-col-address': OFFICE_COL_WIDTH_REM.address,
     '--tw-office-col-result': OFFICE_COL_WIDTH_REM.result,
     '--tw-office-col-access': accessW,
@@ -453,7 +470,8 @@ export function officeWorksheetTableCssVars(
     '--tw-office-col-location-comments': locationCommentsW,
     '--tw-office-col-run-comments': runCommentsW,
     '--tw-office-table-w': `calc(${[
-      OFFICE_COL_WIDTH_REM.stop,
+      stopW,
+      billingW,
       OFFICE_COL_WIDTH_REM.address,
       OFFICE_COL_WIDTH_REM.result,
       accessW,

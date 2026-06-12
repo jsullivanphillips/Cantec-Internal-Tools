@@ -33,6 +33,19 @@ import {
 import { locationPrimaryLabel, locationDisplaySubline } from './locationDisplay'
 import { stopMonitoringDisplay } from './stopMonitoringDisplay'
 import { stopHasNewCommentField, type RunDetailNewCommentField } from './runDetailsLocationReview'
+import { billingBoardPillTone } from './monthlyBillingBoard'
+import {
+  formatSkipReasonDisplayText,
+  portalSkipReasonDetail,
+} from './portalWorkflowShared'
+import {
+  billingStatusLabel,
+  runReviewLocationCellClass,
+  runReviewLocationCellTone,
+  runReviewLocationResultCardClass,
+} from './officeRunReviewShared'
+
+export type OfficeWorksheetTableLayoutVariant = 'default' | 'billing'
 
 function officeCellClassName(updated: boolean | undefined, extra = ''): string {
   const base = `tw-office-detail-cell${extra ? ` ${extra}` : ''}`
@@ -80,10 +93,19 @@ function OfficeStatusPill({
   )
 }
 
-function OfficeStopColGroup({ columns }: { columns: OfficeWorksheetChangeColumnVisibility }) {
+function OfficeStopColGroup({
+  columns,
+  showStopColumn = true,
+  showBillingColumn = false,
+}: {
+  columns: OfficeWorksheetChangeColumnVisibility
+  showStopColumn?: boolean
+  showBillingColumn?: boolean
+}) {
   return (
     <colgroup>
-      <col className="tw-office-col-stop" />
+      {showStopColumn ? <col className="tw-office-col-stop" /> : null}
+      {showBillingColumn ? <col className="tw-office-col-billing" /> : null}
       <col className="tw-office-col-address" />
       <col className="tw-office-col-result" />
       {columns.access ? <col className="tw-office-col-access" /> : null}
@@ -96,12 +118,27 @@ function OfficeStopColGroup({ columns }: { columns: OfficeWorksheetChangeColumnV
   )
 }
 
-function OfficeTableHeaderRow({ columns }: { columns: OfficeWorksheetChangeColumnVisibility }) {
+function OfficeTableHeaderRow({
+  columns,
+  showStopColumn = true,
+  showBillingColumn = false,
+  layoutVariant = 'default',
+}: {
+  columns: OfficeWorksheetChangeColumnVisibility
+  showStopColumn?: boolean
+  showBillingColumn?: boolean
+  layoutVariant?: OfficeWorksheetTableLayoutVariant
+}) {
   return (
     <tr>
-      <th className="tw-office-sticky tw-office-sticky-order">#</th>
+      {showStopColumn ? <th className="tw-office-sticky tw-office-sticky-order">#</th> : null}
+      {showBillingColumn ? (
+        <th className="tw-office-sticky tw-office-sticky-billing">Billing</th>
+      ) : null}
       <th className="tw-office-sticky tw-office-sticky-address">Address</th>
-      <th className="tw-office-sticky tw-office-sticky-result">Result</th>
+      <th className="tw-office-sticky tw-office-sticky-result">
+        {layoutVariant === 'billing' ? 'Test result' : 'Result'}
+      </th>
       {columns.access ? <th>Access</th> : null}
       {columns.panel ? <th>Panel</th> : null}
       {columns.monitoring ? <th>Monitoring</th> : null}
@@ -160,11 +197,58 @@ function OfficeLongTextCell({
   return inner
 }
 
+function OfficeBillingStatusCell({ billingStatus }: { billingStatus: string }) {
+  const tone = billingBoardPillTone(billingStatus)
+  return (
+    <td className="tw-office-sticky tw-office-sticky-billing tw-office-billing-status-cell">
+      <span className={`tw-office-billing-status-pill tw-office-billing-status-pill--${tone}`}>
+        {billingStatusLabel(billingStatus)}
+      </span>
+    </td>
+  )
+}
+
+function OfficeBillingTestResultCell({
+  stop,
+  monthDate,
+  closedRun,
+  resultDetailLines,
+  status,
+}: {
+  stop: TechnicianWorksheetLocation
+  monthDate: string
+  closedRun?: boolean
+  resultDetailLines: string[]
+  status: OfficeStopStatus
+}) {
+  const tone = runReviewLocationCellTone(stop, monthDate)
+  const cellClass = runReviewLocationCellClass(tone)
+  const cardClass = runReviewLocationResultCardClass(tone)
+  return (
+    <td
+      className={`tw-office-sticky tw-office-sticky-result tw-office-billing-test-result-cell ${cellClass}`}
+    >
+      <div className={`tw-office-billing-test-result-card ${cardClass}`}>
+        <OfficeStatusPill status={status} closedRun={closedRun} />
+        {resultDetailLines.map((line, index) => (
+          <div key={`${index}:${line}`} className="tw-office-result-detail">
+            {line}
+          </div>
+        ))}
+      </div>
+    </td>
+  )
+}
+
 function OfficeStopTableRow({
   stop,
   monthDate,
   fieldChangesByLocation,
   columns,
+  showStopColumn = true,
+  showBillingColumn = false,
+  layoutVariant = 'default',
+  billingStatus,
   neutralStopNumbers,
   highlightUpdatedCells,
   highlightNewComments,
@@ -174,18 +258,31 @@ function OfficeStopTableRow({
   monthDate: string
   fieldChangesByLocation?: Map<number, OfficeFieldChange[]>
   columns: OfficeWorksheetChangeColumnVisibility
+  showStopColumn?: boolean
+  showBillingColumn?: boolean
+  layoutVariant?: OfficeWorksheetTableLayoutVariant
+  /** Billing-board modal: office billing decision for this month. */
+  billingStatus?: string | null
   neutralStopNumbers?: boolean
   highlightUpdatedCells?: boolean
   highlightNewComments?: boolean
   closedRun?: boolean
 }) {
   const status = officeStopStatus(stop, monthDate)
-  const skipReasonDisplayBlock = worksheetSkipReasonDisplayBlock(stop.skip_reason)
+  const rawSkipReasonBlock = worksheetSkipReasonDisplayBlock(stop.skip_reason)
+  const skipReasonDisplayLine =
+    rawSkipReasonBlock != null && status !== 'pending'
+      ? status === 'skipped'
+        ? portalSkipReasonDetail(stop) ??
+          formatSkipReasonDisplayText(stop.skip_reason) ??
+          rawSkipReasonBlock
+        : rawSkipReasonBlock
+      : null
   const displayTimeIn = (stop.time_in || '').trim()
   const displayTimeOut = (stop.time_out || '').trim()
   const showWorksheetTimeInLine =
     displayTimeIn.length > 0 &&
-    !worksheetSkipReasonDuplicatesTimeInNote(skipReasonDisplayBlock, stop.result_status, displayTimeIn)
+    !worksheetSkipReasonDuplicatesTimeInNote(rawSkipReasonBlock, stop.result_status, displayTimeIn)
   const showWorksheetTimeOutLine =
     displayTimeOut.length > 0 && shouldShowWorksheetTimeOutRow(displayTimeIn, displayTimeOut)
   const primaryLabel = locationPrimaryLabel(stop)
@@ -201,7 +298,7 @@ function OfficeStopTableRow({
     showWorksheetTimeOutLine ? worksheetTimeInOutDisplayLine('out', displayTimeOut) : null,
   ].filter((part): part is string => part != null)
   const resultDetailLines = [
-    skipReasonDisplayBlock != null && status !== 'pending' ? skipReasonDisplayBlock : null,
+    skipReasonDisplayLine,
     timeSummaryParts.length > 0 ? timeSummaryParts.join(' · ') : null,
   ].filter((part): part is string => part != null)
   if (resultDetailLines.length === 0) resultDetailLines.push('No times recorded')
@@ -233,10 +330,15 @@ function OfficeStopTableRow({
   const orderCellClass = neutralStopNumbers
     ? 'tw-office-sticky tw-office-sticky-order tw-office-sticky-order--neutral tabular-nums'
     : 'tw-office-sticky tw-office-sticky-order tabular-nums'
+  const resolvedBillingStatus =
+    (stop.billing_status ?? billingStatus ?? 'unset').trim().toLowerCase() || 'unset'
 
   return (
     <tr className={`tw-office-table-row tw-office-table-row--${status}`} title={inclusionTitle}>
-      <td className={orderCellClass}>{stop.stop_number}</td>
+      {showStopColumn ? <td className={orderCellClass}>{stop.stop_number}</td> : null}
+      {showBillingColumn ? (
+        <OfficeBillingStatusCell billingStatus={resolvedBillingStatus} />
+      ) : null}
       <td
         className={officeCellClassName(
           addressUpdated,
@@ -272,16 +374,26 @@ function OfficeStopTableRow({
           ) : null}
         </div>
       </td>
-      <td className={officeCellClassName(resultUpdated, 'tw-office-sticky tw-office-sticky-result')}>
-        <div className="tw-office-result-cell">
-          <OfficeStatusPill status={status} closedRun={closedRun} />
-          {resultDetailLines.map((line, index) => (
-            <div key={`${index}:${line}`} className="tw-office-result-detail">
-              {line}
-            </div>
-          ))}
-        </div>
-      </td>
+      {layoutVariant === 'billing' ? (
+        <OfficeBillingTestResultCell
+          stop={stop}
+          monthDate={monthDate}
+          closedRun={closedRun}
+          resultDetailLines={resultDetailLines}
+          status={status}
+        />
+      ) : (
+        <td className={officeCellClassName(resultUpdated, 'tw-office-sticky tw-office-sticky-result')}>
+          <div className="tw-office-result-cell">
+            <OfficeStatusPill status={status} closedRun={closedRun} />
+            {resultDetailLines.map((line, index) => (
+              <div key={`${index}:${line}`} className="tw-office-result-detail">
+                {line}
+              </div>
+            ))}
+          </div>
+        </td>
+      )}
       {columns.access ? (
         <td className={officeCellClassName(accessUpdated, 'tw-office-access-cell')}>
           <div className="tw-office-compact-field-list">
@@ -445,6 +557,14 @@ export type OfficeWorksheetReadOnlyTableProps = {
   closedRun?: boolean
   /** Exact history: keep API stop order (one row per location; no same-address merge). */
   preserveSubmissionStopOrder?: boolean
+  /** When set, overrides hide-empty / all-visible column logic (e.g. billing modal). */
+  columnVisibility?: OfficeWorksheetChangeColumnVisibility
+  /** Show stop-number column (hidden for billing exact-history). */
+  showStopColumn?: boolean
+  /** Billing-board paperwork modal layout. */
+  layoutVariant?: OfficeWorksheetTableLayoutVariant
+  /** Billing status when ``layoutVariant`` is ``billing``. */
+  billingStatus?: string | null
 }
 
 export default function OfficeWorksheetReadOnlyTable({
@@ -459,9 +579,14 @@ export default function OfficeWorksheetReadOnlyTable({
   highlightNewComments = false,
   closedRun = false,
   preserveSubmissionStopOrder = false,
+  columnVisibility,
+  showStopColumn = true,
+  layoutVariant = 'default',
+  billingStatus = null,
 }: OfficeWorksheetReadOnlyTableProps) {
   const headerScrollRef = useRef<HTMLDivElement | null>(null)
   const tableScrollRef = useRef<HTMLDivElement | null>(null)
+  const showBillingColumn = layoutVariant === 'billing'
   const groups = useMemo(
     () =>
       preserveSubmissionStopOrder
@@ -471,13 +596,17 @@ export default function OfficeWorksheetReadOnlyTable({
   )
 
   const changeColumns = useMemo(() => {
+    if (columnVisibility) return columnVisibility
     if (!hideEmptyChangeColumns) return OFFICE_WORKSHEET_ALL_CHANGE_COLUMNS_VISIBLE
     return computeOfficeWorksheetChangeColumnVisibility(fieldChangesByLocation, stops)
-  }, [hideEmptyChangeColumns, fieldChangesByLocation, stops])
+  }, [columnVisibility, hideEmptyChangeColumns, fieldChangesByLocation, stops])
 
+  const useColumnCssVars =
+    hideEmptyChangeColumns || columnVisibility != null || showBillingColumn
   const tableCssVars = useMemo(
-    () => officeWorksheetTableCssVars(changeColumns) as CSSProperties,
-    [changeColumns],
+    () =>
+      officeWorksheetTableCssVars(changeColumns, { showStopColumn, showBillingColumn }) as CSSProperties,
+    [changeColumns, showStopColumn, showBillingColumn],
   )
 
   const syncHorizontalScroll = useCallback((source: 'header' | 'table') => {
@@ -499,6 +628,10 @@ export default function OfficeWorksheetReadOnlyTable({
         monthDate={monthDate}
         fieldChangesByLocation={fieldChangesByLocation}
         columns={changeColumns}
+        showStopColumn={showStopColumn}
+        showBillingColumn={showBillingColumn}
+        layoutVariant={layoutVariant}
+        billingStatus={billingStatus}
         neutralStopNumbers={neutralStopNumbers}
         highlightUpdatedCells={highlightUpdatedCells}
         highlightNewComments={highlightNewComments}
@@ -510,14 +643,23 @@ export default function OfficeWorksheetReadOnlyTable({
   if (layout === 'embedded') {
     return (
       <div
-        className="tw-office-table-card tw-office-table-card--embedded"
-        style={hideEmptyChangeColumns ? tableCssVars : undefined}
+        className={`tw-office-table-card tw-office-table-card--embedded${showBillingColumn ? ' tw-office-table-card--billing' : ''}`}
+        style={useColumnCssVars ? tableCssVars : undefined}
       >
         <div className="tw-office-table-wrap">
           <Table size="sm" className="mb-0 tw-office-stop-table">
-            <OfficeStopColGroup columns={changeColumns} />
+            <OfficeStopColGroup
+              columns={changeColumns}
+              showStopColumn={showStopColumn}
+              showBillingColumn={showBillingColumn}
+            />
             <thead>
-              <OfficeTableHeaderRow columns={changeColumns} />
+              <OfficeTableHeaderRow
+                columns={changeColumns}
+                showStopColumn={showStopColumn}
+                showBillingColumn={showBillingColumn}
+                layoutVariant={layoutVariant}
+              />
             </thead>
             <tbody>{bodyRows}</tbody>
           </Table>
@@ -540,11 +682,20 @@ export default function OfficeWorksheetReadOnlyTable({
               size="sm"
               className="mb-0 tw-office-stop-table tw-office-header-table"
               aria-label="Worksheet stop columns"
-              style={hideEmptyChangeColumns ? tableCssVars : undefined}
+              style={useColumnCssVars ? tableCssVars : undefined}
             >
-              <OfficeStopColGroup columns={changeColumns} />
+              <OfficeStopColGroup
+                columns={changeColumns}
+                showStopColumn={showStopColumn}
+                showBillingColumn={showBillingColumn}
+              />
               <thead>
-                <OfficeTableHeaderRow columns={changeColumns} />
+                <OfficeTableHeaderRow
+                  columns={changeColumns}
+                  showStopColumn={showStopColumn}
+                  showBillingColumn={showBillingColumn}
+                  layoutVariant={layoutVariant}
+                />
               </thead>
             </Table>
           </div>
@@ -552,7 +703,7 @@ export default function OfficeWorksheetReadOnlyTable({
       ) : null}
       <div
         className="tw-office-table-card"
-        style={hideEmptyChangeColumns ? tableCssVars : undefined}
+        style={useColumnCssVars ? tableCssVars : undefined}
       >
         <div
           ref={tableScrollRef}
@@ -560,10 +711,19 @@ export default function OfficeWorksheetReadOnlyTable({
           onScroll={() => syncHorizontalScroll('table')}
         >
           <Table size="sm" className="mb-0 tw-office-stop-table">
-            <OfficeStopColGroup columns={changeColumns} />
+            <OfficeStopColGroup
+              columns={changeColumns}
+              showStopColumn={showStopColumn}
+              showBillingColumn={showBillingColumn}
+            />
             {!headerSlot ? (
               <thead>
-                <OfficeTableHeaderRow columns={changeColumns} />
+                <OfficeTableHeaderRow
+                  columns={changeColumns}
+                  showStopColumn={showStopColumn}
+                  showBillingColumn={showBillingColumn}
+                  layoutVariant={layoutVariant}
+                />
               </thead>
             ) : null}
             <tbody>{bodyRows}</tbody>
