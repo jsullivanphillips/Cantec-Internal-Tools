@@ -504,7 +504,7 @@ def test_run_details_notable_stops_includes_annual_month_without_technician_acti
     assert annual_stop is not None
     assert annual_stop.get("annual_month") == "May"
     assert not (annual_stop.get("result_status") or "").strip()
-    assert body["counts"]["skipped_count"] == 0
+    assert body["counts"]["skipped_count"] == 1
     assert body["counts"]["all_good_count"] == 1
 
 
@@ -536,6 +536,57 @@ def test_run_details_counts_annual_month_site_not_when_tested(run_details_client
     counts = res.get_json()["counts"]
     assert counts["all_good_count"] == 1
     assert counts["skipped_count"] == 0
+
+
+def test_run_details_skipped_count_includes_annual_and_legacy_skips(run_details_client):
+    """Skipped KPI matches run-review filter (portal, legacy, and annual-month sites)."""
+    client, app = run_details_client
+    with app.app_context():
+        _seed_basic_route_data()
+        loc_annual = make_location(
+            id=103,
+            address="789 Annual Ln",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
+            monthly_route_id=1,
+            annual_month="May",
+        )
+        loc_other = make_location(
+            id=104,
+            address="456 Other Ave",
+            property_management_company="Acme",
+            property_management_company_normalized="acme",
+            monthly_route_id=1,
+            route_stop_order=1,
+        )
+        db.session.add_all([loc_annual, loc_other])
+        db.session.add(
+            MonthlyLocationMonth(
+                id=92005,
+                monthly_location_id=103,
+                month_date=date(2026, 5, 1),
+                test_monthly_route_id=1,
+            )
+        )
+        db.session.add(
+            MonthlyLocationMonth(
+                id=92006,
+                monthly_location_id=104,
+                month_date=date(2026, 5, 1),
+                test_monthly_route_id=1,
+                result_status="skipped",
+                skip_reason="other: no access",
+                test_outcome="skipped",
+                skip_category="other",
+            )
+        )
+        db.session.commit()
+
+    res = client.get("/api/monthly_routes/routes/1/run_details?month=2026-05-01")
+    assert res.status_code == 200
+    counts = res.get_json()["counts"]
+    assert counts["all_good_count"] == 1
+    assert counts["skipped_count"] == 2
 
 
 def test_run_details_notable_stops_includes_run_comments_only(run_details_client, monkeypatch):

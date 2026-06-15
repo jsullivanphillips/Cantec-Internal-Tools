@@ -44,6 +44,8 @@ type PortalEditableFieldRowProps = {
   /** Portal worksheet uses a header toolbar instead of inline formatting controls. */
   richTextToolbarPlacement?: 'inline' | 'external'
   onRichTextEditorHandleChange?: (handle: RichTextEditorHandle | null) => void
+  /** When true, show Cancel/Submit under the field even for rich-text editors. */
+  inlineEditActions?: boolean
 }
 
 export default function PortalEditableFieldRow({
@@ -64,6 +66,7 @@ export default function PortalEditableFieldRow({
   onAutoOpenSelectDone,
   richTextToolbarPlacement = 'inline',
   onRichTextEditorHandleChange,
+  inlineEditActions,
 }: PortalEditableFieldRowProps) {
   const inputId = useId()
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(null)
@@ -77,6 +80,7 @@ export default function PortalEditableFieldRow({
   const editing = !readOnly && editingField === fieldKey
   const richText = Boolean(multiline && isRichTextField(fieldKey))
   const showInlineRichToolbar = richText && richTextToolbarPlacement === 'inline'
+  const showEditActionButtons = inlineEditActions ?? !richText
   const displayEmpty = richText ? richTextIsEmpty(value) : !value.trim()
   const display = monthSelect ? normalizedValue || '—' : displayEmpty ? '—' : value.trim()
 
@@ -377,7 +381,7 @@ export default function PortalEditableFieldRow({
             }}
           />
         )}
-        {!richText ? (
+        {showEditActionButtons ? (
           <PortalFieldEditActionButtons
             saving={saving}
             onCancel={cancel}

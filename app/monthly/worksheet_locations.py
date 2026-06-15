@@ -27,6 +27,7 @@ from app.db_models import (
     db,
 )
 from app.monthly.monitoring_companies import serialize_monitoring_company
+from app.monthly.history_source import HISTORY_SOURCE_ROUTE_CSV
 from app.monthly.sheet_visit_times import SheetTimeImportRow, looks_like_sheet_clock
 from app.monthly.site_field_template import (
     master_template_fields,
@@ -593,6 +594,7 @@ def upsert_location_month_from_csv_import(
     upsert_result_status = sheet_times.result_status
     upsert_skip_reason = sheet_times.skip_reason
     upsert_source_value_raw = sheet_times.source_value_raw
+    upsert_history_source = None
     if preserve_existing_outcome and row is not None and row.result_status is not None:
         upsert_result_status = row.result_status
         upsert_skip_reason = row.skip_reason
@@ -602,6 +604,8 @@ def upsert_location_month_from_csv_import(
     else:
         upsert_time_in = sheet_time_in_raw
         upsert_time_out = sheet_time_out_raw
+        if upsert_result_status is not None:
+            upsert_history_source = HISTORY_SOURCE_ROUTE_CSV
 
     snapshot_values: dict[str, object] = {
         "annual_month": annual_month,
@@ -627,6 +631,8 @@ def upsert_location_month_from_csv_import(
         "run_id": run_id,
         "month_date": month_first,
     }
+    if upsert_history_source is not None:
+        snapshot_values["history_source"] = upsert_history_source
 
     if row is None:
         prior = _prior_mlm_for_location(loc_id, month_first)
@@ -654,6 +660,7 @@ def upsert_location_month_from_csv_import(
                 "result_status",
                 "skip_reason",
                 "source_value_raw",
+                "history_source",
                 "sheet_time_in_raw",
                 "sheet_time_out_raw",
                 "session_route_stop_order",
@@ -1632,25 +1639,41 @@ def office_review_billing_location_ids(route_id: int, month_first: date) -> set[
     return {int(s["location_id"]) for s in stops}
 
 
+def _office_stop_status_for_count(
+    stop: dict[str, object],
+    month_first: date,
+) -> str:
+    """Mirror ``run_details_review._office_stop_status`` (kept here to avoid import cycles)."""
+    rs = (str(stop.get("result_status") or "")).strip().lower()
+    if rs == "tested":
+        return "tested"
+    if rs == "skipped":
+        skip_reason = (str(stop.get("skip_reason") or "")).strip().lower()
+        if skip_reason in {"annual", "annual_booked"}:
+            return "annual"
+        if _is_annual_for_month(month_first, stop.get("annual_month")):
+            return "annual"
+        return "skipped"
+    if _is_annual_for_month(month_first, stop.get("annual_month")):
+        return "annual"
+    if _is_on_hold_pending_outcome(stop):
+        return "on_hold"
+    return "pending"
+
+
 def run_details_counts_for_route_month(route_id: int, month_first: date) -> dict[str, int]:
-    rows = (
-        MonthlyLocationMonth.query.filter(
-            MonthlyLocationMonth.month_date == month_first,
-            MonthlyLocationMonth.test_monthly_route_id == route_id,
-        )
-        .all()
+    stops = worksheet_locations_for_route_month(
+        route_id,
+        month_first,
+        include_portal_extras=False,
     )
-    stops: list[dict[str, object]] = [
-        {
-            "test_outcome": row.test_outcome,
-            "result_status": row.result_status,
-        }
-        for row in rows
-    ]
-    return _run_details_counts_from_stops(stops)
+    return _run_details_counts_from_stops(stops, month_first)
 
 
-def _run_details_counts_from_stops(stops: list[dict[str, object]]) -> dict[str, int]:
+def _run_details_counts_from_stops(
+    stops: list[dict[str, object]],
+    month_first: date | None = None,
+) -> dict[str, int]:
     counts = {
         "all_good_count": 0,
         "passed_with_problems_count": 0,
@@ -1659,17 +1682,25 @@ def _run_details_counts_from_stops(stops: list[dict[str, object]]) -> dict[str, 
     }
     for stop in stops:
         outcome = _worksheet_stop_portal_outcome(stop)
-        if outcome is None:
-            continue
-        key = f"{outcome}_count"
-        if key in counts:
-            counts[key] += 1
+        status = (
+            _office_stop_status_for_count(stop, month_first)
+            if month_first is not None
+            else "pending"
+        )
+        if outcome == "all_good" or (not outcome and status == "tested"):
+            counts["all_good_count"] += 1
+        elif outcome == "passed_with_problems":
+            counts["passed_with_problems_count"] += 1
+        elif outcome == "failed":
+            counts["failed_count"] += 1
+        elif outcome == "skipped" or status in {"skipped", "annual"}:
+            counts["skipped_count"] += 1
     return counts
 
 
 def run_details_counts_for_route_month_legacy(route_id: int, month_first: date) -> dict[str, int]:
     stops = worksheet_locations_for_route_month(route_id, month_first)
-    return _run_details_counts_from_stops(stops)
+    return _run_details_counts_from_stops(stops, month_first)
 
 
 def _route_month_has_skipped_stops(route_id: int, month_first: date) -> bool:

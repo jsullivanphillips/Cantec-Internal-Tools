@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
@@ -225,6 +226,17 @@ def is_technician_demo_route(route: MonthlyRoute | None) -> bool:
     if route is None:
         return False
     return int(route.route_number) == technician_demo_route_number()
+
+
+def is_technician_demo_library_location(loc: MonthlyLocation) -> bool:
+    """True when a library row is assigned to the live training route (default R99)."""
+    if is_technician_demo_route(loc.monthly_route):
+        return True
+    test_day = (loc.test_day or "").strip()
+    if not test_day:
+        return False
+    rn = technician_demo_route_number()
+    return bool(re.search(rf"-\s*R\s*{rn}\s*$", test_day, re.IGNORECASE))
 
 
 def _current_pacific_month_first() -> date:

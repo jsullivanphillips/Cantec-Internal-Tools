@@ -354,6 +354,40 @@ def test_billing_board_do_not_bill_includes_skip_reason_category(billing_board_c
     assert may["skip_reason_category"] == "Annual"
 
 
+def test_billing_board_do_not_bill_includes_skip_reason_note(billing_board_client):
+    client, _app = billing_board_client
+    route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
+    loc = make_location(
+        id=302,
+        address="Waive Note St",
+        label="Waive Note St",
+        monthly_route_id=1,
+        test_day="Tuesday",
+    )
+    mlm = MonthlyLocationMonth(
+        id=5003,
+        monthly_location_id=302,
+        month_date=date(2026, 5, 1),
+        result_status="skipped",
+        skip_reason="lack_of_time: No technicians available",
+        test_monthly_route_id=1,
+        billing_status="do_not_bill",
+        test_outcome="skipped",
+        skip_category="lack_of_time",
+        skip_note="No technicians available",
+    )
+    db.session.add_all([route, loc, mlm])
+    db.session.commit()
+
+    r = client.get("/api/monthly_routes/billing_board?anchor_month=2026-05-01&q=waive")
+    assert r.status_code == 200
+    row = r.get_json()["locations"][0]
+    may = row["months"]["2026-05-01"]
+    assert may["billing_status"] == "do_not_bill"
+    assert may["skip_reason_category"] == "Lack of time"
+    assert may["skip_reason_note"] == "No technicians available"
+
+
 def test_billing_board_unset_before_field_end_reports_field_work_ended_false(billing_board_client):
     client, _app = billing_board_client
     route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)

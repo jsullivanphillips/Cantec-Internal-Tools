@@ -31,6 +31,8 @@ export type MonthlyRouteSummary = {
   service_trade_route_location_url?: string | null
   /** Office note shown to technicians on the portal worksheet header. */
   technician_note?: string | null
+  /** Override for Metrics expense breakdown (null = default 2 techs). */
+  tech_count?: number | null
   location_count?: number
   /** Active locations whose annual month matches the dashboard month. */
   annual_count?: number

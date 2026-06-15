@@ -57,6 +57,24 @@ export function billingMonthPillClickable(
   return billingMonthPaperworkRouteId(row, cell) != null
 }
 
+/** Category and note for waive-pill hover text and aria labels. */
+export function billingBoardWaiveTooltipText(cell: BillingBoardMonthCell | undefined): string | null {
+  if (!cell || cell.billing_status !== 'do_not_bill') return null
+  const category = cell.skip_reason_category?.trim()
+  const note = cell.skip_reason_note?.trim()
+  const parts: string[] = []
+  if (category) parts.push(category)
+  if (note) {
+    const noteLow = note.toLowerCase()
+    const categoryLow = category?.toLowerCase()
+    const redundant =
+      categoryLow != null &&
+      (noteLow === categoryLow || noteLow === `${categoryLow}: ${noteLow}`)
+    if (!redundant) parts.push(note)
+  }
+  return parts.length ? parts.join(' · ') : null
+}
+
 export type BillingBoardTestSummaryKey =
   | 'failed'
   | 'passed_with_problems'
@@ -76,6 +94,8 @@ export type BillingBoardMonthCell = {
   test_monthly_route_id: number | null
   /** Human-readable skip category when billing is waive (e.g. Annual). */
   skip_reason_category?: string | null
+  /** Free-text skip note when billing is waive. */
+  skip_reason_note?: string | null
   /** False while the route-month run is still in field work (billing not yet actionable). */
   field_work_ended?: boolean
 }

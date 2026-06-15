@@ -282,6 +282,7 @@ const MonthlyLocationEditableFields = forwardRef<MonthlyLocationEditableFieldsHa
             label="Testing procedures"
             value={location.testing_procedures ?? ''}
             multiline
+            inlineEditActions
             onSave={saveTextField('testing_procedures')}
             {...fieldEditProps}
           />
@@ -290,6 +291,7 @@ const MonthlyLocationEditableFields = forwardRef<MonthlyLocationEditableFieldsHa
             label="Location comments"
             value={location.inspection_tech_notes ?? ''}
             multiline
+            inlineEditActions
             onSave={saveTextField('inspection_tech_notes')}
             {...fieldEditProps}
           />

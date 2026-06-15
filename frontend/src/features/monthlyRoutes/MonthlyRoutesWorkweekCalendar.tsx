@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import type { MonthlyRouteOverviewRow } from './monthlyRoutesShared'
 import type { RouteOverviewCardTone } from './monthlyDashboardShared'
+import { routeNumberDisplayLabel } from './technicianDemoRoute'
 import {
   buildPacificWorkweekCalendarGrid,
   effectiveRouteTestDayIso,
@@ -43,7 +44,7 @@ function RouteOverviewCard({ row, showScheduleHint = false, tone }: RouteOvervie
       className={routeOverviewCardClassName(tone)}
     >
       <div className="monthly-routes-overview-calendar__card-label fw-semibold">
-        R{route.route_number}
+        {routeNumberDisplayLabel(route.route_number)}
         {showScheduleHint ? ` · ${route.label}` : null}
       </div>
       {countLabel ? (

@@ -305,6 +305,7 @@ def _serialize_monthly_route_entity(
             f"{SERVICE_TRADE_APP_LOCATIONS_BASE}/{int(st_rid)}" if st_rid is not None else None
         ),
         "technician_note": _normalize_ws_text(mr.technician_note),
+        "tech_count": int(mr.tech_count) if mr.tech_count is not None else None,
     }
     if location_count is not None:
         out["location_count"] = location_count
@@ -533,6 +534,15 @@ def _history_row_outcome_bucket(row: MonthlyLocationMonth) -> str | None:
             return "skipped_annual"
         return "skipped_non_annual"
     if status == "tested":
+        return "tested"
+
+    outcome = (row.test_outcome or "").strip().lower()
+    if outcome == "skipped":
+        cat = (row.skip_category or "").strip().lower()
+        if cat == "annual" or _sheet_skip_reason_is_annual(row.skip_reason):
+            return "skipped_annual"
+        return "skipped_non_annual"
+    if outcome in ("all_good", "passed_with_problems", "failed"):
         return "tested"
     return None
 
@@ -2276,7 +2286,7 @@ def get_monthly_route_detail(route_id: int):
 
 @monthly_routes_bp.patch("/api/monthly_routes/routes/<int:route_id>")
 def patch_monthly_route(route_id: int):
-    """Office: set/clear route-level technician note (shown on portal worksheet header)."""
+    """Office: update route-level fields (technician note, expense tech count)."""
     mr = _get_monthly_route(route_id)
     if mr is None:
         return jsonify({"error": "Route not found"}), 404
@@ -2289,14 +2299,30 @@ def patch_monthly_route(route_id: int):
     if not isinstance(data, dict):
         return jsonify({"error": "JSON object payload required"}), 400
 
-    if "technician_note" not in data:
-        return jsonify({"error": "technician_note required"}), 400
+    has_note = "technician_note" in data
+    has_tech_count = "tech_count" in data
+    if not has_note and not has_tech_count:
+        return jsonify({"error": "At least one of technician_note or tech_count required"}), 400
 
-    raw = data.get("technician_note")
-    if raw is None:
-        mr.technician_note = None
-    else:
-        mr.technician_note = _normalize_ws_text(raw)
+    if has_note:
+        raw = data.get("technician_note")
+        if raw is None:
+            mr.technician_note = None
+        else:
+            mr.technician_note = _normalize_ws_text(raw)
+
+    if has_tech_count:
+        raw_tech = data.get("tech_count")
+        if raw_tech is None:
+            mr.tech_count = None
+        else:
+            try:
+                tech_count = int(raw_tech)
+            except (TypeError, ValueError):
+                return jsonify({"error": "tech_count must be an integer or null"}), 400
+            if tech_count < 1 or tech_count > 9:
+                return jsonify({"error": "tech_count must be between 1 and 9"}), 400
+            mr.tech_count = tech_count
 
     db.session.commit()
     db.session.refresh(mr)
@@ -2511,6 +2537,56 @@ def _ticket_value_error_response(exc: ValueError) -> tuple[object, int] | None:
         return None
     message, status = mapping[code]
     return jsonify({"error": message, "code": code}), status
+
+
+@monthly_routes_bp.get("/api/monthly_routes/dashboard/issues")
+def get_monthly_routes_dashboard_issues():
+    """Active library sites missing ServiceTrade link or price (excludes R99 demo)."""
+    from app.monthly.dashboard_issues import list_dashboard_library_issues
+
+    return jsonify(list_dashboard_library_issues())
+
+
+@monthly_routes_bp.get("/api/monthly_routes/dashboard/route_earnings")
+def get_monthly_routes_dashboard_route_earnings():
+    """Top and bottom routes by tested revenue over a trailing month window."""
+    from app.monthly.dashboard_route_metrics import build_dashboard_route_earnings
+
+    raw_months = (request.args.get("months") or "12").strip()
+    try:
+        trailing_months = int(raw_months)
+    except ValueError:
+        trailing_months = 12
+    trailing_months = max(1, min(trailing_months, 24))
+    return jsonify(build_dashboard_route_earnings(trailing_months=trailing_months))
+
+
+@monthly_routes_bp.get("/api/monthly_routes/dashboard/route_breakdown")
+@cached_json_response(prefix="monthly:route_breakdown", ttl_seconds=1800)
+def get_monthly_routes_dashboard_route_breakdown():
+    """Per-route expense breakdown vs average monthly tested revenue (cached 30 min)."""
+    from app.monthly.dashboard_route_metrics import (
+        BREAKDOWN_RANGE_LAST_12_MONTHS,
+        BREAKDOWN_RANGE_CHOICES,
+        build_dashboard_route_breakdown,
+    )
+
+    raw_range = (request.args.get("range") or "").strip().lower()
+    if raw_range in BREAKDOWN_RANGE_CHOICES:
+        return jsonify(build_dashboard_route_breakdown(range_key=raw_range))
+
+    raw_months = (request.args.get("months") or "12").strip()
+    try:
+        trailing_months = int(raw_months)
+    except ValueError:
+        trailing_months = 12
+    trailing_months = max(1, min(trailing_months, 24))
+    return jsonify(
+        build_dashboard_route_breakdown(
+            trailing_months=trailing_months,
+            range_key=BREAKDOWN_RANGE_LAST_12_MONTHS,
+        )
+    )
 
 
 @monthly_routes_bp.get("/api/monthly_routes/tickets")
@@ -5173,7 +5249,7 @@ def post_monthly_route_run_review_complete(route_id: int):
 
 @monthly_routes_bp.post("/api/monthly_routes/routes/<int:route_id>/runs/skip")
 def post_monthly_route_run_skip(route_id: int):
-    """Office: skip an empty route-month — all library sites skipped, do not bill, run closed."""
+    """Office: skip a route-month — all library sites skipped, do not bill, run closed."""
     if not session.get("authenticated"):
         return jsonify({"error": "Unauthorized"}), 401
     username = session.get("username")
@@ -5188,6 +5264,10 @@ def post_monthly_route_run_skip(route_id: int):
     if month_first is None:
         return jsonify({"error": "month required (YYYY-MM-01 query param or month_date in body)"}), 400
 
+    data = request.get_json(silent=True) or {}
+    skip_category = data.get("skip_category")
+    skip_note = data.get("skip_note") or data.get("skip_reason")
+
     from app.monthly.skip_run import SkipRunError, skip_route_month_run
     from app.monthly.run_details_review import run_month_worksheet_stop_counts
     from app.monthly.run_workflow import derive_run_workflow_stage, workflow_stage_label
@@ -5199,9 +5279,16 @@ def post_monthly_route_run_skip(route_id: int):
             month_first,
             username=str(username),
             now=now,
+            skip_category=skip_category,
+            skip_note=skip_note,
         )
     except SkipRunError as exc:
-        status = 404 if exc.code == "route_not_found" else 409
+        if exc.code == "route_not_found":
+            status = 404
+        elif exc.code in {"skip_category_required", "skip_reason_required"}:
+            status = 400
+        else:
+            status = 409
         return jsonify({"error": exc.message, "code": exc.code}), status
 
     db.session.commit()

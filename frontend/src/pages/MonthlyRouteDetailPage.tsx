@@ -22,8 +22,12 @@ import { Accordion, Alert, Badge, Button, Col, Form, Modal, Row, Spinner, Table 
 import { Link, useParams } from 'react-router-dom'
 import MonthlyLibraryCommentsPanel from '../features/monthlyRoutes/MonthlyLibraryCommentsPanel'
 import RouteTechnicianNoteCard from '../features/monthlyRoutes/RouteTechnicianNoteCard'
+import RouteTechCountCard from '../features/monthlyRoutes/RouteTechCountCard'
 import MonthlyRouteMapCard from '../features/monthlyRoutes/MonthlyRouteMapCard'
 import PortalKeyViewModal from '../features/monthlyRoutes/PortalKeyViewModal'
+import OfficeSkipRunModal, {
+  type OfficeSkipRunPayload,
+} from '../features/monthlyRoutes/OfficeSkipRunModal'
 import { fetchRouteKeyViewStops } from '../features/monthlyRoutes/portalKeyViewShared'
 import {
   activeRouteLocations,
@@ -49,6 +53,7 @@ import {
   formatRunsCardStageLabel,
   formatSitesTestedRatio,
   routeRunSummaryFromApi,
+  runMonthIsOfficeSkippable,
 } from '../features/monthlyRoutes/routeRunsDisplay'
 import { locationAddressSubline, locationPrimaryLabel } from '../features/monthlyRoutes/locationDisplay'
 import { apiJson, apiPostFormData, isAbortError } from '../lib/apiClient'
@@ -558,12 +563,14 @@ function UploadRunFromCsvModal({
               Close
             </Button>
             {monthIso ? (
-              <Link
+              <Button
+                as={Link}
                 to={`/monthlies/routes/${routeId}/paperwork?month=${encodeURIComponent(monthIso)}`}
-                className="btn btn-primary"
+                variant="primary"
+                size="sm"
               >
                 View paperwork
-              </Link>
+              </Button>
             ) : null}
           </>
         ) : (
@@ -583,57 +590,6 @@ function UploadRunFromCsvModal({
             </Button>
           </>
         )}
-      </Modal.Footer>
-    </Modal>
-  )
-}
-
-type SkipRunConfirmModalProps = {
-  show: boolean
-  monthIso: string | null
-  submitting: boolean
-  error: string | null
-  onClose: () => void
-  onConfirm: () => void
-}
-
-function SkipRunConfirmModal({
-  show,
-  monthIso,
-  submitting,
-  error,
-  onClose,
-  onConfirm,
-}: SkipRunConfirmModalProps) {
-  const monthLabel = monthIso ? formatMonthHeading(monthIso) : null
-  return (
-    <Modal show={show} onHide={onClose} backdrop={submitting ? 'static' : true}>
-      <Modal.Header closeButton={!submitting}>
-        <Modal.Title>Skip run</Modal.Title>
-      </Modal.Header>
-      <Modal.Body>
-        {monthLabel ? (
-          <p className="mb-3">
-            Mark <strong>{monthLabel}</strong> as skipped? Every site on this route will be set to
-            skipped with billing status <strong>Waive</strong>, and the month will be closed.
-          </p>
-        ) : null}
-        {error ? <Alert variant="danger">{error}</Alert> : null}
-      </Modal.Body>
-      <Modal.Footer>
-        <Button variant="outline-secondary" onClick={onClose} disabled={submitting}>
-          Cancel
-        </Button>
-        <Button variant="primary" onClick={onConfirm} disabled={submitting || !monthIso}>
-          {submitting ? (
-            <>
-              <Spinner size="sm" animation="border" role="status" className="me-2" />
-              Skipping…
-            </>
-          ) : (
-            'Skip run'
-          )}
-        </Button>
       </Modal.Footer>
     </Modal>
   )
@@ -898,31 +854,37 @@ export default function MonthlyRouteDetailPage() {
     setSkipError(null)
   }, [skipSubmitting])
 
-  const confirmSkipRun = useCallback(async () => {
-    if (!skipConfirmMonthIso || Number.isNaN(idNum)) return
-    setSkipSubmitting(true)
-    setSkipError(null)
-    try {
-      const body = await apiJson<{
-        ok: boolean
-        run: Record<string, unknown>
-        month_date: string
-      }>(
-        `/api/monthly_routes/routes/${idNum}/runs/skip?month=${encodeURIComponent(skipConfirmMonthIso)}`,
-        { method: 'POST' }
-      )
-      patchRunsByMonthFromApiRun(body.month_date, body.run)
-      setSkipConfirmMonthIso(null)
-    } catch (e) {
-      const message =
-        typeof e === 'object' && e != null && 'error' in e
-          ? String((e as { error?: unknown }).error)
-          : 'Unable to skip this month.'
-      setSkipError(message)
-    } finally {
-      setSkipSubmitting(false)
-    }
-  }, [skipConfirmMonthIso, idNum, patchRunsByMonthFromApiRun])
+  const confirmSkipRun = useCallback(
+    async (payload: OfficeSkipRunPayload) => {
+      if (!skipConfirmMonthIso || Number.isNaN(idNum)) return
+      setSkipSubmitting(true)
+      setSkipError(null)
+      try {
+        const body = await apiJson<{
+          ok: boolean
+          run: Record<string, unknown>
+          month_date: string
+        }>(
+          `/api/monthly_routes/routes/${idNum}/runs/skip?month=${encodeURIComponent(skipConfirmMonthIso)}`,
+          {
+            method: 'POST',
+            body: JSON.stringify(payload),
+          }
+        )
+        patchRunsByMonthFromApiRun(body.month_date, body.run)
+        setSkipConfirmMonthIso(null)
+      } catch (e) {
+        const message =
+          typeof e === 'object' && e != null && 'error' in e
+            ? String((e as { error?: unknown }).error)
+            : 'Unable to skip this month.'
+        setSkipError(message)
+      } finally {
+        setSkipSubmitting(false)
+      }
+    },
+    [skipConfirmMonthIso, idNum, patchRunsByMonthFromApiRun]
+  )
 
   const persistRouteOrder = useCallback(
     async (next: RouteLocationListItem[]) => {
@@ -1212,49 +1174,53 @@ export default function MonthlyRouteDetailPage() {
           </div>
           <div className="monthly-location-hero-actions">
             {reviewPaperworkMonthIso ? (
-              <Link
+              <Button
+                as={Link}
                 to={`/monthlies/routes/${idNum}/paperwork?month=${encodeURIComponent(reviewPaperworkMonthIso)}`}
-                className="btn btn-success btn-sm monthly-location-detail-action monthly-route-detail-hero__review-paperwork-action"
+                variant="success"
+                size="sm"
+                className="monthly-location-detail-action"
               >
                 <i className="bi bi-clipboard-check" aria-hidden />
                 Review Run Paperwork
-              </Link>
+              </Button>
             ) : null}
-            <Link
+            <Button
+              as={Link}
               to={`/monthlies/routes/${idNum}/paperwork`}
-              className="btn btn-primary btn-sm monthly-location-detail-action"
+              variant="primary"
+              size="sm"
+              className="monthly-location-detail-action"
             >
               <i className="bi bi-folder2-open" aria-hidden />
               Paperwork
-            </Link>
-            <div className="monthly-route-detail-hero__paired-actions">
-              {routeStopTotal > 0 ? (
-                <Button
-                  variant="outline-secondary"
-                  size="sm"
-                  className="monthly-location-detail-action"
-                  onClick={() => void openKeyView()}
-                  disabled={keyViewLoading}
-                  aria-label="Key view"
-                >
-                  {keyViewLoading ? (
-                    <Spinner animation="border" size="sm" className="me-1" aria-hidden />
-                  ) : (
-                    <i className="bi bi-key" aria-hidden />
-                  )}
-                  Key view
-                </Button>
-              ) : null}
+            </Button>
+            {routeStopTotal > 0 ? (
               <Button
                 variant="outline-secondary"
                 size="sm"
                 className="monthly-location-detail-action"
-                onClick={() => openUploadCsv(null)}
+                onClick={() => void openKeyView()}
+                disabled={keyViewLoading}
+                aria-label="Key view"
               >
-                <i className="bi bi-upload" aria-hidden />
-                Upload CSV
+                {keyViewLoading ? (
+                  <Spinner animation="border" size="sm" className="me-1" aria-hidden />
+                ) : (
+                  <i className="bi bi-key" aria-hidden />
+                )}
+                Key view
               </Button>
-            </div>
+            ) : null}
+            <Button
+              variant="outline-secondary"
+              size="sm"
+              className="monthly-location-detail-action"
+              onClick={() => openUploadCsv(null)}
+            >
+              <i className="bi bi-upload" aria-hidden />
+              Upload CSV
+            </Button>
             {stUrl ? (
               <Button
                 href={stUrl}
@@ -1461,33 +1427,44 @@ export default function MonthlyRouteDetailPage() {
                           })()}
                         </td>
                         <td className="text-end">
-                          {hasRunData && run ? (
-                            <Link
-                              to={`/monthlies/routes/${idNum}/paperwork?month=${encodeURIComponent(monthIso)}`}
-                              className="btn btn-outline-primary btn-sm"
-                            >
-                              Open paperwork
-                            </Link>
-                          ) : (
-                            <div className="d-inline-flex flex-wrap gap-2 justify-content-end">
+                          <div className="monthly-route-detail-runs-actions">
+                            {hasRunData && run ? (
+                              <Button
+                                as={Link}
+                                to={`/monthlies/routes/${idNum}/paperwork?month=${encodeURIComponent(monthIso)}`}
+                                variant="outline-primary"
+                                size="sm"
+                                className="monthly-location-detail-action"
+                              >
+                                <i className="bi bi-folder2-open" aria-hidden />
+                                Open paperwork
+                              </Button>
+                            ) : null}
+                            {(!hasRunData || (run != null && runMonthIsOfficeSkippable(run))) ? (
                               <Button
                                 type="button"
-                                variant="outline-secondary"
+                                variant="outline-warning"
                                 size="sm"
+                                className="monthly-location-detail-action"
                                 onClick={() => openSkipConfirm(monthIso)}
                               >
-                                Skip run
+                                <i className="bi bi-skip-forward" aria-hidden />
+                                Skip
                               </Button>
+                            ) : null}
+                            {!hasRunData ? (
                               <Button
                                 type="button"
                                 variant="outline-secondary"
                                 size="sm"
+                                className="monthly-location-detail-action"
                                 onClick={() => openUploadCsv(monthIso)}
                               >
+                                <i className="bi bi-upload" aria-hidden />
                                 Upload CSV
                               </Button>
-                            </div>
-                          )}
+                            ) : null}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -1586,6 +1563,13 @@ export default function MonthlyRouteDetailPage() {
             />
           </Accordion.Header>
           <Accordion.Body className="monthly-location-comments-body">
+            <RouteTechCountCard
+              routeId={idNum}
+              techCount={route.tech_count}
+              onTechCountPatched={(next) =>
+                setRoute((prev) => (prev ? { ...prev, tech_count: next } : prev))
+              }
+            />
             <RouteTechnicianNoteCard
               routeId={idNum}
               technicianNote={route.technician_note}
@@ -1614,13 +1598,13 @@ export default function MonthlyRouteDetailPage() {
         targetMonthIso={uploadTargetMonthIso}
         onUploaded={handleCsvUploaded}
       />
-      <SkipRunConfirmModal
+      <OfficeSkipRunModal
         show={skipConfirmMonthIso != null}
         monthIso={skipConfirmMonthIso}
         submitting={skipSubmitting}
         error={skipError}
         onClose={closeSkipConfirm}
-        onConfirm={() => void confirmSkipRun()}
+        onConfirm={(payload) => void confirmSkipRun(payload)}
       />
       <PortalKeyViewModal
         show={keyViewOpen}

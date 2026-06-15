@@ -565,6 +565,8 @@ class MonthlyRoute(db.Model):
     )
     #: Office note shown to technicians on the portal worksheet header (route-level).
     technician_note = db.Column(db.Text, nullable=True)
+    #: Office override for expense breakdown tech count (null = default 2).
+    tech_count = db.Column(db.SmallInteger, nullable=True)
 
     created_at = db.Column(
         db.DateTime(timezone=True),
@@ -591,6 +593,12 @@ class MonthlyRoute(db.Model):
     )
     specialist_months = db.relationship(
         "MonthlyRouteSpecialistMonth",
+        back_populates="monthly_route",
+        cascade="all, delete-orphan",
+        lazy="dynamic",
+    )
+    run_timing_months = db.relationship(
+        "MonthlyRouteRunTimingMonth",
         back_populates="monthly_route",
         cascade="all, delete-orphan",
         lazy="dynamic",
@@ -772,6 +780,49 @@ class MonthlyRouteSpecialistMonth(db.Model):
     )
 
     monthly_route = db.relationship("MonthlyRoute", back_populates="specialist_months")
+
+
+class MonthlyRouteRunTimingMonth(db.Model):
+    """
+    Cached route run start/end from ServiceTrade testing-job onsite clock events
+    per Pacific calendar month.
+    """
+
+    __tablename__ = "monthly_route_run_timing_month"
+    __table_args__ = (
+        db.UniqueConstraint(
+            "monthly_route_id",
+            "month_first",
+            name="uq_monthly_route_run_timing_month_route_month",
+        ),
+        db.Index(
+            "ix_monthly_route_run_timing_month_route_month_first",
+            "monthly_route_id",
+            "month_first",
+        ),
+    )
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    monthly_route_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monthly_route.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    month_first = db.Column(db.Date, nullable=False)
+    service_trade_job_id = db.Column(db.BigInteger, nullable=True)
+    clock_in_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    clock_out_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    duration_minutes = db.Column(db.Integer, nullable=True)
+    #: ok | no_st_link | no_job | no_clocks
+    sync_status = db.Column(db.String(32), nullable=False)
+    last_updated_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        onupdate=db.func.now(),
+        nullable=False,
+    )
+
+    monthly_route = db.relationship("MonthlyRoute", back_populates="run_timing_months")
 
 
 class MonitoringCompany(db.Model):
@@ -1043,6 +1094,7 @@ class MonthlyLocationMonth(db.Model):
     result_status = db.Column(db.String(32), nullable=True)
     skip_reason = db.Column(db.String(255), nullable=True)
     source_value_raw = db.Column(db.String(255), nullable=True)
+    history_source = db.Column(db.String(32), nullable=True)
     facp = db.Column(db.Text, nullable=True)
     panel = db.Column(db.Text, nullable=True)
     panel_location = db.Column(db.String(255), nullable=True)

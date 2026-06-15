@@ -195,6 +195,27 @@ def _location_month_skip_reason_category_label(
     return None
 
 
+def _location_month_skip_reason_note(
+    *,
+    skip_note: str | None,
+    skip_reason: str | None,
+) -> str | None:
+    note = _normalize_text(skip_note)
+    if note:
+        return note
+    raw = _normalize_text(skip_reason)
+    if not raw:
+        return None
+    if ":" in raw:
+        rest = raw.split(":", 1)[1].strip()
+        return rest or None
+    if _skip_category_label(raw):
+        return None
+    if _legacy_skip_reason_category_label(raw):
+        return None
+    return raw
+
+
 def _rollup_test_summary(
     *,
     test_outcome: str | None,
@@ -390,6 +411,7 @@ def _serialize_board_row(
             annual_month=annual_month,
         )
         skip_reason_category = None
+        skip_reason_note = None
         if billing == "do_not_bill" and mlm is not None:
             skip_reason_category = _location_month_skip_reason_category_label(
                 test_outcome=mlm.test_outcome,
@@ -399,6 +421,10 @@ def _serialize_board_row(
                 annual_month=mlm.annual_month,
                 month_first=month_first,
                 loc_annual_month=loc.annual_month,
+            )
+            skip_reason_note = _location_month_skip_reason_note(
+                skip_note=mlm.skip_note,
+                skip_reason=mlm.skip_reason,
             )
         route_id_for_run = _resolve_route_id_for_run(loc, mlm)
         run = (
@@ -415,6 +441,7 @@ def _serialize_board_row(
                 else None
             ),
             "skip_reason_category": skip_reason_category,
+            "skip_reason_note": skip_reason_note,
             "field_work_ended": run_field_ended(run),
         }
 

@@ -5,7 +5,7 @@ Includes **route-level** data tied to worksheets and history:
 - Per-stop/month cells and technician edits: ``monthly_route_test_history``,
   ``monthly_route_worksheet_audit_event``, ``monthly_route_location_inspection_revision``
 - Run files: ``monthly_route_run``
-- Dashboard caches: ``monthly_route_specialist_month``, ``monthly_route_snapshot``
+- Dashboard caches: ``monthly_route_specialist_month``, ``monthly_route_snapshot``, ``monthly_route_run_timing_month``
 - Staff route notes: ``monthly_route_comment``
 
 Run **after** ``backfill_monthly_key_bridge`` if you need key archives.
@@ -32,6 +32,7 @@ from app.db_models import (
     MonthlyRouteRun,
     MonthlyRouteSnapshot,
     MonthlyRouteSpecialistMonth,
+    MonthlyRouteRunTimingMonth,
     MonthlyRouteWorksheetAuditEvent,
 )
 
@@ -85,6 +86,7 @@ def _wipe_sqlite_style() -> None:
         MonthlyLocation.__tablename__,
         "monthly_route_calculated_path",
         MonthlyRouteSpecialistMonth.__tablename__,
+        MonthlyRouteRunTimingMonth.__tablename__,
         MonthlyRouteSnapshot.__tablename__,
         MonthlyRouteComment.__tablename__,
     ]
@@ -118,6 +120,7 @@ def _wipe_postgres_truncate() -> None:
         "monthly_location",
         "monthly_route_calculated_path",
         "monthly_route_specialist_month",
+        "monthly_route_run_timing_month",
         "monthly_route_snapshot",
         "monthly_route_comment",
     ]

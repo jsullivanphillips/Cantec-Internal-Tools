@@ -13,6 +13,7 @@ from app.db_models import (
     MonthlyLocationMonth,
     MonthlyRoute,
     MonthlyRouteRun,
+    MonthlyRouteRunTimingMonth,
     MonthlyRouteWorksheetAuditEvent,
     MonthlyStopClockEvent,
     db,
@@ -29,6 +30,7 @@ WORKSHEET_TABLES = [
     MonthlyRouteWorksheetAuditEvent.__table__,
     MonthlyStopClockEvent.__table__,
     MonthlyLocationDeficiency.__table__,
+    MonthlyRouteRunTimingMonth.__table__,
 ]
 
 

@@ -416,7 +416,7 @@ def run_details_base_payload_extras(
     if run is None:
         run = _run_for_route_month(route_id, month_first)
     lean_locations = _lean_locations_for_route_month(route_id, month_first)
-    counts = _run_details_counts_from_stops(lean_locations)
+    counts = _run_details_counts_from_stops(lean_locations, month_first)
     locations, review_summary = run_details_locations_payload(
         route_id, month_first, all_locations=lean_locations, run=run
     )

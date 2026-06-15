@@ -29,6 +29,12 @@ export function isTechnicianDemoRoute(routeNumber: number | undefined | null): b
   return routeNumber === DEFAULT_TECHNICIAN_DEMO_ROUTE_NUMBER
 }
 
+/** Primary route number label for office UI (e.g. calendar cards). */
+export function routeNumberDisplayLabel(routeNumber: number): string {
+  if (isTechnicianDemoRoute(routeNumber)) return 'R99 DEMO'
+  return `R${routeNumber}`
+}
+
 const DEMO_ROUTE_TEST_DAY_SUFFIX = new RegExp(
   `-\\s*R\\s*${DEFAULT_TECHNICIAN_DEMO_ROUTE_NUMBER}\\s*$`,
   'i',

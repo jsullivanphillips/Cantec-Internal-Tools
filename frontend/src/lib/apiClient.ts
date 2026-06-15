@@ -42,6 +42,52 @@ export function isAbortError(error: unknown): boolean {
   return false
 }
 
+/** User-facing message from a non-2xx API response body and status code. */
+export function formatApiErrorMessage(
+  status: number,
+  body: unknown,
+  fallback: string,
+): string {
+  if (body && typeof body === 'object' && body !== null) {
+    const record = body as Record<string, unknown>
+    if (typeof record.error === 'string' && record.error.trim()) {
+      return record.error.trim()
+    }
+    if (typeof record.message === 'string' && record.message.trim()) {
+      return record.message.trim()
+    }
+  }
+  if (typeof body === 'string') {
+    const trimmed = body.trim()
+    if (trimmed && !trimmed.startsWith('<!') && trimmed.length <= 300) {
+      return trimmed
+    }
+  }
+  if (status >= 500) {
+    return 'The server ran into an unexpected error while loading this data. Try again in a moment, or contact the office if it keeps happening.'
+  }
+  if (status === 404) {
+    return 'This data is not available right now.'
+  }
+  if (status === 403) {
+    return "You don't have permission to view this data."
+  }
+  if (status === 401) {
+    return 'Your session may have expired. Refresh the page and sign in again.'
+  }
+  return fallback
+}
+
+export async function readApiErrorBody(res: Response): Promise<unknown> {
+  const text = await res.text()
+  if (!text.trim()) return null
+  try {
+    return JSON.parse(text)
+  } catch {
+    return text
+  }
+}
+
 export async function apiFetch(
   path: string,
   init: RequestInit = {}
@@ -79,27 +125,21 @@ export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
   }
   const res = await apiFetch(path, { ...init, headers: hdrs })
   if (!res.ok) {
-    const text = await res.text()
-    let err: unknown = text
-    try {
-      err = JSON.parse(text)
-    } catch {
-      /* keep text */
-    }
+    const body = await readApiErrorBody(res)
     if (
       res.status === 401 &&
       isTechnicianPortalPath() &&
-      typeof err === 'object' &&
-      err != null &&
-      'code' in (err as Record<string, unknown>)
+      typeof body === 'object' &&
+      body != null &&
+      'code' in (body as Record<string, unknown>)
     ) {
-      const code = String((err as { code?: string }).code || '')
+      const code = String((body as { code?: string }).code || '')
       if (code === 'auth_required' || code === 'portal_locked') {
         window.location.href = authFailureRedirectPath()
         throw new Error('portal_auth')
       }
     }
-    throw err
+    throw body
   }
   // DELETE and some success handlers return 204 No Content with no body — res.json() throws.
   if (res.status === 204 || res.status === 205) {

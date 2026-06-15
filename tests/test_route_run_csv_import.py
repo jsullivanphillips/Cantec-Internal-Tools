@@ -366,6 +366,27 @@ def test_import_handles_location_details_header_variant(import_client):
     assert body["history_upserts"] == 2
 
 
+def test_import_handles_tech_notes_and_comments_header_variant(import_client):
+    """Some technician exports use ``Tech Notes & Comments`` (notes before comments)."""
+    client, app = import_client
+    with app.app_context():
+        route_id, loc1, _loc2 = _seed_route8_with_two_stops()
+
+    csv_bytes = _build_csv(
+        address_header="Address",
+        tech_notes_header="Tech Notes & Comments",
+    )
+
+    res = _post_csv(client, route_id, csv_bytes)
+
+    assert res.status_code == 200, res.get_data(as_text=True)
+    with app.app_context():
+        h1 = MonthlyLocationMonth.query.filter_by(
+            monthly_location_id=loc1, month_date=date(2026, 4, 1)
+        ).one()
+        assert h1.inspection_tech_notes == "Site contact Allison"
+
+
 def test_import_rejects_completed_run_409(import_client):
     """Runs marked completed cannot be replaced by CSV until staff reopens."""
     client, app = import_client

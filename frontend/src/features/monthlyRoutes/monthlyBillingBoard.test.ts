@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   billingBoardPillTone,
   billingBoardShowUnsetDash,
+  billingBoardWaiveTooltipText,
   billingMonthPaperworkRouteId,
   billingMonthPillClickable,
   currentBillingQuarter,
@@ -125,6 +126,33 @@ describe('billingBoardPillTone', () => {
     expect(billingBoardPillTone('legacy')).toBe('legacy')
     expect(billingBoardPillTone('unset')).toBe('unset')
     expect(billingBoardPillTone(null)).toBe('unset')
+  })
+})
+
+describe('billingBoardWaiveTooltipText', () => {
+  it('joins skip category and note for waive cells', () => {
+    expect(
+      billingBoardWaiveTooltipText(
+        monthCell('do_not_bill', {
+          skip_reason_category: 'Lack of time',
+          skip_reason_note: 'No technicians available',
+        }),
+      ),
+    ).toBe('Lack of time · No technicians available')
+  })
+
+  it('returns category only when no note is present', () => {
+    expect(
+      billingBoardWaiveTooltipText(
+        monthCell('do_not_bill', {
+          skip_reason_category: 'Annual',
+        }),
+      ),
+    ).toBe('Annual')
+  })
+
+  it('returns null for non-waive billing statuses', () => {
+    expect(billingBoardWaiveTooltipText(monthCell('bill'))).toBeNull()
   })
 })
 

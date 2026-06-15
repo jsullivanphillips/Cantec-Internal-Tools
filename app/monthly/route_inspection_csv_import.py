@@ -1095,7 +1095,10 @@ _ADDRESS_HEADER_PREFIXES = ("address", "location details", "site details")
 # Tech notes column: various export spellings.
 _TECH_NOTES_HEADER_ALIASES = (
     "tech comments & notes",
+    "tech notes & comments",
+    "tech notes and comments",
     "technician notes & comments",
+    "technicians notes & comments",
     "technicians notes and comments",
     "technician notes and comments",
 )
@@ -1193,7 +1196,7 @@ def _row_get_alias(row: dict[str, str], aliases: tuple[str, ...]) -> str | None:
         return None
     lower_map: dict[str, str] = {}
     for k, v in row.items():
-        key_norm = _normalize_space(k).lower()
+        key_norm = _normalize_space(k).lower().rstrip(":").strip()
         if key_norm and key_norm not in lower_map:
             lower_map[key_norm] = v
     for alias in aliases:

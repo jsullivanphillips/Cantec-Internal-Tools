@@ -1,6 +1,121 @@
 import type { MonthlyRouteSummary } from './monthlyRoutesShared'
 import { effectiveRouteTestDayIso } from './monthlyRoutesShared'
 import type { RunWorkflowStage } from './runWorkflowShared'
+import { apiFetch, apiJson, formatApiErrorMessage, readApiErrorBody } from '../../lib/apiClient'
+
+export type MonthlyDashboardIssueLocation = {
+  id: number
+  label: string
+  address: string
+  display_address?: string | null
+  property_management_company: string | null
+  test_day: string | null
+  monthly_route_id?: number | null
+  monthly_route?: MonthlyRouteSummary | null
+  status_normalized: string
+  price_per_month: number | null
+  service_trade_site_location_id?: number | null
+}
+
+export type MonthlyDashboardIssuesPayload = {
+  missing_service_trade_link: MonthlyDashboardIssueLocation[]
+  missing_price: MonthlyDashboardIssueLocation[]
+  counts: {
+    missing_service_trade_link: number
+    missing_price: number
+  }
+}
+
+export async function fetchDashboardIssues(): Promise<MonthlyDashboardIssuesPayload> {
+  return apiJson<MonthlyDashboardIssuesPayload>('/api/monthly_routes/dashboard/issues')
+}
+
+export type DashboardRouteBreakdownCostConstants = {
+  labour_rate_per_hour: number
+  truck_charge_per_month: number
+  default_tech_count: number
+}
+
+export type DashboardRouteBreakdownRevenueColumn = {
+  month_key: string
+  header: string
+}
+
+export type DashboardRouteBreakdownMonthRevenueStatus = 'no_data' | 'skipped'
+
+export type DashboardRouteBreakdownMonthRevenue = {
+  month_key: string
+  revenue: number
+  revenue_status?: DashboardRouteBreakdownMonthRevenueStatus
+}
+
+export type DashboardRouteBreakdownRow = {
+  route: MonthlyRouteSummary
+  building_count: number
+  avg_hours: number | null
+  avg_hours_billed: number | null
+  avg_hours_capped_for_billing: boolean
+  avg_hours_months_sampled: number
+  has_sufficient_run_time_data: boolean
+  tech_count: number
+  monthly_expense: number
+  monthly_revenues: DashboardRouteBreakdownMonthRevenue[]
+  avg_monthly_revenue: number
+  revenue_months_sampled: number
+  monthly_net: number | null
+  monthly_net_pct: number | null
+}
+
+export type DashboardRouteBreakdownRange =
+  | 'last_month'
+  | 'last_quarter'
+  | 'ytd'
+  | 'last_12_months'
+
+export type DashboardRouteBreakdownPayload = {
+  range: DashboardRouteBreakdownRange
+  period_label: string
+  trailing_months: number
+  period_start: string
+  period_end: string
+  revenue_columns: DashboardRouteBreakdownRevenueColumn[]
+  show_avg_monthly_revenue: boolean
+  cost_constants: DashboardRouteBreakdownCostConstants
+  rows: DashboardRouteBreakdownRow[]
+}
+
+export const DASHBOARD_ROUTE_BREAKDOWN_RANGE_OPTIONS: {
+  value: DashboardRouteBreakdownRange
+  label: string
+  hint?: string
+}[] = [
+  { value: 'last_month', label: 'Last month' },
+  { value: 'last_quarter', label: 'Last quarter', hint: 'Jan–Mar, Apr–Jun, Jul–Sep, Oct–Dec' },
+  { value: 'ytd', label: 'Year to date' },
+  { value: 'last_12_months', label: 'Last 12 months' },
+]
+
+export async function fetchDashboardRouteBreakdown(
+  range: DashboardRouteBreakdownRange = 'last_12_months',
+): Promise<DashboardRouteBreakdownPayload> {
+  const path = `/api/monthly_routes/dashboard/route_breakdown?range=${encodeURIComponent(range)}`
+  const res = await apiFetch(path)
+  if (!res.ok) {
+    const body = await readApiErrorBody(res)
+    throw new Error(
+      formatApiErrorMessage(
+        res.status,
+        body,
+        'Unable to load route breakdown. Try again.',
+      ),
+    )
+  }
+  const text = await res.text()
+  if (!text.trim()) {
+    throw new Error('Route breakdown returned no data.')
+  }
+  return JSON.parse(text) as DashboardRouteBreakdownPayload
+}
 
 export type RouteOverviewCardTone =
   | 'completed-light'

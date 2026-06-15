@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import {
   billingBoardPillTone,
   billingBoardShowUnsetDash,
+  billingBoardWaiveTooltipText,
   billingMonthPillClickable,
   billingMonthPaperworkRouteId,
   billingStatusLabel,
@@ -23,7 +24,6 @@ import BillingBoardCommentCell from '../features/monthlyRoutes/BillingBoardComme
 import BillingBoardPaperworkModal, {
   type BillingBoardPaperworkModalContext,
 } from '../features/monthlyRoutes/BillingBoardPaperworkModal'
-import { formatSkipReasonDisplayText } from '../features/monthlyRoutes/portalWorkflowShared'
 import { isAbortError } from '../lib/apiClient'
 
 const PAGE_SIZE = 50
@@ -68,11 +68,7 @@ function BillingMonthCell({
   const tone = billingBoardPillTone(billing)
   const label = billingStatusLabel(billing)
   const clickable = billingMonthPillClickable(row, cell, monthIso)
-  const waiveReasonRaw =
-    billing === 'do_not_bill' ? cell?.skip_reason_category?.trim() || null : null
-  const waiveReason = waiveReasonRaw
-    ? formatSkipReasonDisplayText(waiveReasonRaw) ?? waiveReasonRaw
-    : null
+  const waiveTooltip = billingBoardWaiveTooltipText(cell)
   const routeId = billingMonthPaperworkRouteId(row, cell)
 
   const cardClass = `monthly-billing-pill-card monthly-billing-pill-card--${tone}${
@@ -84,8 +80,8 @@ function BillingMonthCell({
       type="button"
       className={cardClass}
       aria-label={
-        waiveReason
-          ? `Waive: ${waiveReason}. View paperwork for ${formatMonthHeader(monthIso)}.`
+        waiveTooltip
+          ? `Waive: ${waiveTooltip}. View paperwork for ${formatMonthHeader(monthIso)}.`
           : `View paperwork for ${formatMonthHeader(monthIso)} (${label})`
       }
       onClick={(e) => {
@@ -97,7 +93,7 @@ function BillingMonthCell({
           monthIso,
           routeId,
           billingStatus: billing,
-          waiveReason,
+          waiveReason: waiveTooltip,
         })
       }}
     >
@@ -111,9 +107,12 @@ function BillingMonthCell({
     <div className="monthly-billing-month-cell">{cardInner}</div>
   )
 
-  if (clickable && waiveReason) {
+  if (clickable && waiveTooltip) {
     return (
-      <OverlayTrigger trigger={['hover', 'focus']} overlay={<Tooltip>{waiveReason}</Tooltip>}>
+      <OverlayTrigger
+        trigger={['hover', 'focus']}
+        overlay={<Tooltip className="monthly-billing-waive-tooltip">{waiveTooltip}</Tooltip>}
+      >
         <span className="monthly-billing-month-cell-wrap d-block">{shell}</span>
       </OverlayTrigger>
     )
@@ -135,27 +134,27 @@ function BillingBoardTableSkeleton({ monthDates }: { monthDates: string[] }) {
       <Table responsive className="mb-0 align-middle monthly-billing-table">
         <thead>
           <tr>
-            <th style={{ minWidth: '14rem' }}>Address</th>
+            <th style={{ minWidth: '11rem' }}>Address</th>
             {monthDates.length > 0
               ? monthDates.map((monthIso) => (
-                  <th key={monthIso} className="text-center" style={{ minWidth: '7rem' }}>
+                  <th key={monthIso} className="text-center" style={{ minWidth: '5.25rem' }}>
                     {formatMonthHeader(monthIso)}
                   </th>
                 ))
               : Array.from({ length: monthCols }, (_, i) => (
-                  <th key={i} className="text-center" style={{ minWidth: '7rem' }}>
+                  <th key={i} className="text-center" style={{ minWidth: '5.25rem' }}>
                     <span
                       className="home-skeleton-bar d-inline-block"
-                      style={{ width: '3.25rem', height: '0.75rem' }}
+                      style={{ width: '2.75rem', height: '0.65rem' }}
                     />
                   </th>
                 ))}
-            <th className="text-center" style={{ minWidth: '7rem' }}>
+            <th className="text-center" style={{ minWidth: '5.25rem' }}>
               Invoiced
             </th>
-            <th style={{ minWidth: '5rem' }}>Route</th>
-            <th style={{ minWidth: '10rem' }}>Billing comment</th>
-            <th style={{ minWidth: '10rem' }}>Property management company</th>
+            <th style={{ minWidth: '3.5rem' }}>Route</th>
+            <th style={{ minWidth: '8rem' }}>Billing comment</th>
+            <th style={{ minWidth: '8rem' }}>Property management company</th>
           </tr>
         </thead>
         <tbody>
@@ -164,31 +163,31 @@ function BillingBoardTableSkeleton({ monthDates }: { monthDates: string[] }) {
               <td>
                 <span
                   className="home-skeleton-bar d-block"
-                  style={{ width: '88%', height: '0.9rem' }}
+                  style={{ width: '88%', height: '0.75rem' }}
                 />
               </td>
               {Array.from({ length: monthCols }, (_, colIdx) => (
                 <td key={colIdx} className="text-center">
                   <span
                     className="home-skeleton-bar d-inline-block"
-                    style={{ width: '4.25rem', height: '1.35rem', borderRadius: '0.35rem' }}
+                    style={{ width: '3.25rem', height: '1.1rem', borderRadius: '0.35rem' }}
                   />
                 </td>
               ))}
               <td className="text-center">
                 <span
                   className="home-skeleton-bar d-inline-block"
-                  style={{ width: '5.75rem', height: '1.85rem', borderRadius: '0.35rem' }}
+                  style={{ width: '4.5rem', height: '1.35rem', borderRadius: '0.35rem' }}
                 />
               </td>
               <td>
-                <span className="home-skeleton-bar d-block" style={{ width: '2.25rem', height: '0.75rem' }} />
+                <span className="home-skeleton-bar d-block" style={{ width: '2rem', height: '0.65rem' }} />
               </td>
               <td>
-                <span className="home-skeleton-bar d-block" style={{ width: '70%', height: '0.75rem' }} />
+                <span className="home-skeleton-bar d-block" style={{ width: '70%', height: '0.65rem' }} />
               </td>
               <td>
-                <span className="home-skeleton-bar d-block" style={{ width: '75%', height: '0.75rem' }} />
+                <span className="home-skeleton-bar d-block" style={{ width: '75%', height: '0.65rem' }} />
               </td>
             </tr>
           ))}
@@ -215,7 +214,7 @@ function BillingBoardPaginationBar({
 }) {
   return (
     <div
-      className={`d-flex flex-wrap justify-content-between align-items-center gap-2 px-3 py-2 ${
+      className={`d-flex flex-wrap justify-content-between align-items-center gap-2 py-2 ${
         position === 'top' ? 'border-bottom' : 'border-top'
       }`}
     >
@@ -502,9 +501,9 @@ export default function MonthlyBillingPage() {
       </Card>
 
       <Card className="app-surface-card monthly-results-card">
-        <Card.Body className="p-0">
+        <Card.Body className="monthly-billing-results-body">
           {error ? (
-            <p className="text-danger small p-3 mb-0" role="alert">
+            <p className="text-danger small mb-0" role="alert">
               {error}
             </p>
           ) : (
@@ -523,23 +522,23 @@ export default function MonthlyBillingPage() {
                   <Table responsive hover className="mb-0 align-middle monthly-billing-table">
                   <thead>
                     <tr>
-                        <th style={{ minWidth: '14rem' }}>Address</th>
+                        <th style={{ minWidth: '11rem' }}>Address</th>
                         {monthDates.map((monthIso) => (
                           <th
                             key={monthIso}
                             colSpan={1}
                             className="text-center"
-                            style={{ minWidth: '7rem' }}
+                            style={{ minWidth: '5.25rem' }}
                           >
                             {formatMonthHeader(monthIso)}
                           </th>
                         ))}
-                        <th className="text-center" style={{ minWidth: '7rem' }}>
+                        <th className="text-center" style={{ minWidth: '5.25rem' }}>
                           Invoiced
                         </th>
-                        <th style={{ minWidth: '5rem' }}>Route</th>
-                        <th style={{ minWidth: '10rem' }}>Billing comment</th>
-                        <th style={{ minWidth: '10rem' }}>Property management company</th>
+                        <th style={{ minWidth: '3.5rem' }}>Route</th>
+                        <th style={{ minWidth: '8rem' }}>Billing comment</th>
+                        <th style={{ minWidth: '8rem' }}>Property management company</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -577,7 +576,7 @@ export default function MonthlyBillingPage() {
                                   aria-label="Saving"
                                 />
                               ) : row.quarter_billed ? (
-                                <i className="bi bi-check-circle-fill fs-5" aria-hidden />
+                                <i className="bi bi-check-circle-fill fs-6" aria-hidden />
                               ) : (
                                 'Invoiced'
                               )}
@@ -598,7 +597,7 @@ export default function MonthlyBillingPage() {
                               <td>
                                 <Link
                                   to={`/monthlies/locations/${row.location_id}`}
-                                  className="fw-semibold text-decoration-none"
+                                  className="monthly-billing-address-link"
                                   onClick={(e) => e.stopPropagation()}
                                 >
                                   {billingBoardLocationTitle(row)}
@@ -619,10 +618,10 @@ export default function MonthlyBillingPage() {
                                   <span className="d-inline-block">{btn}</span>
                                 </OverlayTrigger>
                               </td>
-                              <td className="small">
+                              <td>
                                 <BillingRouteCell row={row} />
                               </td>
-                              <td className="small text-muted text-break">
+                              <td className="text-muted text-break">
                                 <BillingBoardCommentCell
                                   locationId={row.location_id}
                                   billingComments={row.billing_comments}
@@ -634,7 +633,7 @@ export default function MonthlyBillingPage() {
                                   }
                                 />
                               </td>
-                              <td className="small text-muted text-break">
+                              <td className="text-muted text-break">
                                 {row.property_management_company?.trim() ? (
                                   row.property_management_company.trim()
                                 ) : (

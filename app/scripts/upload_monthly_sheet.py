@@ -22,6 +22,10 @@ from app.monthly.route_inspection_csv_import import (
     parse_address_block,
     resolve_monthly_location_by_sheet_identity,
 )
+from app.monthly.history_source import (
+    HISTORY_SOURCE_MASTER_SHEET,
+    is_history_protected_from_master_sheet,
+)
 from app.monthly.route_sync import sync_monthly_route_fk_for_location
 
 LOG = logging.getLogger("upload_monthly_sheet")
@@ -361,32 +365,39 @@ def _upsert_history(
     source_value_raw: str | None,
     *,
     test_monthly_route_id: int | None = None,
-) -> None:
-    now = datetime.now(timezone.utc)
-    stmt = insert(MonthlyLocationMonth).values(
+) -> str:
+    """Upsert master-sheet test history. Returns ``upserted`` or ``skipped_protected``."""
+    existing = MonthlyLocationMonth.query.filter_by(
         monthly_location_id=location_id,
         month_date=month_date,
-        result_status=result_status,
-        skip_reason=skip_reason,
-        source_value_raw=source_value_raw,
-        testing_procedures=None,
-        inspection_tech_notes=None,
-        test_monthly_route_id=test_monthly_route_id,
-        updated_at=now,
-    )
-    set_: dict[str, object] = {
-        "result_status": stmt.excluded.result_status,
-        "skip_reason": stmt.excluded.skip_reason,
-        "source_value_raw": stmt.excluded.source_value_raw,
-        "updated_at": stmt.excluded.updated_at,
-    }
-    if test_monthly_route_id is not None:
-        set_["test_monthly_route_id"] = stmt.excluded.test_monthly_route_id
-    stmt = stmt.on_conflict_do_update(
-        constraint="uq_mlm_location_month",
-        set_=set_,
-    )
-    db.session.execute(stmt)
+    ).one_or_none()
+    if existing is not None and is_history_protected_from_master_sheet(existing):
+        return "skipped_protected"
+
+    now = datetime.now(timezone.utc)
+    if existing is None:
+        row = MonthlyLocationMonth(
+            monthly_location_id=location_id,
+            month_date=month_date,
+            result_status=result_status,
+            skip_reason=skip_reason,
+            source_value_raw=source_value_raw,
+            history_source=HISTORY_SOURCE_MASTER_SHEET,
+            testing_procedures=None,
+            inspection_tech_notes=None,
+            test_monthly_route_id=test_monthly_route_id,
+            updated_at=now,
+        )
+        db.session.add(row)
+    else:
+        existing.result_status = result_status
+        existing.skip_reason = skip_reason
+        existing.source_value_raw = source_value_raw
+        existing.history_source = HISTORY_SOURCE_MASTER_SHEET
+        existing.updated_at = now
+        if test_monthly_route_id is not None:
+            existing.test_monthly_route_id = test_monthly_route_id
+    return "upserted"
 
 
 def _sheet_row_identity(row: dict[str, str]) -> tuple[str, str, str, str]:
@@ -401,15 +412,22 @@ def _sheet_row_identity(row: dict[str, str]) -> tuple[str, str, str, str]:
     return aid, cid, lid, address_line
 
 
-def _resolve_location_id_for_history_row(row: dict[str, str]) -> tuple[int | None, str | None]:
+def _resolve_existing_location_id_for_sheet_row(
+    row: dict[str, str],
+    *,
+    canonical_index: dict[str, list[MonthlyLocation]] | None = None,
+) -> tuple[int | None, str | None, str | None]:
     """
-    Resolve ``MonthlyLocation.id`` using normalized address + PMC + label (NOTES column).
+    Resolve an existing ``MonthlyLocation.id`` for a master-sheet row.
 
-    Returns (location_id, None) on success, or (None, 'missing'/'ambiguous').
+    Tries strict address + PMC + label (NOTES), then master ADDRESS matched to
+    library ``label_normalized`` + PMC, address + PMC, and canonical street + PMC.
+    Returns (location_id, error, match_mode).
     """
-    aid, cid, lid, _street_display = _sheet_row_identity(row)
+    aid, cid, lid, street_display = _sheet_row_identity(row)
+    street_label = _normalize_building(street_display)
     if not aid:
-        return None, "missing"
+        return None, "missing", None
 
     location_ids = db.session.execute(
         select(MonthlyLocation.id).where(
@@ -418,34 +436,10 @@ def _resolve_location_id_for_history_row(row: dict[str, str]) -> tuple[int | Non
             MonthlyLocation.label_normalized == lid,
         )
     ).scalars().all()
-
     if len(location_ids) == 1:
-        return int(location_ids[0]), None
-    if not location_ids:
-        return None, "missing"
-    return None, "ambiguous"
-
-
-def _resolve_location_id_for_status_routes_row(
-    row: dict[str, str],
-    *,
-    canonical_index: dict[str, list[MonthlyLocation]] | None = None,
-) -> tuple[int | None, str | None, str | None]:
-    """
-    Resolve an existing ``MonthlyLocation.id`` for status/route sync rows.
-
-    Tries strict address + PMC + label, then street-label + PMC, address + PMC,
-    and finally canonical street + PMC when technician-sheet addressing differs
-    from the library navigation address.
-    """
-    aid, cid, lid, street_display = _sheet_row_identity(row)
-    street_label = _normalize_building(street_display)
-
-    strict_id, strict_err = _resolve_location_id_for_history_row(row)
-    if strict_err is None:
-        return strict_id, None, "address_pmc_label"
-    if strict_err == "ambiguous":
-        return None, strict_err, None
+        return int(location_ids[0]), None, "address_pmc_label"
+    if len(location_ids) > 1:
+        return None, "ambiguous", None
 
     if street_label and cid:
         location_ids = db.session.execute(
@@ -490,6 +484,36 @@ def _resolve_location_id_for_status_routes_row(
                 return None, "ambiguous", None
 
     return None, "missing", None
+
+
+def _resolve_location_id_for_history_row(
+    row: dict[str, str],
+    *,
+    canonical_index: dict[str, list[MonthlyLocation]] | None = None,
+) -> tuple[int | None, str | None]:
+    """
+    Resolve ``MonthlyLocation.id`` for history-only imports.
+
+    Falls back to matching the sheet ADDRESS column against library ``label`` when
+    the strict address + PMC + NOTES identity does not match.
+    """
+    location_id, err, _match_mode = _resolve_existing_location_id_for_sheet_row(
+        row,
+        canonical_index=canonical_index,
+    )
+    return location_id, err
+
+
+def _resolve_location_id_for_status_routes_row(
+    row: dict[str, str],
+    *,
+    canonical_index: dict[str, list[MonthlyLocation]] | None = None,
+) -> tuple[int | None, str | None, str | None]:
+    """Resolve an existing ``MonthlyLocation.id`` for status/route sync rows."""
+    return _resolve_existing_location_id_for_sheet_row(
+        row,
+        canonical_index=canonical_index,
+    )
 
 
 def _status_and_test_day_from_row(row: dict[str, str]) -> tuple[str, str | None, str | None]:
@@ -842,6 +866,7 @@ def run_upload(
     status_routes_rows: list[dict[str, Any]] = []
     location_upserts = 0
     history_upserts = 0
+    history_skipped_protected = 0
     status_routes_updated = 0
     status_routes_unchanged = 0
     status_routes_missing = 0
@@ -859,7 +884,7 @@ def run_upload(
     total_locations = len(deduped_items)
 
     canonical_street_index: dict[str, list[MonthlyLocation]] | None = None
-    if status_and_routes_only:
+    if status_and_routes_only or history_only:
         canonical_street_index = load_locations_by_canonical_street()
         print(
             f"[monthly-sheet] Loaded canonical street index "
@@ -951,7 +976,10 @@ def run_upload(
                 status_routes_unchanged += 1
             status_routes_rows.append(row_result)
         elif history_only:
-            resolved_id, resolve_err = _resolve_location_id_for_history_row(row)
+            resolved_id, resolve_err = _resolve_location_id_for_history_row(
+                row,
+                canonical_index=canonical_street_index,
+            )
             if resolve_err == "missing":
                 history_missing_locations.append(
                     {
@@ -1013,14 +1041,17 @@ def run_upload(
                         missing_reason_logs.append(
                             MissingReasonLog(address=address, month_date=month_date, row_number=row_number)
                         )
-                _upsert_history(
+                outcome = _upsert_history(
                     location_id=location_id,
                     month_date=month_date,
                     result_status=result_status,
                     skip_reason=skip_reason,
                     source_value_raw=raw_value or None,
                 )
-                history_upserts += 1
+                if outcome == "upserted":
+                    history_upserts += 1
+                else:
+                    history_skipped_protected += 1
 
         if idx == 1 or idx == total_locations or idx % PROGRESS_EVERY_N_LOCATIONS == 0:
             pct = (100 * idx // total_locations) if total_locations else 100
@@ -1156,6 +1187,7 @@ def run_upload(
     LOG.info("Rows processed (deduped by address): %s", len(deduped))
     LOG.info("Location upserts: %s", location_upserts)
     LOG.info("Monthly history upserts: %s", history_upserts)
+    LOG.info("Monthly history skipped (run/portal protected): %s", history_skipped_protected)
     LOG.info("Duplicate-address conflicts logged: %s", len(conflicts))
     LOG.info("X-values missing reason logged: %s", len(missing_reason_logs))
     LOG.info("Invalid rows logged: %s", len(invalid_rows))
@@ -1185,6 +1217,7 @@ def run_upload(
             if status_and_routes_only
             else f"locations: {location_upserts}, "
             f"history upserts: {history_upserts}, "
+            f"history skipped (run/portal): {history_skipped_protected}, "
             f"conflicts: {len(conflicts)}, "
             f"X pending reasons: {len(missing_reason_logs)}, "
             f"invalid: {len(invalid_rows)}, "
@@ -1239,7 +1272,8 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help=(
             "Only upsert MonthlyLocationMonth; do not upsert MonthlyLocation "
-            "(each CSV row must match an existing location by address/company/building)."
+            "(each CSV row must match an existing location by address/company/building). "
+            "Use with --months-year to import test cells for a single calendar year."
         ),
     )
     parser.add_argument(
@@ -1265,7 +1299,7 @@ def parse_args() -> argparse.Namespace:
         type=int,
         dest="months_years",
         metavar="YEAR",
-        help="Only process month columns in this calendar year (repeatable). Example: --months-year 2025",
+        help="Only process month columns in this calendar year (repeatable). Example: --months-year 2026",
     )
     return parser.parse_args()
 

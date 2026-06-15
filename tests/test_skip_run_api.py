@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -16,6 +16,8 @@ from app.db_models import (
 from tests.monthly_location_helpers import WORKSHEET_TABLES, seed_route_with_two_stops
 
 PACIFIC_TZ = ZoneInfo("America/Vancouver")
+
+SKIP_PAYLOAD = {"skip_category": "lack_of_time", "skip_note": "No technicians available"}
 
 
 @pytest.fixture
@@ -46,7 +48,10 @@ def test_skip_empty_month_creates_skipped_run(skip_client, monkeypatch):
     with app.app_context():
         route_id, loc1, loc2 = seed_route_with_two_stops(route_id=8, primary_id=801, secondary_id=802)
 
-    res = client.post(f"/api/monthly_routes/routes/{route_id}/runs/skip?month=2026-07-01")
+    res = client.post(
+        f"/api/monthly_routes/routes/{route_id}/runs/skip?month=2026-07-01",
+        json=SKIP_PAYLOAD,
+    )
     assert res.status_code == 200, res.get_data(as_text=True)
     body = res.get_json()
     assert body["ok"] is True
@@ -72,12 +77,14 @@ def test_skip_empty_month_creates_skipped_run(skip_client, monkeypatch):
                 month_date=month_first,
             ).one()
             assert mlm.result_status == "skipped"
-            assert mlm.skip_reason == "month_skipped"
+            assert mlm.skip_category == "lack_of_time"
+            assert mlm.skip_note == "No technicians available"
+            assert mlm.skip_reason == "lack_of_time: No technicians available"
             assert mlm.billing_status == "do_not_bill"
             assert mlm.test_monthly_route_id == route_id
 
 
-def test_skip_blocked_when_run_exists(skip_client, monkeypatch):
+def test_skip_blocked_when_run_field_started(skip_client, monkeypatch):
     from app.routes import monthly_routes as mr_mod
 
     monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 6, 1))
@@ -92,13 +99,64 @@ def test_skip_blocked_when_run_exists(skip_client, monkeypatch):
                 month_date=date(2026, 4, 1),
                 status="open",
                 source="technician_app",
+                started_at=datetime(2026, 4, 15, 9, 0, tzinfo=PACIFIC_TZ),
             )
         )
         db.session.commit()
 
-    res = client.post(f"/api/monthly_routes/routes/{route_id}/runs/skip?month=2026-04-01")
+    res = client.post(
+        f"/api/monthly_routes/routes/{route_id}/runs/skip?month=2026-04-01",
+        json=SKIP_PAYLOAD,
+    )
     assert res.status_code == 409
     assert res.get_json()["code"] == "run_exists"
+
+
+def test_skip_prep_phase_run_reuses_existing_run(skip_client, monkeypatch):
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 6, 1))
+
+    client, app = skip_client
+    with app.app_context():
+        route_id, loc1, loc2 = seed_route_with_two_stops(route_id=8, primary_id=801, secondary_id=802)
+        db.session.add(
+            MonthlyRouteRun(
+                id=9001,
+                monthly_route_id=route_id,
+                month_date=date(2026, 7, 1),
+                status="open",
+                source="technician_app",
+            )
+        )
+        db.session.commit()
+
+    res = client.post(
+        f"/api/monthly_routes/routes/{route_id}/runs/skip?month=2026-07-01",
+        json=SKIP_PAYLOAD,
+    )
+    assert res.status_code == 200, res.get_data(as_text=True)
+    body = res.get_json()
+    assert body["ok"] is True
+    assert body["locations_skipped"] == 2
+    assert body["run"]["workflow_stage"] == "skipped"
+
+    with app.app_context():
+        run_row = MonthlyRouteRun.query.filter_by(
+            monthly_route_id=route_id,
+            month_date=date(2026, 7, 1),
+        ).one()
+        assert run_row.id == 9001
+        assert run_row.source == "office_skip"
+        for loc_id in (loc1, loc2):
+            mlm = MonthlyLocationMonth.query.filter_by(
+                monthly_location_id=loc_id,
+                month_date=date(2026, 7, 1),
+            ).one()
+            assert mlm.result_status == "skipped"
+            assert mlm.skip_category == "lack_of_time"
+            assert mlm.skip_note == "No technicians available"
+            assert mlm.skip_reason == "lack_of_time: No technicians available"
 
 
 def test_skip_blocked_when_history_exists_without_run(skip_client, monkeypatch):
@@ -120,7 +178,10 @@ def test_skip_blocked_when_history_exists_without_run(skip_client, monkeypatch):
         )
         db.session.commit()
 
-    res = client.post(f"/api/monthly_routes/routes/{route_id}/runs/skip?month=2026-04-01")
+    res = client.post(
+        f"/api/monthly_routes/routes/{route_id}/runs/skip?month=2026-04-01",
+        json=SKIP_PAYLOAD,
+    )
     assert res.status_code == 409
     assert res.get_json()["code"] == "history_exists"
 
@@ -135,7 +196,8 @@ def test_skip_appears_in_runs_by_month(skip_client, monkeypatch):
         route_id, _, _ = seed_route_with_two_stops(route_id=8, primary_id=801, secondary_id=802)
 
     assert client.post(
-        f"/api/monthly_routes/routes/{route_id}/runs/skip?month=2026-03-01"
+        f"/api/monthly_routes/routes/{route_id}/runs/skip?month=2026-03-01",
+        json=SKIP_PAYLOAD,
     ).status_code == 200
 
     with app.app_context():
@@ -157,6 +219,30 @@ def test_skip_blocked_beyond_current_plus_one(skip_client, monkeypatch):
     with app.app_context():
         route_id, _, _ = seed_route_with_two_stops(route_id=8, primary_id=801, secondary_id=802)
 
-    res = client.post(f"/api/monthly_routes/routes/{route_id}/runs/skip?month=2026-08-01")
+    res = client.post(
+        f"/api/monthly_routes/routes/{route_id}/runs/skip?month=2026-08-01",
+        json=SKIP_PAYLOAD,
+    )
     assert res.status_code == 409
     assert res.get_json()["code"] == "month_out_of_range"
+
+
+def test_skip_requires_category_and_reason(skip_client, monkeypatch):
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 6, 1))
+
+    client, app = skip_client
+    with app.app_context():
+        route_id, _, _ = seed_route_with_two_stops(route_id=8, primary_id=801, secondary_id=802)
+
+    res = client.post(f"/api/monthly_routes/routes/{route_id}/runs/skip?month=2026-07-01")
+    assert res.status_code == 400
+    assert res.get_json()["code"] == "skip_category_required"
+
+    res = client.post(
+        f"/api/monthly_routes/routes/{route_id}/runs/skip?month=2026-07-01",
+        json={"skip_category": "other"},
+    )
+    assert res.status_code == 400
+    assert res.get_json()["code"] == "skip_reason_required"

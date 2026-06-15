@@ -8,6 +8,7 @@ import {
   formatRunsCardStageLabel,
   formatSitesTestedRatio,
   findNewestRunMonthAwaitingOfficeReview,
+  runMonthIsOfficeSkippable,
 } from './routeRunsDisplay'
 import type { RouteRunMonthSummary } from './monthlyRoutesShared'
 
@@ -133,5 +134,13 @@ describe('routeRunsDisplay', () => {
         '2026-03-01': run({ workflow_stage: 'awaiting_office_review' }),
       }),
     ).toBe('2026-05-01')
+  })
+
+  it('runMonthIsOfficeSkippable allows empty months and draft/prepared runs only', () => {
+    expect(runMonthIsOfficeSkippable(null)).toBe(true)
+    expect(runMonthIsOfficeSkippable(run({ workflow_stage: 'draft' }))).toBe(true)
+    expect(runMonthIsOfficeSkippable(run({ workflow_stage: 'prepared' }))).toBe(true)
+    expect(runMonthIsOfficeSkippable(run({ workflow_stage: 'field_in_progress' }))).toBe(false)
+    expect(runMonthIsOfficeSkippable(run({ workflow_stage: 'skipped' }))).toBe(false)
   })
 })

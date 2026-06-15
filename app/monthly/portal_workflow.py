@@ -16,6 +16,7 @@ from app.db_models import (
     MonthlyStopClockEvent,
     db,
 )
+from app.monthly.history_source import HISTORY_SOURCE_TECHNICIAN_PORTAL
 from app.monthly.worksheet_locations import (
     WorksheetAuditEventIdAllocator,
     _cleared_outcome_fields,
@@ -569,6 +570,8 @@ def set_test_outcome(
         mlm.result_status = "tested"
         mlm.skip_reason = None
 
+    mlm.history_source = HISTORY_SOURCE_TECHNICIAN_PORTAL
+
     apply_billing_defaults_for_location(location_id, month_first, route_id)
 
 
@@ -585,6 +588,7 @@ def clear_test_outcome(
     mlm.confirmed_no_deficiencies = False
     mlm.result_status = None
     mlm.skip_reason = None
+    mlm.history_source = None
     apply_billing_defaults_for_location(int(loc.id), month_first, route_id)
 
 

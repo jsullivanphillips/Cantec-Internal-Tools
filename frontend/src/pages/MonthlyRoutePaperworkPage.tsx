@@ -2,6 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Badge, Button, Modal, Spinner } from 'react-bootstrap'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import PaperworkRunSelector from '../features/monthlyRoutes/PaperworkRunSelector'
+import OfficeSkipRunModal, {
+  type OfficeSkipRunPayload,
+} from '../features/monthlyRoutes/OfficeSkipRunModal'
 import RunDetailsLocationReviewList from '../features/monthlyRoutes/RunDetailsLocationReviewList'
 import RunDetailsPreRunMessageCard from '../features/monthlyRoutes/RunDetailsPreRunMessageCard'
 import RunWorkflowStepper from '../features/monthlyRoutes/RunWorkflowStepper'
@@ -117,6 +120,9 @@ export default function MonthlyRoutePaperworkPage() {
   const [resetRunModalOpen, setResetRunModalOpen] = useState(false)
   const [resetRunBusy, setResetRunBusy] = useState(false)
   const [regenerateLibraryBusy, setRegenerateLibraryBusy] = useState(false)
+  const [skipRouteModalOpen, setSkipRouteModalOpen] = useState(false)
+  const [skipRouteSubmitting, setSkipRouteSubmitting] = useState(false)
+  const [skipRouteError, setSkipRouteError] = useState<string | null>(null)
   const [historyStops, setHistoryStops] = useState<TechnicianWorksheetLocation[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
   const [historyMeta, setHistoryMeta] = useState<{
@@ -751,6 +757,65 @@ export default function MonthlyRoutePaperworkPage() {
     }
   }, [idNum, monthQuery, loadRunDetails, loadRouteMeta, regenerateLibraryBusy, runLifecycleAction])
 
+  const openSkipRouteConfirm = useCallback(() => {
+    setSkipRouteError(null)
+    setSkipRouteModalOpen(true)
+  }, [])
+
+  const closeSkipRouteConfirm = useCallback(() => {
+    if (skipRouteSubmitting) return
+    setSkipRouteModalOpen(false)
+    setSkipRouteError(null)
+  }, [skipRouteSubmitting])
+
+  const onConfirmSkipRoute = useCallback(
+    async (payload: OfficeSkipRunPayload) => {
+      if (!Number.isFinite(idNum)) return
+      if (skipRouteSubmitting || regenerateLibraryBusy || runLifecycleAction != null) return
+      setSkipRouteSubmitting(true)
+      setSkipRouteError(null)
+      try {
+        const data = await apiJson<{
+          ok: boolean
+          run: TechnicianWorksheetRun
+          month_date: string
+        }>(
+          `/api/monthly_routes/routes/${idNum}/runs/skip?month=${encodeURIComponent(monthQuery)}`,
+          {
+            method: 'POST',
+            body: JSON.stringify(payload),
+          },
+        )
+        clearWorksheetCache(idNum, monthQuery)
+        invalidatePaperworkRouteMonth(idNum, monthQuery)
+        runDetailsFetchSeqRef.current += 1
+        abortPaperworkRunDetailsFetch(idNum, monthQuery)
+        applyWorkflowRunUpdate(data.run)
+        setSkipRouteModalOpen(false)
+        await loadRunDetails()
+        await loadRouteMeta()
+      } catch (e) {
+        const message =
+          typeof e === 'object' && e != null && 'error' in e
+            ? String((e as { error?: unknown }).error)
+            : 'Unable to skip this route.'
+        setSkipRouteError(message)
+      } finally {
+        setSkipRouteSubmitting(false)
+      }
+    },
+    [
+      idNum,
+      monthQuery,
+      skipRouteSubmitting,
+      regenerateLibraryBusy,
+      runLifecycleAction,
+      applyWorkflowRunUpdate,
+      loadRunDetails,
+      loadRouteMeta,
+    ],
+  )
+
   const routeTo = `/monthlies/routes/${idNum}`
 
   const locations = payload?.locations ?? []
@@ -808,7 +873,10 @@ export default function MonthlyRoutePaperworkPage() {
   const showResetRun = run != null && !runCompleted
   const showRegenerateFromLibrary =
     runInOfficePrepPhase(run) && !runCompleted && !futurePrepBlocked
+  const showSkipRoute =
+    prepPhase && runInOfficePrepPhase(run) && !runCompleted && !futurePrepBlocked
   const lifecycleBusy = runLifecycleAction != null
+  const prepActionBusy = lifecycleBusy || regenerateLibraryBusy || skipRouteSubmitting
 
   return (
     <div
@@ -964,23 +1032,38 @@ export default function MonthlyRoutePaperworkPage() {
                   )}
                 </Button>
               ) : null}
-              {showRegenerateFromLibrary ? (
-                <Button
-                  size="sm"
-                  variant="outline-secondary"
-                  className="monthly-location-detail-action"
-                  disabled={lifecycleBusy || regenerateLibraryBusy}
-                  onClick={() => void onRegenerateFromLibrary()}
-                >
-                  {regenerateLibraryBusy ? (
-                    <>
-                      <Spinner animation="border" size="sm" className="me-1" aria-hidden />
-                      Regenerating…
-                    </>
-                  ) : (
-                    'Regenerate paperwork'
-                  )}
-                </Button>
+              {showRegenerateFromLibrary || showSkipRoute ? (
+                <div className="monthly-route-detail-hero__paired-actions">
+                  {showSkipRoute ? (
+                    <Button
+                      size="sm"
+                      variant="outline-warning"
+                      className="monthly-location-detail-action"
+                      disabled={prepActionBusy}
+                      onClick={openSkipRouteConfirm}
+                    >
+                      Skip route
+                    </Button>
+                  ) : null}
+                  {showRegenerateFromLibrary ? (
+                    <Button
+                      size="sm"
+                      variant="outline-secondary"
+                      className="monthly-location-detail-action"
+                      disabled={prepActionBusy}
+                      onClick={() => void onRegenerateFromLibrary()}
+                    >
+                      {regenerateLibraryBusy ? (
+                        <>
+                          <Spinner animation="border" size="sm" className="me-1" aria-hidden />
+                          Regenerating…
+                        </>
+                      ) : (
+                        'Regenerate paperwork'
+                      )}
+                    </Button>
+                  ) : null}
+                </div>
               ) : null}
               {showResetRun ? (
                 <Button
@@ -1094,6 +1177,16 @@ export default function MonthlyRoutePaperworkPage() {
           </Button>
         </Modal.Footer>
       </Modal>
+      <OfficeSkipRunModal
+        show={skipRouteModalOpen}
+        monthIso={monthQuery}
+        submitting={skipRouteSubmitting}
+        error={skipRouteError}
+        title="Skip route"
+        confirmLabel="Skip route"
+        onClose={closeSkipRouteConfirm}
+        onConfirm={(payload) => void onConfirmSkipRoute(payload)}
+      />
     </div>
   )
 }

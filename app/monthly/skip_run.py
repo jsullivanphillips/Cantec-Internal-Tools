@@ -8,6 +8,7 @@ from app.db_models import MonthlyRouteRun, db
 from app.monthly.run_workflow import (
     close_skipped_run_from_office,
     mark_run_prepared,
+    run_in_office_prep_phase,
 )
 from app.monthly.worksheet_locations import (
     _active_library_route_locations,
@@ -15,10 +16,10 @@ from app.monthly.worksheet_locations import (
     ensure_worksheet_stops_for_route_month,
     load_stop_for_patch,
 )
+from app.monthly.portal_workflow import SKIP_CATEGORIES, _normalize_text
 from app.monthly.runs import get_or_create_monthly_route_run
 
-SKIP_REASON = "month_skipped"
-SKIP_CATEGORY = "testing_not_required"
+OFFICE_SKIP_CATEGORIES = frozenset(c for c in SKIP_CATEGORIES if c != "annual")
 RUN_SOURCE = "office_skip"
 
 
@@ -43,14 +44,40 @@ def _location_sort_key(loc) -> tuple[int, int]:
     return (tier, ord_, int(loc.id))
 
 
-def _apply_skipped_location_month(mlm, *, run_id: int, stop_order: int) -> None:
+def _build_skip_reason(skip_category: str, skip_note: str) -> str:
+    if skip_note:
+        return f"{skip_category}: {skip_note}"
+    return skip_category
+
+
+def _validate_office_skip_input(
+    skip_category: str | None,
+    skip_note: str | None,
+) -> tuple[str, str]:
+    cat = (_normalize_text(skip_category) or "").lower()
+    note = _normalize_text(skip_note) or ""
+    if cat not in OFFICE_SKIP_CATEGORIES:
+        raise SkipRunError("A skip category is required.", "skip_category_required")
+    if not note:
+        raise SkipRunError("A reason is required when skipping the run.", "skip_reason_required")
+    return cat, note
+
+
+def _apply_skipped_location_month(
+    mlm,
+    *,
+    run_id: int,
+    stop_order: int,
+    skip_category: str,
+    skip_note: str,
+) -> None:
     mlm.session_route_stop_order = stop_order
     mlm.run_id = run_id
     mlm.test_outcome = "skipped"
-    mlm.skip_category = SKIP_CATEGORY
-    mlm.skip_note = None
+    mlm.skip_category = skip_category
+    mlm.skip_note = skip_note
     mlm.result_status = "skipped"
-    mlm.skip_reason = SKIP_REASON
+    mlm.skip_reason = _build_skip_reason(skip_category, skip_note)
     mlm.billing_status = "do_not_bill"
 
 
@@ -60,9 +87,14 @@ def skip_route_month_run(
     *,
     username: str,
     now: datetime,
+    skip_category: str | None = None,
+    skip_note: str | None = None,
     current_month_first: date | None = None,
 ) -> tuple[MonthlyRouteRun, int]:
-    """Create a completed office-skipped run for ``route_id`` / ``month_first``.
+    """Create or close a completed office-skipped run for ``route_id`` / ``month_first``.
+
+    When no run file exists, creates one. When a draft or prepared run exists (office prep
+    phase, before field work starts), reuses it and marks every library site skipped.
 
     Returns ``(run, locations_skipped)``. Raises :class:`SkipRunError` when blocked.
     """
@@ -70,6 +102,8 @@ def skip_route_month_run(
 
     if _get_monthly_route(route_id) is None:
         raise SkipRunError("Route not found", "route_not_found")
+
+    validated_category, validated_note = _validate_office_skip_input(skip_category, skip_note)
 
     if current_month_first is None:
         current_month_first = _current_pacific_month_first()
@@ -85,12 +119,12 @@ def skip_route_month_run(
         month_date=month_first,
     ).one_or_none()
     if existing_run is not None:
-        raise SkipRunError(
-            "A run already exists for this month.",
-            "run_exists",
-        )
-
-    if _attributed_history_for_route_month(route_id, month_first):
+        if not run_in_office_prep_phase(existing_run):
+            raise SkipRunError(
+                "A run already exists for this month.",
+                "run_exists",
+            )
+    elif _attributed_history_for_route_month(route_id, month_first):
         raise SkipRunError(
             "Testing history already exists for this month.",
             "history_exists",
@@ -99,11 +133,15 @@ def skip_route_month_run(
     locs = _active_library_route_locations(route_id)
     locs_sorted = sorted(locs, key=_location_sort_key)
 
-    run = get_or_create_monthly_route_run(
-        route_id,
-        month_first,
-        source=RUN_SOURCE,
-    )
+    if existing_run is not None:
+        run = existing_run
+        run.source = RUN_SOURCE
+    else:
+        run = get_or_create_monthly_route_run(
+            route_id,
+            month_first,
+            source=RUN_SOURCE,
+        )
     mark_run_prepared(run, username=username, now=now)
     run_id = int(run.id)
 
@@ -114,7 +152,13 @@ def skip_route_month_run(
         mlm, loaded_loc, _ = load_stop_for_patch(route_id, int(loc.id), month_first)
         if mlm is None or loaded_loc is None:
             continue
-        _apply_skipped_location_month(mlm, run_id=run_id, stop_order=idx)
+        _apply_skipped_location_month(
+            mlm,
+            run_id=run_id,
+            stop_order=idx,
+            skip_category=validated_category,
+            skip_note=validated_note,
+        )
         locations_skipped += 1
 
     close_skipped_run_from_office(run, username=username, now=now)

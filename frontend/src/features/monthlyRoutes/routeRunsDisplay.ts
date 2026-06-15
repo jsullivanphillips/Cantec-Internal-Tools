@@ -86,6 +86,13 @@ export function formatRunsCardStageLabel(row: RunsCardRow): string {
   return row.run.workflow_stage_label?.trim() || '—'
 }
 
+/** Office may bulk-skip when no run file exists or the run is still in prep (draft/prepared). */
+export function runMonthIsOfficeSkippable(run: RouteRunMonthSummary | null | undefined): boolean {
+  if (!run) return true
+  const stage = (run.workflow_stage ?? 'draft').trim()
+  return stage === 'draft' || stage === 'prepared'
+}
+
 type ApiRunSummary = {
   id?: number
   run_id?: number

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Button, Card, Col, Nav, Row, Tab } from 'react-bootstrap'
+import { Button, Card, Nav, Tab } from 'react-bootstrap'
 import {
   buildRouteOverviewCardToneMap,
   countRoutesToPrepare,
@@ -7,12 +7,15 @@ import {
   type MonthlyDashboardPayload,
   type MonthlyDashboardRouteRow,
 } from '../features/monthlyRoutes/monthlyDashboardShared'
+import MonthlyDashboardKpiStrip from '../features/monthlyRoutes/MonthlyDashboardKpiStrip'
 import {
   addCalendarMonths,
   formatRouteOverviewMonthHeading,
   monthFirstIsoPacificToday,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
 import MonthlyRoutesWorkweekCalendar from '../features/monthlyRoutes/MonthlyRoutesWorkweekCalendar'
+import MonthlyDashboardIssues from '../features/monthlyRoutes/MonthlyDashboardIssues'
+import MonthlyDashboardRouteBreakdown from '../features/monthlyRoutes/MonthlyDashboardRouteBreakdown'
 import MonthlyTicketsQueue from '../features/monthlyRoutes/MonthlyTicketsQueue'
 import { apiJson, isAbortError } from '../lib/apiClient'
 
@@ -232,57 +235,30 @@ export default function MonthlyHomePage() {
         </Card>
       ) : null}
       {!loading && !error ? (
-        <Tab.Container defaultActiveKey="metrics">
+        <Tab.Container defaultActiveKey="routes">
           <div className="processing-tabs-shell app-surface-card">
             <Nav variant="tabs" className="mb-0 processing-tabs processing-tabs-shell__nav">
-              <Nav.Item>
-                <Nav.Link eventKey="metrics">Metrics</Nav.Link>
-              </Nav.Item>
               <Nav.Item>
                 <Nav.Link eventKey="routes">Routes</Nav.Link>
               </Nav.Item>
               <Nav.Item>
+                <Nav.Link eventKey="metrics">Metrics</Nav.Link>
+              </Nav.Item>
+              <Nav.Item>
                 <Nav.Link eventKey="tickets">Tickets</Nav.Link>
+              </Nav.Item>
+              <Nav.Item>
+                <Nav.Link eventKey="issues">Issues</Nav.Link>
               </Nav.Item>
             </Nav>
             <Tab.Content className="processing-tabs-shell__panel">
-              <Tab.Pane eventKey="metrics">
-                <Row className="g-3">
-                  <Col xs={12} md={4}>
-                    <Card className="app-kpi-nested processing-tile h-100">
-                      <Card.Body>
-                        <div className="text-muted small mb-1">Routes with runs to be processed</div>
-                        <div className="fs-3 fw-semibold">{routesToProcess}</div>
-                        <div className="small text-muted mt-1">
-                          Field ended, awaiting office review
-                        </div>
-                      </Card.Body>
-                    </Card>
-                  </Col>
-                  <Col xs={12} md={4}>
-                    <Card className="app-kpi-nested processing-tile h-100">
-                      <Card.Body>
-                        <div className="text-muted small mb-1">Runs to be prepared</div>
-                        <div className="fs-3 fw-semibold">{routesToPrepare}</div>
-                        <div className="small text-muted mt-1">
-                          Scheduled this month, not yet prepared
-                        </div>
-                      </Card.Body>
-                    </Card>
-                  </Col>
-                  <Col xs={12} md={4}>
-                    <Card className="app-kpi-nested processing-tile h-100">
-                      <Card.Body>
-                        <div className="text-muted small mb-1">Open tickets</div>
-                        <div className="fs-3 fw-semibold">{openTicketCount}</div>
-                        <div className="small text-muted mt-1">Open and in progress</div>
-                      </Card.Body>
-                    </Card>
-                  </Col>
-                </Row>
-              </Tab.Pane>
               <Tab.Pane eventKey="routes">
-                <div className="d-flex justify-content-center mb-3">
+                <MonthlyDashboardKpiStrip
+                  routesToProcess={routesToProcess}
+                  routesToPrepare={routesToPrepare}
+                  openTicketCount={openTicketCount}
+                />
+                <div className="d-flex justify-content-center mb-3 mt-3">
                   <RouteOverviewMonthToolbar
                     monthFirstIso={calendarMonthFirstIso}
                     onChangeMonth={setCalendarMonthFirstIso}
@@ -300,8 +276,14 @@ export default function MonthlyHomePage() {
                   legend={<MonthlyDashboardLegend />}
                 />
               </Tab.Pane>
+              <Tab.Pane eventKey="metrics">
+                <MonthlyDashboardRouteBreakdown />
+              </Tab.Pane>
               <Tab.Pane eventKey="tickets">
                 <MonthlyTicketsQueue onTicketsChanged={refreshDashboard} />
+              </Tab.Pane>
+              <Tab.Pane eventKey="issues">
+                <MonthlyDashboardIssues />
               </Tab.Pane>
             </Tab.Content>
           </div>
