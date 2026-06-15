@@ -85,6 +85,7 @@ def _seed_tested_month(
         month_date=month_date,
         route_id=route_id,
         result_status="tested",
+        billing_status="bill",
     )
     db.session.add(mlm)
 
@@ -609,8 +610,19 @@ def test_breakdown_range_ytd(breakdown_client):
     assert row["avg_monthly_revenue"] == 120.0
 
 
-def test_breakdown_range_last_12_months_default(breakdown_client):
+def test_breakdown_range_last_month_default(breakdown_client):
     body = _get_breakdown(client=breakdown_client[0])
+    assert body["range"] == "last_month"
+    assert body["period_start"] == "2026-05-01"
+    assert body["period_end"] == "2026-05-01"
+    assert body["trailing_months"] == 1
+    assert body["show_avg_monthly_revenue"] is False
+    assert len(body["revenue_columns"]) == 1
+    assert body["revenue_columns"][0]["header"] == "MAY REVENUE"
+
+
+def test_breakdown_range_last_12_months(breakdown_client):
+    body = _get_breakdown(client=breakdown_client[0], range_key="last_12_months")
     assert body["range"] == "last_12_months"
     assert body["period_start"] == "2025-07-01"
     assert body["period_end"] == "2026-06-01"
@@ -717,6 +729,122 @@ def test_breakdown_month_revenue_skipped_status_when_office_skip_run_exists(brea
     row = body["rows"][0]
     assert row["monthly_revenues"] == [
         {"month_key": "2026-05-01", "revenue": 0.0, "revenue_status": "skipped"},
+    ]
+
+
+def test_breakdown_skipped_with_bill_status_includes_revenue(breakdown_client):
+    client, app = breakdown_client
+    with app.app_context():
+        _seed_route(route_id=1, route_number=24, location_id=905, price=Decimal("85.00"))
+        db.session.add(
+            make_location_month(
+                id=9206,
+                location_id=905,
+                month_date=date(2026, 5, 1),
+                route_id=1,
+                result_status="skipped",
+                test_outcome="skipped",
+                skip_category="other",
+                billing_status="bill",
+            )
+        )
+        _seed_run_timing_month(
+            row_id=30,
+            route_id=1,
+            month_first=date(2026, 5, 1),
+            duration_minutes=360,
+            clock_out_hour=14,
+        )
+        db.session.commit()
+
+    body = _get_breakdown(client, range_key="last_month")
+    row = body["rows"][0]
+    assert row["monthly_revenues"] == [{"month_key": "2026-05-01", "revenue": 85.0}]
+    assert row["avg_monthly_revenue"] == 85.0
+    assert row["monthly_net"] == pytest.approx(85.0 - row["monthly_expense"], rel=0.001)
+
+
+def test_breakdown_tested_do_not_bill_excludes_revenue(breakdown_client):
+    client, app = breakdown_client
+    with app.app_context():
+        _seed_route(route_id=1, route_number=25, location_id=906, price=Decimal("200.00"))
+        db.session.add(
+            make_location_month(
+                id=9207,
+                location_id=906,
+                month_date=date(2026, 5, 1),
+                route_id=1,
+                result_status="tested",
+                billing_status="do_not_bill",
+            )
+        )
+        _seed_run_timing_month(
+            row_id=31,
+            route_id=1,
+            month_first=date(2026, 5, 1),
+            duration_minutes=360,
+            clock_out_hour=14,
+        )
+        db.session.commit()
+
+    body = _get_breakdown(client, range_key="last_month")
+    row = body["rows"][0]
+    assert row["monthly_revenues"] == [
+        {"month_key": "2026-05-01", "revenue": 0.0, "revenue_status": "no_data"},
+    ]
+    assert row["avg_monthly_revenue"] == 0.0
+    assert row["monthly_net"] is None
+
+
+def test_breakdown_tested_unset_billing_falls_back_to_tested_revenue(breakdown_client):
+    client, app = breakdown_client
+    with app.app_context():
+        _seed_route(route_id=1, route_number=26, location_id=907, price=Decimal("150.00"))
+        db.session.add(
+            make_location_month(
+                id=9208,
+                location_id=907,
+                month_date=date(2026, 5, 1),
+                route_id=1,
+                result_status="tested",
+            )
+        )
+        _seed_run_timing_month(
+            row_id=32,
+            route_id=1,
+            month_first=date(2026, 5, 1),
+            duration_minutes=360,
+            clock_out_hour=14,
+        )
+        db.session.commit()
+
+    body = _get_breakdown(client, range_key="last_month")
+    row = body["rows"][0]
+    assert row["monthly_revenues"] == [{"month_key": "2026-05-01", "revenue": 150.0}]
+    assert row["avg_monthly_revenue"] == 150.0
+
+
+def test_breakdown_skipped_unset_billing_has_no_revenue(breakdown_client):
+    client, app = breakdown_client
+    with app.app_context():
+        _seed_route(route_id=1, route_number=27, location_id=908, price=Decimal("90.00"))
+        db.session.add(
+            make_location_month(
+                id=9209,
+                location_id=908,
+                month_date=date(2026, 5, 1),
+                route_id=1,
+                result_status="skipped",
+                test_outcome="skipped",
+                skip_category="other",
+            )
+        )
+        db.session.commit()
+
+    body = _get_breakdown(client, range_key="last_month")
+    row = body["rows"][0]
+    assert row["monthly_revenues"] == [
+        {"month_key": "2026-05-01", "revenue": 0.0, "revenue_status": "no_data"},
     ]
 
 

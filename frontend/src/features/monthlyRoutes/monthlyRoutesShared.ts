@@ -340,6 +340,61 @@ export type RouteTestingSessionPayload = {
   counts: RouteTestingSessionCounts
 }
 
+/** Outcome bucket for route performance breakdown stop rows. */
+export type RoutePerformanceStopOutcome =
+  | 'tested'
+  | 'skipped_annual'
+  | 'skipped_non_annual'
+  | null
+
+/** GET ``/api/monthly_routes/routes/:id/performance_breakdown?month_date=``. */
+export type RoutePerformanceBreakdownStop = {
+  location_id: number
+  label: string
+  stop_order: number | null
+  outcome: RoutePerformanceStopOutcome
+  billing_status: string | null
+  revenue: number
+  price_per_month: number | null
+  has_price: boolean
+  visit_minutes: number | null
+  time_in: string | null
+  time_out: string | null
+  visit_time_source: 'sheet' | 'portal' | null
+}
+
+export type RoutePerformanceBreakdownSummary = {
+  tested_revenue_total: number
+  tested_count: number
+  skipped_annual_count: number
+  skipped_non_annual_count: number
+  pending_count: number
+  active_stop_count: number
+  route_duration_minutes: number | null
+  route_hours: number | null
+  route_duration_source: 'servicetrade' | null
+  route_clock_in: string | null
+  route_clock_out: string | null
+  avg_hours_billed: number | null
+  avg_hours_capped_for_billing: boolean
+  tech_count: number
+  monthly_expense: number
+  monthly_net: number | null
+  monthly_net_pct: number | null
+  revenue_per_route_hour: number | null
+  sum_visit_minutes: number
+  visit_time_coverage: 'full' | 'partial' | 'none'
+  unaccounted_minutes: number | null
+}
+
+export type RoutePerformanceBreakdownPayload = {
+  month_date: string
+  available_months: string[]
+  summary: RoutePerformanceBreakdownSummary
+  stops: RoutePerformanceBreakdownStop[]
+  insights: string[]
+}
+
 /** GET ``/api/monthly_routes/routes/:id/run_details?month=`` — office run summary. */
 /** GET ``/api/monthly_routes/routes/:id/run_details?month=`` outcome KPIs (stop-level). */
 export type MonthlyRunDetailCounts = {

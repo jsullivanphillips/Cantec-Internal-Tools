@@ -1,8 +1,9 @@
 import type { CSSProperties } from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Button, Card, Col, Form, Row, Table } from 'react-bootstrap'
+import { Button, Card, Form, Table } from 'react-bootstrap'
 import { Link } from 'react-router-dom'
 import AddMonthlyLocationWizardModal from '../features/monthlyRoutes/AddMonthlyLocationWizardModal'
+import HeroFilterPill from '../components/HeroFilterPill'
 import RouteLibraryLink from '../features/monthlyRoutes/RouteLibraryLink'
 import {
   libraryKeycodeDisplay,
@@ -12,6 +13,7 @@ import {
   type LibraryPayload,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
 import { apiJson, isAbortError } from '../lib/apiClient'
+import { PROCESSING_PAGE_TITLE_COMPACT_CLASS } from '../styles/pageTypography'
 
 const DEFAULT_PAGE_SIZE = 50
 const PAGE_SIZE_OPTIONS = [25, 50, 100] as const
@@ -25,12 +27,12 @@ const MONTH_NAME_OPTIONS = Array.from({ length: 12 }).map((_, idx) =>
 
 /** Balanced directory columns; address + PMC slightly wider than route/key/annual. */
 const DIRECTORY_COLUMN_WIDTHS = {
-  status: '5%',
-  route: '15%',
-  address: '20%',
+  status: '3%',
+  route: '7%',
+  address: '28%',
   property: '20%',
-  key: '15%',
-  annual: '15%',
+  key: '14%',
+  annual: '12%',
 } as const
 
 const STATUS_COLUMN_STYLE: CSSProperties = {
@@ -50,8 +52,7 @@ const LIBRARY_TABLE_HEADER_STICKY_STYLE: CSSProperties = {
   top: 0,
   zIndex: 5,
   backgroundColor: '#fff',
-  borderTop: '1px solid #dee2e6',
-  boxShadow: 'inset 0 1px 0 #dee2e6, inset 0 -1px 0 rgba(0, 0, 0, 0.12)',
+  boxShadow: 'inset 0 -1px 0 rgba(0, 0, 0, 0.12)',
 }
 
 type LibraryPagination = NonNullable<LibraryPayload['meta']['pagination']>
@@ -107,19 +108,15 @@ function LocationsPaginationBar({
   summary,
   pagination,
   onPageChange,
-  position,
 }: {
   loading: boolean
   summary: string | null
   pagination: LibraryPagination | undefined
   onPageChange: (page: number) => void
-  position: 'top' | 'bottom'
 }) {
   return (
     <div
-      className={`monthly-locations-pagination d-flex flex-wrap justify-content-between align-items-center gap-2 px-3 py-2 ${
-        position === 'top' ? 'border-bottom' : 'border-top'
-      }`}
+      className="monthly-locations-pagination d-flex flex-wrap justify-content-between align-items-center gap-2 py-2"
     >
       {loading ? (
         <span
@@ -344,121 +341,115 @@ export default function MonthlyRoutesPage() {
   }, [])
 
   return (
-    <div className="monthly-routes-library-page d-flex flex-column gap-3">
-      <Card className="app-surface-card monthly-routes-filters-card">
-        <Card.Body className="p-3 p-md-4">
-          <div className="flex-grow-1 min-w-0 d-flex flex-column gap-3">
-            <div className="d-flex flex-column flex-sm-row align-items-start justify-content-between gap-2 gap-sm-3">
-              <div>
-                <h2 className="processing-page-title mb-1">Monthly Locations</h2>
-                <p className="text-muted small mb-0">
-                  Browse and manage monthly bell testing sites. Open a location for testing history and details.
-                </p>
-              </div>
+    <div className="monthly-page monthly-routes-library-page d-flex flex-column gap-3">
+      <Card className="app-surface-card monthly-filters-card monthly-hero-card">
+        <Card.Body className="monthly-hero-card__body">
+          <div className="monthly-hero-card__row">
+            <h1 className={`${PROCESSING_PAGE_TITLE_COMPACT_CLASS} m-0`}>Monthly Locations</h1>
+            <div className="monthly-hero-card__controls">
+              <label className="monthly-hero-card__select-wrap">
+                <i className="bi bi-list-ul" aria-hidden />
+                <Form.Select
+                  size="sm"
+                  className="monthly-hero-card__select"
+                  value={pageSize}
+                  style={{ minWidth: '5.5rem' }}
+                  aria-label="Rows per page"
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value))
+                    setPage(1)
+                  }}
+                >
+                  {PAGE_SIZE_OPTIONS.map((size) => (
+                    <option key={size} value={size}>
+                      {size}
+                    </option>
+                  ))}
+                </Form.Select>
+              </label>
               <Button
                 variant="primary"
-                className="fw-semibold px-4 align-self-stretch align-self-sm-auto"
+                size="sm"
+                className="fw-semibold text-nowrap"
                 onClick={() => setShowCreateLocationModal(true)}
               >
+                <i className="bi bi-plus-lg me-1" aria-hidden />
                 Add Location
               </Button>
             </div>
-
-            <div className="monthly-routes-filters__primary">
-              <Row className="g-2 g-md-3 align-items-end">
-                <Col xs={12} lg>
-                  <Form.Group className="mb-0">
-                    <Form.Label className="monthly-routes-filters__label mb-1">Search</Form.Label>
-                    <Form.Control
-                      type="search"
-                      size="sm"
-                      value={tableSearch}
-                      placeholder="Route, address, property, key, annual…"
-                      onChange={(e) => {
-                        setTableSearch(e.target.value)
-                        setPage(1)
-                      }}
-                    />
-                  </Form.Group>
-                </Col>
-                <Col xs={6} sm="auto">
-                  <Form.Group className="mb-0">
-                    <Form.Label className="monthly-routes-filters__label mb-1">Rows per page</Form.Label>
-                    <Form.Select
-                      size="sm"
-                      value={pageSize}
-                      onChange={(e) => {
-                        setPageSize(Number(e.target.value))
-                        setPage(1)
-                      }}
-                      style={{ minWidth: '5.5rem' }}
-                      aria-label="Rows per page"
-                    >
-                      {PAGE_SIZE_OPTIONS.map((size) => (
-                        <option key={size} value={size}>
-                          {size}
-                        </option>
-                      ))}
-                    </Form.Select>
-                  </Form.Group>
-                </Col>
-              </Row>
-            </div>
-
-            <div className="monthly-routes-filters__toolbar d-flex flex-wrap align-items-center gap-3 gap-md-4">
-              <Form.Check
+          </div>
+          <div className="monthly-hero-card__filters">
+            <div
+              className="run-review-filter monthly-hero-card__filter-pills"
+              role="group"
+              aria-label="Location filters"
+            >
+              <HeroFilterPill
                 id="monthly-routes-hide-cancelled"
-                type="checkbox"
-                label="Hide cancelled MBT locations"
+                icon="bi-eye-slash"
+                label="Hide cancelled"
                 checked={hideCancelledMbtLocations}
-                className="monthly-routes-filters__check mb-0"
-                onChange={(e) => {
-                  setHideCancelledMbtLocations(e.target.checked)
+                onChange={(checked) => {
+                  setHideCancelledMbtLocations(checked)
                   setPage(1)
                 }}
               />
-              <Button
-                type="button"
-                variant="outline-secondary"
-                size="sm"
-                className="d-inline-flex align-items-center gap-2 ms-sm-auto text-nowrap"
-                disabled={csvExporting}
-                onClick={() => void exportResultsAsCsv()}
-              >
-                {csvExporting ? (
-                  <>
-                    <span
-                      className="spinner-border spinner-border-sm"
-                      role="status"
-                      aria-hidden
-                    />
-                    Exporting…
-                  </>
-                ) : (
-                  <>
-                    <i className="bi bi-download" aria-hidden />
-                    Export CSV
-                  </>
-                )}
-              </Button>
             </div>
+            <Button
+              type="button"
+              variant="outline-secondary"
+              size="sm"
+              className="d-inline-flex align-items-center gap-2 ms-sm-auto text-nowrap"
+              disabled={csvExporting}
+              onClick={() => void exportResultsAsCsv()}
+            >
+              {csvExporting ? (
+                <>
+                  <span className="spinner-border spinner-border-sm" role="status" aria-hidden />
+                  Exporting…
+                </>
+              ) : (
+                <>
+                  <i className="bi bi-download" aria-hidden />
+                  Export CSV
+                </>
+              )}
+            </Button>
           </div>
         </Card.Body>
       </Card>
 
-      <Card className="app-surface-card monthly-locations-table-card">
+      <Card className="app-surface-card monthly-locations-table-card monthly-results-card">
         {error ? (
           <Card.Body className="p-4">
             <div className="text-danger">{error}</div>
           </Card.Body>
         ) : (
-          <>
+          <Card.Body className="monthly-results-body">
+            <div className="monthly-table-search py-2">
+              <div className="app-topbar-location-search">
+                <div className="app-topbar-location-search__field">
+                  <i className="bi bi-search app-topbar-location-search__icon" aria-hidden />
+                  <Form.Control
+                    type="search"
+                    size="sm"
+                    className="app-topbar-location-search__input"
+                    value={tableSearch}
+                    placeholder="Route, address, property, key, annual…"
+                    aria-label="Search locations"
+                    onChange={(e) => {
+                      setTableSearch(e.target.value)
+                      setPage(1)
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
             <LocationsPaginationBar
               loading={loading}
               summary={paginationSummaryLabel}
               pagination={pagination}
               onPageChange={setPage}
-              position="top"
             />
             <div className="monthly-locations-table-wrap">
               {loading ? (
@@ -467,8 +458,6 @@ export default function MonthlyRoutesPage() {
                 <Table
                   striped
                   hover
-                  bordered
-                  size="sm"
                   className="align-middle monthly-routes-library-table monthly-locations-directory-table mb-0"
                 >
                   <colgroup>
@@ -482,13 +471,23 @@ export default function MonthlyRoutesPage() {
                   <thead>
                     <tr>
                       <th
-                        className="text-center"
+                        className="text-center monthly-locations-table__status-col"
                         style={{ ...STATUS_COLUMN_STYLE, ...LIBRARY_TABLE_HEADER_STICKY_STYLE }}
                       >
                         Status
                       </th>
-                      <th style={LIBRARY_TABLE_HEADER_STICKY_STYLE}>Route</th>
-                      <th style={LIBRARY_TABLE_HEADER_STICKY_STYLE}>Label</th>
+                      <th
+                        className="monthly-locations-table__route-col"
+                        style={LIBRARY_TABLE_HEADER_STICKY_STYLE}
+                      >
+                        Route
+                      </th>
+                      <th
+                        className="monthly-locations-table__label-col"
+                        style={LIBRARY_TABLE_HEADER_STICKY_STYLE}
+                      >
+                        Label
+                      </th>
                       <th style={LIBRARY_TABLE_HEADER_STICKY_STYLE}>Property Management</th>
                       <th
                         className="text-center"
@@ -514,21 +513,24 @@ export default function MonthlyRoutesPage() {
                     ) : (
                       filteredLocations.map((loc) => (
                         <tr key={loc.id}>
-                          <td className="text-center library-table-cell-clamp" style={STATUS_COLUMN_STYLE}>
+                          <td
+                            className="text-center library-table-cell-clamp monthly-locations-table__status-col"
+                            style={STATUS_COLUMN_STYLE}
+                          >
                             <div className="library-table-cell-inner">
                               {renderStatusDot(loc.status_normalized)}
                             </div>
                           </td>
-                          <td className="library-table-cell-clamp">
+                          <td className="library-table-cell-clamp monthly-locations-table__route-col">
                             <div className="library-table-cell-inner">
                               <RouteLibraryLink loc={loc} />
                             </div>
                           </td>
-                          <td className="library-table-cell-clamp text-break">
+                          <td className="library-table-cell-clamp text-break monthly-locations-table__label-col">
                             <div className="library-table-cell-inner">
                               <Link
                                 to={`/monthlies/locations/${loc.id}`}
-                                className="fw-semibold text-decoration-none text-primary"
+                                className="monthly-locations-table__link"
                                 title={(loc.address || '').trim() || undefined}
                               >
                                 {loc.label?.trim() || '—'}
@@ -545,7 +547,7 @@ export default function MonthlyRoutesPage() {
                               {loc.key ? (
                                 <Link
                                   to={`/keys/${loc.key.id}`}
-                                  className="fw-semibold text-decoration-none"
+                                  className="monthly-locations-table__link"
                                 >
                                   {loc.key.keycode}
                                 </Link>
@@ -565,6 +567,7 @@ export default function MonthlyRoutesPage() {
                             {annualEditLocationId === loc.id ? (
                               <Form.Select
                                 size="sm"
+                                className="monthly-locations-table__annual-select"
                                 value={loc.annual_month || ''}
                                 disabled={annualSavingLocationId === loc.id}
                                 onChange={(e) => saveAnnualForLocation(loc.id, e.target.value)}
@@ -584,10 +587,15 @@ export default function MonthlyRoutesPage() {
                               <div className="library-table-cell-inner">
                                 <button
                                   type="button"
-                                  className="btn btn-link p-0 text-decoration-none text-reset"
+                                  className="monthly-locations-table__annual-btn"
+                                  aria-label={`Change annual month${loc.annual_month ? ` (${loc.annual_month})` : ''}`}
                                   onClick={() => setAnnualEditLocationId(loc.id)}
                                 >
-                                  {loc.annual_month || '—'}
+                                  <span>{loc.annual_month || '—'}</span>
+                                  <i
+                                    className="bi bi-chevron-down monthly-locations-table__annual-btn-caret"
+                                    aria-hidden
+                                  />
                                 </button>
                               </div>
                             )}
@@ -604,9 +612,8 @@ export default function MonthlyRoutesPage() {
               summary={paginationSummaryLabel}
               pagination={pagination}
               onPageChange={setPage}
-              position="bottom"
             />
-          </>
+          </Card.Body>
         )}
       </Card>
 

@@ -418,6 +418,56 @@ def test_review_complete_after_reopen_resolves_skipped_billing(workflow_client, 
         assert row.billing_status == "do_not_bill"
 
 
+def test_review_complete_preserves_office_bill_on_skipped_site(workflow_client, monkeypatch):
+    """Office Bill override on a skipped stop must survive review complete."""
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 6, 1))
+
+    client, app = workflow_client
+    with app.app_context():
+        location_id = _seed_route()
+        now = datetime(2026, 6, 10, 12, 0, tzinfo=PACIFIC_TZ)
+        run = MonthlyRouteRun(
+            id=9201,
+            monthly_route_id=1,
+            month_date=date(2026, 6, 1),
+            opened_at=now,
+            prepared_at=now,
+            started_at=now,
+            field_ended_at=now,
+            status="open",
+        )
+        db.session.add(run)
+        db.session.add(
+            MonthlyLocationMonth(
+                id=9202,
+                monthly_location_id=location_id,
+                month_date=date(2026, 6, 1),
+                test_monthly_route_id=1,
+                run_id=int(run.id),
+                test_outcome="skipped",
+                skip_category="other",
+                result_status="skipped",
+                billing_status="bill",
+            )
+        )
+        db.session.commit()
+
+    review = client.post(
+        "/api/monthly_routes/routes/1/runs/review_complete",
+        json={"month_date": "2026-06-01"},
+    )
+    assert review.status_code == 200, review.get_data(as_text=True)
+
+    with app.app_context():
+        row = MonthlyLocationMonth.query.filter_by(
+            monthly_location_id=location_id,
+            month_date=date(2026, 6, 1),
+        ).one()
+        assert row.billing_status == "bill"
+
+
 def test_csv_import_reopened_allows_office_billing_and_outcome(workflow_client, monkeypatch):
     """CSV-import runs stay portal read-only but office may edit review fields after reopen."""
     from app.routes import monthly_routes as mr_mod

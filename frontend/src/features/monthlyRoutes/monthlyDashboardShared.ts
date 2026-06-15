@@ -84,6 +84,8 @@ export type DashboardRouteBreakdownPayload = {
   rows: DashboardRouteBreakdownRow[]
 }
 
+export const DEFAULT_DASHBOARD_ROUTE_BREAKDOWN_RANGE: DashboardRouteBreakdownRange = 'last_month'
+
 export const DASHBOARD_ROUTE_BREAKDOWN_RANGE_OPTIONS: {
   value: DashboardRouteBreakdownRange
   label: string
@@ -96,7 +98,7 @@ export const DASHBOARD_ROUTE_BREAKDOWN_RANGE_OPTIONS: {
 ]
 
 export async function fetchDashboardRouteBreakdown(
-  range: DashboardRouteBreakdownRange = 'last_12_months',
+  range: DashboardRouteBreakdownRange = DEFAULT_DASHBOARD_ROUTE_BREAKDOWN_RANGE,
 ): Promise<DashboardRouteBreakdownPayload> {
   const path = `/api/monthly_routes/dashboard/route_breakdown?range=${encodeURIComponent(range)}`
   const res = await apiFetch(path)

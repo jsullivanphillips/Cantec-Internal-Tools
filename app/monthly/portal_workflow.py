@@ -201,7 +201,7 @@ def apply_billing_defaults_for_location(
         return
 
     current = (_normalize_text(mlm.billing_status) or "").lower()
-    if current == "legacy":
+    if current in ("legacy", "bill", "do_not_bill"):
         return
 
     outcome = (_normalize_text(mlm.test_outcome) or "").lower()

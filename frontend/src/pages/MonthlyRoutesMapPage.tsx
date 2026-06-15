@@ -19,6 +19,7 @@ import {
   type MapViewportBounds,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
 import { apiJson, isAbortError } from '../lib/apiClient'
+import { PROCESSING_PAGE_TITLE_COMPACT_CLASS } from '../styles/pageTypography'
 
 /** Build markers in slices so typing / focus stays responsive with hundreds of pins. */
 const MAP_MARKER_BATCH_SIZE = 80
@@ -29,6 +30,34 @@ function sameRouteSelection(a: string[], b: string[]): boolean {
   if (a.length !== b.length) return false
   const bSet = new Set(b)
   return a.every((route) => bSet.has(route))
+}
+
+function MapRouteSwatch({ color }: { color: string }) {
+  return (
+    <span className="monthly-map-panel__route-swatch" style={{ backgroundColor: color }} aria-hidden />
+  )
+}
+
+function MapPanelTab({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean
+  label: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      className={`monthly-map-panel__tab${active ? ' monthly-map-panel__tab--active' : ''}`}
+      onClick={onClick}
+    >
+      {label}
+    </button>
+  )
 }
 
 const MAP_SEARCH_DEBOUNCE_MS = 250
@@ -640,46 +669,59 @@ export default function MonthlyRoutesMapPage() {
         route table scrolls inside .monthly-routes-map-page__side-panel-scroll — no page scrollbar.
       */}
       <Card
-        className="monthly-routes-map-page__side-panel app-surface-card shadow border-0"
+        className="monthly-routes-map-page__side-panel app-surface-card monthly-map-panel"
         onClick={(e) => e.stopPropagation()}
       >
-        <Card.Body className="p-3 d-flex flex-column gap-2">
-          <div className="d-flex flex-column gap-2 flex-shrink-0">
-            <Form.Control
-              type="search"
-              ref={mapSearchInputRef}
-              placeholder="Search address on map"
-              className="py-2"
-              style={{ minHeight: '2.75rem' }}
-              onFocus={() => setShowMapSearchResults(true)}
-              onClick={(e) => e.stopPropagation()}
-              onChange={(e) => {
-                setShowMapSearchResults(true)
-                handleMapSearchInputChange(e.target.value)
-              }}
-            />
+        <Card.Body className="monthly-map-panel__body d-flex flex-column gap-2">
+          <div className="monthly-map-panel__header flex-shrink-0">
+            <h1 className={`${PROCESSING_PAGE_TITLE_COMPACT_CLASS} m-0`}>Route map</h1>
+            <span className="monthly-map-panel__meta">
+              {mapLoading ? 'Loading…' : `${filteredMapLocations.length} markers`}
+            </span>
+          </div>
+
+          <div className="monthly-map-panel__search flex-shrink-0">
+            <div className="app-topbar-location-search">
+              <div className="app-topbar-location-search__field">
+                <i className="bi bi-search app-topbar-location-search__icon" aria-hidden />
+                <Form.Control
+                  type="search"
+                  size="sm"
+                  ref={mapSearchInputRef}
+                  placeholder="Search address on map…"
+                  className="app-topbar-location-search__input"
+                  aria-label="Search address on map"
+                  aria-expanded={showMapSearchResults}
+                  onFocus={() => setShowMapSearchResults(true)}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => {
+                    setShowMapSearchResults(true)
+                    handleMapSearchInputChange(e.target.value)
+                  }}
+                />
+              </div>
+            </div>
             {showMapSearchResults ? (
-              <div className="small" style={MAP_SEARCH_RESULTS_STYLE}>
+              <div className="monthly-map-panel__search-results" style={MAP_SEARCH_RESULTS_STYLE}>
                 {mapSearchLoading ? (
-                  <div className="text-muted px-1 py-1">Searching...</div>
+                  <div className="monthly-map-panel__search-empty">Searching…</div>
                 ) : mapSearchError ? (
-                  <div className="text-danger px-1 py-1">{mapSearchError}</div>
+                  <div className="monthly-map-panel__search-empty text-danger">{mapSearchError}</div>
                 ) : mapSearchQuery.trim().length < 3 ? (
-                  <div className="text-muted px-1 py-1">Type at least 3 characters.</div>
+                  <div className="monthly-map-panel__search-empty">Type at least 3 characters.</div>
                 ) : mapSearchCandidates.length === 0 ? (
-                  <div className="text-muted px-1 py-1">No matching addresses.</div>
+                  <div className="monthly-map-panel__search-empty">No matching addresses.</div>
                 ) : (
-                  <div className="d-flex flex-column gap-1">
+                  <div className="d-flex flex-column gap-1 p-1">
                     {mapSearchCandidates.map((candidate) => (
-                      <Button
+                      <button
                         key={`${candidate.display_address}-${candidate.latitude}-${candidate.longitude}`}
-                        variant="outline-secondary"
-                        size="sm"
-                        className="text-start"
+                        type="button"
+                        className="monthly-map-panel__search-option"
                         onClick={() => handleMapSearchSelect(candidate)}
                       >
                         {candidate.display_address}
-                      </Button>
+                      </button>
                     ))}
                   </div>
                 )}
@@ -687,69 +729,58 @@ export default function MonthlyRoutesMapPage() {
             ) : null}
           </div>
 
-          <div className="d-flex justify-content-between align-items-center flex-shrink-0">
-            <div className="fw-semibold">Routes</div>
-            <div className="small text-muted">{filteredMapLocations.length} markers</div>
-          </div>
-          <div className="btn-group btn-group-sm w-100 flex-shrink-0" role="group" aria-label="Map sidebar panel">
-            <Button
-              type="button"
-              size="sm"
-              variant={mapSidebarPanel === 'filters' ? 'primary' : 'outline-secondary'}
-              className="flex-fill"
+          <div className="monthly-map-panel__tabs flex-shrink-0" role="tablist" aria-label="Map sidebar panel">
+            <MapPanelTab
+              active={mapSidebarPanel === 'filters'}
+              label="Route filters"
               onClick={() => setMapSidebarPanel('filters')}
-            >
-              Route filters
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant={mapSidebarPanel === 'viewport' ? 'primary' : 'outline-secondary'}
-              className="flex-fill"
+            />
+            <MapPanelTab
+              active={mapSidebarPanel === 'viewport'}
+              label="In map view"
               onClick={() => setMapSidebarPanel('viewport')}
-            >
-              In map view
-            </Button>
+            />
           </div>
+
           <div className="monthly-routes-map-page__side-panel-scroll d-flex flex-column gap-2 min-h-0">
           {mapSidebarPanel === 'filters' ? (
             <>
-              <div className="d-flex gap-2 flex-shrink-0 w-100">
+              <div className="monthly-map-panel__toolbar flex-shrink-0">
                 <Button
                   size="sm"
                   variant="outline-secondary"
-                  className="flex-fill"
+                  className="monthly-map-panel__toolbar-btn"
                   onClick={() => {
                     const next = [...mapRouteOptions]
                     if (mapUnassignedCount > 0) next.push(MAP_ROUTE_UNASSIGNED)
                     setSelectedMapRoutes(next)
                   }}
                 >
-                  Select all
+                  <i className="bi bi-check2-all" aria-hidden />
+                  All
                 </Button>
                 <Button
                   size="sm"
                   variant="outline-secondary"
-                  className="flex-fill"
+                  className="monthly-map-panel__toolbar-btn"
                   onClick={() => setSelectedMapRoutes([])}
                 >
+                  <i className="bi bi-x-lg" aria-hidden />
                   Clear
                 </Button>
               </div>
-              <div className="small text-muted flex-shrink-0">
+              <div className="monthly-map-panel__hint flex-shrink-0">
                 {mapLoading
-                  ? 'Loading map locations...'
+                  ? 'Loading map locations…'
                   : `${mapRouteOptions.length} route${mapRouteOptions.length === 1 ? '' : 's'}${
                       mapUnassignedCount > 0 ? ` · ${mapUnassignedCount} unassigned` : ''
                     }`}
               </div>
-              <div className="overflow-auto flex-grow-1 min-h-0">
-                <Table striped bordered hover size="sm" className="mb-0 align-middle">
-                  <thead className="table-light">
+              <div className="monthly-map-panel__table-wrap overflow-auto flex-grow-1 min-h-0">
+                <Table striped hover className="mb-0 align-middle monthly-map-panel__table">
+                  <thead>
                     <tr>
-                      <th className="text-center" style={{ width: '2.75rem' }}>
-                        Show
-                      </th>
+                      <th className="text-center monthly-map-panel__show-col">Show</th>
                       <th>Route</th>
                       <th className="text-end">Markers</th>
                     </tr>
@@ -776,20 +807,12 @@ export default function MonthlyRoutesMapPage() {
                           />
                         </td>
                         <td>
-                          <span className="d-inline-flex align-items-center gap-2">
-                            <span
-                              style={{
-                                width: 10,
-                                height: 10,
-                                borderRadius: '50%',
-                                backgroundColor: routeColor(''),
-                                display: 'inline-block',
-                              }}
-                            />
+                          <span className="monthly-map-panel__route-label">
+                            <MapRouteSwatch color={routeColor('')} />
                             <span>Unassigned</span>
                           </span>
                         </td>
-                        <td className="text-end">{mapUnassignedCount}</td>
+                        <td className="text-end tabular-nums">{mapUnassignedCount}</td>
                       </tr>
                     ) : null}
                     {mapRouteOptions.map((route) => {
@@ -812,20 +835,12 @@ export default function MonthlyRoutesMapPage() {
                             />
                           </td>
                           <td>
-                            <span className="d-inline-flex align-items-center gap-2">
-                              <span
-                                style={{
-                                  width: 10,
-                                  height: 10,
-                                  borderRadius: '50%',
-                                  backgroundColor: routeColor(route),
-                                  display: 'inline-block',
-                                }}
-                              />
+                            <span className="monthly-map-panel__route-label">
+                              <MapRouteSwatch color={routeColor(route)} />
                               <span>{route}</span>
                             </span>
                           </td>
-                          <td className="text-end">{count}</td>
+                          <td className="text-end tabular-nums">{count}</td>
                         </tr>
                       )
                     })}
@@ -838,25 +853,26 @@ export default function MonthlyRoutesMapPage() {
               <Button
                 size="sm"
                 variant="outline-primary"
-                className="w-100 flex-shrink-0"
+                className="monthly-map-panel__viewport-btn w-100 flex-shrink-0"
                 onClick={applyRoutesInViewportSnapshot}
                 disabled={!mapToken}
               >
+                <i className="bi bi-crosshair" aria-hidden />
                 {mapViewportBounds != null && routesVisibleInMapViewport.totalMarkers > 0
                   ? 'Refresh routes in view'
                   : 'Find routes in view'}
               </Button>
-              <div className="small text-muted flex-shrink-0">
+              <div className="monthly-map-panel__hint flex-shrink-0">
                 {mapViewportBounds == null
-                  ? 'Pan or zoom the map, then click Find routes in view.'
+                  ? 'Pan or zoom the map, then find routes in the current view.'
                   : `${routesVisibleInMapViewport.totalMarkers} marker${
                       routesVisibleInMapViewport.totalMarkers === 1 ? '' : 's'
                     } in viewport`}
               </div>
-              <div className="overflow-auto flex-grow-1 min-h-0">
+              <div className="monthly-map-panel__table-wrap overflow-auto flex-grow-1 min-h-0">
                 {mapViewportBounds == null ? null : (
-                  <Table striped bordered hover size="sm" className="mb-0 align-middle">
-                    <thead className="table-light">
+                  <Table striped hover className="mb-0 align-middle monthly-map-panel__table">
+                    <thead>
                       <tr>
                         <th>Route</th>
                         <th className="text-end">In view</th>
@@ -866,7 +882,7 @@ export default function MonthlyRoutesMapPage() {
                     <tbody>
                       {routesVisibleInMapViewport.totalMarkers === 0 ? (
                         <tr>
-                          <td colSpan={3} className="text-muted small">
+                          <td colSpan={3} className="text-muted">
                             None in current view.
                           </td>
                         </tr>
@@ -875,41 +891,27 @@ export default function MonthlyRoutesMapPage() {
                           {routesVisibleInMapViewport.unassignedInView > 0 ? (
                             <tr>
                               <td>
-                                <span className="d-inline-flex align-items-center gap-2">
-                                  <span
-                                    style={{
-                                      width: 10,
-                                      height: 10,
-                                      borderRadius: '50%',
-                                      backgroundColor: routeColor(''),
-                                      display: 'inline-block',
-                                    }}
-                                  />
+                                <span className="monthly-map-panel__route-label">
+                                  <MapRouteSwatch color={routeColor('')} />
                                   <span>Unassigned</span>
                                 </span>
                               </td>
-                              <td className="text-end">{routesVisibleInMapViewport.unassignedInView}</td>
-                              <td className="text-end">{mapUnassignedCount}</td>
+                              <td className="text-end tabular-nums">
+                                {routesVisibleInMapViewport.unassignedInView}
+                              </td>
+                              <td className="text-end tabular-nums">{mapUnassignedCount}</td>
                             </tr>
                           ) : null}
                           {routesVisibleInMapViewport.namedRoutes.map(({ name, inView, inRoute }) => (
                             <tr key={`viewport-${name}`}>
                               <td>
-                                <span className="d-inline-flex align-items-center gap-2">
-                                  <span
-                                    style={{
-                                      width: 10,
-                                      height: 10,
-                                      borderRadius: '50%',
-                                      backgroundColor: routeColor(name),
-                                      display: 'inline-block',
-                                    }}
-                                  />
+                                <span className="monthly-map-panel__route-label">
+                                  <MapRouteSwatch color={routeColor(name)} />
                                   <span>{name}</span>
                                 </span>
                               </td>
-                              <td className="text-end">{inView}</td>
-                              <td className="text-end">{inRoute}</td>
+                              <td className="text-end tabular-nums">{inView}</td>
+                              <td className="text-end tabular-nums">{inRoute}</td>
                             </tr>
                           ))}
                         </>
@@ -924,17 +926,17 @@ export default function MonthlyRoutesMapPage() {
         </Card.Body>
       </Card>
 
-      <Card
-        className="app-surface-card shadow border-0"
-        style={FLOAT_ADD_LOCATION_STYLE}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <Card.Body className="py-2 px-3">
-          <Button size="sm" variant="primary" onClick={() => setShowCreateLocationModal(true)}>
-            Add Location
-          </Button>
-        </Card.Body>
-      </Card>
+      <div className="monthly-map-panel__add-location" style={FLOAT_ADD_LOCATION_STYLE}>
+        <Button
+          size="sm"
+          variant="primary"
+          className="monthly-map-panel__add-btn fw-semibold"
+          onClick={() => setShowCreateLocationModal(true)}
+        >
+          <i className="bi bi-plus-lg" aria-hidden />
+          Add Location
+        </Button>
+      </div>
 
       <AddMonthlyLocationWizardModal
         show={showCreateLocationModal}
@@ -943,11 +945,16 @@ export default function MonthlyRoutesMapPage() {
         onCreated={mergeUpdatedLocation}
       />
 
-      <Modal show={Boolean(placementLocation)} onHide={closePlacementEditor} centered>
-        <Modal.Header closeButton>
-          <Modal.Title className="h6 mb-0">Edit Marker Placement</Modal.Title>
+      <Modal
+        show={Boolean(placementLocation)}
+        onHide={closePlacementEditor}
+        centered
+        className="monthly-map-placement-modal"
+      >
+        <Modal.Header closeButton className="monthly-map-placement-modal__header">
+          <Modal.Title className="monthly-map-placement-modal__title">Edit marker</Modal.Title>
         </Modal.Header>
-        <Modal.Body className="small">
+        <Modal.Body className="monthly-map-placement-modal__body">
           {placementLocation ? (
             <div className="d-flex flex-column gap-2">
               <div>
@@ -1013,13 +1020,23 @@ export default function MonthlyRoutesMapPage() {
               </div>
               {showPlacementAddressPanel ? (
                 <>
-                  <Form.Control
-                    type="search"
-                    value={placementQuery}
-                    placeholder="Search address in Greater Victoria"
-                    onChange={(e) => setPlacementQuery(e.target.value)}
-                    disabled={placementSaving}
-                  />
+                  <div className="monthly-map-panel__search">
+                    <div className="app-topbar-location-search">
+                      <div className="app-topbar-location-search__field">
+                        <i className="bi bi-search app-topbar-location-search__icon" aria-hidden />
+                        <Form.Control
+                          type="search"
+                          size="sm"
+                          className="app-topbar-location-search__input"
+                          value={placementQuery}
+                          placeholder="Search address in Greater Victoria…"
+                          aria-label="Search address for map pin"
+                          onChange={(e) => setPlacementQuery(e.target.value)}
+                          disabled={placementSaving}
+                        />
+                      </div>
+                    </div>
+                  </div>
                   {placementLoading ? <div className="text-muted">Searching addresses...</div> : null}
                   {placementError ? <div className="text-danger">{placementError}</div> : null}
                   {!placementLoading &&
@@ -1027,17 +1044,17 @@ export default function MonthlyRoutesMapPage() {
                   placementCandidates.length === 0 ? (
                     <div className="text-muted">No candidate addresses found.</div>
                   ) : null}
-                  <div className="d-flex flex-column gap-2" style={{ maxHeight: '16rem', overflowY: 'auto' }}>
+                  <div className="monthly-map-placement-modal__candidates d-flex flex-column gap-1">
                     {placementCandidates.map((candidate) => (
-                      <Button
+                      <button
                         key={`${candidate.display_address}-${candidate.latitude}-${candidate.longitude}`}
-                        variant="outline-primary"
-                        className="text-start"
+                        type="button"
+                        className="monthly-map-panel__search-option"
                         disabled={placementSaving}
                         onClick={() => applyPlacementCandidate(candidate)}
                       >
                         {candidate.display_address}
-                      </Button>
+                      </button>
                     ))}
                   </div>
                 </>

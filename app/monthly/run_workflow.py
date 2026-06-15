@@ -260,6 +260,9 @@ def prepare_billing_for_office_review_complete(route_id: int, month_first: date)
         MonthlyLocationMonth.monthly_location_id.in_(location_ids),
     ).all()
     for row in rows:
+        status = (row.billing_status or "").strip().lower()
+        if status in ("bill", "do_not_bill", "legacy"):
+            continue
         location_id = int(row.monthly_location_id)
         apply_billing_defaults_for_location(location_id, month_first, route_id)
         status = (row.billing_status or "").strip().lower()

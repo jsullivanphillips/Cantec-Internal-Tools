@@ -363,7 +363,7 @@ def build_dashboard_route_earnings(*, trailing_months: int = 12) -> dict[str, ob
 def build_dashboard_route_breakdown(
     *,
     trailing_months: int = 12,
-    range_key: str = BREAKDOWN_RANGE_LAST_12_MONTHS,
+    range_key: str = BREAKDOWN_RANGE_LAST_MONTH,
 ) -> dict[str, object]:
     from app.routes.monthly_routes import (
         _current_pacific_month_first,

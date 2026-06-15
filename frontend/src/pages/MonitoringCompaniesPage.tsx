@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Badge, Button, Card, Form, Modal, Table } from 'react-bootstrap'
+import { Button, Card, Form, Modal, Table } from 'react-bootstrap'
+import HeroFilterPill from '../components/HeroFilterPill'
 import { apiJson, isAbortError } from '../lib/apiClient'
 import {
   fetchMonitoringCompanies,
   invalidateMonitoringCompaniesCache,
 } from '../features/monthlyRoutes/monitoringCompaniesShared'
 import type { MonitoringCompanySummary } from '../features/monthlyRoutes/monthlyRoutesShared'
+import { PROCESSING_PAGE_TITLE_COMPACT_CLASS } from '../styles/pageTypography'
 
 type EditForm = {
   name: string
@@ -16,6 +18,18 @@ type EditForm = {
 
 function emptyForm(): EditForm {
   return { name: '', primary_phone: '', secondary_phone: '', active: true }
+}
+
+function MonitoringCompanyStatus({ active }: { active: boolean }) {
+  return (
+    <span
+      className={`monitoring-companies-status${
+        active ? ' monitoring-companies-status--active' : ' monitoring-companies-status--inactive'
+      }`}
+    >
+      {active ? 'Active' : 'Inactive'}
+    </span>
+  )
 }
 
 export default function MonitoringCompaniesPage() {
@@ -58,6 +72,12 @@ export default function MonitoringCompaniesPage() {
       return (row.name ?? '').toLowerCase().includes(q)
     })
   }, [companies, query, showInactive])
+
+  const resultSummary = useMemo(() => {
+    if (loading) return null
+    if (filtered.length === 0) return 'No companies'
+    return `${filtered.length} compan${filtered.length === 1 ? 'y' : 'ies'}`
+  }, [filtered.length, loading])
 
   const openCreate = () => {
     setEditing(null)
@@ -118,107 +138,158 @@ export default function MonitoringCompaniesPage() {
 
   return (
     <div className="monthly-page d-flex flex-column gap-3">
-      <Card className="app-surface-card monthly-filters-card">
-        <Card.Body className="p-3 p-md-4">
-          <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-1">
-            <h1 className="processing-page-title mb-0">Monitoring companies</h1>
-            <Button size="sm" onClick={openCreate}>
-              Add company
-            </Button>
+      <Card className="app-surface-card monthly-filters-card monthly-hero-card">
+        <Card.Body className="monthly-hero-card__body">
+          <div className="monthly-hero-card__row">
+            <h1 className={`${PROCESSING_PAGE_TITLE_COMPACT_CLASS} m-0`}>Monitoring companies</h1>
+            <div className="monthly-hero-card__controls">
+              <Button
+                size="sm"
+                variant="primary"
+                className="fw-semibold text-nowrap rounded-pill px-3"
+                onClick={openCreate}
+              >
+                <i className="bi bi-plus-lg me-1" aria-hidden />
+                Add company
+              </Button>
+            </div>
           </div>
-          <p className="text-muted small mb-3">
-            Directory used on monthly worksheets for monitoring vendor name and phone numbers.
-          </p>
-          <div className="d-flex flex-wrap align-items-end gap-3">
-            <Form.Control
-              placeholder="Search by name"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              style={{ maxWidth: 360 }}
-            />
-            <Form.Check
-              type="switch"
+          <div
+            className="run-review-filter monthly-hero-card__filter-pills mt-2"
+            role="group"
+            aria-label="Monitoring company filters"
+          >
+            <HeroFilterPill
               id="monitoring-companies-show-inactive"
+              icon="bi-eye"
               label="Show inactive"
               checked={showInactive}
-              onChange={(e) => setShowInactive(e.target.checked)}
+              onChange={setShowInactive}
             />
           </div>
         </Card.Body>
       </Card>
 
-      <Card className="app-surface-card monthly-results-card">
-        <Card.Body className="p-0">
+      <Card className="app-surface-card monthly-results-card monitoring-companies-results-card">
+        <Card.Body className="monthly-results-body">
+          <div className="monthly-table-search py-2">
+            <div className="app-topbar-location-search">
+              <div className="app-topbar-location-search__field">
+                <i className="bi bi-search app-topbar-location-search__icon" aria-hidden />
+                <Form.Control
+                  type="search"
+                  size="sm"
+                  className="app-topbar-location-search__input"
+                  value={query}
+                  placeholder="Search by name…"
+                  aria-label="Search monitoring companies"
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="monitoring-companies-results-bar border-bottom py-2">
+            {loading ? (
+              <span
+                className="home-skeleton-bar d-inline-block"
+                style={{ width: '7rem', height: '0.85rem' }}
+                aria-hidden
+              />
+            ) : (
+              <span className="small text-muted">{resultSummary}</span>
+            )}
+          </div>
+
           {error ? (
-            <p className="text-danger small p-3 mb-0" role="alert">
+            <p className="text-danger small mb-0 pt-3" role="alert">
               {error}
             </p>
           ) : loading ? (
-            <p className="text-muted small p-3 mb-0">Loading…</p>
+            <p className="text-muted small mb-0 pt-3">Loading…</p>
           ) : filtered.length === 0 ? (
-            <p className="text-muted small p-3 mb-0">No monitoring companies match your filters.</p>
+            <p className="text-muted small mb-0 pt-3">No monitoring companies match your filters.</p>
           ) : (
-            <Table responsive hover className="mb-0 align-middle">
+            <Table responsive striped hover className="mb-0 align-middle monitoring-companies-table">
               <thead>
                 <tr>
                   <th>Name</th>
                   <th>Primary phone</th>
                   <th>Secondary phone</th>
-                  <th>Status</th>
-                  <th className="text-end">Actions</th>
+                  <th className="text-center">Status</th>
+                  <th className="text-end monitoring-companies-table__actions-col">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((row) => (
-                  <tr key={row.id}>
-                    <td>{row.name?.trim() || '—'}</td>
-                    <td>{row.primary_phone?.trim() || '—'}</td>
-                    <td>{row.secondary_phone?.trim() || '—'}</td>
-                    <td>
-                      {row.active === false ? (
-                        <Badge bg="secondary">Inactive</Badge>
-                      ) : (
-                        <Badge bg="success">Active</Badge>
-                      )}
-                    </td>
-                    <td className="text-end">
-                      <Button variant="outline-primary" size="sm" onClick={() => openEdit(row)}>
-                        Edit
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
+                {filtered.map((row) => {
+                  const isActive = row.active !== false
+                  return (
+                    <tr key={row.id}>
+                      <td className="fw-semibold">{row.name?.trim() || '—'}</td>
+                      <td className="tabular-nums text-muted">
+                        {row.primary_phone?.trim() || '—'}
+                      </td>
+                      <td className="tabular-nums text-muted">
+                        {row.secondary_phone?.trim() || '—'}
+                      </td>
+                      <td className="text-center">
+                        <MonitoringCompanyStatus active={isActive} />
+                      </td>
+                      <td className="text-end">
+                        <Button
+                          variant="outline-secondary"
+                          size="sm"
+                          className="monitoring-companies-table__edit-btn"
+                          onClick={() => openEdit(row)}
+                        >
+                          <i className="bi bi-pencil" aria-hidden />
+                          Edit
+                        </Button>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </Table>
           )}
         </Card.Body>
       </Card>
 
-      <Modal show={modalOpen} onHide={() => setModalOpen(false)} centered>
-        <Modal.Header closeButton>
-          <Modal.Title>{editing ? 'Edit monitoring company' : 'Add monitoring company'}</Modal.Title>
+      <Modal
+        show={modalOpen}
+        onHide={() => setModalOpen(false)}
+        centered
+        className="monitoring-companies-modal"
+      >
+        <Modal.Header closeButton className="monitoring-companies-modal__header">
+          <Modal.Title className="monitoring-companies-modal__title">
+            {editing ? 'Edit monitoring company' : 'Add monitoring company'}
+          </Modal.Title>
         </Modal.Header>
-        <Modal.Body className="d-flex flex-column gap-3">
+        <Modal.Body className="monitoring-companies-modal__body d-flex flex-column gap-3">
           {saveError ? <div className="text-danger small">{saveError}</div> : null}
           <Form.Group>
-            <Form.Label>Name</Form.Label>
+            <Form.Label className="monitoring-companies-modal__label">Name</Form.Label>
             <Form.Control
+              size="sm"
               value={form.name}
               disabled={saving}
               onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
             />
           </Form.Group>
           <Form.Group>
-            <Form.Label>Primary phone</Form.Label>
+            <Form.Label className="monitoring-companies-modal__label">Primary phone</Form.Label>
             <Form.Control
+              size="sm"
               value={form.primary_phone}
               disabled={saving}
               onChange={(e) => setForm((prev) => ({ ...prev, primary_phone: e.target.value }))}
             />
           </Form.Group>
           <Form.Group>
-            <Form.Label>Secondary phone</Form.Label>
+            <Form.Label className="monitoring-companies-modal__label">Secondary phone</Form.Label>
             <Form.Control
+              size="sm"
               value={form.secondary_phone}
               disabled={saving}
               onChange={(e) => setForm((prev) => ({ ...prev, secondary_phone: e.target.value }))}
@@ -235,11 +306,11 @@ export default function MonitoringCompaniesPage() {
             />
           ) : null}
         </Modal.Body>
-        <Modal.Footer>
-          <Button variant="outline-secondary" onClick={() => setModalOpen(false)} disabled={saving}>
+        <Modal.Footer className="monitoring-companies-modal__footer">
+          <Button variant="outline-secondary" size="sm" onClick={() => setModalOpen(false)} disabled={saving}>
             Cancel
           </Button>
-          <Button variant="primary" onClick={() => void save()} disabled={saving}>
+          <Button variant="primary" size="sm" onClick={() => void save()} disabled={saving}>
             {saving ? 'Saving…' : 'Save'}
           </Button>
         </Modal.Footer>

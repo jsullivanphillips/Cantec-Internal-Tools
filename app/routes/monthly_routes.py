@@ -557,6 +557,28 @@ def _skip_site_base(loc: MonthlyLocation | None, location_id: int) -> dict:
     return {"id": int(loc.id), "label": label}
 
 
+def _history_row_revenue_total(
+    row: MonthlyLocationMonth,
+    loc: MonthlyLocation | None,
+    *,
+    outcome_bucket: str | None,
+) -> float:
+    """Metrics revenue: honor ``billing_status`` when set, else tested-outcome fallback."""
+    if loc is None or loc.price_per_month is None:
+        return 0.0
+    price = float(loc.price_per_month)
+    billing_status = (row.billing_status or "").strip().lower() or None
+
+    if billing_status == "bill":
+        return price
+    if billing_status in {"do_not_bill", "legacy"}:
+        return 0.0
+
+    if outcome_bucket == "tested":
+        return price
+    return 0.0
+
+
 def _merged_route_test_history_rows(route_id: int) -> list[MonthlyLocationMonth]:
     """Attributed sheet-history rows for ``route_id`` (stamp wins over legacy per location+month)."""
     loc_ids = [
@@ -613,25 +635,25 @@ def _route_testing_by_month(route_id: int) -> dict[str, dict]:
         key = row.month_date.isoformat()
         entry = by_month.setdefault(key, _fresh_month())
         bucket = _history_row_outcome_bucket(row)
+        lid = int(row.monthly_location_id)
+        loc = loc_by_id.get(lid)
         if bucket == "skipped_annual":
-            lid = int(row.monthly_location_id)
-            base = _skip_site_base(loc_by_id.get(lid), lid)
+            base = _skip_site_base(loc, lid)
             entry["skipped_annual_count"] += 1
             entry["skipped_annual_sites"].append(base)
         elif bucket == "skipped_non_annual":
-            lid = int(row.monthly_location_id)
-            base = _skip_site_base(loc_by_id.get(lid), lid)
+            base = _skip_site_base(loc, lid)
             reason = (row.skip_reason or "").strip()
             entry["skipped_non_annual_count"] += 1
             entry["skipped_non_annual_sites"].append({**base, "skip_reason": reason or None})
         elif bucket == "tested":
             entry["sites_tested_count"] += 1
-            lid = int(row.monthly_location_id)
-            loc = loc_by_id.get(lid)
-            if loc is not None and loc.price_per_month is not None:
-                entry["tested_revenue_total"] += float(loc.price_per_month)
-            else:
+            if loc is None or loc.price_per_month is None:
                 entry["tested_sites_missing_price_count"] += 1
+
+        revenue = _history_row_revenue_total(row, loc, outcome_bucket=bucket)
+        if revenue > 0:
+            entry["tested_revenue_total"] += revenue
 
     for entry in by_month.values():
         na = entry["skipped_non_annual_sites"]
@@ -2284,6 +2306,22 @@ def get_monthly_route_detail(route_id: int):
     )
 
 
+@monthly_routes_bp.get("/api/monthly_routes/routes/<int:route_id>/performance_breakdown")
+def get_route_performance_breakdown(route_id: int):
+    mr = _get_monthly_route(route_id)
+    if mr is None:
+        return jsonify({"error": "Route not found"}), 404
+
+    month_first = _parse_month(request.args.get("month_date"))
+    if month_first is None:
+        return jsonify({"error": "month_date query parameter required (YYYY-MM-01)"}), 400
+    month_first = date(month_first.year, month_first.month, 1)
+
+    from app.monthly.route_performance_breakdown import build_route_performance_breakdown
+
+    return jsonify(build_route_performance_breakdown(mr, month_first))
+
+
 @monthly_routes_bp.patch("/api/monthly_routes/routes/<int:route_id>")
 def patch_monthly_route(route_id: int):
     """Office: update route-level fields (technician note, expense tech count)."""
@@ -2564,10 +2602,11 @@ def get_monthly_routes_dashboard_route_earnings():
 @monthly_routes_bp.get("/api/monthly_routes/dashboard/route_breakdown")
 @cached_json_response(prefix="monthly:route_breakdown", ttl_seconds=1800)
 def get_monthly_routes_dashboard_route_breakdown():
-    """Per-route expense breakdown vs average monthly tested revenue (cached 30 min)."""
+    """Per-route expense breakdown vs average monthly billable revenue (cached 30 min)."""
     from app.monthly.dashboard_route_metrics import (
-        BREAKDOWN_RANGE_LAST_12_MONTHS,
         BREAKDOWN_RANGE_CHOICES,
+        BREAKDOWN_RANGE_LAST_12_MONTHS,
+        BREAKDOWN_RANGE_LAST_MONTH,
         build_dashboard_route_breakdown,
     )
 
@@ -2575,18 +2614,21 @@ def get_monthly_routes_dashboard_route_breakdown():
     if raw_range in BREAKDOWN_RANGE_CHOICES:
         return jsonify(build_dashboard_route_breakdown(range_key=raw_range))
 
-    raw_months = (request.args.get("months") or "12").strip()
-    try:
-        trailing_months = int(raw_months)
-    except ValueError:
-        trailing_months = 12
-    trailing_months = max(1, min(trailing_months, 24))
-    return jsonify(
-        build_dashboard_route_breakdown(
-            trailing_months=trailing_months,
-            range_key=BREAKDOWN_RANGE_LAST_12_MONTHS,
+    raw_months = (request.args.get("months") or "").strip()
+    if raw_months:
+        try:
+            trailing_months = int(raw_months)
+        except ValueError:
+            trailing_months = 12
+        trailing_months = max(1, min(trailing_months, 24))
+        return jsonify(
+            build_dashboard_route_breakdown(
+                trailing_months=trailing_months,
+                range_key=BREAKDOWN_RANGE_LAST_12_MONTHS,
+            )
         )
-    )
+
+    return jsonify(build_dashboard_route_breakdown(range_key=BREAKDOWN_RANGE_LAST_MONTH))
 
 
 @monthly_routes_bp.get("/api/monthly_routes/tickets")

@@ -24,7 +24,9 @@ import BillingBoardCommentCell from '../features/monthlyRoutes/BillingBoardComme
 import BillingBoardPaperworkModal, {
   type BillingBoardPaperworkModalContext,
 } from '../features/monthlyRoutes/BillingBoardPaperworkModal'
+import HeroFilterPill from '../components/HeroFilterPill'
 import { isAbortError } from '../lib/apiClient'
+import { PROCESSING_PAGE_TITLE_COMPACT_CLASS } from '../styles/pageTypography'
 
 const PAGE_SIZE = 50
 
@@ -131,7 +133,7 @@ function BillingBoardTableSkeleton({ monthDates }: { monthDates: string[] }) {
       aria-busy="true"
       aria-label="Loading billing locations"
     >
-      <Table responsive className="mb-0 align-middle monthly-billing-table">
+      <Table responsive striped className="mb-0 align-middle monthly-billing-table">
         <thead>
           <tr>
             <th style={{ minWidth: '11rem' }}>Address</th>
@@ -400,99 +402,98 @@ export default function MonthlyBillingPage() {
 
   return (
     <div className="monthly-page d-flex flex-column gap-3">
-      <Card className="app-surface-card monthly-filters-card">
-        <Card.Body className="p-3 p-md-4">
-          <h1 className="processing-page-title mb-3">Monthly Billing</h1>
-          <div className="d-flex flex-wrap align-items-end gap-3">
-            <Form.Group>
-              <Form.Label className="small text-muted mb-1">Quarter</Form.Label>
-              <Form.Select
-                value={selectedQuarterKey}
-                onChange={(e) => {
-                  setSelectedQuarterKey(e.target.value)
-                  setPage(1)
-                }}
-                style={{ minWidth: '18rem' }}
-              >
-                {quarterOptions.map((key) => {
-                  const parsed = parseQuarterSelectionKey(key)
-                  if (!parsed) return null
-                  return (
-                    <option key={key} value={key}>
-                      {quarterOptionLabel(parsed.year, parsed.quarter)}
+      <Card className="app-surface-card monthly-filters-card monthly-hero-card">
+        <Card.Body className="monthly-hero-card__body">
+          <div className="monthly-hero-card__row">
+            <h1 className={`${PROCESSING_PAGE_TITLE_COMPACT_CLASS} m-0`}>Monthly Billing</h1>
+            <div className="monthly-hero-card__controls">
+              <label className="monthly-hero-card__select-wrap">
+                <i className="bi bi-calendar3" aria-hidden />
+                <Form.Select
+                  size="sm"
+                  className="monthly-hero-card__select"
+                  value={selectedQuarterKey}
+                  aria-label="Quarter"
+                  onChange={(e) => {
+                    setSelectedQuarterKey(e.target.value)
+                    setPage(1)
+                  }}
+                >
+                  {quarterOptions.map((key) => {
+                    const parsed = parseQuarterSelectionKey(key)
+                    if (!parsed) return null
+                    return (
+                      <option key={key} value={key}>
+                        {quarterOptionLabel(parsed.year, parsed.quarter)}
+                      </option>
+                    )
+                  })}
+                </Form.Select>
+              </label>
+              <label className="monthly-hero-card__select-wrap">
+                <i className="bi bi-signpost-split" aria-hidden />
+                <Form.Select
+                  size="sm"
+                  className="monthly-hero-card__select"
+                  value={routeFilter}
+                  aria-label="Route"
+                  onChange={(e) => {
+                    setRouteFilter(e.target.value)
+                    setPage(1)
+                  }}
+                >
+                  <option value="">All routes</option>
+                  {routeOptions.map((route) => (
+                    <option key={route} value={route}>
+                      {route}
                     </option>
-                  )
-                })}
-              </Form.Select>
-            </Form.Group>
-            <Form.Group className="flex-grow-1" style={{ minWidth: '12rem', maxWidth: '22rem' }}>
-              <Form.Label className="small text-muted mb-1">Search</Form.Label>
-              <Form.Control
-                placeholder="Address or PMC (use Route for R10…)"
-                value={query}
-                onChange={(e) => {
-                  setQuery(e.target.value)
-                  setPage(1)
-                }}
-              />
-            </Form.Group>
-            <Form.Group>
-              <Form.Label className="small text-muted mb-1">Route</Form.Label>
-              <Form.Select
-                value={routeFilter}
-                onChange={(e) => {
-                  setRouteFilter(e.target.value)
-                  setPage(1)
-                }}
-                style={{ minWidth: '10rem' }}
-              >
-                <option value="">All routes</option>
-                {routeOptions.map((route) => (
-                  <option key={route} value={route}>
-                    {route}
-                  </option>
-                ))}
-              </Form.Select>
-            </Form.Group>
+                  ))}
+                </Form.Select>
+              </label>
+            </div>
           </div>
-          <div className="d-flex flex-wrap gap-3 mt-3">
-            <Form.Check
-              type="checkbox"
+          <div
+            className="run-review-filter monthly-hero-card__filter-pills mt-2"
+            role="group"
+            aria-label="Billing status filters"
+          >
+            <HeroFilterPill
               id="billing-filter-not-billed"
-              label="Not Billed"
+              icon="bi-receipt"
+              label="Not billed"
               checked={notBilledQuarter}
-              onChange={(e) => {
-                setNotBilledQuarter(e.target.checked)
+              onChange={(checked) => {
+                setNotBilledQuarter(checked)
                 setPage(1)
               }}
             />
-            <Form.Check
-              type="checkbox"
+            <HeroFilterPill
               id="billing-filter-do-not-bill"
+              icon="bi-ban"
               label="Waived"
               checked={doNotBillAnyMonth}
-              onChange={(e) => {
-                setDoNotBillAnyMonth(e.target.checked)
+              onChange={(checked) => {
+                setDoNotBillAnyMonth(checked)
                 setPage(1)
               }}
             />
-            <Form.Check
-              type="checkbox"
+            <HeroFilterPill
               id="billing-filter-unset"
+              icon="bi-question-circle"
               label="Unset"
               checked={unsetAnyMonth}
-              onChange={(e) => {
-                setUnsetAnyMonth(e.target.checked)
+              onChange={(checked) => {
+                setUnsetAnyMonth(checked)
                 setPage(1)
               }}
             />
-            <Form.Check
-              type="checkbox"
+            <HeroFilterPill
               id="billing-filter-non-empty-notes"
-              label="Non-empty notes"
+              icon="bi-journal-text"
+              label="Has notes"
               checked={nonEmptyBillingNotes}
-              onChange={(e) => {
-                setNonEmptyBillingNotes(e.target.checked)
+              onChange={(checked) => {
+                setNonEmptyBillingNotes(checked)
                 setPage(1)
               }}
             />
@@ -501,13 +502,32 @@ export default function MonthlyBillingPage() {
       </Card>
 
       <Card className="app-surface-card monthly-results-card">
-        <Card.Body className="monthly-billing-results-body">
+        <Card.Body className="monthly-results-body">
           {error ? (
             <p className="text-danger small mb-0" role="alert">
               {error}
             </p>
           ) : (
             <>
+              <div className="monthly-table-search py-2">
+                <div className="app-topbar-location-search">
+                  <div className="app-topbar-location-search__field">
+                    <i className="bi bi-search app-topbar-location-search__icon" aria-hidden />
+                    <Form.Control
+                      type="search"
+                      size="sm"
+                      className="app-topbar-location-search__input"
+                      value={query}
+                      placeholder="Search address or PMC…"
+                      aria-label="Search billing locations"
+                      onChange={(e) => {
+                        setQuery(e.target.value)
+                        setPage(1)
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
               <BillingBoardPaginationBar
                 loading={loading}
                 paginationSummary={paginationSummary}
@@ -519,7 +539,7 @@ export default function MonthlyBillingPage() {
                 <BillingBoardTableSkeleton monthDates={monthDates} />
               ) : (
                 <>
-                  <Table responsive hover className="mb-0 align-middle monthly-billing-table">
+                  <Table responsive striped hover className="mb-0 align-middle monthly-billing-table">
                   <thead>
                     <tr>
                         <th style={{ minWidth: '11rem' }}>Address</th>

@@ -17,13 +17,13 @@ import {
   type CSSProperties,
   type ReactNode,
 } from 'react'
-import { Chart } from 'react-chartjs-2'
 import { Accordion, Alert, Badge, Button, Col, Form, Modal, Row, Spinner, Table } from 'react-bootstrap'
 import { Link, useParams } from 'react-router-dom'
 import MonthlyLibraryCommentsPanel from '../features/monthlyRoutes/MonthlyLibraryCommentsPanel'
 import RouteTechnicianNoteCard from '../features/monthlyRoutes/RouteTechnicianNoteCard'
 import RouteTechCountCard from '../features/monthlyRoutes/RouteTechCountCard'
 import MonthlyRouteMapCard from '../features/monthlyRoutes/MonthlyRouteMapCard'
+import RoutePerformanceBreakdown from '../features/monthlyRoutes/RoutePerformanceBreakdown'
 import PortalKeyViewModal from '../features/monthlyRoutes/PortalKeyViewModal'
 import OfficeSkipRunModal, {
   type OfficeSkipRunPayload,
@@ -716,6 +716,11 @@ export default function MonthlyRouteDetailPage() {
   const [sessionUsername, setSessionUsername] = useState<string | null>(null)
   const [activeTechNames, setActiveTechNames] = useState<Set<string> | null>(null)
   const [historyViewYear, setHistoryViewYear] = useState<number | null>(null)
+  const [performanceHeader, setPerformanceHeader] = useState<{
+    monthLabel: string
+    revenue: number
+    net: number | null
+  } | null>(null)
   const [runsViewYear, setRunsViewYear] = useState<number | null>(null)
   const [uploadRunOpen, setUploadRunOpen] = useState(false)
   const [uploadTargetMonthIso, setUploadTargetMonthIso] = useState<string | null>(null)
@@ -996,63 +1001,10 @@ export default function MonthlyRouteDetailPage() {
     return defaultTestingYear(testingHistoryYears)
   }, [testingHistoryYears, historyViewYear])
 
-  const testingHistoryYearIndex =
-    effectiveHistoryYear != null ? testingHistoryYears.indexOf(effectiveHistoryYear) : -1
-
-  const testedRevenueChart = useMemo(() => {
-    if (effectiveHistoryYear == null) return null
-    const monthKeys = monthIsoKeysForCalendarYear(effectiveHistoryYear)
-    const anySheetMonth = monthKeys.some((iso) => testingByMonth[iso] !== undefined)
-    if (!anySheetMonth) return null
-
-    const labels = monthKeys.map((iso) => {
-      const ym = parseYearMonth(iso)
-      if (!ym) return iso
-      return new Intl.DateTimeFormat('en-CA', { month: 'short', timeZone: 'UTC' }).format(
-        new Date(Date.UTC(ym.year, ym.month - 1, 1))
-      )
-    })
-    const values = monthKeys.map((iso) => {
-      const cell = testingByMonth[iso]
-      const v = cell?.tested_revenue_total
-      return typeof v === 'number' && Number.isFinite(v) ? v : 0
-    })
-
-    return {
-      data: {
-        labels,
-        datasets: [
-          {
-            label: 'Tested site revenue',
-            data: values,
-            backgroundColor: 'rgba(22, 75, 124, 0.78)',
-            borderRadius: 6,
-          },
-        ],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: {
-              label: (items: { parsed: { y: number | null } }) =>
-                formatCurrencyCad(items.parsed.y ?? 0),
-            },
-          },
-        },
-        scales: {
-          y: {
-            beginAtZero: true,
-            ticks: {
-              callback: (raw: number | string) => formatCurrencyCad(Number(raw)),
-            },
-          },
-        },
-      },
-    }
-  }, [effectiveHistoryYear, testingByMonth])
+  const performanceMonthCandidates = useMemo(() => {
+    const keys = new Set([...Object.keys(testingByMonth), ...Object.keys(runsByMonth)])
+    return Array.from(keys).sort().reverse()
+  }, [testingByMonth, runsByMonth])
 
   const testedSitesMissingPriceYear = useMemo(() => {
     if (effectiveHistoryYear == null) return 0
@@ -1472,70 +1424,26 @@ export default function MonthlyRouteDetailPage() {
             <RouteSectionHeader
               icon="bi-bar-chart"
               title="Performance"
-              subtitle="Tested-site revenue by calendar year"
-              badge={formatCurrencyCad(selectedYearRevenue)}
+              subtitle={
+                performanceHeader?.monthLabel
+                  ? `${performanceHeader.monthLabel} profitability`
+                  : 'Per-month stop time and revenue'
+              }
+              badge={
+                performanceHeader?.net != null
+                  ? formatCurrencyCad(performanceHeader.net)
+                  : performanceHeader
+                    ? formatCurrencyCad(performanceHeader.revenue)
+                    : '—'
+              }
             />
           </Accordion.Header>
           <Accordion.Body className="monthly-location-testing-history-body">
-            <div className="monthly-route-detail-performance__content">
-              <div className="monthly-route-detail-performance__summary">
-                <div>
-                  <div className="monthly-route-detail-performance__revenue-card-title">
-                    Revenue by month
-                  </div>
-                  <p className="monthly-route-detail-performance__intro mb-0">
-                    Sums Price/month for locations tested in the selected year. Locations without a price are excluded.
-                  </p>
-                </div>
-                <div className="monthly-route-detail-performance__stat">
-                  <span>Total tested revenue</span>
-                  <strong>{formatCurrencyCad(selectedYearRevenue)}</strong>
-                </div>
-              </div>
-              {testingHistoryYears.length > 0 ? (
-                <>
-                  <div className="monthly-route-detail-section-toolbar">
-                    <p className="monthly-route-detail-section-toolbar__intro mb-0">
-                      Compare monthly tested revenue across the selected calendar year.
-                    </p>
-                    <RouteYearToolbar
-                      year={effectiveHistoryYear}
-                      yearIndex={testingHistoryYearIndex}
-                      years={testingHistoryYears}
-                      onChangeYear={setHistoryViewYear}
-                    />
-                  </div>
-                  <div className="monthly-route-detail-performance__chart">
-                    {testedRevenueChart ? (
-                      <>
-                        <div className="monthly-route-detail-performance__chart-surface">
-                          <div className="monthly-route-detail-performance__chart-area">
-                            <Chart type="bar" data={testedRevenueChart.data} options={testedRevenueChart.options} />
-                          </div>
-                        </div>
-                        {testedSitesMissingPriceYear > 0 ? (
-                          <p className="monthly-route-detail-callout mt-2 mb-0">
-                            {testedSitesMissingPriceYear} tested{' '}
-                            {testedSitesMissingPriceYear === 1 ? 'site has' : 'sites have'} no Price/month set for
-                            months in {effectiveHistoryYear}.
-                          </p>
-                        ) : null}
-                      </>
-                    ) : (
-                      <div className="monthly-route-detail-performance__chart-surface">
-                        <div className="monthly-route-detail-performance__empty d-flex align-items-center justify-content-center">
-                          No monthly sheet data for this calendar year.
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </>
-              ) : (
-                <div className="monthly-route-detail-callout mb-0">
-                  Revenue chart appears when monthly sheet testing history exists for this route.
-                </div>
-              )}
-            </div>
+            <RoutePerformanceBreakdown
+              routeId={idNum}
+              monthCandidates={performanceMonthCandidates}
+              onSummaryChange={setPerformanceHeader}
+            />
           </Accordion.Body>
         </Accordion.Item>
 

@@ -22,6 +22,21 @@ def test_parse_visit_clock_minutes_24h():
     assert parse_visit_clock_minutes("09:00") == 9 * 60
 
 
+def test_parse_visit_clock_minutes_infers_meridiem_for_ambiguous_times():
+    assert parse_visit_clock_minutes("8:30") == 8 * 60 + 30
+    assert parse_visit_clock_minutes("7:08") == 7 * 60 + 8
+    assert parse_visit_clock_minutes("12:41") == 12 * 60 + 41
+    assert parse_visit_clock_minutes("1:04") == 13 * 60 + 4
+    assert parse_visit_clock_minutes("3:15") == 15 * 60 + 15
+
+
+def test_duration_for_ambiguous_lunchtime_clocks():
+    start = parse_visit_clock_minutes("12:41")
+    end = parse_visit_clock_minutes("1:04")
+    assert start is not None and end is not None
+    assert duration_minutes_from_start_end(start, end) == 23
+
+
 def test_parse_visit_clock_minutes_rejects_non_clock():
     assert parse_visit_clock_minutes(None) is None
     assert parse_visit_clock_minutes("") is None

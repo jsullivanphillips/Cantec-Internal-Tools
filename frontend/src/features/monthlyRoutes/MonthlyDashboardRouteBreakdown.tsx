@@ -3,6 +3,7 @@ import { Alert, Badge, Button, OverlayTrigger, Table, Tooltip } from 'react-boot
 import { Link } from 'react-router-dom'
 import {
   DASHBOARD_ROUTE_BREAKDOWN_RANGE_OPTIONS,
+  DEFAULT_DASHBOARD_ROUTE_BREAKDOWN_RANGE,
   fetchDashboardRouteBreakdown,
   type DashboardRouteBreakdownMonthRevenue,
   type DashboardRouteBreakdownPayload,
@@ -58,6 +59,38 @@ function formatMonthRevenueLabel(status: DashboardRouteBreakdownMonthRevenue['re
   if (status === 'skipped') return 'Skipped'
   if (status === 'no_data') return 'No data'
   return ''
+}
+
+function formatMonthFirstIsoHeading(monthFirstIso: string): string {
+  const match = /^(\d{4})-(\d{2})-01$/.exec(monthFirstIso.trim())
+  if (!match) return monthFirstIso
+  const year = Number(match[1])
+  const month = Number(match[2])
+  if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) {
+    return monthFirstIso
+  }
+  return new Intl.DateTimeFormat('en-CA', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(Date.UTC(year, month - 1, 1)))
+}
+
+function formatAvgHoursPeriodDescription(
+  periodStart: string,
+  periodEnd: string,
+  periodLabel: string,
+): string {
+  const startHeading = formatMonthFirstIsoHeading(periodStart)
+  if (periodStart === periodEnd) {
+    return `${startHeading} (${periodLabel})`
+  }
+  const endHeading = formatMonthFirstIsoHeading(periodEnd)
+  return `${startHeading} – ${endHeading} (${periodLabel})`
+}
+
+function runHoursColumnLabel(range: DashboardRouteBreakdownRange): string {
+  return range === 'last_month' ? 'Hours' : 'Avg hours'
 }
 
 const INSUFFICIENT_RUN_TIME_LABEL = 'Insufficient run time data'
@@ -334,6 +367,8 @@ function BreakdownTableHeader({
   revenueColumns,
   showAvgMonthlyRevenue,
   costConstants,
+  avgHoursPeriodDescription,
+  breakdownRange,
 }: {
   sortKey: SortKey
   sortDir: SortDir
@@ -341,41 +376,51 @@ function BreakdownTableHeader({
   revenueColumns: DashboardRouteBreakdownRevenueColumn[]
   showAvgMonthlyRevenue: boolean
   costConstants: DashboardRouteBreakdownPayload['cost_constants']
+  avgHoursPeriodDescription: string
+  breakdownRange: DashboardRouteBreakdownRange
 }) {
   const labour = costConstants.labour_rate_per_hour
   const truck = costConstants.truck_charge_per_month
   const singleLineMonthRevenueHeader = revenueColumns.length <= 3
+  const hoursColumnLabel = runHoursColumnLabel(breakdownRange)
 
   return (
     <thead>
       <tr>
-        <SortableHeader label="Route" sortKey="route" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
+        <SortableHeader
+          label="Route"
+          sortKey="route"
+          activeKey={sortKey}
+          sortDir={sortDir}
+          onSort={onSort}
+          className="monthly-dashboard-breakdown__col-route"
+        />
         <SortableHeader
           label="Buildings"
           sortKey="building_count"
           activeKey={sortKey}
           sortDir={sortDir}
           onSort={onSort}
-          className="text-end monthly-dashboard-breakdown__col-compact"
+          className="text-end monthly-dashboard-breakdown__col-compact monthly-dashboard-breakdown__col-buildings"
           compact
         />
         <SortableHeader
-          label="Avg hours"
+          label={hoursColumnLabel}
           sortKey="avg_hours"
           activeKey={sortKey}
           sortDir={sortDir}
           onSort={onSort}
-          className="text-end monthly-dashboard-breakdown__col-compact"
+          className="text-end monthly-dashboard-breakdown__col-compact monthly-dashboard-breakdown__col-hours"
           compact
           infoTooltip={
             <>
               Typical time your techs spend on this route, based on clock-in and clock-out times
-              from ServiceTrade. We use the middle value across the months in your selected date
-              range. For costing, routes a little under 8 hours are counted as 8 (~8 in the
-              table); 8 hours or more uses the actual time.
+              from ServiceTrade. Uses the middle value across months with synced run timing in{' '}
+              {avgHoursPeriodDescription}. For costing, routes a little under 8 hours are counted
+              as 8 (~8 in the table); 8 hours or more uses the actual time.
             </>
           }
-          infoLabel="About avg hours"
+          infoLabel={breakdownRange === 'last_month' ? 'About hours' : 'About avg hours'}
         />
         <SortableHeader
           label="Techs"
@@ -383,7 +428,7 @@ function BreakdownTableHeader({
           activeKey={sortKey}
           sortDir={sortDir}
           onSort={onSort}
-          className="text-end monthly-dashboard-breakdown__col-compact"
+          className="text-end monthly-dashboard-breakdown__col-compact monthly-dashboard-breakdown__col-techs"
           compact
         />
         <SortableHeader
@@ -509,11 +554,15 @@ function BreakdownRow({
   return (
     <tr className={sufficient ? undefined : 'monthly-dashboard-breakdown__row--insufficient'}>
       <RouteNameCell row={row} />
-      <td className="text-end tabular-nums monthly-dashboard-breakdown__col-compact">{row.building_count}</td>
-      <td className="text-end tabular-nums monthly-dashboard-breakdown__col-compact">
+      <td className="text-end tabular-nums monthly-dashboard-breakdown__col-compact monthly-dashboard-breakdown__col-buildings">
+        {row.building_count}
+      </td>
+      <td className="text-end tabular-nums monthly-dashboard-breakdown__col-compact monthly-dashboard-breakdown__col-hours">
         <AvgHoursCell row={row} />
       </td>
-      <td className="text-end tabular-nums monthly-dashboard-breakdown__col-compact">{row.tech_count}</td>
+      <td className="text-end tabular-nums monthly-dashboard-breakdown__col-compact monthly-dashboard-breakdown__col-techs">
+        {row.tech_count}
+      </td>
       <td className="text-end tabular-nums monthly-dashboard-breakdown__col-money">
         {formatCurrencyCad(row.monthly_expense)}
       </td>
@@ -548,6 +597,8 @@ function BreakdownTable({
   revenueColumns,
   showAvgMonthlyRevenue,
   costConstants,
+  avgHoursPeriodDescription,
+  breakdownRange,
 }: {
   rows: DashboardRouteBreakdownRow[]
   sortKey: SortKey
@@ -556,6 +607,8 @@ function BreakdownTable({
   revenueColumns: DashboardRouteBreakdownRevenueColumn[]
   showAvgMonthlyRevenue: boolean
   costConstants: DashboardRouteBreakdownPayload['cost_constants']
+  avgHoursPeriodDescription: string
+  breakdownRange: DashboardRouteBreakdownRange
 }) {
   return (
     <div className="monthly-dashboard-breakdown__card">
@@ -568,6 +621,8 @@ function BreakdownTable({
             revenueColumns={revenueColumns}
             showAvgMonthlyRevenue={showAvgMonthlyRevenue}
             costConstants={costConstants}
+            avgHoursPeriodDescription={avgHoursPeriodDescription}
+            breakdownRange={breakdownRange}
           />
           <tbody>
             {rows.map((row) => (
@@ -661,9 +716,13 @@ function BreakdownRangeSelector({
 
 export default function MonthlyDashboardRouteBreakdown() {
   const [payload, setPayload] = useState<DashboardRouteBreakdownPayload | null>(null)
-  const [loadingRange, setLoadingRange] = useState<DashboardRouteBreakdownRange | null>('last_12_months')
+  const [loadingRange, setLoadingRange] = useState<DashboardRouteBreakdownRange | null>(
+    DEFAULT_DASHBOARD_ROUTE_BREAKDOWN_RANGE,
+  )
   const [error, setError] = useState<string | null>(null)
-  const [range, setRange] = useState<DashboardRouteBreakdownRange>('last_12_months')
+  const [range, setRange] = useState<DashboardRouteBreakdownRange>(
+    DEFAULT_DASHBOARD_ROUTE_BREAKDOWN_RANGE,
+  )
   const [sortKey, setSortKey] = useState<SortKey>('route')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [exporting, setExporting] = useState(false)
@@ -753,7 +812,7 @@ export default function MonthlyDashboardRouteBreakdown() {
       const headers = [
         'Route',
         'Buildings',
-        'Avg hours',
+        runHoursColumnLabel(displayPayload.range),
         'Techs',
         'Monthly expense',
         ...displayPayload.revenue_columns.map((column) => column.header),
@@ -844,6 +903,11 @@ export default function MonthlyDashboardRouteBreakdown() {
     displayPayload.period_start === displayPayload.period_end
       ? displayPayload.period_start
       : `${displayPayload.period_start} – ${displayPayload.period_end}`
+  const avgHoursPeriodDescription = formatAvgHoursPeriodDescription(
+    displayPayload.period_start,
+    displayPayload.period_end,
+    displayPayload.period_label,
+  )
 
   return (
     <section className="monthly-dashboard-breakdown mt-4">
@@ -894,6 +958,8 @@ export default function MonthlyDashboardRouteBreakdown() {
                     revenueColumns={displayPayload.revenue_columns}
                     showAvgMonthlyRevenue={displayPayload.show_avg_monthly_revenue}
                     costConstants={displayPayload.cost_constants}
+                    avgHoursPeriodDescription={avgHoursPeriodDescription}
+                    breakdownRange={displayPayload.range}
                   />
                 </div>
               ) : null}
@@ -919,6 +985,8 @@ export default function MonthlyDashboardRouteBreakdown() {
                     revenueColumns={displayPayload.revenue_columns}
                     showAvgMonthlyRevenue={displayPayload.show_avg_monthly_revenue}
                     costConstants={displayPayload.cost_constants}
+                    avgHoursPeriodDescription={avgHoursPeriodDescription}
+                    breakdownRange={displayPayload.range}
                   />
                 </div>
               ) : null}

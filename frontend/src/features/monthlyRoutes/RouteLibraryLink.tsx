@@ -15,14 +15,14 @@ export default function RouteLibraryLink({ loc }: { loc: LibraryLocation }) {
     <>
       <span className="d-block">{line1}</span>
       {line2 != null ? (
-        <span className="d-block small text-muted fw-normal">{line2}</span>
+        <span className="d-block monthly-locations-table__route-meta">{line2}</span>
       ) : null}
     </>
   )
 
   if (rid != null && line1 !== '—') {
     return (
-      <Link to={`/monthlies/routes/${rid}`} className="fw-semibold text-decoration-none">
+      <Link to={`/monthlies/routes/${rid}`} className="monthly-locations-table__link">
         {body}
       </Link>
     )
