@@ -107,6 +107,69 @@ def test_dashboard_completed_run(dashboard_client, monkeypatch):
     assert row["current_month_run"]["workflow_stage"] == "completed"
 
 
+def test_dashboard_includes_annual_count_for_current_month(dashboard_client, monkeypatch):
+    client, app = dashboard_client
+    _patch_dashboard_month(monkeypatch)
+    with app.app_context():
+        route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
+        june_annual = make_location(
+            id=101,
+            address="June Annual St",
+            label="June Annual St",
+            monthly_route_id=1,
+            annual_month="June",
+        )
+        may_annual = make_location(
+            id=102,
+            address="May Annual St",
+            label="May Annual St",
+            monthly_route_id=1,
+            annual_month="May",
+        )
+        no_annual = make_location(
+            id=103,
+            address="Monthly Only St",
+            label="Monthly Only St",
+            monthly_route_id=1,
+            annual_month=None,
+        )
+        db.session.add_all([route, june_annual, may_annual, no_annual])
+        db.session.commit()
+
+    res = client.get("/api/monthly_routes/dashboard")
+    assert res.status_code == 200
+    row = next(r for r in res.get_json()["routes"] if r["route"]["id"] == 1)
+    assert row["route"]["location_count"] == 3
+    assert row["route"]["annual_count"] == 1
+
+
+def test_dashboard_accepts_month_date_query_param(dashboard_client, monkeypatch):
+    client, app = dashboard_client
+    _patch_dashboard_month(monkeypatch)
+    july = date(2026, 7, 1)
+    with app.app_context():
+        seed_route_with_one_stop(route_id=1, route_number=2)
+        seed_prepared_started_run(1, july, run_id=7001, prepared=True, started=False)
+
+    res = client.get("/api/monthly_routes/dashboard?month_date=2026-07-01")
+    assert res.status_code == 200
+    body = res.get_json()
+    assert body["month_date"] == "2026-07-01"
+    row = next(r for r in body["routes"] if r["route"]["id"] == 1)
+    assert row["current_month_run"]["workflow_stage"] == "prepared"
+
+    current = client.get("/api/monthly_routes/dashboard")
+    current_row = next(r for r in current.get_json()["routes"] if r["route"]["id"] == 1)
+    assert "current_month_run" not in current_row
+
+
+def test_dashboard_rejects_invalid_month_date(dashboard_client, monkeypatch):
+    client, _app = dashboard_client
+    _patch_dashboard_month(monkeypatch)
+    res = client.get("/api/monthly_routes/dashboard?month_date=not-a-month")
+    assert res.status_code == 400
+
+
 def test_dashboard_excludes_routes_without_active_locations(dashboard_client, monkeypatch):
     client, app = dashboard_client
     _patch_dashboard_month(monkeypatch)

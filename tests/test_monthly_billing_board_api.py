@@ -239,6 +239,49 @@ def test_billing_board_do_not_bill_any_month_filter(billing_board_client):
     assert data["locations"][0]["location_id"] == 502
 
 
+def test_billing_board_unset_any_month_filter(billing_board_client):
+    client, _app = billing_board_client
+    route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
+    bill_loc = make_location(
+        id=511,
+        address="Bill Only St",
+        label="Bill Only St",
+        monthly_route_id=1,
+        test_day="Tuesday",
+    )
+    unset_loc = make_location(
+        id=512,
+        address="Unset St",
+        label="Unset St",
+        monthly_route_id=1,
+        test_day="Tuesday",
+    )
+    bill_mlm = MonthlyLocationMonth(
+        id=5111,
+        monthly_location_id=511,
+        month_date=date(2026, 5, 1),
+        test_monthly_route_id=1,
+        billing_status="bill",
+    )
+    unset_mlm = MonthlyLocationMonth(
+        id=5112,
+        monthly_location_id=512,
+        month_date=date(2026, 5, 1),
+        test_monthly_route_id=1,
+        billing_status="unset",
+    )
+    db.session.add_all([route, bill_loc, unset_loc, bill_mlm, unset_mlm])
+    db.session.commit()
+
+    r = client.get(
+        "/api/monthly_routes/billing_board?anchor_month=2026-05-01&unset_any_month=true"
+    )
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data["pagination"]["total"] == 1
+    assert data["locations"][0]["location_id"] == 512
+
+
 def test_billing_board_non_empty_billing_notes_filter(billing_board_client):
     client, _app = billing_board_client
     route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)

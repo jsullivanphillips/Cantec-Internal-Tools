@@ -32,6 +32,8 @@ export type MonthlyRouteSummary = {
   /** Office note shown to technicians on the portal worksheet header. */
   technician_note?: string | null
   location_count?: number
+  /** Active locations whose annual month matches the dashboard month. */
+  annual_count?: number
 }
 
 /** Linked row from ``keys`` when ``key_id`` FK is set. */

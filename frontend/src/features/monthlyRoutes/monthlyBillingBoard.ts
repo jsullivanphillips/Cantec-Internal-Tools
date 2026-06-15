@@ -176,6 +176,7 @@ export type BillingBoardQuery = {
   page?: number
   pageSize?: number
   doNotBillAnyMonth?: boolean
+  unsetAnyMonth?: boolean
   notBilledQuarter?: boolean
   nonEmptyBillingNotes?: boolean
 }
@@ -189,6 +190,7 @@ export function billingBoardQueryString(params: BillingBoardQuery): string {
   if (params.page != null) qs.set('page', String(params.page))
   if (params.pageSize != null) qs.set('page_size', String(params.pageSize))
   if (params.doNotBillAnyMonth) qs.set('do_not_bill_any_month', 'true')
+  if (params.unsetAnyMonth) qs.set('unset_any_month', 'true')
   if (params.notBilledQuarter) qs.set('not_billed_quarter', 'true')
   if (params.nonEmptyBillingNotes) qs.set('non_empty_billing_notes', 'true')
   return qs.toString()

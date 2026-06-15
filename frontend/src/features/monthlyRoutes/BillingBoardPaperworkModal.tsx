@@ -1,13 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Badge, Modal, Spinner } from 'react-bootstrap'
+import { Modal, Spinner } from 'react-bootstrap'
 import { apiJson, isAbortError } from '../../lib/apiClient'
 import OfficeWorksheetReadOnlyTable from './OfficeWorksheetReadOnlyTable'
 import { OFFICE_WORKSHEET_BILLING_HISTORY_COLUMNS } from './officeWorksheetTableShared'
-import {
-  billingStatusLabel,
-  billingStatusVariant,
-  formatMonthHeader,
-} from './monthlyBillingBoard'
+import { formatMonthHeader } from './monthlyBillingBoard'
 import {
   getCachedFieldSubmission,
   setCachedFieldSubmission,
@@ -115,9 +111,6 @@ export default function BillingBoardPaperworkModal({ show, context, onHide }: Pr
   }, [show, context])
 
   const monthLabel = context ? formatMonthHeader(context.monthIso) : ''
-  const billingLabel = context ? billingStatusLabel(context.billingStatus) : ''
-  const billingVariant = context ? billingStatusVariant(context.billingStatus) : 'secondary'
-  const waiveReason = context?.waiveReason?.trim() || null
   const capturedLabel = capturedAt ? formatCapturedAt(capturedAt) : null
   const showTable = !loading && emptyMessage == null && stops.length > 0
 
@@ -142,22 +135,9 @@ export default function BillingBoardPaperworkModal({ show, context, onHide }: Pr
       contentClassName="billing-board-paperwork-modal__content"
     >
       <Modal.Header closeButton className="billing-board-paperwork-modal__header">
-        <div className="billing-board-paperwork-modal__title-block">
-          <Modal.Title className="billing-board-paperwork-modal__title h6 mb-1">
-            {modalTitle}
-          </Modal.Title>
-          {context ? (
-            <div className="billing-board-paperwork-modal__subtitle d-flex flex-wrap align-items-center gap-2 small">
-              <Badge bg={billingVariant}>{billingLabel}</Badge>
-              {context.billingStatus === 'do_not_bill' && waiveReason ? (
-                <span className="text-muted">{waiveReason}</span>
-              ) : null}
-              {capturedLabel ? (
-                <span className="text-muted">Frozen {capturedLabel}</span>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
+        <Modal.Title className="billing-board-paperwork-modal__title h6 mb-0">
+          {modalTitle}
+        </Modal.Title>
       </Modal.Header>
       <Modal.Body className="billing-board-paperwork-modal__body monthly-run-detail-page">
         {loading ? (

@@ -24,13 +24,18 @@ function routeOverviewCardClassName(tone?: RouteOverviewCardTone): string {
   return classes.join(' ')
 }
 
+function formatRouteOverviewCardMeta(route: MonthlyRouteOverviewRow['route']): string | null {
+  const count = route.location_count
+  if (typeof count !== 'number') return null
+  const annualCount = route.annual_count ?? 0
+  const locationLabel = `${count} active location${count === 1 ? '' : 's'}`
+  const annualLabel = `${annualCount} annual${annualCount === 1 ? '' : 's'}`
+  return `${locationLabel} · ${annualLabel}`
+}
+
 function RouteOverviewCard({ row, showScheduleHint = false, tone }: RouteOverviewCardProps) {
   const { route } = row
-  const count = route.location_count
-  const countLabel =
-    typeof count === 'number'
-      ? `${count} active location${count === 1 ? '' : 's'}`
-      : null
+  const countLabel = formatRouteOverviewCardMeta(route)
 
   return (
     <Link

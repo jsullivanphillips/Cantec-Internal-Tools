@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import AddMonthlyLocationWizardModal from '../features/monthlyRoutes/AddMonthlyLocationWizardModal'
+import { isTechnicianDemoLibraryLocation } from '../features/monthlyRoutes/technicianDemoRoute'
 import {
   MAP_ROUTE_UNASSIGNED,
   compareMonthlyRouteFilterNames,
@@ -129,10 +130,14 @@ export default function MonthlyRoutesMapPage() {
   }, [mapDataYear])
 
   const mapLocationsRaw = mapPayload?.locations ?? EMPTY_MAP_LOCATIONS
-  /** Match library default: hide cancelled markers on the map (no toggle on this page). */
+  /** Match library default: hide cancelled and training-demo (R99) markers on the map. */
   const mapLocations = useMemo(
     () =>
-      mapLocationsRaw.filter((loc) => (loc.status_normalized || '').trim().toLowerCase() !== 'cancelled'),
+      mapLocationsRaw.filter((loc) => {
+        if ((loc.status_normalized || '').trim().toLowerCase() === 'cancelled') return false
+        if (isTechnicianDemoLibraryLocation(loc)) return false
+        return true
+      }),
     [mapLocationsRaw]
   )
   const routeOptions = mapPayload?.meta.routes ?? []

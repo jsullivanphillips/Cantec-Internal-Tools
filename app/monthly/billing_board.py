@@ -244,6 +244,7 @@ def _billing_board_location_query(
     q: str,
     route: str,
     do_not_bill_any_month: bool,
+    unset_any_month: bool,
     not_billed_quarter: bool,
     non_empty_billing_notes: bool,
     year: int,
@@ -275,6 +276,19 @@ def _billing_board_location_query(
                 db.session.query(MonthlyLocationMonth.monthly_location_id).filter(
                     MonthlyLocationMonth.month_date.in_(month_dates),
                     MonthlyLocationMonth.billing_status == "do_not_bill",
+                )
+            )
+        )
+    if unset_any_month:
+        location_query = location_query.filter(
+            MonthlyLocation.id.in_(
+                db.session.query(MonthlyLocationMonth.monthly_location_id).filter(
+                    MonthlyLocationMonth.month_date.in_(month_dates),
+                    or_(
+                        MonthlyLocationMonth.billing_status == "unset",
+                        MonthlyLocationMonth.billing_status.is_(None),
+                        func.trim(func.coalesce(MonthlyLocationMonth.billing_status, "")) == "",
+                    ),
                 )
             )
         )
@@ -448,6 +462,7 @@ def load_billing_board(
     page: int = 1,
     page_size: int = 50,
     do_not_bill_any_month: bool = False,
+    unset_any_month: bool = False,
     not_billed_quarter: bool = False,
     non_empty_billing_notes: bool = False,
 ) -> dict[str, Any]:
@@ -455,6 +470,7 @@ def load_billing_board(
         q=q.strip().casefold(),
         route=route.strip(),
         do_not_bill_any_month=do_not_bill_any_month,
+        unset_any_month=unset_any_month,
         not_billed_quarter=not_billed_quarter,
         non_empty_billing_notes=non_empty_billing_notes,
         year=year,

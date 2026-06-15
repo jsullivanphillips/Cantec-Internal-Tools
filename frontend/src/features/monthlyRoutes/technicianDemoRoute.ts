@@ -29,6 +29,21 @@ export function isTechnicianDemoRoute(routeNumber: number | undefined | null): b
   return routeNumber === DEFAULT_TECHNICIAN_DEMO_ROUTE_NUMBER
 }
 
+const DEMO_ROUTE_TEST_DAY_SUFFIX = new RegExp(
+  `-\\s*R\\s*${DEFAULT_TECHNICIAN_DEMO_ROUTE_NUMBER}\\s*$`,
+  'i',
+)
+
+/** True when a library/map row is assigned to the live training route (default R99). */
+export function isTechnicianDemoLibraryLocation(loc: {
+  test_day?: string | null
+  monthly_route?: { route_number?: number } | null
+}): boolean {
+  if (isTechnicianDemoRoute(loc.monthly_route?.route_number)) return true
+  const testDay = (loc.test_day || '').trim()
+  return testDay.length > 0 && DEMO_ROUTE_TEST_DAY_SUFFIX.test(testDay)
+}
+
 export function useTechnicianDemoRouteInfo(enabled = true) {
   const [info, setInfo] = useState<TechnicianDemoRouteInfo | null>(null)
   const [loading, setLoading] = useState(enabled)

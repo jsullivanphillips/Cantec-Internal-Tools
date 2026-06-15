@@ -2202,7 +2202,7 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
   height: 100%;
 }
 
-/* Monthly routes library (/monthlies/routes) — filters card */
+/* Monthly locations library (/monthlies/locations) — filters card */
 .monthly-routes-library-page .monthly-routes-filters-card {
   border: 1px solid #e7eaf0;
 }
@@ -2224,23 +2224,17 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
   color: #64748b;
 }
 
-.monthly-routes-library-page .monthly-routes-filters__display {
+.monthly-routes-library-page .monthly-routes-filters__toolbar {
   padding-left: 4px;
 }
 
-.monthly-routes-library-page .monthly-routes-filters__section-title {
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  font-size: 0.7rem;
-  color: #64748b;
-}
-
-.monthly-routes-library-page .monthly-routes-filters-card .form-control {
+.monthly-routes-library-page .monthly-routes-filters-card .form-control,
+.monthly-routes-library-page .monthly-routes-filters-card .form-select {
   border-color: #d7dee8;
 }
 
-.monthly-routes-library-page .monthly-routes-filters-card .form-control:focus {
+.monthly-routes-library-page .monthly-routes-filters-card .form-control:focus,
+.monthly-routes-library-page .monthly-routes-filters-card .form-select:focus {
   border-color: rgba(245, 130, 32, 0.65);
   box-shadow: 0 0 0 0.2rem rgba(245, 130, 32, 0.16);
 }
@@ -2250,50 +2244,31 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
   line-height: 1.35;
 }
 
-/* Keep Display toggles + export on one line; scroll horizontally if the viewport is narrow */
-.monthly-routes-library-page .monthly-routes-filters__checks--row {
-  overflow-x: auto;
-  overflow-y: hidden;
-  -webkit-overflow-scrolling: touch;
-  padding-bottom: 0.15rem;
+.monthly-locations-table-card {
+  overflow: hidden;
 }
 
-.monthly-routes-library-page .monthly-routes-filters__checks--row .form-check-label {
+.monthly-locations-table-wrap {
+  max-height: 65vh;
+  overflow: auto;
+}
+
+.monthly-locations-directory-table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.monthly-locations-directory-table thead th {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #64748b;
   white-space: nowrap;
 }
 
-/* Library table: testing month columns — uniform slab (no striped/hover zebra from Bootstrap) */
-.monthly-routes-library-table > tbody > tr > td.month-testing-cell {
-  background-color: #f3f5f9 !important;
-}
-
-.monthly-routes-library-table.table-hover > tbody > tr:hover > td.month-testing-cell:not(.month-testing-skipped) {
-  background-color: #eceff5 !important;
-}
-
-/* Skipped cells: tint + positioning for full-cell skip-reason hitbox */
-.monthly-routes-library-table > tbody > tr > td.month-testing-cell.month-testing-skipped {
-  position: relative;
-  background-color: #fdf9ef !important;
-}
-
-.monthly-routes-library-table.table-hover > tbody > tr:hover > td.month-testing-cell.month-testing-skipped {
-  background-color: #faf3e4 !important;
-}
-
-.monthly-routes-library-table > tbody > tr > td.month-testing-skipped .library-table-cell-inner {
-  overflow: visible;
-  display: block;
-  -webkit-line-clamp: unset;
-  -webkit-box-orient: unset;
-}
-
-.monthly-routes-library-table .monthly-skip-reason-hitbox {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  width: 100%;
-  height: 100%;
+.monthly-locations-pagination {
+  background: #fafbfc;
 }
 
 /* Library body cells: at most two lines, ellipsis when overflow */
@@ -2314,10 +2289,6 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
 .monthly-routes-library-table > tbody > tr > td.library-table-cell-clamp .library-table-cell-inner > a {
   display: block;
   overflow: hidden;
-}
-
-.monthly-routes-library-table > tbody > tr > td.month-testing-cell .library-table-cell-inner {
-  text-align: center;
 }
 
 /* Monthly routes overview (/monthlies) — Pacific current-month workweek calendar */
@@ -2410,19 +2381,20 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
   color: inherit;
 }
 
+/* Semantic route status tones — tinted backgrounds, strong borders, dark text throughout */
 .monthly-routes-overview-calendar__card--tone-completed-light {
-  background: #dcfce7;
-  border-color: #86efac;
+  background: #d8f0e4;
+  border-color: #6aab88;
 }
 
 .monthly-routes-overview-calendar__card--tone-completed-light:hover {
-  background: #bbf7d0;
-  border-color: #4ade80;
+  background: #c8e8d8;
+  border-color: #559876;
 }
 
 .monthly-routes-overview-calendar__card--tone-reviewed-closed {
-  background: #86efac;
-  border-color: #4ade80;
+  background: #b8dfc8;
+  border-color: #3d8f66;
   color: inherit;
 }
 
@@ -2431,35 +2403,35 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
 }
 
 .monthly-routes-overview-calendar__card--tone-reviewed-closed:hover {
-  background: #4ade80;
-  border-color: #22c55e;
+  background: #a8d6ba;
+  border-color: #2f7a55;
   color: inherit;
 }
 
 .monthly-routes-overview-calendar__card--tone-prepared {
-  background: #dbeafe;
-  border-color: #93c5fd;
+  background: #d4e4f8;
+  border-color: #5a8ec8;
 }
 
 .monthly-routes-overview-calendar__card--tone-prepared:hover {
-  background: #bfdbfe;
-  border-color: #60a5fa;
+  background: #c2d8f2;
+  border-color: #457bb5;
 }
 
 .monthly-routes-overview-calendar__card--tone-field_active {
-  background: #1d4ed8;
-  border-color: #1e40af;
-  color: #fff;
+  background: #f6e8c8;
+  border-color: #c9922e;
+  color: inherit;
 }
 
 .monthly-routes-overview-calendar__card--tone-field_active .monthly-routes-overview-calendar__card-meta {
-  color: rgba(255, 255, 255, 0.82);
+  color: var(--bs-secondary-color);
 }
 
 .monthly-routes-overview-calendar__card--tone-field_active:hover {
-  background: #1e40af;
-  border-color: #1e3a8a;
-  color: #fff;
+  background: #efddb0;
+  border-color: #b07f22;
+  color: inherit;
 }
 
 .monthly-routes-overview-calendar__card--tone-neutral {
@@ -3162,7 +3134,8 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
 
 /* Tab shell: content card attaches to selected tab (Jobs Backlog + Performance Summary) */
 .processing-page .processing-tabs-shell.app-surface-card,
-.performance-summary-page .processing-tabs-shell.app-surface-card {
+.performance-summary-page .processing-tabs-shell.app-surface-card,
+.monthlies-dashboard-page .processing-tabs-shell.app-surface-card {
   border: 1px solid #e7eaf0;
   border-radius: 0.75rem;
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
@@ -3171,7 +3144,8 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
 }
 
 .processing-page .processing-tabs-shell__nav.nav-tabs,
-.performance-summary-page .processing-tabs-shell__nav.nav-tabs {
+.performance-summary-page .processing-tabs-shell__nav.nav-tabs,
+.monthlies-dashboard-page .processing-tabs-shell__nav.nav-tabs {
   gap: 0.25rem;
   padding: 0.5rem 0.75rem 0;
   margin-bottom: 0;
@@ -3180,7 +3154,8 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
 }
 
 .processing-page .processing-tabs-shell__nav .nav-link,
-.performance-summary-page .processing-tabs-shell__nav .nav-link {
+.performance-summary-page .processing-tabs-shell__nav .nav-link,
+.monthlies-dashboard-page .processing-tabs-shell__nav .nav-link {
   margin-bottom: -1px;
   font-weight: 600;
   color: #64748b;
@@ -3192,14 +3167,16 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
 }
 
 .processing-page .processing-tabs-shell__nav .nav-link:hover,
-.performance-summary-page .processing-tabs-shell__nav .nav-link:hover {
+.performance-summary-page .processing-tabs-shell__nav .nav-link:hover,
+.monthlies-dashboard-page .processing-tabs-shell__nav .nav-link:hover {
   color: var(--brand-navy);
   border-color: transparent;
   background: rgba(255, 255, 255, 0.7);
 }
 
 .processing-page .processing-tabs-shell__nav .nav-link.active,
-.performance-summary-page .processing-tabs-shell__nav .nav-link.active {
+.performance-summary-page .processing-tabs-shell__nav .nav-link.active,
+.monthlies-dashboard-page .processing-tabs-shell__nav .nav-link.active {
   color: var(--brand-navy);
   background: #fff;
   border-color: #e7eaf0 #e7eaf0 #fff;
@@ -3207,7 +3184,8 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
 }
 
 .processing-page .processing-tabs-shell__panel.tab-content,
-.performance-summary-page .processing-tabs-shell__panel.tab-content {
+.performance-summary-page .processing-tabs-shell__panel.tab-content,
+.monthlies-dashboard-page .processing-tabs-shell__panel.tab-content {
   padding: 1rem 1.25rem 1.25rem;
   background: #fff;
 }
@@ -4282,8 +4260,8 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
   max-width: 100%;
   padding: 0.35rem 0.65rem;
   background: #fff;
-  border: 5px solid transparent;
-  border-radius: var(--ml-radius-md, 0.65rem);
+  border: 1.5px solid transparent;
+  border-radius: 999px;
   color: #1a1a1a;
   font-family: inherit;
   font-size: 0.8125rem;
@@ -4324,13 +4302,40 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
   cursor: pointer;
   appearance: none;
   transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
     box-shadow 0.15s ease,
     transform 0.15s ease;
 }
 
 .monthly-page .monthly-billing-pill--clickable:hover,
 .monthly-page .monthly-billing-pill--clickable:focus-visible {
-  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.14);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.16);
+}
+
+.monthly-page .monthly-billing-pill--clickable.monthly-billing-pill-card--bill:hover,
+.monthly-page .monthly-billing-pill--clickable.monthly-billing-pill-card--bill:focus-visible {
+  background-color: #dcead2;
+  border-color: #3d6f22;
+}
+
+.monthly-page .monthly-billing-pill--clickable.monthly-billing-pill-card--do_not_bill:hover,
+.monthly-page .monthly-billing-pill--clickable.monthly-billing-pill-card--do_not_bill:focus-visible {
+  background-color: #fce4d4;
+  border-color: #d96a1a;
+}
+
+.monthly-page .monthly-billing-pill--clickable.monthly-billing-pill-card--unset:hover,
+.monthly-page .monthly-billing-pill--clickable.monthly-billing-pill-card--unset:focus-visible {
+  background-color: #e6ebf0;
+  border-color: #7a8fa8;
+}
+
+.monthly-page .monthly-billing-pill--clickable.monthly-billing-pill-card--legacy:hover,
+.monthly-page .monthly-billing-pill--clickable.monthly-billing-pill-card--legacy:focus-visible {
+  background-color: #e4e9ed;
+  border-color: #52667a;
 }
 
 .monthly-page .monthly-billing-pill--clickable:focus-visible {
@@ -4445,8 +4450,8 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
   justify-content: center;
   min-width: 4rem;
   padding: 0.3rem 0.5rem;
-  border: 4px solid transparent;
-  border-radius: var(--ml-radius-md, 0.65rem);
+  border: 1.5px solid transparent;
+  border-radius: 999px;
   color: #1a1a1a;
   font-size: 0.75rem;
   font-weight: 400;

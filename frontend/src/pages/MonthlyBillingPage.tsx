@@ -265,6 +265,7 @@ export default function MonthlyBillingPage() {
   const [query, setQuery] = useState('')
   const [routeFilter, setRouteFilter] = useState('')
   const [doNotBillAnyMonth, setDoNotBillAnyMonth] = useState(false)
+  const [unsetAnyMonth, setUnsetAnyMonth] = useState(false)
   const [notBilledQuarter, setNotBilledQuarter] = useState(false)
   const [nonEmptyBillingNotes, setNonEmptyBillingNotes] = useState(false)
   const [page, setPage] = useState(1)
@@ -294,6 +295,7 @@ export default function MonthlyBillingPage() {
         page,
         pageSize: PAGE_SIZE,
         doNotBillAnyMonth,
+        unsetAnyMonth,
         notBilledQuarter,
         nonEmptyBillingNotes,
       })
@@ -314,6 +316,7 @@ export default function MonthlyBillingPage() {
     routeFilter,
     page,
     doNotBillAnyMonth,
+    unsetAnyMonth,
     notBilledQuarter,
     nonEmptyBillingNotes,
   ])
@@ -325,7 +328,7 @@ export default function MonthlyBillingPage() {
   useEffect(() => {
     setTrackedLocationId(null)
     setEditingBillingCommentLocationId(null)
-  }, [page, selectedQuarterKey, query, routeFilter, doNotBillAnyMonth, notBilledQuarter, nonEmptyBillingNotes])
+  }, [page, selectedQuarterKey, query, routeFilter, doNotBillAnyMonth, unsetAnyMonth, notBilledQuarter, nonEmptyBillingNotes])
 
   const routeOptions = payload?.meta.routes ?? []
   const monthDates = payload?.month_dates ?? []
@@ -457,7 +460,7 @@ export default function MonthlyBillingPage() {
             <Form.Check
               type="checkbox"
               id="billing-filter-not-billed"
-              label="Not billed for quarter"
+              label="Not Billed"
               checked={notBilledQuarter}
               onChange={(e) => {
                 setNotBilledQuarter(e.target.checked)
@@ -467,10 +470,20 @@ export default function MonthlyBillingPage() {
             <Form.Check
               type="checkbox"
               id="billing-filter-do-not-bill"
-              label="Waive in any month"
+              label="Waived"
               checked={doNotBillAnyMonth}
               onChange={(e) => {
                 setDoNotBillAnyMonth(e.target.checked)
+                setPage(1)
+              }}
+            />
+            <Form.Check
+              type="checkbox"
+              id="billing-filter-unset"
+              label="Unset"
+              checked={unsetAnyMonth}
+              onChange={(e) => {
+                setUnsetAnyMonth(e.target.checked)
                 setPage(1)
               }}
             />

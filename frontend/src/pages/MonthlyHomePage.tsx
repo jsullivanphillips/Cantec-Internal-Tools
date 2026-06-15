@@ -1,12 +1,14 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Card, Col, Row } from 'react-bootstrap'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Button, Card, Col, Nav, Row, Tab } from 'react-bootstrap'
 import {
   buildRouteOverviewCardToneMap,
   countRoutesToPrepare,
   countRoutesToProcess,
   type MonthlyDashboardPayload,
+  type MonthlyDashboardRouteRow,
 } from '../features/monthlyRoutes/monthlyDashboardShared'
 import {
+  addCalendarMonths,
   formatRouteOverviewMonthHeading,
   monthFirstIsoPacificToday,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
@@ -56,24 +58,84 @@ function MonthlyDashboardLegend() {
   )
 }
 
-export default function MonthlyHomePage() {
-  const [payload, setPayload] = useState<MonthlyDashboardPayload | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+function dashboardUrl(monthFirstIso?: string): string {
+  if (!monthFirstIso) return '/api/monthly_routes/dashboard'
+  const qs = new URLSearchParams({ month_date: monthFirstIso })
+  return `/api/monthly_routes/dashboard?${qs.toString()}`
+}
 
-  const monthFirstIso = useMemo(() => monthFirstIsoPacificToday(), [])
-  const monthHeading = useMemo(() => formatRouteOverviewMonthHeading(monthFirstIso), [monthFirstIso])
+function RouteOverviewMonthToolbar({
+  monthFirstIso,
+  onChangeMonth,
+}: {
+  monthFirstIso: string
+  onChangeMonth: (monthFirstIso: string) => void
+}) {
+  const monthHeading = formatRouteOverviewMonthHeading(monthFirstIso)
+  const previousMonth = addCalendarMonths(monthFirstIso, -1)
+  const nextMonth = addCalendarMonths(monthFirstIso, 1)
+
+  return (
+    <div className="monthly-route-year-toolbar" aria-label="Calendar month selector">
+      <Button
+        type="button"
+        variant="outline-secondary"
+        size="sm"
+        className="monthly-route-year-toolbar__button"
+        disabled={!previousMonth}
+        onClick={() => {
+          if (previousMonth) onChangeMonth(previousMonth)
+        }}
+      >
+        Previous
+      </Button>
+      <span className="monthly-route-year-toolbar__year tabular-nums" aria-live="polite">
+        {monthHeading}
+      </span>
+      <Button
+        type="button"
+        variant="outline-secondary"
+        size="sm"
+        className="monthly-route-year-toolbar__button"
+        disabled={!nextMonth}
+        onClick={() => {
+          if (nextMonth) onChangeMonth(nextMonth)
+        }}
+      >
+        Next
+      </Button>
+    </div>
+  )
+}
+
+export default function MonthlyHomePage() {
+  const currentMonthFirstIso = useMemo(() => monthFirstIsoPacificToday(), [])
+  const currentMonthHeading = useMemo(
+    () => formatRouteOverviewMonthHeading(currentMonthFirstIso),
+    [currentMonthFirstIso],
+  )
+
+  const [dashboardPayload, setDashboardPayload] = useState<MonthlyDashboardPayload | null>(null)
+  const [calendarMonthFirstIso, setCalendarMonthFirstIso] = useState(currentMonthFirstIso)
+  const [calendarRows, setCalendarRows] = useState<MonthlyDashboardRouteRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [calendarLoading, setCalendarLoading] = useState(false)
+  const [calendarError, setCalendarError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let active = true
     const controller = new AbortController()
     setLoading(true)
     setError(null)
-    apiJson<MonthlyDashboardPayload>('/api/monthly_routes/dashboard', {
+    apiJson<MonthlyDashboardPayload>(dashboardUrl(), {
       signal: controller.signal,
     })
       .then((data) => {
-        if (active) setPayload(data)
+        if (!active) return
+        setDashboardPayload(data)
+        setCalendarMonthFirstIso(data.month_date)
+        setCalendarRows(data.routes)
       })
       .catch((err) => {
         if (!isAbortError(err) && active) setError('Unable to load monthlies dashboard.')
@@ -85,88 +147,166 @@ export default function MonthlyHomePage() {
       active = false
       controller.abort()
     }
-  }, [])
+  }, [currentMonthFirstIso])
 
-  const rows = useMemo(() => payload?.routes ?? [], [payload])
-  const routesToProcess = useMemo(() => countRoutesToProcess(rows), [rows])
+  useEffect(() => {
+    if (loading) return
+
+    if (calendarMonthFirstIso === dashboardPayload?.month_date) {
+      setCalendarRows(dashboardPayload?.routes ?? [])
+      setCalendarError(null)
+      return
+    }
+
+    let active = true
+    const controller = new AbortController()
+    setCalendarLoading(true)
+    setCalendarError(null)
+    apiJson<MonthlyDashboardPayload>(dashboardUrl(calendarMonthFirstIso), {
+      signal: controller.signal,
+    })
+      .then((data) => {
+        if (active) setCalendarRows(data.routes)
+      })
+      .catch((err) => {
+        if (!isAbortError(err) && active) {
+          setCalendarError('Unable to load routes for this month.')
+        }
+      })
+      .finally(() => {
+        if (active) setCalendarLoading(false)
+      })
+    return () => {
+      active = false
+      controller.abort()
+    }
+  }, [calendarMonthFirstIso, dashboardPayload?.month_date, loading])
+
+  const kpiRows = useMemo(() => dashboardPayload?.routes ?? [], [dashboardPayload])
+  const routesToProcess = useMemo(() => countRoutesToProcess(kpiRows), [kpiRows])
   const routesToPrepare = useMemo(
-    () => countRoutesToPrepare(rows, monthFirstIso),
-    [rows, monthFirstIso],
+    () => countRoutesToPrepare(kpiRows, currentMonthFirstIso),
+    [kpiRows, currentMonthFirstIso],
   )
-  const cardToneByRouteId = useMemo(() => buildRouteOverviewCardToneMap(rows), [rows])
-  const openTicketCount = payload?.open_ticket_count ?? 0
+  const cardToneByRouteId = useMemo(() => buildRouteOverviewCardToneMap(calendarRows), [calendarRows])
+  const calendarMonthHeading = useMemo(
+    () => formatRouteOverviewMonthHeading(calendarMonthFirstIso),
+    [calendarMonthFirstIso],
+  )
+  const openTicketCount = dashboardPayload?.open_ticket_count ?? 0
 
-  const refreshDashboard = () => {
-    apiJson<MonthlyDashboardPayload>('/api/monthly_routes/dashboard')
-      .then((data) => setPayload(data))
+  const refreshDashboard = useCallback(() => {
+    apiJson<MonthlyDashboardPayload>(dashboardUrl())
+      .then((data) => {
+        setDashboardPayload(data)
+        if (calendarMonthFirstIso === data.month_date) {
+          setCalendarRows(data.routes)
+        }
+      })
       .catch(() => {
         /* keep existing payload */
       })
-  }
+  }, [calendarMonthFirstIso])
 
   return (
-    <div className="d-flex flex-column gap-3">
+    <div className="monthlies-dashboard-page d-flex flex-column gap-3">
       <Card className="app-surface-card">
         <Card.Body className="p-3 p-md-4">
           <h2 className="processing-page-title mb-1">Monthlies</h2>
-          <p className="text-muted mb-0">{monthHeading}</p>
+          <p className="text-muted mb-0">{currentMonthHeading}</p>
         </Card.Body>
       </Card>
 
-      <Card className="app-surface-card">
-        <Card.Body className="p-3 p-md-4">
-          {error ? <div className="text-danger mb-3">{error}</div> : null}
-          {loading ? <div className="text-muted">Loading dashboard...</div> : null}
-          {!loading && !error ? (
-            <>
-              <Row className="g-3 mb-4">
-                <Col xs={12} md={4}>
-                  <Card className="app-kpi-nested processing-tile h-100">
-                    <Card.Body>
-                      <div className="text-muted small mb-1">Routes with runs to be processed</div>
-                      <div className="fs-3 fw-semibold">{routesToProcess}</div>
-                      <div className="small text-muted mt-1">
-                        Field ended, awaiting office review
-                      </div>
-                    </Card.Body>
-                  </Card>
-                </Col>
-                <Col xs={12} md={4}>
-                  <Card className="app-kpi-nested processing-tile h-100">
-                    <Card.Body>
-                      <div className="text-muted small mb-1">Runs to be prepared</div>
-                      <div className="fs-3 fw-semibold">{routesToPrepare}</div>
-                      <div className="small text-muted mt-1">
-                        Scheduled this month, not yet prepared
-                      </div>
-                    </Card.Body>
-                  </Card>
-                </Col>
-                <Col xs={12} md={4}>
-                  <Card className="app-kpi-nested processing-tile h-100">
-                    <Card.Body>
-                      <div className="text-muted small mb-1">Open tickets</div>
-                      <div className="fs-3 fw-semibold">{openTicketCount}</div>
-                      <div className="small text-muted mt-1">Open and in progress</div>
-                    </Card.Body>
-                  </Card>
-                </Col>
-              </Row>
-
-              <MonthlyTicketsQueue onTicketsChanged={refreshDashboard} />
-
-              <h3 className="h5 mb-3 mt-4">All routes</h3>
-              <MonthlyRoutesWorkweekCalendar
-                rows={rows}
-                monthFirstIso={monthFirstIso}
-                monthHeading={monthHeading}
-                cardToneByRouteId={cardToneByRouteId}
-                legend={<MonthlyDashboardLegend />}
-              />
-            </>
-          ) : null}
-        </Card.Body>
-      </Card>
+      {error ? (
+        <Card className="app-surface-card">
+          <Card.Body className="p-3 p-md-4">
+            <div className="text-danger">{error}</div>
+          </Card.Body>
+        </Card>
+      ) : null}
+      {loading ? (
+        <Card className="app-surface-card">
+          <Card.Body className="p-3 p-md-4">
+            <div className="text-muted">Loading dashboard...</div>
+          </Card.Body>
+        </Card>
+      ) : null}
+      {!loading && !error ? (
+        <Tab.Container defaultActiveKey="metrics">
+          <div className="processing-tabs-shell app-surface-card">
+            <Nav variant="tabs" className="mb-0 processing-tabs processing-tabs-shell__nav">
+              <Nav.Item>
+                <Nav.Link eventKey="metrics">Metrics</Nav.Link>
+              </Nav.Item>
+              <Nav.Item>
+                <Nav.Link eventKey="routes">Routes</Nav.Link>
+              </Nav.Item>
+              <Nav.Item>
+                <Nav.Link eventKey="tickets">Tickets</Nav.Link>
+              </Nav.Item>
+            </Nav>
+            <Tab.Content className="processing-tabs-shell__panel">
+              <Tab.Pane eventKey="metrics">
+                <Row className="g-3">
+                  <Col xs={12} md={4}>
+                    <Card className="app-kpi-nested processing-tile h-100">
+                      <Card.Body>
+                        <div className="text-muted small mb-1">Routes with runs to be processed</div>
+                        <div className="fs-3 fw-semibold">{routesToProcess}</div>
+                        <div className="small text-muted mt-1">
+                          Field ended, awaiting office review
+                        </div>
+                      </Card.Body>
+                    </Card>
+                  </Col>
+                  <Col xs={12} md={4}>
+                    <Card className="app-kpi-nested processing-tile h-100">
+                      <Card.Body>
+                        <div className="text-muted small mb-1">Runs to be prepared</div>
+                        <div className="fs-3 fw-semibold">{routesToPrepare}</div>
+                        <div className="small text-muted mt-1">
+                          Scheduled this month, not yet prepared
+                        </div>
+                      </Card.Body>
+                    </Card>
+                  </Col>
+                  <Col xs={12} md={4}>
+                    <Card className="app-kpi-nested processing-tile h-100">
+                      <Card.Body>
+                        <div className="text-muted small mb-1">Open tickets</div>
+                        <div className="fs-3 fw-semibold">{openTicketCount}</div>
+                        <div className="small text-muted mt-1">Open and in progress</div>
+                      </Card.Body>
+                    </Card>
+                  </Col>
+                </Row>
+              </Tab.Pane>
+              <Tab.Pane eventKey="routes">
+                <div className="d-flex justify-content-center mb-3">
+                  <RouteOverviewMonthToolbar
+                    monthFirstIso={calendarMonthFirstIso}
+                    onChangeMonth={setCalendarMonthFirstIso}
+                  />
+                </div>
+                {calendarError ? <div className="text-danger mb-3">{calendarError}</div> : null}
+                {calendarLoading ? (
+                  <div className="text-muted mb-3">Loading routes for {calendarMonthHeading}...</div>
+                ) : null}
+                <MonthlyRoutesWorkweekCalendar
+                  rows={calendarRows}
+                  monthFirstIso={calendarMonthFirstIso}
+                  monthHeading={calendarMonthHeading}
+                  cardToneByRouteId={cardToneByRouteId}
+                  legend={<MonthlyDashboardLegend />}
+                />
+              </Tab.Pane>
+              <Tab.Pane eventKey="tickets">
+                <MonthlyTicketsQueue onTicketsChanged={refreshDashboard} />
+              </Tab.Pane>
+            </Tab.Content>
+          </div>
+        </Tab.Container>
+      ) : null}
     </div>
   )
 }

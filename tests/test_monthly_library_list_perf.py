@@ -120,6 +120,25 @@ def test_monthly_routes_library_list_payload(library_tables):
         assert "test_monthly_route" not in row["months"]["2026-03-01"]
 
 
+def test_monthly_routes_library_include_history_false_skips_month_cells(library_tables):
+    with library_tables.app_context():
+        lid = _seed_location()
+
+        client = _auth_client(library_tables)
+        res = client.get(
+            "/api/monthly_routes/library?include_history=false&page=1&page_size=50"
+        )
+        assert res.status_code == 200
+        body = res.get_json()
+        assert body["month_columns"] == []
+        assert len(body["locations"]) == 1
+        row = body["locations"][0]
+        assert row["id"] == lid
+        assert row["months"] == {}
+        assert body["meta"]["min_month"] is None
+        assert body["meta"]["max_month"] is None
+
+
 def test_monthly_routes_library_includes_price_per_location(library_tables):
     with library_tables.app_context():
         from decimal import Decimal

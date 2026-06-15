@@ -253,10 +253,31 @@ def _english_ordinal(n: int) -> str:
     return f"{n}{suffix}"
 
 
+def _annual_active_location_count_by_route(month_first: date) -> dict[int, int]:
+    """Active locations per route whose ``annual_month`` matches ``month_first``."""
+    annual_full = month_first.strftime("%B").lower()
+    annual_short = month_first.strftime("%b").lower()
+    rows = (
+        db.session.query(
+            MonthlyLocation.monthly_route_id,
+            func.count(MonthlyLocation.id),
+        )
+        .filter(
+            MonthlyLocation.monthly_route_id.isnot(None),
+            MonthlyLocation.status_normalized == "active",
+            func.lower(func.trim(MonthlyLocation.annual_month)).in_([annual_full, annual_short]),
+        )
+        .group_by(MonthlyLocation.monthly_route_id)
+        .all()
+    )
+    return {int(mid): int(n) for mid, n in rows if mid is not None}
+
+
 def _serialize_monthly_route_entity(
     mr: MonthlyRoute | None,
     *,
     location_count: int | None = None,
+    annual_count: int | None = None,
 ) -> dict[str, object] | None:
     """Nested route summary for API consumers (single source of truth: ``MonthlyRoute``)."""
     if mr is None:
@@ -287,6 +308,8 @@ def _serialize_monthly_route_entity(
     }
     if location_count is not None:
         out["location_count"] = location_count
+    if annual_count is not None:
+        out["annual_count"] = annual_count
     return out
 
 
@@ -1721,6 +1744,7 @@ def monthly_routes_library(*, list_view: bool | None = None):
     annual_tested_conflict = (request.args.get("annual_tested_conflict") or "").strip().lower() == "true"
     active_only = (request.args.get("active_only") or "").strip().lower() == "true"
     include_coordinates = (request.args.get("include_coordinates") or "").strip().lower() == "true"
+    include_history = (request.args.get("include_history") or "true").strip().lower() != "false"
     unpaginated = (request.args.get("unpaginated") or "").strip().lower() == "true"
     from_month = _parse_month(request.args.get("from_month"))
     to_month = _parse_month(request.args.get("to_month"))
@@ -1728,18 +1752,22 @@ def monthly_routes_library(*, list_view: bool | None = None):
     page_size = min(_parse_positive_int(request.args.get("page_size"), 50), 200)
 
     range_conditions = []
-    if from_month:
-        range_conditions.append(MonthlyLocationMonth.month_date >= from_month)
-    if to_month:
-        range_conditions.append(MonthlyLocationMonth.month_date <= to_month)
+    if include_history:
+        if from_month:
+            range_conditions.append(MonthlyLocationMonth.month_date >= from_month)
+        if to_month:
+            range_conditions.append(MonthlyLocationMonth.month_date <= to_month)
 
-    meta_month_query = (
-        MonthlyLocationMonth.query.with_entities(
-            func.min(MonthlyLocationMonth.month_date),
-            func.max(MonthlyLocationMonth.month_date),
+    min_month: date | None = None
+    max_month: date | None = None
+    if include_history:
+        meta_month_query = (
+            MonthlyLocationMonth.query.with_entities(
+                func.min(MonthlyLocationMonth.month_date),
+                func.max(MonthlyLocationMonth.month_date),
+            )
         )
-    )
-    min_month, max_month = meta_month_query.first() or (None, None)
+        min_month, max_month = meta_month_query.first() or (None, None)
 
     location_query = MonthlyLocation.query.options(
         joinedload(MonthlyLocation.monthly_route),
@@ -1864,28 +1892,31 @@ def monthly_routes_library(*, list_view: bool | None = None):
             }
         )
 
-    hist_query = MonthlyLocationMonth.query.filter(MonthlyLocationMonth.monthly_location_id.in_(location_ids))
-    if not list_view:
-        hist_query = hist_query.options(joinedload(MonthlyLocationMonth.test_monthly_route))
-    if range_conditions:
-        hist_query = hist_query.filter(and_(*range_conditions))
-    history_rows = hist_query.all()
-
     if include_coordinates:
         _populate_missing_coordinates(locations)
 
-    if from_month and to_month:
-        start = min(from_month, to_month)
-        end = max(from_month, to_month)
-        months = _month_range(start, end)
-    else:
-        months = sorted({r.month_date for r in history_rows})
+    months: list[date] = []
     by_location: dict[int, dict[str, dict[str, object]]] = {}
-    for row in history_rows:
-        by_location.setdefault(row.monthly_location_id, {})[row.month_date.isoformat()] = _serialize_month_cell(
-            row,
-            list_view=list_view,
+    if include_history:
+        hist_query = MonthlyLocationMonth.query.filter(
+            MonthlyLocationMonth.monthly_location_id.in_(location_ids)
         )
+        if not list_view:
+            hist_query = hist_query.options(joinedload(MonthlyLocationMonth.test_monthly_route))
+        if range_conditions:
+            hist_query = hist_query.filter(and_(*range_conditions))
+        history_rows = hist_query.all()
+
+        if from_month and to_month:
+            start = min(from_month, to_month)
+            end = max(from_month, to_month)
+            months = _month_range(start, end)
+        else:
+            months = sorted({r.month_date for r in history_rows})
+        for row in history_rows:
+            by_location.setdefault(row.monthly_location_id, {})[row.month_date.isoformat()] = (
+                _serialize_month_cell(row, list_view=list_view)
+            )
 
     rows_payload = []
     for loc in locations:
@@ -1956,6 +1987,7 @@ def get_monthly_billing_board():
     do_not_bill_any_month = (
         (request.args.get("do_not_bill_any_month") or "").strip().lower() == "true"
     )
+    unset_any_month = (request.args.get("unset_any_month") or "").strip().lower() == "true"
     not_billed_quarter = (request.args.get("not_billed_quarter") or "").strip().lower() == "true"
     non_empty_billing_notes = (
         (request.args.get("non_empty_billing_notes") or "").strip().lower() == "true"
@@ -1970,6 +2002,7 @@ def get_monthly_billing_board():
         page=page,
         page_size=page_size,
         do_not_bill_any_month=do_not_bill_any_month,
+        unset_any_month=unset_any_month,
         not_billed_quarter=not_billed_quarter,
         non_empty_billing_notes=non_empty_billing_notes,
     )
@@ -2098,24 +2131,11 @@ def _serialize_current_month_run_summary(run: MonthlyRouteRun) -> dict[str, obje
     }
 
 
-@monthly_routes_bp.get("/api/monthly_routes/dashboard")
-def monthly_routes_dashboard():
-    """Dashboard landing: active routes plus current Pacific month run workflow stage."""
-    month_first = _current_pacific_month_first()
-    from app.monthly.location_tickets import count_active_tickets_global
-
+def _build_dashboard_routes_for_month(month_first: date) -> list[dict[str, object]]:
+    """Active routes with run workflow stage and annual counts for ``month_first``."""
     route_rows = MonthlyRoute.query.order_by(MonthlyRoute.route_number.asc()).all()
     if not route_rows:
-        ticket_counts = count_active_tickets_global()
-        return jsonify(
-            {
-                "month_date": month_first.isoformat(),
-                "routes": [],
-                "open_ticket_count": ticket_counts["active_total"],
-                "open_tickets_open": ticket_counts["open"],
-                "open_tickets_in_progress": ticket_counts["in_progress"],
-            }
-        )
+        return []
 
     count_rows = (
         db.session.query(
@@ -2130,6 +2150,7 @@ def monthly_routes_dashboard():
         .all()
     )
     count_map: dict[int, int] = {int(mid): int(n) for mid, n in count_rows if mid is not None}
+    annual_count_map = _annual_active_location_count_by_route(month_first)
 
     active_route_ids: list[int] = []
     for route in route_rows:
@@ -2153,18 +2174,34 @@ def monthly_routes_dashboard():
             "route": _serialize_monthly_route_entity(
                 route,
                 location_count=active_count,
+                annual_count=annual_count_map.get(int(route.id), 0),
             ),
         }
         run = run_by_route_id.get(int(route.id))
         if run is not None:
             row["current_month_run"] = _serialize_current_month_run_summary(run)
         out.append(row)
+    return out
 
+
+@monthly_routes_bp.get("/api/monthly_routes/dashboard")
+def monthly_routes_dashboard():
+    """Dashboard landing: active routes plus run workflow stage for a calendar month."""
+    month_raw = (request.args.get("month_date") or "").strip()
+    parsed = _parse_month(month_raw) if month_raw else None
+    if month_raw and parsed is None:
+        return jsonify({"error": "Invalid month_date", "code": "invalid_month_date"}), 400
+    month_first = (
+        date(parsed.year, parsed.month, 1) if parsed else _current_pacific_month_first()
+    )
+    from app.monthly.location_tickets import count_active_tickets_global
+
+    routes = _build_dashboard_routes_for_month(month_first)
     ticket_counts = count_active_tickets_global()
     return jsonify(
         {
             "month_date": month_first.isoformat(),
-            "routes": out,
+            "routes": routes,
             "open_ticket_count": ticket_counts["active_total"],
             "open_tickets_open": ticket_counts["open"],
             "open_tickets_in_progress": ticket_counts["in_progress"],

@@ -114,7 +114,7 @@ Primary API for library, routes, worksheet, CSV import, comments.
 
 | Area | Key endpoints |
 |------|----------------|
-| Library | `GET/POST/PATCH/DELETE /api/monthly_routes/library[...]` — filters: `q`, `route`, `skipped_any`, `annual_tested_conflict`, month range |
+| Library | `GET/POST/PATCH/DELETE /api/monthly_routes/library[...]` — filters: `q`, `route`, `skipped_any`, `annual_tested_conflict`, month range; `include_history=false` skips month cells (used by the locations list at `/monthlies/locations`) |
 | Routes | `GET /api/monthly_routes/routes`, `GET /api/monthly_routes/dashboard`, `GET .../routes/<id>` |
 | Worksheet | `GET .../worksheet`, `GET .../worksheet/stream` (SSE), `PATCH .../worksheet/locations/<location_id>`, clock/test_outcome/deficiency/reset sub-routes, `POST .../worksheet/reset_run` |
 | Runs | `GET .../run_details?month=`, `GET .../run_details/review?month=`, `GET .../run_details/review/locations/<location_id>?month=`, `GET .../run_details/locations/<location_id>?month=`, `POST .../runs/import_csv`, `POST .../runs/complete`, `POST .../runs/reopen` |
@@ -294,8 +294,8 @@ Script fallback for many routes: `python -m app.scripts.backfill_monthly_route_c
 
 | File | Role |
 |------|------|
-| `frontend/src/pages/MonthlyHomePage.tsx` | Monthlies dashboard (`/monthlies`) — KPI tiles (process queue, prep queue, open tickets placeholder) + status-colored Pacific **current-month** workweek calendar |
-| `frontend/src/pages/MonthlyRoutesPage.tsx` | Library (v2 API) |
+| `frontend/src/pages/MonthlyHomePage.tsx` | Monthlies dashboard (`/monthlies`) — header + tabbed shell (**Metrics**, **Routes**, **Tickets**) |
+| `frontend/src/pages/MonthlyRoutesPage.tsx` | Location directory at `/monthlies/locations` — paginated list (Status, Route, Address, Property Management, Key, Annual); no testing history grid (`include_history=false`). Testing history is on the location detail page. |
 | `frontend/src/pages/MonthlyRouteDetailPage.tsx` | Route detail; **Runs** card (year-scoped months Jan→current+1: stage, tested ratio, **Skip run** / **Upload CSV** when no run file, **Open paperwork** when a run exists); Paperwork entry button |
 | `frontend/src/pages/MonthlyRoutePaperworkPage.tsx` | Office Paperwork (prep / review / exact history) |
 | `frontend/src/pages/MonthlyRoutesMapPage.tsx` | Map view |
@@ -311,9 +311,9 @@ Script fallback for many routes: `python -m app.scripts.backfill_monthly_route_c
 
 Technician flow: `/tech` → `/tech/start` → `/tech/route/:routeId/worksheet/:monthIso`.
 
-**Routes overview calendar:** Lives on ``/monthlies`` (dashboard). Uses ``monthFirstIsoPacificToday()`` for the displayed month. Each route's cell date comes from ``effectiveRouteTestDayIso`` — nominal ``week_occurrence`` + ``weekday_iso``, bumped to the next same-weekday occurrence when that day is a BC richer stat holiday (e.g. 3rd Monday → 4th Monday when Victoria Day falls on the 3rd). ``scheduledRouteTestDayIso`` delegates to the same logic for portal/worksheet "route today" checks.
+**Routes overview calendar:** Lives on ``/monthlies`` (dashboard). Defaults to the Pacific **current month**; **Previous** / **Next** on the All routes toolbar loads other months via ``GET /api/monthly_routes/dashboard?month_date=YYYY-MM-01``. Each route's cell date comes from ``effectiveRouteTestDayIso`` — nominal ``week_occurrence`` + ``weekday_iso``, bumped to the next same-weekday occurrence when that day is a BC richer stat holiday (e.g. 3rd Monday → 4th Monday when Victoria Day falls on the 3rd). ``scheduledRouteTestDayIso`` delegates to the same logic for portal/worksheet "route today" checks.
 
-**Monthlies dashboard:** ``GET /api/monthly_routes/dashboard`` returns the same active route list plus ``current_month_run`` (``workflow_stage`` for the Pacific current month). The dashboard at ``/monthlies`` derives KPI counts client-side: routes in ``awaiting_office_review`` (to process), scheduled routes still in ``draft`` (to prepare), and a placeholder open-tickets tile. Calendar route cards are tone-colored: light green when field work is complete (`awaiting_office_review`, `ready_to_close`), dark green when reviewed and closed (`completed`, `skipped`), light blue prepared, dark blue field in progress, grey otherwise.
+**Monthlies dashboard:** ``GET /api/monthly_routes/dashboard`` returns the active route list plus ``current_month_run`` (``workflow_stage`` for the requested calendar month; optional ``month_date`` query, default Pacific current month). The dashboard at ``/monthlies`` derives KPI counts client-side from the **current month** payload: routes in ``awaiting_office_review`` (to process), scheduled routes still in ``draft`` (to prepare), and open tickets. Calendar route cards are tone-colored: light green when field work is complete (`awaiting_office_review`, `ready_to_close`), dark green when reviewed and closed (`completed`, `skipped`), light blue prepared, dark blue field in progress, grey otherwise.
 
 ---
 
@@ -638,7 +638,7 @@ Body: `{ "billing_status": "bill" | "do_not_bill" | "unset" }`. Allowed only aft
 | GET | `/api/monthly_routes/billing_board` |
 | PATCH | `/api/monthly_routes/billing_board/locations/<location_id>/quarter_billed` |
 
-Query: `anchor_month=YYYY-MM-01` **or** `year` + `quarter` (1–4). Optional: `q` (address/PMC; route-like tokens match TEST DAY ``-R{n}`` suffix only), `route` (``R{n}`` route number or full TEST DAY token), `page`, `page_size` (max 200), `not_billed_quarter`, `do_not_bill_any_month`, `non_empty_billing_notes`.
+Query: `anchor_month=YYYY-MM-01` **or** `year` + `quarter` (1–4). Optional: `q` (address/PMC; route-like tokens match TEST DAY ``-R{n}`` suffix only), `route` (``R{n}`` route number or full TEST DAY token), `page`, `page_size` (max 200), `not_billed_quarter`, `do_not_bill_any_month`, `unset_any_month`, `non_empty_billing_notes`.
 
 GET returns active library locations with, for each month in that **calendar quarter**: processor ``billing_status`` from ``monthly_route_test_history`` (defaults to ``unset`` when no row), and a rolled-up **test summary** from ``monthly_testing_site_month`` (worst outcome across testing sites at the address). Each month cell also includes ``field_work_ended`` (whether technicians have ended field work on that route-month run). The billing board UI shows ``—`` instead of the Unset badge while ``billing_status`` is ``unset``, ``field_work_ended`` is false, and the month is still the current or a future Pacific calendar month; past months always show Unset. Also ``quarter_billed`` from ``monthly_location_quarter_billed``.
 
