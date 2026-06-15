@@ -563,14 +563,12 @@ function UploadRunFromCsvModal({
               Close
             </Button>
             {monthIso ? (
-              <Button
-                as={Link}
+              <Link
                 to={`/monthlies/routes/${routeId}/paperwork?month=${encodeURIComponent(monthIso)}`}
-                variant="primary"
-                size="sm"
+                className="btn btn-primary btn-sm"
               >
                 View paperwork
-              </Button>
+              </Link>
             ) : null}
           </>
         ) : (
@@ -1174,27 +1172,21 @@ export default function MonthlyRouteDetailPage() {
           </div>
           <div className="monthly-location-hero-actions">
             {reviewPaperworkMonthIso ? (
-              <Button
-                as={Link}
+              <Link
                 to={`/monthlies/routes/${idNum}/paperwork?month=${encodeURIComponent(reviewPaperworkMonthIso)}`}
-                variant="success"
-                size="sm"
-                className="monthly-location-detail-action"
+                className="btn btn-success btn-sm monthly-location-detail-action"
               >
                 <i className="bi bi-clipboard-check" aria-hidden />
                 Review Run Paperwork
-              </Button>
+              </Link>
             ) : null}
-            <Button
-              as={Link}
+            <Link
               to={`/monthlies/routes/${idNum}/paperwork`}
-              variant="primary"
-              size="sm"
-              className="monthly-location-detail-action"
+              className="btn btn-primary btn-sm monthly-location-detail-action"
             >
               <i className="bi bi-folder2-open" aria-hidden />
               Paperwork
-            </Button>
+            </Link>
             {routeStopTotal > 0 ? (
               <Button
                 variant="outline-secondary"
@@ -1429,16 +1421,13 @@ export default function MonthlyRouteDetailPage() {
                         <td className="text-end">
                           <div className="monthly-route-detail-runs-actions">
                             {hasRunData && run ? (
-                              <Button
-                                as={Link}
+                              <Link
                                 to={`/monthlies/routes/${idNum}/paperwork?month=${encodeURIComponent(monthIso)}`}
-                                variant="outline-primary"
-                                size="sm"
-                                className="monthly-location-detail-action"
+                                className="btn btn-outline-primary btn-sm monthly-location-detail-action"
                               >
                                 <i className="bi bi-folder2-open" aria-hidden />
                                 Open paperwork
-                              </Button>
+                              </Link>
                             ) : null}
                             {(!hasRunData || (run != null && runMonthIsOfficeSkippable(run))) ? (
                               <Button

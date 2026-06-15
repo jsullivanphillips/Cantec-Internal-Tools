@@ -103,8 +103,8 @@ export default function OfficeSkipRunModal({
           variant="warning"
           disabled={submitting || !monthIso || !canSubmit}
           onClick={() => {
-            if (!canSubmit || category === '') return
-            onConfirm({ skip_category: category, skip_note: note.trim() })
+            if (!canSubmit) return
+            onConfirm({ skip_category: category as PortalSkipCategory, skip_note: note.trim() })
           }}
         >
           {submitting ? (
