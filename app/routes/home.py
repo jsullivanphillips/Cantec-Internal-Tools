@@ -115,7 +115,7 @@ def home_needs_attention():
                 "bad",
                 "Invoicing queue is high",
                 f"{count} completed jobs ready to invoice",
-                url_for("processing_attack.processing_attack"),
+                url_for("monday_meeting.monday_meeting_page"),
                 badge=count,
             )
         elif count > 20:
@@ -123,7 +123,7 @@ def home_needs_attention():
                 "warn",
                 "Invoicing queue needs attention",
                 f"{count} completed jobs ready to invoice",
-                url_for("processing_attack.processing_attack"),
+                url_for("monday_meeting.monday_meeting_page"),
                 badge=count,
             )
     except Exception:
@@ -139,7 +139,7 @@ def home_needs_attention():
                 "bad",
                 "Jobs to be processed are high",
                 f"{count} jobs are waiting to be marked complete",
-                url_for("processing_attack.processing_attack"),
+                url_for("monday_meeting.monday_meeting_page"),
                 badge=count,
             )
         elif count > 40:
@@ -147,7 +147,7 @@ def home_needs_attention():
                 "warn",
                 "Jobs to be processed are trending high",
                 f"{count} jobs are waiting to be marked complete",
-                url_for("processing_attack.processing_attack"),
+                url_for("monday_meeting.monday_meeting_page"),
                 badge=count,
             )
     except Exception:
@@ -165,7 +165,7 @@ def home_needs_attention():
                 "bad",
                 "Forward schedule coverage is low",
                 f"{forward_num_weeks} weeks are booked",
-                url_for("scheduling_attack.scheduling_attack"),
+                url_for("monday_meeting.monday_meeting_page", tab="scheduling"),
                 badge=f"{forward_num_weeks}",
             )
         elif forward_raw is not None and forward_num_weeks < 7:
@@ -173,7 +173,7 @@ def home_needs_attention():
                 "warn",
                 "Forward schedule coverage is trending low",
                 f"{forward_num_weeks} weeks are booked",
-                url_for("scheduling_attack.scheduling_attack"),
+                url_for("monday_meeting.monday_meeting_page", tab="scheduling"),
                 badge=f"{forward_num_weeks}",
             )
     except Exception:
@@ -190,7 +190,7 @@ def home_needs_attention():
                 "bad",
                 "High number of Limbo Jobs",
                 f"{num_limbo_jobs} Limbo Jobs",
-                url_for("processing_attack.processing_attack", tab="limbo"),
+                url_for("limbo_job_tracker.limbo_job_tracker"),
                 badge=num_limbo_jobs,  # ✅ fixed badge
             )
         elif num_limbo_jobs > 10:
@@ -198,7 +198,7 @@ def home_needs_attention():
                 "warn",
                 "Number of Limbo Jobs is trending up",
                 f"{num_limbo_jobs} Limbo Jobs",
-                url_for("processing_attack.processing_attack", tab="limbo"),
+                url_for("limbo_job_tracker.limbo_job_tracker"),
                 badge=num_limbo_jobs,  # ✅ fixed badge
             )
     except Exception:

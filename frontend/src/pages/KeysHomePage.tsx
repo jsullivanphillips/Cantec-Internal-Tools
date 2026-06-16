@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { apiJson, isAbortError } from '../lib/apiClient'
+import { apiFetch, apiJson, isAbortError } from '../lib/apiClient'
 import { BrowserMultiFormatReader } from '@zxing/browser'
 import { Button, Card, Form, ListGroup, Modal, Spinner } from 'react-bootstrap'
 
@@ -58,8 +58,11 @@ function signedOutDaysLabel(value?: string | null): string {
   return `${diffDays} days ago`
 }
 
+const KEYS_ADMIN_PATH = '/monthlies/keys'
+
 export default function KeysHomePage() {
   const nav = useNavigate()
+  const [authenticated, setAuthenticated] = useState<boolean | null>(null)
   const [q, setQ] = useState('')
   const [hits, setHits] = useState<Hit[]>([])
   const [loading, setLoading] = useState(false)
@@ -75,6 +78,29 @@ export default function KeysHomePage() {
   const hasNavigatedRef = useRef(false)
   /** Trimmed query we last finished a request for (success or error). */
   const [searchedFor, setSearchedFor] = useState('')
+
+  useEffect(() => {
+    const controller = new AbortController()
+    let cancelled = false
+    void (async () => {
+      try {
+        const r = await apiFetch('/api/auth/me', { signal: controller.signal })
+        const d = await r.json()
+        if (!cancelled) setAuthenticated(!!d.authenticated)
+      } catch (error) {
+        if (isAbortError(error)) return
+        if (!cancelled) setAuthenticated(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
+  }, [])
+
+  const openKeysAdmin = useCallback(() => {
+    nav(KEYS_ADMIN_PATH)
+  }, [nav])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -203,10 +229,25 @@ export default function KeysHomePage() {
     <div className="container-fluid py-3 px-2 keys-page">
       <Card className="app-surface-card mb-3">
         <Card.Body className="p-3 p-md-4">
-          <h1 className="processing-page-title mb-1">Keys</h1>
-          <p className="processing-page-subtitle mb-0">
-            Search keys, check who has them signed out, and quickly open key details.
-          </p>
+          <div className="d-flex align-items-start justify-content-between gap-3">
+            <div className="min-w-0">
+              <h1 className="processing-page-title mb-1">Keys</h1>
+              <p className="processing-page-subtitle mb-0">
+                Search keys, check who has them signed out, and quickly open key details.
+              </p>
+            </div>
+            {authenticated ? (
+              <Button
+                type="button"
+                variant="outline-secondary"
+                size="sm"
+                className="flex-shrink-0"
+                onClick={openKeysAdmin}
+              >
+                Admin
+              </Button>
+            ) : null}
+          </div>
         </Card.Body>
       </Card>
 

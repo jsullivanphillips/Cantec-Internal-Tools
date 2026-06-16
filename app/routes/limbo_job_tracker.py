@@ -5,8 +5,9 @@ import requests
 
 limbo_job_tracker_bp = Blueprint('limbo_job_tracker', __name__)
 api_session = requests.Session()
-from flask import redirect, url_for
 from app.response_cache import cached_json_response
+from app.spa import send_spa_index
+from flask import redirect, url_for
 
 SERVICE_TRADE_API_BASE = "https://api.servicetrade.com/api"
 SERVICE_TRADE_JOB_BASE = "https://app.servicetrade.com/jobs"
@@ -21,7 +22,7 @@ SCHED_APPT_SCHED_JOB_PARAMS = {
     "jobStatus": "scheduled"
 }
 
-# Main Route — legacy URL; Limbo UI lives under Jobs Backlog (SPA tab).
+# Main Route — Limbo jobs SPA page.
 @limbo_job_tracker_bp.route('/limbo_job_tracker', methods=['GET'])
 def limbo_job_tracker():
     api_session = requests.Session()
@@ -36,7 +37,7 @@ def limbo_job_tracker():
         auth_response.raise_for_status()
     except Exception:
         return redirect(url_for("auth.login"))
-    return redirect(url_for("processing_attack.processing_attack", tab="limbo"))
+    return send_spa_index()
 
 
 # Route for getting list of limbo jobs

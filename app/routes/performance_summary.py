@@ -1,5 +1,5 @@
 from flask import Blueprint, session, jsonify, request
-from app.db_models import db, Job, ClockEvent, Deficiency, Location, Quote, QuoteItem, InvoiceItem, JobItemTechnician, QuoteDeficiencyLink
+from app.db_models import db, Job, ClockEvent, Deficiency, Location, Quote, QuoteItem, InvoiceItem, JobItemTechnician, QuoteDeficiencyLink, DeficiencyServiceEligibility
 from collections import defaultdict
 from sqlalchemy.exc import IntegrityError
 from tqdm import tqdm
@@ -7,7 +7,7 @@ import requests
 import json
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
-from sqlalchemy import func, distinct, case, and_
+from sqlalchemy import func, distinct, case, and_, or_
 from sqlalchemy.orm import joinedload
 from sqlalchemy.dialects.postgresql import insert
 from flask import redirect, url_for
@@ -59,22 +59,35 @@ api_session = requests.Session()
 
 SERVICE_TRADE_API_BASE = "https://api.servicetrade.com/api"
 
-@performance_summary_bp.route('/performance_summary', methods=['GET'])
-def performance_summary():
-    # Serve the HTML page
-    api_session = requests.Session()
+def _spa_auth_or_login():
+    auth_session = requests.Session()
     auth_url = "https://api.servicetrade.com/api/auth"
     payload = {
         "username": session.get('username'),
         "password": session.get('password')
     }
-
     try:
-        auth_response = api_session.post(auth_url, json=payload)
+        auth_response = auth_session.post(auth_url, json=payload)
         auth_response.raise_for_status()
-    except Exception as e:
-        return redirect(url_for("auth.login"))  # or whatever your login route is
+    except Exception:
+        return redirect(url_for("auth.login"))
+    return None
+
+
+@performance_summary_bp.route('/technician_meeting', methods=['GET'])
+def technician_meeting():
+    redir = _spa_auth_or_login()
+    if redir:
+        return redir
     return send_spa_index()
+
+
+@performance_summary_bp.route('/performance_summary', methods=['GET'])
+def performance_summary():
+    redir = _spa_auth_or_login()
+    if redir:
+        return redir
+    return redirect('/technician_meeting')
 
 def _parse_date_param(value: str | None, end_of_day: bool) -> datetime | None:
     """
@@ -543,53 +556,154 @@ def get_technician_metrics(window_start, window_end):
     }
 
 
-def get_deficiency_insights(start_date, end_date):
+# ServiceTrade job types tied to scheduling (excluded from Monday Meeting service metrics).
+INSPECTION_SCHEDULING_JOB_TYPES = ("inspection",)
+
+
+def quote_excludes_inspection_job():
+    """Keep quotes that are not linked to an inspection scheduling job."""
+    return or_(
+        Quote.job_id.is_(None),
+        ~func.lower(func.coalesce(Job.job_type, "")).in_(INSPECTION_SCHEDULING_JOB_TYPES),
+    )
+
+
+def deficiency_service_eligible_filter():
+    """Include deficiencies with no classification row or eligible=True."""
+    return or_(
+        DeficiencyServiceEligibility.deficiency_id.is_(None),
+        DeficiencyServiceEligibility.eligible.is_(True),
+    )
+
+
+def _join_deficiency_service_eligibility(query):
+    return query.outerjoin(
+        DeficiencyServiceEligibility,
+        Deficiency.deficiency_id == DeficiencyServiceEligibility.deficiency_id,
+    )
+
+
+def get_deficiency_insights(
+    start_date,
+    end_date,
+    *,
+    exclude_inspection_jobs: bool = False,
+    exclude_non_quoteable: bool = False,
+):
     base_filter = and_(
         Deficiency.deficiency_created_on >= start_date,
         Deficiency.deficiency_created_on <= end_date
     )
 
-    # Total deficiencies created
-    total_deficiencies = db.session.query(Deficiency) \
-        .filter(base_filter) \
-        .count()
+    total_query = db.session.query(Deficiency).filter(base_filter)
+    if exclude_non_quoteable:
+        total_query = _join_deficiency_service_eligibility(total_query).filter(
+            deficiency_service_eligible_filter()
+        )
+    total_deficiencies = total_query.count()
 
     # Avoid division-by-zero
     def pct(value):
         return round((value / total_deficiencies) * 100, 2) if total_deficiencies else 0
 
+    quote_inspection_filter = (
+        quote_excludes_inspection_job() if exclude_inspection_jobs else True
+    )
+    service_eligible_filter = (
+        deficiency_service_eligible_filter() if exclude_non_quoteable else True
+    )
+
     # All linked deficiencies (distinct)
-    quoted_deficiencies = db.session.query(QuoteDeficiencyLink.deficiency_id) \
-        .join(Deficiency, QuoteDeficiencyLink.deficiency_id == Deficiency.deficiency_id) \
-        .filter(base_filter) \
-        .distinct() \
-        .count()
+    quoted_deficiencies_query = (
+        db.session.query(QuoteDeficiencyLink.deficiency_id)
+        .join(Deficiency, QuoteDeficiencyLink.deficiency_id == Deficiency.deficiency_id)
+        .filter(base_filter)
+    )
+    if exclude_non_quoteable:
+        quoted_deficiencies_query = _join_deficiency_service_eligibility(
+            quoted_deficiencies_query
+        ).filter(service_eligible_filter)
+    if exclude_inspection_jobs:
+        quoted_deficiencies_query = (
+            quoted_deficiencies_query
+            .join(Quote, Quote.quote_id == QuoteDeficiencyLink.quote_id)
+            .outerjoin(Job, Quote.job_id == Job.job_id)
+            .filter(quote_inspection_filter)
+        )
+    quoted_deficiencies = quoted_deficiencies_query.distinct().count()
 
     # Quoted + job created
-    quoted_with_job = db.session.query(QuoteDeficiencyLink.deficiency_id) \
-        .join(Quote, Quote.quote_id == QuoteDeficiencyLink.quote_id) \
-        .join(Deficiency, QuoteDeficiencyLink.deficiency_id == Deficiency.deficiency_id) \
-        .filter(
-            base_filter,
-            Quote.job_created.is_(True)
-        ) \
-        .distinct() \
-        .count()
+    quoted_with_job_query = (
+        db.session.query(QuoteDeficiencyLink.deficiency_id)
+        .join(Quote, Quote.quote_id == QuoteDeficiencyLink.quote_id)
+        .join(Deficiency, QuoteDeficiencyLink.deficiency_id == Deficiency.deficiency_id)
+        .filter(base_filter, Quote.job_created.is_(True))
+    )
+    if exclude_non_quoteable:
+        quoted_with_job_query = _join_deficiency_service_eligibility(
+            quoted_with_job_query
+        ).filter(service_eligible_filter)
+    if exclude_inspection_jobs:
+        quoted_with_job_query = (
+            quoted_with_job_query
+            .outerjoin(Job, Quote.job_id == Job.job_id)
+            .filter(quote_inspection_filter)
+        )
+    quoted_with_job = quoted_with_job_query.distinct().count()
 
     # Quoted + job completed
-    quoted_with_completed_job = db.session.query(QuoteDeficiencyLink.deficiency_id) \
-        .join(Quote, Quote.quote_id == QuoteDeficiencyLink.quote_id) \
-        .join(Job, Quote.job_id == Job.job_id) \
-        .join(Deficiency, QuoteDeficiencyLink.deficiency_id == Deficiency.deficiency_id) \
+    quoted_with_completed_job_query = (
+        db.session.query(QuoteDeficiencyLink.deficiency_id)
+        .join(Quote, Quote.quote_id == QuoteDeficiencyLink.quote_id)
+        .join(Job, Quote.job_id == Job.job_id)
+        .join(Deficiency, QuoteDeficiencyLink.deficiency_id == Deficiency.deficiency_id)
         .filter(
             base_filter,
             Quote.job_created.is_(True),
-            Job.completed_on.isnot(None)
-        ) \
-        .distinct() \
-        .count()
+            Job.completed_on.isnot(None),
+        )
+    )
+    if exclude_non_quoteable:
+        quoted_with_completed_job_query = _join_deficiency_service_eligibility(
+            quoted_with_completed_job_query
+        ).filter(service_eligible_filter)
+    if exclude_inspection_jobs:
+        quoted_with_completed_job_query = quoted_with_completed_job_query.filter(
+            quote_inspection_filter
+        )
+    quoted_with_completed_job = quoted_with_completed_job_query.distinct().count()
 
-    return {
+    excluded_keyword = 0
+    excluded_stale_cluster = 0
+    if exclude_non_quoteable:
+        excluded_keyword = (
+            db.session.query(Deficiency)
+            .join(
+                DeficiencyServiceEligibility,
+                Deficiency.deficiency_id == DeficiencyServiceEligibility.deficiency_id,
+            )
+            .filter(
+                base_filter,
+                DeficiencyServiceEligibility.eligible.is_(False),
+                DeficiencyServiceEligibility.reason == "keyword",
+            )
+            .count()
+        )
+        excluded_stale_cluster = (
+            db.session.query(Deficiency)
+            .join(
+                DeficiencyServiceEligibility,
+                Deficiency.deficiency_id == DeficiencyServiceEligibility.deficiency_id,
+            )
+            .filter(
+                base_filter,
+                DeficiencyServiceEligibility.eligible.is_(False),
+                DeficiencyServiceEligibility.reason == "stale_cluster",
+            )
+            .count()
+        )
+
+    result = {
         "total_deficiencies": total_deficiencies,
         "quoted_deficiencies": quoted_deficiencies,
         "quoted_with_job": quoted_with_job,
@@ -602,8 +716,57 @@ def get_deficiency_insights(start_date, end_date):
             "job_completed_pct": pct(quoted_with_completed_job)
         }
     }
+    if exclude_non_quoteable:
+        result["excluded_non_quoteable"] = excluded_keyword + excluded_stale_cluster
+        result["excluded_keyword"] = excluded_keyword
+        result["excluded_stale_cluster"] = excluded_stale_cluster
+    return result
 
 
+SERVICE_TRADE_DEFICIENCY_URL = "https://app.servicetrade.com/deficiency/details/id"
+
+
+def _format_deficiency_created_on(dt) -> str | None:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(ZoneInfo("America/Vancouver")).date().isoformat()
+
+
+def get_excluded_non_quoteable_deficiencies(start_date, end_date) -> list[dict]:
+    """Deficiencies excluded from Monday Meeting service KPIs in the date window."""
+    base_filter = and_(
+        Deficiency.deficiency_created_on >= start_date,
+        Deficiency.deficiency_created_on <= end_date,
+    )
+    rows = (
+        db.session.query(Deficiency, DeficiencyServiceEligibility)
+        .join(
+            DeficiencyServiceEligibility,
+            Deficiency.deficiency_id == DeficiencyServiceEligibility.deficiency_id,
+        )
+        .filter(base_filter, DeficiencyServiceEligibility.eligible.is_(False))
+        .order_by(Deficiency.deficiency_created_on.desc())
+        .all()
+    )
+    out: list[dict] = []
+    for deficiency, eligibility in rows:
+        out.append(
+            {
+                "deficiency_id": int(deficiency.deficiency_id),
+                "description": deficiency.description,
+                "service_line": deficiency.service_line,
+                "reported_by": deficiency.reported_by,
+                "deficiency_created_on": _format_deficiency_created_on(
+                    deficiency.deficiency_created_on
+                ),
+                "reason": eligibility.reason,
+                "detail": eligibility.detail,
+                "deficiency_url": f"{SERVICE_TRADE_DEFICIENCY_URL}/{deficiency.deficiency_id}",
+            }
+        )
+    return out
 
 
 def get_deficiencies_by_service_line(window_start, window_end):
@@ -800,6 +963,63 @@ def call_service_trade_api(endpoint, params):
     except requests.RequestException as e:
         print(f"[ServiceTrade API Error] Endpoint: {endpoint} | Params: {params} | Error: {str(e)}")
         return None
+
+
+def _parse_job_scheduled_date(job: dict) -> datetime | None:
+    raw = job.get("scheduledDate") or job.get("scheduledOn")
+    if not raw:
+        return None
+    return datetime.fromtimestamp(raw, tz=timezone.utc)
+
+
+def upsert_job_schedule_from_servicetrade(job_payload: dict) -> Job | None:
+    """Upsert minimal job fields needed for quote SLA metrics (always updates schedule)."""
+    job_id = job_payload.get("id")
+    if not job_id:
+        return None
+
+    scheduled_date = _parse_job_scheduled_date(job_payload)
+    created_raw = job_payload.get("created")
+    created_on_st = datetime.fromtimestamp(created_raw, tz=timezone.utc) if created_raw else None
+    completed_raw = job_payload.get("completedOn")
+    completed_on = datetime.fromtimestamp(completed_raw, tz=timezone.utc) if completed_raw else None
+
+    address = job_payload.get("location", {}).get("address", {}).get("street", "Unknown")
+    customer_name = job_payload.get("customer", {}).get("name", "Unknown")
+    job_type = job_payload.get("type")
+    job_status = job_payload.get("displayStatus") or job_payload.get("status") or "Unknown"
+    location_id = job_payload.get("location", {}).get("id")
+
+    existing = Job.query.filter_by(job_id=job_id).first()
+    if existing:
+        existing.job_type = job_type
+        existing.address = address
+        existing.customer_name = customer_name
+        existing.job_status = job_status
+        existing.scheduled_date = scheduled_date
+        existing.completed_on = completed_on
+        if created_on_st:
+            existing.created_on_st = created_on_st
+        if location_id:
+            existing.location_id = location_id
+        db_job = existing
+    else:
+        db_job = Job(
+            job_id=job_id,
+            location_id=location_id,
+            job_type=job_type,
+            address=address,
+            customer_name=customer_name,
+            job_status=job_status,
+            scheduled_date=scheduled_date,
+            completed_on=completed_on,
+            total_on_site_hours=0,
+            revenue=0,
+            created_on_st=created_on_st,
+        )
+        db.session.add(db_job)
+
+    return db_job
 
 
 def fetch_invoice_and_clock(job, overwrite=False):
@@ -1114,6 +1334,19 @@ def update_deficiencies(start_date=None, end_date=None):
     db.session.commit()
     tqdm.write("✅ All deficiencies processed and saved.")
 
+    try:
+        from app.deficiency.service_eligibility import classify_all_deficiencies
+
+        summary = classify_all_deficiencies()
+        tqdm.write(
+            "📋 Service eligibility: "
+            f"{summary['eligible']} eligible, "
+            f"{summary['excluded_keyword']} keyword, "
+            f"{summary['excluded_stale_cluster']} stale cluster"
+        )
+    except Exception as e:
+        tqdm.write(f"[WARNING] Service eligibility classification failed: {e}")
+
 
 def update_deficiencies_attachments(start_date=None, end_date=None):
     authenticate()
@@ -1325,6 +1558,30 @@ def get_quotes_with_params(params, desc="Fetching quotes"):
 
     return quotes 
 
+def _parse_st_unix_timestamp(value) -> datetime | None:
+    if value is None:
+        return None
+    try:
+        if isinstance(value, (int, float)):
+            return datetime.fromtimestamp(value, tz=timezone.utc)
+        if isinstance(value, str) and value.isdigit():
+            return datetime.fromtimestamp(int(value), tz=timezone.utc)
+    except (OSError, OverflowError, ValueError):
+        return None
+    return None
+
+
+def extract_quote_accepted_on(q: dict) -> datetime | None:
+    """Return acceptance timestamp from a ServiceTrade quote payload when accepted."""
+    if q.get("status") != "accepted":
+        return None
+    for key in ("latestAccepted", "accepted", "acceptedOn", "statusChanged", "updated"):
+        parsed = _parse_st_unix_timestamp(q.get(key))
+        if parsed is not None:
+            return parsed
+    return None
+
+
 def query_quote_by_id(quote_id):
     authenticate()
     endpoint = f"{SERVICE_TRADE_API_BASE}/quote/{quote_id}"
@@ -1418,6 +1675,17 @@ def update_quotes(start_date=None, end_date=None):
 
                 quote.job_created = len(q.get("jobs", [])) > 0
                 quote.job_id = q["jobs"][0]["id"] if quote.job_created else None
+                quote.quote_accepted_on = extract_quote_accepted_on(q)
+
+                if quote.job_id:
+                    job_resp = call_service_trade_api(
+                        f"{SERVICE_TRADE_API_BASE}/job/{quote.job_id}",
+                        params={},
+                    )
+                    if job_resp:
+                        job_payload = job_resp.json().get("data", {})
+                        if job_payload:
+                            upsert_job_schedule_from_servicetrade(job_payload)
 
                 db.session.add(quote)
                 db.session.flush()  # ensures quote.quote_id exists (DB PK)

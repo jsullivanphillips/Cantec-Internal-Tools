@@ -1,0 +1,657 @@
+2026-06-16 11:37:25,184 - INFO - Logging setup complete
+2026-06-16 11:37:26,634 - INFO - Logging setup complete
+2026-06-16 11:57:05,568 - INFO - Logging setup complete
+2026-06-16 11:57:08,255 - INFO - Logging setup complete
+2026-06-16 11:57:22,964 - INFO - Logging setup complete
+2026-06-16 12:20:16,784 - INFO - Logging setup complete
+2026-06-16 12:20:21,929 - INFO - Logging setup complete
+2026-06-16 12:20:23,279 - INFO - Logging setup complete
+2026-06-16 12:23:05,886 - INFO - Logging setup complete
+2026-06-16 12:37:38,864 - INFO - Logging setup complete
+2026-06-16 12:37:50,030 - INFO - Logging setup complete
+2026-06-16 12:38:39,133 - INFO - Logging setup complete
+2026-06-16 12:40:22,480 - INFO - Logging setup complete
+2026-06-16 12:50:01,602 - INFO - Logging setup complete
+2026-06-16 12:50:05,828 - INFO - Logging setup complete
+2026-06-16 12:53:11,516 - ERROR - refresh_daily_snapshot_if_stale failed
+Traceback (most recent call last):
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 146, in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 3298, in raw_connection
+    return self.pool.connect()
+           ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 449, in connect
+    return _ConnectionFairy._checkout(self)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 1264, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 713, in checkout
+    rec = pool._do_get()
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\impl.py", line 179, in _do_get
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 146, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\impl.py", line 177, in _do_get
+    return self._create_connection()
+           ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 390, in _create_connection
+    return _ConnectionRecord(self)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 675, in __init__
+    self.__connect()
+    ~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 901, in __connect
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 146, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 897, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\create.py", line 646, in connect
+    return dialect.connect(*cargs, **cparams)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\default.py", line 625, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\psycopg2\__init__.py", line 135, in connect
+    conn = _connect(dsn, connection_factory=connection_factory, **kwasync)
+psycopg2.OperationalError: connection to server at "cb5ajfjosdpmil.cluster-czrs8kj4isg7.us-east-1.rds.amazonaws.com" (34.202.178.206), port 5432 failed: FATAL:  too many connections for role "u557kv77619gk7"
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\app\routes\processing_attack.py", line 460, in refresh_daily_snapshot_if_stale
+    result = _refresh_processing_status_daily_if_stale(max_age_minutes=15)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\app\routes\processing_attack.py", line 302, in _refresh_processing_status_daily_if_stale
+    record = ProcessingStatusDaily.query.filter_by(snapshot_date=snapshot_date).first()
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\orm\query.py", line 2759, in first
+    return self.limit(1)._iter().first()  # type: ignore
+           ~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\orm\query.py", line 2858, in _iter
+    result: Union[ScalarResult[_T], Result[_T]] = self.session.execute(
+                                                  ~~~~~~~~~~~~~~~~~~~~^
+        statement,
+        ^^^^^^^^^^
+        params,
+        ^^^^^^^
+        execution_options={"_sa_orm_load_options": self.load_options},
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2365, in execute
+    return self._execute_internal(
+           ~~~~~~~~~~~~~~~~~~~~~~^
+        statement,
+        ^^^^^^^^^^
+    ...<4 lines>...
+        _add_event=_add_event,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2241, in _execute_internal
+    conn = self._connection_for_bind(bind)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2110, in _connection_for_bind
+    return trans._connection_for_bind(engine, execution_options)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<string>", line 2, in _connection_for_bind
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\orm\state_changes.py", line 139, in _go
+    ret_value = fn(self, *arg, **kw)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\orm\session.py", line 1189, in _connection_for_bind
+    conn = bind.connect()
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 3274, in connect
+    return self._connection_cls(self)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 148, in __init__
+    Connection._handle_dbapi_exception_noconnection(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        err, dialect, engine
+        ^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2439, in _handle_dbapi_exception_noconnection
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 146, in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 3298, in raw_connection
+    return self.pool.connect()
+           ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 449, in connect
+    return _ConnectionFairy._checkout(self)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 1264, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 713, in checkout
+    rec = pool._do_get()
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\impl.py", line 179, in _do_get
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 146, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\impl.py", line 177, in _do_get
+    return self._create_connection()
+           ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 390, in _create_connection
+    return _ConnectionRecord(self)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 675, in __init__
+    self.__connect()
+    ~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 901, in __connect
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 146, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 897, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\create.py", line 646, in connect
+    return dialect.connect(*cargs, **cparams)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\default.py", line 625, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\psycopg2\__init__.py", line 135, in connect
+    conn = _connect(dsn, connection_factory=connection_factory, **kwasync)
+sqlalchemy.exc.OperationalError: (psycopg2.OperationalError) connection to server at "cb5ajfjosdpmil.cluster-czrs8kj4isg7.us-east-1.rds.amazonaws.com" (34.202.178.206), port 5432 failed: FATAL:  too many connections for role "u557kv77619gk7"
+
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+2026-06-16 12:53:13,109 - ERROR - refresh_daily_snapshot_if_stale failed
+Traceback (most recent call last):
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 146, in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 3298, in raw_connection
+    return self.pool.connect()
+           ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 449, in connect
+    return _ConnectionFairy._checkout(self)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 1264, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 713, in checkout
+    rec = pool._do_get()
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\impl.py", line 179, in _do_get
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 146, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\impl.py", line 177, in _do_get
+    return self._create_connection()
+           ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 390, in _create_connection
+    return _ConnectionRecord(self)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 675, in __init__
+    self.__connect()
+    ~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 901, in __connect
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 146, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 897, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\create.py", line 646, in connect
+    return dialect.connect(*cargs, **cparams)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\default.py", line 625, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\psycopg2\__init__.py", line 135, in connect
+    conn = _connect(dsn, connection_factory=connection_factory, **kwasync)
+psycopg2.OperationalError: connection to server at "cb5ajfjosdpmil.cluster-czrs8kj4isg7.us-east-1.rds.amazonaws.com" (34.202.178.206), port 5432 failed: FATAL:  too many connections for role "u557kv77619gk7"
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\app\routes\processing_attack.py", line 460, in refresh_daily_snapshot_if_stale
+    result = _refresh_processing_status_daily_if_stale(max_age_minutes=15)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\app\routes\processing_attack.py", line 302, in _refresh_processing_status_daily_if_stale
+    record = ProcessingStatusDaily.query.filter_by(snapshot_date=snapshot_date).first()
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\orm\query.py", line 2759, in first
+    return self.limit(1)._iter().first()  # type: ignore
+           ~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\orm\query.py", line 2858, in _iter
+    result: Union[ScalarResult[_T], Result[_T]] = self.session.execute(
+                                                  ~~~~~~~~~~~~~~~~~~~~^
+        statement,
+        ^^^^^^^^^^
+        params,
+        ^^^^^^^
+        execution_options={"_sa_orm_load_options": self.load_options},
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2365, in execute
+    return self._execute_internal(
+           ~~~~~~~~~~~~~~~~~~~~~~^
+        statement,
+        ^^^^^^^^^^
+    ...<4 lines>...
+        _add_event=_add_event,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2241, in _execute_internal
+    conn = self._connection_for_bind(bind)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2110, in _connection_for_bind
+    return trans._connection_for_bind(engine, execution_options)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<string>", line 2, in _connection_for_bind
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\orm\state_changes.py", line 139, in _go
+    ret_value = fn(self, *arg, **kw)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\orm\session.py", line 1189, in _connection_for_bind
+    conn = bind.connect()
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 3274, in connect
+    return self._connection_cls(self)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 148, in __init__
+    Connection._handle_dbapi_exception_noconnection(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        err, dialect, engine
+        ^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2439, in _handle_dbapi_exception_noconnection
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 146, in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 3298, in raw_connection
+    return self.pool.connect()
+           ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 449, in connect
+    return _ConnectionFairy._checkout(self)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 1264, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 713, in checkout
+    rec = pool._do_get()
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\impl.py", line 179, in _do_get
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 146, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\impl.py", line 177, in _do_get
+    return self._create_connection()
+           ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 390, in _create_connection
+    return _ConnectionRecord(self)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 675, in __init__
+    self.__connect()
+    ~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 901, in __connect
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 146, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 897, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\create.py", line 646, in connect
+    return dialect.connect(*cargs, **cparams)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\default.py", line 625, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\psycopg2\__init__.py", line 135, in connect
+    conn = _connect(dsn, connection_factory=connection_factory, **kwasync)
+sqlalchemy.exc.OperationalError: (psycopg2.OperationalError) connection to server at "cb5ajfjosdpmil.cluster-czrs8kj4isg7.us-east-1.rds.amazonaws.com" (34.202.178.206), port 5432 failed: FATAL:  too many connections for role "u557kv77619gk7"
+
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+2026-06-16 12:53:13,194 - ERROR - refresh_daily_snapshot_if_stale failed
+Traceback (most recent call last):
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 146, in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 3298, in raw_connection
+    return self.pool.connect()
+           ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 449, in connect
+    return _ConnectionFairy._checkout(self)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 1264, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 713, in checkout
+    rec = pool._do_get()
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\impl.py", line 179, in _do_get
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 146, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\impl.py", line 177, in _do_get
+    return self._create_connection()
+           ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 390, in _create_connection
+    return _ConnectionRecord(self)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 675, in __init__
+    self.__connect()
+    ~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 901, in __connect
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 146, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 897, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\create.py", line 646, in connect
+    return dialect.connect(*cargs, **cparams)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\default.py", line 625, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\psycopg2\__init__.py", line 135, in connect
+    conn = _connect(dsn, connection_factory=connection_factory, **kwasync)
+psycopg2.OperationalError: connection to server at "cb5ajfjosdpmil.cluster-czrs8kj4isg7.us-east-1.rds.amazonaws.com" (34.202.178.206), port 5432 failed: FATAL:  too many connections for role "u557kv77619gk7"
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\app\routes\processing_attack.py", line 460, in refresh_daily_snapshot_if_stale
+    result = _refresh_processing_status_daily_if_stale(max_age_minutes=15)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\app\routes\processing_attack.py", line 302, in _refresh_processing_status_daily_if_stale
+    record = ProcessingStatusDaily.query.filter_by(snapshot_date=snapshot_date).first()
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\orm\query.py", line 2759, in first
+    return self.limit(1)._iter().first()  # type: ignore
+           ~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\orm\query.py", line 2858, in _iter
+    result: Union[ScalarResult[_T], Result[_T]] = self.session.execute(
+                                                  ~~~~~~~~~~~~~~~~~~~~^
+        statement,
+        ^^^^^^^^^^
+        params,
+        ^^^^^^^
+        execution_options={"_sa_orm_load_options": self.load_options},
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2365, in execute
+    return self._execute_internal(
+           ~~~~~~~~~~~~~~~~~~~~~~^
+        statement,
+        ^^^^^^^^^^
+    ...<4 lines>...
+        _add_event=_add_event,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2241, in _execute_internal
+    conn = self._connection_for_bind(bind)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2110, in _connection_for_bind
+    return trans._connection_for_bind(engine, execution_options)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<string>", line 2, in _connection_for_bind
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\orm\state_changes.py", line 139, in _go
+    ret_value = fn(self, *arg, **kw)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\orm\session.py", line 1189, in _connection_for_bind
+    conn = bind.connect()
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 3274, in connect
+    return self._connection_cls(self)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 148, in __init__
+    Connection._handle_dbapi_exception_noconnection(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        err, dialect, engine
+        ^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2439, in _handle_dbapi_exception_noconnection
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 146, in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 3298, in raw_connection
+    return self.pool.connect()
+           ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 449, in connect
+    return _ConnectionFairy._checkout(self)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 1264, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 713, in checkout
+    rec = pool._do_get()
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\impl.py", line 179, in _do_get
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 146, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\impl.py", line 177, in _do_get
+    return self._create_connection()
+           ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 390, in _create_connection
+    return _ConnectionRecord(self)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 675, in __init__
+    self.__connect()
+    ~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 901, in __connect
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 146, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 897, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\create.py", line 646, in connect
+    return dialect.connect(*cargs, **cparams)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\default.py", line 625, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\psycopg2\__init__.py", line 135, in connect
+    conn = _connect(dsn, connection_factory=connection_factory, **kwasync)
+sqlalchemy.exc.OperationalError: (psycopg2.OperationalError) connection to server at "cb5ajfjosdpmil.cluster-czrs8kj4isg7.us-east-1.rds.amazonaws.com" (34.202.178.206), port 5432 failed: FATAL:  too many connections for role "u557kv77619gk7"
+
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+2026-06-16 12:53:13,289 - ERROR - refresh_daily_snapshot_if_stale failed
+Traceback (most recent call last):
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 146, in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 3298, in raw_connection
+    return self.pool.connect()
+           ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 449, in connect
+    return _ConnectionFairy._checkout(self)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 1264, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 713, in checkout
+    rec = pool._do_get()
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\impl.py", line 179, in _do_get
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 146, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\impl.py", line 177, in _do_get
+    return self._create_connection()
+           ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 390, in _create_connection
+    return _ConnectionRecord(self)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 675, in __init__
+    self.__connect()
+    ~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 901, in __connect
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 146, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 897, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\create.py", line 646, in connect
+    return dialect.connect(*cargs, **cparams)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\default.py", line 625, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\psycopg2\__init__.py", line 135, in connect
+    conn = _connect(dsn, connection_factory=connection_factory, **kwasync)
+psycopg2.OperationalError: connection to server at "cb5ajfjosdpmil.cluster-czrs8kj4isg7.us-east-1.rds.amazonaws.com" (34.202.178.206), port 5432 failed: FATAL:  too many connections for role "u557kv77619gk7"
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\app\routes\processing_attack.py", line 460, in refresh_daily_snapshot_if_stale
+    result = _refresh_processing_status_daily_if_stale(max_age_minutes=15)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\app\routes\processing_attack.py", line 302, in _refresh_processing_status_daily_if_stale
+    record = ProcessingStatusDaily.query.filter_by(snapshot_date=snapshot_date).first()
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\orm\query.py", line 2759, in first
+    return self.limit(1)._iter().first()  # type: ignore
+           ~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\orm\query.py", line 2858, in _iter
+    result: Union[ScalarResult[_T], Result[_T]] = self.session.execute(
+                                                  ~~~~~~~~~~~~~~~~~~~~^
+        statement,
+        ^^^^^^^^^^
+        params,
+        ^^^^^^^
+        execution_options={"_sa_orm_load_options": self.load_options},
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2365, in execute
+    return self._execute_internal(
+           ~~~~~~~~~~~~~~~~~~~~~~^
+        statement,
+        ^^^^^^^^^^
+    ...<4 lines>...
+        _add_event=_add_event,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2241, in _execute_internal
+    conn = self._connection_for_bind(bind)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2110, in _connection_for_bind
+    return trans._connection_for_bind(engine, execution_options)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<string>", line 2, in _connection_for_bind
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\orm\state_changes.py", line 139, in _go
+    ret_value = fn(self, *arg, **kw)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\orm\session.py", line 1189, in _connection_for_bind
+    conn = bind.connect()
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 3274, in connect
+    return self._connection_cls(self)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 148, in __init__
+    Connection._handle_dbapi_exception_noconnection(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        err, dialect, engine
+        ^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2439, in _handle_dbapi_exception_noconnection
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 146, in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 3298, in raw_connection
+    return self.pool.connect()
+           ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 449, in connect
+    return _ConnectionFairy._checkout(self)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 1264, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 713, in checkout
+    rec = pool._do_get()
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\impl.py", line 179, in _do_get
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 146, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\impl.py", line 177, in _do_get
+    return self._create_connection()
+           ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 390, in _create_connection
+    return _ConnectionRecord(self)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 675, in __init__
+    self.__connect()
+    ~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 901, in __connect
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 146, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 897, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\create.py", line 646, in connect
+    return dialect.connect(*cargs, **cparams)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\default.py", line 625, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\psycopg2\__init__.py", line 135, in connect
+    conn = _connect(dsn, connection_factory=connection_factory, **kwasync)
+sqlalchemy.exc.OperationalError: (psycopg2.OperationalError) connection to server at "cb5ajfjosdpmil.cluster-czrs8kj4isg7.us-east-1.rds.amazonaws.com" (34.202.178.206), port 5432 failed: FATAL:  too many connections for role "u557kv77619gk7"
+
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+2026-06-16 12:57:21,405 - INFO - Logging setup complete
+2026-06-16 12:57:44,051 - INFO - Logging setup complete
+2026-06-16 12:59:15,958 - INFO - Logging setup complete
+2026-06-16 12:59:19,996 - INFO - Logging setup complete
+2026-06-16 12:59:41,313 - INFO - Logging setup complete
+2026-06-16 12:59:56,226 - INFO - Logging setup complete
+2026-06-16 13:00:01,313 - INFO - Logging setup complete
+2026-06-16 13:00:30,690 - INFO - Logging setup complete
+2026-06-16 13:00:33,232 - INFO - Logging setup complete
+2026-06-16 13:02:02,552 - INFO - Logging setup complete
+2026-06-16 13:02:13,974 - INFO - Logging setup complete
+2026-06-16 13:02:22,421 - INFO - Logging setup complete
+2026-06-16 13:02:23,885 - INFO - Logging setup complete
+2026-06-16 13:06:28,689 - INFO - Logging setup complete
+2026-06-16 13:06:39,025 - INFO - Logging setup complete
+2026-06-16 13:06:44,018 - INFO - Logging setup complete
+2026-06-16 13:06:55,841 - INFO - Logging setup complete
+2026-06-16 13:12:16,532 - INFO - Logging setup complete
+2026-06-16 13:12:21,394 - INFO - Logging setup complete
+2026-06-16 13:12:25,252 - INFO - Logging setup complete
+2026-06-16 13:12:53,298 - INFO - Logging setup complete
+2026-06-16 13:13:02,502 - INFO - Logging setup complete
+2026-06-16 13:13:12,047 - INFO - Logging setup complete
+2026-06-16 13:17:13,913 - INFO - Logging setup complete
+2026-06-16 13:20:16,478 - INFO - Logging setup complete
+2026-06-16 13:20:39,015 - INFO - Logging setup complete
+2026-06-16 13:20:41,917 - INFO - Logging setup complete
+2026-06-16 13:21:48,989 - INFO - Logging setup complete
+2026-06-16 13:22:07,190 - INFO - Logging setup complete
+2026-06-16 13:22:14,333 - INFO - Logging setup complete
+2026-06-16 13:22:17,247 - INFO - Logging setup complete
+2026-06-16 13:22:22,553 - INFO - Logging setup complete
+2026-06-16 13:22:38,755 - INFO - Logging setup complete
+2026-06-16 13:53:31,888 - INFO - Logging setup complete
+2026-06-16 13:53:39,116 - INFO - Logging setup complete
+2026-06-16 13:54:10,277 - INFO - Logging setup complete
+2026-06-16 13:54:20,951 - INFO - Logging setup complete
+2026-06-16 13:54:23,890 - INFO - Logging setup complete
+2026-06-16 13:54:32,354 - INFO - Logging setup complete
+2026-06-16 13:54:41,872 - INFO - Logging setup complete
+2026-06-16 13:54:45,783 - INFO - Logging setup complete
+2026-06-16 13:55:52,341 - INFO - Logging setup complete
+2026-06-16 13:55:56,593 - INFO - Logging setup complete
+2026-06-16 13:55:57,317 - INFO - Logging setup complete
+2026-06-16 13:55:57,317 - INFO - Logging setup complete
+2026-06-16 13:55:57,913 - INFO - Logging setup complete
+2026-06-16 13:55:57,913 - INFO - Logging setup complete
+2026-06-16 13:55:57,913 - INFO - Logging setup complete
+2026-06-16 13:55:58,595 - INFO - Logging setup complete
+2026-06-16 13:55:58,595 - INFO - Logging setup complete
+2026-06-16 13:55:58,595 - INFO - Logging setup complete
+2026-06-16 13:55:58,595 - INFO - Logging setup complete
+2026-06-16 13:55:59,169 - INFO - Logging setup complete
+2026-06-16 13:55:59,169 - INFO - Logging setup complete
+2026-06-16 13:55:59,169 - INFO - Logging setup complete
+2026-06-16 13:55:59,169 - INFO - Logging setup complete
+2026-06-16 13:55:59,169 - INFO - Logging setup complete
+2026-06-16 13:56:22,464 - INFO - Logging setup complete
+2026-06-16 13:56:28,598 - INFO - Logging setup complete
+2026-06-16 13:56:32,568 - INFO - Logging setup complete
+2026-06-16 13:56:44,381 - INFO - Logging setup complete
+2026-06-16 13:56:55,071 - INFO - Logging setup complete

@@ -271,7 +271,7 @@ export default function HomePage() {
           <div className="text-muted small mb-4">{dateStr}</div>
           <Row className="g-3">
             <Col xs={12} sm={6} lg={3}>
-              <Link to="/processing_attack" className="text-decoration-none text-reset">
+              <Link to="/monday_meeting" className="text-decoration-none text-reset">
                 <Card
                   className={`app-kpi-nested processing-tile home-kpi-tile ${healthClass(jobsToProcessHealth(kpi.jobs_to_process))} h-100`}
                 >
@@ -283,7 +283,7 @@ export default function HomePage() {
               </Link>
             </Col>
             <Col xs={12} sm={6} lg={3}>
-              <Link to="/processing_attack" className="text-decoration-none text-reset">
+              <Link to="/monday_meeting" className="text-decoration-none text-reset">
                 <Card
                   className={`app-kpi-nested processing-tile home-kpi-tile ${healthClass(jobsToInvoiceHealth(kpi.jobs_to_invoice))} h-100`}
                 >
@@ -295,7 +295,7 @@ export default function HomePage() {
               </Link>
             </Col>
             <Col xs={12} sm={6} lg={3}>
-              <Link to="/scheduling_attack" className="text-decoration-none text-reset">
+              <Link to="/monday_meeting?tab=scheduling" className="text-decoration-none text-reset">
                 <Card
                   className={`app-kpi-nested processing-tile home-kpi-tile ${healthClass(forwardCoverageHealth(kpi.forward))} h-100`}
                 >
@@ -307,7 +307,7 @@ export default function HomePage() {
               </Link>
             </Col>
             <Col xs={12} sm={6} lg={3}>
-              <Link to="/processing_attack" className="text-decoration-none text-reset">
+              <Link to="/monday_meeting" className="text-decoration-none text-reset">
                 <Card
                   className={`app-kpi-nested processing-tile home-kpi-tile ${healthClass(completedTodayHealth(jobsToday))} h-100`}
                 >

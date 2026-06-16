@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { apiFetch, apiJson, isAbortError } from '../lib/apiClient'
-import LimboJobTrackerPanel from '../components/LimboJobTrackerPanel'
 import { Button, Card, Col, Collapse, Form, Modal, Nav, Row, Tab, Table } from 'react-bootstrap'
 import { Chart } from 'react-chartjs-2'
 import type { ChartData, ChartOptions } from 'chart.js'
@@ -793,7 +792,7 @@ function generateMondayOptions(): { value: string; label: string }[] {
   return options
 }
 
-type ProcessingTabKey = 'status' | 'weekly' | 'limbo'
+type ProcessingTabKey = 'status' | 'weekly'
 
 type ProcessingIntradayRow = {
   snapshot_date: string
@@ -803,7 +802,7 @@ type ProcessingIntradayRow = {
 }
 
 function parseProcessingTab(tab: string | null): ProcessingTabKey {
-  return tab === 'weekly' || tab === 'limbo' || tab === 'status' ? tab : 'status'
+  return tab === 'weekly' || tab === 'status' ? tab : 'status'
 }
 
 type ProcessingStatusCachePayload = {
@@ -878,11 +877,12 @@ function writeProcessingStatusCache(payload: Omit<ProcessingStatusCachePayload, 
   }
 }
 
-export default function ProcessingAttackPage() {
+export default function ProcessingAttackPage({ embeddedTab }: { embeddedTab?: ProcessingTabKey } = {}) {
   const [searchParams, setSearchParams] = useSearchParams()
-  const activeTab = parseProcessingTab(searchParams.get('tab'))
+  const activeTab = embeddedTab ?? parseProcessingTab(searchParams.get('tab'))
 
   const handleTabSelect = (key: string | null) => {
+    if (embeddedTab) return
     const k = parseProcessingTab(key)
     if (k === 'status') {
       setSearchParams({}, { replace: true })
@@ -2284,9 +2284,6 @@ export default function ProcessingAttackPage() {
             <Nav.Item>
               <Nav.Link eventKey="weekly">Processing History</Nav.Link>
             </Nav.Item>
-            <Nav.Item>
-              <Nav.Link eventKey="limbo">Limbo jobs</Nav.Link>
-            </Nav.Item>
           </Nav>
           <Tab.Content className="processing-tabs-shell__panel">
             <Tab.Pane eventKey="status">
@@ -3093,9 +3090,6 @@ export default function ProcessingAttackPage() {
               </Card.Body>
             </Card>
           </Tab.Pane>
-            <Tab.Pane eventKey="limbo">
-              <LimboJobTrackerPanel />
-            </Tab.Pane>
           </Tab.Content>
         </div>
       </Tab.Container>

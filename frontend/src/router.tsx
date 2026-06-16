@@ -1,5 +1,5 @@
 import { lazy } from 'react'
-import { createBrowserRouter, Navigate, useParams } from 'react-router-dom'
+import { createBrowserRouter, Navigate, useParams, useSearchParams } from 'react-router-dom'
 import AppRouteErrorPage from './components/AppRouteErrorPage'
 import AppLayout from './layout/AppLayout'
 import KeysPublicLayout from './layout/KeysPublicLayout'
@@ -12,7 +12,7 @@ const KeysHomePage = lazy(() => import('./pages/KeysHomePage'))
 const KeysAdminPage = lazy(() => import('./pages/KeysAdminPage'))
 const KeyDetailPage = lazy(() => import('./pages/KeyDetailPage'))
 const KeyByBarcodePage = lazy(() => import('./pages/KeyByBarcodePage'))
-const PerformanceSummaryPage = lazy(() => import('./pages/PerformanceSummaryPage'))
+const TechnicianMeetingPage = lazy(() => import('./pages/TechnicianMeetingPage'))
 const MonthlyHomePage = lazy(() => import('./pages/MonthlyHomePage'))
 const MonthlyRoutesPage = lazy(() => import('./pages/MonthlyRoutesPage'))
 const MonthlyRouteDetailPage = lazy(() => import('./pages/MonthlyRouteDetailPage'))
@@ -24,8 +24,9 @@ const MonitoringCompaniesPage = lazy(() => import('./pages/MonitoringCompaniesPa
 const MonthlyBillingPage = lazy(() => import('./pages/MonthlyBillingPage'))
 const KeyMetricsPage = lazy(() => import('./pages/KeyMetricsPage'))
 const DeficiencyTrackerPage = lazy(() => import('./pages/DeficiencyTrackerPage'))
-const SchedulingAttackPage = lazy(() => import('./pages/SchedulingAttackPage'))
-const ProcessingAttackPage = lazy(() => import('./pages/ProcessingAttackPage'))
+const MondayMeetingPage = lazy(() => import('./pages/MondayMeetingPage'))
+const MondayMeetingServiceAdminPage = lazy(() => import('./pages/MondayMeetingServiceAdminPage'))
+const LimboJobTrackerPage = lazy(() => import('./pages/LimboJobTrackerPage'))
 const BatteryCapacityCalculatorPage = lazy(() => import('./pages/BatteryCapacityCalculatorPage'))
 const QuotationToolPage = lazy(() => import('./pages/QuotationToolPage'))
 const TechnicianPortalLockPage = lazy(() => import('./pages/TechnicianPortalLockPage'))
@@ -36,6 +37,15 @@ const TechnicianPortalWorksheetPage = lazy(() => import('./pages/TechnicianPorta
 const RedirectPortalTrainingWorksheet = lazy(
   () => import('./pages/RedirectPortalTrainingWorksheet'),
 )
+
+/** Legacy Jobs Backlog URL → Monday Meeting (or related tab). */
+function RedirectProcessingAttack() {
+  const [searchParams] = useSearchParams()
+  const tab = searchParams.get('tab')
+  if (tab === 'weekly') return <Navigate to="/monday_meeting?tab=processing-history" replace />
+  if (tab === 'limbo') return <Navigate to="/limbo_job_tracker" replace />
+  return <Navigate to="/monday_meeting" replace />
+}
 
 /** Legacy mockup URL → live training route worksheet. */
 function RedirectPortalWorksheetMockup() {
@@ -105,7 +115,9 @@ export const router = createBrowserRouter([
       { path: 'battery_capacity_calculator', element: <BatteryCapacityCalculatorPage /> },
       { path: 'quotation_tool', element: <QuotationToolPage /> },
       { path: 'deficiency_tracker', element: <DeficiencyTrackerPage /> },
-      { path: 'scheduling_attack', element: <SchedulingAttackPage /> },
+      { path: 'scheduling_attack', element: <Navigate to="/monday_meeting?tab=scheduling" replace /> },
+      { path: 'monday_meeting', element: <MondayMeetingPage /> },
+      { path: 'monday_meeting/service/admin', element: <MondayMeetingServiceAdminPage /> },
       { path: 'monthlies', element: <MonthlyHomePage /> },
       { path: 'monthlies/routes', element: <Navigate to="/monthlies" replace /> },
       { path: 'monthlies/locations', element: <MonthlyRoutesPage /> },
@@ -121,9 +133,10 @@ export const router = createBrowserRouter([
       { path: 'monthlies/keys', element: <KeysAdminPage /> },
       { path: 'tools/monthly-routes', element: <Navigate to="/monthlies/locations" replace /> },
       { path: 'tools/monthly-routes/map', element: <Navigate to="/monthlies/map" replace /> },
-      { path: 'processing_attack', element: <ProcessingAttackPage /> },
-      { path: 'limbo_job_tracker', element: <Navigate to="/processing_attack?tab=limbo" replace /> },
-      { path: 'performance_summary', element: <PerformanceSummaryPage /> },
+      { path: 'processing_attack', element: <RedirectProcessingAttack /> },
+      { path: 'limbo_job_tracker', element: <LimboJobTrackerPage /> },
+      { path: 'technician_meeting', element: <TechnicianMeetingPage /> },
+      { path: 'performance_summary', element: <Navigate to="/technician_meeting" replace /> },
     ],
   },
 ])

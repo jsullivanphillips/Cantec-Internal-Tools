@@ -15,6 +15,8 @@ from .monthly_routes import monthly_routes_bp
 from .monitoring_companies import monitoring_companies_bp
 from .keys import keys_bp
 from .technician_portal import technician_portal_bp
+from .monday_meeting import monday_meeting_bp
+from .deficiency_service_admin import deficiency_service_admin_bp
 
 
 def register_blueprints(app):
@@ -34,4 +36,6 @@ def register_blueprints(app):
     app.register_blueprint(monitoring_companies_bp)
     app.register_blueprint(keys_bp)
     app.register_blueprint(technician_portal_bp)
+    app.register_blueprint(monday_meeting_bp)
+    app.register_blueprint(deficiency_service_admin_bp)
 

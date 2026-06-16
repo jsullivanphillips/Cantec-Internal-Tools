@@ -60,6 +60,19 @@ python -m app.scripts.seed_technician_demo_route --reset
 
 Technicians open it from `/tech/start` → **Training route (live sync)** after PIN and name entry. Instructors can open the office paperwork URL from the worksheet banner to demonstrate live sync on a laptop. See [Training demo walkthrough](docs/monthly-route-testing-system.md#training-demo-walkthrough) in the monthly route testing doc.
 
+## Monday Meeting — service deficiency filters
+
+The **Service** tab excludes record-only deficiencies from pipeline KPIs using:
+
+1. **Keyword denylist** — phrases in `deficiency_non_quoteable_phrase` (managed at `/monday_meeting/service/admin`).
+2. **Stale similarity clusters** — unquoted deficiencies 90+ business days old that match similar descriptions in groups of 2+, where no cluster member was ever quoted.
+
+Classification runs automatically after `update_deficiencies()` and can be refreshed manually from the admin page or:
+
+`PYTHONPATH=. python scripts/classify_deficiency_service_eligibility.py`
+
+Apply migration `b2c3d4e5f6a8` before using this feature.
+
 ## Smoke checklist (after deploy)
 
 - Login / logout

@@ -354,9 +354,9 @@ def processing_attack():
         auth_response.raise_for_status()
     except Exception as e:
         current_app.logger.error("Authentication error: %s", e)
-        return redirect(url_for("auth.login"))  # or whatever your login route is
+        return redirect(url_for("auth.login"))
 
-    return send_spa_index()
+    return redirect(url_for("monday_meeting.monday_meeting_page"))
 
 
 def authenticate():

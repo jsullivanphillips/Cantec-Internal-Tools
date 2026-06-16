@@ -1,4 +1,5 @@
-import { NavLink } from 'react-router-dom'
+import { useCallback, useEffect, useState } from 'react'
+import { NavLink, useLocation } from 'react-router-dom'
 import { Nav } from 'react-bootstrap'
 
 type NavItem = { to: string; label: string; icon: string; end?: boolean }
@@ -8,8 +9,8 @@ const NAV_SECTIONS: NavSection[] = [
   {
     title: 'Status',
     items: [
-      { to: '/processing_attack', label: 'Jobs Backlog', icon: 'bi-speedometer2' },
-      { to: '/scheduling_attack', label: 'Scheduling Attack', icon: 'bi-graph-up-arrow' },
+      { to: '/monday_meeting', label: 'Monday Meeting', icon: 'bi-calendar-week' },
+      { to: '/technician_meeting', label: 'Technician Meeting', icon: 'bi-people' },
     ],
   },
   {
@@ -17,6 +18,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { to: '/keys', label: 'Keys', icon: 'bi-key', end: true },
       { to: '/find_schedule', label: 'Scheduling Assistant', icon: 'bi-calendar2-check' },
+      { to: '/limbo_job_tracker', label: 'Limbo jobs', icon: 'bi-hourglass-split' },
       { to: '/battery_capacity_calculator', label: 'Battery Capacity Calculator', icon: 'bi-battery-charging' },
       { to: '/quotation_tool', label: 'Quotation Tool', icon: 'bi-calculator' },
     ],
@@ -29,17 +31,46 @@ const NAV_SECTIONS: NavSection[] = [
       { to: '/monthlies/billing', label: 'Monthly Billing', icon: 'bi-receipt', end: true },
       { to: '/monthlies/map', label: 'Map', icon: 'bi-map' },
       { to: '/monthlies/monitoring-companies', label: 'Monitoring companies', icon: 'bi-telephone' },
-      { to: '/monthlies/keys', label: 'Keys admin', icon: 'bi-key-fill', end: true },
     ],
   },
   {
     title: 'Data',
     items: [
-      { to: '/performance_summary', label: 'Performance Summary', icon: 'bi-pie-chart' },
       { to: '/deficiency_tracker', label: 'Deficiencies', icon: 'bi-exclamation-triangle' },
     ],
   },
 ]
+
+const SECTIONS_COLLAPSED_STORAGE_KEY = 'app.sidebar.sectionsCollapsed.v1'
+
+function sectionKey(title: string) {
+  return title.toLowerCase().replace(/\s+/g, '-')
+}
+
+function readCollapsedSections(): Set<string> {
+  try {
+    const raw = localStorage.getItem(SECTIONS_COLLAPSED_STORAGE_KEY)
+    if (!raw) return new Set()
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) return new Set()
+    return new Set(parsed.filter((k): k is string => typeof k === 'string'))
+  } catch {
+    return new Set()
+  }
+}
+
+function writeCollapsedSections(collapsed: Set<string>) {
+  try {
+    localStorage.setItem(SECTIONS_COLLAPSED_STORAGE_KEY, JSON.stringify([...collapsed]))
+  } catch {
+    // Ignore quota / private mode errors.
+  }
+}
+
+function isItemActive(pathname: string, item: NavItem) {
+  if (item.end) return pathname === item.to
+  return pathname === item.to || pathname.startsWith(`${item.to}/`)
+}
 
 function navLinkClassName(isActive: boolean, showLabels: boolean, animateLabels: boolean) {
   const classes = ['app-sidebar-link', 'd-flex', 'align-items-center', 'rounded']
@@ -64,8 +95,36 @@ export function SidebarNav({
   itemsExpanded?: boolean
   animateLabels?: boolean
 }) {
+  const location = useLocation()
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(() => readCollapsedSections())
   const showLabels = shellExpanded && itemsExpanded
   const iconOnly = !showLabels
+
+  const toggleSection = useCallback((key: string) => {
+    setCollapsedSections((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      writeCollapsedSections(next)
+      return next
+    })
+  }, [])
+
+  useEffect(() => {
+    for (const section of NAV_SECTIONS) {
+      const key = sectionKey(section.title)
+      const hasActiveItem = section.items.some((item) => isItemActive(location.pathname, item))
+      if (!hasActiveItem) continue
+      setCollapsedSections((prev) => {
+        if (!prev.has(key)) return prev
+        const next = new Set(prev)
+        next.delete(key)
+        writeCollapsedSections(next)
+        return next
+      })
+      break
+    }
+  }, [location.pathname])
 
   return (
     <Nav
@@ -88,7 +147,11 @@ export function SidebarNav({
         </span>
         <span className="app-sidebar-link-label">Home</span>
       </NavLink>
-      {NAV_SECTIONS.map((section) => (
+      {NAV_SECTIONS.map((section) => {
+        const key = sectionKey(section.title)
+        const isSectionCollapsed = showLabels && collapsedSections.has(key)
+
+        return (
         <div
           key={section.title}
           className={
@@ -96,15 +159,25 @@ export function SidebarNav({
           }
         >
           {showLabels ? (
-            <div
-              className={`app-sidebar-section-title px-3 pb-1 small text-uppercase text-muted fw-semibold${
+            <button
+              type="button"
+              className={`app-sidebar-section-toggle px-3 pb-1 small text-uppercase text-muted fw-semibold${
                 animateLabels ? ' app-sidebar-section-title--revealing' : ''
               }`}
+              aria-expanded={!isSectionCollapsed}
+              aria-controls={`${idPrefix}-section-${key}`}
+              onClick={() => toggleSection(key)}
             >
-              {section.title}
-            </div>
+              <span className="app-sidebar-section-toggle__label">{section.title}</span>
+              <i
+                className={`bi ${isSectionCollapsed ? 'bi-chevron-right' : 'bi-chevron-down'} app-sidebar-section-toggle__chevron`}
+                aria-hidden
+              />
+            </button>
           ) : null}
+          {!isSectionCollapsed ? (
           <div
+            id={`${idPrefix}-section-${key}`}
             className={`app-sidebar-section-items d-flex flex-column${
               showLabels ? ' gap-1' : ' app-sidebar-section-items--icon-only'
             }`}
@@ -127,8 +200,10 @@ export function SidebarNav({
               </NavLink>
             ))}
           </div>
+          ) : null}
         </div>
-      ))}
+        )
+      })}
     </Nav>
   )
 }

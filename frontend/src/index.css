@@ -349,6 +349,7 @@
   .app-sidebar-link--revealing .app-sidebar-link-icon,
   .app-sidebar-link--revealing .app-sidebar-link-label,
   .app-sidebar-section-title--revealing,
+  .app-sidebar-section-toggle.app-sidebar-section-title--revealing,
   .app-sidebar-toggle-label--revealing {
     animation: none !important;
     transition: none !important;
@@ -409,6 +410,43 @@
 .app-sidebar-section-title {
   letter-spacing: 0.04em;
   font-size: 0.65rem;
+}
+
+.app-sidebar-section-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+  width: 100%;
+  margin: 0;
+  padding-top: 0.15rem;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+  font-size: 0.65rem;
+  color: #64748b;
+}
+
+.app-sidebar-section-toggle:hover {
+  color: #102033;
+}
+
+.app-sidebar-section-toggle:focus-visible {
+  outline: 2px solid rgba(13, 110, 253, 0.45);
+  outline-offset: 2px;
+  border-radius: 0.25rem;
+}
+
+.app-sidebar-section-toggle__label {
+  min-width: 0;
+}
+
+.app-sidebar-section-toggle__chevron {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  opacity: 0.75;
 }
 
 .app-sidebar-nav--with-labels .app-sidebar-section {
@@ -3790,7 +3828,8 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
 /* Tab shell: content card attaches to selected tab (Jobs Backlog + Performance Summary) */
 .processing-page .processing-tabs-shell.app-surface-card,
 .performance-summary-page .processing-tabs-shell.app-surface-card,
-.monthlies-dashboard-page .processing-tabs-shell.app-surface-card {
+.monthlies-dashboard-page .processing-tabs-shell.app-surface-card,
+.monday-meeting-page .processing-tabs-shell.app-surface-card {
   border: 1px solid #e7eaf0;
   border-radius: 0.75rem;
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
@@ -3800,7 +3839,8 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
 
 .processing-page .processing-tabs-shell__nav.nav-tabs,
 .performance-summary-page .processing-tabs-shell__nav.nav-tabs,
-.monthlies-dashboard-page .processing-tabs-shell__nav.nav-tabs {
+.monthlies-dashboard-page .processing-tabs-shell__nav.nav-tabs,
+.monday-meeting-page .processing-tabs-shell__nav.nav-tabs {
   gap: 0.25rem;
   padding: 0.5rem 0.75rem 0;
   margin-bottom: 0;
@@ -3810,7 +3850,8 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
 
 .processing-page .processing-tabs-shell__nav .nav-link,
 .performance-summary-page .processing-tabs-shell__nav .nav-link,
-.monthlies-dashboard-page .processing-tabs-shell__nav .nav-link {
+.monthlies-dashboard-page .processing-tabs-shell__nav .nav-link,
+.monday-meeting-page .processing-tabs-shell__nav .nav-link {
   margin-bottom: -1px;
   font-weight: 600;
   color: #64748b;
@@ -3823,7 +3864,8 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
 
 .processing-page .processing-tabs-shell__nav .nav-link:hover,
 .performance-summary-page .processing-tabs-shell__nav .nav-link:hover,
-.monthlies-dashboard-page .processing-tabs-shell__nav .nav-link:hover {
+.monthlies-dashboard-page .processing-tabs-shell__nav .nav-link:hover,
+.monday-meeting-page .processing-tabs-shell__nav .nav-link:hover {
   color: var(--brand-navy);
   border-color: transparent;
   background: rgba(255, 255, 255, 0.7);
@@ -3831,7 +3873,8 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
 
 .processing-page .processing-tabs-shell__nav .nav-link.active,
 .performance-summary-page .processing-tabs-shell__nav .nav-link.active,
-.monthlies-dashboard-page .processing-tabs-shell__nav .nav-link.active {
+.monthlies-dashboard-page .processing-tabs-shell__nav .nav-link.active,
+.monday-meeting-page .processing-tabs-shell__nav .nav-link.active {
   color: var(--brand-navy);
   background: #fff;
   border-color: #e7eaf0 #e7eaf0 #fff;
@@ -3840,7 +3883,8 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
 
 .processing-page .processing-tabs-shell__panel.tab-content,
 .performance-summary-page .processing-tabs-shell__panel.tab-content,
-.monthlies-dashboard-page .processing-tabs-shell__panel.tab-content {
+.monthlies-dashboard-page .processing-tabs-shell__panel.tab-content,
+.monday-meeting-page .processing-tabs-shell__panel.tab-content {
   padding: 1rem 1.25rem 1.25rem;
   background: #fff;
 }

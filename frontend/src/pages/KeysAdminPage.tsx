@@ -143,8 +143,8 @@ export default function KeysAdminPage() {
 
   return (
     <div className="container py-4">
-      <Link to="/monthlies" className="text-decoration-none small d-inline-block mb-3">
-        ← Monthlies
+      <Link to="/keys" className="text-decoration-none small d-inline-block mb-3">
+        ← Keys
       </Link>
       <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <h1 className="h4 mb-0">Keys admin</h1>

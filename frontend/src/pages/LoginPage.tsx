@@ -1,11 +1,17 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { apiFetch } from '../lib/apiClient'
 import { Alert, Button, Container, Form } from 'react-bootstrap'
 
+function safeLoginRedirect(next: string): string | null {
+  if (!next.startsWith('/') || next.startsWith('//')) return null
+  return next
+}
+
 export default function LoginPage() {
   const nav = useNavigate()
+  const [searchParams] = useSearchParams()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -26,7 +32,10 @@ export default function LoginPage() {
         setError(d.error || 'Login failed')
         return
       }
-      nav(d.redirect || '/home', { replace: true })
+      const nextParam = searchParams.get('next')
+      const safeNext = nextParam ? safeLoginRedirect(nextParam) : null
+      const destination = safeNext ?? d.redirect ?? '/home'
+      nav(destination, { replace: true })
     } catch {
       setError('Network error')
     } finally {

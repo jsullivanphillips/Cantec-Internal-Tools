@@ -294,6 +294,51 @@ class Deficiency(db.Model):
                 f"| Uploaded by: {self.attachment_uploaded_by}>")
 
 
+class DeficiencyNonQuoteablePhrase(db.Model):
+    __tablename__ = "deficiency_non_quoteable_phrase"
+    __table_args__ = (
+        db.UniqueConstraint("phrase", name="uq_deficiency_non_quoteable_phrase"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    phrase = db.Column(db.String(255), nullable=False)
+    label = db.Column(db.String(255), nullable=True)
+    active = db.Column(db.Boolean, nullable=False, default=True)
+    notes = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime(timezone=True), default=vancouver_now, nullable=False)
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        default=vancouver_now,
+        onupdate=vancouver_now,
+        nullable=False,
+    )
+
+    def __repr__(self):
+        return f"<DeficiencyNonQuoteablePhrase {self.phrase!r} active={self.active}>"
+
+
+class DeficiencyServiceEligibility(db.Model):
+    __tablename__ = "deficiency_service_eligibility"
+
+    deficiency_id = db.Column(
+        db.BIGINT,
+        db.ForeignKey("deficiency.deficiency_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    eligible = db.Column(db.Boolean, nullable=False, default=True)
+    reason = db.Column(db.String(32), nullable=False, default="eligible")
+    detail = db.Column(db.String(512), nullable=True)
+    description_hash = db.Column(db.String(64), nullable=True)
+    classified_at = db.Column(db.DateTime(timezone=True), default=vancouver_now, nullable=False)
+
+    deficiency = db.relationship("Deficiency", backref=db.backref("service_eligibility", uselist=False))
+
+    def __repr__(self):
+        return (
+            f"<DeficiencyServiceEligibility {self.deficiency_id} "
+            f"eligible={self.eligible} reason={self.reason}>"
+        )
+
 
 class Location(db.Model):
     __tablename__ = 'location'
@@ -405,6 +450,7 @@ class Quote(db.Model):
     owner_email = db.Column(db.String(255))
     job_created = db.Column(db.Boolean, default=False)
     job_id = db.Column(db.BIGINT, nullable=True)
+    quote_accepted_on = db.Column(db.DateTime(timezone=True), nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
