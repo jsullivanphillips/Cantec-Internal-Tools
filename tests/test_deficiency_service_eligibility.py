@@ -10,6 +10,7 @@ from app.deficiency.service_eligibility import (
     normalize_description,
     phrase_matches,
     summarize_eligibility_records,
+    tally_phrase_matches,
     tokenize,
 )
 
@@ -39,6 +40,22 @@ def test_phrase_matches_substring_and_word_boundary():
     assert phrase_matches("Site missing fire safety plan on file", "fire safety plan")
     assert phrase_matches("No FSP posted at panel", "fsp")
     assert not phrase_matches("Workshop panel missing screw", "fsp")
+
+
+def test_tally_phrase_matches_counts_per_phrase_in_window():
+    descriptions = [
+        "Building has no fire safety plan",
+        "No FSP posted at panel",
+        "Missing monitoring company contact",
+        "Another fire safety plan issue",
+    ]
+    counts = tally_phrase_matches(
+        descriptions,
+        ["fire safety plan", "fsp", "monitoring company"],
+    )
+    assert counts["fire safety plan"] == 2
+    assert counts["fsp"] == 1
+    assert counts["monitoring company"] == 1
 
 
 def test_description_hash_changes_when_text_changes():
@@ -159,7 +176,7 @@ def test_get_deficiency_insights_excludes_non_quoteable(monkeypatch):
         def distinct(self):
             return self
 
-    counts = iter([1, 0, 0, 0, 1, 0])
+    counts = iter([1, 0, 0, 0, 0, 1, 0])
 
     def fake_query(*args, **kwargs):
         return FakeQuery(next(counts))
@@ -180,8 +197,49 @@ def test_get_deficiency_insights_excludes_non_quoteable(monkeypatch):
     )
 
     assert result["total_deficiencies"] == 1
+    assert result["approved_deficiencies"] == 0
     assert result["excluded_non_quoteable"] == 1
     assert result["excluded_keyword"] == 1
+
+
+def test_get_deficiency_insights_approved_of_quoted_pct(monkeypatch):
+    from app.routes import performance_summary as ps
+
+    class FakeQuery:
+        def __init__(self, count_value: int):
+            self._count_value = count_value
+
+        def filter(self, *args, **kwargs):
+            return self
+
+        def outerjoin(self, *args, **kwargs):
+            return self
+
+        def join(self, *args, **kwargs):
+            return self
+
+        def count(self):
+            return self._count_value
+
+        def distinct(self):
+            return self
+
+    # total, quoted, approved, with_job, completed, keyword, stale_cluster
+    counts = iter([10, 8, 6, 4, 2, 0, 0])
+
+    monkeypatch.setattr(ps.db.session, "query", lambda *a, **k: FakeQuery(next(counts)))
+    monkeypatch.setattr(ps, "and_", lambda *a, **k: True)
+
+    result = ps.get_deficiency_insights(
+        datetime(2026, 1, 1, tzinfo=timezone.utc),
+        datetime(2026, 3, 31, tzinfo=timezone.utc),
+        exclude_inspection_jobs=True,
+        exclude_non_quoteable=True,
+    )
+
+    assert result["quoted_deficiencies"] == 8
+    assert result["approved_deficiencies"] == 6
+    assert result["percentages"]["approved_of_quoted_pct"] == 75.0
 
 
 def test_normalize_description_collapses_whitespace():

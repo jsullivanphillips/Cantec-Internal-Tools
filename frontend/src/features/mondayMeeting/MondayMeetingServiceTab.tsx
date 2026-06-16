@@ -1,38 +1,52 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Alert, Card, Form, OverlayTrigger, Spinner, Tooltip } from 'react-bootstrap'
 import { Link } from 'react-router-dom'
 import { apiFetch, isAbortError } from '../../lib/apiClient'
 import ExcludedDeficienciesModal from './ExcludedDeficienciesModal'
-import ScheduledWithinSlaGoalTile, { type SlaJobRow } from './ScheduledWithinSlaGoalTile'
+import {
+  defaultServiceQuarterKey,
+  listServiceQuarterSelectItems,
+  serviceDateRangeParams,
+} from './mondayMeetingServiceDateRange'
+import ScheduledWithinSlaGoalTile from './ScheduledWithinSlaGoalTile'
+import SlaBucketKpiRow from './SlaBucketKpiRow'
+import type { SlaJobRow } from './slaSchedulingTypes'
+
+const ALL_QUOTES_TOOLTIP =
+  'All quotes created in the selected quarter, including inspection and standalone quotes (not tied to deficiencies).'
+
+const DEFICIENCY_COHORT_TOOLTIP =
+  'Based on deficiencies reported in the selected quarter. Quote, approval, and job steps count whenever they happened.'
 
 const PIPELINE_EXCLUSION_TOOLTIP =
   'Deficiency counts exclude record-only items: keyword matches (e.g. fire safety plan, monitoring company) and similar deficiencies never quoted after 90 business days.'
 
-type ServiceMetrics = {
-  deficiency_quoting: {
-    total: number
-    quoted: number
-    quoted_pct: number
-    not_quoted_pct: number
-    excluded_non_quoteable?: number
-    excluded_keyword?: number
-    excluded_stale_cluster?: number
-    classification?: {
-      classified_count: number
-      needs_classification: boolean
-      last_classified_at: string | null
-    }
+type DeficiencyPipelineMetrics = {
+  total: number
+  quoted: number
+  quoted_pct: number
+  not_quoted_pct: number
+  approved_of_quoted: number
+  approved_of_quoted_pct: number
+  approved_with_job: number
+  approved_with_job_pct: number
+  excluded_non_quoteable?: number
+  excluded_keyword?: number
+  excluded_stale_cluster?: number
+  classification?: {
+    classified_count: number
+    needs_classification: boolean
+    last_classified_at: string | null
   }
-  quote_approval: {
-    total_quotes: number
+}
+
+type ServiceMetrics = {
+  all_quotes: {
+    total: number
     approved: number
     approved_pct: number
   }
-  approved_to_job: {
-    approved_total: number
-    with_job: number
-    with_job_pct: number
-  }
+  deficiency_pipeline: DeficiencyPipelineMetrics
   goals: {
     deficiencies_repaired: {
       actual_pct: number
@@ -54,39 +68,8 @@ type ServiceMetrics = {
   }
 }
 
-function params(start: string, end: string) {
-  const q = new URLSearchParams()
-  if (start) q.set('start_date', start)
-  if (end) q.set('end_date', end)
-  const s = q.toString()
-  return s ? `?${s}` : ''
-}
-
-function toLocalIsoDate(date: Date): string {
-  const y = date.getFullYear()
-  const m = String(date.getMonth() + 1).padStart(2, '0')
-  const d = String(date.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
-}
-
-function defaultDateRange() {
-  const today = new Date()
-  const firstOfThisMonth = new Date(today.getFullYear(), today.getMonth(), 1)
-  const lastOfPreviousMonth = new Date(firstOfThisMonth)
-  lastOfPreviousMonth.setDate(0)
-  const firstOfPreviousMonth = new Date(
-    lastOfPreviousMonth.getFullYear(),
-    lastOfPreviousMonth.getMonth(),
-    1,
-  )
-  return {
-    defaultStart: toLocalIsoDate(firstOfPreviousMonth),
-    defaultEnd: toLocalIsoDate(lastOfPreviousMonth),
-  }
-}
-
-function formatExclusionSubline(quoting: ServiceMetrics['deficiency_quoting'] | undefined): string | null {
-  const excluded = quoting?.excluded_non_quoteable ?? 0
+function formatExclusionSubline(pipeline: DeficiencyPipelineMetrics | undefined): string | null {
+  const excluded = pipeline?.excluded_non_quoteable ?? 0
   if (excluded <= 0) return null
   return `${excluded} excluded as non-quotable`
 }
@@ -113,11 +96,11 @@ function MetricTile({
       ? 'processing-tile--status-good'
       : status === 'warn'
         ? 'processing-tile--status-warn'
-        : ''
+        : 'monday-meeting-service-tile--neutral'
   return (
     <Card className={`app-kpi-nested processing-tile monday-meeting-service-tile h-100 ${statusClass}`}>
-      <Card.Body className="processing-kpi-card-body p-3">
-        <div className="d-flex align-items-start gap-1">
+      <Card.Body className="monday-meeting-service-tile__body">
+        <div className="monday-meeting-service-tile__header">
           <div className="processing-kpi-label">{label}</div>
           {infoTooltip ? (
             <OverlayTrigger
@@ -135,41 +118,47 @@ function MetricTile({
             </OverlayTrigger>
           ) : null}
         </div>
-        <div className="processing-hero-value text-dark">{value}</div>
-        {detail && subDetail ? (
-          <div className="monday-meeting-service-detail-row">
-            <span className="monday-meeting-service-detail">{detail}</span>
-            {onSubDetailClick ? (
-              <button
-                type="button"
-                className="monday-meeting-service-detail monday-meeting-service-detail--muted monday-meeting-excluded-link btn btn-link p-0"
-                onClick={onSubDetailClick}
-              >
-                {subDetail}
-              </button>
+        <div className="monday-meeting-service-tile__value">{value}</div>
+        {(detail || subDetail) && (
+          <div className="monday-meeting-service-tile__footer">
+            {detail && subDetail ? (
+              <div className="monday-meeting-service-detail-row">
+                <span className="monday-meeting-service-tile__meta">{detail}</span>
+                {onSubDetailClick ? (
+                  <button
+                    type="button"
+                    className="monday-meeting-service-tile__meta monday-meeting-service-tile__meta--link monday-meeting-excluded-link btn btn-link p-0"
+                    onClick={onSubDetailClick}
+                  >
+                    {subDetail}
+                  </button>
+                ) : (
+                  <span className="monday-meeting-service-tile__meta monday-meeting-service-tile__meta--muted">
+                    {subDetail}
+                  </span>
+                )}
+              </div>
             ) : (
-              <span className="monday-meeting-service-detail monday-meeting-service-detail--muted">
-                {subDetail}
-              </span>
+              <>
+                {detail ? <div className="monday-meeting-service-tile__meta">{detail}</div> : null}
+                {subDetail ? (
+                  onSubDetailClick ? (
+                    <button
+                      type="button"
+                      className="monday-meeting-service-tile__meta monday-meeting-service-tile__meta--link monday-meeting-excluded-link btn btn-link p-0 text-start"
+                      onClick={onSubDetailClick}
+                    >
+                      {subDetail}
+                    </button>
+                  ) : (
+                    <div className="monday-meeting-service-tile__meta monday-meeting-service-tile__meta--muted">
+                      {subDetail}
+                    </div>
+                  )
+                ) : null}
+              </>
             )}
           </div>
-        ) : (
-          <>
-            {detail ? <div className="monday-meeting-service-detail">{detail}</div> : null}
-            {subDetail ? (
-              onSubDetailClick ? (
-                <button
-                  type="button"
-                  className="monday-meeting-service-detail monday-meeting-service-detail--muted monday-meeting-excluded-link btn btn-link p-0 text-start"
-                  onClick={onSubDetailClick}
-                >
-                  {subDetail}
-                </button>
-              ) : (
-                <div className="monday-meeting-service-detail monday-meeting-service-detail--muted">{subDetail}</div>
-              )
-            ) : null}
-          </>
         )}
       </Card.Body>
     </Card>
@@ -195,8 +184,8 @@ function GoalTile({
         meetingGoal ? 'processing-tile--status-good' : 'processing-tile--status-warn'
       }`}
     >
-      <Card.Body className="processing-kpi-card-body p-3 d-flex flex-column gap-2">
-        <div className="d-flex justify-content-between align-items-start gap-2">
+      <Card.Body className="monday-meeting-service-tile__body">
+        <div className="monday-meeting-service-tile__header monday-meeting-service-tile__header--split">
           <div className="processing-kpi-label">{label}</div>
           <span
             className={`monday-meeting-service-goal-badge ${
@@ -206,18 +195,33 @@ function GoalTile({
             {meetingGoal ? 'On target' : 'Below target'}
           </span>
         </div>
-        <div className="processing-hero-value text-dark">{actualPct}%</div>
-        <div className="monday-meeting-service-detail">Target: {targetPct}%</div>
-        <div className="monday-meeting-service-detail">{sampleText}</div>
+        <div
+          className={`monday-meeting-service-tile__value ${
+            meetingGoal ? 'monday-meeting-service-tile__value--good' : 'monday-meeting-service-tile__value--warn'
+          }`}
+        >
+          {actualPct}%
+        </div>
+        <div className="monday-meeting-service-tile__footer">
+          <div className="monday-meeting-service-tile__meta">Target: {targetPct}%</div>
+          <div className="monday-meeting-service-tile__meta">{sampleText}</div>
+        </div>
       </Card.Body>
     </Card>
   )
 }
 
 export default function MondayMeetingServiceTab() {
-  const { defaultStart, defaultEnd } = defaultDateRange()
-  const [start, setStart] = useState(defaultStart)
-  const [end, setEnd] = useState(defaultEnd)
+  const quarterSelectItems = useMemo(() => listServiceQuarterSelectItems(), [])
+  const quarterOptions = useMemo(
+    () => quarterSelectItems.filter((item) => item.type === 'quarter'),
+    [quarterSelectItems],
+  )
+  const [selectedQuarterKey, setSelectedQuarterKey] = useState(defaultServiceQuarterKey())
+  const selectedQuarter =
+    quarterOptions.find((option) => option.key === selectedQuarterKey) ?? quarterOptions[0]
+  const start = selectedQuarter?.startDate ?? ''
+  const end = selectedQuarter?.endDate ?? ''
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [data, setData] = useState<ServiceMetrics | null>(null)
@@ -227,7 +231,7 @@ export default function MondayMeetingServiceTab() {
     setLoading(true)
     setError(null)
     try {
-      const response = await apiFetch(`/api/monday_meeting/service${params(start, end)}`, { signal })
+      const response = await apiFetch(`/api/monday_meeting/service${serviceDateRangeParams(start, end)}`, { signal })
       if (!response.ok) throw new Error('load_failed')
       const payload = (await response.json()) as ServiceMetrics
       if (signal?.aborted) return
@@ -247,39 +251,41 @@ export default function MondayMeetingServiceTab() {
     return () => controller.abort()
   }, [load])
 
-  const quoting = data?.deficiency_quoting
-  const approval = data?.quote_approval
-  const assignment = data?.approved_to_job
+  const allQuotes = data?.all_quotes
+  const pipeline = data?.deficiency_pipeline
   const repairedGoal = data?.goals.deficiencies_repaired
   const slaGoal = data?.goals.scheduled_within_10_business_days
-  const exclusionSubline = formatExclusionSubline(quoting)
-  const hasExcluded = (quoting?.excluded_non_quoteable ?? 0) > 0
+  const exclusionSubline = formatExclusionSubline(pipeline)
+  const hasExcluded = (pipeline?.excluded_non_quoteable ?? 0) > 0
 
   return (
-    <div className="monday-meeting-service-tab p-3">
+    <div className="monday-meeting-service-tab">
       <div className="monday-meeting-service-toolbar">
-        <h2 className="monday-meeting-service-section-title">Date range</h2>
-        <div className="monday-meeting-service-filters">
-          <div className="monday-meeting-service-filters__dates">
-          <Form.Control
-            type="date"
+        <div className="monday-meeting-service-toolbar__group">
+          <span className="monday-meeting-service-toolbar__label">Quarter</span>
+          <Form.Select
             size="sm"
-            className="monday-meeting-service-date-control"
-            value={start}
-            aria-label="Start date"
-            onChange={(e) => setStart(e.target.value)}
-          />
-          <span className="monday-meeting-service-date-sep" aria-hidden>
-            –
-          </span>
-          <Form.Control
-            type="date"
-            size="sm"
-            className="monday-meeting-service-date-control"
-            value={end}
-            aria-label="End date"
-            onChange={(e) => setEnd(e.target.value)}
-          />
+            className="monday-meeting-service-quarter-control"
+            value={selectedQuarterKey}
+            aria-label="Reporting quarter"
+            onChange={(e) => setSelectedQuarterKey(e.target.value)}
+          >
+            {quarterSelectItems.map((item) =>
+              item.type === 'divider' ? (
+                <option
+                  key={`divider-${item.year}`}
+                  disabled
+                  className="monday-meeting-service-quarter-divider"
+                >
+                  {item.label}
+                </option>
+              ) : (
+                <option key={item.key} value={item.key}>
+                  {item.label}
+                </option>
+              ),
+            )}
+          </Form.Select>
         </div>
         <Link
           to="/monday_meeting/service/admin"
@@ -288,17 +294,16 @@ export default function MondayMeetingServiceTab() {
           <i className="bi bi-gear me-1" aria-hidden />
           Filter settings
         </Link>
-        </div>
       </div>
 
       {error ? (
-        <Alert variant="warning" className="mb-0 py-2 small">
-          Something went wrong loading service metrics. Try again, or pick a different range.
+        <Alert variant="warning" className="monday-meeting-service-alert mb-0">
+          Something went wrong loading service metrics. Try again, or pick a different quarter.
         </Alert>
       ) : null}
 
-      {quoting?.classification?.needs_classification ? (
-        <Alert variant="info" className="py-2 small">
+      {pipeline?.classification?.needs_classification ? (
+        <Alert variant="info" className="monday-meeting-service-alert mb-0">
           Non-quoteable filtering has not been run yet, so nothing is excluded. Open{' '}
           <Link to="/monday_meeting/service/admin">Filter settings</Link> and click{' '}
           <strong>Reclassify all deficiencies</strong> (or run the sync that updates deficiencies).
@@ -306,50 +311,56 @@ export default function MondayMeetingServiceTab() {
       ) : null}
 
       {loading ? (
-        <div className="text-center py-5" aria-busy="true" aria-label="Loading service metrics">
+        <div className="monday-meeting-service-loading" aria-busy="true" aria-label="Loading service metrics">
           <Spinner />
         </div>
       ) : data ? (
         <>
-          <section>
-            <h2 className="monday-meeting-service-section-title">Pipeline</h2>
-            <div className="monday-meeting-service-kpi-grid monday-meeting-service-kpi-grid--pipeline">
+          <section className="monday-meeting-service-panel">
+            <h2 className="monday-meeting-service-section-title">Quotes</h2>
+            <div className="monday-meeting-service-kpi-grid monday-meeting-service-kpi-grid--cols-3">
+              <MetricTile
+                label="Quotes approved"
+                value={`${allQuotes?.approved_pct ?? 0}%`}
+                detail={`${allQuotes?.approved ?? 0} of ${allQuotes?.total ?? 0} quotes accepted`}
+                infoTooltip={ALL_QUOTES_TOOLTIP}
+              />
+            </div>
+          </section>
+
+          <section className="monday-meeting-service-panel">
+            <h2 className="monday-meeting-service-section-title">Deficiencies</h2>
+            <div className="monday-meeting-service-kpi-grid monday-meeting-service-kpi-grid--cols-4">
               <MetricTile
                 label="Deficiencies quoted"
-                value={`${quoting?.quoted_pct ?? 0}%`}
-                detail={`${quoting?.quoted ?? 0} of ${quoting?.total ?? 0} deficiencies`}
+                value={`${pipeline?.quoted_pct ?? 0}%`}
+                detail={`${pipeline?.quoted ?? 0} of ${pipeline?.total ?? 0} deficiencies`}
                 subDetail={exclusionSubline}
                 onSubDetailClick={hasExcluded ? () => setShowExcludedModal(true) : undefined}
-                infoTooltip={PIPELINE_EXCLUSION_TOOLTIP}
+                infoTooltip={`${DEFICIENCY_COHORT_TOOLTIP} ${PIPELINE_EXCLUSION_TOOLTIP}`}
               />
               <MetricTile
                 label="Not quoted"
-                value={`${quoting?.not_quoted_pct ?? 0}%`}
-                detail={`${(quoting?.total ?? 0) - (quoting?.quoted ?? 0)} deficiencies without quote`}
-                infoTooltip={PIPELINE_EXCLUSION_TOOLTIP}
+                value={`${pipeline?.not_quoted_pct ?? 0}%`}
+                detail={`${(pipeline?.total ?? 0) - (pipeline?.quoted ?? 0)} deficiencies without quote`}
+                infoTooltip={DEFICIENCY_COHORT_TOOLTIP}
               />
               <MetricTile
                 label="Quotes approved"
-                value={`${approval?.approved_pct ?? 0}%`}
-                detail={`${approval?.approved ?? 0} of ${approval?.total_quotes ?? 0} quotes accepted`}
+                value={`${pipeline?.approved_of_quoted_pct ?? 0}%`}
+                detail={`${pipeline?.approved_of_quoted ?? 0} of ${pipeline?.quoted ?? 0} quoted deficiencies`}
+                infoTooltip={DEFICIENCY_COHORT_TOOLTIP}
               />
-            </div>
-          </section>
-
-          <section>
-            <h2 className="monday-meeting-service-section-title">Job assignment</h2>
-            <div className="monday-meeting-service-kpi-grid monday-meeting-service-kpi-grid--assignment">
               <MetricTile
                 label="Approved → job assigned"
-                value={`${assignment?.with_job_pct ?? 0}%`}
-                detail={`${assignment?.with_job ?? 0} of ${assignment?.approved_total ?? 0} approved quotes`}
+                value={`${pipeline?.approved_with_job_pct ?? 0}%`}
+                detail={`${pipeline?.approved_with_job ?? 0} of ${pipeline?.approved_of_quoted ?? 0} approved deficiencies`}
+                infoTooltip={DEFICIENCY_COHORT_TOOLTIP}
               />
             </div>
-          </section>
 
-          <section>
-            <h2 className="monday-meeting-service-section-title">Goals</h2>
-            <div className="monday-meeting-service-kpi-grid monday-meeting-service-kpi-grid--goals">
+            <h2 className="monday-meeting-service-section-title mt-2">Goals</h2>
+            <div className="monday-meeting-service-kpi-grid monday-meeting-service-kpi-grid--cols-2">
               <GoalTile
                 label="Deficiencies repaired"
                 actualPct={repairedGoal?.actual_pct ?? 0}
@@ -359,6 +370,7 @@ export default function MondayMeetingServiceTab() {
               />
               <ScheduledWithinSlaGoalTile slaGoal={slaGoal} />
             </div>
+            <SlaBucketKpiRow slaGoal={slaGoal} />
           </section>
 
           <ExcludedDeficienciesModal

@@ -1,21 +1,38 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Alert, Button, Card, Form, Modal, Spinner, Table } from 'react-bootstrap'
 import { Link } from 'react-router-dom'
 import {
   createNonQuoteablePhrase,
   deleteNonQuoteablePhrase,
   fetchNonQuoteablePhrases,
+  PhraseAdminApiError,
   reclassifyDeficiencies,
   updateNonQuoteablePhrase,
   type NonQuoteablePhrase,
   type ReclassifySummary,
 } from '../features/mondayMeeting/mondayMeetingServiceAdminShared'
+import {
+  defaultServiceQuarterKey,
+  listServiceQuarterSelectItems,
+} from '../features/mondayMeeting/mondayMeetingServiceDateRange'
+import '../features/mondayMeeting/mondayMeeting.css'
 
 export default function MondayMeetingServiceAdminPage() {
+  const quarterSelectItems = useMemo(() => listServiceQuarterSelectItems(), [])
+  const quarterOptions = useMemo(
+    () => quarterSelectItems.filter((item) => item.type === 'quarter'),
+    [quarterSelectItems],
+  )
+  const [selectedQuarterKey, setSelectedQuarterKey] = useState(defaultServiceQuarterKey())
+  const selectedQuarter =
+    quarterOptions.find((option) => option.key === selectedQuarterKey) ?? quarterOptions[0]
+  const startDate = selectedQuarter?.startDate ?? ''
+  const endDate = selectedQuarter?.endDate ?? ''
   const [phrases, setPhrases] = useState<NonQuoteablePhrase[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [saveNotice, setSaveNotice] = useState<string | null>(null)
   const [reclassifying, setReclassifying] = useState(false)
   const [lastSummary, setLastSummary] = useState<ReclassifySummary | null>(null)
   const [showModal, setShowModal] = useState(false)
@@ -29,13 +46,14 @@ export default function MondayMeetingServiceAdminPage() {
     setLoading(true)
     setError(null)
     try {
-      setPhrases(await fetchNonQuoteablePhrases())
+      const data = await fetchNonQuoteablePhrases(startDate, endDate)
+      setPhrases(data.phrases)
     } catch {
       setError('Failed to load phrases.')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [startDate, endDate])
 
   useEffect(() => {
     void load()
@@ -68,6 +86,7 @@ export default function MondayMeetingServiceAdminPage() {
     }
     setSaving(true)
     setError(null)
+    setSaveNotice(null)
     try {
       if (editing) {
         await updateNonQuoteablePhrase(editing.id, {
@@ -85,9 +104,24 @@ export default function MondayMeetingServiceAdminPage() {
         })
       }
       setShowModal(false)
+      setSaveNotice(
+        'Phrase saved. Reclassification is running in the background — refresh the Service tab in a minute to see updated exclusions.',
+      )
       await load()
-    } catch {
-      setError('Save failed — phrase may already exist.')
+    } catch (err) {
+      if (err instanceof PhraseAdminApiError && err.status === 409) {
+        const existing = (err.body as { phrase?: NonQuoteablePhrase } | null)?.phrase
+        setError(
+          existing
+            ? `Phrase "${existing.phrase}" is already in the list${existing.active ? '' : ' (currently inactive)'}. Edit that row instead of adding a duplicate.`
+            : 'That phrase already exists. Check the table below or edit the existing entry.',
+        )
+        await load()
+      } else if (err instanceof PhraseAdminApiError) {
+        setError(err.message)
+      } else {
+        setError('Save failed. Check your connection and try again.')
+      }
     } finally {
       setSaving(false)
     }
@@ -145,6 +179,44 @@ export default function MondayMeetingServiceAdminPage() {
             </Alert>
           ) : null}
 
+          {saveNotice ? (
+            <Alert variant="success" className="py-2 small">
+              {saveNotice}
+            </Alert>
+          ) : null}
+
+          <div className="d-flex flex-wrap align-items-center gap-3 mb-3">
+            <span className="text-muted small text-uppercase fw-bold" style={{ letterSpacing: '0.08em' }}>
+              Quarter
+            </span>
+            <Form.Select
+              size="sm"
+              className="monday-meeting-service-quarter-control"
+              value={selectedQuarterKey}
+              aria-label="Reporting quarter"
+              onChange={(e) => setSelectedQuarterKey(e.target.value)}
+            >
+              {quarterSelectItems.map((item) =>
+                item.type === 'divider' ? (
+                  <option
+                    key={`divider-${item.year}`}
+                    disabled
+                    className="monday-meeting-service-quarter-divider"
+                  >
+                    {item.label}
+                  </option>
+                ) : (
+                  <option key={item.key} value={item.key}>
+                    {item.label}
+                  </option>
+                ),
+              )}
+            </Form.Select>
+            <span className="text-muted small">
+              Match counts use deficiencies reported in this quarter (same as Service tab).
+            </span>
+          </div>
+
           <div className="d-flex flex-wrap gap-2 mb-3">
             <Button type="button" variant="primary" size="sm" onClick={openCreate}>
               Add phrase
@@ -177,6 +249,7 @@ export default function MondayMeetingServiceAdminPage() {
                 <tr>
                   <th>Phrase</th>
                   <th>Label</th>
+                  <th className="text-end">Matches</th>
                   <th>Active</th>
                   <th>Notes</th>
                   <th />
@@ -185,7 +258,7 @@ export default function MondayMeetingServiceAdminPage() {
               <tbody>
                 {phrases.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="text-muted">
+                    <td colSpan={6} className="text-muted">
                       No phrases yet.
                     </td>
                   </tr>
@@ -194,6 +267,7 @@ export default function MondayMeetingServiceAdminPage() {
                     <tr key={row.id}>
                       <td>{row.phrase}</td>
                       <td>{row.label ?? '—'}</td>
+                      <td className="text-end tabular-nums">{row.matches_in_range ?? 0}</td>
                       <td>{row.active ? 'Yes' : 'No'}</td>
                       <td className="text-muted small">{row.notes ?? '—'}</td>
                       <td className="text-nowrap">

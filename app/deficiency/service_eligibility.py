@@ -7,7 +7,10 @@ import re
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
+from typing import Iterable
 from zoneinfo import ZoneInfo
+
+from sqlalchemy import and_
 
 from app.db_models import (
     Deficiency,
@@ -75,6 +78,42 @@ def phrase_matches(description: str | None, phrase: str) -> bool:
         pattern = rf"\b{re.escape(normalized_phrase)}\b"
         return re.search(pattern, normalized_desc) is not None
     return normalized_phrase in normalized_desc
+
+
+def tally_phrase_matches(
+    descriptions: Iterable[str | None],
+    phrases: Iterable[str],
+) -> dict[str, int]:
+    """Count how many descriptions match each phrase (same rules as classification)."""
+    phrase_list = list(phrases)
+    counts = {phrase: 0 for phrase in phrase_list}
+    for description in descriptions:
+        for phrase in phrase_list:
+            if phrase_matches(description, phrase):
+                counts[phrase] += 1
+    return counts
+
+
+def count_phrase_matches_in_window(window_start: datetime, window_end: datetime) -> dict[str, int]:
+    """Count phrase matches among deficiencies reported in the date window."""
+    phrase_rows = DeficiencyNonQuoteablePhrase.query.order_by(
+        DeficiencyNonQuoteablePhrase.phrase.asc()
+    ).all()
+    phrases = [row.phrase for row in phrase_rows]
+    if not phrases:
+        return {}
+
+    descriptions = (
+        db.session.query(Deficiency.description)
+        .filter(
+            and_(
+                Deficiency.deficiency_created_on >= window_start,
+                Deficiency.deficiency_created_on <= window_end,
+            )
+        )
+        .all()
+    )
+    return tally_phrase_matches((row[0] for row in descriptions), phrases)
 
 
 def jaccard(a: set[str], b: set[str]) -> float:
@@ -278,26 +317,6 @@ def summarize_eligibility_records(
     }
 
 
-def _upsert_eligibility(
-    deficiency_id: int,
-    *,
-    eligible: bool,
-    reason: str,
-    detail: str | None,
-    desc_hash: str,
-    classified_at: datetime,
-) -> None:
-    row = DeficiencyServiceEligibility.query.filter_by(deficiency_id=deficiency_id).first()
-    if row is None:
-        row = DeficiencyServiceEligibility(deficiency_id=deficiency_id)
-    row.eligible = eligible
-    row.reason = reason
-    row.detail = detail
-    row.description_hash = desc_hash
-    row.classified_at = classified_at
-    db.session.add(row)
-
-
 def classify_all_deficiencies(*, commit: bool = True) -> dict:
     """
     Full reclassification pass: keyword denylist then stale similarity clusters.
@@ -325,15 +344,27 @@ def classify_all_deficiencies(*, commit: bool = True) -> dict:
         today=today_pacific,
         classified_at=classified_at,
     )
+    def_ids = [int(record["deficiency_id"]) for record in records]
+    existing_by_id: dict[int, DeficiencyServiceEligibility] = {}
+    if def_ids:
+        existing_by_id = {
+            row.deficiency_id: row
+            for row in DeficiencyServiceEligibility.query.filter(
+                DeficiencyServiceEligibility.deficiency_id.in_(def_ids)
+            ).all()
+        }
     for record in records:
-        _upsert_eligibility(
-            record["deficiency_id"],
-            eligible=record["eligible"],
-            reason=record["reason"],
-            detail=record["detail"],
-            desc_hash=record["description_hash"],
-            classified_at=record["classified_at"],
-        )
+        def_id = int(record["deficiency_id"])
+        row = existing_by_id.get(def_id)
+        if row is None:
+            row = DeficiencyServiceEligibility(deficiency_id=def_id)
+            db.session.add(row)
+            existing_by_id[def_id] = row
+        row.eligible = record["eligible"]
+        row.reason = record["reason"]
+        row.detail = record["detail"]
+        row.description_hash = record["description_hash"]
+        row.classified_at = record["classified_at"]
 
     if commit:
         db.session.commit()

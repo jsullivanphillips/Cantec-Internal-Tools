@@ -632,12 +632,35 @@ def get_deficiency_insights(
         )
     quoted_deficiencies = quoted_deficiencies_query.distinct().count()
 
-    # Quoted + job created
+    # Quoted + accepted (approved)
+    approved_deficiencies_query = (
+        db.session.query(QuoteDeficiencyLink.deficiency_id)
+        .join(Quote, Quote.quote_id == QuoteDeficiencyLink.quote_id)
+        .join(Deficiency, QuoteDeficiencyLink.deficiency_id == Deficiency.deficiency_id)
+        .filter(base_filter, Quote.status == "accepted")
+    )
+    if exclude_non_quoteable:
+        approved_deficiencies_query = _join_deficiency_service_eligibility(
+            approved_deficiencies_query
+        ).filter(service_eligible_filter)
+    if exclude_inspection_jobs:
+        approved_deficiencies_query = (
+            approved_deficiencies_query
+            .outerjoin(Job, Quote.job_id == Job.job_id)
+            .filter(quote_inspection_filter)
+        )
+    approved_deficiencies = approved_deficiencies_query.distinct().count()
+
+    # Approved + job created
     quoted_with_job_query = (
         db.session.query(QuoteDeficiencyLink.deficiency_id)
         .join(Quote, Quote.quote_id == QuoteDeficiencyLink.quote_id)
         .join(Deficiency, QuoteDeficiencyLink.deficiency_id == Deficiency.deficiency_id)
-        .filter(base_filter, Quote.job_created.is_(True))
+        .filter(
+            base_filter,
+            Quote.status == "accepted",
+            Quote.job_created.is_(True),
+        )
     )
     if exclude_non_quoteable:
         quoted_with_job_query = _join_deficiency_service_eligibility(
@@ -659,6 +682,7 @@ def get_deficiency_insights(
         .join(Deficiency, QuoteDeficiencyLink.deficiency_id == Deficiency.deficiency_id)
         .filter(
             base_filter,
+            Quote.status == "accepted",
             Quote.job_created.is_(True),
             Job.completed_on.isnot(None),
         )
@@ -703,17 +727,21 @@ def get_deficiency_insights(
             .count()
         )
 
+    def pct_of_quoted(value):
+        return round((value / quoted_deficiencies) * 100, 2) if quoted_deficiencies else 0
+
     result = {
         "total_deficiencies": total_deficiencies,
         "quoted_deficiencies": quoted_deficiencies,
+        "approved_deficiencies": approved_deficiencies,
         "quoted_with_job": quoted_with_job,
         "quoted_with_completed_job": quoted_with_completed_job,
 
-        # 🔥 NEW: Percentages of the original total
         "percentages": {
             "quoted_pct": pct(quoted_deficiencies),
+            "approved_of_quoted_pct": pct_of_quoted(approved_deficiencies),
             "job_created_pct": pct(quoted_with_job),
-            "job_completed_pct": pct(quoted_with_completed_job)
+            "job_completed_pct": pct(quoted_with_completed_job),
         }
     }
     if exclude_non_quoteable:
@@ -942,11 +970,24 @@ def get_time_to_quote_metrics(window_start, window_end):
 
 
 def authenticate():
-    auth_url = "https://api.servicetrade.com/api/auth"
-    payload = {"username": session.get('username'), "password": session.get('password')}
+    import os
 
-    if not payload["username"] or not payload["password"]:
-        raise Exception("Missing ServiceTrade credentials in session.")
+    auth_url = "https://api.servicetrade.com/api/auth"
+    username = None
+    password = None
+    try:
+        username = session.get("username")
+        password = session.get("password")
+    except RuntimeError:
+        pass
+    if not username or not password:
+        username = os.getenv("PROCESSING_USERNAME")
+        password = os.getenv("PROCESSING_PASSWORD")
+
+    if not username or not password:
+        raise Exception("Missing ServiceTrade credentials in session or environment.")
+
+    payload = {"username": username, "password": password}
 
     try:
         auth_response = api_session.post(auth_url, json=payload)
@@ -972,13 +1013,68 @@ def _parse_job_scheduled_date(job: dict) -> datetime | None:
     return datetime.fromtimestamp(raw, tz=timezone.utc)
 
 
-def upsert_job_schedule_from_servicetrade(job_payload: dict) -> Job | None:
+def fetch_earliest_appointment_created_at(job_id: int) -> datetime | None:
+    """Return when office first created an appointment (scheduling action), if any."""
+    page = 1
+    earliest: datetime | None = None
+    while True:
+        response = call_service_trade_api(
+            f"{SERVICE_TRADE_API_BASE}/appointment",
+            params={"jobId": int(job_id), "page": page, "limit": 500},
+        )
+        if not response:
+            break
+        data = response.json().get("data", {})
+        appointments = data.get("appointments") or []
+        for appt in appointments:
+            created_raw = appt.get("created")
+            if not created_raw:
+                continue
+            created_at = datetime.fromtimestamp(int(created_raw), tz=timezone.utc)
+            if earliest is None or created_at < earliest:
+                earliest = created_at
+        total_pages = int(data.get("totalPages") or 1)
+        if page >= total_pages or len(appointments) < 500:
+            break
+        page += 1
+    return earliest
+
+
+def _user_name_from_payload(value) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        for key in ("name", "email", "displayName"):
+            candidate = value.get(key)
+            if isinstance(candidate, str) and candidate.strip():
+                return candidate.strip()
+        return None
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+def _job_created_by_from_payload(job_payload: dict) -> str | None:
+    for key in ("creator", "owner", "createdBy", "assignedTo", "sales", "createdByUser"):
+        name = _user_name_from_payload(job_payload.get(key))
+        if name:
+            return name
+    return None
+
+
+def upsert_job_schedule_from_servicetrade(
+    job_payload: dict,
+    *,
+    first_scheduled_at: datetime | None = None,
+) -> Job | None:
     """Upsert minimal job fields needed for quote SLA metrics (always updates schedule)."""
     job_id = job_payload.get("id")
     if not job_id:
         return None
 
     scheduled_date = _parse_job_scheduled_date(job_payload)
+    if first_scheduled_at is None:
+        first_scheduled_at = fetch_earliest_appointment_created_at(int(job_id))
     created_raw = job_payload.get("created")
     created_on_st = datetime.fromtimestamp(created_raw, tz=timezone.utc) if created_raw else None
     completed_raw = job_payload.get("completedOn")
@@ -989,6 +1085,7 @@ def upsert_job_schedule_from_servicetrade(job_payload: dict) -> Job | None:
     job_type = job_payload.get("type")
     job_status = job_payload.get("displayStatus") or job_payload.get("status") or "Unknown"
     location_id = job_payload.get("location", {}).get("id")
+    created_by_name = _job_created_by_from_payload(job_payload)
 
     existing = Job.query.filter_by(job_id=job_id).first()
     if existing:
@@ -998,10 +1095,17 @@ def upsert_job_schedule_from_servicetrade(job_payload: dict) -> Job | None:
         existing.job_status = job_status
         existing.scheduled_date = scheduled_date
         existing.completed_on = completed_on
+        if first_scheduled_at and (
+            existing.first_scheduled_at is None
+            or first_scheduled_at < existing.first_scheduled_at
+        ):
+            existing.first_scheduled_at = first_scheduled_at
         if created_on_st:
             existing.created_on_st = created_on_st
         if location_id:
             existing.location_id = location_id
+        if created_by_name:
+            existing.created_by_name = created_by_name
         db_job = existing
     else:
         db_job = Job(
@@ -1012,10 +1116,12 @@ def upsert_job_schedule_from_servicetrade(job_payload: dict) -> Job | None:
             customer_name=customer_name,
             job_status=job_status,
             scheduled_date=scheduled_date,
+            first_scheduled_at=first_scheduled_at,
             completed_on=completed_on,
             total_on_site_hours=0,
             revenue=0,
             created_on_st=created_on_st,
+            created_by_name=created_by_name,
         )
         db.session.add(db_job)
 
@@ -1558,6 +1664,331 @@ def get_quotes_with_params(params, desc="Fetching quotes"):
 
     return quotes 
 
+QUOTE_DEFICIENCY_LINK_LOOKBACK_DAYS = 730
+
+
+def _deficiency_ids_for_quote_linking(end_date, start_date=None) -> list[int]:
+    """Deficiencies that may still have quotes created in a sync window."""
+    if start_date is None:
+        lookback_start = end_date - timedelta(days=QUOTE_DEFICIENCY_LINK_LOOKBACK_DAYS)
+    else:
+        lookback_start = min(
+            start_date,
+            end_date - timedelta(days=QUOTE_DEFICIENCY_LINK_LOOKBACK_DAYS),
+        )
+    rows = (
+        db.session.query(Deficiency.deficiency_id)
+        .filter(Deficiency.deficiency_created_on >= lookback_start)
+        .filter(Deficiency.deficiency_created_on <= end_date)
+        .all()
+    )
+    return [int(row[0]) for row in rows]
+
+
+def upsert_deficiency_from_st_payload(d: dict) -> Deficiency:
+    """Upsert a deficiency row from a ServiceTrade deficiency payload."""
+    reporter = d.get("reporter")
+    service_line = d.get("serviceLine")
+    job = d.get("job")
+    location = d.get("location")
+
+    job_id = job["id"] if job else -1
+    location_id = location["id"] if location else -1
+
+    deficiency = Deficiency.query.filter_by(deficiency_id=d["id"]).first()
+    if not deficiency:
+        deficiency = Deficiency(deficiency_id=d["id"])
+
+    deficiency.description = d.get("description")
+    deficiency.status = d.get("status")
+    deficiency.reported_by = reporter["name"] if reporter else "Unknown"
+    deficiency.service_line = service_line["name"] if service_line else "Unknown"
+    deficiency.job_id = job_id
+    deficiency.location_id = location_id
+    deficiency.deficiency_created_on = datetime.fromtimestamp(d["created"])
+    deficiency.orphaned = job_id == -1
+
+    db.session.add(deficiency)
+    return deficiency
+
+
+def ensure_deficiency_from_st(st_def_id: int) -> Deficiency | None:
+    """Ensure a local deficiency row exists, fetching from ServiceTrade when missing."""
+    existing = Deficiency.query.filter_by(deficiency_id=st_def_id).first()
+    if existing is not None:
+        return existing
+
+    response = call_service_trade_api(
+        f"{SERVICE_TRADE_API_BASE}/deficiency/{st_def_id}",
+        params={},
+    )
+    if not response:
+        return None
+
+    payload = response.json().get("data", {})
+    if not payload:
+        return None
+
+    return upsert_deficiency_from_st_payload(payload)
+
+
+def extract_deficiency_ids_from_quote_payload(q: dict) -> set[int]:
+    """Collect deficiency IDs embedded in a ServiceTrade quote payload when present."""
+    def_ids: set[int] = set()
+
+    for service_request in q.get("serviceRequests") or []:
+        deficiency = service_request.get("deficiency") or {}
+        deficiency_id = deficiency.get("id")
+        if deficiency_id is not None:
+            def_ids.add(int(deficiency_id))
+
+    return def_ids
+
+
+def fetch_quote_deficiency_ids_from_st(quote_id: int) -> set[int]:
+    """Fetch a quote detail payload and return linked deficiency IDs."""
+    response = call_service_trade_api(
+        f"{SERVICE_TRADE_API_BASE}/quote/{quote_id}",
+        params={},
+    )
+    if not response:
+        return set()
+
+    payload = response.json().get("data", {})
+    if not payload:
+        return set()
+
+    return extract_deficiency_ids_from_quote_payload(payload)
+
+
+def build_quote_to_deficiency_map_from_quote_payloads(
+    quote_payloads: list[dict],
+    *,
+    fetch_details: bool = True,
+    desc: str = "Extracting quote payload deficiency links",
+) -> dict[int, set[int]]:
+    """
+    Map quotes to deficiencies using IDs embedded in quote payloads.
+
+    List quote responses often omit nested deficiency objects; when none are found
+    and fetch_details is True, fetches the quote detail payload as a fallback.
+    """
+    quote_to_def_ids: dict[int, set[int]] = {}
+
+    for quote_payload in tqdm(quote_payloads, desc=desc):
+        quote_id = int(quote_payload["id"])
+        def_ids = extract_deficiency_ids_from_quote_payload(quote_payload)
+        if not def_ids and fetch_details:
+            def_ids = fetch_quote_deficiency_ids_from_st(quote_id)
+        if def_ids:
+            quote_to_def_ids[quote_id] = def_ids
+
+    return quote_to_def_ids
+
+
+def build_quote_to_deficiency_id_map(
+    deficiency_ids: list[int],
+    *,
+    desc: str = "Fetching linked quotes",
+) -> dict[int, set[int]]:
+    quote_to_def_ids: dict[int, set[int]] = {}
+    for st_def_id in tqdm(deficiency_ids, desc=desc):
+        quotes = get_quotes_with_params(params={"deficiencyId": st_def_id})
+        for q in quotes:
+            quote_to_def_ids.setdefault(int(q["id"]), set()).add(int(st_def_id))
+    return quote_to_def_ids
+
+
+def build_quote_to_deficiency_map_via_locations(
+    quotes_by_location: dict[int, set[int]],
+    *,
+    desc: str = "Linking quotes via location deficiencies",
+) -> dict[int, set[int]]:
+    """
+    Map quotes to deficiencies by scanning ServiceTrade deficiencies at each location.
+
+    Used when local deficiency rows are missing but quotes are already synced.
+    """
+    quote_to_def_ids: dict[int, set[int]] = {}
+
+    for location_id, quote_ids in tqdm(quotes_by_location.items(), desc=desc):
+        if not quote_ids:
+            continue
+
+        deficiencies = get_deficiencies_with_params(
+            params={"locationId": location_id},
+            desc=f"Deficiencies at location {location_id}",
+        )
+        for deficiency_payload in deficiencies:
+            st_def_id = int(deficiency_payload["id"])
+            upsert_deficiency_from_st_payload(deficiency_payload)
+
+            linked_quotes = get_quotes_with_params(params={"deficiencyId": st_def_id})
+            for quote_payload in linked_quotes:
+                quote_id = int(quote_payload["id"])
+                if quote_id in quote_ids:
+                    quote_to_def_ids.setdefault(quote_id, set()).add(st_def_id)
+
+    return quote_to_def_ids
+
+
+def _quotes_missing_deficiency_links(
+    window_start,
+    window_end,
+    *,
+    accepted_only: bool = False,
+    date_on: str = "quote_created_on",
+) -> list[tuple[int, int]]:
+    """Return (quote_id, location_id) for quotes in window with no deficiency link."""
+    date_column = Quote.quote_accepted_on if date_on == "quote_accepted_on" else Quote.quote_created_on
+    linked_quote_ids = {
+        int(row[0])
+        for row in db.session.query(QuoteDeficiencyLink.quote_id).distinct().all()
+    }
+    query = db.session.query(Quote.quote_id, Quote.location_id).filter(
+        date_column.isnot(None),
+        date_column >= window_start,
+        date_column <= window_end,
+        Quote.location_id.isnot(None),
+    )
+    if accepted_only:
+        query = query.filter(Quote.status == "accepted")
+
+    rows = query.all()
+    return [
+        (int(quote_id), int(location_id))
+        for quote_id, location_id in rows
+        if int(quote_id) not in linked_quote_ids and location_id is not None
+    ]
+
+
+def sync_unlinked_quote_deficiency_links(
+    window_start,
+    window_end,
+    *,
+    accepted_only: bool = False,
+    date_on: str = "quote_created_on",
+    quote_payloads: list[dict] | None = None,
+) -> dict:
+    """
+    Backfill quote-deficiency links starting from quotes, not deficiencies.
+
+    Order of attempts for each unlinked quote:
+    1. Deficiency IDs embedded in the quote payload (including quote detail fetch)
+    2. Deficiencies at the quote location, matched via ServiceTrade deficiency→quote API
+    """
+    authenticate()
+    missing_rows = _quotes_missing_deficiency_links(
+        window_start,
+        window_end,
+        accepted_only=accepted_only,
+        date_on=date_on,
+    )
+    quotes_by_location: dict[int, set[int]] = {}
+    for quote_id, location_id in missing_rows:
+        quotes_by_location.setdefault(location_id, set()).add(quote_id)
+
+    target_quote_ids = {quote_id for quote_id, _ in missing_rows}
+    quote_to_def_ids: dict[int, set[int]] = {}
+
+    if quote_payloads:
+        for quote_id, def_ids in build_quote_to_deficiency_map_from_quote_payloads(
+            [q for q in quote_payloads if int(q["id"]) in target_quote_ids],
+            fetch_details=True,
+            desc="Quote payload deficiency links",
+        ).items():
+            quote_to_def_ids.setdefault(quote_id, set()).update(def_ids)
+
+    still_missing_by_location: dict[int, set[int]] = {}
+    for location_id, quote_ids in quotes_by_location.items():
+        unresolved = {quote_id for quote_id in quote_ids if quote_id not in quote_to_def_ids}
+        if unresolved:
+            still_missing_by_location[location_id] = unresolved
+
+    if still_missing_by_location:
+        location_map = build_quote_to_deficiency_map_via_locations(still_missing_by_location)
+        for quote_id, def_ids in location_map.items():
+            quote_to_def_ids.setdefault(quote_id, set()).update(def_ids)
+
+    links_added = ensure_quote_deficiency_links(quote_to_def_ids)
+    return {
+        "quotes_missing_links": len(missing_rows),
+        "locations_scanned": len(still_missing_by_location),
+        "quotes_mapped": len(quote_to_def_ids),
+        "links_added": links_added,
+    }
+
+
+def ensure_quote_deficiency_links(quote_to_def_ids: dict[int, set[int]]) -> int:
+    quote_ids = {int(row[0]) for row in db.session.query(Quote.quote_id).all()}
+    deficiency_ids = {
+        int(row[0]) for row in db.session.query(Deficiency.deficiency_id).all()
+    }
+    added = 0
+    for quote_id, def_ids in quote_to_def_ids.items():
+        if quote_id not in quote_ids:
+            continue
+        for st_def_id in def_ids:
+            if st_def_id not in deficiency_ids:
+                deficiency = ensure_deficiency_from_st(st_def_id)
+                if deficiency is None:
+                    continue
+                deficiency_ids.add(st_def_id)
+            exists = QuoteDeficiencyLink.query.filter_by(
+                quote_id=quote_id,
+                deficiency_id=st_def_id,
+            ).first()
+            if exists:
+                continue
+            db.session.add(
+                QuoteDeficiencyLink(
+                    quote_id=quote_id,
+                    deficiency_id=st_def_id,
+                )
+            )
+            added += 1
+    if added:
+        db.session.commit()
+    return added
+
+
+def sync_quote_deficiency_links(
+    start_date,
+    end_date,
+    *,
+    lookback_days: int = QUOTE_DEFICIENCY_LINK_LOOKBACK_DAYS,
+) -> dict:
+    authenticate()
+    lookback_start = min(start_date, end_date - timedelta(days=lookback_days))
+    deficiency_ids = [
+        int(row[0])
+        for row in db.session.query(Deficiency.deficiency_id)
+        .filter(Deficiency.deficiency_created_on >= lookback_start)
+        .filter(Deficiency.deficiency_created_on <= end_date)
+        .all()
+    ]
+    quote_to_def_ids = build_quote_to_deficiency_id_map(
+        deficiency_ids,
+        desc="Syncing quote-deficiency links",
+    )
+    links_added = ensure_quote_deficiency_links(quote_to_def_ids)
+    unlinked = sync_unlinked_quote_deficiency_links(
+        start_date,
+        end_date,
+        accepted_only=True,
+        date_on="quote_accepted_on",
+    )
+    return {
+        "deficiencies_scanned": len(deficiency_ids),
+        "quotes_mapped": len(quote_to_def_ids),
+        "links_added": links_added + unlinked["links_added"],
+        "unlinked_quotes_scanned": unlinked["quotes_missing_links"],
+        "unlinked_locations_scanned": unlinked["locations_scanned"],
+        "unlinked_quotes_mapped": unlinked["quotes_mapped"],
+        "unlinked_links_added": unlinked["links_added"],
+    }
+
+
 def _parse_st_unix_timestamp(value) -> datetime | None:
     if value is None:
         return None
@@ -1615,29 +2046,19 @@ def update_quotes(start_date=None, end_date=None):
     tqdm.write(f"✅ Found {len(all_quotes)} quotes in range.")
 
     # -----------------------------------------------
-    # 2. Fetch deficiencies created in same window
+    # 2. Build quote→deficiency map from deficiencies
+    #    that may still have quotes (not only defs created in quote window)
     # -----------------------------------------------
-    filtered_defs = (
-        Deficiency.query
-        .filter(Deficiency.deficiency_created_on >= start_date)
-        .filter(Deficiency.deficiency_created_on <= end_date)
-        .all()
-    )
-
-    st_def_ids = [d.deficiency_id for d in filtered_defs]
-    tqdm.write(f"🔗 Found {len(st_def_ids)} deficiencies in date window")
+    st_def_ids = _deficiency_ids_for_quote_linking(end_date, start_date)
+    tqdm.write(f"🔗 Scanning {len(st_def_ids)} deficiencies for quote links")
 
     # -----------------------------------------------
     # 3. Build mapping: quote_id → {deficiency_ids}
     # -----------------------------------------------
-    quote_to_def_ids = {}  # quote_id → set(def_ids)
-
-    for st_def_id in tqdm(st_def_ids, desc="Fetching linked quotes"):
-        quotes = get_quotes_with_params(params={"deficiencyId": st_def_id})
-
-        for q in quotes:
-            qid = q["id"]
-            quote_to_def_ids.setdefault(qid, set()).add(st_def_id)
+    quote_to_def_ids = build_quote_to_deficiency_id_map(
+        st_def_ids,
+        desc="Fetching linked quotes",
+    )
 
     # -----------------------------------------------
     # 4. Save all quotes & link rows (batch commits)
@@ -1691,9 +2112,11 @@ def update_quotes(start_date=None, end_date=None):
                 db.session.flush()  # ensures quote.quote_id exists (DB PK)
 
                 # ---- Insert deficiency links ----
-                linked_def_ids = quote_to_def_ids.get(quote_id, [])
+                linked_def_ids = set(quote_to_def_ids.get(quote_id, set()))
+                linked_def_ids.update(extract_deficiency_ids_from_quote_payload(q))
 
                 for st_def_id in linked_def_ids:
+                    ensure_deficiency_from_st(st_def_id)
                     exists = QuoteDeficiencyLink.query.filter_by(
                         quote_id=quote.quote_id,
                         deficiency_id=st_def_id
@@ -1721,6 +2144,20 @@ def update_quotes(start_date=None, end_date=None):
     # Final commit for leftover rows
     db.session.commit()
     tqdm.write("🎉 All quotes processed and saved.")
+
+    quote_first_links = sync_unlinked_quote_deficiency_links(
+        start_date,
+        end_date,
+        accepted_only=False,
+        date_on="quote_created_on",
+        quote_payloads=all_quotes,
+    )
+    tqdm.write(
+        "🔗 Quote-first deficiency link sync: "
+        f"{quote_first_links['links_added']} added, "
+        f"{quote_first_links['quotes_missing_links']} unlinked quotes checked, "
+        f"{quote_first_links['locations_scanned']} locations scanned"
+    )
 
 
 
