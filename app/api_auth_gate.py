@@ -4,7 +4,6 @@ import re
 from flask import jsonify, request, session
 
 _KEYS_ADMIN_MUTATION_RE = re.compile(r"^/api/keys(?:/\d+)?$")
-_KEYS_ADMIN_BRIDGE_ROWS_RE = re.compile(r"^/api/keys/\d+/bridge_rows(?:/\d+)?$")
 
 
 # Worksheet endpoints a PIN-unlocked technician needs:
@@ -35,8 +34,6 @@ def register_api_session_auth(app):
         if request.method == "POST" and path == "/api/keys":
             return False
         if request.method in ("PATCH", "DELETE") and _KEYS_ADMIN_MUTATION_RE.match(path):
-            return False
-        if request.method == "DELETE" and _KEYS_ADMIN_BRIDGE_ROWS_RE.match(path):
             return False
         if path.startswith("/api/keys/") and path.endswith("/delete_blockers"):
             return False

@@ -163,6 +163,7 @@ const AUDIT_FIELD_TO_COMPACT_LABEL: Record<string, string> = {
 }
 
 const AUDIT_FIELD_TO_LONG_TEXT_KEY: Record<string, keyof TechnicianWorksheetLocation> = {
+  access_instructions: 'access_instructions',
   testing_procedures: 'testing_procedures',
   inspection_tech_notes: 'inspection_tech_notes',
   run_comments: 'run_comments',
@@ -258,6 +259,7 @@ export function auditChangeForLongTextField(
 }
 
 const LONG_TEXT_FIELD_DISPLAY_LABEL: Record<string, string> = {
+  access_instructions: 'Access instructions',
   testing_procedures: 'Testing procedures',
   inspection_tech_notes: 'Location comments',
   run_comments: 'Job comment',

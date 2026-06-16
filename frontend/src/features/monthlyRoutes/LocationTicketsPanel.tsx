@@ -19,6 +19,8 @@ type Props = {
   sessionUsername?: string | null
   onTicketsChanged?: () => void
   showCreateByDefault?: boolean
+  includeClosed?: boolean
+  onIncludeClosedChange?: (value: boolean) => void
 }
 
 export default function LocationTicketsPanel({
@@ -29,11 +31,20 @@ export default function LocationTicketsPanel({
   sessionUsername = null,
   onTicketsChanged,
   showCreateByDefault = false,
+  includeClosed: includeClosedProp,
+  onIncludeClosedChange,
 }: Props) {
   const [tickets, setTickets] = useState<LocationTicket[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [includeClosed, setIncludeClosed] = useState(false)
+  const [internalIncludeClosed, setInternalIncludeClosed] = useState(false)
+  const includeClosedControlled = onIncludeClosedChange != null
+  const includeClosed = includeClosedControlled
+    ? (includeClosedProp ?? false)
+    : internalIncludeClosed
+  const setIncludeClosed = includeClosedControlled
+    ? onIncludeClosedChange
+    : setInternalIncludeClosed
   const [creating, setCreating] = useState(showCreateByDefault)
   const [createBusy, setCreateBusy] = useState(false)
   const [selectedTicketId, setSelectedTicketId] = useState<number | null>(null)
@@ -118,18 +129,17 @@ export default function LocationTicketsPanel({
           {error}
         </Alert>
       ) : null}
-      <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
-        <Form.Check
-          type="switch"
-          id={`show-closed-tickets-${locationId}`}
-          label="Show closed"
-          checked={includeClosed}
-          onChange={(e) => setIncludeClosed(e.target.checked)}
-        />
-        <Button size="sm" variant="outline-primary" onClick={() => setCreating((v) => !v)}>
-          {creating ? 'Cancel create' : 'Create ticket'}
-        </Button>
-      </div>
+      {!includeClosedControlled ? (
+        <div className="mb-3">
+          <Form.Check
+            type="switch"
+            id={`show-closed-tickets-${locationId}`}
+            label="Show closed"
+            checked={includeClosed}
+            onChange={(e) => setIncludeClosed(e.target.checked)}
+          />
+        </div>
+      ) : null}
       {creating ? (
         <div className="border rounded p-3 mb-3">
           <h3 className="h6 mb-3">New ticket — {locationLabel}</h3>
@@ -181,6 +191,15 @@ export default function LocationTicketsPanel({
           ))}
         </ul>
       )}
+      {!creating ? (
+        <button
+          type="button"
+          className="monthly-location-comments-add-bar location-tickets-panel__create-btn"
+          onClick={() => setCreating(true)}
+        >
+          + Create ticket
+        </button>
+      ) : null}
     </div>
   )
 }

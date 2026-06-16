@@ -345,6 +345,7 @@ def seed_location_month_fields(
     if "prior_month_out_of_order_dismissed" not in base:
         base["prior_month_out_of_order_dismissed"] = False
     base.pop("building_name", None)
+    base.pop("access_instructions", None)
     return base
 
 
@@ -2127,6 +2128,7 @@ STOP_PATCH_FIELD_MAP: dict[str, str] = {
     "panel_location": "panel_location",
     "door_code": "door_code",
     "building_name": "building_name",
+    "access_instructions": "access_instructions",
     "property_management_company": "property_management_company",
     "monitoring_company_id": "monitoring_company_id",
     "monitoring_account_number": "monitoring_account_number",
@@ -2141,6 +2143,9 @@ def stop_patch_audit_old_value(mlm: MonthlyLocationMonth, field_name: str) -> ob
     if field_name == "building_name":
         loc = mlm.location
         return monthly_location_building_name(loc) if loc is not None else None
+    if field_name == "access_instructions":
+        loc = mlm.location
+        return _normalize_text(loc.access_instructions) if loc is not None else None
     attr_name = STOP_PATCH_FIELD_MAP.get(field_name)
     if not attr_name:
         return None
@@ -2207,6 +2212,17 @@ def apply_worksheet_stop_field_change(
         if old_val == new_val:
             return False, None
         loc.building_name = new_val
+        return True, None
+
+    if field_name == "access_instructions":
+        loc = mlm.location
+        if loc is None:
+            return False, "location not found for worksheet stop"
+        new_val = _normalize_text(raw_value)
+        old_val = _normalize_text(loc.access_instructions)
+        if old_val == new_val:
+            return False, None
+        loc.access_instructions = new_val
         return True, None
 
     if field_name == "office_attention":

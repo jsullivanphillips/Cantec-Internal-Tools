@@ -20,7 +20,6 @@ const MonthlyRoutePaperworkPage = lazy(() => import('./pages/MonthlyRoutePaperwo
 const TechnicianWorksheetPage = lazy(() => import('./pages/TechnicianWorksheetPage'))
 const MonthlyLocationDetailPage = lazy(() => import('./pages/MonthlyLocationDetailPage'))
 const MonthlyRoutesMapPage = lazy(() => import('./pages/MonthlyRoutesMapPage'))
-const MonthlySpecialistsPage = lazy(() => import('./pages/MonthlySpecialistsPage'))
 const MonitoringCompaniesPage = lazy(() => import('./pages/MonitoringCompaniesPage'))
 const MonthlyBillingPage = lazy(() => import('./pages/MonthlyBillingPage'))
 const KeyMetricsPage = lazy(() => import('./pages/KeyMetricsPage'))
@@ -118,7 +117,6 @@ export const router = createBrowserRouter([
       { path: 'monthlies/locations/:locationId', element: <MonthlyLocationDetailPage /> },
       { path: 'monthlies/billing', element: <MonthlyBillingPage /> },
       { path: 'monthlies/map', element: <MonthlyRoutesMapPage /> },
-      { path: 'monthlies/specialists', element: <MonthlySpecialistsPage /> },
       { path: 'monthlies/monitoring-companies', element: <MonitoringCompaniesPage /> },
       { path: 'monthlies/keys', element: <KeysAdminPage /> },
       { path: 'tools/monthly-routes', element: <Navigate to="/monthlies/locations" replace /> },

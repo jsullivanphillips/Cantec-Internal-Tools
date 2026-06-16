@@ -8,6 +8,7 @@ import {
   addCalendarMonths,
   monthFirstIsoPacificToday,
   type RoutePerformanceBreakdownPayload,
+  type RoutePerformanceBreakdownStop,
   type RoutePerformanceBreakdownSummary,
   type RoutePerformanceStopOutcome,
 } from './monthlyRoutesShared'
@@ -16,6 +17,7 @@ type Props = {
   routeId: number
   /** Route detail testing + run months; merged with API ``available_months`` for the picker. */
   monthCandidates?: string[]
+  hideTitle?: boolean
   onSummaryChange?: (summary: {
     monthLabel: string
     revenue: number
@@ -61,6 +63,46 @@ function formatDuration(minutes: number | null | undefined): string {
   if (h <= 0) return `${m} min`
   if (m === 0) return `${h} hr`
   return `${h} hr ${m} min`
+}
+
+/** Route start time for the performance table totals row (ServiceTrade clock-in, else first stop in). */
+export function performanceTableRouteStartTime(
+  summary: RoutePerformanceBreakdownSummary,
+  stops: RoutePerformanceBreakdownStop[],
+): string | null {
+  const routeIn = summary.route_clock_in?.trim()
+  if (routeIn) return routeIn
+
+  let earliest: { order: number; timeIn: string } | null = null
+  for (const stop of stops) {
+    const timeIn = stop.time_in?.trim()
+    if (!timeIn) continue
+    const order = stop.stop_order ?? Number.MAX_SAFE_INTEGER
+    if (earliest == null || order < earliest.order) {
+      earliest = { order, timeIn }
+    }
+  }
+  return earliest?.timeIn ?? null
+}
+
+/** Route end time for the performance table totals row (ServiceTrade clock-out, else last stop out). */
+export function performanceTableRouteEndTime(
+  summary: RoutePerformanceBreakdownSummary,
+  stops: RoutePerformanceBreakdownStop[],
+): string | null {
+  const routeOut = summary.route_clock_out?.trim()
+  if (routeOut) return routeOut
+
+  let latest: { order: number; timeOut: string } | null = null
+  for (const stop of stops) {
+    const timeOut = stop.time_out?.trim()
+    if (!timeOut) continue
+    const order = stop.stop_order ?? Number.MAX_SAFE_INTEGER
+    if (latest == null || order > latest.order) {
+      latest = { order, timeOut }
+    }
+  }
+  return latest?.timeOut ?? null
 }
 
 function outcomeLabel(outcome: RoutePerformanceStopOutcome): string {
@@ -260,7 +302,7 @@ function PerformanceMonthToolbar({
   return (
     <div className="monthly-route-detail-performance__month-toolbar">
       <div
-        className="monthly-route-year-toolbar monthly-route-detail-performance__month-stepper"
+        className="monthly-route-year-toolbar monthly-route-year-toolbar--compact monthly-route-detail-performance__month-stepper"
         aria-label="Performance month"
       >
         <Button
@@ -269,13 +311,14 @@ function PerformanceMonthToolbar({
           size="sm"
           className="monthly-route-year-toolbar__button"
           disabled={!canGoOlder || loading}
+          aria-label="Previous month"
           onClick={() => {
             if (canGoOlder && monthIndex >= 0) {
               onChangeMonth(monthOptions[monthIndex + 1])
             }
           }}
         >
-          Previous
+          <i className="bi bi-chevron-left" aria-hidden />
         </Button>
         <span
           className="monthly-route-year-toolbar__year monthly-route-detail-performance__month-heading tabular-nums"
@@ -297,13 +340,14 @@ function PerformanceMonthToolbar({
           size="sm"
           className="monthly-route-year-toolbar__button"
           disabled={!canGoNewer || loading}
+          aria-label="Next month"
           onClick={() => {
             if (canGoNewer && monthIndex >= 0) {
               onChangeMonth(monthOptions[monthIndex - 1])
             }
           }}
         >
-          Next
+          <i className="bi bi-chevron-right" aria-hidden />
         </Button>
       </div>
       {showJumpMenu ? (
@@ -338,6 +382,7 @@ function PerformanceMonthToolbar({
 export default function RoutePerformanceBreakdown({
   routeId,
   monthCandidates = [],
+  hideTitle = false,
   onSummaryChange,
 }: Props) {
   const [monthIso, setMonthIso] = useState<string | null>(null)
@@ -413,15 +458,17 @@ export default function RoutePerformanceBreakdown({
 
   return (
     <div className="monthly-route-detail-performance">
-      <header className="monthly-route-detail-performance__header">
-        <div className="monthly-route-detail-performance__header-copy">
-          <h3 className="monthly-route-detail-performance__title">Month profitability</h3>
-          <p className="monthly-route-detail-performance__subtitle">
-            Billable revenue (Bill status only), route expense, and per-stop visit times for the
-            selected month.
-          </p>
-        </div>
-      </header>
+      {hideTitle ? null : (
+        <header className="monthly-route-detail-performance__header">
+          <div className="monthly-route-detail-performance__header-copy">
+            <h3 className="monthly-route-detail-performance__title">Month profitability</h3>
+            <p className="monthly-route-detail-performance__subtitle">
+              Billable revenue (Bill status only), route expense, and per-stop visit times for the
+              selected month.
+            </p>
+          </div>
+        </header>
+      )}
 
       <PerformanceMonthToolbar
         monthOptions={monthOptions}
@@ -505,6 +552,30 @@ export default function RoutePerformanceBreakdown({
                   </tr>
                 ))}
               </tbody>
+              {payload.stops.length > 0 ? (
+                <tfoot>
+                  <tr className="monthly-route-detail-performance__table-totals">
+                    <td
+                      colSpan={3}
+                      className="monthly-route-detail-performance__table-totals-label"
+                    >
+                      Total for {formatMonthHeading(payload.month_date)}
+                    </td>
+                    <td className="tabular-nums monthly-route-detail-performance__col-time">
+                      {performanceTableRouteStartTime(payload.summary, payload.stops) ?? '—'}
+                    </td>
+                    <td className="tabular-nums monthly-route-detail-performance__col-time">
+                      {performanceTableRouteEndTime(payload.summary, payload.stops) ?? '—'}
+                    </td>
+                    <td className="text-end tabular-nums monthly-route-detail-performance__col-duration">
+                      {formatDuration(payload.summary.sum_visit_minutes)}
+                    </td>
+                    <td className="text-end tabular-nums monthly-route-detail-performance__col-money">
+                      {formatCurrencyCad(payload.summary.tested_revenue_total)}
+                    </td>
+                  </tr>
+                </tfoot>
+              ) : null}
             </Table>
           </div>
         </div>

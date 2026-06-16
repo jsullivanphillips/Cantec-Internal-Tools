@@ -36,8 +36,6 @@ MonthlyRoute (calendar shell) ←── MonthlyLocation (site library — one ro
 MonthlyRouteRun (per month)          MonthlyLocationMonth (worksheet + billing cell)
         ↓                                    ↓
 Technician portal / staff worksheet APIs
-
-MonthlyKeyBridge — survives location wipes (keys system untouched)
 ```
 
 **Critical invariants:**
@@ -75,7 +73,7 @@ ORM definitions: `app/db_models.py` (search `class Monthly`).
 
 **Removed (legacy):** `MonthlyRouteLocation`, `MonthlySite`, `MonthlyTestingSite`, `MonthlyTestingSiteMonth`, `MonthlyRouteTestHistory`, `monthly_sites_sync.py`, `app/routes/monthly_sites.py`.
 
-One-time data migration from legacy tables: `app/monthly/migrate_flat_locations.py` (CLI: `python -m app.scripts.migrate_monthly_flat_locations`). After cutover, prefer **wipe + master sheet re-import** for clean library data (`wipe_monthly_locations_data.py` → `upload_monthly_sheet.py`).
+One-time data migration from legacy tables: `app/monthly/migrate_flat_locations.py` (CLI: `python -m app.scripts.migrate_monthly_flat_locations`). For bulk library updates use `upload_monthly_sheet.py` (see §8).
 
 ### 3.2 Keys
 
@@ -83,11 +81,8 @@ One-time data migration from legacy tables: `app/monthly/migrate_flat_locations.
 |--------|------|
 | `Key` | Canonical keycodes + barcodes (standalone — deleting a `MonthlyLocation` does not delete keys) |
 | `MonthlyLocation.key_id` | Live FK on library rows (`ON DELETE SET NULL` when a key is removed) |
-| `MonthlyKeyBridge` | Archive of key↔site snapshots before wipes; **no FK** to wiped location rows; **RESTRICT** FK to `keys` |
 
-**Keys system is never modified by monthly location wipes or flat-model migrations.**
-
-**Staff admin (authenticated SPA only):** `POST/PATCH/DELETE /api/keys`, `GET /api/keys/<id>/delete_blockers`, `DELETE /api/keys/<id>/bridge_rows` (all or `/<bridge_id>`). Public `/keys` tool remains sign-out/return/search. UI: `/monthlies/keys` — edit modal lists bridge archive rows with **Remove** / **Remove all**.
+**Staff admin (authenticated SPA only):** `POST/PATCH/DELETE /api/keys`, `GET /api/keys/<id>/delete_blockers`. Public `/keys` tool remains sign-out/return/search. UI: `/monthlies/keys`.
 
 **Route key audit:** `GET /api/monthly_routes/routes/<id>/key_audit` — compares active stops that need a physical key vs keys assigned to route bag `Key.route = R#`, plus sign-out availability (`app/monthly/route_key_audit.py`). Shown on route detail and technician route hub.
 
@@ -216,7 +211,8 @@ Excel/CSV
 |----------|------|--------|
 | `z1b2c3d4e5f6` | `migrations/versions/z1b2c3d4e5f6_add_monthly_site_v2_tables.py` | `monthly_site`, `monthly_testing_site`, `monthly_testing_site_month` |
 | `z2b2c3d4e5f7` | `migrations/versions/z2b2c3d4e5f7_monthly_testing_site_key_fk.py` | Key columns + FK on testing sites; SQL backfill from legacy |
-| `z3c4d5e6f8a0` | `migrations/versions/z3c4d5e6f8a0_monthly_key_bridge.py` | `monthly_key_bridge` archive table |
+| `z3c4d5e6f8a0` | `migrations/versions/z3c4d5e6f8a0_monthly_key_bridge.py` | `monthly_key_bridge` archive table (removed in `z21a1b2c3d4e1`) |
+| `z21a1b2c3d4e1` | `migrations/versions/z21a1b2c3d4e1_drop_monthly_key_bridge.py` | Drop `monthly_key_bridge` |
 
 Many earlier migrations scaffolded routes, runs, history, inspection fields, coordinates, comments, specialists — see `migrations/versions/*monthly*`.
 
@@ -227,8 +223,6 @@ Many earlier migrations scaffolded routes, runs, history, inspection fields, coo
 | Script | Purpose |
 |--------|---------|
 | `app/scripts/backfill_monthly_v2_sites.py` | Scaffold `MonthlySite` + primary `MonthlyTestingSite` (`--execute`) |
-| `app/scripts/backfill_monthly_key_bridge.py` | Populate `monthly_key_bridge`; optional CSV (`--execute`, `--csv`) |
-| `app/scripts/wipe_monthly_locations_data.py` | Delete locations, history, runs, v2, comments, snapshots; **keep** `monthly_route` shells and `monthly_key_bridge` |
 | `app/scripts/update_monthly_route_run_timing.py` | Sync `monthly_route_run_timing_month` from ST testing-job onsite clocks (schedule externally; same cadence as specialist sync) |
 | `app/scripts/upload_monthly_sheet.py` | Bulk master sheet → library + history + v2 refresh (`--locations-only` skips month columns/history; `--history-only` skips location upserts; `--status-and-routes-only` updates STATUS + TEST DAY + route FK only) |
 | `app/scripts/backfill_monthly_route_entities.py` | Route entities from TEST DAY classification |
@@ -285,15 +279,12 @@ Stops need `latitude`/`longitude` on `monthly_route_location` before the route m
 Script fallback for many routes: `python -m app.scripts.backfill_monthly_route_coordinates --commit`.
 | `app/scripts/audit_keys_multiple_monthly_routes.py` | Audit keys spanning multiple routes |
 
-**Safe wipe order:** `backfill_monthly_key_bridge --execute` → then `wipe_monthly_locations_data --execute`.
-
 **Fresh library from master sheet (no historical test cells):**
 
-1. `python -m app.scripts.backfill_monthly_key_bridge --execute` (optional archive before wipe)
-2. `python -m app.scripts.wipe_monthly_locations_data --execute`
-3. `python -m app.scripts.upload_monthly_sheet --locations-only --commit --csv-path <master.csv>`
-4. `python -m app.scripts.backfill_monthly_route_entities --execute` (assign routes from TEST DAY)
-5. Import per-month run CSVs via the office UI (or route inspection CSV import API) for test history only
+1. `python -m app.scripts.upload_monthly_sheet --locations-only --commit --csv-path <master.csv>`
+2. `python -m app.scripts.backfill_monthly_route_entities --execute` (assign routes from TEST DAY)
+3. `python -m app.scripts.backfill_monthly_location_key_id --execute` (link `key_id` from KEYS/barcode)
+4. Import per-month run CSVs via the office UI (or route inspection CSV import API) for test history only
 
 **Import master-sheet test cells for a calendar year (metrics / billing history):**
 
@@ -356,7 +347,6 @@ Technician flow: `/tech` → `/tech/start` → `/tech/route/:routeId/worksheet/:
 | `tests/test_monthly_run_details_api.py` | Office `GET .../run_details` counts, run comments, field-change aggregation |
 | `tests/test_worksheet_stops_api.py` | Portal `stops[]`, materialize on start run, PATCH stop, clock-in conflict, skip→clock-in |
 | `tests/test_monthly_sites_v2.py` | v2 sync, dual-write keys, testing-site CRUD API |
-| `tests/test_monthly_key_bridge_wipe.py` | Bridge backfill; wipe keeps routes; post-wipe API smoke |
 | `tests/test_monthly_route_sync.py` | TEST DAY → route FK |
 | `tests/test_monthly_test_day.py` | Parser edge cases, cancelled `-` |
 | `tests/test_monthly_key_resolve.py` | Barcode/keycode resolution |
@@ -487,6 +477,7 @@ Master data lives on **`MonthlyTestingSite`** (migration `z4a5b6c7d8e9`):
 | Panel | `panel` (legacy `facp_detail` kept in sync) |
 | Panel location | `panel_location` |
 | Door code (if any) | `door_code` |
+| Access instructions | `access_instructions` (library master; office location detail + technician portal worksheet PATCH) |
 | Monitoring company | `monitoring_company_id` → `monitoring_company` (directory phones on `MonitoringCompany`) |
 | Monitoring account # | `monitoring_account_number` (site-specific; not on directory row) |
 | Monitoring password | `monitoring_password` (site-specific; not on directory row) |
@@ -757,18 +748,18 @@ UI: run review **Tickets** button, **Tickets** section on monthly location detai
 
 ## 14. Summary one-liner
 
-**Route-scheduled monthly fire-alarm testing ledger:** Excel routes → Postgres routes; **flat locations** in a library (`MonthlyLocation`); each month technicians fill **run-scoped month rows** per location (`MonthlyLocationMonth`, including per-location billing). **`monthly_key_bridge`** protects key associations across wipes.
+**Route-scheduled monthly fire-alarm testing ledger:** Excel routes → Postgres routes; **flat locations** in a library (`MonthlyLocation`); each month technicians fill **run-scoped month rows** per location (`MonthlyLocationMonth`, including per-location billing). Keys link live via `MonthlyLocation.key_id`.
 
 ---
 
 ## 14. Cutover checklist (June 2026 flat model)
 
-### Data reset (recommended when library has migration duplicates)
+### Library refresh from master sheet
 
 1. DB backup
-2. Optional: `python -m app.scripts.backfill_monthly_key_bridge --execute`
-3. `python -m app.scripts.wipe_monthly_locations_data --execute` (keeps `keys` + `monthly_key_bridge`)
-4. `python -m app.scripts.upload_monthly_sheet <master.csv> --execute`
+2. `python -m app.scripts.upload_monthly_sheet <master.csv> --locations-only --commit`
+3. `python -m app.scripts.backfill_monthly_route_entities --execute`
+4. `python -m app.scripts.backfill_monthly_location_key_id --execute`
 5. Optional: route inspection CSV import for month snapshots
 6. Verify library counts and multi-building addresses
 
@@ -784,7 +775,7 @@ UI: run review **Tickets** button, **Tickets** section on monthly location detai
 - [ ] Route worksheet — flat location list, clock in/out, test outcome
 - [ ] Billing board — per-location billing PATCH
 - [ ] Portal workflow queue completes a stop
-- [ ] Keys table and `monthly_key_bridge` unchanged after wipe
+- [ ] Keys admin delete blocked only when `monthly_location.key_id` still references the key
 
 ---
 

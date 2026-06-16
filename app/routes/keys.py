@@ -7,7 +7,7 @@ from sqlalchemy.orm import selectinload, aliased
 from .scheduling_attack import get_active_techs
 import re
 
-from app.db_models import db, Key, KeyAddress, KeyStatus, MonthlyKeyBridge, MonthlyLocation
+from app.db_models import db, Key, KeyAddress, KeyStatus, MonthlyLocation
 from app.spa import send_spa_index
 from app.response_cache import cached_json_response, invalidate_cache_prefix
 
@@ -146,28 +146,7 @@ def _apply_key_addresses(key: Key, addresses: list[str], *, replace: bool) -> No
         existing.add(addr.casefold())
 
 
-def _serialize_bridge_row(row: MonthlyKeyBridge) -> dict[str, object]:
-    exported = row.exported_at.isoformat() if row.exported_at else None
-    return {
-        "id": int(row.id),
-        "source": row.source,
-        "display_address": (row.display_address or "").strip() or None,
-        "keys_text": (row.keys_text or "").strip() or None,
-        "legacy_monthly_route_location_id": (
-            int(row.legacy_monthly_route_location_id)
-            if row.legacy_monthly_route_location_id is not None
-            else None
-        ),
-        "exported_at": exported,
-    }
-
-
 def _key_delete_blockers(key_id: int) -> dict[str, object]:
-    bridge_rows = (
-        MonthlyKeyBridge.query.filter(MonthlyKeyBridge.key_id == key_id)
-        .order_by(MonthlyKeyBridge.id.asc())
-        .all()
-    )
     linked_locations = (
         MonthlyLocation.query.filter(MonthlyLocation.key_id == key_id)
         .order_by(MonthlyLocation.id.asc())
@@ -175,8 +154,6 @@ def _key_delete_blockers(key_id: int) -> dict[str, object]:
         .all()
     )
     return {
-        "bridge_rows": len(bridge_rows),
-        "bridge_row_details": [_serialize_bridge_row(row) for row in bridge_rows],
         "linked_location_ids": [int(loc.id) for loc in linked_locations],
         "linked_location_count": MonthlyLocation.query.filter(
             MonthlyLocation.key_id == key_id
@@ -460,22 +437,11 @@ def api_update_key(key_id: int):
 
 @keys_bp.delete("/api/keys/<int:key_id>")
 def api_delete_key(key_id: int):
-    """Staff-only: delete a key when not blocked by bridge archive or monthly links."""
+    """Staff-only: delete a key when not linked from monthly locations."""
     if not _keys_schema_ready():
         abort(503, description="Keys schema not ready")
     key = _get_key_or_404(key_id)
     blockers = _key_delete_blockers(key_id)
-    if blockers["bridge_rows"]:
-        return (
-            jsonify(
-                {
-                    "error": "Key is archived in monthly_key_bridge and cannot be deleted",
-                    "code": "key_bridge_blocked",
-                    "blockers": blockers,
-                }
-            ),
-            409,
-        )
     if blockers["linked_location_count"]:
         return (
             jsonify(
@@ -497,35 +463,6 @@ def api_delete_key(key_id: int):
 def api_key_delete_blockers(key_id: int):
     """Staff-only: preview delete blockers for admin UI."""
     _get_key_or_404(key_id)
-    return jsonify({"blockers": _key_delete_blockers(key_id)})
-
-
-@keys_bp.delete("/api/keys/<int:key_id>/bridge_rows")
-def api_delete_all_key_bridge_rows(key_id: int):
-    """Staff-only: remove all monthly_key_bridge archive rows for a key."""
-    if not _keys_schema_ready():
-        abort(503, description="Keys schema not ready")
-    _get_key_or_404(key_id)
-    rows = MonthlyKeyBridge.query.filter(MonthlyKeyBridge.key_id == key_id).all()
-    deleted = len(rows)
-    for row in rows:
-        db.session.delete(row)
-    if deleted:
-        _commit_or_500()
-    return jsonify({"deleted": deleted, "blockers": _key_delete_blockers(key_id)})
-
-
-@keys_bp.delete("/api/keys/<int:key_id>/bridge_rows/<int:bridge_id>")
-def api_delete_key_bridge_row(key_id: int, bridge_id: int):
-    """Staff-only: remove one monthly_key_bridge archive row."""
-    if not _keys_schema_ready():
-        abort(503, description="Keys schema not ready")
-    _get_key_or_404(key_id)
-    row = MonthlyKeyBridge.query.filter_by(id=bridge_id, key_id=key_id).first()
-    if row is None:
-        abort(404, description="Bridge row not found")
-    db.session.delete(row)
-    _commit_or_500()
     return jsonify({"blockers": _key_delete_blockers(key_id)})
 
 

@@ -519,43 +519,27 @@ export default function MonthlyRouteMapCard({
         <div className="monthly-route-map-card__stats">
 
           <span>
-
-            <strong>{formatDistanceMeters(payload?.distance_meters ?? null)}</strong>
-
             Distance
-
+            <strong>{formatDistanceMeters(payload?.distance_meters ?? null)}</strong>
           </span>
 
           <span>
-
-            <strong>{formatDurationSeconds(payload?.duration_seconds ?? null)}</strong>
-
             Drive time
-
+            <strong>{formatDurationSeconds(payload?.duration_seconds ?? null)}</strong>
           </span>
 
           <span>
-
-            <strong>{payload?.waypoint_count ?? localCoordinateCount}</strong>
-
             Routable stops
-
+            <strong>{payload?.waypoint_count ?? localCoordinateCount}</strong>
           </span>
 
           <span
-
             className={
-
               missingCount > 0 ? 'monthly-route-map-card__stat--warning' : undefined
-
             }
-
           >
-
-            <strong>{missingCount}</strong>
-
             Missing coords
-
+            <strong>{missingCount}</strong>
           </span>
 
         </div>
@@ -585,27 +569,7 @@ export default function MonthlyRouteMapCard({
             </Button>
 
           ) : null}
-
-          <Button
-
-            type="button"
-
-            size="sm"
-
-            variant="outline-secondary"
-
-            onClick={refreshMap}
-
-            disabled={loading || bulkGeocoding}
-
-          >
-
-            Refresh route
-
-          </Button>
-
         </div>
-
       </div>
 
 

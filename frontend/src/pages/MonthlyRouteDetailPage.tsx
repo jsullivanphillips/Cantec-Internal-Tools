@@ -17,15 +17,17 @@ import {
   type CSSProperties,
   type ReactNode,
 } from 'react'
-import { Accordion, Alert, Badge, Button, Col, Form, Modal, Row, Spinner, Table } from 'react-bootstrap'
+import { Accordion, Alert, Badge, Button, Col, Dropdown, Form, Modal, Row, Spinner, Table } from 'react-bootstrap'
 import { Link, useParams } from 'react-router-dom'
 import MonthlyLibraryCommentsPanel from '../features/monthlyRoutes/MonthlyLibraryCommentsPanel'
 import RouteTechnicianNoteCard from '../features/monthlyRoutes/RouteTechnicianNoteCard'
-import RouteTechCountCard from '../features/monthlyRoutes/RouteTechCountCard'
+import {
+  DEFAULT_ROUTE_TECH_COUNT,
+  RouteTechCountKpiField,
+} from '../features/monthlyRoutes/RouteTechCountCard'
 import MonthlyRouteMapCard from '../features/monthlyRoutes/MonthlyRouteMapCard'
 import RoutePerformanceBreakdown from '../features/monthlyRoutes/RoutePerformanceBreakdown'
 import PortalKeyViewModal from '../features/monthlyRoutes/PortalKeyViewModal'
-import RouteKeyAuditCard from '../features/keys/RouteKeyAuditCard'
 import OfficeSkipRunModal, {
   type OfficeSkipRunPayload,
 } from '../features/monthlyRoutes/OfficeSkipRunModal'
@@ -56,8 +58,16 @@ import {
   formatSitesTestedRatio,
   routeRunSummaryFromApi,
   runMonthIsOfficeSkippable,
+  runsCardRowShowsPaperworkLink,
+  runsCardRowShowsUploadCsv,
 } from '../features/monthlyRoutes/routeRunsDisplay'
 import { locationAddressSubline, locationPrimaryLabel } from '../features/monthlyRoutes/locationDisplay'
+import {
+  ANNUAL_COLUMN_STYLE,
+  KEYS_COLUMN_STYLE,
+  LIBRARY_TABLE_HEADER_STICKY_STYLE,
+  renderLibraryStatusDot,
+} from '../features/monthlyRoutes/monthlyDirectoryTableShared'
 import { apiJson, apiPostFormData, isAbortError } from '../lib/apiClient'
 import { formatCurrencyCad } from '../lib/formatCurrencyCad'
 import MonthlyRouteDetailPageSkeleton from './MonthlyRouteDetailPageSkeleton'
@@ -118,19 +128,13 @@ function normalizedTechName(name: string): string {
   return name.trim().toLowerCase()
 }
 
-function siteStatusBadgeVariant(status: string): string {
-  switch (status) {
-    case 'active':
-      return 'success'
-    case 'cancelled':
-      return 'secondary'
-    case 'on_hold':
-      return 'warning'
-    case 'waiting_keys':
-      return 'info'
-    default:
-      return 'secondary'
-  }
+function routeSiteLabelSubtext(
+  loc: RouteLocationListItem,
+  rowLabel: string,
+): string | null {
+  const { buildingName, navigationAddress } = routeLocationSubtext(loc, rowLabel)
+  const parts = [buildingName, navigationAddress].filter(Boolean)
+  return parts.length > 0 ? parts.join(' · ') : null
 }
 
 type RouteSiteRow = { id: number; sort_order: number; label: string | null; annual_month: string | null }
@@ -178,6 +182,12 @@ function routeLocationSubtext(loc: RouteLocationListItem, primaryLabel: string):
   return { buildingName, navigationAddress }
 }
 
+function routeLocationKeyDisplay(loc: RouteLocationListItem): string {
+  const fromKey = loc.key?.keycode?.trim()
+  if (fromKey) return fromKey
+  return (loc.keys ?? '').trim()
+}
+
 function SortableRouteSiteRow({
   loc,
   stopStart,
@@ -209,8 +219,12 @@ function SortableRouteSiteRow({
         const isPrimaryRow = siteIndex === 0
         const siteLabel = routeLocationTitle(site, siteIndex, testingSites.length, loc)
         const rowLabel = testingSites.length > 1 ? siteLabel : locationLabel
-        const { buildingName, navigationAddress } = routeLocationSubtext(loc, rowLabel)
         const annual = site.annual_month?.trim() || loc.annual_month?.trim() || ''
+        const siteRevenue =
+          typeof loc.price_per_month === 'number' && Number.isFinite(loc.price_per_month)
+            ? loc.price_per_month
+            : null
+        const keyDisplay = routeLocationKeyDisplay(loc)
 
         return (
           <tr
@@ -219,45 +233,84 @@ function SortableRouteSiteRow({
             style={isPrimaryRow ? style : undefined}
             className={isPrimaryRow ? undefined : 'monthly-route-site-secondary-row'}
           >
-            <td className="text-center px-1 align-middle">
-              {isPrimaryRow ? (
-                <button
-                  type="button"
-                  className="btn btn-link p-0 text-muted monthly-route-site-drag-handle"
-                  style={{ cursor: orderSaving ? 'not-allowed' : 'grab' }}
-                  disabled={orderSaving}
-                  aria-label={`Drag to reorder: ${locationLabel}`}
-                  {...attributes}
-                  {...listeners}
-                >
-                  <i className="bi bi-grip-vertical fs-5" aria-hidden />
-                </button>
-              ) : null}
+            <td className="text-center monthly-route-sites-table__drag-col">
+              <div className="d-flex justify-content-center">
+                {isPrimaryRow ? (
+                  <button
+                    type="button"
+                    className="btn btn-link p-0 text-muted monthly-route-site-drag-handle"
+                    style={{ cursor: orderSaving ? 'not-allowed' : 'grab' }}
+                    disabled={orderSaving}
+                    aria-label={`Drag to reorder: ${locationLabel}`}
+                    {...attributes}
+                    {...listeners}
+                  >
+                    <i className="bi bi-grip-vertical" aria-hidden />
+                  </button>
+                ) : null}
+              </div>
             </td>
-            <td className="text-center tabular-nums fw-semibold">{stopStart + siteIndex}</td>
-            <td>
-              <Link className="link-primary text-break fw-semibold" to={`/monthlies/locations/${loc.id}`}>
-                {rowLabel}
-              </Link>
-              {buildingName ? (
-                <div className="small text-muted text-break">{buildingName}</div>
-              ) : null}
-              {navigationAddress ? (
-                <div className="small text-muted text-break">{navigationAddress}</div>
-              ) : null}
+            <td className="text-center monthly-route-sites-table__stop-col tabular-nums fw-semibold">
+              {stopStart + siteIndex}
             </td>
-            <td className="small text-nowrap">
-              {annual ? <span className="text-body">{annual}</span> : <span className="text-muted">—</span>}
-            </td>
-            <td>
-              <div className="d-flex flex-column align-items-start gap-1">
-                <Badge bg={siteStatusBadgeVariant(loc.status_normalized)} className="text-capitalize">
-                  {(loc.status_normalized || '').replace(/_/g, ' ') || '—'}
-                </Badge>
+            <td className="text-center monthly-route-sites-table__status-col">
+              <div className="d-inline-flex align-items-center justify-content-center gap-1">
+                {renderLibraryStatusDot(loc.status_normalized)}
                 {isPrimaryRow && !libraryLocationHasMapCoordinates(loc) ? (
-                  <a href="#route-map" className="badge rounded-pill text-bg-warning text-decoration-none">
-                    No map pin
+                  <a
+                    href="#route-map"
+                    className="monthly-route-site-pin-warning"
+                    title="No map pin"
+                    aria-label="No map pin"
+                  >
+                    <i className="bi bi-geo-alt" aria-hidden />
                   </a>
+                ) : null}
+              </div>
+            </td>
+            <td className="library-table-cell-clamp text-break monthly-locations-table__label-col monthly-route-sites-table__location-col">
+              <div className="library-table-cell-inner">
+                <Link className="monthly-locations-table__link" to={`/monthlies/locations/${loc.id}`}>
+                  {rowLabel}
+                </Link>
+                {routeSiteLabelSubtext(loc, rowLabel) ? (
+                  <span className="monthly-locations-table__route-meta d-block">
+                    {routeSiteLabelSubtext(loc, rowLabel)}
+                  </span>
+                ) : null}
+              </div>
+            </td>
+            <td className="library-table-cell-clamp text-center monthly-route-sites-table__annual-col">
+              <div className="library-table-cell-inner">
+                {annual ? <span>{annual}</span> : <span className="text-muted">—</span>}
+              </div>
+            </td>
+            <td className="library-table-cell-clamp text-end tabular-nums monthly-route-sites-table__revenue-col">
+              <div className="library-table-cell-inner">
+                {isPrimaryRow ? (
+                  siteRevenue != null ? (
+                    <span>{formatCurrencyCad(siteRevenue)}</span>
+                  ) : (
+                    <span className="text-muted">—</span>
+                  )
+                ) : null}
+              </div>
+            </td>
+            <td
+              className="library-table-cell-clamp text-center monthly-route-sites-table__key-col"
+              style={KEYS_COLUMN_STYLE}
+            >
+              <div className="library-table-cell-inner">
+                {isPrimaryRow ? (
+                  loc.key ? (
+                    <Link to={`/keys/${loc.key.id}`} className="monthly-locations-table__link">
+                      {loc.key.keycode}
+                    </Link>
+                  ) : keyDisplay ? (
+                    <span>{keyDisplay}</span>
+                  ) : (
+                    <span className="text-muted">—</span>
+                  )
                 ) : null}
               </div>
             </td>
@@ -595,11 +648,11 @@ function UploadRunFromCsvModal({
   )
 }
 
-function runsStageBadgeClass(stageLabel: string, hasRunData: boolean): string {
-  if (!hasRunData || stageLabel.trim().toLowerCase() === 'no data') {
+function runsStageBadgeClass(stageLabel: string): string {
+  const normalized = stageLabel.trim().toLowerCase()
+  if (normalized === 'no data') {
     return 'monthly-route-stage-badge monthly-route-stage-badge--empty'
   }
-  const normalized = stageLabel.trim().toLowerCase()
   if (normalized.includes('complete') || normalized.includes('review')) {
     return 'monthly-route-stage-badge monthly-route-stage-badge--success'
   }
@@ -609,36 +662,39 @@ function runsStageBadgeClass(stageLabel: string, hasRunData: boolean): string {
   return 'monthly-route-stage-badge monthly-route-stage-badge--info'
 }
 
-function RouteMetricCard({
-  label,
-  value,
-  meta,
-  tone,
+function RouteKpiStrip({
+  items,
 }: {
-  label: string
-  value: ReactNode
-  meta?: ReactNode
-  tone?: 'success' | 'info' | 'warning'
+  items: {
+    label: string
+    value: ReactNode
+    meta?: ReactNode
+    tone?: 'success' | 'info'
+  }[]
 }) {
-  const className = `monthly-route-metric-card${tone ? ` monthly-route-metric-card--${tone}` : ''}`
   return (
-    <div className={className}>
-      <div className="monthly-route-metric-label">{label}</div>
-      <div className="monthly-route-metric-value">{value}</div>
-      {meta ? <div className="monthly-route-metric-meta">{meta}</div> : null}
-    </div>
+    <section className="monthly-route-kpi-strip monthly-location-detail-surface" aria-label="Route summary">
+      {items.map((item) => (
+        <div
+          key={item.label}
+          className={`monthly-route-kpi-strip__item${item.tone ? ` monthly-route-kpi-strip__item--${item.tone}` : ''}`}
+        >
+          <div className="monthly-route-kpi-strip__label">{item.label}</div>
+          <div className="monthly-route-kpi-strip__value">{item.value}</div>
+          {item.meta ? <div className="monthly-route-kpi-strip__meta">{item.meta}</div> : null}
+        </div>
+      ))}
+    </section>
   )
 }
 
 function RouteSectionHeader({
   icon,
   title,
-  subtitle,
   badge,
 }: {
   icon: string
   title: string
-  subtitle?: string
   badge?: ReactNode
 }) {
   return (
@@ -648,7 +704,6 @@ function RouteSectionHeader({
       </span>
       <span className="monthly-route-section-copy">
         <span className="monthly-route-section-title">{title}</span>
-        {subtitle ? <span className="monthly-route-section-subtitle">{subtitle}</span> : null}
       </span>
       {badge ? (
         <span className="monthly-route-section-badge tabular-nums">{badge}</span>
@@ -669,18 +724,19 @@ function RouteYearToolbar({
   onChangeYear: (year: number) => void
 }) {
   return (
-    <div className="monthly-route-year-toolbar" aria-label="Calendar year selector">
+    <div className="monthly-route-year-toolbar monthly-route-year-toolbar--compact" aria-label="Calendar year selector">
       <Button
         type="button"
         variant="outline-secondary"
         size="sm"
         className="monthly-route-year-toolbar__button"
         disabled={yearIndex <= 0}
+        aria-label="Previous year"
         onClick={() => {
           if (yearIndex > 0) onChangeYear(years[yearIndex - 1])
         }}
       >
-        Previous
+        <i className="bi bi-chevron-left" aria-hidden />
       </Button>
       <span className="monthly-route-year-toolbar__year tabular-nums" aria-live="polite">
         {year ?? '—'}
@@ -691,11 +747,12 @@ function RouteYearToolbar({
         size="sm"
         className="monthly-route-year-toolbar__button"
         disabled={yearIndex < 0 || yearIndex >= years.length - 1}
+        aria-label="Next year"
         onClick={() => {
           if (yearIndex >= 0 && yearIndex < years.length - 1) onChangeYear(years[yearIndex + 1])
         }}
       >
-        Next
+        <i className="bi bi-chevron-right" aria-hidden />
       </Button>
     </div>
   )
@@ -1129,7 +1186,7 @@ export default function MonthlyRouteDetailPage() {
               </div>
             ) : null}
           </div>
-          <div className="monthly-location-hero-actions">
+          <div className="monthly-location-hero-actions monthly-route-detail-hero__actions">
             {reviewPaperworkMonthIso ? (
               <Link
                 to={`/monthlies/routes/${idNum}/paperwork?month=${encodeURIComponent(reviewPaperworkMonthIso)}`}
@@ -1146,45 +1203,71 @@ export default function MonthlyRouteDetailPage() {
               <i className="bi bi-folder2-open" aria-hidden />
               Paperwork
             </Link>
-            {routeStopTotal > 0 ? (
+            <Dropdown align="end" className="monthly-route-detail-hero__more d-none d-md-block">
+              <Dropdown.Toggle
+                variant="outline-secondary"
+                size="sm"
+                className="monthly-location-detail-action"
+                id="route-detail-more-actions"
+              >
+                <i className="bi bi-three-dots" aria-hidden />
+                More
+              </Dropdown.Toggle>
+              <Dropdown.Menu>
+                {routeStopTotal > 0 ? (
+                  <Dropdown.Item onClick={() => void openKeyView()} disabled={keyViewLoading}>
+                    {keyViewLoading ? 'Loading keys…' : 'Key view'}
+                  </Dropdown.Item>
+                ) : null}
+                <Dropdown.Item onClick={() => openUploadCsv(null)}>Upload CSV</Dropdown.Item>
+                {stUrl ? (
+                  <Dropdown.Item href={stUrl} target="_blank" rel="noopener noreferrer">
+                    ServiceTrade
+                  </Dropdown.Item>
+                ) : null}
+              </Dropdown.Menu>
+            </Dropdown>
+            <div className="monthly-route-detail-hero__mobile-actions d-md-none">
+              {routeStopTotal > 0 ? (
+                <Button
+                  variant="outline-secondary"
+                  size="sm"
+                  className="monthly-location-detail-action"
+                  onClick={() => void openKeyView()}
+                  disabled={keyViewLoading}
+                  aria-label="Key view"
+                >
+                  {keyViewLoading ? (
+                    <Spinner animation="border" size="sm" className="me-1" aria-hidden />
+                  ) : (
+                    <i className="bi bi-key" aria-hidden />
+                  )}
+                  Key view
+                </Button>
+              ) : null}
               <Button
                 variant="outline-secondary"
                 size="sm"
                 className="monthly-location-detail-action"
-                onClick={() => void openKeyView()}
-                disabled={keyViewLoading}
-                aria-label="Key view"
+                onClick={() => openUploadCsv(null)}
               >
-                {keyViewLoading ? (
-                  <Spinner animation="border" size="sm" className="me-1" aria-hidden />
-                ) : (
-                  <i className="bi bi-key" aria-hidden />
-                )}
-                Key view
+                <i className="bi bi-upload" aria-hidden />
+                Upload CSV
               </Button>
-            ) : null}
-            <Button
-              variant="outline-secondary"
-              size="sm"
-              className="monthly-location-detail-action"
-              onClick={() => openUploadCsv(null)}
-            >
-              <i className="bi bi-upload" aria-hidden />
-              Upload CSV
-            </Button>
-            {stUrl ? (
-              <Button
-                href={stUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                variant="outline-secondary"
-                size="sm"
-                className="monthly-location-detail-action"
-              >
-                <i className="bi bi-box-arrow-up-right" aria-hidden />
-                ServiceTrade
-              </Button>
-            ) : null}
+              {stUrl ? (
+                <Button
+                  href={stUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  variant="outline-secondary"
+                  size="sm"
+                  className="monthly-location-detail-action"
+                >
+                  <i className="bi bi-box-arrow-up-right" aria-hidden />
+                  ServiceTrade
+                </Button>
+              ) : null}
+            </div>
           </div>
         </section>
 
@@ -1194,27 +1277,44 @@ export default function MonthlyRouteDetailPage() {
           </Alert>
         ) : null}
 
-        <RouteKeyAuditCard routeId={idNum} />
-
-        <div className="monthly-route-metric-grid" aria-label="Route summary">
-          <RouteMetricCard label="Locations" value={<span className="tabular-nums">{routeLocationCount}</span>} />
-          <RouteMetricCard label="Stops" value={<span className="tabular-nums">{routeStopTotal}</span>} />
-          <RouteMetricCard
-            label={`Tested revenue (${metricsRevenueYear})`}
-            value={formatCurrencyCad(selectedYearRevenue)}
-            tone="success"
-            meta={
-              testedSitesMissingPriceYear > 0
-                ? `${testedSitesMissingPriceYear} missing ${testedSitesMissingPriceYear === 1 ? 'price' : 'prices'}`
-                : undefined
-            }
-          />
-          <RouteMetricCard
-            label={`Runs with data (${metricsRunsYear})`}
-            value={<span className="tabular-nums">{runsWithDataCount}</span>}
-            tone="info"
-          />
-        </div>
+        <RouteKpiStrip
+          items={[
+            {
+              label: 'Locations',
+              value: <span className="tabular-nums">{routeLocationCount}</span>,
+            },
+            {
+              label: 'Techs required',
+              value: (
+                <RouteTechCountKpiField
+                  routeId={idNum}
+                  techCount={route.tech_count}
+                  onTechCountPatched={(next) =>
+                    setRoute((prev) => (prev ? { ...prev, tech_count: next } : prev))
+                  }
+                />
+              ),
+              meta:
+                route.tech_count == null
+                  ? `Default ${DEFAULT_ROUTE_TECH_COUNT} for metrics`
+                  : undefined,
+            },
+            {
+              label: `Tested revenue (${metricsRevenueYear})`,
+              value: formatCurrencyCad(selectedYearRevenue),
+              tone: 'success',
+              meta:
+                testedSitesMissingPriceYear > 0
+                  ? `${testedSitesMissingPriceYear} missing ${testedSitesMissingPriceYear === 1 ? 'price' : 'prices'}`
+                  : undefined,
+            },
+            {
+              label: `Runs with data (${metricsRunsYear})`,
+              value: <span className="tabular-nums">{runsWithDataCount}</span>,
+              tone: 'info',
+            },
+          ]}
+        />
 
         <Accordion defaultActiveKey={[]} alwaysOpen className="monthly-location-detail-accordion monthly-route-detail-accordion">
         <Accordion.Item
@@ -1226,7 +1326,6 @@ export default function MonthlyRouteDetailPage() {
             <RouteSectionHeader
               icon="bi-map"
               title="Route map"
-              subtitle="Stop order and map pins for assigned locations"
               badge={`${routeStopTotal} stops`}
             />
           </Accordion.Header>
@@ -1247,7 +1346,6 @@ export default function MonthlyRouteDetailPage() {
             <RouteSectionHeader
               icon="bi-signpost-split"
               title="Sites on this route"
-              subtitle="Drag to reorder; saves automatically"
               badge={`${routeStopTotal} stops`}
             />
           </Accordion.Header>
@@ -1260,59 +1358,92 @@ export default function MonthlyRouteDetailPage() {
             {visibleSites.length === 0 ? (
               <p className="monthly-location-empty-state mb-0">No locations are assigned to this route.</p>
             ) : (
-              <>
-                <div className="monthly-route-detail-note">
-                  <span>
-                    <i className="bi bi-info-circle" aria-hidden />
-                    {visibleSites.length} assigned locations
-                  </span>
-                  <span>
-                    <i className="bi bi-arrow-repeat" aria-hidden />
-                    Order saves automatically after drop
-                  </span>
-                </div>
-                <div className="monthly-route-detail-table-shell">
-                  <DndContext
-                    sensors={routeSitesSensors}
-                    collisionDetection={closestCenter}
-                    onDragEnd={handleSitesDragEnd}
+              <div className="monthly-locations-table-wrap">
+                <DndContext
+                  sensors={routeSitesSensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleSitesDragEnd}
+                >
+                  <Table
+                    striped
+                    hover
+                    className="align-middle monthly-routes-library-table monthly-locations-directory-table monthly-route-sites-directory-table mb-0"
                   >
-                    <Table size="sm" className="monthly-route-detail-table monthly-route-sites-table mb-0 align-middle">
-                      <thead>
-                        <tr className="small text-muted text-uppercase">
-                          <th style={{ width: '3rem' }} className="text-center" aria-label="Drag to reorder">
-                            <i className="bi bi-grip-vertical" aria-hidden />
-                            <span className="visually-hidden">Reorder</span>
-                          </th>
-                          <th style={{ width: '4rem' }} className="text-center">
-                            Stop
-                          </th>
-                          <th>Location</th>
-                          <th style={{ width: '6.5rem' }} className="text-nowrap">
-                            Annual
-                          </th>
-                          <th style={{ width: '7rem' }}>Status</th>
-                        </tr>
-                      </thead>
-                      <SortableContext
-                        items={visibleSites.map((s) => s.id)}
-                        strategy={verticalListSortingStrategy}
-                      >
-                        <tbody>
-                          {visibleSites.map((loc, index) => (
-                            <SortableRouteSiteRow
-                              key={loc.id}
-                              loc={loc}
-                              stopStart={routeStopStartByLocationId.get(loc.id) ?? index + 1}
-                              orderSaving={orderSaving}
-                            />
-                          ))}
-                        </tbody>
-                      </SortableContext>
-                    </Table>
-                  </DndContext>
-                </div>
-              </>
+                    <colgroup>
+                      <col className="monthly-route-sites-table__drag-col" />
+                      <col className="monthly-route-sites-table__stop-col" />
+                      <col className="monthly-route-sites-table__status-col" />
+                      <col className="monthly-route-sites-table__location-col" />
+                      <col className="monthly-route-sites-table__annual-col" />
+                      <col className="monthly-route-sites-table__revenue-col" />
+                      <col className="monthly-route-sites-table__key-col" />
+                    </colgroup>
+                    <thead>
+                      <tr>
+                        <th
+                          className="text-center monthly-route-sites-table__drag-col"
+                          style={LIBRARY_TABLE_HEADER_STICKY_STYLE}
+                          aria-label="Drag to reorder"
+                        >
+                          <i className="bi bi-grip-vertical" aria-hidden />
+                          <span className="visually-hidden">Reorder</span>
+                        </th>
+                        <th
+                          className="text-center monthly-route-sites-table__stop-col"
+                          style={LIBRARY_TABLE_HEADER_STICKY_STYLE}
+                        >
+                          Stop
+                        </th>
+                        <th
+                          className="text-center monthly-route-sites-table__status-col"
+                          style={LIBRARY_TABLE_HEADER_STICKY_STYLE}
+                        >
+                          Status
+                        </th>
+                        <th
+                          className="monthly-locations-table__label-col monthly-route-sites-table__location-col"
+                          style={LIBRARY_TABLE_HEADER_STICKY_STYLE}
+                        >
+                          Location
+                        </th>
+                        <th
+                          className="text-center monthly-route-sites-table__annual-col"
+                          style={{ ...ANNUAL_COLUMN_STYLE, ...LIBRARY_TABLE_HEADER_STICKY_STYLE }}
+                        >
+                          Annual
+                        </th>
+                        <th
+                          className="text-end monthly-route-sites-table__revenue-col"
+                          style={LIBRARY_TABLE_HEADER_STICKY_STYLE}
+                        >
+                          Price
+                        </th>
+                        <th
+                          className="text-center monthly-route-sites-table__key-col"
+                          style={{ ...KEYS_COLUMN_STYLE, ...LIBRARY_TABLE_HEADER_STICKY_STYLE }}
+                        >
+                          Key
+                        </th>
+                      </tr>
+                    </thead>
+                    <SortableContext
+                      items={visibleSites.map((s) => s.id)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <tbody>
+                        {visibleSites.map((loc, index) => (
+                          <SortableRouteSiteRow
+                            key={loc.id}
+                            loc={loc}
+                            stopStart={routeStopStartByLocationId.get(loc.id) ?? index + 1}
+                            orderSaving={orderSaving}
+                          />
+                        ))}
+                      </tbody>
+                    </SortableContext>
+                  </Table>
+                </DndContext>
+              </div>
             )}
           </Accordion.Body>
         </Accordion.Item>
@@ -1325,16 +1456,12 @@ export default function MonthlyRouteDetailPage() {
             <RouteSectionHeader
               icon="bi-calendar-check"
               title="Runs"
-              subtitle="Monthly paperwork and CSV upload history"
               badge={runsWithDataCount}
             />
           </Accordion.Header>
           <Accordion.Body className="monthly-location-testing-history-body">
             {runsCardYears.length > 0 ? (
               <div className="monthly-route-detail-section-toolbar">
-                <p className="monthly-route-detail-section-toolbar__intro mb-0">
-                  Review run dates, testing progress, and paperwork for each month.
-                </p>
                 <RouteYearToolbar
                   year={effectiveRunsYear}
                   yearIndex={runsCardYearIndex}
@@ -1346,72 +1473,110 @@ export default function MonthlyRouteDetailPage() {
             {runsCardRows.length === 0 ? (
               <p className="monthly-location-empty-state mb-0">No months available for this year.</p>
             ) : (
-              <div className="monthly-route-detail-table-shell">
-                <Table size="sm" className="monthly-route-detail-table monthly-route-detail-runs-table mb-0 align-middle">
+              <div className="monthly-locations-table-wrap">
+                <Table
+                  striped
+                  hover
+                  className="align-middle monthly-routes-library-table monthly-locations-directory-table monthly-route-runs-directory-table mb-0"
+                >
+                  <colgroup>
+                    <col style={{ width: '20%' }} />
+                    <col style={{ width: '14%' }} />
+                    <col style={{ width: '14%' }} />
+                    <col style={{ width: '16%' }} />
+                    <col style={{ width: '36%' }} />
+                  </colgroup>
                   <thead>
-                    <tr className="small text-muted text-uppercase">
-                      <th>Month</th>
-                      <th>Date</th>
-                      <th className="text-nowrap">Sites tested</th>
-                      <th>Stage</th>
-                      <th className="text-end">Actions</th>
+                    <tr>
+                      <th style={LIBRARY_TABLE_HEADER_STICKY_STYLE}>Month</th>
+                      <th style={LIBRARY_TABLE_HEADER_STICKY_STYLE}>Date</th>
+                      <th className="text-center" style={LIBRARY_TABLE_HEADER_STICKY_STYLE}>
+                        Sites tested
+                      </th>
+                      <th style={LIBRARY_TABLE_HEADER_STICKY_STYLE}>Stage</th>
+                      <th className="text-end" style={LIBRARY_TABLE_HEADER_STICKY_STYLE}>
+                        Actions
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {runsCardRows.map(({ monthIso, run, specialistMonth, hasRunData }) => (
                       <tr key={monthIso}>
-                        <td className="fw-semibold">{formatMonthHeading(monthIso)}</td>
-                        <td className="text-nowrap">
-                          {run ? formatRunDisplayDate(run, specialistMonth) : '—'}
+                        <td className="library-table-cell-clamp fw-semibold">
+                          <div className="library-table-cell-inner">{formatMonthHeading(monthIso)}</div>
                         </td>
-                        <td className="tabular-nums">
-                          {run ? formatSitesTestedRatio(run) : '—'}
+                        <td className="library-table-cell-clamp text-nowrap">
+                          <div className="library-table-cell-inner">
+                            {run ? formatRunDisplayDate(run, specialistMonth) : '—'}
+                          </div>
                         </td>
-                        <td>
-                          {(() => {
-                            const stageLabel = formatRunsCardStageLabel({
-                              monthIso,
-                              run,
-                              specialistMonth,
-                              hasRunData,
-                            })
-                            const stageClass = runsStageBadgeClass(stageLabel, hasRunData)
-                            return <span className={stageClass}>{stageLabel}</span>
-                          })()}
+                        <td className="library-table-cell-clamp text-center tabular-nums">
+                          <div className="library-table-cell-inner">
+                            {run ? formatSitesTestedRatio(run) : '—'}
+                          </div>
+                        </td>
+                        <td className="library-table-cell-clamp">
+                          <div className="library-table-cell-inner">
+                            {(() => {
+                              const stageLabel = formatRunsCardStageLabel(
+                                {
+                                  monthIso,
+                                  run,
+                                  specialistMonth,
+                                  hasRunData,
+                                },
+                                currentMonthIso,
+                              )
+                              const stageClass = runsStageBadgeClass(stageLabel)
+                              return <span className={stageClass}>{stageLabel}</span>
+                            })()}
+                          </div>
                         </td>
                         <td className="text-end">
                           <div className="monthly-route-detail-runs-actions">
-                            {hasRunData && run ? (
+                            {runsCardRowShowsPaperworkLink(
+                              { monthIso, run, specialistMonth, hasRunData },
+                              currentMonthIso,
+                            ) ? (
                               <Link
                                 to={`/monthlies/routes/${idNum}/paperwork?month=${encodeURIComponent(monthIso)}`}
-                                className="btn btn-outline-primary btn-sm monthly-location-detail-action"
+                                className="btn btn-light btn-sm monthly-route-detail-runs-actions__btn monthly-route-runs-table-action monthly-route-runs-table-action--paperwork"
+                                title="Open paperwork"
+                                aria-label={`Open paperwork for ${formatMonthHeading(monthIso)}`}
                               >
                                 <i className="bi bi-folder2-open" aria-hidden />
-                                Open paperwork
+                                <span className="monthly-route-detail-runs-actions__btn-label">Paperwork</span>
                               </Link>
                             ) : null}
                             {(!hasRunData || (run != null && runMonthIsOfficeSkippable(run))) ? (
                               <Button
                                 type="button"
-                                variant="outline-warning"
+                                variant="light"
                                 size="sm"
-                                className="monthly-location-detail-action"
+                                className="monthly-route-detail-runs-actions__btn monthly-route-runs-table-action monthly-route-runs-table-action--skip"
+                                title="Skip month"
+                                aria-label={`Skip ${formatMonthHeading(monthIso)}`}
                                 onClick={() => openSkipConfirm(monthIso)}
                               >
-                                <i className="bi bi-skip-forward" aria-hidden />
-                                Skip
+                                <i className="bi bi-skip-forward-fill" aria-hidden />
+                                <span className="monthly-route-detail-runs-actions__btn-label">Skip</span>
                               </Button>
                             ) : null}
-                            {!hasRunData ? (
+                            {runsCardRowShowsUploadCsv(
+                              { monthIso, run, specialistMonth, hasRunData },
+                              currentMonthIso,
+                            ) ? (
                               <Button
                                 type="button"
-                                variant="outline-secondary"
+                                variant="light"
                                 size="sm"
-                                className="monthly-location-detail-action"
+                                className="monthly-route-detail-runs-actions__btn monthly-route-runs-table-action monthly-route-runs-table-action--upload"
+                                title="Upload CSV"
+                                aria-label={`Upload CSV for ${formatMonthHeading(monthIso)}`}
                                 onClick={() => openUploadCsv(monthIso)}
                               >
                                 <i className="bi bi-upload" aria-hidden />
-                                Upload CSV
+                                <span className="monthly-route-detail-runs-actions__btn-label">Upload</span>
                               </Button>
                             ) : null}
                           </div>
@@ -1433,11 +1598,6 @@ export default function MonthlyRouteDetailPage() {
             <RouteSectionHeader
               icon="bi-bar-chart"
               title="Performance"
-              subtitle={
-                performanceHeader?.monthLabel
-                  ? `${performanceHeader.monthLabel} profitability`
-                  : 'Per-month stop time and revenue'
-              }
               badge={
                 performanceHeader?.net != null
                   ? formatCurrencyCad(performanceHeader.net)
@@ -1451,6 +1611,7 @@ export default function MonthlyRouteDetailPage() {
             <RoutePerformanceBreakdown
               routeId={idNum}
               monthCandidates={performanceMonthCandidates}
+              hideTitle
               onSummaryChange={setPerformanceHeader}
             />
           </Accordion.Body>
@@ -1464,18 +1625,10 @@ export default function MonthlyRouteDetailPage() {
             <RouteSectionHeader
               icon="bi-chat-left-text"
               title="Comments"
-              subtitle="Office notes for this route"
               badge={comments.length}
             />
           </Accordion.Header>
           <Accordion.Body className="monthly-location-comments-body">
-            <RouteTechCountCard
-              routeId={idNum}
-              techCount={route.tech_count}
-              onTechCountPatched={(next) =>
-                setRoute((prev) => (prev ? { ...prev, tech_count: next } : prev))
-              }
-            />
             <RouteTechnicianNoteCard
               routeId={idNum}
               technicianNote={route.technician_note}

@@ -128,8 +128,8 @@ export default function KeysAdminPage() {
       setHits((prev) => prev.filter((h) => h.id !== selected.id))
     } catch (err) {
       const code = err && typeof err === 'object' && 'code' in err ? String((err as { code: unknown }).code) : ''
-      if (code === 'monthly_location_linked' || code === 'key_bridge_blocked') {
-        setError('Cannot delete — clear monthly links and bridge archive rows first (see blockers below).')
+      if (code === 'monthly_location_linked') {
+        setError('Cannot delete — clear monthly location links first (see blockers below).')
         if (selected) void loadBlockers(selected.id)
       } else {
         setError('Delete failed.')
@@ -220,12 +220,7 @@ export default function KeysAdminPage() {
               />
             </Form.Group>
             {selected && blockers ? (
-              <KeyDeleteBlockersPanel
-                keyId={selected.id}
-                blockers={blockers}
-                onBlockersChange={setBlockers}
-                disabled={saving}
-              />
+              <KeyDeleteBlockersPanel blockers={blockers} />
             ) : null}
           </Modal.Body>
           <Modal.Footer>

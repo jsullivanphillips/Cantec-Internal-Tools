@@ -1,10 +1,10 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { Alert } from 'react-bootstrap'
 import MonthlyLocationAddressField from './MonthlyLocationAddressField'
 import PortalEditableFieldRow from './PortalEditableFieldRow'
 import PortalMonitoringCompanyField from './PortalMonitoringCompanyField'
-import { usePortalFieldEditActionRegistry } from './portalFieldEditRegistry'
+import { schedulePortalFieldRowScrollForElement, usePortalFieldEditActionRegistry } from './portalFieldEditRegistry'
 import type { GeocodeCandidate, LibraryLocation, MonitoringCompanySummary } from './monthlyRoutesShared'
 import { useMonitoringCompanies } from './useMonitoringCompanies'
 import { apiJson } from '../../lib/apiClient'
@@ -17,6 +17,7 @@ type Props = {
 
 export type MonthlyLocationEditableFieldsHandle = {
   beginFieldEdit: (fieldKey: string, options?: { openSelect?: boolean }) => void
+  scrollToField: (fieldKey: string) => void
 }
 
 const MonthlyLocationEditableFields = forwardRef<MonthlyLocationEditableFieldsHandle, Props>(
@@ -30,6 +31,7 @@ const MonthlyLocationEditableFields = forwardRef<MonthlyLocationEditableFieldsHa
     unregisterFieldEditActions,
   } = usePortalFieldEditActionRegistry(editingField)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const fieldsContainerRef = useRef<HTMLDivElement>(null)
 
   useImperativeHandle(
     ref,
@@ -39,6 +41,12 @@ const MonthlyLocationEditableFields = forwardRef<MonthlyLocationEditableFieldsHa
           setEditingField(fieldKey)
           setAutoOpenSelectFieldKey(options?.openSelect ? fieldKey : null)
         })
+      },
+      scrollToField(fieldKey) {
+        const el = fieldsContainerRef.current?.querySelector<HTMLElement>(
+          `[data-portal-field-key="${fieldKey}"]`,
+        )
+        if (el) schedulePortalFieldRowScrollForElement(el)
       },
     }),
     [],
@@ -141,8 +149,8 @@ const MonthlyLocationEditableFields = forwardRef<MonthlyLocationEditableFieldsHa
           {saveError}
         </Alert>
       ) : null}
-      <div className="pw-mock-fields monthly-location-field-sheet">
-        <div className="pw-mock-field-group">
+      <div ref={fieldsContainerRef} className="pw-mock-fields monthly-location-field-sheet">
+        <div className="pw-mock-field-group monthly-location-field-group--span-full">
           <div className="pw-mock-field-group-title">Identity</div>
           <PortalEditableFieldRow
             fieldKey="label"
@@ -177,8 +185,18 @@ const MonthlyLocationEditableFields = forwardRef<MonthlyLocationEditableFieldsHa
             onSave={saveTextField('property_management_company')}
             {...fieldEditProps}
           />
+          <PortalEditableFieldRow
+            fieldKey="annual_month"
+            label="Annual"
+            value={location.annual_month ?? ''}
+            monthSelect
+            autoOpenSelect={autoOpenSelectFieldKey === 'annual_month'}
+            onAutoOpenSelectDone={clearAutoOpenSelectFieldKey}
+            onSave={saveTextField('annual_month')}
+            {...fieldEditProps}
+          />
         </div>
-        <div className="pw-mock-field-group">
+        <div className="pw-mock-field-group monthly-location-field-group--span-full">
           <div className="pw-mock-field-group-title">Access</div>
           <div className="pw-mock-access-row">
             <PortalEditableFieldRow
@@ -217,36 +235,39 @@ const MonthlyLocationEditableFields = forwardRef<MonthlyLocationEditableFieldsHa
               multiline
               {...fieldEditProps}
             />
+          </div>
+        </div>
+        <div className="monthly-location-field-stack">
+          <div className="pw-mock-field-group">
+            <div className="pw-mock-field-group-title">Panel</div>
             <PortalEditableFieldRow
-              fieldKey="annual_month"
-              label="Annual"
-              value={location.annual_month ?? ''}
-              monthSelect
-              autoOpenSelect={autoOpenSelectFieldKey === 'annual_month'}
-              onAutoOpenSelectDone={clearAutoOpenSelectFieldKey}
-              onSave={saveTextField('annual_month')}
+              fieldKey="panel"
+              label="Panel (make / model)"
+              value={panelValue}
+              onSave={saveTextField('panel')}
+              {...fieldEditProps}
+            />
+            <PortalEditableFieldRow
+              fieldKey="panel_location"
+              label="Panel location"
+              value={location.panel_location ?? ''}
+              onSave={saveTextField('panel_location')}
+              multiline
+              {...fieldEditProps}
+            />
+          </div>
+          <div className="pw-mock-field-group">
+            <div className="pw-mock-field-group-title">Billing</div>
+            <PortalEditableFieldRow
+              fieldKey="price_per_month"
+              label="Price per month"
+              value={location.price_per_month != null ? String(location.price_per_month) : ''}
+              onSave={saveTextField('price_per_month')}
               {...fieldEditProps}
             />
           </div>
         </div>
-        <div className="pw-mock-field-group">
-          <div className="pw-mock-field-group-title">Panel</div>
-          <PortalEditableFieldRow
-            fieldKey="panel"
-            label="Panel (make / model)"
-            value={panelValue}
-            onSave={saveTextField('panel')}
-            {...fieldEditProps}
-          />
-          <PortalEditableFieldRow
-            fieldKey="panel_location"
-            label="Panel location"
-            value={location.panel_location ?? ''}
-            onSave={saveTextField('panel_location')}
-            {...fieldEditProps}
-          />
-        </div>
-        <div className="pw-mock-field-group">
+        <div className="pw-mock-field-group monthly-location-field-group--monitoring">
           <div className="pw-mock-field-group-title">Monitoring</div>
           <PortalMonitoringCompanyField
             fieldKey="monitoring_company_id"
@@ -283,7 +304,7 @@ const MonthlyLocationEditableFields = forwardRef<MonthlyLocationEditableFieldsHa
             {...fieldEditProps}
           />
         </div>
-        <div className="pw-mock-field-group">
+        <div className="pw-mock-field-group monthly-location-field-group--span-full">
           <div className="pw-mock-field-group-title">Procedures</div>
           <PortalEditableFieldRow
             fieldKey="testing_procedures"
@@ -301,16 +322,6 @@ const MonthlyLocationEditableFields = forwardRef<MonthlyLocationEditableFieldsHa
             multiline
             inlineEditActions
             onSave={saveTextField('inspection_tech_notes')}
-            {...fieldEditProps}
-          />
-        </div>
-        <div className="pw-mock-field-group">
-          <div className="pw-mock-field-group-title">Billing</div>
-          <PortalEditableFieldRow
-            fieldKey="price_per_month"
-            label="Price per month"
-            value={location.price_per_month != null ? String(location.price_per_month) : ''}
-            onSave={saveTextField('price_per_month')}
             {...fieldEditProps}
           />
         </div>

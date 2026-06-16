@@ -1,9 +1,16 @@
-import type { CSSProperties } from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button, Card, Form, Table } from 'react-bootstrap'
 import { Link } from 'react-router-dom'
 import AddMonthlyLocationWizardModal from '../features/monthlyRoutes/AddMonthlyLocationWizardModal'
 import HeroFilterPill from '../components/HeroFilterPill'
+import {
+  ANNUAL_COLUMN_STYLE,
+  DIRECTORY_COLUMN_WIDTHS,
+  KEYS_COLUMN_STYLE,
+  LIBRARY_TABLE_HEADER_STICKY_STYLE,
+  renderLibraryStatusDot,
+  STATUS_COLUMN_STYLE,
+} from '../features/monthlyRoutes/monthlyDirectoryTableShared'
 import RouteLibraryLink from '../features/monthlyRoutes/RouteLibraryLink'
 import {
   libraryKeycodeDisplay,
@@ -24,36 +31,6 @@ const MONTH_NAME_OPTIONS = Array.from({ length: 12 }).map((_, idx) =>
     timeZone: 'UTC',
   }).format(new Date(Date.UTC(2000, idx, 1)))
 )
-
-/** Balanced directory columns; address + PMC slightly wider than route/key/annual. */
-const DIRECTORY_COLUMN_WIDTHS = {
-  status: '3%',
-  route: '7%',
-  address: '28%',
-  property: '20%',
-  key: '14%',
-  annual: '12%',
-} as const
-
-const STATUS_COLUMN_STYLE: CSSProperties = {
-  textAlign: 'center',
-}
-
-const KEYS_COLUMN_STYLE: CSSProperties = {
-  textAlign: 'center',
-}
-
-const ANNUAL_COLUMN_STYLE: CSSProperties = {
-  textAlign: 'center',
-}
-
-const LIBRARY_TABLE_HEADER_STICKY_STYLE: CSSProperties = {
-  position: 'sticky',
-  top: 0,
-  zIndex: 5,
-  backgroundColor: '#fff',
-  boxShadow: 'inset 0 -1px 0 rgba(0, 0, 0, 0.12)',
-}
 
 type LibraryPagination = NonNullable<LibraryPayload['meta']['pagination']>
 
@@ -306,39 +283,10 @@ export default function MonthlyRoutesPage() {
     []
   )
 
-  const renderStatusDot = useCallback((status: string | null | undefined) => {
-    const normalized = (status || '').toLowerCase()
-    let colorClass = 'bg-secondary'
-    let label = status || 'unknown'
-
-    if (normalized === 'active') {
-      colorClass = 'bg-success'
-      label = 'active'
-    } else if (normalized === 'cancelled') {
-      colorClass = 'bg-danger'
-      label = 'cancelled'
-    } else if (normalized === 'on_hold' || normalized === 'on hold') {
-      colorClass = 'bg-warning'
-      label = 'on hold'
-    } else if (normalized === 'waiting_keys' || normalized === 'waiting keys') {
-      return (
-        <i
-          className="bi bi-key-fill text-warning"
-          title="waiting keys"
-          aria-label="waiting keys"
-        />
-      )
-    }
-
-    return (
-      <span
-        className={`d-inline-block rounded-circle ${colorClass}`}
-        style={{ width: 10, height: 10 }}
-        title={label}
-        aria-label={label}
-      />
-    )
-  }, [])
+  const renderStatusDot = useCallback(
+    (status: string | null | undefined) => renderLibraryStatusDot(status),
+    [],
+  )
 
   return (
     <div className="monthly-page monthly-routes-library-page d-flex flex-column gap-3">

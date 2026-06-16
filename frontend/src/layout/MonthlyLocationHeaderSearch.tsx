@@ -1,12 +1,19 @@
-import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Form, Spinner } from 'react-bootstrap'
 import { useNavigate } from 'react-router-dom'
 import { locationPrimaryLabel } from '../features/monthlyRoutes/locationDisplay'
-import { libraryRouteDisplay, type LibraryLocation, type LibraryPayload } from '../features/monthlyRoutes/monthlyRoutesShared'
+import {
+  buildHeaderSearchResults,
+  fetchMonthlyRoutesForHeaderSearch,
+  routeHeaderSearchMetaLine,
+  routeHeaderSearchTitle,
+  type HeaderSearchResult,
+} from '../features/monthlyRoutes/monthlyHeaderSearchShared'
+import { libraryRouteDisplay, type LibraryLocation, type LibraryPayload, type MonthlyRouteSummary } from '../features/monthlyRoutes/monthlyRoutesShared'
 import { apiJson, isAbortError } from '../lib/apiClient'
 
 const MIN_QUERY_LENGTH = 2
-const RESULT_LIMIT = 3
+const LOCATION_RESULT_LIMIT = 3
 const DEBOUNCE_MS = 250
 
 function locationSearchMetaLine(loc: LibraryLocation): string | null {
@@ -24,6 +31,10 @@ function locationSearchMetaLine(loc: LibraryLocation): string | null {
   return parts.length > 0 ? parts.join(' · ') : null
 }
 
+function resultKey(result: HeaderSearchResult): string {
+  return result.kind === 'route' ? `route-${result.route.id}` : `location-${result.location.id}`
+}
+
 export default function MonthlyLocationHeaderSearch() {
   const navigate = useNavigate()
   const listboxId = useId()
@@ -31,10 +42,28 @@ export default function MonthlyLocationHeaderSearch() {
   const inputRef = useRef<HTMLInputElement>(null)
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
-  const [results, setResults] = useState<LibraryLocation[]>([])
-  const [loading, setLoading] = useState(false)
+  const [allRoutes, setAllRoutes] = useState<MonthlyRouteSummary[]>([])
+  const [routesLoading, setRoutesLoading] = useState(true)
+  const [locationResults, setLocationResults] = useState<LibraryLocation[]>([])
+  const [locationsLoading, setLocationsLoading] = useState(false)
   const [open, setOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(-1)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    setRoutesLoading(true)
+    void fetchMonthlyRoutesForHeaderSearch()
+      .then((routes) => {
+        if (!controller.signal.aborted) setAllRoutes(routes)
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setAllRoutes([])
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setRoutesLoading(false)
+      })
+    return () => controller.abort()
+  }, [])
 
   useEffect(() => {
     const handle = window.setTimeout(() => setDebouncedQuery(query.trim()), DEBOUNCE_MS)
@@ -43,33 +72,33 @@ export default function MonthlyLocationHeaderSearch() {
 
   useEffect(() => {
     if (debouncedQuery.length < MIN_QUERY_LENGTH) {
-      setResults([])
-      setLoading(false)
+      setLocationResults([])
+      setLocationsLoading(false)
       return
     }
 
     const controller = new AbortController()
-    setLoading(true)
+    setLocationsLoading(true)
 
     const params = new URLSearchParams({
       q: debouncedQuery,
       page: '1',
-      page_size: String(RESULT_LIMIT),
+      page_size: String(LOCATION_RESULT_LIMIT),
     })
 
     void apiJson<LibraryPayload>(`/api/monthly_routes/library?${params.toString()}`, {
       signal: controller.signal,
     })
       .then((payload) => {
-        setResults((payload.locations ?? []).slice(0, RESULT_LIMIT))
+        setLocationResults((payload.locations ?? []).slice(0, LOCATION_RESULT_LIMIT))
         setActiveIndex(-1)
       })
       .catch((err) => {
         if (isAbortError(err)) return
-        setResults([])
+        setLocationResults([])
       })
       .finally(() => {
-        if (!controller.signal.aborted) setLoading(false)
+        if (!controller.signal.aborted) setLocationsLoading(false)
       })
 
     return () => controller.abort()
@@ -85,35 +114,64 @@ export default function MonthlyLocationHeaderSearch() {
     return () => document.removeEventListener('mousedown', onPointerDown)
   }, [])
 
+  const menuResults = useMemo(
+    () => buildHeaderSearchResults(allRoutes, locationResults, debouncedQuery, LOCATION_RESULT_LIMIT),
+    [allRoutes, debouncedQuery, locationResults],
+  )
+
+  const loading = routesLoading || locationsLoading
+
+  const goToRoute = useCallback(
+    (routeId: number) => {
+      setOpen(false)
+      setQuery('')
+      setDebouncedQuery('')
+      setLocationResults([])
+      navigate(`/monthlies/routes/${routeId}`)
+    },
+    [navigate],
+  )
+
   const goToLocation = useCallback(
     (locationId: number) => {
       setOpen(false)
       setQuery('')
       setDebouncedQuery('')
-      setResults([])
+      setLocationResults([])
       navigate(`/monthlies/locations/${locationId}`)
     },
     [navigate],
   )
 
+  const selectResult = useCallback(
+    (result: HeaderSearchResult) => {
+      if (result.kind === 'route') {
+        goToRoute(result.route.id)
+      } else {
+        goToLocation(result.location.id)
+      }
+    },
+    [goToLocation, goToRoute],
+  )
+
   const showMenu =
-    open && debouncedQuery.length >= MIN_QUERY_LENGTH && (loading || results.length > 0 || !loading)
+    open && debouncedQuery.length >= MIN_QUERY_LENGTH && (loading || menuResults.length > 0 || !loading)
 
   const onInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Escape') {
       setOpen(false)
       return
     }
-    if (!showMenu || results.length === 0) return
+    if (!showMenu || menuResults.length === 0) return
     if (event.key === 'ArrowDown') {
       event.preventDefault()
-      setActiveIndex((index) => (index + 1) % results.length)
+      setActiveIndex((index) => (index + 1) % menuResults.length)
     } else if (event.key === 'ArrowUp') {
       event.preventDefault()
-      setActiveIndex((index) => (index <= 0 ? results.length - 1 : index - 1))
+      setActiveIndex((index) => (index <= 0 ? menuResults.length - 1 : index - 1))
     } else if (event.key === 'Enter' && activeIndex >= 0) {
       event.preventDefault()
-      goToLocation(results[activeIndex].id)
+      selectResult(menuResults[activeIndex])
     }
   }
 
@@ -127,7 +185,7 @@ export default function MonthlyLocationHeaderSearch() {
           size="sm"
           className="app-topbar-location-search__input"
           value={query}
-          placeholder="Search monthly locations…"
+          placeholder="Search locations or routes…"
           role="combobox"
           aria-expanded={showMenu}
           aria-controls={listboxId}
@@ -141,42 +199,69 @@ export default function MonthlyLocationHeaderSearch() {
           }}
           onKeyDown={onInputKeyDown}
         />
-        {loading ? (
+        <div
+          className={`app-topbar-location-search__spinner-slot${loading ? '' : ' app-topbar-location-search__spinner-slot--hidden'}`}
+          aria-hidden={!loading}
+        >
           <Spinner
             animation="border"
             size="sm"
             className="app-topbar-location-search__spinner"
             aria-hidden
           />
-        ) : null}
+        </div>
       </div>
 
       {showMenu ? (
         <ul id={listboxId} className="app-topbar-location-search__menu" role="listbox">
-          {loading && results.length === 0 ? (
+          {loading && menuResults.length === 0 ? (
             <li className="app-topbar-location-search__empty" role="presentation">
               Searching…
             </li>
           ) : null}
-          {!loading && results.length === 0 ? (
+          {!loading && menuResults.length === 0 ? (
             <li className="app-topbar-location-search__empty" role="presentation">
               No matches
             </li>
           ) : null}
-          {results.map((loc, index) => {
-            const meta = locationSearchMetaLine(loc)
+          {menuResults.map((result, index) => {
+            if (result.kind === 'route') {
+              const meta = routeHeaderSearchMetaLine(result.route)
+              return (
+                <li key={resultKey(result)} role="presentation">
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={activeIndex === index}
+                    className={`app-topbar-location-search__option app-topbar-location-search__option--route${activeIndex === index ? ' app-topbar-location-search__option--active' : ''}`}
+                    onMouseEnter={() => setActiveIndex(index)}
+                    onClick={() => selectResult(result)}
+                  >
+                    <span className="app-topbar-location-search__option-title">
+                      <span className="app-topbar-location-search__option-kind">Route</span>
+                      {routeHeaderSearchTitle(result.route)}
+                    </span>
+                    {meta ? (
+                      <span className="app-topbar-location-search__option-meta">{meta}</span>
+                    ) : null}
+                  </button>
+                </li>
+              )
+            }
+
+            const meta = locationSearchMetaLine(result.location)
             return (
-              <li key={loc.id} role="presentation">
+              <li key={resultKey(result)} role="presentation">
                 <button
                   type="button"
                   role="option"
                   aria-selected={activeIndex === index}
                   className={`app-topbar-location-search__option${activeIndex === index ? ' app-topbar-location-search__option--active' : ''}`}
                   onMouseEnter={() => setActiveIndex(index)}
-                  onClick={() => goToLocation(loc.id)}
+                  onClick={() => selectResult(result)}
                 >
                   <span className="app-topbar-location-search__option-title">
-                    {locationPrimaryLabel(loc, { compact: true })}
+                    {locationPrimaryLabel(result.location, { compact: true })}
                   </span>
                   {meta ? (
                     <span className="app-topbar-location-search__option-meta">{meta}</span>

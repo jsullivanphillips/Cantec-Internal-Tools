@@ -56,18 +56,7 @@ export type KeyAdminDetail = {
   addresses: { id: number; address: string }[]
 }
 
-export type KeyBridgeRow = {
-  id: number
-  source: string
-  display_address?: string | null
-  keys_text?: string | null
-  legacy_monthly_route_location_id?: number | null
-  exported_at?: string | null
-}
-
 export type KeyDeleteBlockers = {
-  bridge_rows: number
-  bridge_row_details: KeyBridgeRow[]
   linked_location_ids: number[]
   linked_location_count: number
 }
@@ -115,21 +104,6 @@ export async function deleteKey(keyId: number): Promise<void> {
 
 export async function fetchKeyDeleteBlockers(keyId: number): Promise<KeyDeleteBlockers> {
   const res = await apiJson<{ blockers: KeyDeleteBlockers }>(`/api/keys/${keyId}/delete_blockers`)
-  return res.blockers
-}
-
-export async function deleteKeyBridgeRow(keyId: number, bridgeId: number): Promise<KeyDeleteBlockers> {
-  const res = await apiJson<{ blockers: KeyDeleteBlockers }>(
-    `/api/keys/${keyId}/bridge_rows/${bridgeId}`,
-    { method: 'DELETE' },
-  )
-  return res.blockers
-}
-
-export async function deleteAllKeyBridgeRows(keyId: number): Promise<KeyDeleteBlockers> {
-  const res = await apiJson<{ blockers: KeyDeleteBlockers }>(`/api/keys/${keyId}/bridge_rows`, {
-    method: 'DELETE',
-  })
   return res.blockers
 }
 

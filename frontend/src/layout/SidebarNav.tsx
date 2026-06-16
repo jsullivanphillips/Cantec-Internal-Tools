@@ -28,7 +28,6 @@ const NAV_SECTIONS: NavSection[] = [
       { to: '/monthlies/locations', label: 'Monthly Locations', icon: 'bi-buildings', end: true },
       { to: '/monthlies/billing', label: 'Monthly Billing', icon: 'bi-receipt', end: true },
       { to: '/monthlies/map', label: 'Map', icon: 'bi-map' },
-      { to: '/monthlies/specialists', label: 'Specialists', icon: 'bi-people' },
       { to: '/monthlies/monitoring-companies', label: 'Monitoring companies', icon: 'bi-telephone' },
       { to: '/monthlies/keys', label: 'Keys admin', icon: 'bi-key-fill', end: true },
     ],

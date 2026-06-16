@@ -3,8 +3,10 @@ import type {
   RouteRunMonthSummary,
   RouteTestingMonthCell,
 } from './monthlyRoutesShared'
-import { runAwaitingOfficePaperworkReview } from './monthlyDashboardShared'
 import { addCalendarMonths, parseYearMonth } from './monthlyRoutesShared'
+import { runAwaitingOfficePaperworkReview } from './monthlyDashboardShared'
+
+export const RUNS_CARD_PREPARATION_STAGE_LABEL = 'Preparation'
 
 export type RouteRunTableRow = {
   monthIso: string
@@ -81,9 +83,36 @@ export function buildRunsCardRowsForYear(
   return rows.sort((a, b) => b.monthIso.localeCompare(a.monthIso))
 }
 
-export function formatRunsCardStageLabel(row: RunsCardRow): string {
-  if (!row.hasRunData || !row.run) return 'No data'
-  return row.run.workflow_stage_label?.trim() || '—'
+/** Current Pacific month and the following month are open for run preparation. */
+export function runsCardMonthIsPaperworkPrepSlot(
+  monthIso: string,
+  currentMonthIso: string,
+): boolean {
+  const nextMonthIso = addCalendarMonths(currentMonthIso, 1)
+  return monthIso === currentMonthIso || (nextMonthIso != null && monthIso === nextMonthIso)
+}
+
+export function runsCardRowShowsPaperworkLink(
+  row: RunsCardRow,
+  currentMonthIso: string,
+): boolean {
+  if (row.hasRunData && row.run) return true
+  return runsCardMonthIsPaperworkPrepSlot(row.monthIso, currentMonthIso)
+}
+
+export function runsCardRowShowsUploadCsv(row: RunsCardRow, currentMonthIso: string): boolean {
+  if (row.hasRunData) return false
+  return !runsCardMonthIsPaperworkPrepSlot(row.monthIso, currentMonthIso)
+}
+
+export function formatRunsCardStageLabel(row: RunsCardRow, currentMonthIso: string): string {
+  if (row.hasRunData && row.run) {
+    return row.run.workflow_stage_label?.trim() || '—'
+  }
+  if (runsCardMonthIsPaperworkPrepSlot(row.monthIso, currentMonthIso)) {
+    return RUNS_CARD_PREPARATION_STAGE_LABEL
+  }
+  return 'No data'
 }
 
 /** Office may bulk-skip when no run file exists or the run is still in prep (draft/prepared). */

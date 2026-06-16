@@ -44,6 +44,7 @@ export type WorksheetStopChangeSet = Partial<
     | 'panel'
     | 'panel_location'
     | 'door_code'
+    | 'access_instructions'
     | 'property_management_company'
     | 'label'
     | 'monitoring_company'

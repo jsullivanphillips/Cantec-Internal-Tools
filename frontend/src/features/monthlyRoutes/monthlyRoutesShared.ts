@@ -39,10 +39,19 @@ export type MonthlyRouteSummary = {
 }
 
 /** Linked row from ``keys`` when ``key_id`` FK is set. */
+export type LinkedKeyUiStatus = {
+  status_text: string
+  is_out: boolean
+  is_in: boolean
+  current_loc: string
+  home_loc: string
+}
+
 export type LinkedKeySummary = {
   id: number
   keycode: string
   barcode: number | null
+  ui?: LinkedKeyUiStatus
 }
 
 /** Canonical monitoring company linked to a monthly location. */
@@ -91,7 +100,7 @@ export type LibraryLocation = {
   panel?: string | null
   panel_location?: string | null
   door_code?: string | null
-  /** Site access notes (call contact, on-site check-in, etc.) — library master only. */
+  /** Site access notes (call contact, on-site check-in, etc.). */
   access_instructions?: string | null
   testing_procedures?: string | null
   inspection_tech_notes?: string | null
@@ -120,6 +129,10 @@ export type RouteLocationListItem = {
   longitude?: number | null
   route_stop_order: number | null
   monthly_route_id?: number | null
+  price_per_month?: number | null
+  keys?: string | null
+  key_id?: number | null
+  key?: LinkedKeySummary | null
 }
 
 export type MonthlyRouteCalculatedPathStop = {
@@ -967,6 +980,22 @@ export function libraryKeycodeDisplay(loc: LibraryLocation): string {
   const fromKey = loc.key?.keycode?.trim()
   if (fromKey) return fromKey
   return (loc.keys || '').trim()
+}
+
+/** Display start-up date as full month, ordinal day, and year (e.g. ``October 1st, 2024``). */
+export function formatStartUpDateDisplay(value: string | null | undefined): string {
+  const raw = value?.trim()
+  if (!raw) return '—'
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw)
+  if (!match) return raw
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const monthLabel = new Intl.DateTimeFormat('en-US', {
+    month: 'long',
+    timeZone: 'UTC',
+  }).format(new Date(Date.UTC(year, month - 1, 1)))
+  return `${monthLabel} ${englishOrdinal(day)}, ${year}`
 }
 
 export type GeocodeCandidate = {

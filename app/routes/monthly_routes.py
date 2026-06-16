@@ -27,7 +27,7 @@ from app.db_models import (
     MonthlyRouteWorksheetAuditEvent,
     db,
 )
-from app.monthly.key_serialize import linked_key_fields_for_location
+from app.monthly.key_serialize import linked_key_fields_for_location, serialize_linked_key_summary
 from app.monthly.key_resolve import sync_key_fk_for_location
 from app.monthly.location_building import monthly_location_building_name
 from app.monthly.route_inspection_csv_import import (
@@ -385,15 +385,8 @@ def _meta_monthly_routes_bundle() -> tuple[list[dict[str, object]], dict[int, in
     return summaries, count_map
 
 
-def _serialize_linked_key(key: Key | None) -> dict[str, object] | None:
-    if key is None:
-        return None
-    bc = key.barcode
-    return {
-        "id": int(key.id),
-        "keycode": key.keycode,
-        "barcode": int(bc) if bc is not None else None,
-    }
+def _serialize_linked_key(key: Key | None, *, include_status: bool = False) -> dict[str, object] | None:
+    return serialize_linked_key_summary(key, include_status=include_status)
 
 
 def _months_payload_for_location(location_id: int) -> dict[str, dict[str, object]]:
@@ -1625,6 +1618,7 @@ def _serialize_testing_session_payload(route_id: int, month_first: date) -> dict
 
 def _serialize_route_location_list_item(loc: MonthlyLocation) -> dict[str, object]:
     """Lightweight row for route detail / reorder (no per-month grid)."""
+    lk = loc.linked_key
     return {
         "id": loc.id,
         "address": loc.address,
@@ -1637,6 +1631,10 @@ def _serialize_route_location_list_item(loc: MonthlyLocation) -> dict[str, objec
         "longitude": float(loc.longitude) if loc.longitude is not None else None,
         "route_stop_order": loc.route_stop_order,
         "monthly_route_id": loc.monthly_route_id,
+        "price_per_month": float(loc.price_per_month) if loc.price_per_month is not None else None,
+        "keys": loc.keys,
+        "key_id": loc.key_id,
+        "key": _serialize_linked_key(lk, include_status=False),
         "testing_sites": [
             {
                 "id": int(loc.id),
@@ -1709,7 +1707,7 @@ def _serialize_location_row(
         "status_raw": loc.status_raw,
         "keys": loc.keys,
         "key_id": loc.key_id,
-        "key": _serialize_linked_key(lk),
+        "key": _serialize_linked_key(lk, include_status=not list_view),
         "test_day": loc.test_day,
         "annual_month": loc.annual_month,
         "latitude": loc.latitude,
@@ -2289,7 +2287,8 @@ def get_monthly_route_detail(route_id: int):
 
     route_locations = (
         MonthlyLocation.query.options(
-            joinedload(MonthlyLocation.monitoring_company)
+            joinedload(MonthlyLocation.monitoring_company),
+            joinedload(MonthlyLocation.linked_key),
         )
         .filter_by(monthly_route_id=route_id)
         .order_by(
@@ -2597,7 +2596,7 @@ def _ticket_value_error_response(exc: ValueError) -> tuple[object, int] | None:
 
 @monthly_routes_bp.get("/api/monthly_routes/dashboard/issues")
 def get_monthly_routes_dashboard_issues():
-    """Active library sites missing ServiceTrade link or price (excludes R99 demo)."""
+    """Active library sites missing ServiceTrade link, price, or key link (excludes R99 demo)."""
     from app.monthly.dashboard_issues import list_dashboard_library_issues
 
     return jsonify(list_dashboard_library_issues())
@@ -3987,6 +3986,10 @@ def patch_monthly_route_worksheet_stop(route_id: int, location_id: int):
                 old_val = audit_old_values.get("building_name")
                 new_val = loc.building_name
                 audit_name = "building_name"
+            elif field_name == "access_instructions":
+                old_val = audit_old_values.get("access_instructions")
+                new_val = loc.access_instructions
+                audit_name = "access_instructions"
             else:
                 old_val = audit_old_values.get(field_name)
                 new_val = getattr(mtsm, mtsm_attr)
@@ -5488,7 +5491,8 @@ def put_monthly_route_location_order(route_id: int):
 
     route_locations = (
         MonthlyLocation.query.options(
-            joinedload(MonthlyLocation.monitoring_company)
+            joinedload(MonthlyLocation.monitoring_company),
+            joinedload(MonthlyLocation.linked_key),
         )
         .filter_by(monthly_route_id=route_id)
         .order_by(

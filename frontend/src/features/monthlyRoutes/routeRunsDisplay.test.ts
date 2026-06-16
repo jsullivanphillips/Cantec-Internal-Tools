@@ -8,7 +8,10 @@ import {
   formatRunsCardStageLabel,
   formatSitesTestedRatio,
   findNewestRunMonthAwaitingOfficeReview,
+  RUNS_CARD_PREPARATION_STAGE_LABEL,
   runMonthIsOfficeSkippable,
+  runsCardRowShowsPaperworkLink,
+  runsCardRowShowsUploadCsv,
 } from './routeRunsDisplay'
 import type { RouteRunMonthSummary } from './monthlyRoutesShared'
 
@@ -90,23 +93,62 @@ describe('routeRunsDisplay', () => {
     expect(may?.hasRunData).toBe(false)
   })
 
-  it('formatRunsCardStageLabel shows No data for empty months', () => {
+  it('formatRunsCardStageLabel shows No data for empty past months', () => {
     expect(
-      formatRunsCardStageLabel({
-        monthIso: '2026-05-01',
-        run: null,
-        specialistMonth: null,
-        hasRunData: false,
-      }),
+      formatRunsCardStageLabel(
+        {
+          monthIso: '2026-05-01',
+          run: null,
+          specialistMonth: null,
+          hasRunData: false,
+        },
+        '2026-06-01',
+      ),
     ).toBe('No data')
     expect(
-      formatRunsCardStageLabel({
-        monthIso: '2026-04-01',
-        run: run({ workflow_stage_label: 'Skipped' }),
-        specialistMonth: null,
-        hasRunData: true,
-      }),
+      formatRunsCardStageLabel(
+        {
+          monthIso: '2026-04-01',
+          run: run({ workflow_stage_label: 'Skipped' }),
+          specialistMonth: null,
+          hasRunData: true,
+        },
+        '2026-06-01',
+      ),
     ).toBe('Skipped')
+  })
+
+  it('formatRunsCardStageLabel shows Preparation for current and next month without a run', () => {
+    const emptyRow = {
+      monthIso: '2026-07-01',
+      run: null,
+      specialistMonth: null,
+      hasRunData: false,
+    }
+    expect(formatRunsCardStageLabel(emptyRow, '2026-06-01')).toBe(RUNS_CARD_PREPARATION_STAGE_LABEL)
+    expect(
+      formatRunsCardStageLabel({ ...emptyRow, monthIso: '2026-06-01' }, '2026-06-01'),
+    ).toBe(RUNS_CARD_PREPARATION_STAGE_LABEL)
+    expect(formatRunsCardStageLabel(emptyRow, '2026-06-01')).not.toBe('No data')
+  })
+
+  it('runsCardRowShowsPaperworkLink and runsCardRowShowsUploadCsv follow prep slot rules', () => {
+    const julyEmpty = {
+      monthIso: '2026-07-01',
+      run: null,
+      specialistMonth: null,
+      hasRunData: false,
+    }
+    const mayEmpty = {
+      monthIso: '2026-05-01',
+      run: null,
+      specialistMonth: null,
+      hasRunData: false,
+    }
+    expect(runsCardRowShowsPaperworkLink(julyEmpty, '2026-06-01')).toBe(true)
+    expect(runsCardRowShowsUploadCsv(julyEmpty, '2026-06-01')).toBe(false)
+    expect(runsCardRowShowsPaperworkLink(mayEmpty, '2026-06-01')).toBe(false)
+    expect(runsCardRowShowsUploadCsv(mayEmpty, '2026-06-01')).toBe(true)
   })
 
   it('availableRunsCardYears always includes current year', () => {

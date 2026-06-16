@@ -257,6 +257,7 @@ export default function PortalEditableFieldRow({
         className={`pw-mock-field-row${multiline ? ' pw-mock-field-row--multiline' : ''}${
           readOnly ? '' : ' pw-mock-field-row--editable'
         }`}
+        data-portal-field-key={fieldKey}
         role={readOnly ? undefined : 'button'}
         tabIndex={readOnly ? undefined : 0}
         onClick={startEdit}
@@ -282,6 +283,7 @@ export default function PortalEditableFieldRow({
       className={`pw-mock-field-row pw-mock-field-row--editing${
         multiline ? ' pw-mock-field-row--multiline' : ''
       }${richText ? ' pw-mock-field-row--rich-text' : ''}`}
+      data-portal-field-key={fieldKey}
     >
       <label className="pw-mock-field-label" htmlFor={inputId}>
         {labelBlock}

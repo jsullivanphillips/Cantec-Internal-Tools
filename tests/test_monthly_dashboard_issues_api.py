@@ -7,7 +7,7 @@ from decimal import Decimal
 import pytest
 
 from app import create_app
-from app.db_models import MonthlyLocation, MonthlyRoute, db
+from app.db_models import Key, MonthlyLocation, MonthlyRoute, db
 from tests.monthly_location_helpers import WORKSHEET_TABLES, make_location
 
 DEFAULT_DEMO_ROUTE_NUMBER = 99
@@ -49,6 +49,14 @@ def _get_issues(client):
     return res.get_json()
 
 
+def _all_issue_ids(body: dict) -> set[int]:
+    return (
+        {row["id"] for row in body["missing_service_trade_link"]}
+        | {row["id"] for row in body["missing_price"]}
+        | {row["id"] for row in body["missing_key_link"]}
+    )
+
+
 def test_active_missing_st_link_listed(issues_client):
     client, app = issues_client
     with app.app_context():
@@ -68,10 +76,13 @@ def test_active_missing_st_link_listed(issues_client):
     body = _get_issues(client)
     st_ids = {row["id"] for row in body["missing_service_trade_link"]}
     price_ids = {row["id"] for row in body["missing_price"]}
+    key_ids = {row["id"] for row in body["missing_key_link"]}
     assert 101 in st_ids
     assert 101 not in price_ids
+    assert 101 not in key_ids
     assert body["counts"]["missing_service_trade_link"] == 1
     assert body["counts"]["missing_price"] == 0
+    assert body["counts"]["missing_key_link"] == 0
 
 
 def test_active_missing_price_only(issues_client):
@@ -93,15 +104,58 @@ def test_active_missing_price_only(issues_client):
     body = _get_issues(client)
     st_ids = {row["id"] for row in body["missing_service_trade_link"]}
     price_ids = {row["id"] for row in body["missing_price"]}
+    key_ids = {row["id"] for row in body["missing_key_link"]}
     assert 102 not in st_ids
     assert 102 in price_ids
+    assert 102 not in key_ids
     assert body["counts"]["missing_price"] == 1
+    assert body["counts"]["missing_key_link"] == 0
+
+
+def test_active_missing_key_link_only(issues_client):
+    client, app = issues_client
+    with app.app_context():
+        route = _seed_route(1, 7)
+        key = Key(id=501, keycode="LINK 501")
+        db.session.add(key)
+        db.session.add(
+            make_location(
+                id=104,
+                address="400 Epsilon Ln",
+                monthly_route_id=route.id,
+                route_stop_order=0,
+                service_trade_site_location_id=9003,
+                price_per_month=Decimal("80.00"),
+                key_id=key.id,
+            )
+        )
+        db.session.add(
+            make_location(
+                id=105,
+                address="401 Epsilon Ln",
+                monthly_route_id=route.id,
+                route_stop_order=1,
+                service_trade_site_location_id=9004,
+                price_per_month=Decimal("85.00"),
+                keys="PP 823",
+                key_id=None,
+            )
+        )
+        db.session.commit()
+
+    body = _get_issues(client)
+    key_ids = {row["id"] for row in body["missing_key_link"]}
+    assert 104 not in key_ids
+    assert 105 in key_ids
+    assert body["counts"]["missing_key_link"] == 1
 
 
 def test_active_fully_configured_excluded(issues_client):
     client, app = issues_client
     with app.app_context():
         route = _seed_route(1, 4)
+        key = Key(id=502, keycode="LINK 502")
+        db.session.add(key)
         db.session.add(
             make_location(
                 id=103,
@@ -110,17 +164,16 @@ def test_active_fully_configured_excluded(issues_client):
                 route_stop_order=0,
                 service_trade_site_location_id=9002,
                 price_per_month=Decimal("75.00"),
+                key_id=key.id,
             )
         )
         db.session.commit()
 
     body = _get_issues(client)
-    all_ids = {row["id"] for row in body["missing_service_trade_link"]} | {
-        row["id"] for row in body["missing_price"]
-    }
-    assert 103 not in all_ids
+    assert 103 not in _all_issue_ids(body)
     assert body["counts"]["missing_service_trade_link"] == 0
     assert body["counts"]["missing_price"] == 0
+    assert body["counts"]["missing_key_link"] == 0
 
 
 def test_cancelled_and_on_hold_excluded(issues_client):
@@ -152,11 +205,8 @@ def test_cancelled_and_on_hold_excluded(issues_client):
         db.session.commit()
 
     body = _get_issues(client)
-    all_ids = {row["id"] for row in body["missing_service_trade_link"]} | {
-        row["id"] for row in body["missing_price"]
-    }
-    assert 201 not in all_ids
-    assert 202 not in all_ids
+    assert 201 not in _all_issue_ids(body)
+    assert 202 not in _all_issue_ids(body)
 
 
 def test_r99_demo_route_excluded(issues_client):
@@ -176,10 +226,7 @@ def test_r99_demo_route_excluded(issues_client):
         db.session.commit()
 
     body = _get_issues(client)
-    all_ids = {row["id"] for row in body["missing_service_trade_link"]} | {
-        row["id"] for row in body["missing_price"]
-    }
-    assert 301 not in all_ids
+    assert 301 not in _all_issue_ids(body)
 
 
 def test_r99_test_day_suffix_excluded_without_route_assignment(issues_client):
@@ -197,13 +244,43 @@ def test_r99_test_day_suffix_excluded_without_route_assignment(issues_client):
         db.session.commit()
 
     body = _get_issues(client)
-    all_ids = {row["id"] for row in body["missing_service_trade_link"]} | {
-        row["id"] for row in body["missing_price"]
-    }
-    assert 302 not in all_ids
+    assert 302 not in _all_issue_ids(body)
 
 
-def test_site_can_appear_in_both_sections(issues_client):
+def test_no_key_sentinel_excluded_from_missing_key_link(issues_client):
+    client, app = issues_client
+    with app.app_context():
+        route = _seed_route(1, 8)
+        db.session.add_all(
+            [
+                make_location(
+                    id=106,
+                    address="500 Zeta Way",
+                    monthly_route_id=route.id,
+                    route_stop_order=0,
+                    keys="-",
+                    key_id=None,
+                ),
+                make_location(
+                    id=107,
+                    address="501 Zeta Way",
+                    monthly_route_id=route.id,
+                    route_stop_order=1,
+                    keys="No keys",
+                    key_id=None,
+                ),
+            ]
+        )
+        db.session.commit()
+
+    body = _get_issues(client)
+    key_ids = {row["id"] for row in body["missing_key_link"]}
+    assert 106 not in key_ids
+    assert 107 not in key_ids
+    assert body["counts"]["missing_key_link"] == 0
+
+
+def test_site_can_have_multiple_issues(issues_client):
     client, app = issues_client
     with app.app_context():
         route = _seed_route(1, 6)
@@ -215,6 +292,7 @@ def test_site_can_appear_in_both_sections(issues_client):
                 route_stop_order=0,
                 service_trade_site_location_id=None,
                 price_per_month=None,
+                keys="PP 823",
             )
         )
         db.session.commit()
@@ -222,7 +300,10 @@ def test_site_can_appear_in_both_sections(issues_client):
     body = _get_issues(client)
     st_ids = {row["id"] for row in body["missing_service_trade_link"]}
     price_ids = {row["id"] for row in body["missing_price"]}
+    key_ids = {row["id"] for row in body["missing_key_link"]}
     assert 401 in st_ids
     assert 401 in price_ids
+    assert 401 in key_ids
     assert body["counts"]["missing_service_trade_link"] == 1
     assert body["counts"]["missing_price"] == 1
+    assert body["counts"]["missing_key_link"] == 1

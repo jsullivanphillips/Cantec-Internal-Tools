@@ -501,6 +501,47 @@ def test_patch_clear_building_name_on_stop(stops_client, monkeypatch):
         assert loc.building_name is None
 
 
+def test_patch_access_instructions_on_stop(stops_client, monkeypatch):
+    """Technicians can edit library access instructions from the portal worksheet."""
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
+
+    client, app = stops_client
+    with app.app_context():
+        _seed_route_with_two_stops()
+        ts_id = int(MonthlyLocation.query.order_by(MonthlyLocation.id.asc()).first().id)
+        run = MonthlyRouteRun(
+            id=5005,
+            monthly_route_id=1,
+            month_date=date(2026, 5, 1),
+            started_at=datetime(2026, 5, 2, 8, 0, tzinfo=PACIFIC_TZ),
+            status="open",
+            source="technician_app",
+        )
+        db.session.add(run)
+        db.session.commit()
+        from app.monthly.worksheet_locations import ensure_worksheet_stops_for_route_month
+
+        ensure_worksheet_stops_for_route_month(1, date(2026, 5, 1), run)
+        db.session.commit()
+
+    text = "Call site contact 15 mins ahead"
+    qs = "month=2026-05-01&tech_portal=1"
+    res = client.patch(
+        f"/api/monthly_routes/routes/1/worksheet/locations/{ts_id}?{qs}",
+        json={"changes": {"access_instructions": text}},
+    )
+    assert res.status_code == 200
+    stop = res.get_json()["stop"]
+    assert stop["access_instructions"] == text
+
+    with app.app_context():
+        loc = db.session.get(MonthlyLocation, ts_id)
+        assert loc is not None
+        assert loc.access_instructions == text
+
+
 def test_patch_clock_in_with_explicit_null_result_status(stops_client, monkeypatch):
     """Portal clock-in sends null result_status; server must not wipe time_in."""
     from app.routes import monthly_routes as mr_mod

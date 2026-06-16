@@ -11,6 +11,7 @@ type Props = {
   size?: 'sm' | undefined
   className?: string
   variant?: 'outline-secondary' | 'outline-primary'
+  label?: string
 }
 
 export default function ServiceTradeDeficienciesButton({
@@ -20,6 +21,7 @@ export default function ServiceTradeDeficienciesButton({
   size = 'sm',
   className = '',
   variant = 'outline-secondary',
+  label = 'View deficiencies',
 }: Props) {
   const [modalOpen, setModalOpen] = useState(false)
 
@@ -34,7 +36,7 @@ export default function ServiceTradeDeficienciesButton({
         title={hasServiceTradeLink ? undefined : NO_LINK_TITLE}
         onClick={() => setModalOpen(true)}
       >
-        View deficiencies
+        {label}
       </Button>
       {hasServiceTradeLink ? (
         <ServiceTradeDeficienciesModal

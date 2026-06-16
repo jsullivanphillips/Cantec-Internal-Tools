@@ -24,6 +24,7 @@ LIBRARY_STRING_FIELDS = (
 LIBRARY_TEXT_FIELDS = (
     "panel",
     "facp_detail",  # legacy alias; prefer ``panel`` for new writes
+    "access_instructions",
     "testing_procedures",
     "inspection_tech_notes",
     "monitoring_notes",

@@ -1037,8 +1037,8 @@ export default function MonthlyRoutePaperworkPage() {
                   {showSkipRoute ? (
                     <Button
                       size="sm"
-                      variant="outline-warning"
-                      className="monthly-location-detail-action"
+                      variant="warning"
+                      className="monthly-location-detail-action monthly-route-skip-action"
                       disabled={prepActionBusy}
                       onClick={openSkipRouteConfirm}
                     >

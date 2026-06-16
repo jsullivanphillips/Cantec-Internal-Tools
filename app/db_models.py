@@ -1358,55 +1358,6 @@ class MonthlyRouteWorksheetAuditEvent(db.Model):
     route = db.relationship("MonthlyRoute")
 
 
-class MonthlyKeyBridge(db.Model):
-    """
-    Archive of key-to-site associations before monthly location wipes.
-
-    Does not FK to monthly library rows — legacy ids are snapshots only.
-    """
-
-    __tablename__ = "monthly_key_bridge"
-    __table_args__ = (
-        db.Index("ix_monthly_key_bridge_key_id", "key_id"),
-        db.Index(
-            "ix_monthly_key_bridge_legacy_location_id",
-            "legacy_monthly_route_location_id",
-        ),
-        db.Index(
-            "ix_monthly_key_bridge_st_site_id",
-            "service_trade_site_location_id",
-        ),
-    )
-
-    id = db.Column(
-        db.BigInteger().with_variant(db.Integer(), "sqlite"),
-        primary_key=True,
-        autoincrement=True,
-    )
-    key_id = db.Column(
-        db.BigInteger,
-        db.ForeignKey("keys.id", ondelete="RESTRICT"),
-        nullable=False,
-    )
-    service_trade_site_location_id = db.Column(db.BigInteger, nullable=True)
-    address_normalized = db.Column(db.String(255), nullable=True)
-    property_management_company_normalized = db.Column(db.String(255), nullable=True)
-    building_normalized = db.Column(db.String(255), nullable=True)
-    display_address = db.Column(db.String(255), nullable=True)
-    legacy_monthly_route_location_id = db.Column(db.BigInteger, nullable=True)
-    legacy_testing_site_id = db.Column(db.BigInteger, nullable=True)
-    keys_text = db.Column(db.Text, nullable=True)
-    barcode_text = db.Column(db.String(64), nullable=True)
-    source = db.Column(db.String(32), nullable=False)
-    exported_at = db.Column(
-        db.DateTime(timezone=True),
-        server_default=db.func.now(),
-        nullable=False,
-    )
-
-    key = db.relationship("Key", back_populates="monthly_key_bridges")
-
-
 class MonthlyLocationComment(db.Model):
     """Staff-authored notes on a monthly library location."""
 
@@ -1659,12 +1610,6 @@ class Key(db.Model):
         "MonthlyLocation",
         back_populates="linked_key",
         foreign_keys="MonthlyLocation.key_id",
-    )
-
-    monthly_key_bridges = relationship(
-        "MonthlyKeyBridge",
-        back_populates="key",
-        foreign_keys="MonthlyKeyBridge.key_id",
     )
 
     @property
