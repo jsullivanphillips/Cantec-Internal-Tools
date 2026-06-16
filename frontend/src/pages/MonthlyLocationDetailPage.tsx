@@ -214,10 +214,6 @@ function normalizeStatusForSelect(value: string | null | undefined): string {
   return STATUS_OPTIONS.some((option) => option.value === normalized) ? normalized : ''
 }
 
-function detailText(value: string | null | undefined): string {
-  return value?.trim() || '—'
-}
-
 function linkedKeyKpiIcon(ui: LinkedKeyUiStatus | undefined): {
   icon: string
   tone: 'out' | 'in' | 'unknown'
