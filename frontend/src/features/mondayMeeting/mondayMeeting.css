@@ -37,23 +37,46 @@
   gap: 1rem;
 }
 
+.monday-meeting-service-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.monday-meeting-service-toolbar .monday-meeting-service-section-title {
+  margin-bottom: 0;
+}
+
 .monday-meeting-service-filters {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 0.75rem 1rem;
-  padding-bottom: 0.25rem;
-  border-bottom: 1px solid var(--bs-border-color-translucent, #dee2e6);
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 0.75rem;
 }
 
-.monday-meeting-service-filters .form-label {
-  font-size: 0.75rem;
+.monday-meeting-service-filters__dates {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.45rem;
+}
+
+.monday-meeting-service-date-control {
+  min-width: 8.5rem;
+  width: 8.5rem;
+  max-width: 100%;
+  padding: 0.25rem 0.7rem;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  border-radius: 999px;
+}
+
+.monday-meeting-service-date-sep {
   color: var(--bs-secondary-color);
-  margin-bottom: 0.25rem;
-}
-
-.monday-meeting-service-filters .form-control {
-  min-width: 10.5rem;
+  font-size: 0.8125rem;
+  line-height: 1;
+  user-select: none;
 }
 
 .monday-meeting-service-kpi-grid {
@@ -101,13 +124,36 @@
   margin-top: 0.25rem;
 }
 
+.monday-meeting-service-detail-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.monday-meeting-service-detail-row .monday-meeting-service-detail {
+  margin-top: 0;
+  min-width: 0;
+}
+
+.monday-meeting-service-detail-row .monday-meeting-excluded-link {
+  margin-top: 0;
+  flex-shrink: 0;
+  text-align: right;
+  white-space: nowrap;
+}
+
 .monday-meeting-service-tile .monday-meeting-service-detail--muted {
   font-size: 0.75rem;
 }
 
 .monday-meeting-service-admin-link {
-  align-self: flex-end;
-  margin-bottom: 0.125rem;
+  align-self: center;
+  margin-left: auto;
+  border-radius: 999px;
+  padding-left: 0.875rem;
+  padding-right: 0.875rem;
 }
 
 .monday-meeting-excluded-link {

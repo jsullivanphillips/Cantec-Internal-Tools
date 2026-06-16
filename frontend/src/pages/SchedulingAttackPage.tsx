@@ -74,6 +74,13 @@ type JobsLeftMonthlyResponse = {
   months: JobsLeftMonthSlot[]
 }
 
+/** Align the strip so the anchor (current) month is at the leading edge — shows current + next month. */
+function scrollJobsLeftStripToAnchorMonth(strip: HTMLDivElement, anchor: HTMLDivElement): void {
+  const stripLeft = strip.getBoundingClientRect().left
+  const anchorLeft = anchor.getBoundingClientRect().left
+  strip.scrollLeft += anchorLeft - stripLeft
+}
+
 export default function SchedulingAttackPage() {
   const [loading, setLoading] = useState(true)
   const [kpis, setKpis] = useState<SchedulingKpis | null>(null)
@@ -88,6 +95,7 @@ export default function SchedulingAttackPage() {
   const [editingYearMonth, setEditingYearMonth] = useState<string | null>(null)
   const jobsLeftStripRef = useRef<HTMLDivElement>(null)
   const anchorMonthSlideRef = useRef<HTMLDivElement>(null)
+  const jobsLeftStripAlignedRef = useRef(false)
   const [jobsLeftDraft, setJobsLeftDraft] = useState('')
   const [jobsLeftSaving, setJobsLeftSaving] = useState(false)
   const [jobsLeftModalError, setJobsLeftModalError] = useState<string | null>(null)
@@ -138,10 +146,40 @@ export default function SchedulingAttackPage() {
   }, [])
 
   useEffect(() => {
+    jobsLeftStripAlignedRef.current = false
+  }, [loading, jobsLeftMonthly?.anchor_year_month])
+
+  useEffect(() => {
     if (loading || !jobsLeftMonthly) return
-    const anchorEl = anchorMonthSlideRef.current
-    if (!anchorEl) return
-    anchorEl.scrollIntoView({ inline: 'start', block: 'nearest', behavior: 'instant' })
+    const strip = jobsLeftStripRef.current
+    if (!strip) return
+
+    let lastWidth = strip.clientWidth
+
+    const alignToAnchorMonth = () => {
+      const anchor = anchorMonthSlideRef.current
+      if (!anchor || strip.clientWidth <= 0) return
+      scrollJobsLeftStripToAnchorMonth(strip, anchor)
+      jobsLeftStripAlignedRef.current = true
+    }
+
+    const onStripResize = () => {
+      const width = strip.clientWidth
+      if (width <= 0) {
+        jobsLeftStripAlignedRef.current = false
+        lastWidth = 0
+        return
+      }
+      if (!jobsLeftStripAlignedRef.current || lastWidth === 0) {
+        alignToAnchorMonth()
+      }
+      lastWidth = width
+    }
+
+    onStripResize()
+    const resizeObserver = new ResizeObserver(onStripResize)
+    resizeObserver.observe(strip)
+    return () => resizeObserver.disconnect()
   }, [loading, jobsLeftMonthly?.anchor_year_month])
 
   const weeklyPoints = weekly?.weeks ?? []

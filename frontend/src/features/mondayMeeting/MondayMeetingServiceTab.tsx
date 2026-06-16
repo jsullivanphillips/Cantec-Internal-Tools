@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Alert, Button, Card, Form, OverlayTrigger, Spinner, Tooltip } from 'react-bootstrap'
+import { Alert, Card, Form, OverlayTrigger, Spinner, Tooltip } from 'react-bootstrap'
 import { Link } from 'react-router-dom'
 import { apiFetch, isAbortError } from '../../lib/apiClient'
 import ExcludedDeficienciesModal from './ExcludedDeficienciesModal'
@@ -62,19 +62,33 @@ function params(start: string, end: string) {
   return s ? `?${s}` : ''
 }
 
+function toLocalIsoDate(date: Date): string {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
 function defaultDateRange() {
   const today = new Date()
-  const defaultEnd = today.toISOString().slice(0, 10)
-  const defaultStart = new Date(today.getFullYear(), today.getMonth() - 1, 1).toISOString().slice(0, 10)
-  return { defaultStart, defaultEnd }
+  const firstOfThisMonth = new Date(today.getFullYear(), today.getMonth(), 1)
+  const lastOfPreviousMonth = new Date(firstOfThisMonth)
+  lastOfPreviousMonth.setDate(0)
+  const firstOfPreviousMonth = new Date(
+    lastOfPreviousMonth.getFullYear(),
+    lastOfPreviousMonth.getMonth(),
+    1,
+  )
+  return {
+    defaultStart: toLocalIsoDate(firstOfPreviousMonth),
+    defaultEnd: toLocalIsoDate(lastOfPreviousMonth),
+  }
 }
 
 function formatExclusionSubline(quoting: ServiceMetrics['deficiency_quoting'] | undefined): string | null {
   const excluded = quoting?.excluded_non_quoteable ?? 0
   if (excluded <= 0) return null
-  const keyword = quoting?.excluded_keyword ?? 0
-  const cluster = quoting?.excluded_stale_cluster ?? 0
-  return `${excluded} excluded as non-quoteable (${keyword} keyword, ${cluster} similar unquoted cluster) — view list`
+  return `${excluded} excluded as non-quotable`
 }
 
 function MetricTile({
@@ -122,20 +136,41 @@ function MetricTile({
           ) : null}
         </div>
         <div className="processing-hero-value text-dark">{value}</div>
-        {detail ? <div className="monday-meeting-service-detail">{detail}</div> : null}
-        {subDetail ? (
-          onSubDetailClick ? (
-            <button
-              type="button"
-              className="monday-meeting-service-detail monday-meeting-service-detail--muted monday-meeting-excluded-link btn btn-link p-0 text-start"
-              onClick={onSubDetailClick}
-            >
-              {subDetail}
-            </button>
-          ) : (
-            <div className="monday-meeting-service-detail monday-meeting-service-detail--muted">{subDetail}</div>
-          )
-        ) : null}
+        {detail && subDetail ? (
+          <div className="monday-meeting-service-detail-row">
+            <span className="monday-meeting-service-detail">{detail}</span>
+            {onSubDetailClick ? (
+              <button
+                type="button"
+                className="monday-meeting-service-detail monday-meeting-service-detail--muted monday-meeting-excluded-link btn btn-link p-0"
+                onClick={onSubDetailClick}
+              >
+                {subDetail}
+              </button>
+            ) : (
+              <span className="monday-meeting-service-detail monday-meeting-service-detail--muted">
+                {subDetail}
+              </span>
+            )}
+          </div>
+        ) : (
+          <>
+            {detail ? <div className="monday-meeting-service-detail">{detail}</div> : null}
+            {subDetail ? (
+              onSubDetailClick ? (
+                <button
+                  type="button"
+                  className="monday-meeting-service-detail monday-meeting-service-detail--muted monday-meeting-excluded-link btn btn-link p-0 text-start"
+                  onClick={onSubDetailClick}
+                >
+                  {subDetail}
+                </button>
+              ) : (
+                <div className="monday-meeting-service-detail monday-meeting-service-detail--muted">{subDetail}</div>
+              )
+            ) : null}
+          </>
+        )}
       </Card.Body>
     </Card>
   )
@@ -222,24 +257,30 @@ export default function MondayMeetingServiceTab() {
 
   return (
     <div className="monday-meeting-service-tab p-3">
-      <div className="monday-meeting-service-filters">
-        <Form.Group>
-          <Form.Label>Start date</Form.Label>
-          <Form.Control type="date" value={start} onChange={(e) => setStart(e.target.value)} />
-        </Form.Group>
-        <Form.Group>
-          <Form.Label>End date</Form.Label>
-          <Form.Control type="date" value={end} onChange={(e) => setEnd(e.target.value)} />
-        </Form.Group>
-        <Button
-          type="button"
-          variant="outline-secondary"
-          className="performance-apply-btn"
-          onClick={() => void load()}
-          disabled={loading}
-        >
-          Apply
-        </Button>
+      <div className="monday-meeting-service-toolbar">
+        <h2 className="monday-meeting-service-section-title">Date range</h2>
+        <div className="monday-meeting-service-filters">
+          <div className="monday-meeting-service-filters__dates">
+          <Form.Control
+            type="date"
+            size="sm"
+            className="monday-meeting-service-date-control"
+            value={start}
+            aria-label="Start date"
+            onChange={(e) => setStart(e.target.value)}
+          />
+          <span className="monday-meeting-service-date-sep" aria-hidden>
+            –
+          </span>
+          <Form.Control
+            type="date"
+            size="sm"
+            className="monday-meeting-service-date-control"
+            value={end}
+            aria-label="End date"
+            onChange={(e) => setEnd(e.target.value)}
+          />
+        </div>
         <Link
           to="/monday_meeting/service/admin"
           className="btn btn-outline-secondary btn-sm monday-meeting-service-admin-link"
@@ -247,6 +288,7 @@ export default function MondayMeetingServiceTab() {
           <i className="bi bi-gear me-1" aria-hidden />
           Filter settings
         </Link>
+        </div>
       </div>
 
       {error ? (
