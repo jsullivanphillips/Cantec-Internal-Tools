@@ -1,5 +1,5 @@
 """
-Read-only audit: do any ``keys`` rows tie (via barcode / keycode) to ``MonthlyRouteLocation``
+Read-only audit: do any ``keys`` rows tie (via barcode / keycode) to ``MonthlyLocation``
 rows that sit on **more than one** ``monthly_route_id``?
 
 Usage (repo root, DATABASE_URL set):
@@ -17,7 +17,7 @@ import sys
 from collections import defaultdict
 
 from app import create_app
-from app.db_models import Key, MonthlyRoute, MonthlyRouteLocation
+from app.db_models import Key, MonthlyLocation, MonthlyRoute
 from app.monthly.monthly_keys_keycode import (
     canonical_keycode_from_monthly_keys_field,
     monthly_keys_field_indicates_no_key,
@@ -61,12 +61,12 @@ def main(argv: list[str] | None = None) -> int:
 
     app = create_app()
     with app.app_context():
-        locations = MonthlyRouteLocation.query.all()
+        locations = MonthlyLocation.query.all()
         keys_list = Key.query.all()
         routes = {r.id: r for r in MonthlyRoute.query.all()}
         keys_by_id = {k.id: k for k in keys_list}
 
-        bc_to_locs: dict[int, list[MonthlyRouteLocation]] = defaultdict(list)
+        bc_to_locs: dict[int, list[MonthlyLocation]] = defaultdict(list)
         for loc in locations:
             bc = _barcode_int(loc.barcode)
             if bc is None:
@@ -77,7 +77,7 @@ def main(argv: list[str] | None = None) -> int:
         for k in keys_list:
             keycode_cf_to_key[_norm_keycode_cf(k.keycode)] = k
 
-        keycode_match_by_key_id: dict[int, list[MonthlyRouteLocation]] = defaultdict(list)
+        keycode_match_by_key_id: dict[int, list[MonthlyLocation]] = defaultdict(list)
         for loc in locations:
             if _barcode_int(loc.barcode) is not None:
                 continue
@@ -97,14 +97,14 @@ def main(argv: list[str] | None = None) -> int:
                 keys_with_links.add(k.id)
         keys_with_links.update(keycode_match_by_key_id.keys())
 
-        multi_route: list[tuple[Key, dict[int | None, list[int]], list[MonthlyRouteLocation]]] = []
-        mixed_null: list[tuple[Key, list[MonthlyRouteLocation]]] = []
+        multi_route: list[tuple[Key, dict[int | None, list[int]], list[MonthlyLocation]]] = []
+        mixed_null: list[tuple[Key, list[MonthlyLocation]]] = []
 
         for kid in sorted(keys_with_links):
             k = keys_by_id.get(kid)
             if k is None:
                 continue
-            by_loc_id: dict[int, MonthlyRouteLocation] = {}
+            by_loc_id: dict[int, MonthlyLocation] = {}
             if k.barcode is not None:
                 for loc in bc_to_locs.get(int(k.barcode), []):  # Key.barcode stored as integer
                     by_loc_id[loc.id] = loc

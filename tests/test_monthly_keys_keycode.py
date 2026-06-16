@@ -43,3 +43,15 @@ def test_no_key_sentinels_not_keycodes():
 def test_canonical_empty_for_no_key_sentinel():
     assert canonical_keycode_from_monthly_keys_field("-") == ""
     assert canonical_keycode_from_monthly_keys_field("No keys") == ""
+
+
+def test_access_instruction_no_key_phrases():
+    assert monthly_keys_field_indicates_no_key("On Site") is True
+    assert monthly_keys_field_indicates_no_key("Key at Front Desk") is True
+    assert monthly_keys_field_indicates_no_key("NO KEYS - CONTACT ON SITE") is True
+    assert monthly_keys_field_indicates_no_key("Call Site Contact") is True
+    assert monthly_keys_field_indicates_no_key("Contact Front Desk to gain Access") is True
+    assert monthly_keys_field_indicates_no_key("Call Ken Cooper") is True
+    assert monthly_keys_field_indicates_no_key("Call Mike 15 mins ahead") is True
+    assert monthly_keys_field_indicates_no_key("Call Sarina Zhao for access!") is True
+    assert canonical_keycode_from_monthly_keys_field("Call Site Contact") == ""

@@ -32,6 +32,7 @@ def master_template_fields(loc: MonthlyLocation) -> dict[str, object]:
         "building_name": monthly_location_building_name(loc),
         "panel_location": loc.panel_location,
         "door_code": loc.door_code,
+        "access_instructions": _normalize_text(loc.access_instructions),
         "ring": _normalize_text(loc.ring_detail),
         "key_number": _normalize_text(loc.keys),
         "panel": panel,

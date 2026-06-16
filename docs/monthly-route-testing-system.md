@@ -56,7 +56,7 @@ MonthlyKeyBridge — survives location wipes (keys system untouched)
 | Model | Table | Role |
 |--------|--------|------|
 | `MonthlyRoute` | `monthly_route` | Route shell: `route_number`, `weekday_iso`, `week_occurrence`, optional ST route pseudo-location |
-| `MonthlyLocation` | `monthly_location` | **Library master** — one row per stop: address + PMC + `label`; route assignment; keys; inspection/monitoring fields; `price_per_month`; `billing_comments`; optional `service_trade_site_location_id` (ST building id; may be shared across rows) |
+| `MonthlyLocation` | `monthly_location` | **Library master** — one row per stop: address + PMC + `label`; route assignment; keys; `access_instructions` (site access notes separate from physical key); inspection/monitoring fields; `price_per_month`; `billing_comments`; optional `service_trade_site_location_id` (ST building id; may be shared across rows) |
 | `MonthlyRouteRun` | `monthly_route_run` | One run per `(monthly_route_id, month_date)`; opened/started/completed timestamps, `status`, `source` |
 | `MonthlyLocationMonth` | `monthly_location_month` | **Worksheet + billing grain** — one row per `(monthly_location_id, month_date)`; outcomes, clock times, run snapshots, `billing_status` |
 | `MonthlyStopClockEvent` | `monthly_stop_clock_event` | Clock pairs on `monthly_location_month_id` |
@@ -81,11 +81,15 @@ One-time data migration from legacy tables: `app/monthly/migrate_flat_locations.
 
 | Model | Role |
 |--------|------|
-| `Key` | Canonical keycodes + barcodes |
-| `MonthlyLocation.key_id` | Canonical FK on library rows |
-| `MonthlyKeyBridge` | Archive of key↔location links before wipes; **no FK** to wiped location rows; **RESTRICT** FK to `keys` |
+| `Key` | Canonical keycodes + barcodes (standalone — deleting a `MonthlyLocation` does not delete keys) |
+| `MonthlyLocation.key_id` | Live FK on library rows (`ON DELETE SET NULL` when a key is removed) |
+| `MonthlyKeyBridge` | Archive of key↔site snapshots before wipes; **no FK** to wiped location rows; **RESTRICT** FK to `keys` |
 
 **Keys system is never modified by monthly location wipes or flat-model migrations.**
+
+**Staff admin (authenticated SPA only):** `POST/PATCH/DELETE /api/keys`, `GET /api/keys/<id>/delete_blockers`, `DELETE /api/keys/<id>/bridge_rows` (all or `/<bridge_id>`). Public `/keys` tool remains sign-out/return/search. UI: `/monthlies/keys` — edit modal lists bridge archive rows with **Remove** / **Remove all**.
+
+**Route key audit:** `GET /api/monthly_routes/routes/<id>/key_audit` — compares active stops that need a physical key vs keys assigned to route bag `Key.route = R#`, plus sign-out availability (`app/monthly/route_key_audit.py`). Shown on route detail and technician route hub.
 
 ### 3.3 Legacy tables (pre-cutover only)
 
@@ -116,7 +120,7 @@ Primary API for library, routes, worksheet, CSV import, comments.
 | Area | Key endpoints |
 |------|----------------|
 | Library | `GET/POST/PATCH/DELETE /api/monthly_routes/library[...]` — filters: `q`, `route`, `skipped_any`, `annual_tested_conflict`, month range; `include_history=false` skips month cells (used by the locations list at `/monthlies/locations`) |
-| Routes | `GET /api/monthly_routes/routes`, `GET /api/monthly_routes/dashboard`, `GET /api/monthly_routes/dashboard/issues`, `GET /api/monthly_routes/dashboard/route_breakdown`, `PATCH .../routes/<id>`, `GET .../routes/<id>`, `GET .../routes/<id>/performance_breakdown?month_date=` |
+| Routes | `GET /api/monthly_routes/routes`, `GET /api/monthly_routes/dashboard`, `GET /api/monthly_routes/dashboard/issues`, `GET /api/monthly_routes/dashboard/route_breakdown`, `PATCH .../routes/<id>`, `GET .../routes/<id>`, `GET .../routes/<id>/key_audit`, `GET .../routes/<id>/performance_breakdown?month_date=` |
 | Worksheet | `GET .../worksheet`, `GET .../worksheet/stream` (SSE), `PATCH .../worksheet/locations/<location_id>`, clock/test_outcome/deficiency/reset sub-routes, `POST .../worksheet/reset_run` |
 | Runs | `GET .../run_details?month=`, `GET .../run_details/review?month=`, `GET .../run_details/review/locations/<location_id>?month=`, `GET .../run_details/locations/<location_id>?month=`, `POST .../runs/import_csv`, `POST .../runs/complete`, `POST .../runs/reopen` |
 | Other | `PUT .../location_order`, comments, `POST .../library/<id>/geocode`, `PATCH .../library/<id>/service_trade_link`, `POST .../routes/<id>/geocode_missing_coordinates`, placement, `GET .../testing_session` |
@@ -228,7 +232,8 @@ Many earlier migrations scaffolded routes, runs, history, inspection fields, coo
 | `app/scripts/update_monthly_route_run_timing.py` | Sync `monthly_route_run_timing_month` from ST testing-job onsite clocks (schedule externally; same cadence as specialist sync) |
 | `app/scripts/upload_monthly_sheet.py` | Bulk master sheet → library + history + v2 refresh (`--locations-only` skips month columns/history; `--history-only` skips location upserts; `--status-and-routes-only` updates STATUS + TEST DAY + route FK only) |
 | `app/scripts/backfill_monthly_route_entities.py` | Route entities from TEST DAY classification |
-| `app/scripts/backfill_monthly_location_key_id.py` | Key FK backfill on locations |
+| `app/scripts/backfill_monthly_location_key_id.py` | Key FK backfill on flat `MonthlyLocation` (`--execute`) |
+| `app/scripts/audit_keys_multiple_monthly_routes.py` | Read-only: keys linked to stops on multiple routes |
 | `app/scripts/backfill_monthly_route_coordinates.py` | Bulk geocode all library rows missing lat/lng (`--commit`) |
 | `app/scripts/fix_months_on_invoice_location_labels.py` | Move ``Months on invoice`` placeholder labels to ``billing_comments``; set label to shortened address (`--commit`) |
 | `app/scripts/backfill_monthly_service_trade_site_locations.py` | Auto-link `MonthlyLocation.service_trade_site_location_id` from active ST locations (§8.1) |
@@ -355,7 +360,10 @@ Technician flow: `/tech` → `/tech/start` → `/tech/route/:routeId/worksheet/:
 | `tests/test_monthly_route_sync.py` | TEST DAY → route FK |
 | `tests/test_monthly_test_day.py` | Parser edge cases, cancelled `-` |
 | `tests/test_monthly_key_resolve.py` | Barcode/keycode resolution |
-| `tests/test_monthly_keys_keycode.py` | Keycode normalization |
+| `tests/test_monthly_keys_keycode.py` | Keycode normalization + access-instruction no-key phrases |
+| `tests/test_keys_admin_api.py` | Staff keys CRUD + delete guards |
+| `tests/test_monthly_route_key_audit_api.py` | Route key audit buckets |
+| `tests/test_backfill_monthly_location_key_id.py` | Backfill script on `MonthlyLocation` |
 | `tests/test_route_run_csv_import.py` | CSV import API |
 
 Tests often use minimal SQLite table subsets with explicit BIGINT id assignment.

@@ -8,6 +8,7 @@ import MonthlyLocationBillingCommentsPanel from '../features/monthlyRoutes/Month
 import MonthlyLocationEditableFields, {
   type MonthlyLocationEditableFieldsHandle,
 } from '../features/monthlyRoutes/MonthlyLocationEditableFields'
+import MonthlyLocationKeyLinkPanel from '../features/keys/MonthlyLocationKeyLinkPanel'
 import MonthlyLocationServiceTradeLinkPanel, {
   MonthlyLocationServiceTradeHeroActions,
   MonthlyLocationServiceTradeLinkEditModal,
@@ -788,6 +789,8 @@ export default function MonthlyLocationDetailPage() {
             value={detailText(location.start_up_date)}
           />
         </div>
+
+        <MonthlyLocationKeyLinkPanel location={location} onLocationUpdated={handleLocationUpdated} />
 
         <MonthlyLocationServiceTradeLinkPanel
           location={location}

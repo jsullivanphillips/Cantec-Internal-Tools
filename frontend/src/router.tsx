@@ -9,6 +9,7 @@ import LoginPage from './pages/LoginPage'
 const HomePage = lazy(() => import('./pages/HomePage'))
 const FindSchedulePage = lazy(() => import('./pages/FindSchedulePage'))
 const KeysHomePage = lazy(() => import('./pages/KeysHomePage'))
+const KeysAdminPage = lazy(() => import('./pages/KeysAdminPage'))
 const KeyDetailPage = lazy(() => import('./pages/KeyDetailPage'))
 const KeyByBarcodePage = lazy(() => import('./pages/KeyByBarcodePage'))
 const PerformanceSummaryPage = lazy(() => import('./pages/PerformanceSummaryPage'))
@@ -119,6 +120,7 @@ export const router = createBrowserRouter([
       { path: 'monthlies/map', element: <MonthlyRoutesMapPage /> },
       { path: 'monthlies/specialists', element: <MonthlySpecialistsPage /> },
       { path: 'monthlies/monitoring-companies', element: <MonitoringCompaniesPage /> },
+      { path: 'monthlies/keys', element: <KeysAdminPage /> },
       { path: 'tools/monthly-routes', element: <Navigate to="/monthlies/locations" replace /> },
       { path: 'tools/monthly-routes/map', element: <Navigate to="/monthlies/map" replace /> },
       { path: 'processing_attack', element: <ProcessingAttackPage /> },

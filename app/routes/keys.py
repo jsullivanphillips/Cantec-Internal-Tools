@@ -7,7 +7,7 @@ from sqlalchemy.orm import selectinload, aliased
 from .scheduling_attack import get_active_techs
 import re
 
-from app.db_models import db, Key, KeyAddress, KeyStatus
+from app.db_models import db, Key, KeyAddress, KeyStatus, MonthlyKeyBridge, MonthlyLocation
 from app.spa import send_spa_index
 from app.response_cache import cached_json_response, invalidate_cache_prefix
 
@@ -102,6 +102,86 @@ def _commit_or_500():
 def _payload():
     # Supports both form posts and JSON posts
     return request.get_json(silent=True) or request.form or {}
+
+
+def _clean_text(value: object) -> str | None:
+    if value is None:
+        return None
+    text = " ".join(str(value).strip().split())
+    return text or None
+
+
+def _allocate_key_id() -> int:
+    return int(db.session.query(func.coalesce(func.max(Key.id), 0)).scalar() or 0) + 1
+
+
+def _allocate_key_address_id() -> int:
+    return int(db.session.query(func.coalesce(func.max(KeyAddress.id), 0)).scalar() or 0) + 1
+
+
+def _parse_addresses_payload(data: dict) -> list[str]:
+    raw = data.get("addresses")
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise ValueError("addresses must be an array of strings")
+    out: list[str] = []
+    for item in raw:
+        addr = _clean_text(item)
+        if addr:
+            out.append(addr)
+    return out
+
+
+def _apply_key_addresses(key: Key, addresses: list[str], *, replace: bool) -> None:
+    if replace:
+        key.addresses.clear()
+    existing = {a.address.casefold() for a in key.addresses}
+    for addr in addresses:
+        if addr.casefold() in existing:
+            continue
+        key.addresses.append(
+            KeyAddress(id=_allocate_key_address_id(), address=addr, key_id=key.id)
+        )
+        existing.add(addr.casefold())
+
+
+def _serialize_bridge_row(row: MonthlyKeyBridge) -> dict[str, object]:
+    exported = row.exported_at.isoformat() if row.exported_at else None
+    return {
+        "id": int(row.id),
+        "source": row.source,
+        "display_address": (row.display_address or "").strip() or None,
+        "keys_text": (row.keys_text or "").strip() or None,
+        "legacy_monthly_route_location_id": (
+            int(row.legacy_monthly_route_location_id)
+            if row.legacy_monthly_route_location_id is not None
+            else None
+        ),
+        "exported_at": exported,
+    }
+
+
+def _key_delete_blockers(key_id: int) -> dict[str, object]:
+    bridge_rows = (
+        MonthlyKeyBridge.query.filter(MonthlyKeyBridge.key_id == key_id)
+        .order_by(MonthlyKeyBridge.id.asc())
+        .all()
+    )
+    linked_locations = (
+        MonthlyLocation.query.filter(MonthlyLocation.key_id == key_id)
+        .order_by(MonthlyLocation.id.asc())
+        .limit(25)
+        .all()
+    )
+    return {
+        "bridge_rows": len(bridge_rows),
+        "bridge_row_details": [_serialize_bridge_row(row) for row in bridge_rows],
+        "linked_location_ids": [int(loc.id) for loc in linked_locations],
+        "linked_location_count": MonthlyLocation.query.filter(
+            MonthlyLocation.key_id == key_id
+        ).count(),
+    }
 
 
 def _serialize_key_for_spa(key: Key) -> dict:
@@ -263,6 +343,190 @@ def api_keys_search():
         })
 
     return jsonify({"data": results})
+
+
+@keys_bp.post("/api/keys")
+def api_create_key():
+    """Staff-only: create a canonical key row."""
+    if not _keys_schema_ready():
+        abort(503, description="Keys schema not ready")
+    data = _payload()
+    if not isinstance(data, dict):
+        abort(400, description="JSON object required")
+
+    keycode = _clean_text(data.get("keycode"))
+    if not keycode:
+        abort(400, description="keycode is required")
+    if is_route_bag_keycode(keycode) and not data.get("allow_route_bag_keycode"):
+        abort(400, description="Route bag keycodes (R#) require allow_route_bag_keycode=true")
+
+    existing = Key.query.filter(func.lower(func.trim(Key.keycode)) == keycode.casefold()).first()
+    if existing is not None:
+        return jsonify({"error": "keycode already exists", "code": "duplicate_keycode"}), 409
+
+    barcode_raw = data.get("barcode")
+    barcode: int | None = None
+    if barcode_raw is not None and str(barcode_raw).strip():
+        try:
+            barcode = int(barcode_raw)
+        except (TypeError, ValueError) as exc:
+            abort(400, description="barcode must be an integer")
+        dup_bc = Key.query.filter(Key.barcode == barcode).first()
+        if dup_bc is not None:
+            return jsonify({"error": "barcode already exists", "code": "duplicate_barcode"}), 409
+
+    try:
+        addresses = _parse_addresses_payload(data)
+    except ValueError as exc:
+        abort(400, description=str(exc))
+
+    kid = _allocate_key_id()
+    key = Key(
+        id=kid,
+        keycode=keycode,
+        barcode=barcode,
+        route=_clean_text(data.get("route")),
+        home_location=_clean_text(data.get("home_location")),
+        annual_month=_clean_text(data.get("annual_month")),
+        area=_clean_text(data.get("area")),
+        site_status=_clean_text(data.get("site_status")),
+    )
+    db.session.add(key)
+    db.session.flush()
+    if addresses:
+        _apply_key_addresses(key, addresses, replace=True)
+    _commit_or_500()
+    invalidate_cache_prefix("keys:")
+    db.session.refresh(key)
+    return jsonify({"key": _serialize_key_for_spa(key)}), 201
+
+
+@keys_bp.patch("/api/keys/<int:key_id>")
+def api_update_key(key_id: int):
+    """Staff-only: update key metadata and optional address list."""
+    if not _keys_schema_ready():
+        abort(503, description="Keys schema not ready")
+    key = _get_key_or_404(key_id)
+    data = _payload()
+    if not isinstance(data, dict):
+        abort(400, description="JSON object required")
+
+    if "keycode" in data:
+        keycode = _clean_text(data.get("keycode"))
+        if not keycode:
+            abort(400, description="keycode cannot be empty")
+        if is_route_bag_keycode(keycode) and not data.get("allow_route_bag_keycode"):
+            abort(400, description="Route bag keycodes (R#) require allow_route_bag_keycode=true")
+        dup = (
+            Key.query.filter(
+                func.lower(func.trim(Key.keycode)) == keycode.casefold(),
+                Key.id != key.id,
+            ).first()
+        )
+        if dup is not None:
+            return jsonify({"error": "keycode already exists", "code": "duplicate_keycode"}), 409
+        key.keycode = keycode
+
+    if "barcode" in data:
+        barcode_raw = data.get("barcode")
+        if barcode_raw is None or str(barcode_raw).strip() == "":
+            key.barcode = None
+        else:
+            try:
+                barcode = int(barcode_raw)
+            except (TypeError, ValueError) as exc:
+                abort(400, description="barcode must be an integer")
+            dup_bc = Key.query.filter(Key.barcode == barcode, Key.id != key.id).first()
+            if dup_bc is not None:
+                return jsonify({"error": "barcode already exists", "code": "duplicate_barcode"}), 409
+            key.barcode = barcode
+
+    for field in ("route", "home_location", "annual_month", "area", "site_status"):
+        if field in data:
+            setattr(key, field, _clean_text(data.get(field)))
+
+    if "addresses" in data:
+        try:
+            addresses = _parse_addresses_payload(data)
+        except ValueError as exc:
+            abort(400, description=str(exc))
+        _apply_key_addresses(key, addresses, replace=True)
+
+    _commit_or_500()
+    invalidate_cache_prefix("keys:")
+    db.session.refresh(key)
+    return jsonify({"key": _serialize_key_for_spa(key)})
+
+
+@keys_bp.delete("/api/keys/<int:key_id>")
+def api_delete_key(key_id: int):
+    """Staff-only: delete a key when not blocked by bridge archive or monthly links."""
+    if not _keys_schema_ready():
+        abort(503, description="Keys schema not ready")
+    key = _get_key_or_404(key_id)
+    blockers = _key_delete_blockers(key_id)
+    if blockers["bridge_rows"]:
+        return (
+            jsonify(
+                {
+                    "error": "Key is archived in monthly_key_bridge and cannot be deleted",
+                    "code": "key_bridge_blocked",
+                    "blockers": blockers,
+                }
+            ),
+            409,
+        )
+    if blockers["linked_location_count"]:
+        return (
+            jsonify(
+                {
+                    "error": "Key is linked from monthly locations; clear key_id first",
+                    "code": "monthly_location_linked",
+                    "blockers": blockers,
+                }
+            ),
+            409,
+        )
+    db.session.delete(key)
+    _commit_or_500()
+    invalidate_cache_prefix("keys:")
+    return ("", 204)
+
+
+@keys_bp.get("/api/keys/<int:key_id>/delete_blockers")
+def api_key_delete_blockers(key_id: int):
+    """Staff-only: preview delete blockers for admin UI."""
+    _get_key_or_404(key_id)
+    return jsonify({"blockers": _key_delete_blockers(key_id)})
+
+
+@keys_bp.delete("/api/keys/<int:key_id>/bridge_rows")
+def api_delete_all_key_bridge_rows(key_id: int):
+    """Staff-only: remove all monthly_key_bridge archive rows for a key."""
+    if not _keys_schema_ready():
+        abort(503, description="Keys schema not ready")
+    _get_key_or_404(key_id)
+    rows = MonthlyKeyBridge.query.filter(MonthlyKeyBridge.key_id == key_id).all()
+    deleted = len(rows)
+    for row in rows:
+        db.session.delete(row)
+    if deleted:
+        _commit_or_500()
+    return jsonify({"deleted": deleted, "blockers": _key_delete_blockers(key_id)})
+
+
+@keys_bp.delete("/api/keys/<int:key_id>/bridge_rows/<int:bridge_id>")
+def api_delete_key_bridge_row(key_id: int, bridge_id: int):
+    """Staff-only: remove one monthly_key_bridge archive row."""
+    if not _keys_schema_ready():
+        abort(503, description="Keys schema not ready")
+    _get_key_or_404(key_id)
+    row = MonthlyKeyBridge.query.filter_by(id=bridge_id, key_id=key_id).first()
+    if row is None:
+        abort(404, description="Bridge row not found")
+    db.session.delete(row)
+    _commit_or_500()
+    return jsonify({"blockers": _key_delete_blockers(key_id)})
 
 
 @keys_bp.post("/keys/<int:key_id>/sign-out")

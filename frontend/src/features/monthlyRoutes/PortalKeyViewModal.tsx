@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { Modal } from 'react-bootstrap'
+import type { RouteKeyAuditPayload } from '../keys/keysAdminShared'
 import type { TechnicianWorksheetLocation } from './monthlyRoutesShared'
 import { buildKeyViewItems } from './portalKeyViewShared'
 
@@ -8,6 +9,7 @@ type Props = {
   onHide: () => void
   stops: TechnicianWorksheetLocation[]
   activeStopId: number | null
+  keyAudit?: RouteKeyAuditPayload | null
 }
 
 type MouseDragState = {
@@ -45,8 +47,11 @@ function snapScrollTop(scroller: HTMLDivElement) {
   scroller.scrollTop = Math.round(scroller.scrollTop)
 }
 
-export default function PortalKeyViewModal({ show, onHide, stops, activeStopId }: Props) {
-  const items = useMemo(() => buildKeyViewItems(stops, activeStopId), [stops, activeStopId])
+export default function PortalKeyViewModal({ show, onHide, stops, activeStopId, keyAudit }: Props) {
+  const items = useMemo(
+    () => buildKeyViewItems(stops, activeStopId, keyAudit),
+    [stops, activeStopId, keyAudit],
+  )
   const scrollerRef = useRef<HTMLDivElement | null>(null)
   const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map())
   const dragRef = useRef<MouseDragState | null>(null)
@@ -339,7 +344,14 @@ export default function PortalKeyViewModal({ show, onHide, stops, activeStopId }
                     {item.ring}
                   </span>
                   <span className="pw-key-view-key-block">
-                    <span className="pw-key-view-key-code">{item.keyCode}</span>
+                    <span className="pw-key-view-key-code">
+                      {item.keyCode}
+                      {item.keyIssue ? (
+                        <span className="text-warning ms-1" title={item.keyIssue}>
+                          <i className="bi bi-exclamation-triangle-fill" aria-hidden />
+                        </span>
+                      ) : null}
+                    </span>
                     <span className="pw-key-view-address">{item.addressLabel}</span>
                   </span>
                 </div>

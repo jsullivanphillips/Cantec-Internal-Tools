@@ -951,6 +951,7 @@ class MonthlyLocation(db.Model):
     status_raw = db.Column(db.String(255), nullable=True)
 
     keys = db.Column(db.Text, nullable=True)
+    access_instructions = db.Column(db.Text, nullable=True)
     test_day = db.Column(db.String(255), nullable=True)
     annual_month = db.Column(db.String(32), nullable=True)
     display_address = db.Column(db.String(255), nullable=True)

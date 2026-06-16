@@ -210,6 +210,14 @@ const MonthlyLocationEditableFields = forwardRef<MonthlyLocationEditableFieldsHa
               {...fieldEditProps}
             />
             <PortalEditableFieldRow
+              fieldKey="access_instructions"
+              label="Access instructions"
+              value={location.access_instructions ?? ''}
+              onSave={saveTextField('access_instructions')}
+              multiline
+              {...fieldEditProps}
+            />
+            <PortalEditableFieldRow
               fieldKey="annual_month"
               label="Annual"
               value={location.annual_month ?? ''}

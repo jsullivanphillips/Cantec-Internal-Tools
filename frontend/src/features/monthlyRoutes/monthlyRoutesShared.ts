@@ -91,6 +91,8 @@ export type LibraryLocation = {
   panel?: string | null
   panel_location?: string | null
   door_code?: string | null
+  /** Site access notes (call contact, on-site check-in, etc.) — library master only. */
+  access_instructions?: string | null
   testing_procedures?: string | null
   inspection_tech_notes?: string | null
   monitoring_company_id?: number | null
@@ -718,8 +720,11 @@ export type TechnicianWorksheetLocation = {
   panel: string | null
   panel_location: string | null
   door_code: string | null
+  access_instructions?: string | null
   ring: string | null
   key_number: string | null
+  key_id?: number | null
+  linked_key?: LinkedKeySummary | null
   annual_month: string | null
   monitoring_company: string | null
   monitoring_company_id?: number | null

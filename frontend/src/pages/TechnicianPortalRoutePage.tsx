@@ -10,6 +10,7 @@ import {
 } from '../features/monthlyRoutes/monthlyRoutesShared'
 import { runFieldEnded } from '../features/monthlyRoutes/runWorkflowShared'
 import { apiJson } from '../lib/apiClient'
+import { fetchRouteKeyAudit, type RouteKeyAuditPayload } from '../features/keys/keysAdminShared'
 
 type PortalRoute = {
   id: number
@@ -75,6 +76,7 @@ export default function TechnicianPortalRoutePage() {
   const [error, setError] = useState<string | null>(null)
   const [runLifecycleBusy, setRunLifecycleBusy] = useState(false)
   const [runLifecycleMessage, setRunLifecycleMessage] = useState('Updating run…')
+  const [keyAudit, setKeyAudit] = useState<RouteKeyAuditPayload | null>(null)
   const load = useCallback(async () => {
     if (Number.isNaN(idNum)) {
       setLoading(false)
@@ -108,6 +110,13 @@ export default function TechnicianPortalRoutePage() {
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    if (Number.isNaN(idNum)) return
+    void fetchRouteKeyAudit(idNum)
+      .then(setKeyAudit)
+      .catch(() => setKeyAudit(null))
+  }, [idNum])
 
   const openWorksheetForMonth = useCallback(
     (monthFirstIso: string, fromPriorRun = false) => {
@@ -204,6 +213,26 @@ export default function TechnicianPortalRoutePage() {
               {data.route.display_name ? ` · ${data.route.display_name}` : ''}
             </div>
           </div>
+
+          {keyAudit != null && keyAudit.counts.issues > 0 ? (
+            <Alert variant="warning" className="small mb-4">
+              <strong>Key bag check:</strong> {keyAudit.counts.issues} issue
+              {keyAudit.counts.issues === 1 ? '' : 's'} before you start —{' '}
+              {keyAudit.counts.unlinked > 0 ? `${keyAudit.counts.unlinked} unlinked` : null}
+              {keyAudit.counts.unlinked > 0 && keyAudit.counts.unavailable > 0 ? ', ' : null}
+              {keyAudit.counts.unavailable > 0 ? `${keyAudit.counts.unavailable} unavailable` : null}
+              {(keyAudit.counts.wrong_route > 0 || keyAudit.counts.missing_from_bag > 0) &&
+              (keyAudit.counts.unlinked > 0 || keyAudit.counts.unavailable > 0)
+                ? ', '
+                : null}
+              {keyAudit.counts.wrong_route > 0 ? `${keyAudit.counts.wrong_route} wrong route` : null}
+              {keyAudit.counts.wrong_route > 0 && keyAudit.counts.missing_from_bag > 0 ? ', ' : null}
+              {keyAudit.counts.missing_from_bag > 0
+                ? `${keyAudit.counts.missing_from_bag} missing from bag`
+                : null}
+              . Ask the office to fix before signing out {keyAudit.bag_code}.
+            </Alert>
+          ) : null}
 
           {data.awaiting_office_prepare ? (
             <Card className="shadow-sm border-primary mb-4">

@@ -1,5 +1,5 @@
 """
-Set ``monthly_route_location.key_id`` from ``barcode`` / ``keys`` using shared resolver.
+Set ``monthly_location.key_id`` from ``barcode`` / ``keys`` using shared resolver.
 
 Does **not** modify ``keys`` or ``key_status``.
 
@@ -20,12 +20,12 @@ import sys
 from sqlalchemy import update
 
 from app import create_app
-from app.db_models import MonthlyRouteLocation, db
+from app.db_models import MonthlyLocation, db
 from app.monthly.key_resolve import keycode_cf_to_key_id_map, resolve_key_id_for_monthly_fields
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Backfill MonthlyRouteLocation.key_id from KEYS/barcode.")
+    parser = argparse.ArgumentParser(description="Backfill MonthlyLocation.key_id from KEYS/barcode.")
     parser.add_argument(
         "--execute",
         action="store_true",
@@ -35,7 +35,7 @@ def main(argv: list[str] | None = None) -> int:
 
     app = create_app()
     with app.app_context():
-        locations = MonthlyRouteLocation.query.order_by(MonthlyRouteLocation.id.asc()).all()
+        locations = MonthlyLocation.query.order_by(MonthlyLocation.id.asc()).all()
         idx = keycode_cf_to_key_id_map()
 
         would_set = 0
@@ -59,9 +59,9 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 would_set += 1
 
-        print("=== Backfill monthly_route_location.key_id ===\n")
+        print("=== Backfill monthly_location.key_id ===\n")
         print(f"Locations: {len(locations)}")
-        print(f"Keycode index entries: {len(idx)}")
+        print(f"Keycode index entries: {len(idx.exact)} exact, {len(idx.compact)} compact")
         print(f"Unchanged: {unchanged}")
         print(f"Would set / clear FK: {would_set} set, {would_clear} clear")
 
@@ -78,8 +78,8 @@ def main(argv: list[str] | None = None) -> int:
         updated = 0
         for lid, kid in pending:
             db.session.execute(
-                update(MonthlyRouteLocation)
-                .where(MonthlyRouteLocation.id == lid)
+                update(MonthlyLocation)
+                .where(MonthlyLocation.id == lid)
                 .values(key_id=kid)
             )
             updated += 1

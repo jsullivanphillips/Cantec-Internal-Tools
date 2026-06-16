@@ -27,6 +27,7 @@ from app.db_models import (
     MonthlyRouteWorksheetAuditEvent,
     db,
 )
+from app.monthly.key_serialize import linked_key_fields_for_location
 from app.monthly.key_resolve import sync_key_fk_for_location
 from app.monthly.location_building import monthly_location_building_name
 from app.monthly.route_inspection_csv_import import (
@@ -1020,6 +1021,8 @@ def _worksheet_preview_row_from_location(
         "annual_month": loc.annual_month,
         "ring": loc.ring_detail,
         "key_number": loc.keys,
+        **linked_key_fields_for_location(loc),
+        "access_instructions": loc.access_instructions,
         "facp": loc.facp_detail,
         "monitoring": monitoring_label,
         "result_status": None,
@@ -1043,7 +1046,10 @@ def _portal_worksheet_preview_payload(
     from app.monthly.worksheet_locations import portal_worksheet_preview_stops
 
     locs = (
-        MonthlyLocation.query.options(joinedload(MonthlyLocation.monitoring_company))
+        MonthlyLocation.query.options(
+            joinedload(MonthlyLocation.monitoring_company),
+            joinedload(MonthlyLocation.linked_key),
+        )
         .filter(MonthlyLocation.monthly_route_id == route_id)
         .all()
     )
@@ -1727,6 +1733,7 @@ def _serialize_location_row(
     payload["panel"] = loc.panel or loc.facp_detail
     payload["panel_location"] = loc.panel_location
     payload["door_code"] = loc.door_code
+    payload["access_instructions"] = loc.access_instructions
     payload["monitoring_company_id"] = loc.monitoring_company_id
     payload["monitoring_company"] = serialize_monitoring_company(loc.monitoring_company)
     payload["monitoring_account_number"] = loc.monitoring_account_number
@@ -2304,6 +2311,17 @@ def get_monthly_route_detail(route_id: int):
             "specialists_by_month": specialists_by_month,
         }
     )
+
+
+@monthly_routes_bp.get("/api/monthly_routes/routes/<int:route_id>/key_audit")
+def get_route_key_audit(route_id: int):
+    mr = _get_monthly_route(route_id)
+    if mr is None:
+        return jsonify({"error": "Route not found"}), 404
+
+    from app.monthly.route_key_audit import build_route_key_audit
+
+    return jsonify(build_route_key_audit(mr))
 
 
 @monthly_routes_bp.get("/api/monthly_routes/routes/<int:route_id>/performance_breakdown")
@@ -5668,6 +5686,7 @@ def create_monthly_route_location():
         status_normalized=normalized_status,
         status_raw=canonical_raw_status,
         keys=keys,
+        access_instructions=_clean_text(payload.get("access_instructions")),
         test_day=_clean_text(payload.get("test_day")),
         annual_month=_clean_text(payload.get("annual_month")),
         display_address=_clean_text(payload.get("display_address")),
@@ -5828,6 +5847,8 @@ def update_monthly_route_location(location_id: int):
         if "door_code" in payload:
             raw = payload.get("door_code")
             loc.door_code = (str(raw).strip() or None) if raw is not None else None
+        if "access_instructions" in payload:
+            loc.access_instructions = _clean_text(payload.get("access_instructions"))
         if "monitoring_company_id" in payload:
             raw_mcid = payload.get("monitoring_company_id")
             if raw_mcid is None:

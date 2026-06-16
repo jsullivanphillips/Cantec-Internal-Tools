@@ -25,10 +25,12 @@ import RouteTechCountCard from '../features/monthlyRoutes/RouteTechCountCard'
 import MonthlyRouteMapCard from '../features/monthlyRoutes/MonthlyRouteMapCard'
 import RoutePerformanceBreakdown from '../features/monthlyRoutes/RoutePerformanceBreakdown'
 import PortalKeyViewModal from '../features/monthlyRoutes/PortalKeyViewModal'
+import RouteKeyAuditCard from '../features/keys/RouteKeyAuditCard'
 import OfficeSkipRunModal, {
   type OfficeSkipRunPayload,
 } from '../features/monthlyRoutes/OfficeSkipRunModal'
 import { fetchRouteKeyViewStops } from '../features/monthlyRoutes/portalKeyViewShared'
+import { fetchRouteKeyAudit, type RouteKeyAuditPayload } from '../features/keys/keysAdminShared'
 import {
   activeRouteLocations,
   libraryLocationHasMapCoordinates,
@@ -734,6 +736,7 @@ export default function MonthlyRouteDetailPage() {
   const [keyViewStops, setKeyViewStops] = useState<TechnicianWorksheetLocation[]>([])
   const [keyViewLoading, setKeyViewLoading] = useState(false)
   const [keyViewError, setKeyViewError] = useState<string | null>(null)
+  const [keyViewAudit, setKeyViewAudit] = useState<RouteKeyAuditPayload | null>(null)
 
   const load = useCallback(
     async (signal?: AbortSignal) => {
@@ -1024,8 +1027,12 @@ export default function MonthlyRouteDetailPage() {
     setKeyViewLoading(true)
     setKeyViewError(null)
     try {
-      const stops = await fetchRouteKeyViewStops(idNum, monthFirstIsoPacificToday())
+      const [stops, audit] = await Promise.all([
+        fetchRouteKeyViewStops(idNum, monthFirstIsoPacificToday()),
+        fetchRouteKeyAudit(idNum),
+      ])
       setKeyViewStops(stops)
+      setKeyViewAudit(audit)
       setKeyViewOpen(true)
     } catch {
       setKeyViewError('Unable to load keys for this route.')
@@ -1186,6 +1193,8 @@ export default function MonthlyRouteDetailPage() {
             {keyViewError}
           </Alert>
         ) : null}
+
+        <RouteKeyAuditCard routeId={idNum} />
 
         <div className="monthly-route-metric-grid" aria-label="Route summary">
           <RouteMetricCard label="Locations" value={<span className="tabular-nums">{routeLocationCount}</span>} />
@@ -1508,6 +1517,7 @@ export default function MonthlyRouteDetailPage() {
         onHide={() => setKeyViewOpen(false)}
         stops={keyViewStops}
         activeStopId={null}
+        keyAudit={keyViewAudit}
       />
     </div>
   )

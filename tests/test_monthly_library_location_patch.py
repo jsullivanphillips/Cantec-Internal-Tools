@@ -184,3 +184,18 @@ def test_library_patch_building_name(library_detail_client):
 
     row = db.session.get(MonthlyLocation, loc_id)
     assert row.building_name == "Seaport Place"
+
+
+def test_library_patch_access_instructions(library_detail_client):
+    loc_id = _seed_location()
+    text = "Call site contact 15 mins ahead"
+    res = library_detail_client.patch(
+        f"/api/monthly_routes/library/{loc_id}",
+        json={"access_instructions": text, "keys": None},
+    )
+    assert res.status_code == 200
+    loc = res.get_json()["location"]
+    assert loc["access_instructions"] == text
+
+    row = db.session.get(MonthlyLocation, loc_id)
+    assert row.access_instructions == text

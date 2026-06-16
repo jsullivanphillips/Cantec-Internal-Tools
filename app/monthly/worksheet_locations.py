@@ -33,6 +33,7 @@ from app.monthly.site_field_template import (
     master_template_fields,
     merge_template_with_prior_fallback,
 )
+from app.monthly.key_serialize import linked_key_fields_for_location
 from app.monthly.location_building import monthly_location_building_name
 from app.monthly.testing_site_fields import SNAPSHOT_STRING_FIELDS, SNAPSHOT_TEXT_FIELDS
 
@@ -349,7 +350,10 @@ def seed_location_month_fields(
 
 def _route_locations(route_id: int) -> list[MonthlyLocation]:
     return (
-        MonthlyLocation.query.options(joinedload(MonthlyLocation.monitoring_company))
+        MonthlyLocation.query.options(
+            joinedload(MonthlyLocation.monitoring_company),
+            joinedload(MonthlyLocation.linked_key),
+        )
         .filter(MonthlyLocation.monthly_route_id == route_id)
         .all()
     )
@@ -420,7 +424,10 @@ def _locations_for_prior_history_snapshot(
         return []
     loc_ids = sorted({int(r.monthly_location_id) for r in mlm_rows})
     locs = (
-        MonthlyLocation.query.options(joinedload(MonthlyLocation.monitoring_company))
+        MonthlyLocation.query.options(
+            joinedload(MonthlyLocation.monitoring_company),
+            joinedload(MonthlyLocation.linked_key),
+        )
         .filter(MonthlyLocation.id.in_(loc_ids))
         .all()
     )
@@ -1251,8 +1258,10 @@ def serialize_worksheet_location(
         "panel": panel,
         "panel_location": panel_loc,
         "door_code": door,
+        "access_instructions": _normalize_text(loc.access_instructions),
         "ring": ring,
         "key_number": key_number,
+        **linked_key_fields_for_location(loc),
         "annual_month": annual_month,
         "monitoring_company": company,
         "monitoring_company_id": mcid,
@@ -1345,7 +1354,10 @@ def worksheet_locations_from_attributed_month_rows(
         return []
     loc_ids = sorted({int(r.monthly_location_id) for r in mlm_rows})
     locs = (
-        MonthlyLocation.query.options(joinedload(MonthlyLocation.monitoring_company))
+        MonthlyLocation.query.options(
+            joinedload(MonthlyLocation.monitoring_company),
+            joinedload(MonthlyLocation.linked_key),
+        )
         .filter(MonthlyLocation.id.in_(loc_ids))
         .all()
     )
@@ -1773,7 +1785,10 @@ def load_stop_for_patch(
     """``testing_site_id`` is the flat ``MonthlyLocation.id`` (API compat alias)."""
     location_id = int(testing_site_id)
     loc = (
-        MonthlyLocation.query.options(joinedload(MonthlyLocation.monitoring_company))
+        MonthlyLocation.query.options(
+            joinedload(MonthlyLocation.monitoring_company),
+            joinedload(MonthlyLocation.linked_key),
+        )
         .filter_by(id=location_id)
         .one_or_none()
     )

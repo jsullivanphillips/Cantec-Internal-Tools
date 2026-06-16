@@ -1334,6 +1334,12 @@ export default function TechnicianPortalWorksheetPage() {
                       onSave={saveField('door_code')}
                       {...fieldEditProps}
                     />
+                    {active.access_instructions?.trim() ? (
+                      <div className="pw-mock-field-row pw-mock-field-row--multiline px-2 py-1">
+                        <span className="pw-mock-field-label">Access instructions</span>
+                        <span className="pw-mock-field-value text-break">{active.access_instructions}</span>
+                      </div>
+                    ) : null}
                     <PortalEditableFieldRow
                       fieldKey="annual_month"
                       label="Annual"

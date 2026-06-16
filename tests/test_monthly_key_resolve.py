@@ -62,6 +62,29 @@ def test_resolve_key_id_from_barcode(key_link_tables):
         assert resolve_key_id_for_monthly_fields(None, "ABC123", keycode_cf_index=idx) == 1
 
 
+def test_resolve_key_id_space_stripped_fallback(key_link_tables):
+    with key_link_tables.app_context():
+        key = Key(id=61, keycode="HJ 8801")
+        db.session.add(key)
+        db.session.commit()
+        idx = keycode_cf_to_key_id_map()
+        assert resolve_key_id_for_monthly_fields(None, "HJ8801", keycode_cf_index=idx) == 61
+        assert resolve_key_id_for_monthly_fields(None, "HJ 8801", keycode_cf_index=idx) == 61
+
+
+def test_resolve_key_id_compact_ambiguous_returns_none(key_link_tables):
+    with key_link_tables.app_context():
+        db.session.add_all(
+            [
+                Key(id=1, keycode="AB CD"),
+                Key(id=2, keycode="A BCD"),
+            ]
+        )
+        db.session.commit()
+        idx = keycode_cf_to_key_id_map()
+        assert resolve_key_id_for_monthly_fields(None, "ABCD", keycode_cf_index=idx) is None
+
+
 def test_sync_key_fk_for_location_updates_key_id(key_link_tables):
     with key_link_tables.app_context():
         key = Key(id=5, keycode="K-5", barcode=5)

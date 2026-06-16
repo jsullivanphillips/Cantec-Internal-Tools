@@ -26,11 +26,17 @@ export type KeyViewItem = {
   addressLabel: string
   statusClass: string
   isActiveStop: boolean
+  keyIssue?: 'unlinked' | 'unavailable' | 'wrong_route' | null
 }
 
 export function buildKeyViewItems(
   stops: TechnicianWorksheetLocation[],
   activeStopId: number | null,
+  audit?: {
+    unlinked: { location_id?: number }[]
+    unavailable: { location_id?: number }[]
+    wrong_route: { location_id?: number }[]
+  } | null,
 ): KeyViewItem[] {
   const ordered = [...stops].sort((a, b) => {
     const aNum = Number.isFinite(a.stop_number) ? a.stop_number : Number.MAX_SAFE_INTEGER
@@ -38,15 +44,31 @@ export function buildKeyViewItems(
     return aNum - bNum || a.location_id - b.location_id || a.location_id - b.location_id
   })
 
+  const unlinkedIds = new Set(audit?.unlinked.map((r) => r.location_id).filter((id): id is number => id != null))
+  const unavailableIds = new Set(
+    audit?.unavailable.map((r) => r.location_id).filter((id): id is number => id != null),
+  )
+  const wrongRouteIds = new Set(
+    audit?.wrong_route.map((r) => r.location_id).filter((id): id is number => id != null),
+  )
+
   return ordered.map((stop) => {
+    const canonicalKey =
+      (stop.linked_key?.keycode || '').trim() || (stop.key_number || '—').trim() || '—'
+    let keyIssue: KeyViewItem['keyIssue'] = null
+    if (unlinkedIds.has(stop.location_id)) keyIssue = 'unlinked'
+    else if (unavailableIds.has(stop.location_id)) keyIssue = 'unavailable'
+    else if (wrongRouteIds.has(stop.location_id)) keyIssue = 'wrong_route'
+
     return {
       locationId: stop.location_id,
       stopNumber: stop.stop_number,
-      keyCode: (stop.key_number || '—').trim() || '—',
+      keyCode: canonicalKey,
       ring: (stop.ring || '—').trim() || '—',
       addressLabel: locationPrimaryLabel(stop, { compact: true }),
       statusClass: portalKeyViewOutcomeStatusClass(stop),
       isActiveStop: activeStopId != null && stop.location_id === activeStopId,
+      keyIssue,
     }
   })
 }
