@@ -178,10 +178,18 @@ def _stop_revenue(
     *,
     price: float | None,
     billing_status: str | None,
+    outcome_bucket: str | None,
 ) -> float:
-    if price is None or billing_status != "bill":
+    """Honor ``billing_status`` when set; otherwise count revenue only for tested outcomes."""
+    if price is None:
         return 0.0
-    return price
+    if billing_status == "bill":
+        return price
+    if billing_status in {"do_not_bill", "legacy"}:
+        return 0.0
+    if outcome_bucket == "tested":
+        return price
+    return 0.0
 
 
 def available_performance_months(route_id: int, *, limit: int = 36) -> list[str]:
@@ -221,7 +229,11 @@ def _build_stop_rows(
         visit_minutes, time_in, time_out, visit_source = visit_minutes_for_mlm(mlm)
         price = _float_price(loc.price_per_month)
         billing_status = _mlm_billing_status(mlm)
-        revenue = _stop_revenue(price=price, billing_status=billing_status)
+        revenue = _stop_revenue(
+            price=price,
+            billing_status=billing_status,
+            outcome_bucket=bucket,
+        )
 
         stop_order = (
             int(mlm.session_route_stop_order)
@@ -315,17 +327,17 @@ def _build_insights(
             f"{len(tested_missing_price)} tested stop(s) are missing Price/month in the library."
         )
 
-    tested_not_bill = [
+    tested_do_not_bill = [
         s
         for s in stops
         if s.get("outcome") == "tested"
         and s.get("has_price")
-        and s.get("billing_status") != "bill"
+        and s.get("billing_status") in {"do_not_bill", "legacy"}
     ]
-    if tested_not_bill:
+    if tested_do_not_bill:
         insights.append(
-            f"{len(tested_not_bill)} tested stop(s) with a price are not marked Bill "
-            f"— revenue excludes them until billing is set."
+            f"{len(tested_do_not_bill)} tested stop(s) with a price are marked Do not bill "
+            f"— revenue excludes them."
         )
 
     if isinstance(unaccounted, int) and unaccounted >= LARGE_UNACCOUNTED_MINUTES:

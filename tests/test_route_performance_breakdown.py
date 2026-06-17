@@ -295,7 +295,56 @@ def test_tested_without_bill_status_excludes_revenue(perf_client):
     assert stop["billing_status"] == "do_not_bill"
     assert stop["revenue"] == 0.0
     assert payload["summary"]["tested_revenue_total"] == 0.0
-    assert any("not marked Bill" in line for line in payload["insights"])
+    assert any("Do not bill" in line for line in payload["insights"])
+
+
+def test_tested_with_unset_billing_status_includes_revenue(perf_client):
+    client, _app = perf_client
+    route_id, location_id = _seed_route_with_stop(price=Decimal("150.00"))
+    mlm = make_location_month(
+        id=7,
+        location_id=location_id,
+        month_date=MAY,
+        route_id=route_id,
+        result_status="tested",
+        billing_status="unset",
+    )
+    db.session.add(mlm)
+    db.session.commit()
+
+    res = _get_breakdown(client, route_id, MAY.isoformat())
+    assert res.status_code == 200
+    payload = res.get_json()
+    stop = payload["stops"][0]
+    assert stop["outcome"] == "tested"
+    assert stop["billing_status"] == "unset"
+    assert stop["revenue"] == 150.0
+    assert payload["summary"]["tested_revenue_total"] == 150.0
+
+
+def test_skipped_without_billing_status_excludes_revenue(perf_client):
+    client, _app = perf_client
+    route_id, location_id = _seed_route_with_stop(price=Decimal("90.00"))
+    mlm = make_location_month(
+        id=8,
+        location_id=location_id,
+        month_date=MAY,
+        route_id=route_id,
+        result_status="skipped",
+        skip_reason="annual",
+        billing_status="unset",
+    )
+    db.session.add(mlm)
+    db.session.commit()
+
+    res = _get_breakdown(client, route_id, MAY.isoformat())
+    assert res.status_code == 200
+    payload = res.get_json()
+    stop = payload["stops"][0]
+    assert stop["outcome"] == "skipped_annual"
+    assert stop["billing_status"] == "unset"
+    assert stop["revenue"] == 0.0
+    assert payload["summary"]["tested_revenue_total"] == 0.0
 
 
 def test_stop_label_prefers_site_label_over_address(perf_client):
