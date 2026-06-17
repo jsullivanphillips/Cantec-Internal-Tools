@@ -9,7 +9,12 @@ from zoneinfo import ZoneInfo
 
 from app import create_app
 from app.db_models import MonthlyRoute, MonthlyRouteRunTimingMonth, db
-from app.monthly.route_run_timing import route_median_run_duration_minutes, route_typical_end_time
+from app.monthly.route_run_timing import (
+    route_median_run_duration_minutes,
+    route_typical_end_time,
+    service_trade_run_job_for_month,
+    service_trade_run_jobs_by_month_for_route,
+)
 from app.monthly.service_trade_route_run_timing import SYNC_STATUS_OK
 from tests.monthly_location_helpers import WORKSHEET_TABLES
 
@@ -139,3 +144,61 @@ def test_route_typical_end_time_from_cache(timing_app):
         typical, count = route_typical_end_time(2, {"2026-04-01", "2026-05-01"})
         assert count == 2
         assert typical == "3:30 PM"
+
+
+def test_service_trade_run_job_for_month_serializes_cached_row(timing_app):
+    with timing_app.app_context():
+        _seed_timing_row(
+            row_id=5,
+            route_id=3,
+            month_first=date(2026, 6, 1),
+            clock_in_hour=8,
+            clock_in_minute=0,
+            clock_out_hour=14,
+            clock_out_minute=0,
+        )
+        db.session.commit()
+
+        payload = service_trade_run_job_for_month(3, date(2026, 6, 1))
+        assert payload == {
+            "service_trade_job_id": 1005,
+            "service_trade_job_url": "https://app.servicetrade.com/job/1005",
+            "sync_status": SYNC_STATUS_OK,
+        }
+
+
+def test_service_trade_run_job_for_month_missing_row(timing_app):
+    with timing_app.app_context():
+        payload = service_trade_run_job_for_month(99, date(2026, 6, 1))
+        assert payload == {
+            "service_trade_job_id": None,
+            "service_trade_job_url": None,
+            "sync_status": None,
+        }
+
+
+def test_service_trade_run_jobs_by_month_for_route(timing_app):
+    with timing_app.app_context():
+        _seed_timing_row(
+            row_id=6,
+            route_id=4,
+            month_first=date(2026, 4, 1),
+            clock_in_hour=8,
+            clock_in_minute=0,
+            clock_out_hour=14,
+            clock_out_minute=0,
+        )
+        _seed_timing_row(
+            row_id=7,
+            route_id=4,
+            month_first=date(2026, 5, 1),
+            clock_in_hour=8,
+            clock_in_minute=0,
+            clock_out_hour=15,
+            clock_out_minute=0,
+        )
+        db.session.commit()
+
+        by_month = service_trade_run_jobs_by_month_for_route(4)
+        assert set(by_month.keys()) == {"2026-04-01", "2026-05-01"}
+        assert by_month["2026-05-01"]["service_trade_job_id"] == 1007

@@ -129,6 +129,7 @@ export async function fetchDashboardRouteBreakdown(
 export type RouteOverviewCardTone =
   | 'completed-light'
   | 'reviewed-closed'
+  | 'skipped'
   | 'prepared'
   | 'field_active'
   | 'neutral'
@@ -139,9 +140,21 @@ export type MonthlyDashboardCurrentMonthRun = {
   workflow_stage_label?: string
 }
 
+export type ServiceTradeJobDot = {
+  color: 'green' | 'green_light' | 'blue_light' | 'grey' | 'red'
+  tooltip: string
+}
+
+export type StScheduleMismatch = {
+  route_date: string
+  appointment_date: string
+}
+
 export type MonthlyDashboardRouteRow = {
   route: MonthlyRouteSummary
   current_month_run?: MonthlyDashboardCurrentMonthRun | null
+  service_trade_job_dot: ServiceTradeJobDot
+  st_schedule_mismatch?: StScheduleMismatch | null
 }
 
 export type MonthlyDashboardPayload = {
@@ -174,7 +187,8 @@ export function routeOverviewCardToneFromStage(
   stage: string | null | undefined,
 ): RouteOverviewCardTone {
   const normalized = (stage ?? 'draft').trim()
-  if (normalized === 'completed' || normalized === 'skipped') return 'reviewed-closed'
+  if (normalized === 'completed') return 'reviewed-closed'
+  if (normalized === 'skipped') return 'skipped'
   if (normalized === 'awaiting_office_review' || normalized === 'ready_to_close') {
     return 'completed-light'
   }

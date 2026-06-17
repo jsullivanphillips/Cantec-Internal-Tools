@@ -7,7 +7,7 @@ from datetime import date
 import pytest
 
 from app import create_app
-from app.db_models import MonthlyRoute, db
+from app.db_models import MonthlyRoute, MonthlyRouteRunTimingMonth, db
 from tests.monthly_location_helpers import WORKSHEET_TABLES, make_location, seed_route_with_one_stop
 from tests.run_workflow_helpers import seed_prepared_started_run
 
@@ -168,6 +168,68 @@ def test_dashboard_rejects_invalid_month_date(dashboard_client, monkeypatch):
     _patch_dashboard_month(monkeypatch)
     res = client.get("/api/monthly_routes/dashboard?month_date=not-a-month")
     assert res.status_code == 400
+
+
+def test_dashboard_includes_service_trade_job_dot(dashboard_client, monkeypatch):
+    client, app = dashboard_client
+    _patch_dashboard_month(monkeypatch)
+    with app.app_context():
+        seed_route_with_one_stop(route_id=1, route_number=2)
+        route = db.session.get(MonthlyRoute, 1)
+        assert route is not None
+        route.service_trade_route_location_id = 5001
+        db.session.add(
+            MonthlyRouteRunTimingMonth(
+                id=1,
+                monthly_route_id=1,
+                month_first=DASHBOARD_MONTH,
+                service_trade_job_id=88001,
+                sync_status="scheduled",
+                service_trade_job_status="scheduled",
+                service_trade_appointment_released=True,
+            )
+        )
+        db.session.commit()
+
+    res = client.get("/api/monthly_routes/dashboard")
+    assert res.status_code == 200
+    row = next(r for r in res.get_json()["routes"] if r["route"]["id"] == 1)
+    assert row["service_trade_job_dot"] == {
+        "color": "green_light",
+        "tooltip": "ServiceTrade job released to technicians",
+    }
+
+
+def test_dashboard_includes_st_schedule_mismatch(dashboard_client, monkeypatch):
+    client, app = dashboard_client
+    _patch_dashboard_month(monkeypatch)
+    with app.app_context():
+        seed_route_with_one_stop(route_id=1, route_number=2)
+        route = db.session.get(MonthlyRoute, 1)
+        assert route is not None
+        route.service_trade_route_location_id = 5001
+        route.weekday_iso = 0
+        route.week_occurrence = 1
+        db.session.add(
+            MonthlyRouteRunTimingMonth(
+                id=2,
+                monthly_route_id=1,
+                month_first=DASHBOARD_MONTH,
+                service_trade_job_id=88002,
+                sync_status="scheduled",
+                service_trade_job_status="scheduled",
+                service_trade_appointment_released=False,
+                service_trade_qualifying_appointment_on=date(2026, 6, 2),
+            )
+        )
+        db.session.commit()
+
+    res = client.get("/api/monthly_routes/dashboard")
+    row = next(r for r in res.get_json()["routes"] if r["route"]["id"] == 1)
+    assert row["st_schedule_mismatch"] == {
+        "route_date": "2026-06-01",
+        "appointment_date": "2026-06-02",
+    }
 
 
 def test_dashboard_excludes_routes_without_active_locations(dashboard_client, monkeypatch):

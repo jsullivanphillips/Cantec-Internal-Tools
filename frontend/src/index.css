@@ -3095,8 +3095,9 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
 }
 
 .monthly-routes-overview-calendar__card {
+  position: relative;
   display: block;
-  padding: 0.4rem 0.5rem;
+  padding: 0.4rem 1rem 0.4rem 0.5rem;
   border-radius: 0.375rem;
   border: 1px solid var(--bs-border-color-translucent, rgba(0, 0, 0, 0.08));
   background: var(--bs-tertiary-bg, #f8f9fa);
@@ -3134,6 +3135,22 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
 .monthly-routes-overview-calendar__card--tone-reviewed-closed:hover {
   background: #a8d6ba;
   border-color: #2f7a55;
+  color: inherit;
+}
+
+.monthly-routes-overview-calendar__card--tone-skipped {
+  background: #fef3c7;
+  border-color: #d97706;
+  color: inherit;
+}
+
+.monthly-routes-overview-calendar__card--tone-skipped .monthly-routes-overview-calendar__card-meta {
+  color: var(--bs-secondary-color);
+}
+
+.monthly-routes-overview-calendar__card--tone-skipped:hover {
+  background: #fde68a;
+  border-color: #b45309;
   color: inherit;
 }
 
@@ -3195,6 +3212,75 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
 .monthly-routes-overview-calendar__card-meta {
   margin-top: 0.15rem;
   line-height: 1.2;
+}
+
+.monthly-routes-overview-calendar__st-dot-wrap {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  line-height: 0;
+}
+
+.service-trade-job-status-dot-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.service-trade-job-status-dot {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  border: 1px solid transparent;
+  vertical-align: middle;
+}
+
+.service-trade-job-status-dot--green {
+  background: #2f8f57;
+  border-color: #236b41;
+}
+
+.service-trade-job-status-dot--green_light {
+  background: #6fcf97;
+  border-color: #52b87d;
+}
+
+.service-trade-job-status-dot--blue_light {
+  background: #7eb0e5;
+  border-color: #5a8ec8;
+}
+
+.service-trade-job-status-dot--grey {
+  background: #adb5bd;
+  border-color: #868e96;
+}
+
+.service-trade-job-status-dot--red {
+  background: #dc3545;
+  border-color: #b02a37;
+}
+
+.service-trade-job-status-dot__label {
+  font-size: 0.8125rem;
+  line-height: 1.2;
+}
+
+.monthly-routes-overview-calendar__schedule-mismatch-pill {
+  display: inline-block;
+  margin-top: 0.2rem;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  background: #fff3cd;
+  color: #856404;
+  border: 1px solid #ffda6a;
+}
+
+.monthly-route-runs-st-status {
+  justify-content: flex-start;
 }
 
 .monthly-routes-overview-calendar__unscheduled-stack .monthly-routes-overview-calendar__card {
@@ -6294,6 +6380,56 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
   border: 1px solid var(--ml-border-soft);
   border-radius: 999px;
   background: var(--ml-card-soft);
+}
+
+.monthly-dashboard-routes-toolbar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.monthly-dashboard-routes-toolbar__side--end {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.monthly-dashboard-routes-toolbar .monthly-route-year-toolbar {
+  margin-bottom: 0;
+}
+
+.monthly-dashboard-st-bulk-release-btn.btn {
+  border-radius: 999px;
+  font-weight: 750;
+  padding: 0.5rem 1.25rem;
+}
+
+.monthly-dashboard-st-bulk-release-log {
+  max-height: 14rem;
+  overflow-y: auto;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.375rem;
+  padding: 0.5rem 0.65rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.monthly-dashboard-st-bulk-release-log__row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.monthly-dashboard-st-bulk-release-log__row--success {
+  color: var(--bs-success);
+}
+
+.monthly-dashboard-st-bulk-release-log__row--skipped {
+  color: var(--bs-secondary-color);
+}
+
+.monthly-dashboard-st-bulk-release-log__row--failed {
+  color: var(--bs-danger);
 }
 
 .monthly-route-year-toolbar__button.btn {

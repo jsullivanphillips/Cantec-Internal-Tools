@@ -68,6 +68,7 @@ import {
   prefetchPaperworkMonth,
 } from '../features/monthlyRoutes/paperworkRoutePrefetch'
 import { subscribePaperworkMasterSync } from '../features/monthlyRoutes/paperworkMasterSync'
+import ViewServiceTradeRunJobButton from '../features/monthlyRoutes/ViewServiceTradeRunJobButton'
 import { clearWorksheetCache } from '../features/monthlyRoutes/worksheetOfflineStore'
 import { apiJson, isAbortError } from '../lib/apiClient'
 import MonthlyRunDetailPageSkeleton from './MonthlyRunDetailPageSkeleton'
@@ -858,7 +859,7 @@ export default function MonthlyRoutePaperworkPage() {
     )
   }
 
-  const { route, counts, specialists_month, run } = payload
+  const { route, counts, specialists_month, run, service_trade_run_job } = payload
   const monthHeading = formatMonthHeading(payload.month_date)
   const viewLabel = paperworkViewModeLabel(paperworkViewMode)
   const completedByLabel = completedByTechniciansPillLabel(
@@ -1076,6 +1077,10 @@ export default function MonthlyRoutePaperworkPage() {
                   Reset run
                 </Button>
               ) : null}
+              <ViewServiceTradeRunJobButton
+                job={service_trade_run_job}
+                monthLabel={monthHeading}
+              />
             </div>
             {completedByLabel ? (
               <div

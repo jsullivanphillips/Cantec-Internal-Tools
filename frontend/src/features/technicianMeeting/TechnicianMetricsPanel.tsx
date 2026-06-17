@@ -1,95 +1,105 @@
-import { useState } from 'react'
-import { Card, Form, Spinner } from 'react-bootstrap'
-import { Chart } from 'react-chartjs-2'
+import { memo, type ReactNode } from 'react'
+import { Card } from 'react-bootstrap'
+import TechnicianMeetingChart from './TechnicianMeetingChart'
+import TechnicianTopKpiRow from './TechnicianTopKpiRow'
 import { type TopN } from './technicianMetricsCharts'
 import { useTechnicianMetricsCharts } from './useTechnicianMetricsCharts'
+import { useTechnicianTopKpis } from './useTechnicianTopKpis'
 
 type TechnicianMetricsPanelProps = {
   techData: Record<string, unknown> | null
-  loading: boolean
+  techTopN: TopN
 }
 
-export default function TechnicianMetricsPanel({ techData, loading }: TechnicianMetricsPanelProps) {
-  const [techTopN, setTechTopN] = useState<TopN>(5)
-  const { revenueChart, jobItemsChart, jobsCompletedChart, defsTechChart, attachmentsChart } =
+const TechnicianChartCard = memo(function TechnicianChartCard({
+  title,
+  height,
+  children,
+}: {
+  title: string
+  height: number
+  children: ReactNode
+}) {
+  return (
+    <Card className="app-surface-card technician-meeting-chart-card">
+      <Card.Body className="technician-meeting-chart-card__body">
+        <h3 className="technician-meeting-chart-card__title">{title}</h3>
+        <div className="technician-meeting-chart-wrap" style={{ height }}>
+          {children}
+        </div>
+      </Card.Body>
+    </Card>
+  )
+})
+
+export default function TechnicianMetricsPanel({ techData, techTopN }: TechnicianMetricsPanelProps) {
+  const topKpis = useTechnicianTopKpis(techData)
+  const { jobItemsChart, jobsCompletedChart, defsCreatedChart, attachmentsChart } =
     useTechnicianMetricsCharts(techData, techTopN)
 
-  if (loading) {
+  const hasCharts = Boolean(jobItemsChart || jobsCompletedChart || defsCreatedChart || attachmentsChart)
+
+  if (!hasCharts) {
     return (
-      <div className="text-center py-5" aria-busy="true" aria-label="Loading technician metrics">
-        <Spinner />
-      </div>
+      <p className="technician-meeting-empty mb-0">
+        No technician metrics for this date range. Try widening the range or check that data has synced.
+      </p>
     )
   }
 
   return (
     <>
-      <Form.Group className="mb-3" style={{ maxWidth: 220 }}>
-        <Form.Label className="small text-muted mb-1">Top technicians</Form.Label>
-        <Form.Select
-          value={techTopN === 'all' ? 'all' : String(techTopN)}
-          onChange={(e) => {
-            const v = e.target.value
-            setTechTopN(v === 'all' ? 'all' : Number(v))
-          }}
-          aria-label="Number of technicians to show in charts"
-        >
-          <option value="5">Top 5</option>
-          <option value="10">Top 10</option>
-          <option value="25">Top 25</option>
-          <option value="all">All</option>
-        </Form.Select>
-      </Form.Group>
-      {revenueChart ? (
-        <Card className="app-surface-card performance-chart-card mb-3">
-          <Card.Header as="h2" className="h6 mb-0">
-            Revenue per hour
-          </Card.Header>
-          <Card.Body className="p-3" style={{ minHeight: 340 }}>
-            <Chart {...revenueChart} />
-          </Card.Body>
-        </Card>
-      ) : null}
-      {jobItemsChart ? (
-        <Card className="app-surface-card performance-chart-card mb-3">
-          <Card.Header as="h2" className="h6 mb-0">
-            Job items created
-          </Card.Header>
-          <Card.Body className="p-3" style={{ minHeight: 320 }}>
-            <Chart {...jobItemsChart} />
-          </Card.Body>
-        </Card>
-      ) : null}
-      {jobsCompletedChart ? (
-        <Card className="app-surface-card performance-chart-card mb-3">
-          <Card.Header as="h2" className="h6 mb-0">
-            Jobs completed by type
-          </Card.Header>
-          <Card.Body className="p-3" style={{ minHeight: 360 }}>
-            <Chart {...jobsCompletedChart} />
-          </Card.Body>
-        </Card>
-      ) : null}
-      {defsTechChart ? (
-        <Card className="app-surface-card performance-chart-card mb-3">
-          <Card.Header as="h2" className="h6 mb-0">
-            Deficiencies by service line (by tech)
-          </Card.Header>
-          <Card.Body className="p-3" style={{ minHeight: 360 }}>
-            <Chart type="bar" data={defsTechChart.data} options={defsTechChart.options} />
-          </Card.Body>
-        </Card>
-      ) : null}
-      {attachmentsChart ? (
-        <Card className="app-surface-card performance-chart-card mb-0">
-          <Card.Header as="h2" className="h6 mb-0">
-            Attachments on deficiencies
-          </Card.Header>
-          <Card.Body className="p-3" style={{ minHeight: 340 }}>
-            <Chart {...attachmentsChart} />
-          </Card.Body>
-        </Card>
-      ) : null}
+      <TechnicianTopKpiRow kpis={topKpis} />
+
+      <section className="technician-meeting-panel">
+        <h2 className="technician-meeting-section-title">Productivity</h2>
+        <div className="technician-meeting-charts-grid">
+          {jobItemsChart ? (
+            <TechnicianChartCard title="Job items added" height={jobItemsChart.height}>
+              <TechnicianMeetingChart
+                type={jobItemsChart.type}
+                data={jobItemsChart.data}
+                options={jobItemsChart.options}
+              />
+            </TechnicianChartCard>
+          ) : null}
+          {jobsCompletedChart ? (
+            <TechnicianChartCard title="Jobs completed" height={jobsCompletedChart.height}>
+              <TechnicianMeetingChart
+                type={jobsCompletedChart.type}
+                data={jobsCompletedChart.data}
+                options={jobsCompletedChart.options}
+              />
+            </TechnicianChartCard>
+          ) : null}
+        </div>
+      </section>
+
+      {(defsCreatedChart || attachmentsChart) && (
+        <section className="technician-meeting-panel">
+          <h2 className="technician-meeting-section-title">Deficiencies</h2>
+          <div className="technician-meeting-charts-grid">
+            {defsCreatedChart ? (
+              <TechnicianChartCard title="Deficiencies created" height={defsCreatedChart.height}>
+                <TechnicianMeetingChart
+                  type={defsCreatedChart.type}
+                  data={defsCreatedChart.data}
+                  options={defsCreatedChart.options}
+                />
+              </TechnicianChartCard>
+            ) : null}
+            {attachmentsChart ? (
+              <TechnicianChartCard title="Attachments on deficiencies" height={attachmentsChart.height}>
+                <TechnicianMeetingChart
+                  type={attachmentsChart.type}
+                  data={attachmentsChart.data}
+                  options={attachmentsChart.options}
+                />
+              </TechnicianChartCard>
+            ) : null}
+          </div>
+        </section>
+      )}
     </>
   )
 }

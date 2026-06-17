@@ -862,8 +862,12 @@ class MonthlyRouteRunTimingMonth(db.Model):
     clock_in_at = db.Column(db.DateTime(timezone=True), nullable=True)
     clock_out_at = db.Column(db.DateTime(timezone=True), nullable=True)
     duration_minutes = db.Column(db.Integer, nullable=True)
-    #: ok | no_st_link | no_job | no_clocks
+    #: ok | scheduled | no_st_link | no_job | no_clocks
     sync_status = db.Column(db.String(32), nullable=False)
+    service_trade_job_status = db.Column(db.String(32), nullable=True)
+    service_trade_appointment_released = db.Column(db.Boolean, nullable=True)
+    #: Pacific calendar date of the qualifying appointment ``windowStart``.
+    service_trade_qualifying_appointment_on = db.Column(db.Date, nullable=True)
     last_updated_at = db.Column(
         db.DateTime(timezone=True),
         server_default=db.func.now(),

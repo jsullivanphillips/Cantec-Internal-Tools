@@ -46,6 +46,7 @@ import {
   type MonthlyRouteSummary,
   type MonthlySpecialistTechRow,
   type RouteLocationListItem,
+  type ServiceTradeRunJobMonth,
   type TechnicianWorksheetLocation,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
 import {
@@ -61,6 +62,9 @@ import {
   runsCardRowShowsPaperworkLink,
   runsCardRowShowsUploadCsv,
 } from '../features/monthlyRoutes/routeRunsDisplay'
+import ServiceTradeJobStatusDot from '../features/monthlyRoutes/ServiceTradeJobStatusDot'
+import { serviceTradeRunJobDot } from '../features/monthlyRoutes/serviceTradeRunJobDot'
+import ViewServiceTradeRunJobButton from '../features/monthlyRoutes/ViewServiceTradeRunJobButton'
 import { locationAddressSubline, locationPrimaryLabel } from '../features/monthlyRoutes/locationDisplay'
 import {
   ANNUAL_COLUMN_STYLE,
@@ -767,6 +771,9 @@ export default function MonthlyRouteDetailPage() {
   const [comments, setComments] = useState<MonthlyLocationComment[]>([])
   const [testingByMonth, setTestingByMonth] = useState<MonthlyRouteDetailPayload['testing_by_month']>({})
   const [runsByMonth, setRunsByMonth] = useState<MonthlyRouteDetailPayload['runs_by_month']>({})
+  const [serviceTradeRunJobsByMonth, setServiceTradeRunJobsByMonth] = useState<
+    Record<string, ServiceTradeRunJobMonth>
+  >({})
   const [specialistsByMonth, setSpecialistsByMonth] = useState<MonthlyRouteDetailPayload['specialists_by_month']>(
     {}
   )
@@ -810,6 +817,7 @@ export default function MonthlyRouteDetailPage() {
         setComments(data.comments || [])
         setTestingByMonth(data.testing_by_month || {})
         setRunsByMonth(data.runs_by_month || {})
+        setServiceTradeRunJobsByMonth(data.service_trade_run_jobs_by_month || {})
         setSpecialistsByMonth(data.specialists_by_month || {})
         setOrderedSites(data.locations ?? [])
         setOrderError(null)
@@ -821,6 +829,7 @@ export default function MonthlyRouteDetailPage() {
         setComments([])
         setTestingByMonth({})
         setRunsByMonth({})
+        setServiceTradeRunJobsByMonth({})
         setSpecialistsByMonth({})
         setOrderedSites([])
       } finally {
@@ -1008,6 +1017,8 @@ export default function MonthlyRouteDetailPage() {
     () => runsCardRows.filter((row) => row.hasRunData).length,
     [runsCardRows]
   )
+
+  const hasStRouteLink = route?.service_trade_route_location_id != null
 
   const reviewPaperworkMonthIso = useMemo(
     () => findNewestRunMonthAwaitingOfficeReview(runsByMonth),
@@ -1480,11 +1491,12 @@ export default function MonthlyRouteDetailPage() {
                   className="align-middle monthly-routes-library-table monthly-locations-directory-table monthly-route-runs-directory-table mb-0"
                 >
                   <colgroup>
-                    <col style={{ width: '20%' }} />
-                    <col style={{ width: '14%' }} />
-                    <col style={{ width: '14%' }} />
                     <col style={{ width: '16%' }} />
-                    <col style={{ width: '36%' }} />
+                    <col style={{ width: '12%' }} />
+                    <col style={{ width: '12%' }} />
+                    <col style={{ width: '14%' }} />
+                    <col style={{ width: '14%' }} />
+                    <col style={{ width: '32%' }} />
                   </colgroup>
                   <thead>
                     <tr>
@@ -1494,13 +1506,19 @@ export default function MonthlyRouteDetailPage() {
                         Sites tested
                       </th>
                       <th style={LIBRARY_TABLE_HEADER_STICKY_STYLE}>Stage</th>
+                      <th style={LIBRARY_TABLE_HEADER_STICKY_STYLE}>ST job</th>
                       <th className="text-end" style={LIBRARY_TABLE_HEADER_STICKY_STYLE}>
                         Actions
                       </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {runsCardRows.map(({ monthIso, run, specialistMonth, hasRunData }) => (
+                    {runsCardRows.map(({ monthIso, run, specialistMonth, hasRunData }) => {
+                      const stJobDot = serviceTradeRunJobDot(
+                        hasStRouteLink,
+                        serviceTradeRunJobsByMonth[monthIso],
+                      )
+                      return (
                       <tr key={monthIso}>
                         <td className="library-table-cell-clamp fw-semibold">
                           <div className="library-table-cell-inner">{formatMonthHeading(monthIso)}</div>
@@ -1532,8 +1550,23 @@ export default function MonthlyRouteDetailPage() {
                             })()}
                           </div>
                         </td>
+                        <td className="library-table-cell-clamp">
+                          <div className="library-table-cell-inner">
+                            <ServiceTradeJobStatusDot
+                              dot={stJobDot}
+                              label={stJobDot.label}
+                              showLabel
+                              className="monthly-route-runs-st-status service-trade-job-status-dot-wrap"
+                            />
+                          </div>
+                        </td>
                         <td className="text-end">
                           <div className="monthly-route-detail-runs-actions">
+                            <ViewServiceTradeRunJobButton
+                              job={serviceTradeRunJobsByMonth[monthIso]}
+                              tableAction
+                              monthLabel={formatMonthHeading(monthIso)}
+                            />
                             {runsCardRowShowsPaperworkLink(
                               { monthIso, run, specialistMonth, hasRunData },
                               currentMonthIso,
@@ -1582,7 +1615,8 @@ export default function MonthlyRouteDetailPage() {
                           </div>
                         </td>
                       </tr>
-                    ))}
+                      )
+                    })}
                   </tbody>
                 </Table>
               </div>

@@ -4,7 +4,8 @@ Upsert MonthlyRouteRunTimingMonth from ServiceTrade testing-job clock events.
 Requires PROCESSING_USERNAME / PROCESSING_PASSWORD.
 
 Env:
-  MONTHLY_ROUTE_RUN_TIMING_LOOKBACK — Pacific months to refresh (default 24).
+  MONTHLY_ROUTE_RUN_TIMING_LOOKBACK — Pacific months to refresh through the current month (default 24).
+  MONTHLY_ROUTE_RUN_TIMING_LOOKAHEAD — Pacific months after the current month to refresh (default 12).
 
 CLI:
   python -m app.scripts.update_monthly_route_run_timing --route-number 1
@@ -44,17 +45,36 @@ def authenticate(username: str, password: str) -> None:
     print("Authenticated with Service Trade")
 
 
-def pacific_month_starts(lookback: int) -> list[date]:
-    """Oldest-first month-first dates covering `lookback` months through current Pacific month."""
-    cur = datetime.now(PACIFIC).date().replace(day=1)
-    buf: list[date] = []
+def pacific_month_range(lookback: int, lookahead: int = 0) -> list[date]:
+    """Oldest-first month-first dates from `lookback` months through the current Pacific month,
+    plus `lookahead` months after the current Pacific month."""
+    if lookback < 1:
+        lookback = 1
+    if lookahead < 0:
+        lookahead = 0
+
+    current = datetime.now(PACIFIC).date().replace(day=1)
+
+    backward: list[date] = []
+    cur = current
     for _ in range(lookback):
-        buf.append(cur)
+        backward.append(cur)
         if cur.month == 1:
             cur = date(cur.year - 1, 12, 1)
         else:
             cur = date(cur.year, cur.month - 1, 1)
-    return list(reversed(buf))
+    backward.reverse()
+
+    forward: list[date] = []
+    cur = current
+    for _ in range(lookahead):
+        if cur.month == 12:
+            cur = date(cur.year + 1, 1, 1)
+        else:
+            cur = date(cur.year, cur.month + 1, 1)
+        forward.append(cur)
+
+    return backward + forward
 
 
 def _active_routes(*, route_number: int | None = None) -> list[MonthlyRoute]:
@@ -86,6 +106,9 @@ def monthly_route_run_timing(
     lookback = int(os.getenv("MONTHLY_ROUTE_RUN_TIMING_LOOKBACK") or "24")
     if lookback < 1:
         lookback = 1
+    lookahead = int(os.getenv("MONTHLY_ROUTE_RUN_TIMING_LOOKAHEAD") or "12")
+    if lookahead < 0:
+        lookahead = 0
 
     app = create_app()
     with app.app_context():
@@ -96,13 +119,15 @@ def monthly_route_run_timing(
         authenticate(username, password)
 
         print("Pacific month lookback:", lookback)
+        print("Pacific month lookahead:", lookahead)
 
         routes = _active_routes(route_number=route_number)
         if route_number is not None and not routes:
             raise SystemExit(f"No active MonthlyRoute with route_number={route_number}.")
 
-        month_first_list = pacific_month_starts(lookback)
+        month_first_list = pacific_month_range(lookback, lookahead)
         oldest_month = month_first_list[0]
+        newest_month = month_first_list[-1]
         now = datetime.now(timezone.utc)
 
         processed = 0
@@ -115,14 +140,23 @@ def monthly_route_run_timing(
             st_route_id = route.service_trade_route_location_id
             st_route_id_int = int(st_route_id) if st_route_id is not None else None
 
-            deleted = MonthlyRouteRunTimingMonth.query.filter(
+            deleted_before = MonthlyRouteRunTimingMonth.query.filter(
                 MonthlyRouteRunTimingMonth.monthly_route_id == mr_id,
                 MonthlyRouteRunTimingMonth.month_first < oldest_month,
             ).delete(synchronize_session=False)
-            if deleted:
+            deleted_after = MonthlyRouteRunTimingMonth.query.filter(
+                MonthlyRouteRunTimingMonth.monthly_route_id == mr_id,
+                MonthlyRouteRunTimingMonth.month_first > newest_month,
+            ).delete(synchronize_session=False)
+            if deleted_before:
                 print(
-                    f"  R{route.route_number}: pruned {deleted} run-timing row(s) before "
+                    f"  R{route.route_number}: pruned {deleted_before} run-timing row(s) before "
                     f"{oldest_month.isoformat()}"
+                )
+            if deleted_after:
+                print(
+                    f"  R{route.route_number}: pruned {deleted_after} run-timing row(s) after "
+                    f"{newest_month.isoformat()}"
                 )
 
             for mf in month_first_list:
@@ -139,6 +173,9 @@ def monthly_route_run_timing(
                     clock_out_at=result.clock_out_at,
                     duration_minutes=result.duration_minutes,
                     sync_status=result.sync_status,
+                    service_trade_job_status=result.service_trade_job_status,
+                    service_trade_appointment_released=result.service_trade_appointment_released,
+                    service_trade_qualifying_appointment_on=result.service_trade_qualifying_appointment_on,
                     last_updated_at=now,
                 )
                 stmt = stmt.on_conflict_do_update(
@@ -149,6 +186,11 @@ def monthly_route_run_timing(
                         "clock_out_at": stmt.excluded.clock_out_at,
                         "duration_minutes": stmt.excluded.duration_minutes,
                         "sync_status": stmt.excluded.sync_status,
+                        "service_trade_job_status": stmt.excluded.service_trade_job_status,
+                        "service_trade_appointment_released": stmt.excluded.service_trade_appointment_released,
+                        "service_trade_qualifying_appointment_on": (
+                            stmt.excluded.service_trade_qualifying_appointment_on
+                        ),
                         "last_updated_at": stmt.excluded.last_updated_at,
                     },
                 )

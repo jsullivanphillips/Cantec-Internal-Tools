@@ -17,6 +17,7 @@ from app.db_models import (
     MonthlyRoute,
     MonthlyRouteComment,
     MonthlyRouteRun,
+    MonthlyRouteRunTimingMonth,
     MonthlyRouteWorksheetAuditEvent,
     MonthlyStopClockEvent,
     db
@@ -30,6 +31,7 @@ from tests.monthly_location_helpers import (
 )
 
 from app import create_app
+from app.monthly.service_trade_route_run_timing import SYNC_STATUS_OK
 
 PACIFIC_TZ = ZoneInfo("America/Vancouver")
 
@@ -113,10 +115,61 @@ def test_get_run_details_base_payload_shape(run_details_client):
     assert "review_meta" in body
     assert "locations" in body
     assert "review_summary" in body
+    assert "service_trade_run_job" in body
+    assert body["service_trade_run_job"] == {
+        "service_trade_job_id": None,
+        "service_trade_job_url": None,
+        "sync_status": None,
+    }
     assert isinstance(body["locations"], list)
     assert body["review_summary"]["stop_count"] >= 1
     assert "notable_stops" not in body
     assert "field_changes_by_location" not in body
+
+
+def test_get_run_details_includes_cached_service_trade_job(run_details_client):
+    client, app = run_details_client
+    with app.app_context():
+        _seed_basic_route_data()
+        db.session.add(
+            MonthlyRouteRunTimingMonth(
+                id=77,
+                monthly_route_id=1,
+                month_first=date(2026, 5, 1),
+                service_trade_job_id=88001,
+                sync_status=SYNC_STATUS_OK,
+            )
+        )
+        db.session.commit()
+
+    res = client.get(BASE_URL)
+    assert res.status_code == 200
+    job = res.get_json()["service_trade_run_job"]
+    assert job["service_trade_job_id"] == 88001
+    assert job["service_trade_job_url"] == "https://app.servicetrade.com/job/88001"
+    assert job["sync_status"] == SYNC_STATUS_OK
+
+
+def test_route_detail_service_trade_run_jobs_by_month_helper(run_details_client):
+    _, app = run_details_client
+    with app.app_context():
+        _seed_basic_route_data()
+        db.session.add(
+            MonthlyRouteRunTimingMonth(
+                id=78,
+                monthly_route_id=1,
+                month_first=date(2026, 5, 1),
+                service_trade_job_id=88002,
+                sync_status=SYNC_STATUS_OK,
+            )
+        )
+        db.session.commit()
+
+        from app.monthly.route_run_timing import service_trade_run_jobs_by_month_for_route
+
+        by_month = service_trade_run_jobs_by_month_for_route(1)
+        assert by_month["2026-05-01"]["service_trade_job_id"] == 88002
+        assert by_month["2026-05-01"]["service_trade_job_url"] == "https://app.servicetrade.com/job/88002"
 
 
 def test_run_details_locations_include_all_worksheet_stops(run_details_client):

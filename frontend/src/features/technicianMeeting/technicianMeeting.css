@@ -1,0 +1,241 @@
+/* Technician Meeting — layout aligned with Monday Meeting Service tab */
+
+.technician-meeting-page {
+  max-width: 100%;
+}
+
+.technician-meeting-shell {
+  border: 1px solid #e7eaf0;
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+}
+
+.technician-meeting-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1rem 1.25rem 1.25rem;
+}
+
+/* Toolbar — compact enterprise filter bar */
+.technician-meeting-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  padding: 0.75rem 1rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+}
+
+.technician-meeting-toolbar__group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.625rem 0.875rem;
+}
+
+.technician-meeting-toolbar__label {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+.technician-meeting-month-select-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.technician-meeting-month-control {
+  min-width: 16rem;
+  max-width: 100%;
+  padding: 0.25rem 2rem 0.25rem 0.7rem;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  border-radius: 999px;
+  border-color: #cbd5e1;
+  background: #fff;
+}
+
+.technician-meeting-month-control option.technician-meeting-month-divider {
+  color: #64748b;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-align: center;
+}
+
+.technician-meeting-toolbar__select {
+  min-width: 7.5rem;
+  max-width: 100%;
+  padding: 0.25rem 2rem 0.25rem 0.7rem;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  border-radius: 999px;
+  border-color: #cbd5e1;
+  background: #fff;
+}
+
+.technician-meeting-toolbar__meta {
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+.technician-meeting-alert {
+  padding: 0.625rem 0.875rem;
+  font-size: 0.8125rem;
+  border-radius: 0.5rem;
+}
+
+.technician-meeting-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 12rem;
+}
+
+.technician-meeting-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.technician-meeting-kpi-card {
+  border: 1px solid #e2e8f0;
+  border-top: 3px solid #164b7c;
+  box-shadow: none;
+  background: #fff;
+}
+
+.technician-meeting-kpi-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.75rem 0.875rem;
+  min-height: 5.5rem;
+}
+
+.technician-meeting-kpi-card__value {
+  color: var(--brand-navy);
+  font-size: 1.0625rem;
+  font-weight: 700;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.technician-meeting-kpi-card__meta {
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  color: #64748b;
+}
+
+/* Section panels */
+.technician-meeting-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.technician-meeting-section-title {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+  margin: 0;
+}
+
+.technician-meeting-charts-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.technician-meeting-charts-grid__full {
+  grid-column: 1 / -1;
+}
+
+.technician-meeting-chart-card {
+  border: 1px solid #e2e8f0;
+  box-shadow: none;
+  border-top: 3px solid #94a3b8;
+  align-self: start;
+}
+
+.technician-meeting-chart-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem 0.875rem 0.875rem;
+}
+
+.technician-meeting-chart-card__title {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: #334155;
+  line-height: 1.35;
+}
+
+.technician-meeting-chart-wrap {
+  position: relative;
+  width: 100%;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.technician-meeting-empty {
+  padding: 2rem 1rem;
+  text-align: center;
+  font-size: 0.875rem;
+  color: #64748b;
+  border: 1px dashed #cbd5e1;
+  border-radius: 0.5rem;
+  background: #f8fafc;
+}
+
+@media (max-width: 991.98px) {
+  .technician-meeting-kpi-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .technician-meeting-charts-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .technician-meeting-charts-grid__full {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .technician-meeting-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .technician-meeting-toolbar__meta {
+    white-space: normal;
+  }
+
+  .technician-meeting-month-control {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .technician-meeting-kpi-row {
+    grid-template-columns: 1fr;
+  }
+}

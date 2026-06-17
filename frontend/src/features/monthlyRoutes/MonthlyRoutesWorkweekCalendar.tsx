@@ -1,17 +1,18 @@
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import type { MonthlyRouteOverviewRow } from './monthlyRoutesShared'
-import type { RouteOverviewCardTone } from './monthlyDashboardShared'
+import type { RouteOverviewCardTone, MonthlyDashboardRouteRow } from './monthlyDashboardShared'
+import ServiceTradeJobStatusDot from './ServiceTradeJobStatusDot'
 import { routeNumberDisplayLabel } from './technicianDemoRoute'
 import {
   buildPacificWorkweekCalendarGrid,
   effectiveRouteTestDayIso,
+  formatRouteTestDayLabel,
   MONTHLY_ROUTE_OVERVIEW_WORKDAY_COLUMN_COUNT,
   MONTHLY_ROUTE_OVERVIEW_WORKDAY_HEADERS,
 } from './monthlyRoutesShared'
 
 type RouteOverviewCardProps = {
-  row: MonthlyRouteOverviewRow
+  row: MonthlyDashboardRouteRow
   /** When false (calendar cell), only show route number — date is on the cell. */
   showScheduleHint?: boolean
   tone?: RouteOverviewCardTone
@@ -25,7 +26,7 @@ function routeOverviewCardClassName(tone?: RouteOverviewCardTone): string {
   return classes.join(' ')
 }
 
-function formatRouteOverviewCardMeta(route: MonthlyRouteOverviewRow['route']): string | null {
+function formatRouteOverviewCardMeta(route: MonthlyDashboardRouteRow['route']): string | null {
   const count = route.location_count
   if (typeof count !== 'number') return null
   const annualCount = route.annual_count ?? 0
@@ -35,18 +36,33 @@ function formatRouteOverviewCardMeta(route: MonthlyRouteOverviewRow['route']): s
 }
 
 function RouteOverviewCard({ row, showScheduleHint = false, tone }: RouteOverviewCardProps) {
-  const { route } = row
+  const { route, service_trade_job_dot, st_schedule_mismatch } = row
   const countLabel = formatRouteOverviewCardMeta(route)
+  const mismatchTooltip = st_schedule_mismatch
+    ? `Route ${formatRouteTestDayLabel(st_schedule_mismatch.route_date)} · ServiceTrade appointment ${formatRouteTestDayLabel(st_schedule_mismatch.appointment_date)}`
+    : undefined
 
   return (
     <Link
       to={`/monthlies/routes/${route.id}`}
       className={routeOverviewCardClassName(tone)}
     >
+      <ServiceTradeJobStatusDot
+        dot={service_trade_job_dot}
+        className="monthly-routes-overview-calendar__st-dot-wrap"
+      />
       <div className="monthly-routes-overview-calendar__card-label fw-semibold">
         {routeNumberDisplayLabel(route.route_number)}
         {showScheduleHint ? ` · ${route.label}` : null}
       </div>
+      {st_schedule_mismatch ? (
+        <span
+          className="monthly-routes-overview-calendar__schedule-mismatch-pill badge rounded-pill"
+          title={mismatchTooltip}
+        >
+          Date mismatch
+        </span>
+      ) : null}
       {countLabel ? (
         <div className="monthly-routes-overview-calendar__card-meta small text-muted">{countLabel}</div>
       ) : null}
@@ -55,7 +71,7 @@ function RouteOverviewCard({ row, showScheduleHint = false, tone }: RouteOvervie
 }
 
 export type MonthlyRoutesWorkweekCalendarProps = {
-  rows: MonthlyRouteOverviewRow[]
+  rows: MonthlyDashboardRouteRow[]
   monthFirstIso: string
   monthHeading: string
   cardToneByRouteId?: Map<number, RouteOverviewCardTone>
@@ -71,8 +87,8 @@ export default function MonthlyRoutesWorkweekCalendar({
 }: MonthlyRoutesWorkweekCalendarProps) {
   const { calendarCells, routesByDateIso, unscheduledRows } = useMemo(() => {
     const calendarCells = buildPacificWorkweekCalendarGrid(monthFirstIso)
-    const routesByDateIso = new Map<string, MonthlyRouteOverviewRow[]>()
-    const unscheduled: MonthlyRouteOverviewRow[] = []
+    const routesByDateIso = new Map<string, MonthlyDashboardRouteRow[]>()
+    const unscheduled: MonthlyDashboardRouteRow[] = []
 
     for (const row of rows) {
       const effectiveIso = effectiveRouteTestDayIso(monthFirstIso, row.route)

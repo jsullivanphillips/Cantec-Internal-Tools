@@ -23,6 +23,7 @@ from app.monthly.service_trade_annual_schedule import month_window_pacific
 from app.monthly.service_trade_route_run_timing import (
     SERVICE_TRADE_API_BASE,
     fetch_paired_clock_events,
+    fetch_scheduled_testing_jobs_route_month,
     fetch_testing_jobs_route_month,
     select_testing_job_for_month,
     sync_route_month_timing,
@@ -117,9 +118,35 @@ def _probe_route_month(http: requests.Session, route: MonthlyRoute, month_first:
 
     selected = select_testing_job_for_month(jobs, start_ts=start_ts, end_ts=end_ts)
     if selected is None:
+        scheduled_jobs = fetch_scheduled_testing_jobs_route_month(
+            http,
+            int(st_id),
+            month_first=month_first,
+        )
+        print(f"  ST GET /job scheduled testing at route location: {len(scheduled_jobs)} job(s)")
+        for job in scheduled_jobs[:5]:
+            jid = job.get("id")
+            jtype = job.get("type")
+            jstatus = job.get("status")
+            appts = job.get("appointments") or []
+            print(f"    job {jid} type={jtype!r} status={jstatus!r} appointments={len(appts)}")
+            for appt in appts[:3]:
+                ws = appt.get("windowStart")
+                ws_pacific = (
+                    datetime.fromtimestamp(int(ws), tz=PACIFIC).isoformat()
+                    if ws is not None
+                    else None
+                )
+                print(
+                    f"      appt id={appt.get('id')} status={appt.get('status')!r} "
+                    f"released={appt.get('released')!r} windowStart={ws_pacific}"
+                )
+        selected = select_testing_job_for_month(scheduled_jobs, start_ts=start_ts, end_ts=end_ts)
+
+    if selected is None:
         print("  => No testing job with qualifying appointment windowStart in this month.")
         print("     Check: job type is 'testing', appointment status scheduled/completed,")
-        print("     windowStart falls in Pacific calendar month.")
+        print("     windowStart falls in Pacific calendar month (released is not required).")
         # Also probe jobs without type filter
         resp = http.get(
             f"{SERVICE_TRADE_API_BASE}/job",

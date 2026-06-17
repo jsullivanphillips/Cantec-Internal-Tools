@@ -20,6 +20,7 @@ function dashboardRow(
       label: `R${route.route_number}`,
       ...route,
     },
+    service_trade_job_dot: { color: 'grey', tooltip: 'No ServiceTrade route link' },
     current_month_run: run
       ? { run_id: 1, workflow_stage: run.workflow_stage, workflow_stage_label: run.workflow_stage }
       : undefined,
@@ -29,7 +30,7 @@ function dashboardRow(
 describe('monthlyDashboardShared', () => {
   it('maps workflow stages to calendar card tones', () => {
     expect(routeOverviewCardToneFromStage('completed')).toBe('reviewed-closed')
-    expect(routeOverviewCardToneFromStage('skipped')).toBe('reviewed-closed')
+    expect(routeOverviewCardToneFromStage('skipped')).toBe('skipped')
     expect(routeOverviewCardToneFromStage('ready_to_close')).toBe('completed-light')
     expect(routeOverviewCardToneFromStage('awaiting_office_review')).toBe('completed-light')
     expect(routeOverviewCardToneFromStage('prepared')).toBe('prepared')

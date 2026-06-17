@@ -14,6 +14,7 @@ import {
   monthFirstIsoPacificToday,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
 import MonthlyRoutesWorkweekCalendar from '../features/monthlyRoutes/MonthlyRoutesWorkweekCalendar'
+import BulkStJobReleaseButton from '../features/monthlyRoutes/BulkStJobReleaseButton'
 import MonthlyDashboardIssues from '../features/monthlyRoutes/MonthlyDashboardIssues'
 import MonthlyDashboardRouteBreakdown from '../features/monthlyRoutes/MonthlyDashboardRouteBreakdown'
 import MonthlyTicketsQueue from '../features/monthlyRoutes/MonthlyTicketsQueue'
@@ -28,6 +29,13 @@ function MonthlyDashboardLegend() {
           aria-hidden
         />
         Reviewed &amp; closed
+      </span>
+      <span className="monthly-routes-overview-calendar__legend-item">
+        <span
+          className="monthly-routes-overview-calendar__legend-swatch monthly-routes-overview-calendar__card--tone-skipped"
+          aria-hidden
+        />
+        Skipped
       </span>
       <span className="monthly-routes-overview-calendar__legend-item">
         <span
@@ -198,6 +206,14 @@ export default function MonthlyHomePage() {
   )
   const openTicketCount = dashboardPayload?.open_ticket_count ?? 0
 
+  const refreshCalendarMonth = useCallback(() => {
+    apiJson<MonthlyDashboardPayload>(dashboardUrl(calendarMonthFirstIso))
+      .then((data) => setCalendarRows(data.routes))
+      .catch(() => {
+        /* keep existing rows */
+      })
+  }, [calendarMonthFirstIso])
+
   const refreshDashboard = useCallback(() => {
     apiJson<MonthlyDashboardPayload>(dashboardUrl())
       .then((data) => {
@@ -258,11 +274,18 @@ export default function MonthlyHomePage() {
                   routesToPrepare={routesToPrepare}
                   openTicketCount={openTicketCount}
                 />
-                <div className="d-flex justify-content-center mb-3 mt-3">
+                <div className="monthly-dashboard-routes-toolbar mb-3 mt-3">
+                  <div className="monthly-dashboard-routes-toolbar__side" aria-hidden />
                   <RouteOverviewMonthToolbar
                     monthFirstIso={calendarMonthFirstIso}
                     onChangeMonth={setCalendarMonthFirstIso}
                   />
+                  <div className="monthly-dashboard-routes-toolbar__side monthly-dashboard-routes-toolbar__side--end">
+                    <BulkStJobReleaseButton
+                      monthFirstIso={calendarMonthFirstIso}
+                      onComplete={refreshCalendarMonth}
+                    />
+                  </div>
                 </div>
                 {calendarError ? <div className="text-danger mb-3">{calendarError}</div> : null}
                 {calendarLoading ? (

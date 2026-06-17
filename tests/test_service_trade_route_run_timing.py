@@ -10,7 +10,9 @@ from app.monthly.service_trade_route_run_timing import (
     SYNC_STATUS_NO_JOB,
     SYNC_STATUS_NO_ST_LINK,
     SYNC_STATUS_OK,
+    SYNC_STATUS_SCHEDULED,
     RouteRunTimingSyncResult,
+    fetch_scheduled_testing_jobs_route_month,
     run_times_from_clock_pairs,
     select_testing_job_for_month,
     sync_route_month_timing,
@@ -35,6 +37,7 @@ def _job(
     return {
         "id": job_id,
         "type": job_type,
+        "status": status,
         "appointments": [
             {
                 "status": status,
@@ -112,9 +115,13 @@ class _FakeSession:
 
     def get(self, url: str, params=None):
         self.calls.append((url, params))
+        if "/appointment" in url:
+            return _FakeResponse(self.responses.get("appointments", {"data": {"appointments": []}}))
         if "/clockevent" in url:
             job_id = url.rstrip("/").split("/")[-2]
             return _FakeResponse(self.responses.get(f"clockevent:{job_id}", {"data": {"pairedEvents": []}}))
+        if params and params.get("status") == "scheduled":
+            return _FakeResponse(self.responses.get("scheduled_jobs", {"data": {"jobs": [], "totalPages": 1}}))
         return _FakeResponse(self.responses.get("jobs", {"data": {"jobs": [], "totalPages": 1}}))
 
 
@@ -159,3 +166,56 @@ def test_sync_route_month_timing_ok():
     assert result.sync_status == SYNC_STATUS_OK
     assert result.service_trade_job_id == 501
     assert result.duration_minutes == 6 * 60
+
+
+def test_sync_route_month_timing_scheduled_job_before_completion():
+    start_ts = int(datetime(2026, 7, 7, 8, 0, tzinfo=PACIFIC).timestamp())
+    session = _FakeSession(
+        {
+            "jobs": {"data": {"jobs": [], "totalPages": 1}},
+            "scheduled_jobs": {
+                "data": {
+                    "jobs": [_job(701, window_start=start_ts, status="scheduled")],
+                    "totalPages": 1,
+                }
+            },
+        }
+    )
+    result = sync_route_month_timing(session, st_route_id=123, month_first=datetime(2026, 7, 1).date())
+    assert result.sync_status == SYNC_STATUS_SCHEDULED
+    assert result.service_trade_job_id == 701
+    assert result.duration_minutes is None
+    assert result.service_trade_job_status == "scheduled"
+    assert result.service_trade_appointment_released is None
+    assert not any("/clockevent" in url for url, _ in session.calls)
+
+
+def test_fetch_scheduled_testing_jobs_enriches_missing_appointments():
+    start_ts, end_ts = _month_window_may_2026()
+    session = _FakeSession(
+        {
+            "scheduled_jobs": {
+                "data": {
+                    "jobs": [{"id": 801, "type": "testing", "status": "scheduled"}],
+                    "totalPages": 1,
+                }
+            },
+            "appointments": {
+                "data": {
+                    "appointments": [
+                        {"status": "scheduled", "windowStart": start_ts + 3600, "released": False}
+                    ]
+                }
+            },
+        }
+    )
+    jobs = fetch_scheduled_testing_jobs_route_month(
+        session,
+        55,
+        month_first=datetime(2026, 5, 1).date(),
+    )
+    assert len(jobs) == 1
+    assert jobs[0]["appointments"][0]["released"] is False
+    selected = select_testing_job_for_month(jobs, start_ts=start_ts, end_ts=end_ts)
+    assert selected is not None
+    assert selected["id"] == 801

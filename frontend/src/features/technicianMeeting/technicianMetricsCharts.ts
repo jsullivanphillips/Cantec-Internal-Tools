@@ -1,196 +1,94 @@
+import type { ChartOptions } from 'chart.js'
+
 export type TopN = number | 'all'
 
 export const noDatalabels = { datalabels: { display: false } }
 
-export function formatLabelName(s: string) {
-  return s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+export const TECHNICIAN_CHART_FONT_FAMILY =
+  'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
+
+/** Avoid fuzzy Chart.js text on fractional Windows display scaling (125%, 150%). */
+export function technicianChartDevicePixelRatio(): number {
+  if (typeof globalThis.window === 'undefined') return 2
+  return Math.min(Math.max(globalThis.window.devicePixelRatio || 1, 2), 3)
 }
 
-export function buildJobsCompletedDatasets(
-  jobsPayload: {
-    technicians?: string[]
-    job_types?: string[]
-    entries?: { technician: string; job_type: string; count: number }[]
-  },
-  topN: TopN,
-) {
-  const techsJobs = jobsPayload.technicians || []
-  const jobTypes = jobsPayload.job_types || []
-  const jobsEntries = jobsPayload.entries || []
+const compactTickFont = { size: 10, family: TECHNICIAN_CHART_FONT_FAMILY }
+const compactTitleFont = { size: 10, weight: 'bold' as const, family: TECHNICIAN_CHART_FONT_FAMILY }
 
-  const lookupJobs: Record<string, Record<string, number>> = {}
-  techsJobs.forEach((t) => {
-    lookupJobs[t] = {}
-  })
-  jobsEntries.forEach(({ technician, job_type, count }) => {
-    if (!lookupJobs[technician]) lookupJobs[technician] = {}
-    lookupJobs[technician][job_type] = count
-  })
-
-  const totalsJobs = techsJobs
-    .map((t) => ({
-      tech: t,
-      total: jobTypes.reduce((sum, jt) => sum + (lookupJobs[t]?.[jt] || 0), 0),
-    }))
-    .sort((a, b) => b.total - a.total)
-
-  const N = topN === 'all' ? totalsJobs.length : topN
-  const selectedTechsJ = totalsJobs.slice(0, N).map((d) => d.tech)
-
-  const jobTypeTotals = jobTypes.map((jt) => ({
-    jobType: jt,
-    total: techsJobs.reduce((sum, tech) => sum + (lookupJobs[tech]?.[jt] || 0), 0),
-  }))
-  jobTypeTotals.sort((a, b) => b.total - a.total)
-  const topJobTypes = jobTypeTotals.slice(0, 8).map((x) => x.jobType)
-  const otherJobTypes = jobTypes.filter((jt) => !topJobTypes.includes(jt))
-  const finalJobTypes = [...topJobTypes, 'Other']
-
-  const paletteJobs = [
-    '#c6d6ec',
-    '#8eb0d6',
-    '#4e79a7',
-    '#2d527d',
-    '#ffe0b3',
-    '#f7b366',
-    '#f28e2b',
-    '#b6651a',
-    '#678dbd',
-    '#d1873d',
-  ]
-
-  const jobDatasets = finalJobTypes.map((jt, i) => {
-    const data = selectedTechsJ.map((tech) => {
-      if (jt === 'Other') {
-        return otherJobTypes.reduce((sum, other) => sum + (lookupJobs[tech]?.[other] || 0), 0)
-      }
-      return lookupJobs[tech]?.[jt] || 0
-    })
-    return {
-      label: formatLabelName(jt),
-      data,
-      type: 'bar' as const,
-      backgroundColor: paletteJobs[i % paletteJobs.length],
-    }
-  })
-
-  const jobTotalsByTech = selectedTechsJ.map((_, idx) =>
-    jobDatasets.reduce((sum, ds) => sum + (ds.data[idx] as number), 0),
-  )
-
-  const totalJobsDataset = {
-    label: 'Total Jobs',
-    data: jobTotalsByTech,
-    type: 'line' as const,
-    yAxisID: 'y1',
-    borderColor: '#164b7c',
-    backgroundColor: '#164b7c',
-    borderWidth: 2,
-    fill: false,
-    pointRadius: 4,
-  }
-
+export function technicianBarChartBaseOptions(): Pick<ChartOptions<'bar'>, 'responsive' | 'maintainAspectRatio' | 'devicePixelRatio' | 'animation'> {
   return {
-    labels: selectedTechsJ,
-    datasets: [...jobDatasets, totalJobsDataset],
-    jobTotalsByTech,
+    responsive: true,
+    maintainAspectRatio: false,
+    devicePixelRatio: technicianChartDevicePixelRatio(),
+    animation: false,
   }
 }
 
-export function buildDefsByTechDatasets(
-  payload: {
-    technicians?: string[]
-    service_lines?: string[]
-    entries?: { technician: string; service_line: string; count: number }[]
-  },
-  topN: TopN,
-) {
-  const techsDefs = payload.technicians || []
-  const rawLines = payload.service_lines || []
-  const defsEntries = payload.entries || []
+export function compactScaleTitle(text: string) {
+  return { display: true, text, font: compactTitleFont, padding: { top: 0, bottom: 4 } }
+}
 
-  const lookupDefs: Record<string, Record<string, number>> = {}
-  techsDefs.forEach((t) => {
-    lookupDefs[t] = {}
-  })
-  defsEntries.forEach(({ technician, service_line, count }) => {
-    if (!lookupDefs[technician]) lookupDefs[technician] = {}
-    lookupDefs[technician][service_line] = count
-  })
-
-  const lineTotals = rawLines
-    .map((sl) => ({
-      line: sl,
-      total: techsDefs.reduce((sum, t) => sum + (lookupDefs[t]?.[sl] || 0), 0),
-    }))
-    .sort((a, b) => b.total - a.total)
-  const topLines = lineTotals.slice(0, 6).map((x) => x.line)
-  const otherLines = rawLines.filter((sl) => !topLines.includes(sl))
-  const finalLines = [...topLines, 'Other']
-
-  const paletteDefs = [
-    '#c6d6ec',
-    '#8eb0d6',
-    '#4e79a7',
-    '#2d527d',
-    '#ffe0b3',
-    '#f7b366',
-    '#f28e2b',
-    '#b6651a',
-    '#678dbd',
-    '#d1873d',
-  ]
-
-  const defDatasets = finalLines.map((sl, idx) => {
-    const data = techsDefs.map((tech) => {
-      if (sl === 'Other') {
-        return otherLines.reduce((sum, ol) => sum + (lookupDefs[tech]?.[ol] || 0), 0)
-      }
-      return lookupDefs[tech]?.[sl] || 0
-    })
-    return {
-      label: sl,
-      data,
-      backgroundColor: paletteDefs[idx % paletteDefs.length],
-    }
-  })
-
-  const totalsDefs = techsDefs
-    .map((t) => ({
-      tech: t,
-      total: finalLines.reduce((sum, _sl, si) => {
-        const ds = defDatasets[si]
-        const idx = techsDefs.indexOf(t)
-        return sum + (ds.data[idx] as number)
-      }, 0),
-    }))
-    .sort((a, b) => b.total - a.total)
-
-  const N = topN === 'all' ? totalsDefs.length : topN
-  const selectedTechsD = totalsDefs.slice(0, N).map((d) => d.tech)
-
-  const barDatasets = defDatasets.map((ds) => ({
-    label: ds.label,
-    data: selectedTechsD.map((tech) => ds.data[techsDefs.indexOf(tech)] as number),
-    type: 'bar' as const,
-    backgroundColor: ds.backgroundColor,
-  }))
-
-  const defTotalsByTech = selectedTechsD.map((_, i) =>
-    barDatasets.reduce((sum, ds) => sum + (ds.data[i] as number), 0),
-  )
-
-  const totalDefsDataset = {
-    label: 'Total Defs',
-    data: defTotalsByTech,
-    type: 'line' as const,
-    yAxisID: 'y1',
-    borderColor: '#164b7c',
-    backgroundColor: '#164b7c',
-    borderWidth: 2,
-    fill: false,
-    pointRadius: 4,
+export function compactCartesianScales() {
+  return {
+    x: {
+      ticks: { font: compactTickFont, maxRotation: 0, autoSkip: true },
+      grid: { color: 'rgba(148, 163, 184, 0.25)' },
+    },
+    y: {
+      ticks: { font: compactTickFont, precision: 0 },
+      grid: { color: 'rgba(148, 163, 184, 0.25)' },
+    },
   }
+}
 
-  return { labels: selectedTechsD, datasets: [...barDatasets, totalDefsDataset], defTotalsByTech }
+/** Fixed pixel height prevents responsive resize loops in grid layouts. */
+export function horizontalBarChartHeight(barCount: number): number {
+  return Math.min(Math.max(132, barCount * 22 + 44), 240)
+}
+
+export function verticalBarChartHeight(barCount: number): number {
+  return Math.min(Math.max(152, barCount > 10 ? 188 : 168), 208)
+}
+
+export function topTechCountsFromRecord(
+  record: Record<string, number>,
+  topN: TopN,
+): { labels: string[]; counts: number[] } {
+  const pairs = Object.entries(record).sort((a, b) => b[1] - a[1])
+  const limit = topN === 'all' ? pairs.length : topN
+  const slice = pairs.slice(0, limit)
+  return { labels: slice.map(([label]) => label), counts: slice.map(([, count]) => count) }
+}
+
+export function aggregateDeficiencyCountsByTech(
+  entries: { technician: string; count: number }[],
+  topN: TopN,
+): { labels: string[]; counts: number[] } {
+  const totals: Record<string, number> = {}
+  for (const { technician, count } of entries) {
+    totals[technician] = (totals[technician] ?? 0) + count
+  }
+  return topTechCountsFromRecord(totals, topN)
+}
+
+export type TopTechnicianLeader = {
+  technician: string
+  count: number
+}
+
+export function topTechnicianLeader(
+  entries: { technician: string; count: number }[],
+): TopTechnicianLeader | null {
+  if (!entries.length) return null
+  const sorted = [...entries].sort((a, b) => b.count - a.count)
+  const top = sorted[0]
+  if (!top || top.count <= 0) return null
+  return top
+}
+
+export function topTechnicianFromRecord(record: Record<string, number>): TopTechnicianLeader | null {
+  return topTechnicianLeader(
+    Object.entries(record).map(([technician, count]) => ({ technician, count })),
+  )
 }

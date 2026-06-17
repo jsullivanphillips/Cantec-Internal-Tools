@@ -2205,6 +2205,19 @@ def _build_dashboard_routes_for_month(month_first: date) -> list[dict[str, objec
         ).all()
         run_by_route_id = {int(r.monthly_route_id): r for r in run_rows}
 
+    timing_by_route_id: dict[int, MonthlyRouteRunTimingMonth] = {}
+    if active_route_ids:
+        from app.db_models import MonthlyRouteRunTimingMonth
+        from app.monthly.service_trade_run_job_dashboard import dashboard_service_trade_job_dot
+
+        timing_rows = MonthlyRouteRunTimingMonth.query.filter(
+            MonthlyRouteRunTimingMonth.monthly_route_id.in_(active_route_ids),
+            MonthlyRouteRunTimingMonth.month_first == month_first,
+        ).all()
+        timing_by_route_id = {int(r.monthly_route_id): r for r in timing_rows}
+
+    from app.monthly.dashboard_st_schedule_mismatch import dashboard_st_schedule_mismatch
+
     out: list[dict[str, object]] = []
     for route in route_rows:
         active_count = count_map.get(int(route.id), 0)
@@ -2216,7 +2229,18 @@ def _build_dashboard_routes_for_month(month_first: date) -> list[dict[str, objec
                 location_count=active_count,
                 annual_count=annual_count_map.get(int(route.id), 0),
             ),
+            "service_trade_job_dot": dashboard_service_trade_job_dot(
+                has_st_route_link=route.service_trade_route_location_id is not None,
+                timing_row=timing_by_route_id.get(int(route.id)),
+            ),
         }
+        mismatch = dashboard_st_schedule_mismatch(
+            month_first,
+            route,
+            timing_by_route_id.get(int(route.id)),
+        )
+        if mismatch is not None:
+            row["st_schedule_mismatch"] = mismatch
         run = run_by_route_id.get(int(route.id))
         if run is not None:
             row["current_month_run"] = _serialize_current_month_run_summary(run)
@@ -2246,6 +2270,97 @@ def monthly_routes_dashboard():
             "open_tickets_open": ticket_counts["open"],
             "open_tickets_in_progress": ticket_counts["in_progress"],
         }
+    )
+
+
+@monthly_routes_bp.get("/api/monthly_routes/dashboard/st_job_release_status")
+def dashboard_st_job_release_status():
+    """Eligible scheduled ST testing jobs for bulk release/unrelease on the routes dashboard."""
+    if not session.get("authenticated"):
+        return jsonify({"error": "Authentication required", "code": "auth_required"}), 401
+    month_raw = (request.args.get("month_date") or "").strip()
+    parsed = _parse_month(month_raw) if month_raw else None
+    if not month_raw or parsed is None:
+        return jsonify({"error": "Invalid month_date", "code": "invalid_month_date"}), 400
+    month_first = date(parsed.year, parsed.month, 1)
+    from app.monthly.service_trade_bulk_job_release import bulk_st_release_status_payload
+
+    return jsonify(
+        bulk_st_release_status_payload(
+            month_first,
+            current_month_first=_current_pacific_month_first(),
+        )
+    )
+
+
+@monthly_routes_bp.post("/api/monthly_routes/dashboard/st_job_release")
+def dashboard_st_job_release():
+    """Bulk release or unrelease qualifying ServiceTrade testing-job appointments (NDJSON stream)."""
+    if not session.get("authenticated"):
+        return jsonify({"error": "Authentication required", "code": "auth_required"}), 401
+    body = request.get_json(silent=True) or {}
+    month_raw = (body.get("month_date") or "").strip()
+    action = (body.get("action") or "").strip().lower()
+    parsed = _parse_month(month_raw)
+    if parsed is None:
+        return jsonify({"error": "Invalid month_date", "code": "invalid_month_date"}), 400
+    if action not in ("release", "unrelease"):
+        return jsonify({"error": "Invalid action", "code": "invalid_action"}), 400
+    month_first = date(parsed.year, parsed.month, 1)
+    from app.monthly.service_trade_bulk_job_release import (
+        active_routes_with_st_link,
+        authenticate_service_trade,
+        iter_bulk_st_job_release,
+        month_allows_bulk_st_release,
+        timing_rows_for_month,
+    )
+
+    if not month_allows_bulk_st_release(
+        month_first,
+        current_month_first=_current_pacific_month_first(),
+    ):
+        return (
+            jsonify(
+                {
+                    "error": "Bulk release is only allowed for the current month and future months.",
+                    "code": "month_not_allowed",
+                }
+            ),
+            400,
+        )
+
+    routes = active_routes_with_st_link()
+    timing_by_route_id = timing_rows_for_month(month_first, [int(route.id) for route in routes])
+
+    def generate():
+        import requests
+
+        http = requests.Session()
+        http.headers.update({"Accept": "application/json"})
+        try:
+            authenticate_service_trade(http)
+        except Exception as exc:
+            yield json.dumps({"type": "error", "error": str(exc)}) + "\n"
+            return
+        try:
+            for event in iter_bulk_st_job_release(
+                http,
+                month_first=month_first,
+                action=action,
+                routes=routes,
+                timing_by_route_id=timing_by_route_id,
+            ):
+                yield json.dumps(event) + "\n"
+        finally:
+            db.session.remove()
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="application/x-ndjson",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 
@@ -2302,6 +2417,8 @@ def get_monthly_route_detail(route_id: int):
     )
     locations_payload = [_serialize_route_location_list_item(loc) for loc in route_locations]
 
+    from app.monthly.route_run_timing import service_trade_run_jobs_by_month_for_route
+
     return jsonify(
         {
             "route": _serialize_monthly_route_entity(mr, location_count=location_count),
@@ -2309,6 +2426,7 @@ def get_monthly_route_detail(route_id: int):
             "comments": comments_payload,
             "testing_by_month": testing_by_month,
             "runs_by_month": runs_by_month,
+            "service_trade_run_jobs_by_month": service_trade_run_jobs_by_month_for_route(route_id),
             "specialists": specialists_payload,
             "specialists_by_month": specialists_by_month,
         }
@@ -2493,6 +2611,8 @@ def _serialize_monthly_run_details_payload(
         route_id, month_first, run=run
     )
 
+    from app.monthly.route_run_timing import service_trade_run_job_for_month
+
     return {
         "route": _serialize_monthly_route_entity(mr, location_count=location_count),
         "month_date": month_first.isoformat(),
@@ -2500,6 +2620,7 @@ def _serialize_monthly_run_details_payload(
         "field_submission": _field_submission_meta(run),
         "counts": counts,
         "specialists_month": specialists_month,
+        "service_trade_run_job": service_trade_run_job_for_month(route_id, month_first),
         "billing_locations": billing_locations,
         "review_meta": review_meta,
         "locations": locations,

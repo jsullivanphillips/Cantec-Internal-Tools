@@ -255,6 +255,16 @@ export type MonthlyRouteSpecialistMonthPayload = {
   last_updated_at: string | null
 }
 
+/** Cached route-level ServiceTrade testing job for one Pacific calendar month. */
+export type ServiceTradeRunJobMonth = {
+  service_trade_job_id: number | null
+  service_trade_job_url: string | null
+  sync_status?: string | null
+  service_trade_job_status?: string | null
+  service_trade_appointment_released?: boolean | null
+  service_trade_qualifying_appointment_on?: string | null
+}
+
 /** ``MonthlyRouteRun`` header for one calendar month (run file exists). Keys ``YYYY-MM-01``. */
 export type RouteRunMonthSummary = {
   run_id: number
@@ -280,6 +290,8 @@ export type MonthlyRouteDetailPayload = {
   testing_by_month: Record<string, RouteTestingMonthCell>
   /** Run files only — CSV import, portal, or worksheet materialization. Keys ``YYYY-MM-01``. */
   runs_by_month: Record<string, RouteRunMonthSummary>
+  /** Cached ST testing jobs per month from ``monthly_route_run_timing_month``. Keys ``YYYY-MM-01``. */
+  service_trade_run_jobs_by_month?: Record<string, ServiceTradeRunJobMonth>
   /** Present when the route has a ServiceTrade route pseudo-location id; otherwise ``null``. */
   specialists: MonthlyRouteSpecialistsPayload | null
   /** Newest months first; month keys ``YYYY-MM-01``. */
@@ -614,6 +626,7 @@ export type MonthlyRunDetailPayload = {
   month_date: string
   run: TechnicianWorksheetRun | null
   field_submission?: MonthlyRunDetailFieldSubmissionMeta
+  service_trade_run_job?: ServiceTradeRunJobMonth
   counts: MonthlyRunDetailCounts
   specialists_month: MonthlyRouteSpecialistMonthPayload | null
   review_meta: MonthlyRunDetailReviewMeta
