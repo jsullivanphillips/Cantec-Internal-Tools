@@ -55,6 +55,7 @@ import PortalRecordResultsModal, {
 import PortalDeficienciesCard from '../features/monthlyRoutes/PortalDeficienciesCard'
 import PortalDeficiencyModal from '../features/monthlyRoutes/PortalDeficiencyModal'
 import PortalKeyViewModal from '../features/monthlyRoutes/PortalKeyViewModal'
+import PortalSiteHistoryModal from '../features/monthlyRoutes/PortalSiteHistoryModal'
 import {
   testingSitePositionAtLocation,
   locationPrimaryLabel,
@@ -328,6 +329,7 @@ export default function TechnicianPortalWorksheetPage() {
   const [resultsForClockOut, setResultsForClockOut] = useState(false)
   const [defModalOpen, setDefModalOpen] = useState(false)
   const [defModalMode, setDefModalMode] = useState<'add' | 'edit'>('add')
+  const [historyModalOpen, setHistoryModalOpen] = useState(false)
   const [editingDeficiency, setEditingDeficiency] = useState<PortalDeficiencySummary | null>(null)
   const [editingField, setEditingField] = useState<string | null>(null)
   const [portalRichTextEditor, setPortalRichTextEditor] = useState<RichTextEditorHandle | null>(null)
@@ -423,27 +425,35 @@ export default function TechnicianPortalWorksheetPage() {
     [handleMapsPinClick, handleMapsPinContextMenu],
   )
 
-  const renderHeroDirectionsButton = useCallback(
+  const renderHeroActions = useCallback(
     (stop: TechnicianWorksheetLocation) => {
       const mapsTarget = resolveStopMapsTarget(stop)
-      const monitoringCall = renderMonitoringCallButton(stop, ' pw-mock-header-directions-btn pw-mock-nav-stop--active')
-      if (!mapsTarget && !monitoringCall) return null
+      const monitoringCall = renderMonitoringCallButton(
+        stop,
+        ' pw-mock-header-action-btn pw-mock-header-action-btn--call',
+      )
       return (
-        <div className="pw-mock-header-directions">
+        <div className="pw-mock-header-actions">
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-secondary pw-mock-header-action-btn pw-mock-header-action-btn--history"
+            onClick={() => setHistoryModalOpen(true)}
+          >
+            <PortalBootstrapIcon name="file-earmark-text" className="pw-mock-header-action-btn__icon" aria-hidden />
+            History
+          </button>
           {mapsTarget ? (
-            <>
-              <span className="pw-mock-header-directions-label">Directions</span>
-              <button
-                type="button"
-                className="pw-mock-nav-stop-map pw-mock-header-directions-btn"
-                aria-label={`Open directions for stop ${stop.stop_number}`}
-                title="Open in maps (right-click to change maps app)"
-                onClick={(event) => handleMapsPinClick(event, stop)}
-                onContextMenu={(event) => handleMapsPinContextMenu(event, stop)}
-              >
-                <PortalBootstrapIcon name="geo-alt" className="pw-mock-nav-stop-map-icon" aria-hidden />
-              </button>
-            </>
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-primary pw-mock-header-action-btn pw-mock-header-action-btn--directions"
+              aria-label={`Open directions for stop ${stop.stop_number}`}
+              title="Open in maps (right-click to change maps app)"
+              onClick={(event) => handleMapsPinClick(event, stop)}
+              onContextMenu={(event) => handleMapsPinContextMenu(event, stop)}
+            >
+              <PortalBootstrapIcon name="geo-alt" className="pw-mock-header-action-btn__icon" aria-hidden />
+              Directions
+            </button>
           ) : null}
           {monitoringCall}
         </div>
@@ -515,6 +525,7 @@ export default function TechnicianPortalWorksheetPage() {
         skipModalOpen ||
         resultsModalOpen ||
         defModalOpen ||
+        historyModalOpen ||
         editingField != null,
     )
   }, [
@@ -522,6 +533,7 @@ export default function TechnicianPortalWorksheetPage() {
     skipModalOpen,
     resultsModalOpen,
     defModalOpen,
+    historyModalOpen,
     editingField,
     setInteractiveBusy,
   ])
@@ -1251,11 +1263,13 @@ export default function TechnicianPortalWorksheetPage() {
                       <span className="pw-mock-on-hold-pill">On hold</span>
                     ) : null}
                   </div>
-                  <span
-                    className={`pw-mock-status-pill pw-mock-status-pill--${portalStatusPillClass(active, runMonthIso)}`}
-                  >
-                    {statusLabel(activeStatus, active)}
-                  </span>
+                  <div className="pw-mock-header-status-row">
+                    <span
+                      className={`pw-mock-status-pill pw-mock-status-pill--${portalStatusPillClass(active, runMonthIso)}`}
+                    >
+                      {statusLabel(activeStatus, active)}
+                    </span>
+                  </div>
                 </div>
                 <LocationHeading
                   stop={active}
@@ -1267,12 +1281,14 @@ export default function TechnicianPortalWorksheetPage() {
                   sublineClassName="pw-mock-header-line text-muted"
                 />
                 <div className="pw-mock-header-meta-row">
-                  <PortalStopSummaryDetail
-                    stop={active}
-                    includePanel={!phoneLayout}
-                    className="pw-mock-header-detail"
-                  />
-                  {renderHeroDirectionsButton(active)}
+                  <div className="pw-mock-header-info-card">
+                    <PortalStopSummaryDetail
+                      stop={active}
+                      includePanel={!phoneLayout}
+                      className="pw-mock-header-detail"
+                    />
+                  </div>
+                  {renderHeroActions(active)}
                 </div>
                 {activeHeaderTimes ? (
                   <div className="pw-mock-header-times">{activeHeaderTimes}</div>
@@ -1532,6 +1548,14 @@ export default function TechnicianPortalWorksheetPage() {
               setMapsPendingStop(null)
             }}
             onSelect={handleMapsProviderSelect}
+          />
+          <PortalSiteHistoryModal
+            show={historyModalOpen}
+            onHide={() => setHistoryModalOpen(false)}
+            locationId={active.location_id}
+            locationLabel={locationPrimaryLabel(active)}
+            currentRunMonthIso={runMonthIso}
+            currentRouteId={idNum}
           />
         </>
       ) : null}

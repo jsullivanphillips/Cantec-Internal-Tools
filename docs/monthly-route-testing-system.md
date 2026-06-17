@@ -602,6 +602,11 @@ Legacy `result_status` / `sheet_time_in_raw` / `sheet_time_out_raw` remain for C
 
 Field edits (procedures, panel, comments, etc.) still use `PATCH .../worksheet/stops/:id`. Workflow mutations queue in `localStorage` key `portalWorkflowSyncQueue` (separate from field PATCH queue).
 
+**Site test history (worksheet hero):** On an active run, each stop hero card shows a **History** button beside the result status pill. It opens an iPad-friendly modal that mirrors the billing board **exact history** table (`OfficeWorksheetReadOnlyTable` with frozen field submission). The modal opens on the **most recent month** with a captured field submission (`field_ended_at`); **Previous month** / **Next month** step through consecutive calendar months (forward bound: Pacific current month). Empty states match billing when no route or no submission exists for that month.
+
+- `GET /api/technician_portal/locations/:id/test_history_index` — month cells with `route_id`, `has_field_submission`, and `latest_submission_month` (PIN session required).
+- Per-month detail reuses `GET /api/monthly_routes/routes/:routeId/run_details/field_submission?month=` (same frozen payload as billing / Paperwork exact history). Billing column is hidden in the portal modal.
+
 ### Portal business rules (2026-05, Phase 3)
 
 **Server validation** (`validate_test_outcome` in `app/monthly/portal_workflow.py`, enforced on `PUT .../test_outcome`):

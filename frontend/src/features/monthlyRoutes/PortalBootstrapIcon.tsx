@@ -6,6 +6,9 @@ export type PortalBootstrapIconName =
   | 'box-arrow-up-right'
   | 'chevron-double-left'
   | 'chevron-double-right'
+  | 'chevron-left'
+  | 'chevron-right'
+  | 'file-earmark-text'
   | 'circle'
   | 'cpu'
   | 'geo-alt'
@@ -89,6 +92,24 @@ const ICON_PATHS: Record<PortalBootstrapIconName, ReactNode> = {
         fillRule="evenodd"
         d="M7.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L11.293 8 6.646 3.354a.5.5 0 0 1 0-.708"
       />
+    </>
+  ),
+  'chevron-left': (
+    <path
+      fillRule="evenodd"
+      d="M11.354 1.646a.5.5 0 0 1 0 .708L5.707 8l5.647 5.646a.5.5 0 0 1-.708.708l-6-6a.5.5 0 0 1 0-.708l6-6a.5.5 0 0 1 .708 0"
+    />
+  ),
+  'chevron-right': (
+    <path
+      fillRule="evenodd"
+      d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708"
+    />
+  ),
+  'file-earmark-text': (
+    <>
+      <path d="M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h5.5zM13 4.5h-2A1.5 1.5 0 0 1 9.5 3V1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1z" />
+      <path d="M4.5 12.5A.5.5 0 0 1 5 12h3a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5m0-2A.5.5 0 0 1 5 10h6a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5m0-2A.5.5 0 0 1 5 8h6a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5" />
     </>
   ),
 }

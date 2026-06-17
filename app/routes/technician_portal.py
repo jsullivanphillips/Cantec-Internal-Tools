@@ -356,6 +356,19 @@ def portal_location_reference(location_id: int):
     return jsonify({"location": serialize_portal_location_reference(loc)})
 
 
+@technician_portal_bp.get("/locations/<int:location_id>/test_history_index")
+def portal_location_test_history_index(location_id: int):
+    """Month index for portal site history modal (route ids + field submission availability)."""
+    if not session.get(SESSION_FLAG):
+        return jsonify({"error": "Portal locked", "code": "portal_locked"}), 401
+    from app.monthly.portal_test_history import serialize_portal_test_history_index
+
+    payload = serialize_portal_test_history_index(location_id)
+    if payload is None:
+        return jsonify({"error": "Location not found", "code": "not_found"}), 404
+    return jsonify(payload)
+
+
 @technician_portal_bp.get("/routes/<int:route_id>/portal_route_summary")
 def portal_route_summary(route_id: int):
     """Route hub: portal primary month (may promote next month after office close), prior runs."""

@@ -565,6 +565,8 @@ export type OfficeWorksheetReadOnlyTableProps = {
   layoutVariant?: OfficeWorksheetTableLayoutVariant
   /** Billing status when ``layoutVariant`` is ``billing``. */
   billingStatus?: string | null
+  /** Override billing column visibility (portal history hides billing). */
+  showBillingColumn?: boolean
 }
 
 export default function OfficeWorksheetReadOnlyTable({
@@ -583,10 +585,11 @@ export default function OfficeWorksheetReadOnlyTable({
   showStopColumn = true,
   layoutVariant = 'default',
   billingStatus = null,
+  showBillingColumn: showBillingColumnProp,
 }: OfficeWorksheetReadOnlyTableProps) {
   const headerScrollRef = useRef<HTMLDivElement | null>(null)
   const tableScrollRef = useRef<HTMLDivElement | null>(null)
-  const showBillingColumn = layoutVariant === 'billing'
+  const showBillingColumn = showBillingColumnProp ?? layoutVariant === 'billing'
   const groups = useMemo(
     () =>
       preserveSubmissionStopOrder
