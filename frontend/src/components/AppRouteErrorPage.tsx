@@ -105,7 +105,7 @@ export default function AppRouteErrorPage() {
   return (
     <div className="app-shell app-canvas d-flex flex-column min-vh-100">
       <header className="app-topbar d-flex align-items-center justify-content-between px-3 px-lg-4 border-bottom bg-white">
-        <Link to="/home" className="d-flex align-items-center text-decoration-none min-w-0">
+        <Link to="/monday_meeting" className="d-flex align-items-center text-decoration-none min-w-0">
           {!logoFailed ? (
             <img
               src="/cantec-logo-horizontal.png"
@@ -137,8 +137,8 @@ export default function AppRouteErrorPage() {
                   <Button type="button" onClick={() => window.location.reload()}>
                     Reload page
                   </Button>
-                  <Link to="/home" className="btn btn-outline-primary">
-                    Go to Home
+                  <Link to="/monday_meeting" className="btn btn-outline-primary">
+                    Monday Meeting
                   </Link>
                   {showSignIn ? (
                     <Link to={signInPath} className="btn btn-outline-secondary">

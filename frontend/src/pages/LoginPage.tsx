@@ -34,7 +34,7 @@ export default function LoginPage() {
       }
       const nextParam = searchParams.get('next')
       const safeNext = nextParam ? safeLoginRedirect(nextParam) : null
-      const destination = safeNext ?? d.redirect ?? '/home'
+      const destination = safeNext ?? d.redirect ?? '/monday_meeting'
       nav(destination, { replace: true })
     } catch {
       setError('Network error')

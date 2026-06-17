@@ -1,7 +1,6 @@
 # app/routes/__init__.py
 from .api_auth import api_auth_bp
 from .auth import auth_bp
-from .home import home_bp
 from .scheduling import scheduling_bp
 from .processing_attack import processing_attack_bp
 from .scheduling_attack import scheduling_attack_bp
@@ -22,7 +21,6 @@ from .deficiency_service_admin import deficiency_service_admin_bp
 def register_blueprints(app):
     app.register_blueprint(api_auth_bp)
     app.register_blueprint(auth_bp)
-    app.register_blueprint(home_bp)
     app.register_blueprint(scheduling_bp)
     app.register_blueprint(processing_attack_bp)
     app.register_blueprint(scheduling_attack_bp)

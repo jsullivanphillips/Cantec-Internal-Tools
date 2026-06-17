@@ -133,20 +133,6 @@ export function SidebarNav({
       }${animateLabels ? ' app-sidebar-nav--revealing' : ''}`}
       as="nav"
     >
-      <NavLink
-        to="/home"
-        end
-        className={({ isActive }) => navLinkClassName(isActive, showLabels, animateLabels)}
-        onClick={onNavigate}
-        id={`${idPrefix}-home`}
-        title={iconOnly ? 'Home' : undefined}
-        aria-label="Home"
-      >
-        <span className="app-sidebar-link-icon">
-          <i className="bi bi-house-door" aria-hidden />
-        </span>
-        <span className="app-sidebar-link-label">Home</span>
-      </NavLink>
       {NAV_SECTIONS.map((section) => {
         const key = sectionKey(section.title)
         const isSectionCollapsed = showLabels && collapsedSections.has(key)

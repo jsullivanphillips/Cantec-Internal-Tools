@@ -6,7 +6,6 @@ import KeysPublicLayout from './layout/KeysPublicLayout'
 import TechnicianPortalLayout from './layout/TechnicianPortalLayout'
 import LoginPage from './pages/LoginPage'
 
-const HomePage = lazy(() => import('./pages/HomePage'))
 const FindSchedulePage = lazy(() => import('./pages/FindSchedulePage'))
 const KeysHomePage = lazy(() => import('./pages/KeysHomePage'))
 const KeysAdminPage = lazy(() => import('./pages/KeysAdminPage'))
@@ -109,8 +108,8 @@ export const router = createBrowserRouter([
     element: <AppLayout />,
     errorElement: <AppRouteErrorPage />,
     children: [
-      { index: true, element: <Navigate to="/home" replace /> },
-      { path: 'home', element: <HomePage /> },
+      { index: true, element: <Navigate to="/monday_meeting" replace /> },
+      { path: 'home', element: <Navigate to="/monday_meeting" replace /> },
       { path: 'find_schedule', element: <FindSchedulePage /> },
       { path: 'battery_capacity_calculator', element: <BatteryCapacityCalculatorPage /> },
       { path: 'quotation_tool', element: <QuotationToolPage /> },

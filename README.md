@@ -78,7 +78,7 @@ From the **Excluded deficiencies** modal on the Service tab, you can **Include i
 ## Smoke checklist (after deploy)
 
 - Login / logout
-- Home KPIs and “Needs attention” links
+- Monday Meeting loads as default landing page (`/`, `/home` redirect, post-login)
 - Scheduling Assistant (compute JSON result)
 - Keys: search, detail, sign out / return, metrics (`/keys/metrics`)
 - Each navbar destination loads

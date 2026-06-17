@@ -36,7 +36,7 @@ def api_login():
     session["password"] = password
     session["account_timezone"] = account_timezone
 
-    return jsonify({"ok": True, "redirect": "/home"})
+    return jsonify({"ok": True, "redirect": "/monday_meeting"})
 
 
 @api_auth_bp.route("/logout", methods=["POST"])

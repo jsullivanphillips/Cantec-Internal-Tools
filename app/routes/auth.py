@@ -34,7 +34,7 @@ def login():
         session['password'] = password
         session['account_timezone'] = account_timezone
 
-        return redirect(url_for('home.home'))
+        return redirect(url_for('monday_meeting.monday_meeting_page'))
     return send_spa_index()
 
 @auth_bp.route('/logout')

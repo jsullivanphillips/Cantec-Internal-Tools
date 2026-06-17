@@ -72,7 +72,7 @@ export default function AppLayout() {
             <i className="bi bi-list fs-5" aria-hidden />
             <span className="visually-hidden">Open menu</span>
           </Button>
-          <Link to="/home" className="d-flex align-items-center text-decoration-none min-w-0">
+          <Link to="/monday_meeting" className="d-flex align-items-center text-decoration-none min-w-0">
             {!logoFailed ? (
               <img
                 src="/cantec-logo-horizontal.png"

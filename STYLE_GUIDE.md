@@ -110,7 +110,7 @@ Create a clean, professional product experience with an Apple-like visual standa
 ## Reference Files
 - `frontend/src/index.css`
 - `frontend/src/layout/AppLayout.tsx`
-- `frontend/src/pages/HomePage.tsx`
+- `frontend/src/pages/MondayMeetingPage.tsx`
 - `frontend/src/pages/DeficiencyTrackerPage.tsx`
 - `frontend/src/pages/KeysHomePage.tsx`
 - `frontend/src/pages/KeyDetailPage.tsx`

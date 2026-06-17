@@ -68,7 +68,6 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': { target: 'http://127.0.0.1:5000', changeOrigin: true },
-      '/home/': { target: 'http://127.0.0.1:5000', changeOrigin: true },
       '/deficiency_tracker/': { target: 'http://127.0.0.1:5000', changeOrigin: true },
       '/processing_attack/': { target: 'http://127.0.0.1:5000', changeOrigin: true },
       '/scheduling_attack/': { target: 'http://127.0.0.1:5000', changeOrigin: true },
