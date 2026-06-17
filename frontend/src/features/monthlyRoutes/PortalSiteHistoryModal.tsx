@@ -172,7 +172,11 @@ export default function PortalSiteHistoryModal({
               disabled={!canGoPrev || indexLoading}
               aria-label="Previous month"
             >
-              <PortalBootstrapIcon name="chevron-left" aria-hidden />
+              <PortalBootstrapIcon
+                name="chevron-left"
+                className="portal-site-history-modal__nav-btn-icon"
+                aria-hidden
+              />
             </Button>
             <span className="portal-site-history-modal__nav-label">{monthLabel || '…'}</span>
             <Button
@@ -183,7 +187,11 @@ export default function PortalSiteHistoryModal({
               disabled={!canGoNext || indexLoading}
               aria-label="Next month"
             >
-              <PortalBootstrapIcon name="chevron-right" aria-hidden />
+              <PortalBootstrapIcon
+                name="chevron-right"
+                className="portal-site-history-modal__nav-btn-icon"
+                aria-hidden
+              />
             </Button>
           </div>
         </div>
