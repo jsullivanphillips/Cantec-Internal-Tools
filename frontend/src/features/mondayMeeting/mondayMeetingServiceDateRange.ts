@@ -138,7 +138,7 @@ export function listServiceQuarterOptions(earliestYear = SERVICE_EARLIEST_YEAR, 
   return options
 }
 
-/** Quarter options with a disabled divider row before each year group. */
+/** Quarter options with a selectable year row before each year's quarters. */
 export function listServiceQuarterSelectItems(
   earliestYear = SERVICE_EARLIEST_YEAR,
   date = new Date(),

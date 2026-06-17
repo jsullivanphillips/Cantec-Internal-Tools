@@ -20,11 +20,7 @@ import ServiceQuarterAllTimeInfo from '../features/mondayMeeting/ServiceQuarterA
 import '../features/mondayMeeting/mondayMeeting.css'
 
 export default function MondayMeetingServiceAdminPage() {
-  const quarterSelectItems = useMemo(() => listServiceQuarterSelectItems(), [])
-  const quarterOptions = useMemo(
-    () => quarterSelectItems.filter((item) => item.type !== 'divider'),
-    [quarterSelectItems],
-  )
+  const quarterOptions = useMemo(() => listServiceQuarterSelectItems(), [])
   const [selectedQuarterKey, setSelectedQuarterKey] = useState(defaultServiceQuarterKey())
   const selectedQuarter =
     quarterOptions.find((option) => option.key === selectedQuarterKey) ?? quarterOptions[0]
@@ -199,7 +195,7 @@ export default function MondayMeetingServiceAdminPage() {
                 aria-label="Reporting quarter"
                 onChange={(e) => setSelectedQuarterKey(e.target.value)}
               >
-                {quarterSelectItems.map((item) => (
+                {quarterOptions.map((item) => (
                   <option key={item.key} value={item.key}>
                     {item.label}
                   </option>
