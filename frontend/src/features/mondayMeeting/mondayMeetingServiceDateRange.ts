@@ -47,13 +47,48 @@ export function currentCalendarQuarter(date = new Date()): { year: number; quart
   return { year, quarter }
 }
 
-/** Most recently completed calendar quarter (default for Service tab). */
+/** Current calendar quarter (default for Service tab). */
 export function defaultServiceQuarterKey(date = new Date()): string {
   const { year, quarter } = currentCalendarQuarter(date)
-  if (quarter === 1) {
-    return quarterKey(year - 1, 4)
+  return quarterKey(year, quarter)
+}
+
+export const ALL_TIME_QUARTER_KEY = 'all-time'
+export const SERVICE_EARLIEST_YEAR = 2024
+
+/** Full service reporting window: earliest synced year through today. */
+export function allTimeDateRange(date = new Date()): { startDate: string; endDate: string } {
+  return {
+    startDate: toLocalIsoDate(new Date(SERVICE_EARLIEST_YEAR, 0, 1)),
+    endDate: toLocalIsoDate(date),
   }
-  return quarterKey(year, (quarter - 1) as ServiceQuarter)
+}
+
+export function serviceYearDateRange(
+  year: number,
+  date = new Date(),
+): { startDate: string; endDate: string } {
+  const start = new Date(year, 0, 1)
+  const endOfYear = new Date(year, 11, 31)
+  const end = year === date.getFullYear() && date < endOfYear ? date : endOfYear
+  return { startDate: toLocalIsoDate(start), endDate: toLocalIsoDate(end) }
+}
+
+function formatIsoDateLong(iso: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso)
+  if (!match) return iso
+  const [, year, month, day] = match
+  const date = new Date(Number(year), Number(month) - 1, Number(day))
+  if (Number.isNaN(date.getTime())) return iso
+  return date.toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  })
+}
+
+export function allTimeRangeTooltipText(range = allTimeDateRange()): string {
+  return `All time includes data from ${formatIsoDateLong(range.startDate)} through ${formatIsoDateLong(range.endDate)}.`
 }
 
 export type ServiceQuarterOption = {
@@ -64,7 +99,8 @@ export type ServiceQuarterOption = {
 }
 
 export type ServiceQuarterSelectItem =
-  | { type: 'divider'; year: number; label: string }
+  | { type: 'all-time'; key: string; label: string; startDate: string; endDate: string }
+  | { type: 'year'; key: string; label: string; startDate: string; endDate: string }
   | ({ type: 'quarter' } & ServiceQuarterOption)
 
 export function formatYearDividerLabel(year: number): string {
@@ -90,7 +126,7 @@ function buildQuarterOptionsForYear(
 }
 
 /** Quarters from earliestYear through the current quarter, newest first. */
-export function listServiceQuarterOptions(earliestYear = 2024, date = new Date()): ServiceQuarterOption[] {
+export function listServiceQuarterOptions(earliestYear = SERVICE_EARLIEST_YEAR, date = new Date()): ServiceQuarterOption[] {
   const { year: currentYear, quarter: currentQuarter } = currentCalendarQuarter(date)
   const options: ServiceQuarterOption[] = []
 
@@ -104,15 +140,17 @@ export function listServiceQuarterOptions(earliestYear = 2024, date = new Date()
 
 /** Quarter options with a disabled divider row before each year group. */
 export function listServiceQuarterSelectItems(
-  earliestYear = 2024,
+  earliestYear = SERVICE_EARLIEST_YEAR,
   date = new Date(),
 ): ServiceQuarterSelectItem[] {
   const { year: currentYear, quarter: currentQuarter } = currentCalendarQuarter(date)
-  const items: ServiceQuarterSelectItem[] = []
+  const items: ServiceQuarterSelectItem[] = [
+    { type: 'all-time', key: ALL_TIME_QUARTER_KEY, label: 'All time', ...allTimeDateRange(date) },
+  ]
 
   for (let year = currentYear; year >= earliestYear; year -= 1) {
     const maxQuarter = year === currentYear ? currentQuarter : 4
-    items.push({ type: 'divider', year, label: formatYearDividerLabel(year) })
+    items.push({ type: 'year', key: String(year), label: formatYearDividerLabel(year), ...serviceYearDateRange(year, date) })
     for (const option of buildQuarterOptionsForYear(year, maxQuarter)) {
       items.push({ type: 'quarter', ...option })
     }

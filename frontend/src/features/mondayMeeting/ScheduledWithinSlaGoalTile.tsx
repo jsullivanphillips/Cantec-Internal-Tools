@@ -53,7 +53,6 @@ export default function ScheduledWithinSlaGoalTile({ slaGoal }: { slaGoal: Sched
   const meetingGoal = slaGoal?.meeting_goal ?? false
   const withinSlaCount = slaGoal?.within_sla_count ?? 0
   const displayDenominator = slaGoal?.denominator_count ?? slaGoal?.eligible_count ?? 0
-  const measurableCount = slaGoal?.measurable_count ?? 0
 
   return (
     <Card
@@ -103,10 +102,7 @@ export default function ScheduledWithinSlaGoalTile({ slaGoal }: { slaGoal: Sched
         <div className="monday-meeting-service-tile__footer">
           <div className="monday-meeting-service-tile__meta">Target: {targetPct}%</div>
           <div className="monday-meeting-service-tile__meta">
-            {withinSlaCount} of {displayDenominator} approved deficiency repair quotes
-            {measurableCount !== displayDenominator ? (
-              <> ({measurableCount} with a scheduled job)</>
-            ) : null}
+            {withinSlaCount} of {displayDenominator} approved repair quotes
           </div>
         </div>
       </Card.Body>

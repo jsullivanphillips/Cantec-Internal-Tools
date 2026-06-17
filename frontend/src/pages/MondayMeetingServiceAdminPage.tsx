@@ -12,15 +12,17 @@ import {
   type ReclassifySummary,
 } from '../features/mondayMeeting/mondayMeetingServiceAdminShared'
 import {
+  ALL_TIME_QUARTER_KEY,
   defaultServiceQuarterKey,
   listServiceQuarterSelectItems,
 } from '../features/mondayMeeting/mondayMeetingServiceDateRange'
+import ServiceQuarterAllTimeInfo from '../features/mondayMeeting/ServiceQuarterAllTimeInfo'
 import '../features/mondayMeeting/mondayMeeting.css'
 
 export default function MondayMeetingServiceAdminPage() {
   const quarterSelectItems = useMemo(() => listServiceQuarterSelectItems(), [])
   const quarterOptions = useMemo(
-    () => quarterSelectItems.filter((item) => item.type === 'quarter'),
+    () => quarterSelectItems.filter((item) => item.type !== 'divider'),
     [quarterSelectItems],
   )
   const [selectedQuarterKey, setSelectedQuarterKey] = useState(defaultServiceQuarterKey())
@@ -189,29 +191,24 @@ export default function MondayMeetingServiceAdminPage() {
             <span className="text-muted small text-uppercase fw-bold" style={{ letterSpacing: '0.08em' }}>
               Quarter
             </span>
-            <Form.Select
-              size="sm"
-              className="monday-meeting-service-quarter-control"
-              value={selectedQuarterKey}
-              aria-label="Reporting quarter"
-              onChange={(e) => setSelectedQuarterKey(e.target.value)}
-            >
-              {quarterSelectItems.map((item) =>
-                item.type === 'divider' ? (
-                  <option
-                    key={`divider-${item.year}`}
-                    disabled
-                    className="monday-meeting-service-quarter-divider"
-                  >
-                    {item.label}
-                  </option>
-                ) : (
+            <div className="monday-meeting-service-quarter-select-wrap">
+              <Form.Select
+                size="sm"
+                className="monday-meeting-service-quarter-control"
+                value={selectedQuarterKey}
+                aria-label="Reporting quarter"
+                onChange={(e) => setSelectedQuarterKey(e.target.value)}
+              >
+                {quarterSelectItems.map((item) => (
                   <option key={item.key} value={item.key}>
                     {item.label}
                   </option>
-                ),
-              )}
-            </Form.Select>
+                ))}
+              </Form.Select>
+              {selectedQuarterKey === ALL_TIME_QUARTER_KEY ? (
+                <ServiceQuarterAllTimeInfo startDate={startDate} endDate={endDate} />
+              ) : null}
+            </div>
             <span className="text-muted small">
               Match counts use deficiencies reported in this quarter (same as Service tab).
             </span>

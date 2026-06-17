@@ -4,10 +4,12 @@ import { Link } from 'react-router-dom'
 import { apiFetch, isAbortError } from '../../lib/apiClient'
 import ExcludedDeficienciesModal from './ExcludedDeficienciesModal'
 import {
+  ALL_TIME_QUARTER_KEY,
   defaultServiceQuarterKey,
   listServiceQuarterSelectItems,
   serviceDateRangeParams,
 } from './mondayMeetingServiceDateRange'
+import ServiceQuarterAllTimeInfo from './ServiceQuarterAllTimeInfo'
 import ScheduledWithinSlaGoalTile from './ScheduledWithinSlaGoalTile'
 import SlaBucketKpiRow from './SlaBucketKpiRow'
 import type { SlaJobRow } from './slaSchedulingTypes'
@@ -25,7 +27,6 @@ type DeficiencyPipelineMetrics = {
   total: number
   quoted: number
   quoted_pct: number
-  not_quoted_pct: number
   approved_of_quoted: number
   approved_of_quoted_pct: number
   approved_with_job: number
@@ -165,18 +166,27 @@ function MetricTile({
   )
 }
 
+const DEFICIENCIES_REPAIRED_TOOLTIP =
+  'Tracks deficiency repairs completed for deficiencies reported in the selected quarter.'
+
 function GoalTile({
   label,
   actualPct,
   targetPct,
   meetingGoal,
   sampleText,
+  sampleSubDetail,
+  onSampleSubDetailClick,
+  infoTooltip,
 }: {
   label: string
   actualPct: number
   targetPct: number
   meetingGoal: boolean
   sampleText: string
+  sampleSubDetail?: string | null
+  onSampleSubDetailClick?: () => void
+  infoTooltip?: string
 }) {
   return (
     <Card
@@ -186,7 +196,24 @@ function GoalTile({
     >
       <Card.Body className="monday-meeting-service-tile__body">
         <div className="monday-meeting-service-tile__header monday-meeting-service-tile__header--split">
-          <div className="processing-kpi-label">{label}</div>
+          <div className="processing-kpi-label d-flex align-items-start gap-1">
+            <span>{label}</span>
+            {infoTooltip ? (
+              <OverlayTrigger
+                placement="top"
+                trigger={['hover', 'focus']}
+                overlay={
+                  <Tooltip id={`monday-meeting-goal-${label}`} className="monday-meeting-sla-info-tooltip">
+                    {infoTooltip}
+                  </Tooltip>
+                }
+              >
+                <button type="button" className="monday-meeting-sla-info-btn" aria-label={`About ${label}`}>
+                  <i className="bi bi-info-circle" aria-hidden />
+                </button>
+              </OverlayTrigger>
+            ) : null}
+          </div>
           <span
             className={`monday-meeting-service-goal-badge ${
               meetingGoal ? 'monday-meeting-service-goal-badge--pass' : 'monday-meeting-service-goal-badge--fail'
@@ -204,7 +231,26 @@ function GoalTile({
         </div>
         <div className="monday-meeting-service-tile__footer">
           <div className="monday-meeting-service-tile__meta">Target: {targetPct}%</div>
-          <div className="monday-meeting-service-tile__meta">{sampleText}</div>
+          {sampleSubDetail ? (
+            <div className="monday-meeting-service-detail-row">
+              <span className="monday-meeting-service-tile__meta">{sampleText}</span>
+              {onSampleSubDetailClick ? (
+                <button
+                  type="button"
+                  className="monday-meeting-service-tile__meta monday-meeting-service-tile__meta--link monday-meeting-excluded-link btn btn-link p-0"
+                  onClick={onSampleSubDetailClick}
+                >
+                  {sampleSubDetail}
+                </button>
+              ) : (
+                <span className="monday-meeting-service-tile__meta monday-meeting-service-tile__meta--muted">
+                  {sampleSubDetail}
+                </span>
+              )}
+            </div>
+          ) : (
+            <div className="monday-meeting-service-tile__meta">{sampleText}</div>
+          )}
         </div>
       </Card.Body>
     </Card>
@@ -214,7 +260,7 @@ function GoalTile({
 export default function MondayMeetingServiceTab() {
   const quarterSelectItems = useMemo(() => listServiceQuarterSelectItems(), [])
   const quarterOptions = useMemo(
-    () => quarterSelectItems.filter((item) => item.type === 'quarter'),
+    () => quarterSelectItems.filter((item) => item.type !== 'divider'),
     [quarterSelectItems],
   )
   const [selectedQuarterKey, setSelectedQuarterKey] = useState(defaultServiceQuarterKey())
@@ -263,29 +309,24 @@ export default function MondayMeetingServiceTab() {
       <div className="monday-meeting-service-toolbar">
         <div className="monday-meeting-service-toolbar__group">
           <span className="monday-meeting-service-toolbar__label">Quarter</span>
-          <Form.Select
-            size="sm"
-            className="monday-meeting-service-quarter-control"
-            value={selectedQuarterKey}
-            aria-label="Reporting quarter"
-            onChange={(e) => setSelectedQuarterKey(e.target.value)}
-          >
-            {quarterSelectItems.map((item) =>
-              item.type === 'divider' ? (
-                <option
-                  key={`divider-${item.year}`}
-                  disabled
-                  className="monday-meeting-service-quarter-divider"
-                >
-                  {item.label}
-                </option>
-              ) : (
+          <div className="monday-meeting-service-quarter-select-wrap">
+            <Form.Select
+              size="sm"
+              className="monday-meeting-service-quarter-control"
+              value={selectedQuarterKey}
+              aria-label="Reporting quarter"
+              onChange={(e) => setSelectedQuarterKey(e.target.value)}
+            >
+              {quarterSelectItems.map((item) => (
                 <option key={item.key} value={item.key}>
                   {item.label}
                 </option>
-              ),
-            )}
-          </Form.Select>
+              ))}
+            </Form.Select>
+            {selectedQuarterKey === ALL_TIME_QUARTER_KEY ? (
+              <ServiceQuarterAllTimeInfo startDate={start} endDate={end} />
+            ) : null}
+          </div>
         </div>
         <Link
           to="/monday_meeting/service/admin"
@@ -317,20 +358,29 @@ export default function MondayMeetingServiceTab() {
       ) : data ? (
         <>
           <section className="monday-meeting-service-panel">
-            <h2 className="monday-meeting-service-section-title">Quotes</h2>
-            <div className="monday-meeting-service-kpi-grid monday-meeting-service-kpi-grid--cols-3">
-              <MetricTile
-                label="Quotes approved"
-                value={`${allQuotes?.approved_pct ?? 0}%`}
-                detail={`${allQuotes?.approved ?? 0} of ${allQuotes?.total ?? 0} quotes accepted`}
-                infoTooltip={ALL_QUOTES_TOOLTIP}
+            <h2 className="monday-meeting-service-section-title">Goals</h2>
+            <div className="monday-meeting-service-kpi-grid monday-meeting-service-kpi-grid--cols-2">
+              <GoalTile
+                label="Deficiencies repaired"
+                actualPct={repairedGoal?.actual_pct ?? 0}
+                targetPct={repairedGoal?.target_pct ?? 35}
+                meetingGoal={repairedGoal?.meeting_goal ?? false}
+                sampleText={`${repairedGoal?.repaired_count ?? 0} of ${repairedGoal?.total_deficiencies ?? 0} deficiencies repaired`}
+                sampleSubDetail={exclusionSubline}
+                onSampleSubDetailClick={hasExcluded ? () => setShowExcludedModal(true) : undefined}
+                infoTooltip={DEFICIENCIES_REPAIRED_TOOLTIP}
               />
+              <ScheduledWithinSlaGoalTile slaGoal={slaGoal} />
             </div>
           </section>
 
           <section className="monday-meeting-service-panel">
-            <h2 className="monday-meeting-service-section-title">Deficiencies</h2>
-            <div className="monday-meeting-service-kpi-grid monday-meeting-service-kpi-grid--cols-4">
+            <SlaBucketKpiRow slaGoal={slaGoal} />
+          </section>
+
+          <section className="monday-meeting-service-panel">
+            <h2 className="monday-meeting-service-section-title">Deficiency funnel</h2>
+            <div className="monday-meeting-service-kpi-grid monday-meeting-service-kpi-grid--cols-3">
               <MetricTile
                 label="Deficiencies quoted"
                 value={`${pipeline?.quoted_pct ?? 0}%`}
@@ -338,12 +388,6 @@ export default function MondayMeetingServiceTab() {
                 subDetail={exclusionSubline}
                 onSubDetailClick={hasExcluded ? () => setShowExcludedModal(true) : undefined}
                 infoTooltip={`${DEFICIENCY_COHORT_TOOLTIP} ${PIPELINE_EXCLUSION_TOOLTIP}`}
-              />
-              <MetricTile
-                label="Not quoted"
-                value={`${pipeline?.not_quoted_pct ?? 0}%`}
-                detail={`${(pipeline?.total ?? 0) - (pipeline?.quoted ?? 0)} deficiencies without quote`}
-                infoTooltip={DEFICIENCY_COHORT_TOOLTIP}
               />
               <MetricTile
                 label="Quotes approved"
@@ -358,19 +402,18 @@ export default function MondayMeetingServiceTab() {
                 infoTooltip={DEFICIENCY_COHORT_TOOLTIP}
               />
             </div>
+          </section>
 
-            <h2 className="monday-meeting-service-section-title mt-2">Goals</h2>
-            <div className="monday-meeting-service-kpi-grid monday-meeting-service-kpi-grid--cols-2">
-              <GoalTile
-                label="Deficiencies repaired"
-                actualPct={repairedGoal?.actual_pct ?? 0}
-                targetPct={repairedGoal?.target_pct ?? 35}
-                meetingGoal={repairedGoal?.meeting_goal ?? false}
-                sampleText={`${repairedGoal?.repaired_count ?? 0} of ${repairedGoal?.total_deficiencies ?? 0} deficiencies completed`}
+          <section className="monday-meeting-service-panel">
+            <h2 className="monday-meeting-service-section-title">Total quotes</h2>
+            <div className="monday-meeting-service-kpi-grid monday-meeting-service-kpi-grid--cols-3">
+              <MetricTile
+                label="Quotes approved"
+                value={`${allQuotes?.approved_pct ?? 0}%`}
+                detail={`${allQuotes?.approved ?? 0} of ${allQuotes?.total ?? 0} quotes accepted`}
+                infoTooltip={ALL_QUOTES_TOOLTIP}
               />
-              <ScheduledWithinSlaGoalTile slaGoal={slaGoal} />
             </div>
-            <SlaBucketKpiRow slaGoal={slaGoal} />
           </section>
 
           <ExcludedDeficienciesModal

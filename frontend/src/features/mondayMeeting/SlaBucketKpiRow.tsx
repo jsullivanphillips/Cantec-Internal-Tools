@@ -1,5 +1,5 @@
 import { useState, type KeyboardEvent, type ReactNode } from 'react'
-import { Button, Card, Modal } from 'react-bootstrap'
+import { Button, Card, Modal, OverlayTrigger, Tooltip } from 'react-bootstrap'
 import SlaJobTimelineRow from './SlaJobTimelineRow'
 import SlaMissingScheduleRow from './SlaMissingScheduleRow'
 import {
@@ -92,16 +92,42 @@ function SlaBucketMiniKpi({
   )
 }
 
+const APPROVED_QUOTES_BUCKET_TOOLTIP =
+  'Approved repair quotes from the selected quarter that do not yet have a scheduled repair job, grouped by SLA status.'
+
 function SlaBucketSection({
   eyebrow,
+  eyebrowTooltip,
   children,
 }: {
   eyebrow: string
+  eyebrowTooltip?: string
   children: ReactNode
 }) {
   return (
     <section className="monday-meeting-sla-bucket-section">
-      <h3 className="monday-meeting-sla-bucket-section__eyebrow">{eyebrow}</h3>
+      <div className="monday-meeting-sla-bucket-section__eyebrow-row">
+        <h3 className="monday-meeting-sla-bucket-section__eyebrow">{eyebrow}</h3>
+        {eyebrowTooltip ? (
+          <OverlayTrigger
+            placement="top"
+            trigger={['hover', 'focus']}
+            overlay={
+              <Tooltip id={`sla-bucket-${eyebrow}`} className="monday-meeting-sla-info-tooltip">
+                {eyebrowTooltip}
+              </Tooltip>
+            }
+          >
+            <button
+              type="button"
+              className="monday-meeting-sla-info-btn"
+              aria-label={`About ${eyebrow}`}
+            >
+              <i className="bi bi-info-circle" aria-hidden />
+            </button>
+          </OverlayTrigger>
+        ) : null}
+      </div>
       <div className="monday-meeting-sla-bucket-section__cards">{children}</div>
     </section>
   )
@@ -126,7 +152,7 @@ export default function SlaBucketKpiRow({ slaGoal }: { slaGoal: ScheduledWithinS
   return (
     <>
       <div className="monday-meeting-sla-bucket-kpi-row">
-        <SlaBucketSection eyebrow="Completed jobs">
+        <SlaBucketSection eyebrow="Scheduled repair quotes">
           <SlaBucketMiniKpi
             label="Met SLA"
             count={withinSlaJobs.length}
@@ -143,7 +169,7 @@ export default function SlaBucketKpiRow({ slaGoal }: { slaGoal: ScheduledWithinS
           />
         </SlaBucketSection>
 
-        <SlaBucketSection eyebrow="Approved quotes">
+        <SlaBucketSection eyebrow="Approved quotes" eyebrowTooltip={APPROVED_QUOTES_BUCKET_TOOLTIP}>
           <SlaBucketMiniKpi
             label="Unscheduled under SLA"
             count={unscheduledUnderSlaJobs.length}

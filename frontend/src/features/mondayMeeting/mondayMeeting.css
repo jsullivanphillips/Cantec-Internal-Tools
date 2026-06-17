@@ -78,6 +78,12 @@
   background: #fff;
 }
 
+.monday-meeting-service-quarter-select-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
 .monday-meeting-service-quarter-control option.monday-meeting-service-quarter-divider {
   color: #64748b;
   font-size: 0.6875rem;
@@ -192,6 +198,12 @@
 
 .monday-meeting-sla-bucket-section:last-child {
   flex: 4 1 0;
+}
+
+.monday-meeting-sla-bucket-section__eyebrow-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
 }
 
 .monday-meeting-sla-bucket-section__eyebrow {
