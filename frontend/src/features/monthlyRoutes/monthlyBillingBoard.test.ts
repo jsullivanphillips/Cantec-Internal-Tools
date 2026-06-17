@@ -44,6 +44,7 @@ function billingRow(overrides: Partial<BillingBoardLocationRow> = {}): BillingBo
     route_number: 10,
     monthly_route_id: 5,
     rollup_price_per_month: null,
+    pricing_updated: false,
     months: {},
     quarter_billed: false,
     billed_at: null,

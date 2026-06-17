@@ -73,6 +73,8 @@ Classification runs automatically after `update_deficiencies()` and can be refre
 
 Apply migration `b2c3d4e5f6a8` before using this feature.
 
+From the **Excluded deficiencies** modal on the Service tab, you can **Include in metrics** for any filter-excluded deficiency. Overrides are stored on `deficiency_service_eligibility.included_override` and survive automatic reclassification. Use **Exclude again** to remove an override and re-run classification for that deficiency.
+
 ## Smoke checklist (after deploy)
 
 - Login / logout

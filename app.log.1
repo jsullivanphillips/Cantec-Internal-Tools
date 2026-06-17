@@ -1,255 +1,503 @@
-2026-06-16 13:57:37,720 - INFO - Logging setup complete
-2026-06-16 13:57:43,436 - INFO - Logging setup complete
-2026-06-16 13:57:44,795 - INFO - Logging setup complete
-2026-06-16 14:04:23,266 - INFO - Logging setup complete
-2026-06-16 14:04:26,167 - INFO - Logging setup complete
-2026-06-16 14:04:54,229 - INFO - Logging setup complete
-2026-06-16 14:08:32,320 - INFO - Logging setup complete
-2026-06-16 14:10:28,000 - INFO - Logging setup complete
-2026-06-16 14:10:30,916 - INFO - Logging setup complete
-2026-06-16 14:12:42,751 - INFO - Logging setup complete
-2026-06-16 14:12:44,109 - INFO - Logging setup complete
-2026-06-16 14:14:50,510 - INFO - Logging setup complete
-2026-06-16 14:14:51,793 - INFO - Logging setup complete
-2026-06-16 14:19:15,958 - INFO - Logging setup complete
-2026-06-16 14:23:31,843 - INFO - Logging setup complete
-2026-06-16 14:23:33,192 - INFO - Logging setup complete
-2026-06-16 14:32:15,694 - INFO - Logging setup complete
-2026-06-16 14:36:26,974 - INFO - Logging setup complete
-2026-06-16 14:36:29,682 - INFO - Logging setup complete
-2026-06-16 14:36:33,554 - INFO - Logging setup complete
-2026-06-16 14:36:39,574 - INFO - Logging setup complete
-2026-06-16 14:36:42,348 - INFO - Logging setup complete
-2026-06-16 14:36:56,024 - INFO - Logging setup complete
-2026-06-16 14:38:40,383 - INFO - Logging setup complete
-2026-06-16 14:38:45,232 - INFO - Logging setup complete
-2026-06-16 14:38:46,537 - INFO - Logging setup complete
-2026-06-16 14:39:08,145 - INFO - Logging setup complete
-2026-06-16 14:40:24,769 - INFO - Logging setup complete
-2026-06-16 14:41:22,806 - INFO - Logging setup complete
-2026-06-16 14:41:25,622 - INFO - Logging setup complete
-2026-06-16 14:42:44,635 - INFO - Logging setup complete
-2026-06-16 14:42:45,922 - INFO - Logging setup complete
-2026-06-16 14:50:57,856 - INFO - Logging setup complete
-2026-06-16 14:51:00,562 - INFO - Logging setup complete
-2026-06-16 14:51:03,355 - INFO - Logging setup complete
-2026-06-16 14:51:13,772 - INFO - Logging setup complete
-2026-06-16 14:51:22,078 - INFO - Logging setup complete
-2026-06-16 14:58:06,304 - INFO - Logging setup complete
-2026-06-16 14:58:23,281 - INFO - Logging setup complete
-2026-06-16 14:58:24,540 - INFO - Logging setup complete
-2026-06-16 15:01:03,890 - INFO - Logging setup complete
-2026-06-16 15:01:07,818 - INFO - Logging setup complete
-2026-06-16 15:02:34,931 - INFO - Logging setup complete
-2026-06-16 15:02:36,367 - INFO - Logging setup complete
-2026-06-16 15:05:18,871 - INFO - Logging setup complete
-2026-06-16 15:05:22,777 - INFO - Logging setup complete
-2026-06-16 15:05:24,795 - INFO - Logging setup complete
-2026-06-16 15:05:32,032 - INFO - Logging setup complete
-2026-06-16 15:05:56,899 - INFO - Logging setup complete
-2026-06-16 15:07:39,051 - ERROR - refresh_daily_snapshot_if_stale failed
-Traceback (most recent call last):
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 146, in __init__
-    self._dbapi_connection = engine.raw_connection()
-                             ~~~~~~~~~~~~~~~~~~~~~^^
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 3298, in raw_connection
-    return self.pool.connect()
-           ~~~~~~~~~~~~~~~~~^^
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 449, in connect
-    return _ConnectionFairy._checkout(self)
-           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 1264, in _checkout
-    fairy = _ConnectionRecord.checkout(pool)
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 713, in checkout
-    rec = pool._do_get()
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\impl.py", line 179, in _do_get
-    with util.safe_reraise():
-         ~~~~~~~~~~~~~~~~~^^
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 146, in __exit__
-    raise exc_value.with_traceback(exc_tb)
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\impl.py", line 177, in _do_get
-    return self._create_connection()
-           ~~~~~~~~~~~~~~~~~~~~~~~^^
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 390, in _create_connection
-    return _ConnectionRecord(self)
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 675, in __init__
-    self.__connect()
-    ~~~~~~~~~~~~~~^^
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 901, in __connect
-    with util.safe_reraise():
-         ~~~~~~~~~~~~~~~~~^^
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 146, in __exit__
-    raise exc_value.with_traceback(exc_tb)
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 897, in __connect
-    self.dbapi_connection = connection = pool._invoke_creator(self)
-                                         ~~~~~~~~~~~~~~~~~~~~^^^^^^
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\create.py", line 646, in connect
-    return dialect.connect(*cargs, **cparams)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\default.py", line 625, in connect
-    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
-           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\psycopg2\__init__.py", line 135, in connect
-    conn = _connect(dsn, connection_factory=connection_factory, **kwasync)
-psycopg2.OperationalError: connection to server at "cb5ajfjosdpmil.cluster-czrs8kj4isg7.us-east-1.rds.amazonaws.com" (34.202.178.206), port 5432 failed: FATAL:  too many connections for role "u557kv77619gk7"
-
-
-The above exception was the direct cause of the following exception:
-
-Traceback (most recent call last):
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\app\routes\processing_attack.py", line 460, in refresh_daily_snapshot_if_stale
-    result = _refresh_processing_status_daily_if_stale(max_age_minutes=15)
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\app\routes\processing_attack.py", line 302, in _refresh_processing_status_daily_if_stale
-    record = ProcessingStatusDaily.query.filter_by(snapshot_date=snapshot_date).first()
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\orm\query.py", line 2759, in first
-    return self.limit(1)._iter().first()  # type: ignore
-           ~~~~~~~~~~~~~~~~~~~^^
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\orm\query.py", line 2858, in _iter
-    result: Union[ScalarResult[_T], Result[_T]] = self.session.execute(
-                                                  ~~~~~~~~~~~~~~~~~~~~^
-        statement,
-        ^^^^^^^^^^
-        params,
-        ^^^^^^^
-        execution_options={"_sa_orm_load_options": self.load_options},
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2365, in execute
-    return self._execute_internal(
-           ~~~~~~~~~~~~~~~~~~~~~~^
-        statement,
-        ^^^^^^^^^^
-    ...<4 lines>...
-        _add_event=_add_event,
-        ^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2241, in _execute_internal
-    conn = self._connection_for_bind(bind)
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2110, in _connection_for_bind
-    return trans._connection_for_bind(engine, execution_options)
-           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<string>", line 2, in _connection_for_bind
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\orm\state_changes.py", line 139, in _go
-    ret_value = fn(self, *arg, **kw)
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\orm\session.py", line 1189, in _connection_for_bind
-    conn = bind.connect()
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 3274, in connect
-    return self._connection_cls(self)
-           ~~~~~~~~~~~~~~~~~~~~^^^^^^
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 148, in __init__
-    Connection._handle_dbapi_exception_noconnection(
-    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
-        err, dialect, engine
-        ^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2439, in _handle_dbapi_exception_noconnection
-    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 146, in __init__
-    self._dbapi_connection = engine.raw_connection()
-                             ~~~~~~~~~~~~~~~~~~~~~^^
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 3298, in raw_connection
-    return self.pool.connect()
-           ~~~~~~~~~~~~~~~~~^^
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 449, in connect
-    return _ConnectionFairy._checkout(self)
-           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 1264, in _checkout
-    fairy = _ConnectionRecord.checkout(pool)
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 713, in checkout
-    rec = pool._do_get()
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\impl.py", line 179, in _do_get
-    with util.safe_reraise():
-         ~~~~~~~~~~~~~~~~~^^
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 146, in __exit__
-    raise exc_value.with_traceback(exc_tb)
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\impl.py", line 177, in _do_get
-    return self._create_connection()
-           ~~~~~~~~~~~~~~~~~~~~~~~^^
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 390, in _create_connection
-    return _ConnectionRecord(self)
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 675, in __init__
-    self.__connect()
-    ~~~~~~~~~~~~~~^^
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 901, in __connect
-    with util.safe_reraise():
-         ~~~~~~~~~~~~~~~~~^^
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 146, in __exit__
-    raise exc_value.with_traceback(exc_tb)
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\pool\base.py", line 897, in __connect
-    self.dbapi_connection = connection = pool._invoke_creator(self)
-                                         ~~~~~~~~~~~~~~~~~~~~^^^^^^
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\create.py", line 646, in connect
-    return dialect.connect(*cargs, **cparams)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\sqlalchemy\engine\default.py", line 625, in connect
-    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
-           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\jamie\OneDrive - Cantec Fire Alarms\Desktop\CSC\Schedule Assist\venv\Lib\site-packages\psycopg2\__init__.py", line 135, in connect
-    conn = _connect(dsn, connection_factory=connection_factory, **kwasync)
-sqlalchemy.exc.OperationalError: (psycopg2.OperationalError) connection to server at "cb5ajfjosdpmil.cluster-czrs8kj4isg7.us-east-1.rds.amazonaws.com" (34.202.178.206), port 5432 failed: FATAL:  too many connections for role "u557kv77619gk7"
-
-(Background on this error at: https://sqlalche.me/e/20/e3q8)
-2026-06-16 15:12:49,702 - INFO - Logging setup complete
-2026-06-16 15:13:11,549 - INFO - Logging setup complete
-2026-06-16 15:14:04,505 - INFO - Logging setup complete
-2026-06-16 15:15:32,967 - INFO - Logging setup complete
-2026-06-16 15:15:35,422 - INFO - Logging setup complete
-2026-06-16 15:19:06,261 - INFO - Logging setup complete
-2026-06-16 15:19:23,857 - INFO - Logging setup complete
-2026-06-16 15:25:50,192 - INFO - Logging setup complete
-2026-06-16 15:35:13,315 - INFO - Logging setup complete
-2026-06-16 15:35:18,467 - INFO - Logging setup complete
-2026-06-16 15:35:43,143 - INFO - Logging setup complete
-2026-06-16 15:35:46,102 - INFO - Logging setup complete
-2026-06-16 15:35:52,188 - INFO - Logging setup complete
-2026-06-16 15:36:05,826 - INFO - Logging setup complete
-2026-06-16 15:36:08,628 - INFO - Logging setup complete
-2026-06-16 15:36:47,423 - INFO - Logging setup complete
-2026-06-16 15:42:22,307 - INFO - Logging setup complete
-2026-06-16 15:42:25,100 - INFO - Logging setup complete
-2026-06-16 15:42:29,050 - INFO - Logging setup complete
-2026-06-16 15:49:22,352 - INFO - Logging setup complete
-2026-06-16 15:49:25,056 - INFO - Logging setup complete
-2026-06-16 15:49:33,316 - INFO - Logging setup complete
-2026-06-16 15:49:36,184 - INFO - Logging setup complete
-2026-06-16 15:50:35,498 - INFO - Logging setup complete
-2026-06-16 15:50:42,811 - INFO - Logging setup complete
-2026-06-16 15:50:46,980 - INFO - Logging setup complete
-2026-06-16 15:50:58,896 - INFO - Logging setup complete
-2026-06-16 15:51:01,989 - INFO - Logging setup complete
-2026-06-16 15:51:26,741 - INFO - Logging setup complete
-2026-06-16 15:53:59,549 - INFO - Logging setup complete
-2026-06-16 15:54:02,896 - INFO - Logging setup complete
-2026-06-16 15:54:14,866 - INFO - Logging setup complete
-2026-06-16 15:58:32,837 - INFO - Logging setup complete
-2026-06-16 15:58:35,598 - INFO - Logging setup complete
-2026-06-16 15:59:00,148 - INFO - Logging setup complete
-2026-06-16 16:01:05,467 - INFO - Logging setup complete
-2026-06-16 16:01:17,630 - INFO - Logging setup complete
-2026-06-16 16:01:29,169 - INFO - Logging setup complete
-2026-06-16 16:02:15,256 - INFO - Logging setup complete
-2026-06-16 16:04:05,824 - INFO - Logging setup complete
-2026-06-16 16:04:10,994 - INFO - Logging setup complete
-2026-06-16 16:04:17,635 - INFO - Logging setup complete
-2026-06-16 16:04:30,107 - INFO - Logging setup complete
-2026-06-16 16:04:33,486 - INFO - Logging setup complete
-2026-06-16 16:07:17,136 - INFO - Logging setup complete
-2026-06-16 16:10:20,229 - INFO - Logging setup complete
-2026-06-16 16:10:21,526 - INFO - Logging setup complete
-2026-06-16 16:13:52,403 - INFO - Logging setup complete
-2026-06-16 16:14:29,826 - INFO - Logging setup complete
-2026-06-16 16:15:46,775 - INFO - Logging setup complete
-2026-06-16 16:15:49,715 - INFO - Logging setup complete
-2026-06-16 16:15:53,674 - INFO - Logging setup complete
-2026-06-16 16:16:05,234 - INFO - Logging setup complete
-2026-06-16 16:16:20,195 - INFO - Logging setup complete
-2026-06-16 16:16:27,689 - INFO - Logging setup complete
-2026-06-16 16:16:40,642 - INFO - Logging setup complete
-2026-06-16 16:16:58,577 - INFO - Logging setup complete
-2026-06-16 16:17:12,171 - INFO - Logging setup complete
-2026-06-16 16:17:15,864 - INFO - Logging setup complete
-2026-06-16 16:17:30,807 - INFO - Logging setup complete
-2026-06-16 16:17:33,246 - INFO - Logging setup complete
+2026-06-17 10:15:51,568 - INFO - Logging setup complete
+2026-06-17 10:15:57,353 - INFO - Logging setup complete
+2026-06-17 10:15:58,860 - INFO - Logging setup complete
+2026-06-17 10:31:29,847 - INFO - Logging setup complete
+2026-06-17 10:31:45,798 - INFO - Logging setup complete
+2026-06-17 10:31:49,780 - INFO - Logging setup complete
+2026-06-17 10:33:16,905 - INFO - Logging setup complete
+2026-06-17 10:33:37,990 - INFO - Logging setup complete
+2026-06-17 10:33:38,848 - INFO - Logging setup complete
+2026-06-17 10:33:38,848 - INFO - Logging setup complete
+2026-06-17 10:33:39,509 - INFO - Logging setup complete
+2026-06-17 10:33:39,509 - INFO - Logging setup complete
+2026-06-17 10:33:39,509 - INFO - Logging setup complete
+2026-06-17 10:33:40,151 - INFO - Logging setup complete
+2026-06-17 10:33:40,151 - INFO - Logging setup complete
+2026-06-17 10:33:40,151 - INFO - Logging setup complete
+2026-06-17 10:33:40,151 - INFO - Logging setup complete
+2026-06-17 10:33:40,820 - INFO - Logging setup complete
+2026-06-17 10:33:40,820 - INFO - Logging setup complete
+2026-06-17 10:33:40,820 - INFO - Logging setup complete
+2026-06-17 10:33:40,820 - INFO - Logging setup complete
+2026-06-17 10:33:40,820 - INFO - Logging setup complete
+2026-06-17 10:33:41,463 - INFO - Logging setup complete
+2026-06-17 10:33:41,463 - INFO - Logging setup complete
+2026-06-17 10:33:41,463 - INFO - Logging setup complete
+2026-06-17 10:33:41,463 - INFO - Logging setup complete
+2026-06-17 10:33:41,463 - INFO - Logging setup complete
+2026-06-17 10:33:41,463 - INFO - Logging setup complete
+2026-06-17 10:33:42,121 - INFO - Logging setup complete
+2026-06-17 10:33:42,121 - INFO - Logging setup complete
+2026-06-17 10:33:42,121 - INFO - Logging setup complete
+2026-06-17 10:33:42,121 - INFO - Logging setup complete
+2026-06-17 10:33:42,121 - INFO - Logging setup complete
+2026-06-17 10:33:42,121 - INFO - Logging setup complete
+2026-06-17 10:33:42,121 - INFO - Logging setup complete
+2026-06-17 10:33:42,771 - INFO - Logging setup complete
+2026-06-17 10:33:42,771 - INFO - Logging setup complete
+2026-06-17 10:33:42,771 - INFO - Logging setup complete
+2026-06-17 10:33:42,771 - INFO - Logging setup complete
+2026-06-17 10:33:42,771 - INFO - Logging setup complete
+2026-06-17 10:33:42,771 - INFO - Logging setup complete
+2026-06-17 10:33:42,771 - INFO - Logging setup complete
+2026-06-17 10:33:42,771 - INFO - Logging setup complete
+2026-06-17 10:33:43,425 - INFO - Logging setup complete
+2026-06-17 10:33:43,425 - INFO - Logging setup complete
+2026-06-17 10:33:43,425 - INFO - Logging setup complete
+2026-06-17 10:33:43,425 - INFO - Logging setup complete
+2026-06-17 10:33:43,425 - INFO - Logging setup complete
+2026-06-17 10:33:43,425 - INFO - Logging setup complete
+2026-06-17 10:33:43,425 - INFO - Logging setup complete
+2026-06-17 10:33:43,425 - INFO - Logging setup complete
+2026-06-17 10:33:43,425 - INFO - Logging setup complete
+2026-06-17 10:33:44,146 - INFO - Logging setup complete
+2026-06-17 10:33:44,146 - INFO - Logging setup complete
+2026-06-17 10:33:44,146 - INFO - Logging setup complete
+2026-06-17 10:33:44,146 - INFO - Logging setup complete
+2026-06-17 10:33:44,146 - INFO - Logging setup complete
+2026-06-17 10:33:44,146 - INFO - Logging setup complete
+2026-06-17 10:33:44,146 - INFO - Logging setup complete
+2026-06-17 10:33:44,146 - INFO - Logging setup complete
+2026-06-17 10:33:44,146 - INFO - Logging setup complete
+2026-06-17 10:33:44,146 - INFO - Logging setup complete
+2026-06-17 10:33:44,766 - INFO - Logging setup complete
+2026-06-17 10:33:44,766 - INFO - Logging setup complete
+2026-06-17 10:33:44,766 - INFO - Logging setup complete
+2026-06-17 10:33:44,766 - INFO - Logging setup complete
+2026-06-17 10:33:44,766 - INFO - Logging setup complete
+2026-06-17 10:33:44,766 - INFO - Logging setup complete
+2026-06-17 10:33:44,766 - INFO - Logging setup complete
+2026-06-17 10:33:44,766 - INFO - Logging setup complete
+2026-06-17 10:33:44,766 - INFO - Logging setup complete
+2026-06-17 10:33:44,766 - INFO - Logging setup complete
+2026-06-17 10:33:44,766 - INFO - Logging setup complete
+2026-06-17 10:33:45,418 - INFO - Logging setup complete
+2026-06-17 10:33:45,418 - INFO - Logging setup complete
+2026-06-17 10:33:45,418 - INFO - Logging setup complete
+2026-06-17 10:33:45,418 - INFO - Logging setup complete
+2026-06-17 10:33:45,418 - INFO - Logging setup complete
+2026-06-17 10:33:45,418 - INFO - Logging setup complete
+2026-06-17 10:33:45,418 - INFO - Logging setup complete
+2026-06-17 10:33:45,418 - INFO - Logging setup complete
+2026-06-17 10:33:45,418 - INFO - Logging setup complete
+2026-06-17 10:33:45,418 - INFO - Logging setup complete
+2026-06-17 10:33:45,418 - INFO - Logging setup complete
+2026-06-17 10:33:45,418 - INFO - Logging setup complete
+2026-06-17 10:33:46,137 - INFO - Logging setup complete
+2026-06-17 10:33:46,137 - INFO - Logging setup complete
+2026-06-17 10:33:46,137 - INFO - Logging setup complete
+2026-06-17 10:33:46,137 - INFO - Logging setup complete
+2026-06-17 10:33:46,137 - INFO - Logging setup complete
+2026-06-17 10:33:46,137 - INFO - Logging setup complete
+2026-06-17 10:33:46,137 - INFO - Logging setup complete
+2026-06-17 10:33:46,137 - INFO - Logging setup complete
+2026-06-17 10:33:46,137 - INFO - Logging setup complete
+2026-06-17 10:33:46,137 - INFO - Logging setup complete
+2026-06-17 10:33:46,137 - INFO - Logging setup complete
+2026-06-17 10:33:46,137 - INFO - Logging setup complete
+2026-06-17 10:33:46,137 - INFO - Logging setup complete
+2026-06-17 10:33:46,855 - INFO - Logging setup complete
+2026-06-17 10:33:46,855 - INFO - Logging setup complete
+2026-06-17 10:33:46,855 - INFO - Logging setup complete
+2026-06-17 10:33:46,855 - INFO - Logging setup complete
+2026-06-17 10:33:46,855 - INFO - Logging setup complete
+2026-06-17 10:33:46,855 - INFO - Logging setup complete
+2026-06-17 10:33:46,855 - INFO - Logging setup complete
+2026-06-17 10:33:46,855 - INFO - Logging setup complete
+2026-06-17 10:33:46,855 - INFO - Logging setup complete
+2026-06-17 10:33:46,855 - INFO - Logging setup complete
+2026-06-17 10:33:46,855 - INFO - Logging setup complete
+2026-06-17 10:33:46,855 - INFO - Logging setup complete
+2026-06-17 10:33:46,855 - INFO - Logging setup complete
+2026-06-17 10:33:46,855 - INFO - Logging setup complete
+2026-06-17 10:33:47,511 - INFO - Logging setup complete
+2026-06-17 10:33:47,511 - INFO - Logging setup complete
+2026-06-17 10:33:47,511 - INFO - Logging setup complete
+2026-06-17 10:33:47,511 - INFO - Logging setup complete
+2026-06-17 10:33:47,511 - INFO - Logging setup complete
+2026-06-17 10:33:47,511 - INFO - Logging setup complete
+2026-06-17 10:33:47,511 - INFO - Logging setup complete
+2026-06-17 10:33:47,511 - INFO - Logging setup complete
+2026-06-17 10:33:47,511 - INFO - Logging setup complete
+2026-06-17 10:33:47,511 - INFO - Logging setup complete
+2026-06-17 10:33:47,511 - INFO - Logging setup complete
+2026-06-17 10:33:47,511 - INFO - Logging setup complete
+2026-06-17 10:33:47,511 - INFO - Logging setup complete
+2026-06-17 10:33:47,511 - INFO - Logging setup complete
+2026-06-17 10:33:47,511 - INFO - Logging setup complete
+2026-06-17 10:33:48,284 - INFO - Logging setup complete
+2026-06-17 10:33:48,284 - INFO - Logging setup complete
+2026-06-17 10:33:48,284 - INFO - Logging setup complete
+2026-06-17 10:33:48,284 - INFO - Logging setup complete
+2026-06-17 10:33:48,284 - INFO - Logging setup complete
+2026-06-17 10:33:48,284 - INFO - Logging setup complete
+2026-06-17 10:33:48,284 - INFO - Logging setup complete
+2026-06-17 10:33:48,284 - INFO - Logging setup complete
+2026-06-17 10:33:48,284 - INFO - Logging setup complete
+2026-06-17 10:33:48,284 - INFO - Logging setup complete
+2026-06-17 10:33:48,284 - INFO - Logging setup complete
+2026-06-17 10:33:48,284 - INFO - Logging setup complete
+2026-06-17 10:33:48,284 - INFO - Logging setup complete
+2026-06-17 10:33:48,284 - INFO - Logging setup complete
+2026-06-17 10:33:48,284 - INFO - Logging setup complete
+2026-06-17 10:33:48,284 - INFO - Logging setup complete
+2026-06-17 10:33:48,935 - INFO - Logging setup complete
+2026-06-17 10:33:48,935 - INFO - Logging setup complete
+2026-06-17 10:33:48,935 - INFO - Logging setup complete
+2026-06-17 10:33:48,935 - INFO - Logging setup complete
+2026-06-17 10:33:48,935 - INFO - Logging setup complete
+2026-06-17 10:33:48,935 - INFO - Logging setup complete
+2026-06-17 10:33:48,935 - INFO - Logging setup complete
+2026-06-17 10:33:48,935 - INFO - Logging setup complete
+2026-06-17 10:33:48,935 - INFO - Logging setup complete
+2026-06-17 10:33:48,935 - INFO - Logging setup complete
+2026-06-17 10:33:48,935 - INFO - Logging setup complete
+2026-06-17 10:33:48,935 - INFO - Logging setup complete
+2026-06-17 10:33:48,935 - INFO - Logging setup complete
+2026-06-17 10:33:48,935 - INFO - Logging setup complete
+2026-06-17 10:33:48,935 - INFO - Logging setup complete
+2026-06-17 10:33:48,935 - INFO - Logging setup complete
+2026-06-17 10:33:48,935 - INFO - Logging setup complete
+2026-06-17 10:33:49,635 - INFO - Logging setup complete
+2026-06-17 10:33:49,635 - INFO - Logging setup complete
+2026-06-17 10:33:49,635 - INFO - Logging setup complete
+2026-06-17 10:33:49,635 - INFO - Logging setup complete
+2026-06-17 10:33:49,635 - INFO - Logging setup complete
+2026-06-17 10:33:49,635 - INFO - Logging setup complete
+2026-06-17 10:33:49,635 - INFO - Logging setup complete
+2026-06-17 10:33:49,635 - INFO - Logging setup complete
+2026-06-17 10:33:49,635 - INFO - Logging setup complete
+2026-06-17 10:33:49,635 - INFO - Logging setup complete
+2026-06-17 10:33:49,635 - INFO - Logging setup complete
+2026-06-17 10:33:49,635 - INFO - Logging setup complete
+2026-06-17 10:33:49,635 - INFO - Logging setup complete
+2026-06-17 10:33:49,635 - INFO - Logging setup complete
+2026-06-17 10:33:49,635 - INFO - Logging setup complete
+2026-06-17 10:33:49,635 - INFO - Logging setup complete
+2026-06-17 10:33:49,635 - INFO - Logging setup complete
+2026-06-17 10:33:49,635 - INFO - Logging setup complete
+2026-06-17 10:33:49,764 - INFO - Logging setup complete
+2026-06-17 10:33:49,764 - INFO - Logging setup complete
+2026-06-17 10:33:49,764 - INFO - Logging setup complete
+2026-06-17 10:33:49,764 - INFO - Logging setup complete
+2026-06-17 10:33:49,764 - INFO - Logging setup complete
+2026-06-17 10:33:49,764 - INFO - Logging setup complete
+2026-06-17 10:33:49,764 - INFO - Logging setup complete
+2026-06-17 10:33:49,764 - INFO - Logging setup complete
+2026-06-17 10:33:49,764 - INFO - Logging setup complete
+2026-06-17 10:33:49,764 - INFO - Logging setup complete
+2026-06-17 10:33:49,764 - INFO - Logging setup complete
+2026-06-17 10:33:49,764 - INFO - Logging setup complete
+2026-06-17 10:33:49,764 - INFO - Logging setup complete
+2026-06-17 10:33:49,764 - INFO - Logging setup complete
+2026-06-17 10:33:49,764 - INFO - Logging setup complete
+2026-06-17 10:33:49,764 - INFO - Logging setup complete
+2026-06-17 10:33:49,764 - INFO - Logging setup complete
+2026-06-17 10:33:49,764 - INFO - Logging setup complete
+2026-06-17 10:33:49,764 - INFO - Logging setup complete
+2026-06-17 10:33:49,892 - INFO - Logging setup complete
+2026-06-17 10:33:49,892 - INFO - Logging setup complete
+2026-06-17 10:33:49,892 - INFO - Logging setup complete
+2026-06-17 10:33:49,892 - INFO - Logging setup complete
+2026-06-17 10:33:49,892 - INFO - Logging setup complete
+2026-06-17 10:33:49,892 - INFO - Logging setup complete
+2026-06-17 10:33:49,892 - INFO - Logging setup complete
+2026-06-17 10:33:49,892 - INFO - Logging setup complete
+2026-06-17 10:33:49,892 - INFO - Logging setup complete
+2026-06-17 10:33:49,892 - INFO - Logging setup complete
+2026-06-17 10:33:49,892 - INFO - Logging setup complete
+2026-06-17 10:33:49,892 - INFO - Logging setup complete
+2026-06-17 10:33:49,892 - INFO - Logging setup complete
+2026-06-17 10:33:49,892 - INFO - Logging setup complete
+2026-06-17 10:33:49,892 - INFO - Logging setup complete
+2026-06-17 10:33:49,892 - INFO - Logging setup complete
+2026-06-17 10:33:49,892 - INFO - Logging setup complete
+2026-06-17 10:33:49,892 - INFO - Logging setup complete
+2026-06-17 10:33:49,892 - INFO - Logging setup complete
+2026-06-17 10:33:49,892 - INFO - Logging setup complete
+2026-06-17 10:33:50,019 - INFO - Logging setup complete
+2026-06-17 10:33:50,019 - INFO - Logging setup complete
+2026-06-17 10:33:50,019 - INFO - Logging setup complete
+2026-06-17 10:33:50,019 - INFO - Logging setup complete
+2026-06-17 10:33:50,019 - INFO - Logging setup complete
+2026-06-17 10:33:50,019 - INFO - Logging setup complete
+2026-06-17 10:33:50,019 - INFO - Logging setup complete
+2026-06-17 10:33:50,019 - INFO - Logging setup complete
+2026-06-17 10:33:50,019 - INFO - Logging setup complete
+2026-06-17 10:33:50,019 - INFO - Logging setup complete
+2026-06-17 10:33:50,019 - INFO - Logging setup complete
+2026-06-17 10:33:50,019 - INFO - Logging setup complete
+2026-06-17 10:33:50,019 - INFO - Logging setup complete
+2026-06-17 10:33:50,019 - INFO - Logging setup complete
+2026-06-17 10:33:50,019 - INFO - Logging setup complete
+2026-06-17 10:33:50,019 - INFO - Logging setup complete
+2026-06-17 10:33:50,019 - INFO - Logging setup complete
+2026-06-17 10:33:50,019 - INFO - Logging setup complete
+2026-06-17 10:33:50,019 - INFO - Logging setup complete
+2026-06-17 10:33:50,019 - INFO - Logging setup complete
+2026-06-17 10:33:50,019 - INFO - Logging setup complete
+2026-06-17 10:33:50,158 - INFO - Logging setup complete
+2026-06-17 10:33:50,158 - INFO - Logging setup complete
+2026-06-17 10:33:50,158 - INFO - Logging setup complete
+2026-06-17 10:33:50,158 - INFO - Logging setup complete
+2026-06-17 10:33:50,158 - INFO - Logging setup complete
+2026-06-17 10:33:50,158 - INFO - Logging setup complete
+2026-06-17 10:33:50,158 - INFO - Logging setup complete
+2026-06-17 10:33:50,158 - INFO - Logging setup complete
+2026-06-17 10:33:50,158 - INFO - Logging setup complete
+2026-06-17 10:33:50,158 - INFO - Logging setup complete
+2026-06-17 10:33:50,158 - INFO - Logging setup complete
+2026-06-17 10:33:50,158 - INFO - Logging setup complete
+2026-06-17 10:33:50,158 - INFO - Logging setup complete
+2026-06-17 10:33:50,158 - INFO - Logging setup complete
+2026-06-17 10:33:50,158 - INFO - Logging setup complete
+2026-06-17 10:33:50,158 - INFO - Logging setup complete
+2026-06-17 10:33:50,158 - INFO - Logging setup complete
+2026-06-17 10:33:50,158 - INFO - Logging setup complete
+2026-06-17 10:33:50,158 - INFO - Logging setup complete
+2026-06-17 10:33:50,158 - INFO - Logging setup complete
+2026-06-17 10:33:50,158 - INFO - Logging setup complete
+2026-06-17 10:33:50,158 - INFO - Logging setup complete
+2026-06-17 10:33:50,288 - INFO - Logging setup complete
+2026-06-17 10:33:50,288 - INFO - Logging setup complete
+2026-06-17 10:33:50,288 - INFO - Logging setup complete
+2026-06-17 10:33:50,288 - INFO - Logging setup complete
+2026-06-17 10:33:50,288 - INFO - Logging setup complete
+2026-06-17 10:33:50,288 - INFO - Logging setup complete
+2026-06-17 10:33:50,288 - INFO - Logging setup complete
+2026-06-17 10:33:50,288 - INFO - Logging setup complete
+2026-06-17 10:33:50,288 - INFO - Logging setup complete
+2026-06-17 10:33:50,288 - INFO - Logging setup complete
+2026-06-17 10:33:50,288 - INFO - Logging setup complete
+2026-06-17 10:33:50,288 - INFO - Logging setup complete
+2026-06-17 10:33:50,288 - INFO - Logging setup complete
+2026-06-17 10:33:50,288 - INFO - Logging setup complete
+2026-06-17 10:33:50,288 - INFO - Logging setup complete
+2026-06-17 10:33:50,288 - INFO - Logging setup complete
+2026-06-17 10:33:50,288 - INFO - Logging setup complete
+2026-06-17 10:33:50,288 - INFO - Logging setup complete
+2026-06-17 10:33:50,288 - INFO - Logging setup complete
+2026-06-17 10:33:50,288 - INFO - Logging setup complete
+2026-06-17 10:33:50,288 - INFO - Logging setup complete
+2026-06-17 10:33:50,288 - INFO - Logging setup complete
+2026-06-17 10:33:50,288 - INFO - Logging setup complete
+2026-06-17 10:33:50,420 - INFO - Logging setup complete
+2026-06-17 10:33:50,420 - INFO - Logging setup complete
+2026-06-17 10:33:50,420 - INFO - Logging setup complete
+2026-06-17 10:33:50,420 - INFO - Logging setup complete
+2026-06-17 10:33:50,420 - INFO - Logging setup complete
+2026-06-17 10:33:50,420 - INFO - Logging setup complete
+2026-06-17 10:33:50,420 - INFO - Logging setup complete
+2026-06-17 10:33:50,420 - INFO - Logging setup complete
+2026-06-17 10:33:50,420 - INFO - Logging setup complete
+2026-06-17 10:33:50,420 - INFO - Logging setup complete
+2026-06-17 10:33:50,420 - INFO - Logging setup complete
+2026-06-17 10:33:50,420 - INFO - Logging setup complete
+2026-06-17 10:33:50,420 - INFO - Logging setup complete
+2026-06-17 10:33:50,420 - INFO - Logging setup complete
+2026-06-17 10:33:50,420 - INFO - Logging setup complete
+2026-06-17 10:33:50,420 - INFO - Logging setup complete
+2026-06-17 10:33:50,420 - INFO - Logging setup complete
+2026-06-17 10:33:50,420 - INFO - Logging setup complete
+2026-06-17 10:33:50,420 - INFO - Logging setup complete
+2026-06-17 10:33:50,420 - INFO - Logging setup complete
+2026-06-17 10:33:50,420 - INFO - Logging setup complete
+2026-06-17 10:33:50,420 - INFO - Logging setup complete
+2026-06-17 10:33:50,420 - INFO - Logging setup complete
+2026-06-17 10:33:50,420 - INFO - Logging setup complete
+2026-06-17 10:33:50,558 - INFO - Logging setup complete
+2026-06-17 10:33:50,558 - INFO - Logging setup complete
+2026-06-17 10:33:50,558 - INFO - Logging setup complete
+2026-06-17 10:33:50,558 - INFO - Logging setup complete
+2026-06-17 10:33:50,558 - INFO - Logging setup complete
+2026-06-17 10:33:50,558 - INFO - Logging setup complete
+2026-06-17 10:33:50,558 - INFO - Logging setup complete
+2026-06-17 10:33:50,558 - INFO - Logging setup complete
+2026-06-17 10:33:50,558 - INFO - Logging setup complete
+2026-06-17 10:33:50,558 - INFO - Logging setup complete
+2026-06-17 10:33:50,558 - INFO - Logging setup complete
+2026-06-17 10:33:50,558 - INFO - Logging setup complete
+2026-06-17 10:33:50,558 - INFO - Logging setup complete
+2026-06-17 10:33:50,558 - INFO - Logging setup complete
+2026-06-17 10:33:50,558 - INFO - Logging setup complete
+2026-06-17 10:33:50,558 - INFO - Logging setup complete
+2026-06-17 10:33:50,558 - INFO - Logging setup complete
+2026-06-17 10:33:50,558 - INFO - Logging setup complete
+2026-06-17 10:33:50,558 - INFO - Logging setup complete
+2026-06-17 10:33:50,558 - INFO - Logging setup complete
+2026-06-17 10:33:50,558 - INFO - Logging setup complete
+2026-06-17 10:33:50,558 - INFO - Logging setup complete
+2026-06-17 10:33:50,558 - INFO - Logging setup complete
+2026-06-17 10:33:50,558 - INFO - Logging setup complete
+2026-06-17 10:33:50,558 - INFO - Logging setup complete
+2026-06-17 10:33:50,708 - INFO - Logging setup complete
+2026-06-17 10:33:50,708 - INFO - Logging setup complete
+2026-06-17 10:33:50,708 - INFO - Logging setup complete
+2026-06-17 10:33:50,708 - INFO - Logging setup complete
+2026-06-17 10:33:50,708 - INFO - Logging setup complete
+2026-06-17 10:33:50,708 - INFO - Logging setup complete
+2026-06-17 10:33:50,708 - INFO - Logging setup complete
+2026-06-17 10:33:50,708 - INFO - Logging setup complete
+2026-06-17 10:33:50,708 - INFO - Logging setup complete
+2026-06-17 10:33:50,708 - INFO - Logging setup complete
+2026-06-17 10:33:50,708 - INFO - Logging setup complete
+2026-06-17 10:33:50,708 - INFO - Logging setup complete
+2026-06-17 10:33:50,708 - INFO - Logging setup complete
+2026-06-17 10:33:50,708 - INFO - Logging setup complete
+2026-06-17 10:33:50,708 - INFO - Logging setup complete
+2026-06-17 10:33:50,708 - INFO - Logging setup complete
+2026-06-17 10:33:50,708 - INFO - Logging setup complete
+2026-06-17 10:33:50,708 - INFO - Logging setup complete
+2026-06-17 10:33:50,708 - INFO - Logging setup complete
+2026-06-17 10:33:50,708 - INFO - Logging setup complete
+2026-06-17 10:33:50,708 - INFO - Logging setup complete
+2026-06-17 10:33:50,708 - INFO - Logging setup complete
+2026-06-17 10:33:50,708 - INFO - Logging setup complete
+2026-06-17 10:33:50,708 - INFO - Logging setup complete
+2026-06-17 10:33:50,708 - INFO - Logging setup complete
+2026-06-17 10:33:50,708 - INFO - Logging setup complete
+2026-06-17 10:33:50,850 - INFO - Logging setup complete
+2026-06-17 10:33:50,850 - INFO - Logging setup complete
+2026-06-17 10:33:50,850 - INFO - Logging setup complete
+2026-06-17 10:33:50,850 - INFO - Logging setup complete
+2026-06-17 10:33:50,850 - INFO - Logging setup complete
+2026-06-17 10:33:50,850 - INFO - Logging setup complete
+2026-06-17 10:33:50,850 - INFO - Logging setup complete
+2026-06-17 10:33:50,850 - INFO - Logging setup complete
+2026-06-17 10:33:50,850 - INFO - Logging setup complete
+2026-06-17 10:33:50,850 - INFO - Logging setup complete
+2026-06-17 10:33:50,850 - INFO - Logging setup complete
+2026-06-17 10:33:50,850 - INFO - Logging setup complete
+2026-06-17 10:33:50,850 - INFO - Logging setup complete
+2026-06-17 10:33:50,850 - INFO - Logging setup complete
+2026-06-17 10:33:50,850 - INFO - Logging setup complete
+2026-06-17 10:33:50,850 - INFO - Logging setup complete
+2026-06-17 10:33:50,850 - INFO - Logging setup complete
+2026-06-17 10:33:50,850 - INFO - Logging setup complete
+2026-06-17 10:33:50,850 - INFO - Logging setup complete
+2026-06-17 10:33:50,850 - INFO - Logging setup complete
+2026-06-17 10:33:50,850 - INFO - Logging setup complete
+2026-06-17 10:33:50,850 - INFO - Logging setup complete
+2026-06-17 10:33:50,850 - INFO - Logging setup complete
+2026-06-17 10:33:50,850 - INFO - Logging setup complete
+2026-06-17 10:33:50,850 - INFO - Logging setup complete
+2026-06-17 10:33:50,850 - INFO - Logging setup complete
+2026-06-17 10:33:50,850 - INFO - Logging setup complete
+2026-06-17 10:33:50,997 - INFO - Logging setup complete
+2026-06-17 10:33:50,997 - INFO - Logging setup complete
+2026-06-17 10:33:50,997 - INFO - Logging setup complete
+2026-06-17 10:33:50,997 - INFO - Logging setup complete
+2026-06-17 10:33:50,997 - INFO - Logging setup complete
+2026-06-17 10:33:50,997 - INFO - Logging setup complete
+2026-06-17 10:33:50,997 - INFO - Logging setup complete
+2026-06-17 10:33:50,997 - INFO - Logging setup complete
+2026-06-17 10:33:50,997 - INFO - Logging setup complete
+2026-06-17 10:33:50,997 - INFO - Logging setup complete
+2026-06-17 10:33:50,997 - INFO - Logging setup complete
+2026-06-17 10:33:50,997 - INFO - Logging setup complete
+2026-06-17 10:33:50,997 - INFO - Logging setup complete
+2026-06-17 10:33:50,997 - INFO - Logging setup complete
+2026-06-17 10:33:50,997 - INFO - Logging setup complete
+2026-06-17 10:33:50,997 - INFO - Logging setup complete
+2026-06-17 10:33:50,997 - INFO - Logging setup complete
+2026-06-17 10:33:50,997 - INFO - Logging setup complete
+2026-06-17 10:33:50,997 - INFO - Logging setup complete
+2026-06-17 10:33:50,997 - INFO - Logging setup complete
+2026-06-17 10:33:50,997 - INFO - Logging setup complete
+2026-06-17 10:33:50,997 - INFO - Logging setup complete
+2026-06-17 10:33:50,997 - INFO - Logging setup complete
+2026-06-17 10:33:50,997 - INFO - Logging setup complete
+2026-06-17 10:33:50,997 - INFO - Logging setup complete
+2026-06-17 10:33:50,997 - INFO - Logging setup complete
+2026-06-17 10:33:50,997 - INFO - Logging setup complete
+2026-06-17 10:33:50,997 - INFO - Logging setup complete
+2026-06-17 10:33:51,134 - INFO - Logging setup complete
+2026-06-17 10:33:51,134 - INFO - Logging setup complete
+2026-06-17 10:33:51,134 - INFO - Logging setup complete
+2026-06-17 10:33:51,134 - INFO - Logging setup complete
+2026-06-17 10:33:51,134 - INFO - Logging setup complete
+2026-06-17 10:33:51,134 - INFO - Logging setup complete
+2026-06-17 10:33:51,134 - INFO - Logging setup complete
+2026-06-17 10:33:51,134 - INFO - Logging setup complete
+2026-06-17 10:33:51,134 - INFO - Logging setup complete
+2026-06-17 10:33:51,134 - INFO - Logging setup complete
+2026-06-17 10:33:51,134 - INFO - Logging setup complete
+2026-06-17 10:33:51,134 - INFO - Logging setup complete
+2026-06-17 10:33:51,134 - INFO - Logging setup complete
+2026-06-17 10:33:51,134 - INFO - Logging setup complete
+2026-06-17 10:33:51,134 - INFO - Logging setup complete
+2026-06-17 10:33:51,134 - INFO - Logging setup complete
+2026-06-17 10:33:51,134 - INFO - Logging setup complete
+2026-06-17 10:33:51,134 - INFO - Logging setup complete
+2026-06-17 10:33:51,134 - INFO - Logging setup complete
+2026-06-17 10:33:51,134 - INFO - Logging setup complete
+2026-06-17 10:33:51,134 - INFO - Logging setup complete
+2026-06-17 10:33:51,134 - INFO - Logging setup complete
+2026-06-17 10:33:51,134 - INFO - Logging setup complete
+2026-06-17 10:33:51,134 - INFO - Logging setup complete
+2026-06-17 10:33:51,134 - INFO - Logging setup complete
+2026-06-17 10:33:51,134 - INFO - Logging setup complete
+2026-06-17 10:33:51,134 - INFO - Logging setup complete
+2026-06-17 10:33:51,134 - INFO - Logging setup complete
+2026-06-17 10:33:51,134 - INFO - Logging setup complete
+2026-06-17 10:33:51,268 - INFO - Logging setup complete
+2026-06-17 10:33:51,268 - INFO - Logging setup complete
+2026-06-17 10:33:51,268 - INFO - Logging setup complete
+2026-06-17 10:33:51,268 - INFO - Logging setup complete
+2026-06-17 10:33:51,268 - INFO - Logging setup complete
+2026-06-17 10:33:51,268 - INFO - Logging setup complete
+2026-06-17 10:33:51,268 - INFO - Logging setup complete
+2026-06-17 10:33:51,268 - INFO - Logging setup complete
+2026-06-17 10:33:51,268 - INFO - Logging setup complete
+2026-06-17 10:33:51,268 - INFO - Logging setup complete
+2026-06-17 10:33:51,268 - INFO - Logging setup complete
+2026-06-17 10:33:51,268 - INFO - Logging setup complete
+2026-06-17 10:33:51,268 - INFO - Logging setup complete
+2026-06-17 10:33:51,268 - INFO - Logging setup complete
+2026-06-17 10:33:51,268 - INFO - Logging setup complete
+2026-06-17 10:33:51,268 - INFO - Logging setup complete
+2026-06-17 10:33:51,268 - INFO - Logging setup complete
+2026-06-17 10:33:51,268 - INFO - Logging setup complete
+2026-06-17 10:33:51,268 - INFO - Logging setup complete
+2026-06-17 10:33:51,268 - INFO - Logging setup complete
+2026-06-17 10:33:51,268 - INFO - Logging setup complete
+2026-06-17 10:33:51,268 - INFO - Logging setup complete
+2026-06-17 10:33:51,268 - INFO - Logging setup complete
+2026-06-17 10:33:51,268 - INFO - Logging setup complete
+2026-06-17 10:33:51,268 - INFO - Logging setup complete
+2026-06-17 10:33:51,268 - INFO - Logging setup complete
+2026-06-17 10:33:51,268 - INFO - Logging setup complete
+2026-06-17 10:33:51,268 - INFO - Logging setup complete
+2026-06-17 10:33:51,268 - INFO - Logging setup complete
+2026-06-17 10:33:51,268 - INFO - Logging setup complete
+2026-06-17 10:33:51,407 - INFO - Logging setup complete
+2026-06-17 10:33:51,407 - INFO - Logging setup complete
+2026-06-17 10:33:51,407 - INFO - Logging setup complete
+2026-06-17 10:33:51,407 - INFO - Logging setup complete
+2026-06-17 10:33:51,407 - INFO - Logging setup complete
+2026-06-17 10:33:51,407 - INFO - Logging setup complete
+2026-06-17 10:33:51,407 - INFO - Logging setup complete
+2026-06-17 10:33:51,407 - INFO - Logging setup complete
+2026-06-17 10:33:51,407 - INFO - Logging setup complete
+2026-06-17 10:33:51,407 - INFO - Logging setup complete
+2026-06-17 10:33:51,407 - INFO - Logging setup complete
+2026-06-17 10:33:51,407 - INFO - Logging setup complete
+2026-06-17 10:33:51,407 - INFO - Logging setup complete
+2026-06-17 10:33:51,407 - INFO - Logging setup complete
+2026-06-17 10:33:51,407 - INFO - Logging setup complete
+2026-06-17 10:33:51,407 - INFO - Logging setup complete
+2026-06-17 10:33:51,407 - INFO - Logging setup complete
+2026-06-17 10:33:51,407 - INFO - Logging setup complete
+2026-06-17 10:33:51,407 - INFO - Logging setup complete
+2026-06-17 10:33:51,407 - INFO - Logging setup complete
+2026-06-17 10:33:51,407 - INFO - Logging setup complete
+2026-06-17 10:33:51,407 - INFO - Logging setup complete
+2026-06-17 10:33:51,407 - INFO - Logging setup complete
+2026-06-17 10:33:51,407 - INFO - Logging setup complete
+2026-06-17 10:33:51,407 - INFO - Logging setup complete
+2026-06-17 10:33:51,407 - INFO - Logging setup complete
+2026-06-17 10:33:51,407 - INFO - Logging setup complete
+2026-06-17 10:33:51,407 - INFO - Logging setup complete
+2026-06-17 10:33:51,407 - INFO - Logging setup complete
+2026-06-17 10:33:51,407 - INFO - Logging setup complete
+2026-06-17 10:33:51,407 - INFO - Logging setup complete

@@ -1,6 +1,6 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
-import { Alert } from 'react-bootstrap'
+import { Alert, Form } from 'react-bootstrap'
 import MonthlyLocationAddressField from './MonthlyLocationAddressField'
 import PortalEditableFieldRow from './PortalEditableFieldRow'
 import PortalMonitoringCompanyField from './PortalMonitoringCompanyField'
@@ -31,6 +31,7 @@ const MonthlyLocationEditableFields = forwardRef<MonthlyLocationEditableFieldsHa
     unregisterFieldEditActions,
   } = usePortalFieldEditActionRegistry(editingField)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [pricingUpdatedSaving, setPricingUpdatedSaving] = useState(false)
   const fieldsContainerRef = useRef<HTMLDivElement>(null)
 
   useImperativeHandle(
@@ -56,6 +57,7 @@ const MonthlyLocationEditableFields = forwardRef<MonthlyLocationEditableFieldsHa
     setEditingField(null)
     setAutoOpenSelectFieldKey(null)
     setSaveError(null)
+    setPricingUpdatedSaving(false)
   }, [location.id])
 
   const patchLocation = useCallback(
@@ -86,6 +88,22 @@ const MonthlyLocationEditableFields = forwardRef<MonthlyLocationEditableFieldsHa
       await patchLocation({ [apiField]: text.length > 0 ? text : null })
     },
     [patchLocation, readOnly]
+  )
+
+  const togglePricingUpdated = useCallback(
+    async (checked: boolean) => {
+      if (readOnly || pricingUpdatedSaving) return
+      setPricingUpdatedSaving(true)
+      setSaveError(null)
+      try {
+        await patchLocation({ pricing_updated: checked })
+      } catch {
+        // saveError set in patchLocation
+      } finally {
+        setPricingUpdatedSaving(false)
+      }
+    },
+    [patchLocation, pricingUpdatedSaving, readOnly],
   )
 
   const saveAddress = useCallback(
@@ -257,7 +275,20 @@ const MonthlyLocationEditableFields = forwardRef<MonthlyLocationEditableFieldsHa
             />
           </div>
           <div className="pw-mock-field-group">
-            <div className="pw-mock-field-group-title">Billing</div>
+            <div className="pw-mock-field-group-title monthly-location-billing-group-header">
+              <span>Billing</span>
+              <Form.Check
+                type="checkbox"
+                id={`pricing-updated-${location.id}`}
+                className="monthly-location-billing-pricing-updated"
+                label="Pricing updated"
+                checked={location.pricing_updated ?? false}
+                disabled={readOnly || pricingUpdatedSaving}
+                onChange={(e) => {
+                  void togglePricingUpdated(e.target.checked)
+                }}
+              />
+            </div>
             <PortalEditableFieldRow
               fieldKey="price_per_month"
               label="Price per month"

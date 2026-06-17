@@ -5,14 +5,19 @@ from flask import Blueprint, jsonify, redirect, request, session, url_for
 from sqlalchemy import and_, func
 
 from app.db_models import Deficiency, DeficiencyServiceEligibility, Job, Quote, QuoteDeficiencyLink, db
-from app.response_cache import cached_json_response
+from app.response_cache import cached_json_response, invalidate_cache_prefix
 from app.routes.performance_summary import (
     _join_deficiency_service_eligibility,
     deficiency_service_eligible_filter,
     get_date_window,
     get_deficiency_insights,
     get_excluded_non_quoteable_deficiencies,
+    get_manual_include_override_deficiencies,
     quote_excludes_inspection_job,
+)
+from app.deficiency.service_eligibility import (
+    clear_deficiency_include_override,
+    include_deficiency_override,
 )
 from app.spa import send_spa_index
 from app.utils.business_days import business_days_between
@@ -525,6 +530,7 @@ def monday_meeting_service():
 def monday_meeting_service_excluded_deficiencies():
     window_start, window_end = get_date_window()
     deficiencies = get_excluded_non_quoteable_deficiencies(window_start, window_end)
+    manual_includes = get_manual_include_override_deficiencies(window_start, window_end)
     return jsonify(
         {
             "window": {
@@ -533,5 +539,44 @@ def monday_meeting_service_excluded_deficiencies():
             },
             "count": len(deficiencies),
             "deficiencies": deficiencies,
+            "manual_include_count": len(manual_includes),
+            "manual_includes": manual_includes,
+        }
+    )
+
+
+@monday_meeting_bp.route(
+    "/api/monday_meeting/service/excluded_deficiencies/<int:deficiency_id>/include",
+    methods=["POST"],
+)
+def monday_meeting_include_excluded_deficiency(deficiency_id: int):
+    row = include_deficiency_override(deficiency_id)
+    if row is None:
+        return jsonify({"error": "not_found_or_not_excluded"}), 404
+    invalidate_cache_prefix("monday_meeting:service")
+    return jsonify(
+        {
+            "deficiency_id": deficiency_id,
+            "included_override": True,
+            "eligible": True,
+        }
+    )
+
+
+@monday_meeting_bp.route(
+    "/api/monday_meeting/service/excluded_deficiencies/<int:deficiency_id>/include",
+    methods=["DELETE"],
+)
+def monday_meeting_clear_deficiency_include_override(deficiency_id: int):
+    row = clear_deficiency_include_override(deficiency_id)
+    if row is None:
+        return jsonify({"error": "not_found"}), 404
+    invalidate_cache_prefix("monday_meeting:service")
+    return jsonify(
+        {
+            "deficiency_id": deficiency_id,
+            "included_override": False,
+            "eligible": bool(row.eligible),
+            "reason": row.reason,
         }
     )

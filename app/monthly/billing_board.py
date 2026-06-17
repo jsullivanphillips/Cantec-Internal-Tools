@@ -268,6 +268,7 @@ def _billing_board_location_query(
     unset_any_month: bool,
     not_billed_quarter: bool,
     non_empty_billing_notes: bool,
+    pricing_updated: bool,
     year: int,
     quarter: int,
     month_dates: list[date],
@@ -326,6 +327,8 @@ def _billing_board_location_query(
         location_query = location_query.filter(
             func.coalesce(func.trim(MonthlyLocation.billing_comments), "") != "",
         )
+    if pricing_updated:
+        location_query = location_query.filter(MonthlyLocation.pricing_updated.is_(True))
 
     return location_query.order_by(MonthlyLocation.address.asc())
 
@@ -472,6 +475,7 @@ def _serialize_board_row(
         "route_number": route_number,
         "monthly_route_id": loc.monthly_route_id,
         "rollup_price_per_month": price,
+        "pricing_updated": bool(loc.pricing_updated),
         "months": months_payload,
         "quarter_billed": billed_row is not None,
         "billed_at": billed_row.billed_at.isoformat() if billed_row is not None else None,
@@ -492,6 +496,7 @@ def load_billing_board(
     unset_any_month: bool = False,
     not_billed_quarter: bool = False,
     non_empty_billing_notes: bool = False,
+    pricing_updated: bool = False,
 ) -> dict[str, Any]:
     location_query = _billing_board_location_query(
         q=q.strip().casefold(),
@@ -500,6 +505,7 @@ def load_billing_board(
         unset_any_month=unset_any_month,
         not_billed_quarter=not_billed_quarter,
         non_empty_billing_notes=non_empty_billing_notes,
+        pricing_updated=pricing_updated,
         year=year,
         quarter=quarter,
         month_dates=month_dates,

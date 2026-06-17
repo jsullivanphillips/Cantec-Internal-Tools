@@ -259,6 +259,7 @@ def test_get_excluded_non_quoteable_deficiencies(monkeypatch):
     class FakeEligibility:
         reason = "keyword"
         detail = "fire safety plan"
+        included_override = False
 
     monkeypatch.setattr(
         ps.db.session,
@@ -282,4 +283,121 @@ def test_get_excluded_non_quoteable_deficiencies(monkeypatch):
     assert len(rows) == 1
     assert rows[0]["deficiency_id"] == 9001
     assert rows[0]["reason"] == "keyword"
+    assert rows[0]["included_override"] is False
     assert "9001" in rows[0]["deficiency_url"]
+
+
+def test_include_deficiency_override_sets_eligible(monkeypatch):
+    from app import create_app
+    from app.deficiency import service_eligibility as se
+
+    app = create_app()
+    with app.app_context():
+        class FakeRow:
+            deficiency_id = 5001
+            eligible = False
+            included_override = False
+            classified_at = None
+            reason = "keyword"
+            detail = "fire safety plan"
+
+        row = FakeRow()
+
+        def fake_get(deficiency_id):
+            return row if deficiency_id == 5001 else None
+
+        committed = {"called": False}
+
+        def fake_commit():
+            committed["called"] = True
+
+        monkeypatch.setattr(
+            se.DeficiencyServiceEligibility,
+            "query",
+            type("Q", (), {"get": staticmethod(fake_get)})(),
+        )
+        monkeypatch.setattr(se.db.session, "commit", fake_commit)
+
+        result = se.include_deficiency_override(5001, commit=True)
+
+        assert result is row
+        assert row.eligible is True
+        assert row.included_override is True
+        assert committed["called"]
+
+
+def test_include_deficiency_override_noop_when_already_eligible(monkeypatch):
+    from app import create_app
+    from app.deficiency import service_eligibility as se
+
+    app = create_app()
+    with app.app_context():
+        class FakeRow:
+            eligible = True
+            included_override = False
+
+        row = FakeRow()
+        monkeypatch.setattr(
+            se.DeficiencyServiceEligibility,
+            "query",
+            type("Q", (), {"get": staticmethod(lambda deficiency_id: row)})(),
+        )
+
+        result = se.include_deficiency_override(5001, commit=False)
+        assert result is row
+        assert row.included_override is False
+
+
+def test_classify_all_skips_included_override_rows(monkeypatch):
+    from app import create_app
+    from app.deficiency import service_eligibility as se
+
+    app = create_app()
+    with app.app_context():
+        class FakeRow:
+            deficiency_id = 6001
+            eligible = True
+            included_override = True
+            reason = "keyword"
+            detail = "fire safety plan"
+            description_hash = "abc"
+            classified_at = None
+
+        rows_by_id = {6001: FakeRow()}
+
+        class FakeDeficiency:
+            deficiency_id = 6001
+            description = "No fire safety plan"
+            deficiency_created_on = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+        monkeypatch.setattr(
+            se.Deficiency,
+            "query",
+            type("Q", (), {"all": staticmethod(lambda: [FakeDeficiency()])})(),
+        )
+        monkeypatch.setattr(
+            se.DeficiencyServiceEligibility,
+            "query",
+            type(
+                "Q",
+                (),
+                {
+                    "filter": staticmethod(lambda *args, **kwargs: type(
+                        "FQ",
+                        (),
+                        {"all": staticmethod(lambda: list(rows_by_id.values()))},
+                    )()),
+                    "all": staticmethod(lambda: list(rows_by_id.values())),
+                    "get": staticmethod(lambda deficiency_id: rows_by_id.get(deficiency_id)),
+                },
+            )(),
+        )
+        monkeypatch.setattr(se, "_load_active_phrases", lambda: [("fire safety plan", "FSP")])
+        monkeypatch.setattr(se, "_load_quoted_deficiency_ids", lambda: set())
+        monkeypatch.setattr(se.db.session, "add", lambda *args, **kwargs: None)
+        monkeypatch.setattr(se.db.session, "commit", lambda: None)
+
+        se.classify_all_deficiencies(commit=True)
+
+        assert rows_by_id[6001].eligible is True
+        assert rows_by_id[6001].included_override is True

@@ -1701,6 +1701,7 @@ def _serialize_location_row(
         "building_name": loc.building_name,
         "barcode": loc.barcode,
         "price_per_month": float(loc.price_per_month) if loc.price_per_month is not None else None,
+        "pricing_updated": bool(loc.pricing_updated),
         "area": loc.area,
         "start_up_date": loc.start_up_date.isoformat() if loc.start_up_date else None,
         "status_normalized": loc.status_normalized,
@@ -2029,6 +2030,7 @@ def get_monthly_billing_board():
     non_empty_billing_notes = (
         (request.args.get("non_empty_billing_notes") or "").strip().lower() == "true"
     )
+    pricing_updated = (request.args.get("pricing_updated") or "").strip().lower() == "true"
 
     payload = load_billing_board(
         year_i,
@@ -2042,6 +2044,7 @@ def get_monthly_billing_board():
         unset_any_month=unset_any_month,
         not_billed_quarter=not_billed_quarter,
         non_empty_billing_notes=non_empty_billing_notes,
+        pricing_updated=pricing_updated,
     )
     payload["meta"] = {"routes": _billing_board_route_options()}
     return jsonify(payload)
@@ -5801,8 +5804,17 @@ def update_monthly_route_location(location_id: int):
             loc.notes = _clean_text(payload.get("notes"))
         if "billing_comments" in payload:
             loc.billing_comments = _clean_text(payload.get("billing_comments"))
+        price_changed = False
         if "price_per_month" in payload:
-            loc.price_per_month = _parse_price(payload.get("price_per_month"))
+            previous_price = loc.price_per_month
+            next_price = _parse_price(payload.get("price_per_month"))
+            if previous_price != next_price:
+                price_changed = True
+            loc.price_per_month = next_price
+        if price_changed:
+            loc.pricing_updated = True
+        elif "pricing_updated" in payload:
+            loc.pricing_updated = bool(payload.get("pricing_updated"))
         if "area" in payload:
             loc.area = _clean_text(payload.get("area"))
         if "start_up_date" in payload:

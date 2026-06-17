@@ -1,4 +1,4 @@
-import { apiJson } from '../../lib/apiClient'
+import type { LibraryLocation } from './monthlyRoutesShared'
 import {
   billingStatusLabel,
   billingStatusVariant,
@@ -8,6 +8,7 @@ import {
   monthFirstIsoPacificToday,
   parseYearMonth,
 } from './monthlyRoutesShared'
+import { apiJson } from '../../lib/apiClient'
 
 export function isPastPacificMonth(monthFirstIso: string, reference: Date = new Date()): boolean {
   const ym = parseYearMonth(monthFirstIso)
@@ -114,6 +115,7 @@ export type BillingBoardLocationRow = {
   route_number: number | null
   monthly_route_id: number | null
   rollup_price_per_month: number | null
+  pricing_updated: boolean
   months: Record<string, BillingBoardMonthCell>
   quarter_billed: boolean
   billed_at: string | null
@@ -199,6 +201,7 @@ export type BillingBoardQuery = {
   unsetAnyMonth?: boolean
   notBilledQuarter?: boolean
   nonEmptyBillingNotes?: boolean
+  pricingUpdated?: boolean
 }
 
 export function billingBoardQueryString(params: BillingBoardQuery): string {
@@ -213,6 +216,7 @@ export function billingBoardQueryString(params: BillingBoardQuery): string {
   if (params.unsetAnyMonth) qs.set('unset_any_month', 'true')
   if (params.notBilledQuarter) qs.set('not_billed_quarter', 'true')
   if (params.nonEmptyBillingNotes) qs.set('non_empty_billing_notes', 'true')
+  if (params.pricingUpdated) qs.set('pricing_updated', 'true')
   return qs.toString()
 }
 
@@ -246,6 +250,16 @@ export async function patchQuarterBilled(
       body: JSON.stringify({ billed }),
     },
   )
+}
+
+export async function patchLocationPricingUpdated(
+  locationId: number,
+  pricingUpdated: boolean,
+): Promise<{ location: LibraryLocation }> {
+  return apiJson(`/api/monthly_routes/library/${locationId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ pricing_updated: pricingUpdated }),
+  })
 }
 
 export function formatMonthHeader(monthIso: string): string {

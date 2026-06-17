@@ -764,37 +764,66 @@ def _format_deficiency_created_on(dt) -> str | None:
 
 def get_excluded_non_quoteable_deficiencies(start_date, end_date) -> list[dict]:
     """Deficiencies excluded from Monday Meeting service KPIs in the date window."""
+    return _list_service_eligibility_deficiencies(
+        start_date,
+        end_date,
+        eligible=False,
+        included_override=False,
+    )
+
+
+def get_manual_include_override_deficiencies(start_date, end_date) -> list[dict]:
+    """Deficiencies manually included in service KPIs despite filter exclusion."""
+    return _list_service_eligibility_deficiencies(
+        start_date,
+        end_date,
+        eligible=True,
+        included_override=True,
+    )
+
+
+def _list_service_eligibility_deficiencies(
+    start_date,
+    end_date,
+    *,
+    eligible: bool,
+    included_override: bool | None = None,
+) -> list[dict]:
     base_filter = and_(
         Deficiency.deficiency_created_on >= start_date,
         Deficiency.deficiency_created_on <= end_date,
     )
-    rows = (
+    query = (
         db.session.query(Deficiency, DeficiencyServiceEligibility)
         .join(
             DeficiencyServiceEligibility,
             Deficiency.deficiency_id == DeficiencyServiceEligibility.deficiency_id,
         )
-        .filter(base_filter, DeficiencyServiceEligibility.eligible.is_(False))
-        .order_by(Deficiency.deficiency_created_on.desc())
-        .all()
+        .filter(base_filter, DeficiencyServiceEligibility.eligible.is_(eligible))
     )
+    if included_override is not None:
+        query = query.filter(
+            DeficiencyServiceEligibility.included_override.is_(included_override)
+        )
+    rows = query.order_by(Deficiency.deficiency_created_on.desc()).all()
     out: list[dict] = []
     for deficiency, eligibility in rows:
-        out.append(
-            {
-                "deficiency_id": int(deficiency.deficiency_id),
-                "description": deficiency.description,
-                "service_line": deficiency.service_line,
-                "reported_by": deficiency.reported_by,
-                "deficiency_created_on": _format_deficiency_created_on(
-                    deficiency.deficiency_created_on
-                ),
-                "reason": eligibility.reason,
-                "detail": eligibility.detail,
-                "deficiency_url": f"{SERVICE_TRADE_DEFICIENCY_URL}/{deficiency.deficiency_id}",
-            }
-        )
+        out.append(_deficiency_eligibility_payload(deficiency, eligibility))
     return out
+
+
+def _deficiency_eligibility_payload(deficiency, eligibility) -> dict:
+    return {
+        "deficiency_id": int(deficiency.deficiency_id),
+        "description": deficiency.description,
+        "service_line": deficiency.service_line,
+        "reported_by": deficiency.reported_by,
+        "deficiency_created_on": _format_deficiency_created_on(deficiency.deficiency_created_on),
+        "reason": eligibility.reason,
+        "detail": eligibility.detail,
+        "included_override": bool(eligibility.included_override),
+        "deficiency_url": f"{SERVICE_TRADE_DEFICIENCY_URL}/{deficiency.deficiency_id}",
+    }
 
 
 def get_deficiencies_by_service_line(window_start, window_end):

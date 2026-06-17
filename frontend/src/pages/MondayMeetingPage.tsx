@@ -62,11 +62,7 @@ export default function MondayMeetingPage() {
               <MondayMeetingProcessingEmbed />
             </Tab.Pane>
             <Tab.Pane eventKey="scheduling">
-              <div className="monday-meeting-scheduling-shell app-surface-card">
-                <div className="monday-meeting-scheduling-shell__panel">
-                  <MondayMeetingSchedulingEmbed />
-                </div>
-              </div>
+              <MondayMeetingSchedulingEmbed />
             </Tab.Pane>
             <Tab.Pane eventKey="service">
               <MondayMeetingServiceTab />

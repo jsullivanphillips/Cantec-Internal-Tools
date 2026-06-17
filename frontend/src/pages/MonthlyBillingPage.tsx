@@ -13,6 +13,7 @@ import {
   formatMonthHeader,
   parseQuarterSelectionKey,
   patchQuarterBilled,
+  patchLocationPricingUpdated,
   quarterOptionLabel,
   quarterSelectionKey,
   quarterSelectionOptions,
@@ -26,9 +27,13 @@ import BillingBoardPaperworkModal, {
 } from '../features/monthlyRoutes/BillingBoardPaperworkModal'
 import HeroFilterPill from '../components/HeroFilterPill'
 import { isAbortError } from '../lib/apiClient'
+import { formatCurrencyCad } from '../lib/formatCurrencyCad'
 import { PROCESSING_PAGE_TITLE_COMPACT_CLASS } from '../styles/pageTypography'
 
 const PAGE_SIZE = 50
+const BILLING_MONTH_COL_MIN_WIDTH = '3.85rem'
+const BILLING_ACTION_COL_MIN_WIDTH = '5.25rem'
+const BILLING_UPDATED_COL_MIN_WIDTH = '2.15rem'
 
 function billingRouteLabel(row: BillingBoardLocationRow): string {
   if (typeof row.route_number === 'number') return `R${row.route_number}`
@@ -139,19 +144,43 @@ function BillingBoardTableSkeleton({ monthDates }: { monthDates: string[] }) {
             <th style={{ minWidth: '11rem' }}>Address</th>
             {monthDates.length > 0
               ? monthDates.map((monthIso) => (
-                  <th key={monthIso} className="text-center" style={{ minWidth: '5.25rem' }}>
+                  <th
+                    key={monthIso}
+                    className="text-center monthly-billing-month-th"
+                    style={{ minWidth: BILLING_MONTH_COL_MIN_WIDTH }}
+                  >
                     {formatMonthHeader(monthIso)}
                   </th>
                 ))
               : Array.from({ length: monthCols }, (_, i) => (
-                  <th key={i} className="text-center" style={{ minWidth: '5.25rem' }}>
+                  <th
+                    key={i}
+                    className="text-center monthly-billing-month-th"
+                    style={{ minWidth: BILLING_MONTH_COL_MIN_WIDTH }}
+                  >
                     <span
                       className="home-skeleton-bar d-inline-block"
-                      style={{ width: '2.75rem', height: '0.65rem' }}
+                      style={{ width: '2.5rem', height: '0.65rem' }}
                     />
                   </th>
                 ))}
-            <th className="text-center" style={{ minWidth: '5.25rem' }}>
+            <th
+              className="text-center monthly-billing-price-col"
+              style={{ minWidth: BILLING_ACTION_COL_MIN_WIDTH }}
+            >
+              Price
+            </th>
+            <th
+              className="text-center monthly-billing-updated-col"
+              style={{ minWidth: BILLING_UPDATED_COL_MIN_WIDTH }}
+              title="Updated"
+            >
+              Upd.
+            </th>
+            <th
+              className="text-center monthly-billing-invoiced-col"
+              style={{ minWidth: BILLING_ACTION_COL_MIN_WIDTH }}
+            >
               Invoiced
             </th>
             <th style={{ minWidth: '3.5rem' }}>Route</th>
@@ -169,14 +198,26 @@ function BillingBoardTableSkeleton({ monthDates }: { monthDates: string[] }) {
                 />
               </td>
               {Array.from({ length: monthCols }, (_, colIdx) => (
-                <td key={colIdx} className="text-center">
+                <td key={colIdx} className="text-center monthly-billing-month-td">
                   <span
                     className="home-skeleton-bar d-inline-block"
-                    style={{ width: '3.25rem', height: '1.1rem', borderRadius: '0.35rem' }}
+                    style={{ width: '2.75rem', height: '1.1rem', borderRadius: '0.35rem' }}
                   />
                 </td>
               ))}
-              <td className="text-center">
+              <td className="text-center monthly-billing-price-col">
+                <span
+                  className="home-skeleton-bar d-inline-block"
+                  style={{ width: '3.5rem', height: '0.65rem' }}
+                />
+              </td>
+              <td className="text-center monthly-billing-updated-col">
+                <span
+                  className="home-skeleton-bar d-inline-block"
+                  style={{ width: '0.9rem', height: '0.9rem', borderRadius: '0.15rem' }}
+                />
+              </td>
+              <td className="text-center monthly-billing-invoiced-col">
                 <span
                   className="home-skeleton-bar d-inline-block"
                   style={{ width: '4.5rem', height: '1.35rem', borderRadius: '0.35rem' }}
@@ -269,11 +310,15 @@ export default function MonthlyBillingPage() {
   const [unsetAnyMonth, setUnsetAnyMonth] = useState(false)
   const [notBilledQuarter, setNotBilledQuarter] = useState(false)
   const [nonEmptyBillingNotes, setNonEmptyBillingNotes] = useState(false)
+  const [pricingUpdatedFilter, setPricingUpdatedFilter] = useState(false)
   const [page, setPage] = useState(1)
   const [payload, setPayload] = useState<BillingBoardPayload | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busyLocationId, setBusyLocationId] = useState<number | null>(null)
+  const [busyPricingUpdatedLocationId, setBusyPricingUpdatedLocationId] = useState<number | null>(
+    null,
+  )
   const [editingBillingCommentLocationId, setEditingBillingCommentLocationId] = useState<number | null>(
     null,
   )
@@ -299,6 +344,7 @@ export default function MonthlyBillingPage() {
         unsetAnyMonth,
         notBilledQuarter,
         nonEmptyBillingNotes,
+        pricingUpdated: pricingUpdatedFilter,
       })
       if (loadSeqRef.current !== seq) return
       setPayload(data)
@@ -320,6 +366,7 @@ export default function MonthlyBillingPage() {
     unsetAnyMonth,
     notBilledQuarter,
     nonEmptyBillingNotes,
+    pricingUpdatedFilter,
   ])
 
   useEffect(() => {
@@ -329,7 +376,7 @@ export default function MonthlyBillingPage() {
   useEffect(() => {
     setTrackedLocationId(null)
     setEditingBillingCommentLocationId(null)
-  }, [page, selectedQuarterKey, query, routeFilter, doNotBillAnyMonth, unsetAnyMonth, notBilledQuarter, nonEmptyBillingNotes])
+  }, [page, selectedQuarterKey, query, routeFilter, doNotBillAnyMonth, unsetAnyMonth, notBilledQuarter, nonEmptyBillingNotes, pricingUpdatedFilter])
 
   const routeOptions = payload?.meta.routes ?? []
   const monthDates = payload?.month_dates ?? []
@@ -397,6 +444,40 @@ export default function MonthlyBillingPage() {
       window.alert(err instanceof Error ? err.message : 'Unable to update billed status.')
     } finally {
       setBusyLocationId(null)
+    }
+  }
+
+  const togglePricingUpdated = async (row: BillingBoardLocationRow, checked: boolean) => {
+    setBusyPricingUpdatedLocationId(row.location_id)
+    try {
+      const result = await patchLocationPricingUpdated(row.location_id, checked)
+      const pricingUpdated = result.location.pricing_updated
+      setPayload((prev) => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          locations: prev.locations.map((loc) =>
+            loc.location_id === row.location_id ? { ...loc, pricing_updated: pricingUpdated } : loc,
+          ),
+        }
+      })
+      if (pricingUpdatedFilter && !pricingUpdated) {
+        setPayload((prev) => {
+          if (!prev) return prev
+          return {
+            ...prev,
+            locations: prev.locations.filter((loc) => loc.location_id !== row.location_id),
+            pagination: {
+              ...prev.pagination,
+              total: Math.max(0, prev.pagination.total - 1),
+            },
+          }
+        })
+      }
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Unable to update pricing updated status.')
+    } finally {
+      setBusyPricingUpdatedLocationId(null)
     }
   }
 
@@ -488,6 +569,16 @@ export default function MonthlyBillingPage() {
               }}
             />
             <HeroFilterPill
+              id="billing-filter-pricing-updated"
+              icon="bi-check2-square"
+              label="Price updated"
+              checked={pricingUpdatedFilter}
+              onChange={(checked) => {
+                setPricingUpdatedFilter(checked)
+                setPage(1)
+              }}
+            />
+            <HeroFilterPill
               id="billing-filter-non-empty-notes"
               icon="bi-journal-text"
               label="Has notes"
@@ -547,13 +638,29 @@ export default function MonthlyBillingPage() {
                           <th
                             key={monthIso}
                             colSpan={1}
-                            className="text-center"
-                            style={{ minWidth: '5.25rem' }}
+                            className="text-center monthly-billing-month-th"
+                            style={{ minWidth: BILLING_MONTH_COL_MIN_WIDTH }}
                           >
                             {formatMonthHeader(monthIso)}
                           </th>
                         ))}
-                        <th className="text-center" style={{ minWidth: '5.25rem' }}>
+                        <th
+                          className="text-center monthly-billing-price-col"
+                          style={{ minWidth: BILLING_ACTION_COL_MIN_WIDTH }}
+                        >
+                          Price
+                        </th>
+                        <th
+                          className="text-center monthly-billing-updated-col"
+                          style={{ minWidth: BILLING_UPDATED_COL_MIN_WIDTH }}
+                          title="Updated"
+                        >
+                          Upd.
+                        </th>
+                        <th
+                          className="text-center monthly-billing-invoiced-col"
+                          style={{ minWidth: BILLING_ACTION_COL_MIN_WIDTH }}
+                        >
                           Invoiced
                         </th>
                         <th style={{ minWidth: '3.5rem' }}>Route</th>
@@ -564,7 +671,7 @@ export default function MonthlyBillingPage() {
                     <tbody>
                       {(payload?.locations ?? []).length === 0 ? (
                         <tr>
-                          <td colSpan={5 + monthDates.length} className="text-muted small p-3">
+                          <td colSpan={7 + monthDates.length} className="text-muted small p-3">
                             No active locations match your filters.
                           </td>
                         </tr>
@@ -633,7 +740,28 @@ export default function MonthlyBillingPage() {
                                   />
                                 </td>
                               ))}
-                              <td className="text-center">
+                              <td className="text-center monthly-billing-price-col text-muted">
+                                {formatCurrencyCad(row.rollup_price_per_month)}
+                              </td>
+                              <td className="text-center monthly-billing-updated-col">
+                                <Form.Check
+                                  type="checkbox"
+                                  id={`billing-pricing-updated-${row.location_id}`}
+                                  className="monthly-billing-pricing-updated-check d-inline-flex justify-content-center mb-0"
+                                  checked={row.pricing_updated}
+                                  disabled={busyPricingUpdatedLocationId === row.location_id}
+                                  aria-label={
+                                    row.pricing_updated
+                                      ? 'Pricing updated'
+                                      : 'Mark pricing updated'
+                                  }
+                                  onClick={(e) => e.stopPropagation()}
+                                  onChange={(e) => {
+                                    void togglePricingUpdated(row, e.target.checked)
+                                  }}
+                                />
+                              </td>
+                              <td className="text-center monthly-billing-invoiced-col">
                                 <OverlayTrigger overlay={<Tooltip>{billedTooltip}</Tooltip>}>
                                   <span className="d-inline-block">{btn}</span>
                                 </OverlayTrigger>

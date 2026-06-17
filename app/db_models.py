@@ -331,6 +331,7 @@ class DeficiencyServiceEligibility(db.Model):
     reason = db.Column(db.String(32), nullable=False, default="eligible")
     detail = db.Column(db.String(512), nullable=True)
     description_hash = db.Column(db.String(64), nullable=True)
+    included_override = db.Column(db.Boolean, nullable=False, default=False)
     classified_at = db.Column(db.DateTime(timezone=True), default=vancouver_now, nullable=False)
 
     deficiency = db.relationship("Deficiency", backref=db.backref("service_eligibility", uselist=False))
@@ -992,6 +993,7 @@ class MonthlyLocation(db.Model):
     billing_comments = db.Column(db.Text, nullable=True)
     barcode = db.Column(db.String(64), nullable=True)
     price_per_month = db.Column(db.Numeric(10, 2), nullable=True)
+    pricing_updated = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     area = db.Column(db.String(255), nullable=True)
     start_up_date = db.Column(db.Date, nullable=True)
 

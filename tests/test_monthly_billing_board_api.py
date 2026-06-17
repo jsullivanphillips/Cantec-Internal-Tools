@@ -100,6 +100,19 @@ def test_billing_board_returns_billing_and_outcome(billing_board_client):
     assert may["billing_status"] == "bill"
     assert may["test_summary"]["summary_key"] == "all_good"
     assert row["quarter_billed"] is False
+    assert row["pricing_updated"] is False
+
+
+def test_billing_board_includes_pricing_updated(billing_board_client):
+    client, _app = billing_board_client
+    loc = _seed_location_with_may_billing()
+    loc.pricing_updated = True
+    db.session.commit()
+
+    r = client.get("/api/monthly_routes/billing_board?anchor_month=2026-05-01")
+    assert r.status_code == 200
+    row = r.get_json()["locations"][0]
+    assert row["pricing_updated"] is True
 
 
 def test_billing_board_excludes_inactive(billing_board_client):
@@ -280,6 +293,38 @@ def test_billing_board_unset_any_month_filter(billing_board_client):
     data = r.get_json()
     assert data["pagination"]["total"] == 1
     assert data["locations"][0]["location_id"] == 512
+
+
+def test_billing_board_pricing_updated_filter(billing_board_client):
+    client, _app = billing_board_client
+    route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
+    updated_loc = make_location(
+        id=701,
+        address="Updated Price St",
+        label="Updated Price St",
+        monthly_route_id=1,
+        test_day="Tuesday",
+        pricing_updated=True,
+    )
+    not_updated_loc = make_location(
+        id=702,
+        address="Stale Price St",
+        label="Stale Price St",
+        monthly_route_id=1,
+        test_day="Tuesday",
+        pricing_updated=False,
+    )
+    db.session.add_all([route, updated_loc, not_updated_loc])
+    db.session.commit()
+
+    r = client.get(
+        "/api/monthly_routes/billing_board?anchor_month=2026-05-01&pricing_updated=true"
+    )
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data["pagination"]["total"] == 1
+    assert data["locations"][0]["location_id"] == 701
+    assert data["locations"][0]["pricing_updated"] is True
 
 
 def test_billing_board_non_empty_billing_notes_filter(billing_board_client):

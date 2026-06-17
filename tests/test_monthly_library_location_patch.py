@@ -199,3 +199,59 @@ def test_library_patch_access_instructions(library_detail_client):
 
     row = db.session.get(MonthlyLocation, loc_id)
     assert row.access_instructions == text
+
+
+def test_library_get_detail_includes_pricing_updated_default_false(library_detail_client):
+    loc_id = _seed_location()
+    res = library_detail_client.get(f"/api/monthly_routes/library/{loc_id}")
+    assert res.status_code == 200
+    assert res.get_json()["location"]["pricing_updated"] is False
+
+
+def test_library_patch_pricing_updated(library_detail_client):
+    loc_id = _seed_location()
+    res = library_detail_client.patch(
+        f"/api/monthly_routes/library/{loc_id}",
+        json={"pricing_updated": True},
+    )
+    assert res.status_code == 200
+    assert res.get_json()["location"]["pricing_updated"] is True
+
+    row = db.session.get(MonthlyLocation, loc_id)
+    assert row.pricing_updated is True
+
+    clear = library_detail_client.patch(
+        f"/api/monthly_routes/library/{loc_id}",
+        json={"pricing_updated": False},
+    )
+    assert clear.status_code == 200
+    assert clear.get_json()["location"]["pricing_updated"] is False
+
+
+def test_library_patch_price_change_sets_pricing_updated_true(library_detail_client):
+    loc_id = _seed_location(price_per_month=60)
+    res = library_detail_client.patch(
+        f"/api/monthly_routes/library/{loc_id}",
+        json={"price_per_month": 75},
+    )
+    assert res.status_code == 200
+    loc = res.get_json()["location"]
+    assert loc["price_per_month"] == 75
+    assert loc["pricing_updated"] is True
+
+    row = db.session.get(MonthlyLocation, loc_id)
+    assert float(row.price_per_month) == 75
+    assert row.pricing_updated is True
+
+
+def test_library_patch_same_price_does_not_auto_set_pricing_updated(library_detail_client):
+    loc_id = _seed_location(price_per_month=60, pricing_updated=False)
+    res = library_detail_client.patch(
+        f"/api/monthly_routes/library/{loc_id}",
+        json={"price_per_month": 60},
+    )
+    assert res.status_code == 200
+    assert res.get_json()["location"]["pricing_updated"] is False
+
+    row = db.session.get(MonthlyLocation, loc_id)
+    assert row.pricing_updated is False

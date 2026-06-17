@@ -356,6 +356,8 @@ def classify_all_deficiencies(*, commit: bool = True) -> dict:
     for record in records:
         def_id = int(record["deficiency_id"])
         row = existing_by_id.get(def_id)
+        if row is not None and row.included_override:
+            continue
         if row is None:
             row = DeficiencyServiceEligibility(deficiency_id=def_id)
             db.session.add(row)
@@ -365,8 +367,76 @@ def classify_all_deficiencies(*, commit: bool = True) -> dict:
         row.detail = record["detail"]
         row.description_hash = record["description_hash"]
         row.classified_at = record["classified_at"]
+        row.included_override = False
 
     if commit:
         db.session.commit()
 
     return summarize_eligibility_records(records, len(deficiencies), classified_at)
+
+
+def classify_single_deficiency(
+    deficiency_id: int, *, commit: bool = True
+) -> DeficiencyServiceEligibility | None:
+    """Reclassify one deficiency and clear any manual include override."""
+    deficiency = Deficiency.query.filter_by(deficiency_id=deficiency_id).first()
+    if deficiency is None:
+        return None
+
+    classified_at = datetime.now(timezone.utc)
+    today_pacific = datetime.now(PACIFIC_TZ).date()
+    phrases = _load_active_phrases()
+    quoted_ids = _load_quoted_deficiency_ids()
+    inputs = [
+        DeficiencyInput(
+            deficiency_id=int(deficiency.deficiency_id),
+            description=deficiency.description,
+            deficiency_created_on=deficiency.deficiency_created_on,
+        )
+    ]
+    records = compute_eligibility_records(
+        inputs,
+        phrases,
+        quoted_ids,
+        today=today_pacific,
+        classified_at=classified_at,
+    )
+    record = records[0]
+    row = DeficiencyServiceEligibility.query.get(deficiency_id)
+    if row is None:
+        row = DeficiencyServiceEligibility(deficiency_id=deficiency_id)
+        db.session.add(row)
+    row.eligible = record["eligible"]
+    row.reason = record["reason"]
+    row.detail = record["detail"]
+    row.description_hash = record["description_hash"]
+    row.classified_at = record["classified_at"]
+    row.included_override = False
+    if commit:
+        db.session.commit()
+    return row
+
+
+def include_deficiency_override(
+    deficiency_id: int, *, commit: bool = True
+) -> DeficiencyServiceEligibility | None:
+    """Persistently include an excluded deficiency in service KPIs."""
+    row = DeficiencyServiceEligibility.query.get(deficiency_id)
+    if row is None or row.eligible:
+        return row
+    row.eligible = True
+    row.included_override = True
+    row.classified_at = datetime.now(timezone.utc)
+    if commit:
+        db.session.commit()
+    return row
+
+
+def clear_deficiency_include_override(
+    deficiency_id: int, *, commit: bool = True
+) -> DeficiencyServiceEligibility | None:
+    """Remove a manual include override and reclassify the deficiency."""
+    row = DeficiencyServiceEligibility.query.get(deficiency_id)
+    if row is None or not row.included_override:
+        return classify_single_deficiency(deficiency_id, commit=commit)
+    return classify_single_deficiency(deficiency_id, commit=commit)

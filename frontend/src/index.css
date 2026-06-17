@@ -1693,6 +1693,27 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
   font-size: 0.68rem;
 }
 
+.monthly-location-details-panel .monthly-location-billing-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.monthly-location-details-panel .monthly-location-billing-pricing-updated {
+  margin: 0;
+  flex-shrink: 0;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.monthly-location-details-panel .monthly-location-billing-pricing-updated .form-check-input {
+  margin-top: 0;
+}
+
 .monthly-location-details-panel .pw-mock-field-row--editable:hover {
   background: rgba(37, 99, 235, 0.03);
 }
@@ -5167,8 +5188,42 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
   outline-offset: 2px;
 }
 
+.monthly-page .monthly-billing-month-th {
+  padding-left: 0.2rem;
+  padding-right: 0.2rem;
+}
+
+.monthly-page .monthly-billing-price-col,
+.monthly-page .monthly-billing-invoiced-col {
+  white-space: nowrap;
+}
+
+.monthly-page .monthly-billing-updated-col {
+  width: 2.15rem;
+  min-width: 2.15rem;
+  max-width: 2.15rem;
+  padding-left: 0.12rem;
+  padding-right: 0.12rem;
+  vertical-align: middle;
+}
+
+.monthly-page .monthly-billing-table thead .monthly-billing-updated-col {
+  white-space: nowrap;
+}
+
+.monthly-page .monthly-billing-pricing-updated-check {
+  min-height: 0;
+}
+
+.monthly-page .monthly-billing-pricing-updated-check .form-check-input {
+  float: none;
+  margin: 0;
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
 .monthly-page .monthly-billing-month-td {
-  padding: 0.18rem 0.25rem;
+  padding: 0.15rem 0.18rem;
   vertical-align: middle;
 }
 
@@ -5182,7 +5237,7 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
   align-items: center;
   justify-content: center;
   width: 100%;
-  min-height: 1.85rem;
+  min-height: 1.7rem;
   box-sizing: border-box;
 }
 
@@ -5196,10 +5251,10 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 3.5rem;
-  min-height: 1.45rem;
+  min-width: 2.85rem;
+  min-height: 1.35rem;
   max-width: 100%;
-  padding: 0.15rem 0.45rem;
+  padding: 0.12rem 0.35rem;
   background: #fff;
   border: 1.5px solid transparent;
   border-radius: 999px;
