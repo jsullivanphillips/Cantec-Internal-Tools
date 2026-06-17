@@ -1691,6 +1691,10 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
   border-bottom-color: var(--ml-border-soft);
   color: var(--ml-muted-strong);
   font-size: 0.68rem;
+  box-sizing: border-box;
+  min-height: 2.12rem;
+  display: flex;
+  align-items: center;
 }
 
 .monthly-location-details-panel .monthly-location-billing-group-header {
@@ -1701,7 +1705,12 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
 }
 
 .monthly-location-details-panel .monthly-location-billing-pricing-updated {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   margin: 0;
+  min-height: 0;
+  padding-left: 0;
   flex-shrink: 0;
   font-size: 0.68rem;
   font-weight: 600;
@@ -1711,7 +1720,13 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
 }
 
 .monthly-location-details-panel .monthly-location-billing-pricing-updated .form-check-input {
-  margin-top: 0;
+  float: none;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.monthly-location-details-panel .monthly-location-billing-pricing-updated .form-check-label {
+  margin: 0;
 }
 
 .monthly-location-details-panel .pw-mock-field-row--editable:hover {

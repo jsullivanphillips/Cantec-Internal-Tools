@@ -451,7 +451,7 @@ export default function MonthlyBillingPage() {
     setBusyPricingUpdatedLocationId(row.location_id)
     try {
       const result = await patchLocationPricingUpdated(row.location_id, checked)
-      const pricingUpdated = result.location.pricing_updated
+      const pricingUpdated = result.location.pricing_updated ?? checked
       setPayload((prev) => {
         if (!prev) return prev
         return {

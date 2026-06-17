@@ -76,7 +76,7 @@ export type LibraryLocation = {
   notes: string | null
   billing_comments?: string | null
   price_per_month: number | null
-  pricing_updated?: boolean
+  pricing_updated: boolean
   area: string | null
   start_up_date: string | null
   status_normalized: string

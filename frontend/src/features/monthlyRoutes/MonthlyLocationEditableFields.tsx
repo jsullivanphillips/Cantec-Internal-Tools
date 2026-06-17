@@ -282,7 +282,7 @@ const MonthlyLocationEditableFields = forwardRef<MonthlyLocationEditableFieldsHa
                 id={`pricing-updated-${location.id}`}
                 className="monthly-location-billing-pricing-updated"
                 label="Pricing updated"
-                checked={location.pricing_updated ?? false}
+                checked={location.pricing_updated}
                 disabled={readOnly || pricingUpdatedSaving}
                 onChange={(e) => {
                   void togglePricingUpdated(e.target.checked)
