@@ -1,4 +1,4 @@
-"""Monthlies dashboard: active library sites missing ServiceTrade link, price, or key link."""
+"""Monthlies dashboard: active library sites missing ServiceTrade link, price, key link, or map pin."""
 
 from __future__ import annotations
 
@@ -7,6 +7,10 @@ from sqlalchemy.orm import joinedload
 from app.db_models import MonthlyLocation
 from app.monthly.monthly_keys_keycode import monthly_keys_field_indicates_no_key
 from app.monthly.technician_demo_route import is_technician_demo_library_location
+
+
+def _location_has_map_pin(loc: MonthlyLocation) -> bool:
+    return loc.latitude is not None and loc.longitude is not None
 
 
 def _issue_sort_key(loc: MonthlyLocation) -> tuple[int, str, int]:
@@ -51,6 +55,7 @@ def list_dashboard_library_issues() -> dict[str, object]:
     missing_st: list[MonthlyLocation] = []
     missing_price: list[MonthlyLocation] = []
     missing_key: list[MonthlyLocation] = []
+    missing_map_pin: list[MonthlyLocation] = []
 
     for loc in eligible:
         if loc.service_trade_site_location_id is None:
@@ -59,22 +64,28 @@ def list_dashboard_library_issues() -> dict[str, object]:
             missing_price.append(loc)
         if loc.key_id is None and not monthly_keys_field_indicates_no_key(loc.keys):
             missing_key.append(loc)
+        if not _location_has_map_pin(loc):
+            missing_map_pin.append(loc)
 
     missing_st.sort(key=_issue_sort_key)
     missing_price.sort(key=_issue_sort_key)
     missing_key.sort(key=_issue_sort_key)
+    missing_map_pin.sort(key=_issue_sort_key)
 
     st_payload = [_serialize_issue_location(loc) for loc in missing_st]
     price_payload = [_serialize_issue_location(loc) for loc in missing_price]
     key_payload = [_serialize_issue_location(loc) for loc in missing_key]
+    map_pin_payload = [_serialize_issue_location(loc) for loc in missing_map_pin]
 
     return {
         "missing_service_trade_link": st_payload,
         "missing_price": price_payload,
         "missing_key_link": key_payload,
+        "missing_map_pin": map_pin_payload,
         "counts": {
             "missing_service_trade_link": len(st_payload),
             "missing_price": len(price_payload),
             "missing_key_link": len(key_payload),
+            "missing_map_pin": len(map_pin_payload),
         },
     }

@@ -54,6 +54,7 @@ def _all_issue_ids(body: dict) -> set[int]:
         {row["id"] for row in body["missing_service_trade_link"]}
         | {row["id"] for row in body["missing_price"]}
         | {row["id"] for row in body["missing_key_link"]}
+        | {row["id"] for row in body["missing_map_pin"]}
     )
 
 
@@ -150,6 +151,30 @@ def test_active_missing_key_link_only(issues_client):
     assert body["counts"]["missing_key_link"] == 1
 
 
+def test_active_missing_map_pin_only(issues_client):
+    client, app = issues_client
+    with app.app_context():
+        route = _seed_route(1, 8)
+        db.session.add(
+            make_location(
+                id=108,
+                address="508 Mapless Rd",
+                monthly_route_id=route.id,
+                route_stop_order=0,
+                service_trade_site_location_id=9005,
+                price_per_month=Decimal("90.00"),
+                latitude=None,
+                longitude=None,
+            )
+        )
+        db.session.commit()
+
+    body = _get_issues(client)
+    map_pin_ids = {row["id"] for row in body["missing_map_pin"]}
+    assert 108 in map_pin_ids
+    assert body["counts"]["missing_map_pin"] == 1
+
+
 def test_active_fully_configured_excluded(issues_client):
     client, app = issues_client
     with app.app_context():
@@ -165,6 +190,8 @@ def test_active_fully_configured_excluded(issues_client):
                 service_trade_site_location_id=9002,
                 price_per_month=Decimal("75.00"),
                 key_id=key.id,
+                latitude=48.4284,
+                longitude=-123.3656,
             )
         )
         db.session.commit()
@@ -174,6 +201,7 @@ def test_active_fully_configured_excluded(issues_client):
     assert body["counts"]["missing_service_trade_link"] == 0
     assert body["counts"]["missing_price"] == 0
     assert body["counts"]["missing_key_link"] == 0
+    assert body["counts"]["missing_map_pin"] == 0
 
 
 def test_cancelled_and_on_hold_excluded(issues_client):
@@ -301,9 +329,12 @@ def test_site_can_have_multiple_issues(issues_client):
     st_ids = {row["id"] for row in body["missing_service_trade_link"]}
     price_ids = {row["id"] for row in body["missing_price"]}
     key_ids = {row["id"] for row in body["missing_key_link"]}
+    map_pin_ids = {row["id"] for row in body["missing_map_pin"]}
     assert 401 in st_ids
     assert 401 in price_ids
     assert 401 in key_ids
+    assert 401 in map_pin_ids
     assert body["counts"]["missing_service_trade_link"] == 1
     assert body["counts"]["missing_price"] == 1
     assert body["counts"]["missing_key_link"] == 1
+    assert body["counts"]["missing_map_pin"] == 1

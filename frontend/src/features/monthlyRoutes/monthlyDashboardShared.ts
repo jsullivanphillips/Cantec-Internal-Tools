@@ -21,15 +21,18 @@ export type MonthlyDashboardIssueType =
   | 'missing_service_trade_link'
   | 'missing_price'
   | 'missing_key_link'
+  | 'missing_map_pin'
 
 export type MonthlyDashboardIssuesPayload = {
   missing_service_trade_link: MonthlyDashboardIssueLocation[]
   missing_price: MonthlyDashboardIssueLocation[]
   missing_key_link: MonthlyDashboardIssueLocation[]
+  missing_map_pin: MonthlyDashboardIssueLocation[]
   counts: {
     missing_service_trade_link: number
     missing_price: number
     missing_key_link: number
+    missing_map_pin: number
   }
 }
 

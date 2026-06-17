@@ -5839,6 +5839,78 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
   gap: 0.5rem;
 }
 
+/* Paperwork hero — two-column action grid so all buttons stay inside the card */
+.monthly-paperwork-page .monthly-run-detail-hero {
+  min-width: 0;
+}
+
+.monthly-paperwork-page .monthly-route-detail-hero__right {
+  align-items: stretch;
+  align-self: stretch;
+  flex: 1 1 22rem;
+  justify-content: stretch;
+  min-width: 0;
+  max-width: min(44%, 28rem);
+}
+
+.monthly-route-detail-actions.monthly-paperwork-hero-actions {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: minmax(2.5rem, auto);
+  gap: 0.55rem;
+  width: 100%;
+  min-width: 0;
+  align-content: start;
+  align-items: stretch;
+  justify-content: stretch;
+}
+
+.monthly-paperwork-hero-actions > * {
+  min-width: 0;
+  min-height: 2.5rem;
+  align-self: stretch;
+}
+
+.monthly-paperwork-hero-actions > .monthly-location-detail-action {
+  min-height: 2.5rem;
+}
+
+.monthly-paperwork-hero-actions .monthly-location-detail-action,
+.monthly-paperwork-hero-actions .monthly-route-detail-hero__action-tooltip-wrap {
+  width: 100%;
+  min-width: 0;
+}
+
+.monthly-paperwork-hero-actions .monthly-route-detail-hero__action-tooltip-wrap {
+  display: flex;
+  flex-direction: column;
+}
+
+.monthly-paperwork-hero-actions .monthly-route-detail-hero__action-tooltip-wrap > .monthly-location-detail-action {
+  flex: 1 1 auto;
+  min-height: 2.5rem;
+}
+
+.monthly-paperwork-hero-actions .monthly-location-detail-action {
+  flex: 1 1 auto;
+  min-height: 2.5rem;
+  font-size: 0.8125rem;
+  padding: 0.5rem 0.65rem;
+  white-space: normal;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.monthly-paperwork-hero-actions .monthly-paperwork-hero-actions__span {
+  grid-column: 1 / -1;
+}
+
+.monthly-route-detail-hero__action-tooltip-wrap {
+  display: block;
+  max-width: 100%;
+}
+
 .monthly-route-detail-actions .monthly-route-detail-hero__paired-actions {
   flex: 1 1 100%;
   width: 100%;
@@ -9763,6 +9835,29 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
   .monthly-route-detail-actions {
     width: 100%;
     justify-content: stretch;
+  }
+
+  .monthly-paperwork-page .monthly-route-detail-hero__right {
+    flex: 1 1 auto;
+    max-width: none;
+  }
+
+  .monthly-route-detail-actions.monthly-paperwork-hero-actions {
+    width: 100%;
+    max-width: none;
+    grid-auto-rows: minmax(2.75rem, auto);
+  }
+
+  .monthly-paperwork-hero-actions > * {
+    min-height: 2.75rem;
+    height: auto;
+  }
+
+  .monthly-paperwork-hero-actions .monthly-location-detail-action {
+    min-height: 2.75rem;
+    height: auto;
+    font-size: 0.875rem;
+    padding: 0.55rem 0.85rem;
   }
 
   .monthly-route-detail-actions .monthly-location-detail-action {

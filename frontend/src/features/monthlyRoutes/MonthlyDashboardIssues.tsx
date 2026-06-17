@@ -13,6 +13,7 @@ const ISSUE_TYPE_ORDER: MonthlyDashboardIssueType[] = [
   'missing_service_trade_link',
   'missing_price',
   'missing_key_link',
+  'missing_map_pin',
 ]
 
 const ISSUE_TYPE_META: Record<
@@ -22,6 +23,7 @@ const ISSUE_TYPE_META: Record<
   missing_service_trade_link: { label: 'ServiceTrade link', variant: 'primary' },
   missing_price: { label: 'Missing price', variant: 'danger' },
   missing_key_link: { label: 'Key link', variant: 'warning', text: 'dark' },
+  missing_map_pin: { label: 'Map pin', variant: 'info', text: 'dark' },
 }
 
 type CombinedIssueRow = {
@@ -58,6 +60,7 @@ function buildCombinedIssueRows(payload: MonthlyDashboardIssuesPayload): Combine
   addRows(payload.missing_service_trade_link, 'missing_service_trade_link')
   addRows(payload.missing_price, 'missing_price')
   addRows(payload.missing_key_link, 'missing_key_link')
+  addRows(payload.missing_map_pin, 'missing_map_pin')
 
   return Array.from(byId.values())
     .sort((a, b) => {
@@ -152,7 +155,7 @@ export default function MonthlyDashboardIssues() {
 
       {rows.length === 0 ? (
         <p className="text-muted mb-0">
-          No active sites are missing a ServiceTrade link, price, or key link.
+          No active sites are missing a ServiceTrade link, price, key link, or map pin.
         </p>
       ) : (
         <div className="table-responsive">

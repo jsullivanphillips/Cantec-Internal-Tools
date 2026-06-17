@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Alert, Badge, Button, Modal, Spinner } from 'react-bootstrap'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Alert, Badge, Button, Modal, OverlayTrigger, Spinner, Tooltip } from 'react-bootstrap'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import PaperworkRunSelector from '../features/monthlyRoutes/PaperworkRunSelector'
 import OfficeSkipRunModal, {
@@ -100,6 +100,23 @@ function completedByTechniciansPillLabel(techs: MonthlySpecialistTechRow[]): str
   const names = techs.map(specialistTechLabel).filter((n) => n !== '—')
   if (!names.length) return null
   return `Completed by ${names.join(', ')}`
+}
+
+const RESET_RUN_BUTTON_TOOLTIP =
+  'Clears all work logged for this month—test results, times, comments, and billing—and restores a fresh worksheet from the library. Use this to start the month over.'
+
+const REGENERATE_PAPERWORK_BUTTON_TOOLTIP =
+  'Rebuilds this month\'s site list from the current route library (adds new buildings, removes cancelled sites, fixes stop order) and clears recorded progress on every stop. Use when the route lineup has changed.'
+
+function heroActionWithTooltip(id: string, tooltip: string, child: ReactNode) {
+  return (
+    <OverlayTrigger
+      placement="top"
+      overlay={<Tooltip id={id}>{tooltip}</Tooltip>}
+    >
+      <span className="monthly-route-detail-hero__action-tooltip-wrap">{child}</span>
+    </OverlayTrigger>
+  )
 }
 
 export default function MonthlyRoutePaperworkPage() {
@@ -960,7 +977,7 @@ export default function MonthlyRoutePaperworkPage() {
             ) : null}
           </div>
           <div className="monthly-route-detail-hero__right">
-            <div className="monthly-route-detail-actions">
+            <div className="monthly-route-detail-actions monthly-paperwork-hero-actions">
               {showMarkPrepared ? (
                 <Button
                   size="sm"
@@ -1033,20 +1050,21 @@ export default function MonthlyRoutePaperworkPage() {
                   )}
                 </Button>
               ) : null}
-              {showRegenerateFromLibrary || showSkipRoute ? (
-                <div className="monthly-route-detail-hero__paired-actions">
-                  {showSkipRoute ? (
-                    <Button
-                      size="sm"
-                      variant="warning"
-                      className="monthly-location-detail-action monthly-route-skip-action"
-                      disabled={prepActionBusy}
-                      onClick={openSkipRouteConfirm}
-                    >
-                      Skip route
-                    </Button>
-                  ) : null}
-                  {showRegenerateFromLibrary ? (
+              {showSkipRoute ? (
+                <Button
+                  size="sm"
+                  variant="warning"
+                  className="monthly-location-detail-action monthly-route-skip-action"
+                  disabled={prepActionBusy}
+                  onClick={openSkipRouteConfirm}
+                >
+                  Skip route
+                </Button>
+              ) : null}
+              {showRegenerateFromLibrary
+                ? heroActionWithTooltip(
+                    'regenerate-paperwork-tooltip',
+                    REGENERATE_PAPERWORK_BUTTON_TOOLTIP,
                     <Button
                       size="sm"
                       variant="outline-secondary"
@@ -1062,24 +1080,28 @@ export default function MonthlyRoutePaperworkPage() {
                       ) : (
                         'Regenerate paperwork'
                       )}
-                    </Button>
-                  ) : null}
-                </div>
-              ) : null}
-              {showResetRun ? (
-                <Button
-                  size="sm"
-                  variant="outline-danger"
-                  className="monthly-location-detail-action"
-                  disabled={lifecycleBusy || resetRunBusy}
-                  onClick={() => setResetRunModalOpen(true)}
-                >
-                  Reset run
-                </Button>
-              ) : null}
+                    </Button>,
+                  )
+                : null}
+              {showResetRun
+                ? heroActionWithTooltip(
+                    'reset-run-tooltip',
+                    RESET_RUN_BUTTON_TOOLTIP,
+                    <Button
+                      size="sm"
+                      variant="outline-danger"
+                      className="monthly-location-detail-action"
+                      disabled={lifecycleBusy || resetRunBusy}
+                      onClick={() => setResetRunModalOpen(true)}
+                    >
+                      Reset run
+                    </Button>,
+                  )
+                : null}
               <ViewServiceTradeRunJobButton
                 job={service_trade_run_job}
                 monthLabel={monthHeading}
+                className="monthly-location-detail-action monthly-paperwork-hero-actions__span"
               />
             </div>
             {completedByLabel ? (
