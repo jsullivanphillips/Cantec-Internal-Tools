@@ -3,6 +3,7 @@ import type { ReactNode, SVGProps } from 'react'
 /** Bootstrap Icons used on the technician portal worksheet (inline SVG — reliable on iOS PWA). */
 export type PortalBootstrapIconName =
   | 'arrow-left-circle-fill'
+  | 'box-arrow-up-right'
   | 'chevron-double-left'
   | 'chevron-double-right'
   | 'circle'
@@ -53,6 +54,18 @@ const ICON_PATHS: Record<PortalBootstrapIconName, ReactNode> = {
   ),
   'arrow-left-circle-fill': (
     <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0m3.5 7.5a.5.5 0 0 1 0 1H5.707l2.147 2.146a.5.5 0 0 1-.708.708l-3-3a.5.5 0 0 1 0-.708l3-3a.5.5 0 1 1 .708.708L5.707 7.5z" />
+  ),
+  'box-arrow-up-right': (
+    <>
+      <path
+        fillRule="evenodd"
+        d="M.5 11a.5.5 0 0 0 .5.5h3A1.5 1.5 0 0 0 4.515 11zM3 0a1 1 0 0 0-1 1v1.035a.5.5 0 0 0 .632.485l5.067-1.685a.5.5 0 0 1 .466.032l3.51 2.351A1.5 1.5 0 0 1 12 6.476V11h1.5a.5.5 0 0 0 .5-.5v-8A1.5 1.5 0 0 0 12.5 1zM1.5 2A.5.5 0 0 0 1 2.5v11a.5.5 0 0 0 .5.5H11a.5.5 0 0 0 .5-.5V6.414a1.5 1.5 0 0 0-.44-1.06L7.293 2H1.5"
+      />
+      <path
+        fillRule="evenodd"
+        d="M16 3.5a.5.5 0 0 0-.5-.5h-5a.5.5 0 0 0 0 1h3.793L6.146 11.146a.5.5 0 1 0 .708.708L14.5 4.707V8.5a.5.5 0 0 0 1 0z"
+      />
+    </>
   ),
   'chevron-double-left': (
     <>
