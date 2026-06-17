@@ -325,6 +325,37 @@ def portal_routes_lookup():
     )
 
 
+@technician_portal_bp.get("/locations_suggest")
+def portal_locations_suggest():
+    """Return up to 8 active monthly locations matching ``q`` (min length 2)."""
+    if not session.get(SESSION_FLAG):
+        return jsonify({"error": "Portal locked", "code": "portal_locked"}), 401
+    from app.monthly.portal_location_reference import (
+        search_active_locations_for_portal,
+        serialize_portal_location_suggest,
+    )
+
+    raw = (request.args.get("q") or "").strip()
+    rows = search_active_locations_for_portal(raw, limit=8)
+    return jsonify({"locations": [serialize_portal_location_suggest(loc) for loc in rows]})
+
+
+@technician_portal_bp.get("/locations/<int:location_id>")
+def portal_location_reference(location_id: int):
+    """Read-only field reference for a single monthly library location."""
+    if not session.get(SESSION_FLAG):
+        return jsonify({"error": "Portal locked", "code": "portal_locked"}), 401
+    from app.monthly.portal_location_reference import (
+        get_portal_location_reference,
+        serialize_portal_location_reference,
+    )
+
+    loc = get_portal_location_reference(location_id)
+    if loc is None:
+        return jsonify({"error": "Location not found", "code": "not_found"}), 404
+    return jsonify({"location": serialize_portal_location_reference(loc)})
+
+
 @technician_portal_bp.get("/routes/<int:route_id>/portal_route_summary")
 def portal_route_summary(route_id: int):
     """Route hub: portal primary month (may promote next month after office close), prior runs."""

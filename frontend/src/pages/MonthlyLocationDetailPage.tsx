@@ -209,6 +209,30 @@ function locationStatusLabel(location: LibraryLocation): string {
   return (location.status_raw || location.status_normalized || '').replace(/_/g, ' ') || '—'
 }
 
+function LocationHeroStatusBadge({
+  normalized,
+  label,
+  onClick,
+}: {
+  normalized: string
+  label: string
+  onClick?: () => void
+}) {
+  const className = `monthly-location-hero-status-badge monthly-location-hero-status-badge--${
+    normalized || 'unknown'
+  } text-capitalize`
+
+  if (onClick) {
+    return (
+      <button type="button" className={className} onClick={onClick}>
+        {label}
+      </button>
+    )
+  }
+
+  return <span className={className}>{label}</span>
+}
+
 function normalizeStatusForSelect(value: string | null | undefined): string {
   const normalized = (value || '').trim().toLowerCase().replace(/\s+/g, '_')
   return STATUS_OPTIONS.some((option) => option.value === normalized) ? normalized : ''
@@ -744,19 +768,25 @@ export default function MonthlyLocationDetailPage() {
         </Link>
 
         <section className="monthly-location-detail-hero monthly-location-detail-hero--compact monthly-location-detail-surface">
-          <div className="monthly-location-detail-hero-main">
-            <div className="monthly-location-hero-topline">
-              <span className="monthly-location-detail-eyebrow">Monthly location</span>
-            </div>
-            <MonthlyLocationIdentityHero location={location} />
-            {propertyManagementLabel !== '—' ? (
-              <p className="monthly-location-hero-property-mgmt">
-                <i className="bi bi-building" aria-hidden />
-                {propertyManagementLabel}
-              </p>
-            ) : null}
+          <div className="monthly-location-detail-hero-toprow">
+            <span className="monthly-location-detail-eyebrow">Monthly location</span>
+            <LocationHeroStatusBadge
+              normalized={location.status_normalized || 'unknown'}
+              label={statusLabel}
+              onClick={openStatusModal}
+            />
           </div>
-          <div className="monthly-location-hero-actions monthly-location-detail-hero-actions">
+          <div className="monthly-location-detail-hero-body">
+            <div className="monthly-location-detail-hero-main">
+              <MonthlyLocationIdentityHero location={location} />
+              {propertyManagementLabel !== '—' ? (
+                <p className="monthly-location-hero-property-mgmt">
+                  <i className="bi bi-building" aria-hidden />
+                  {propertyManagementLabel}
+                </p>
+              ) : null}
+            </div>
+            <div className="monthly-location-hero-actions monthly-location-detail-hero-actions">
             <Button
               type="button"
               variant="outline-secondary"
@@ -836,6 +866,7 @@ export default function MonthlyLocationDetailPage() {
               <i className="bi bi-pencil" aria-hidden />
               Edit ST Link
             </Button>
+            </div>
           </div>
         </section>
 

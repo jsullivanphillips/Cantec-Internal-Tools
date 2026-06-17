@@ -30,9 +30,11 @@ const BatteryCapacityCalculatorPage = lazy(() => import('./pages/BatteryCapacity
 const QuotationToolPage = lazy(() => import('./pages/QuotationToolPage'))
 const TechnicianPortalLockPage = lazy(() => import('./pages/TechnicianPortalLockPage'))
 const TechnicianPortalTechPickerPage = lazy(() => import('./pages/TechnicianPortalTechPickerPage'))
+const TechnicianPortalHubPage = lazy(() => import('./pages/TechnicianPortalHubPage'))
 const TechnicianPortalStartPage = lazy(() => import('./pages/TechnicianPortalStartPage'))
 const TechnicianPortalRoutePage = lazy(() => import('./pages/TechnicianPortalRoutePage'))
 const TechnicianPortalWorksheetPage = lazy(() => import('./pages/TechnicianPortalWorksheetPage'))
+const TechnicianPortalLocationPage = lazy(() => import('./pages/TechnicianPortalLocationPage'))
 const RedirectPortalTrainingWorksheet = lazy(
   () => import('./pages/RedirectPortalTrainingWorksheet'),
 )
@@ -96,7 +98,9 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <TechnicianPortalLockPage /> },
       { path: 'technician', element: <TechnicianPortalTechPickerPage /> },
+      { path: 'home', element: <TechnicianPortalHubPage /> },
       { path: 'start', element: <TechnicianPortalStartPage /> },
+      { path: 'location/:locationId', element: <TechnicianPortalLocationPage /> },
       { path: 'route/:routeId', element: <TechnicianPortalRoutePage /> },
       { path: 'route/:routeId/worksheet/:monthIso', element: <TechnicianPortalWorksheetPage /> },
       { path: 'route/demo/worksheet/:monthIso', element: <RedirectPortalTrainingWorksheet /> },

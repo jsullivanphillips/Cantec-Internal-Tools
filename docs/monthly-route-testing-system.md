@@ -159,6 +159,8 @@ Run details **KPI counts** are derived from worksheet stops for that month. Run 
 |----------|---------|
 | `POST /api/technician_portal/auth` | PIN gate (`TECHNICIAN_PORTAL_PIN`) |
 | `GET /api/technician_portal/routes_today` | Routes matching today’s weekday/occurrence |
+| `GET /api/technician_portal/locations_suggest` | Active monthly location search (hub lookup) |
+| `GET /api/technician_portal/locations/<id>` | Read-only field reference for a single library location |
 | `POST /api/technician_portal/routes/<id>/runs` | Start run + materialize history rows and v2 stop months |
 | `POST .../runs/complete`, `.../runs/reopen` | Portal run lifecycle |
 
@@ -319,7 +321,7 @@ Rows are stamped ``history_source=master_sheet``. Existing run CSV or portal out
 | `frontend/src/features/monthlyRoutes/RoutePerformanceBreakdown.tsx` | Route detail **Performance** accordion — month dropdown, KPI summary, per-stop table, insights |
 | `frontend/src/features/monthlyRoutes/RouteTechCountCard.tsx` | Route detail — tech count override for expense breakdown |
 
-Technician flow: `/tech` → `/tech/start` → `/tech/route/:routeId/worksheet/:monthIso`.
+Technician flow: `/tech` → `/tech/technician` → `/tech/home` → `/tech/start` → `/tech/route/:routeId/worksheet/:monthIso`, or `/tech/home` → `/tech/location/:locationId` for read-only site reference.
 
 **Routes overview calendar:** Lives on ``/monthlies`` (dashboard). Defaults to the Pacific **current month**; **Previous** / **Next** on the All routes toolbar loads other months via ``GET /api/monthly_routes/dashboard?month_date=YYYY-MM-01``. Each route's cell date comes from ``effectiveRouteTestDayIso`` — nominal ``week_occurrence`` + ``weekday_iso``, bumped to the next same-weekday occurrence when that day is a BC richer stat holiday (e.g. 3rd Monday → 4th Monday when Victoria Day falls on the 3rd). ``scheduledRouteTestDayIso`` delegates to the same logic for portal/worksheet "route today" checks.
 
@@ -571,7 +573,7 @@ Legacy `result_status` / `sheet_time_in_raw` / `sheet_time_out_raw` remain for C
 
 ### Portal UI core (2026-05, Phase 2)
 
-**Routes:** PIN unlock → `/tech/technician` (tech picker) → `/tech/start` → route hub (`/tech/route/:routeId`) → worksheet. Layout redirects to the picker when `GET /api/technician_portal/session/technician` returns 404.
+**Routes:** PIN unlock → `/tech/technician` (tech picker) → `/tech/home` (monthly run or location lookup) → `/tech/start` → route hub (`/tech/route/:routeId`) → worksheet, or `/tech/location/:locationId` for read-only site reference. Layout redirects to the picker when `GET /api/technician_portal/session/technician` returns 404.
 
 **Route hub primary month** (`GET /api/technician_portal/routes/:id/portal_route_summary`):
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Button, Card, Form, Spinner } from 'react-bootstrap'
+import { Form, Spinner } from 'react-bootstrap'
 import { useNavigate } from 'react-router-dom'
 import { apiJson } from '../lib/apiClient'
 
@@ -31,7 +31,7 @@ export default function TechnicianPortalTechPickerPage() {
         const session = await apiJson<SessionTechnicianResponse>('/api/technician_portal/session/technician')
         if (cancelled) return
         if (session.technician) {
-          nav('/tech/start', { replace: true })
+          nav('/tech/home', { replace: true })
           return
         }
       } catch {
@@ -70,7 +70,7 @@ export default function TechnicianPortalTechPickerPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id: tech.id, name: tech.name }),
         })
-        nav('/tech/start', { replace: true })
+        nav('/tech/home', { replace: true })
       } catch {
         setError('Could not save your selection. Try again.')
         setSubmittingId(null)
@@ -80,60 +80,71 @@ export default function TechnicianPortalTechPickerPage() {
   )
 
   return (
-    <div className="container py-4" style={{ maxWidth: '28rem' }}>
-      <h1 className="h4 mb-1">Who is testing today?</h1>
-      <p className="text-muted small mb-3">Select your name to continue.</p>
+    <div className="portal-picker-scene">
+      <div className="portal-picker-scene__mesh" aria-hidden="true" />
 
-      {error ? (
-        <Alert variant="danger" className="small">
-          {error}
-        </Alert>
-      ) : null}
+      <div className="portal-picker-page">
+        <header className="portal-picker-header">
+          <h1 className="portal-picker-header__title">Welcome</h1>
+          <p className="portal-picker-header__subtitle">Select your name from the list to continue.</p>
+        </header>
 
-      <Form.Control
-        type="search"
-        placeholder="Search by name…"
-        className="mb-3"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        disabled={loading}
-        autoFocus
-      />
+        <section className="portal-picker-glass" aria-label="Technician selection">
+          {error ? (
+            <div className="portal-flow-notice portal-flow-notice--error" role="alert">
+              {error}
+            </div>
+          ) : null}
 
-      {loading ? (
-        <div className="text-center py-4">
-          <Spinner animation="border" size="sm" className="me-2" />
-          Loading technicians…
-        </div>
-      ) : filtered.length === 0 ? (
-        <Alert variant="secondary" className="small mb-0">
-          No technicians match your search.
-        </Alert>
-      ) : (
-        <div className="d-flex flex-column gap-2">
-          {filtered.map((tech) => (
-            <Card key={tech.id} className="shadow-sm">
-              <Card.Body className="p-2">
-                <Button
-                  variant="outline-primary"
-                  className="w-100 text-start"
-                  disabled={submittingId != null}
-                  onClick={() => void onSelect(tech)}
-                >
-                  {submittingId === tech.id ? (
-                    <>
-                      <Spinner size="sm" animation="border" className="me-2" />
-                      Saving…
-                    </>
-                  ) : (
-                    tech.name
-                  )}
-                </Button>
-              </Card.Body>
-            </Card>
-          ))}
-        </div>
-      )}
+          <Form.Control
+            type="search"
+            placeholder="Search by name…"
+            className="portal-glass-input mb-3"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            disabled={loading}
+            autoFocus
+          />
+
+          {loading ? (
+            <div className="portal-picker-status" role="status">
+              <Spinner animation="border" size="sm" className="me-2" />
+              Loading technicians…
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="portal-flow-notice portal-flow-notice--muted" role="status">
+              No technicians match your search.
+            </div>
+          ) : (
+            <ul className="portal-tech-list">
+              {filtered.map((tech) => {
+                const isSubmitting = submittingId === tech.id
+                const isDisabled = submittingId != null
+
+                return (
+                  <li key={tech.id}>
+                    <button
+                      type="button"
+                      className="portal-tech-option"
+                      disabled={isDisabled}
+                      onClick={() => void onSelect(tech)}
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <Spinner size="sm" animation="border" className="me-2" />
+                          Saving…
+                        </>
+                      ) : (
+                        tech.name
+                      )}
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </section>
+      </div>
     </div>
   )
 }

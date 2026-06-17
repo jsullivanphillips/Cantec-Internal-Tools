@@ -193,8 +193,8 @@ export default function TechnicianPortalRoutePage() {
     <div className="container py-4" style={{ maxWidth: '40rem' }}>
       <PortalBlockingOverlay show={runLifecycleBusy} message={runLifecycleMessage} />
       <div className="mb-3">
-        <Link to="/tech/start" className="btn btn-link text-primary px-0 mb-2">
-          ← Back to routes
+        <Link to="/tech/home" className="portal-flow-back d-inline-block mb-2">
+          ← Back to home
         </Link>
         {loading ? (
           <div className="d-flex align-items-center gap-2 text-muted py-2">

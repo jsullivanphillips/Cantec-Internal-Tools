@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import { Alert, Button, Card, Form, Spinner } from 'react-bootstrap'
+import { Button, Form, Spinner } from 'react-bootstrap'
 import { useNavigate } from 'react-router-dom'
 import { apiFetch, apiJson } from '../lib/apiClient'
 
 type PortalMeResponse = {
   unlocked: boolean
   configured: boolean
+  technician?: { id: string | null; name: string | null } | null
 }
 
 const PIN_PATTERN = /^[0-9]{1,12}$/
@@ -16,6 +17,7 @@ export default function TechnicianPortalLockPage() {
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [configured, setConfigured] = useState<boolean | null>(null)
+  const [logoFailed, setLogoFailed] = useState(false)
   const inputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
@@ -26,7 +28,11 @@ export default function TechnicianPortalLockPage() {
         if (cancelled) return
         setConfigured(!!me.configured)
         if (me.unlocked) {
-          nav('/tech/technician', { replace: true })
+          if (me.technician?.name) {
+            nav('/tech/home', { replace: true })
+          } else {
+            nav('/tech/technician', { replace: true })
+          }
         }
       } catch {
         if (cancelled) return
@@ -59,7 +65,16 @@ export default function TechnicianPortalLockPage() {
           body: JSON.stringify({ pin: trimmed }),
         })
         if (res.ok) {
-          nav('/tech/technician', { replace: true })
+          try {
+            const me = await apiJson<PortalMeResponse>('/api/technician_portal/me')
+            if (me.technician?.name) {
+              nav('/tech/home', { replace: true })
+            } else {
+              nav('/tech/technician', { replace: true })
+            }
+          } catch {
+            nav('/tech/technician', { replace: true })
+          }
           return
         }
         if (res.status === 503) {
@@ -79,51 +94,70 @@ export default function TechnicianPortalLockPage() {
   )
 
   return (
-    <div className="container py-5 d-flex justify-content-center">
-      <Card className="shadow-sm" style={{ maxWidth: '24rem', width: '100%' }}>
-        <Card.Body className="p-4">
-          <h1 className="h4 mb-1">Technician Portal</h1>
-          <div className="text-muted small mb-3">Enter your portal PIN to start a route.</div>
+    <div className="portal-lock-scene">
+      <div className="portal-lock-scene__mesh" aria-hidden="true" />
+
+      <div className="portal-lock-page">
+        <header className="portal-lock-brand">
+          {!logoFailed ? (
+            <img
+              src="/cantec-logo-horizontal.png"
+              alt="Cantec"
+              className="portal-lock-brand__logo"
+              onError={() => setLogoFailed(true)}
+            />
+          ) : (
+            <h1 className="portal-lock-brand__fallback">Cantec</h1>
+          )}
+          <p className="portal-lock-brand__product">Monthly Bell Testing</p>
+        </header>
+
+        <section className="portal-lock-glass" aria-label="PIN entry">
           {configured === false ? (
-            <Alert variant="warning" className="small mb-3">
+            <div className="portal-lock-notice portal-lock-notice--warning" role="status">
               The portal is not yet configured on this server.
-            </Alert>
+            </div>
           ) : null}
-          <Form onSubmit={onSubmit}>
-            <Form.Group className="mb-3" controlId="techPortalPin">
-              <Form.Label className="small mb-1">PIN</Form.Label>
+
+          <Form onSubmit={onSubmit} className="portal-lock-form">
+            <Form.Group className="portal-lock-field" controlId="techPortalPin">
               <Form.Control
                 ref={inputRef}
-                type="password"
+                className="portal-lock-pin-input"
+                type="tel"
                 inputMode="numeric"
                 autoComplete="one-time-code"
                 pattern="[0-9]*"
+                enterKeyHint="go"
                 value={pin}
-                onChange={(e) => setPin(e.target.value)}
-                placeholder="••••"
-                size="lg"
+                onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+                placeholder="Enter PIN"
                 disabled={submitting}
               />
             </Form.Group>
+
             {error ? (
-              <Alert variant="danger" className="small mb-3">
+              <div className="portal-lock-notice portal-lock-notice--error" role="alert">
                 {error}
-              </Alert>
+              </div>
             ) : null}
-            <div className="d-grid">
-              <Button type="submit" variant="primary" size="lg" disabled={submitting || !pin.trim()}>
-                {submitting ? (
-                  <>
-                    <Spinner size="sm" animation="border" className="me-2" /> Unlocking…
-                  </>
-                ) : (
-                  'Unlock'
-                )}
-              </Button>
-            </div>
+
+            <Button
+              type="submit"
+              className="portal-lock-submit w-100"
+              disabled={submitting || !pin.trim()}
+            >
+              {submitting ? (
+                <>
+                  <Spinner size="sm" animation="border" className="me-2" /> Submitting…
+                </>
+              ) : (
+                'Submit'
+              )}
+            </Button>
           </Form>
-        </Card.Body>
-      </Card>
+        </section>
+      </div>
     </div>
   )
 }

@@ -38,10 +38,18 @@ export default function TechnicianPortalLayout() {
   const isLockScreen = location.pathname === LOCK_PATH || location.pathname === `${LOCK_PATH}/`
   const isTechnicianPicker =
     location.pathname === '/tech/technician' || location.pathname === '/tech/technician/'
+  const isHubScreen =
+    location.pathname === '/tech/home' || location.pathname === '/tech/home/'
+  const isStartScreen =
+    location.pathname === '/tech/start' || location.pathname === '/tech/start/'
+  const isLocationReferenceScreen = location.pathname.startsWith('/tech/location/')
   const needsTechnicianSession =
+    location.pathname.startsWith('/tech/home') ||
+    location.pathname.startsWith('/tech/location/') ||
     location.pathname.startsWith('/tech/start') ||
     location.pathname.startsWith('/tech/route/')
-  const isWorksheetScreen = location.pathname.includes('/worksheet/')
+  const isWorksheetScreen =
+    location.pathname.includes('/worksheet/') || isLocationReferenceScreen
 
   const applyOfflineSessionSnapshot = useCallback(() => {
     const snapshot = portalSessionSnapshotForOfflineBoot()
@@ -203,10 +211,11 @@ export default function TechnicianPortalLayout() {
 
   return (
     <div
-      className={`app-shell d-flex flex-column min-vh-100 app-canvas${isWorksheetScreen ? ' app-shell--portal-worksheet' : ''}`}
+      className={`app-shell d-flex flex-column min-vh-100 app-canvas${isWorksheetScreen ? ' app-shell--portal-worksheet' : ''}${isLockScreen ? ' app-shell--portal-lock' : ''}${isTechnicianPicker ? ' app-shell--portal-picker' : ''}${isStartScreen || isHubScreen ? ' app-shell--portal-start' : ''}`}
     >
-      <header className="app-topbar d-flex align-items-center justify-content-between px-3 px-lg-4 border-bottom bg-white">
-        <div className="d-flex align-items-center gap-3 min-w-0">
+      {!isLockScreen ? (
+        <header className="app-topbar d-flex align-items-center justify-content-between px-3 px-lg-4 border-bottom bg-white">
+          <div className="d-flex align-items-center gap-3 min-w-0">
           {!logoFailed ? (
             <img
               src="/cantec-logo-horizontal.png"
@@ -228,16 +237,17 @@ export default function TechnicianPortalLayout() {
               Offline
             </Badge>
           ) : null}
-        </div>
-        {unlocked && !isLockScreen ? (
-          <Button variant="outline-secondary" size="sm" type="button" onClick={lock}>
-            Lock
-          </Button>
-        ) : null}
-      </header>
+          </div>
+          {unlocked && !isLockScreen ? (
+            <Button variant="outline-secondary" size="sm" type="button" onClick={lock}>
+              Logout
+            </Button>
+          ) : null}
+        </header>
+      ) : null}
 
       <main
-        className={`app-main flex-grow-1 min-w-0${isWorksheetScreen ? ' app-main--flush app-main--portal-worksheet' : ' overflow-auto'}`}
+        className={`app-main flex-grow-1 min-w-0${isLockScreen ? ' app-main--portal-lock' : ''}${isTechnicianPicker ? ' app-main--portal-picker' : ''}${isStartScreen || isHubScreen ? ' app-main--portal-start' : ''}${isWorksheetScreen ? ' app-main--flush app-main--portal-worksheet' : isLockScreen ? '' : ' overflow-auto'}`}
       >
         <div className={isWorksheetScreen ? 'portal-worksheet-outlet' : undefined}>
           <Suspense

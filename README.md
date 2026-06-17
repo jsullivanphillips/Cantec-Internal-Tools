@@ -38,7 +38,7 @@ Legacy global styles from the old Flask static bundle now live under [`frontend/
 
 ## Technician portal (`/tech`)
 
-Field technicians use a public, PIN-gated portal at `/tech` to pick today's monthly route and open the worksheet without a staff sign-in. To enable it, set `TECHNICIAN_PORTAL_PIN` in the environment (e.g. in [`app/.env`](app/.env)) to the shared PIN — when unset, `POST /api/technician_portal/auth` returns **503 portal_disabled**. Rotate by changing the env var and restarting the app. The flow is: `/tech` (PIN) → `/tech/start` (today's expected routes by `weekday_iso`/`week_occurrence`, plus a manual route-number lookup) → existing worksheet at `/tech/route/:routeId/worksheet/:monthIso`.
+Field technicians use a public, PIN-gated portal at `/tech` to pick today's monthly route and open the worksheet without a staff sign-in. To enable it, set `TECHNICIAN_PORTAL_PIN` in the environment (e.g. in [`app/.env`](app/.env)) to the shared PIN — when unset, `POST /api/technician_portal/auth` returns **503 portal_disabled**. Rotate by changing the env var and restarting the app. The flow is: `/tech` (PIN) → `/tech/technician` (name) → `/tech/home` (start a monthly run or look up a location) → `/tech/start` (today's expected routes by `weekday_iso`/`week_occurrence`, plus a manual route-number lookup) or `/tech/location/:locationId` (read-only site reference) → existing worksheet at `/tech/route/:routeId/worksheet/:monthIso`.
 
 The portal is a **PWA** (installable from Safari, scoped to `/tech`) so field iPads can reload the app shell offline after one online visit; worksheet data and pending edits are cached client-side. See [monthly route testing — field iPad setup](docs/monthly-route-testing-system.md).
 

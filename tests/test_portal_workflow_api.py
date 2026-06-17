@@ -16,7 +16,7 @@ from app.db_models import (
     db,
 )
 from app.monthly.portal_workflow import get_location_billing_status
-from tests.monthly_location_helpers import WORKSHEET_TABLES, seed_route_with_two_stops
+from tests.monthly_location_helpers import WORKSHEET_TABLES, seed_route_with_one_stop, seed_route_with_two_stops
 
 
 @pytest.fixture
@@ -544,3 +544,60 @@ def test_test_outcome_annual_skip_category(portal_client, monkeypatch):
 
     with app.app_context():
         assert get_location_billing_status(101, date(2026, 5, 1)) == "do_not_bill"
+
+
+def test_portal_location_suggest_and_reference(portal_client):
+    client, app = portal_client
+    with app.app_context():
+        route_id, location_id = seed_route_with_one_stop(
+            route_id=1,
+            location_id=201,
+            route_number=7,
+        )
+        loc = MonthlyLocation.query.get(location_id)
+        assert loc is not None
+        loc.label = "Harbour Tower"
+        loc.label_normalized = "harbour tower"
+        loc.keys = "KEY-7"
+        loc.price_per_month = 125.0
+        loc.billing_comments = "office only"
+        loc.service_trade_site_location_id = 555123
+        db.session.add(loc)
+        db.session.commit()
+
+    with client.session_transaction() as sess:
+        sess.pop("tech_portal_unlocked", None)
+    locked = client.get("/api/technician_portal/locations_suggest?q=har")
+    assert locked.status_code == 401
+
+    with client.session_transaction() as sess:
+        sess["tech_portal_unlocked"] = True
+
+    empty = client.get("/api/technician_portal/locations_suggest?q=h")
+    assert empty.status_code == 200
+    assert empty.get_json()["locations"] == []
+
+    suggest = client.get("/api/technician_portal/locations_suggest?q=harbour")
+    assert suggest.status_code == 200
+    locations = suggest.get_json()["locations"]
+    assert len(locations) == 1
+    assert locations[0]["id"] == 201
+    assert locations[0]["label"] == "Harbour Tower"
+    assert "R7" in (locations[0].get("route_label") or "")
+
+    missing = client.get("/api/technician_portal/locations/99999")
+    assert missing.status_code == 404
+
+    detail = client.get("/api/technician_portal/locations/201")
+    assert detail.status_code == 200
+    body = detail.get_json()["location"]
+    assert body["label"] == "Harbour Tower"
+    assert body["keys"] == "KEY-7"
+    assert "price_per_month" not in body
+    assert "billing_comments" not in body
+    assert "months" not in body
+    assert body["monthly_route_id"] == route_id
+    assert body.get("monitoring_company_record") is None or isinstance(body["monitoring_company_record"], dict)
+    assert body["service_trade_site_location_id"] == 555123
+    assert body["service_trade_site_location_url"].endswith("/555123")
+

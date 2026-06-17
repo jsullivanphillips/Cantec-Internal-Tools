@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent, type KeyboardEvent } from 'react'
-import { Alert, Button, Card, Form, ListGroup, Spinner } from 'react-bootstrap'
-import { useNavigate } from 'react-router-dom'
+import { Form, Spinner } from 'react-bootstrap'
+import { Link, useNavigate } from 'react-router-dom'
 import { apiJson, isAbortError } from '../lib/apiClient'
 import { monthFirstIsoPacificToday } from '../features/monthlyRoutes/monthlyRoutesShared'
 import {
@@ -56,6 +56,40 @@ function normalizePortalRouteQuery(raw: string): string | null {
   if (!s || !/^\d+$/.test(s)) return null
   const collapsed = s.replace(/^0+/, '')
   return collapsed.length > 0 ? collapsed : '0'
+}
+
+function routeMeta(route: PortalRoute): string {
+  const stops = `${route.location_count} ${route.location_count === 1 ? 'stop' : 'stops'}`
+  return route.display_name ? `${stops} · ${route.display_name}` : stops
+}
+
+type RouteCardProps = {
+  routeNumber: number
+  title: string
+  meta: string
+  onClick?: () => void
+  disabled?: boolean
+  demo?: boolean
+}
+
+function RouteCard({ routeNumber, title, meta, onClick, disabled, demo }: RouteCardProps) {
+  return (
+    <button
+      type="button"
+      className={`portal-route-card${demo ? ' portal-route-card--demo' : ''}${disabled ? ' portal-route-card--disabled' : ''}`}
+      onClick={onClick}
+      disabled={disabled || !onClick}
+    >
+      <span className={`portal-route-card__badge${demo ? ' portal-route-card__badge--demo' : ''}`}>
+        R{routeNumber}
+      </span>
+      <span className="portal-route-card__content">
+        <span className="portal-route-card__title">{title}</span>
+        <span className="portal-route-card__meta">{meta}</span>
+      </span>
+      {onClick && !disabled ? <i className="bi bi-chevron-right portal-route-card__chevron" aria-hidden /> : null}
+    </button>
+  )
 }
 
 export default function TechnicianPortalStartPage() {
@@ -224,24 +258,33 @@ export default function TechnicianPortalStartPage() {
   const heading = data?.date ? formatTodayHeading(data.date) : ''
 
   return (
-    <div className="container py-4" style={{ maxWidth: '40rem' }}>
-      <div className="mb-4">
-        <h1 className="h4 mb-1">Pick a run to start</h1>
-        {heading ? <div className="text-muted small">{heading}</div> : null}
-      </div>
+    <div className="portal-start-scene">
+      <div className="portal-start-scene__mesh" aria-hidden="true" />
 
-      {error ? <Alert variant="danger">{error}</Alert> : null}
+      <div className="portal-start-page">
+        <Link to="/tech/home" className="portal-flow-back">
+          ← Back to home
+        </Link>
 
-      <Card className="shadow-sm mb-4">
-        <Card.Body>
-          <div className="fw-semibold mb-1">Look up by route number</div>
-          <div className="small text-muted mb-2">
-            Type <strong>R18</strong> or <strong>18</strong>; choose from suggestions or press Open.
+        <header className="portal-picker-header">
+          <h1 className="portal-picker-header__title">Pick a run to start</h1>
+          {heading ? <p className="portal-picker-header__subtitle">{heading}</p> : null}
+        </header>
+
+        {error ? (
+          <div className="portal-flow-notice portal-flow-notice--error" role="alert">
+            {error}
           </div>
-          <Form onSubmit={onManualSubmit} className="d-flex flex-column flex-sm-row gap-2 align-items-stretch">
-            <div className="flex-grow-1 position-relative min-w-0">
+        ) : null}
+
+        <section className="portal-picker-glass portal-start-lookup" aria-label="Route lookup">
+          <h2 className="portal-start-section-title">Look up by route number</h2>
+
+          <Form onSubmit={onManualSubmit} className="portal-start-lookup-form">
+            <div className="portal-start-lookup-field">
               <Form.Control
                 type="text"
+                className="portal-glass-input"
                 autoComplete="off"
                 placeholder="e.g. R18 or 18"
                 value={manual}
@@ -259,144 +302,89 @@ export default function TechnicianPortalStartPage() {
                 id="portal-route-lookup-input"
               />
               {dropdownVisible ? (
-                <ListGroup
-                  id="portal-route-suggest-list"
-                  variant="flush"
-                  className="position-absolute top-100 start-0 end-0 mt-1 shadow-sm border rounded overflow-hidden bg-white"
-                  style={{ zIndex: 25 }}
-                >
+                <div id="portal-route-suggest-list" className="portal-route-suggest" role="listbox">
                   {suggestions.map((r, i) => (
-                    <ListGroup.Item
+                    <button
                       key={r.id}
-                      as="button"
                       type="button"
-                      action
+                      role="option"
                       aria-selected={i === suggestHighlight}
-                      className={`text-start py-2 px-3${i === suggestHighlight ? ' bg-primary-subtle' : ''}`}
+                      className={`portal-route-suggest__item${i === suggestHighlight ? ' portal-route-suggest__item--active' : ''}`}
                       onMouseDown={(ev) => ev.preventDefault()}
                       onMouseEnter={() => setSuggestHighlight(i)}
                       onClick={() => pickSuggestion(r)}
                     >
-                      <span className="fw-semibold">R{r.route_number}</span>
-                      <span className="text-muted small ms-2">{r.label}</span>
-                      <span className="d-block small text-muted">
-                        {r.location_count} {r.location_count === 1 ? 'stop' : 'stops'}
-                        {r.display_name ? ` · ${r.display_name}` : ''}
-                      </span>
-                    </ListGroup.Item>
+                      <span className="portal-route-suggest__number">R{r.route_number}</span>
+                      <span className="portal-route-suggest__label">{r.label}</span>
+                      <span className="portal-route-suggest__meta">{routeMeta(r)}</span>
+                    </button>
                   ))}
-                </ListGroup>
+                </div>
               ) : null}
             </div>
-            <Button
-              type="submit"
-              variant="outline-primary"
-              className="flex-shrink-0 align-self-sm-start"
-              disabled={lookingUp || !manual.trim()}
-            >
-              {lookingUp ? <Spinner size="sm" animation="border" /> : 'Open'}
-            </Button>
           </Form>
-          {manualError ? <div className="small text-danger mt-2">{manualError}</div> : null}
-        </Card.Body>
-      </Card>
 
-      <div className="fw-semibold mb-2">Today’s runs</div>
-
-      {demoSeeded ? (
-        <Card
-          as="button"
-          type="button"
-          className="text-start shadow-sm border border-info border-2 mb-3 tw-portal-route-card"
-          onClick={openDemoWorksheet}
-        >
-          <Card.Body className="d-flex align-items-center justify-content-between gap-3 py-3">
-            <div className="d-flex align-items-center gap-3">
-              <div
-                className="rounded-3 bg-info text-white fw-semibold d-flex align-items-center justify-content-center"
-                style={{ width: '3.25rem', height: '3.25rem', fontSize: '1.1rem' }}
-              >
-                R{demoRouteNumber}
-              </div>
-              <div>
-                <div className="fw-semibold">Training route (live sync)</div>
-                <div className="small text-muted">
-                  {demoStopCount} practice stops · changes sync like a real run
-                </div>
-              </div>
+          {manualError ? (
+            <div className="portal-start-inline-error" role="alert">
+              {manualError}
             </div>
-            <i className="bi bi-chevron-right text-muted" aria-hidden />
-          </Card.Body>
-        </Card>
-      ) : (
-        <Card className="text-start shadow-sm border border-info border-2 mb-3 tw-portal-route-card opacity-75">
-          <Card.Body className="d-flex align-items-center justify-content-between gap-3 py-3">
-            <div className="d-flex align-items-center gap-3">
-              <div
-                className="rounded-3 bg-info text-white fw-semibold d-flex align-items-center justify-content-center"
-                style={{ width: '3.25rem', height: '3.25rem', fontSize: '1.1rem' }}
-              >
-                R{demoRouteNumber}
-              </div>
-              <div>
-                <div className="fw-semibold">Training route (live sync)</div>
-                <div className="small text-muted">
-                  {demoLoading
-                    ? 'Loading training route…'
-                    : demoInfo?.seed_hint ??
-                      'Training route is not set up yet — ask the office to run the seed script.'}
-                </div>
-              </div>
+          ) : null}
+        </section>
+
+        <section className="portal-start-runs" aria-label="Today's runs">
+          <h2 className="portal-start-section-title portal-start-section-title--list">Today&apos;s runs</h2>
+
+          {demoSeeded ? (
+            <RouteCard
+              demo
+              routeNumber={demoRouteNumber}
+              title="Training route (live sync)"
+              meta={`${demoStopCount} practice stops · changes sync like a real run`}
+              onClick={openDemoWorksheet}
+            />
+          ) : (
+            <RouteCard
+              demo
+              routeNumber={demoRouteNumber}
+              title="Training route (live sync)"
+              meta={
+                demoLoading
+                  ? 'Loading training route…'
+                  : demoInfo?.seed_hint ??
+                    'Training route is not set up yet — ask the office to run the seed script.'
+              }
+              disabled
+            />
+          )}
+
+          {loading ? (
+            <div className="portal-picker-status" role="status">
+              <Spinner size="sm" animation="border" className="me-2" />
+              Loading today&apos;s runs…
             </div>
-          </Card.Body>
-        </Card>
-      )}
+          ) : null}
 
-      {loading ? (
-        <div className="d-flex align-items-center gap-2 text-muted py-3 mb-2">
-          <Spinner size="sm" animation="border" /> Loading today’s runs…
-        </div>
-      ) : null}
+          {!loading && data && data.routes.length === 0 ? (
+            <div className="portal-flow-notice portal-flow-notice--muted" role="status">
+              No runs are scheduled for today. Use the lookup above if you&apos;re on a different route.
+            </div>
+          ) : null}
 
-      {!loading && data && data.routes.length === 0 ? (
-        <Alert variant="info" className="mb-0">
-          No runs are scheduled for today. Use the lookup above if you’re on a different route.
-        </Alert>
-      ) : null}
-
-      {!loading && data && data.routes.length > 0 ? (
-        <div className="d-grid gap-2">
-          {data.routes.map((r) => (
-            <Card
-              key={r.id}
-              as="button"
-              type="button"
-              className="text-start shadow-sm border-0 tw-portal-route-card"
-              onClick={() => openRoute(r.id)}
-            >
-              <Card.Body className="d-flex align-items-center justify-content-between gap-3 py-3">
-                <div className="d-flex align-items-center gap-3">
-                  <div
-                    className="rounded-3 bg-primary text-white fw-semibold d-flex align-items-center justify-content-center"
-                    style={{ width: '3.25rem', height: '3.25rem', fontSize: '1.1rem' }}
-                  >
-                    R{r.route_number}
-                  </div>
-                  <div>
-                    <div className="fw-semibold">{r.label}</div>
-                    <div className="small text-muted">
-                      {r.location_count} {r.location_count === 1 ? 'stop' : 'stops'}
-                      {r.display_name ? ` · ${r.display_name}` : ''}
-                    </div>
-                  </div>
-                </div>
-                <i className="bi bi-chevron-right text-muted" aria-hidden />
-              </Card.Body>
-            </Card>
-          ))}
-        </div>
-      ) : null}
-
+          {!loading && data && data.routes.length > 0 ? (
+            <div className="portal-route-list">
+              {data.routes.map((r) => (
+                <RouteCard
+                  key={r.id}
+                  routeNumber={r.route_number}
+                  title={r.label}
+                  meta={routeMeta(r)}
+                  onClick={() => openRoute(r.id)}
+                />
+              ))}
+            </div>
+          ) : null}
+        </section>
+      </div>
     </div>
   )
 }
