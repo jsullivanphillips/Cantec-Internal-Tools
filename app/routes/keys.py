@@ -146,6 +146,95 @@ def _apply_key_addresses(key: Key, addresses: list[str], *, replace: bool) -> No
         existing.add(addr.casefold())
 
 
+def _address_from_monthly_location(loc: MonthlyLocation) -> str | None:
+    label = (loc.label or "").strip()
+    address = (loc.address or "").strip()
+    text = label or address
+    return text or None
+
+
+def _parse_monthly_location_ids_payload(data: dict) -> list[int] | None:
+    if "monthly_location_ids" not in data:
+        return None
+    raw = data.get("monthly_location_ids")
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise ValueError("monthly_location_ids must be an array of integers")
+    out: list[int] = []
+    seen: set[int] = set()
+    for item in raw:
+        try:
+            lid = int(item)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("monthly_location_ids must be an array of integers") from exc
+        if lid in seen:
+            continue
+        seen.add(lid)
+        out.append(lid)
+    return out
+
+
+def _apply_monthly_location_links(key: Key, location_ids: list[int], *, replace: bool) -> list[str]:
+    ids_set = set(location_ids)
+    if replace:
+        for loc in MonthlyLocation.query.filter(MonthlyLocation.key_id == key.id).all():
+            if loc.id not in ids_set:
+                loc.key_id = None
+
+    if not location_ids:
+        return []
+
+    locs_by_id = {
+        loc.id: loc
+        for loc in MonthlyLocation.query.filter(MonthlyLocation.id.in_(location_ids)).all()
+    }
+    for lid in location_ids:
+        if lid not in locs_by_id:
+            abort(400, description=f"monthly location {lid} not found")
+
+    for lid in location_ids:
+        locs_by_id[lid].key_id = key.id
+
+    derived: list[str] = []
+    for lid in location_ids:
+        addr = _address_from_monthly_location(locs_by_id[lid])
+        if addr:
+            derived.append(addr)
+    return derived
+
+
+def _serialize_linked_monthly_locations(key_id: int) -> list[dict]:
+    locs = (
+        MonthlyLocation.query.filter(MonthlyLocation.key_id == key_id)
+        .order_by(MonthlyLocation.id.asc())
+        .all()
+    )
+    key_cache: dict[int, dict | None] = {}
+    out: list[dict] = []
+    for loc in locs:
+        key_payload = None
+        if loc.key_id is not None:
+            if loc.key_id not in key_cache:
+                linked_key = db.session.get(Key, loc.key_id)
+                key_cache[loc.key_id] = (
+                    None
+                    if linked_key is None
+                    else {"id": linked_key.id, "keycode": linked_key.keycode}
+                )
+            key_payload = key_cache[loc.key_id]
+        out.append(
+            {
+                "id": loc.id,
+                "label": loc.label,
+                "address": loc.address,
+                "key_id": loc.key_id,
+                "key": key_payload,
+            }
+        )
+    return out
+
+
 def _key_delete_blockers(key_id: int) -> dict[str, object]:
     linked_locations = (
         MonthlyLocation.query.filter(MonthlyLocation.key_id == key_id)
@@ -183,6 +272,7 @@ def _serialize_key_for_spa(key: Key) -> dict:
         "site_status": key.site_status,
         "is_key_bag": is_route_bag_keycode(key.keycode or ""),
         "addresses": [{"id": a.id, "address": a.address} for a in key.addresses],
+        "linked_monthly_locations": _serialize_linked_monthly_locations(key.id),
         "current_status": None
         if not cs
         else {
@@ -354,6 +444,7 @@ def api_create_key():
 
     try:
         addresses = _parse_addresses_payload(data)
+        monthly_location_ids = _parse_monthly_location_ids_payload(data)
     except ValueError as exc:
         abort(400, description=str(exc))
 
@@ -370,8 +461,12 @@ def api_create_key():
     )
     db.session.add(key)
     db.session.flush()
-    if addresses:
-        _apply_key_addresses(key, addresses, replace=True)
+    derived: list[str] = []
+    if monthly_location_ids is not None:
+        derived = _apply_monthly_location_links(key, monthly_location_ids, replace=False)
+    merged_addresses = derived + addresses
+    if merged_addresses or monthly_location_ids is not None:
+        _apply_key_addresses(key, merged_addresses, replace=True)
     _commit_or_500()
     invalidate_cache_prefix("keys:")
     db.session.refresh(key)
@@ -422,7 +517,24 @@ def api_update_key(key_id: int):
         if field in data:
             setattr(key, field, _clean_text(data.get(field)))
 
-    if "addresses" in data:
+    monthly_location_ids = None
+    if "monthly_location_ids" in data:
+        try:
+            monthly_location_ids = _parse_monthly_location_ids_payload(data)
+        except ValueError as exc:
+            abort(400, description=str(exc))
+
+    if monthly_location_ids is not None:
+        derived = _apply_monthly_location_links(key, monthly_location_ids, replace=True)
+        if "addresses" in data:
+            try:
+                explicit_addresses = _parse_addresses_payload(data)
+            except ValueError as exc:
+                abort(400, description=str(exc))
+        else:
+            explicit_addresses = []
+        _apply_key_addresses(key, derived + explicit_addresses, replace=True)
+    elif "addresses" in data:
         try:
             addresses = _parse_addresses_payload(data)
         except ValueError as exc:

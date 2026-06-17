@@ -5112,6 +5112,156 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
   box-shadow: 0 0 0 0.2rem rgba(245, 130, 32, 0.16);
 }
 
+/* Keys admin — compact enterprise registry */
+.keys-admin-page__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #64748b;
+}
+
+.keys-admin-page__back:hover {
+  color: var(--brand-navy);
+}
+
+.keys-admin-page__inline-link {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.keys-admin-page__inline-link:hover {
+  color: var(--brand-navy);
+}
+
+.keys-admin-results-bar {
+  min-height: 1.75rem;
+}
+
+.keys-admin-page .keys-admin-table {
+  font-size: 0.8125rem;
+}
+
+.keys-admin-page .keys-admin-table thead th {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b;
+  border-bottom-color: #e7eaf0;
+  padding-top: 0.65rem;
+  padding-bottom: 0.5rem;
+  white-space: nowrap;
+}
+
+.keys-admin-page .keys-admin-table tbody td {
+  padding-top: 0.55rem;
+  padding-bottom: 0.55rem;
+  border-bottom-color: #f1f4f8;
+  vertical-align: middle;
+}
+
+.keys-admin-page .keys-admin-table__row {
+  cursor: pointer;
+}
+
+.keys-admin-page .keys-admin-table__row:hover td {
+  background: #f8fafc;
+}
+
+.keys-admin-page .keys-admin-table__row:focus-visible {
+  outline: 2px solid rgba(245, 130, 32, 0.45);
+  outline-offset: -2px;
+}
+
+.keys-admin-page .keys-admin-table__keycode {
+  font-weight: 600;
+  color: var(--brand-navy);
+}
+
+.keys-admin-page .keys-admin-table__action-col {
+  width: 1.75rem;
+  padding-left: 0;
+  padding-right: 0.35rem;
+}
+
+.keys-admin-modal__content {
+  border: 1px solid #e7eaf0;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.16);
+}
+
+.keys-admin-modal__header {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #eef1f5;
+}
+
+.keys-admin-modal__title {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--brand-navy);
+}
+
+.keys-admin-modal__body {
+  padding: 1.25rem 1.5rem 1.35rem;
+}
+
+.keys-admin-modal__footer {
+  padding: 0.9rem 1.5rem;
+  border-top: 1px solid #eef1f5;
+  background: #fafbfc;
+}
+
+.keys-admin-modal__section {
+  margin-bottom: 1rem;
+}
+
+.keys-admin-modal__section-title {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #64748b;
+  margin-bottom: 0.5rem;
+}
+
+.keys-admin-modal__label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #64748b;
+  margin-bottom: 0.25rem;
+}
+
+.keys-admin-modal__hint {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  margin: 0;
+}
+
+.keys-admin-modal .form-control {
+  border-color: #d7dee8;
+  font-size: 0.8125rem;
+}
+
+.keys-admin-modal .form-control:focus {
+  border-color: rgba(245, 130, 32, 0.65);
+  box-shadow: 0 0 0 0.2rem rgba(245, 130, 32, 0.16);
+}
+
+.keys-admin-modal .list-group-item {
+  font-size: 0.8125rem;
+  border-color: #eef1f5;
+  padding: 0.45rem 0.65rem;
+}
+
+.keys-admin-modal .border.rounded {
+  border-color: #e7eaf0 !important;
+  background: #fafbfc;
+}
+
 .monthly-page .monthly-billing-table {
   font-size: 0.75rem;
 }

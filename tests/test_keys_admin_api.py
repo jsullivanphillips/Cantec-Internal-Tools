@@ -96,3 +96,68 @@ def test_delete_key_success(keys_admin_client):
         res = client.delete("/api/keys/70")
         assert res.status_code == 204
         assert Key.query.get(70) is None
+
+
+def test_create_key_with_monthly_locations(keys_admin_client):
+    from tests.monthly_location_helpers import make_location
+
+    with keys_admin_client.app_context(), keys_admin_client.test_client() as client:
+        loc = make_location(id=10, address="20 Elm St", label="Elm Building")
+        db.session.add(loc)
+        db.session.commit()
+        _staff(client)
+        res = client.post(
+            "/api/keys",
+            json={
+                "keycode": "ELM 10",
+                "monthly_location_ids": [10],
+                "addresses": ["Extra site"],
+            },
+        )
+        assert res.status_code == 201
+        body = res.get_json()["key"]
+        assert body["keycode"] == "ELM 10"
+        kid = body["id"]
+        assert len(body["linked_monthly_locations"]) == 1
+        assert body["linked_monthly_locations"][0]["id"] == 10
+        addr_texts = {a["address"] for a in body["addresses"]}
+        assert "Elm Building" in addr_texts
+        assert "Extra site" in addr_texts
+
+        db.session.expire_all()
+        linked = MonthlyLocation.query.get(10)
+        assert linked.key_id == kid
+
+
+def test_patch_key_reassigns_monthly_location(keys_admin_client):
+    from tests.monthly_location_helpers import make_location
+
+    with keys_admin_client.app_context(), keys_admin_client.test_client() as client:
+        key_a = Key(id=1, keycode="KEY A")
+        key_b = Key(id=2, keycode="KEY B")
+        loc = make_location(id=20, address="30 Pine", label="Pine Site", key_id=1)
+        db.session.add_all([key_a, key_b, loc])
+        db.session.commit()
+        _staff(client)
+        res = client.patch(
+            "/api/keys/2",
+            json={"monthly_location_ids": [20], "addresses": []},
+        )
+        assert res.status_code == 200
+        body = res.get_json()["key"]
+        assert len(body["linked_monthly_locations"]) == 1
+        assert body["linked_monthly_locations"][0]["id"] == 20
+        assert {a["address"] for a in body["addresses"]} == {"Pine Site"}
+
+        db.session.expire_all()
+        assert MonthlyLocation.query.get(20).key_id == 2
+
+
+def test_create_key_invalid_monthly_location_400(keys_admin_client):
+    with keys_admin_client.app_context(), keys_admin_client.test_client() as client:
+        _staff(client)
+        res = client.post(
+            "/api/keys",
+            json={"keycode": "BAD LOC", "monthly_location_ids": [9999]},
+        )
+        assert res.status_code == 400

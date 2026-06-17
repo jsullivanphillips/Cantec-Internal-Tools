@@ -1,5 +1,58 @@
 import { apiJson } from '../../lib/apiClient'
-import type { LinkedKeySummary } from '../monthlyRoutes/monthlyRoutesShared'
+import type { LinkedKeySummary, LibraryLocation } from '../monthlyRoutes/monthlyRoutesShared'
+
+export type LinkedMonthlyLocationSummary = {
+  id: number
+  label: string
+  address: string
+  key_id?: number | null
+  key?: Pick<LinkedKeySummary, 'id' | 'keycode'> | null
+}
+
+export function addressFromMonthlyLocation(loc: {
+  label?: string | null
+  address?: string | null
+}): string {
+  return (loc.label?.trim() || loc.address?.trim() || '').trim()
+}
+
+export function linkedMonthlyLocationToLibraryLocation(
+  loc: LinkedMonthlyLocationSummary,
+): LibraryLocation {
+  return {
+    id: loc.id,
+    label: loc.label,
+    address: loc.address,
+    key_id: loc.key_id,
+    key: loc.key
+      ? { id: loc.key.id, keycode: loc.key.keycode, barcode: null }
+      : null,
+    property_management_company: null,
+    notes: null,
+    price_per_month: null,
+    pricing_updated: false,
+    area: null,
+    start_up_date: null,
+    status_normalized: 'active',
+    keys: null,
+    test_day: null,
+    annual_month: null,
+    months: {},
+  }
+}
+
+export function filterAdditionalKeyAddresses(
+  addresses: { address: string }[],
+  linkedLocations: LinkedMonthlyLocationSummary[],
+): string {
+  const derived = new Set(
+    linkedLocations.map((loc) => addressFromMonthlyLocation(loc).toLowerCase()),
+  )
+  return addresses
+    .map((a) => a.address.trim())
+    .filter((addr) => addr && !derived.has(addr.toLowerCase()))
+    .join('\n')
+}
 
 export type RouteKeyAuditRow = {
   location_id?: number
@@ -54,6 +107,7 @@ export type KeyAdminDetail = {
   site_status?: string | null
   is_key_bag: boolean
   addresses: { id: number; address: string }[]
+  linked_monthly_locations?: LinkedMonthlyLocationSummary[]
 }
 
 export type KeyDeleteBlockers = {
@@ -77,6 +131,7 @@ export async function createKey(payload: {
   area?: string | null
   annual_month?: string | null
   addresses?: string[]
+  monthly_location_ids?: number[]
 }): Promise<KeyAdminDetail> {
   const res = await apiJson<{ key: KeyAdminDetail }>('/api/keys', {
     method: 'POST',
@@ -105,6 +160,10 @@ export async function deleteKey(keyId: number): Promise<void> {
 export async function fetchKeyDeleteBlockers(keyId: number): Promise<KeyDeleteBlockers> {
   const res = await apiJson<{ blockers: KeyDeleteBlockers }>(`/api/keys/${keyId}/delete_blockers`)
   return res.blockers
+}
+
+export async function fetchKeyAdminDetail(keyId: number): Promise<KeyAdminDetail> {
+  return apiJson<KeyAdminDetail>(`/api/keys/${keyId}/detail`)
 }
 
 export async function searchKeys(q: string): Promise<KeySearchHit[]> {

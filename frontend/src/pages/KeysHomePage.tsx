@@ -229,7 +229,7 @@ export default function KeysHomePage() {
     <div className="container-fluid py-3 px-2 keys-page">
       <Card className="app-surface-card mb-3">
         <Card.Body className="p-3 p-md-4">
-          <div className="d-flex align-items-start justify-content-between gap-3">
+          <div className="d-flex align-items-center justify-content-between gap-3">
             <div className="min-w-0">
               <h1 className="processing-page-title mb-1">Keys</h1>
               <p className="processing-page-subtitle mb-0">
@@ -239,12 +239,12 @@ export default function KeysHomePage() {
             {authenticated ? (
               <Button
                 type="button"
-                variant="outline-secondary"
+                variant="primary"
                 size="sm"
-                className="flex-shrink-0"
+                className="flex-shrink-0 rounded-pill px-3"
                 onClick={openKeysAdmin}
               >
-                Admin
+                Key Management
               </Button>
             ) : null}
           </div>
