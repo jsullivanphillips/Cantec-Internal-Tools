@@ -35,7 +35,8 @@ type Props = {
   currentRouteId: number
 }
 
-const PORTAL_HISTORY_PHONE_LAYOUT_MEDIA = '(max-width: 767.98px)'
+/** iPhone + iPad: stacked field cards and compact modal chrome (matches billing table on desktop). */
+const PORTAL_HISTORY_STACKED_LAYOUT_MEDIA = '(max-width: 1024px)'
 
 function resolveRouteIdForMonth(
   index: PortalTestHistoryIndex | null,
@@ -61,13 +62,13 @@ export default function PortalSiteHistoryModal({
   const [indexLoading, setIndexLoading] = useState(false)
   const [viewMonthIso, setViewMonthIso] = useState<string | null>(null)
   const [stackedCardsLayout, setStackedCardsLayout] = useState(() =>
-    typeof window !== 'undefined' ? window.matchMedia(PORTAL_HISTORY_PHONE_LAYOUT_MEDIA).matches : false,
+    typeof window !== 'undefined' ? window.matchMedia(PORTAL_HISTORY_STACKED_LAYOUT_MEDIA).matches : false,
   )
 
   const currentPacificMonth = useMemo(() => monthFirstIsoPacificToday(), [])
 
   useEffect(() => {
-    const mediaQuery = window.matchMedia(PORTAL_HISTORY_PHONE_LAYOUT_MEDIA)
+    const mediaQuery = window.matchMedia(PORTAL_HISTORY_STACKED_LAYOUT_MEDIA)
     const syncLayout = () => setStackedCardsLayout(mediaQuery.matches)
     syncLayout()
     mediaQuery.addEventListener('change', syncLayout)
@@ -154,7 +155,7 @@ export default function PortalSiteHistoryModal({
       onHide={onHide}
       centered
       size="xl"
-      className="portal-site-history-modal"
+      className={`portal-site-history-modal${stackedCardsLayout ? ' portal-site-history-modal--stacked' : ''}`}
       dialogClassName="portal-site-history-modal__dialog"
       contentClassName="portal-site-history-modal__content"
     >

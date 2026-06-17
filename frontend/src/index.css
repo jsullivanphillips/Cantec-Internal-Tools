@@ -6722,7 +6722,7 @@ button.monthly-location-hero-status-badge:focus-visible {
 
 .portal-site-history-modal__header {
   border-bottom: none;
-  padding: 1rem 1.25rem 0.75rem;
+  padding: 1.15rem 1.5rem 0.9rem;
 }
 
 .portal-site-history-modal__header-inner {
@@ -6736,7 +6736,7 @@ button.monthly-location-hero-status-badge:focus-visible {
 }
 
 .portal-site-history-modal .modal-body.portal-site-history-modal__body {
-  padding: 1.25rem 1.25rem 1.25rem;
+  padding: 1.25rem 1.5rem 1.35rem;
   max-height: min(80vh, 900px);
   overflow: auto;
 }
@@ -6888,154 +6888,166 @@ button.monthly-location-hero-status-badge:focus-visible {
   word-break: break-word;
 }
 
-@media (max-width: 767.98px) {
-  .portal-site-history-modal .modal-dialog.portal-site-history-modal__dialog {
-    width: calc(100% - 1.5rem);
-    max-width: calc(100% - 1.5rem);
-    margin: 0.75rem auto;
-  }
+/* Phone + iPad: stacked field cards and compact modal chrome */
+.portal-site-history-modal.portal-site-history-modal--stacked .modal-dialog.portal-site-history-modal__dialog {
+  width: calc(100% - 1.5rem);
+  max-width: calc(100% - 1.5rem);
+  margin: 0.75rem auto;
+}
 
-  .portal-site-history-modal__content {
-    display: flex;
-    flex-direction: column;
-    max-height: calc(100dvh - 1.5rem);
-    border-radius: var(--pw-radius-lg, 0.85rem);
-    overflow: hidden;
-  }
+.portal-site-history-modal.portal-site-history-modal--stacked .portal-site-history-modal__content {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 1.5rem);
+  border-radius: var(--pw-radius-lg, 0.85rem);
+  overflow: hidden;
+}
 
-  .portal-site-history-modal__header {
-    flex-shrink: 0;
-    padding: 0.85rem 0.85rem 0.65rem;
-  }
+.portal-site-history-modal.portal-site-history-modal--stacked .portal-site-history-modal__header {
+  flex-shrink: 0;
+  padding: 1.15rem 1.35rem 0.85rem;
+}
 
-  .portal-site-history-modal__header-inner {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0.65rem;
-  }
+.portal-site-history-modal.portal-site-history-modal--stacked .portal-site-history-modal__header-inner {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.65rem;
+}
 
-  .portal-site-history-modal__title {
-    font-size: 0.95rem;
-    line-height: 1.35;
-    width: 100%;
-    text-align: left;
-  }
+.portal-site-history-modal.portal-site-history-modal--stacked .portal-site-history-modal__title {
+  font-size: 0.95rem;
+  line-height: 1.35;
+  width: 100%;
+  text-align: left;
+}
 
-  .portal-site-history-modal__nav {
-    display: flex;
-    width: fit-content;
-    max-width: 100%;
-    margin-inline: auto;
-    justify-content: center;
-    align-items: center;
-    gap: 0.65rem;
-  }
+.portal-site-history-modal.portal-site-history-modal--stacked .portal-site-history-modal__nav {
+  display: flex;
+  width: fit-content;
+  max-width: 100%;
+  margin-inline: auto;
+  justify-content: center;
+  align-items: center;
+  gap: 0.65rem;
+}
 
-  .portal-site-history-modal__nav-label {
-    flex: 0 1 auto;
-    min-width: 7rem;
-    font-size: 1rem;
-    text-align: center;
-  }
+.portal-site-history-modal.portal-site-history-modal--stacked .portal-site-history-modal__nav-label {
+  flex: 0 1 auto;
+  min-width: 7rem;
+  font-size: 1rem;
+  text-align: center;
+}
 
-  .portal-site-history-modal__nav-btn {
-    min-width: 3rem;
-    min-height: 3rem;
-    flex-shrink: 0;
-  }
+.portal-site-history-modal.portal-site-history-modal--stacked .portal-site-history-modal__nav-btn {
+  min-width: 3rem;
+  min-height: 3rem;
+  flex-shrink: 0;
+}
 
-  .portal-site-history-modal .modal-body.portal-site-history-modal__body {
-    flex: 1 1 auto;
-    min-height: 0;
-    padding: 0.75rem 0.85rem 1rem;
-    max-height: none;
-    overflow-x: hidden;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-  }
+.portal-site-history-modal.portal-site-history-modal--stacked .modal-body.portal-site-history-modal__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 1rem 1.35rem 1.35rem;
+  max-height: none;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
 
-  .portal-site-history-modal .run-details-history-shell__empty {
-    padding: 1.25rem 0.85rem !important;
-    text-align: center;
-  }
+.portal-site-history-modal.portal-site-history-modal--stacked .run-details-history-shell__empty {
+  padding: 1.35rem 1.25rem !important;
+  text-align: center;
+}
 
-  .portal-site-history-modal .site-test-history-modal-body--stacked .run-details-history-shell {
-    overflow: visible;
-  }
+.portal-site-history-modal.portal-site-history-modal--stacked
+  .site-test-history-modal-body--stacked
+  .run-details-history-shell {
+  overflow: visible;
+}
 
-  .portal-site-history-field-cards {
-    display: flex;
-    flex-direction: column;
-    gap: 0.65rem;
-    width: 100%;
-  }
+.portal-site-history-modal.portal-site-history-modal--stacked .portal-site-history-field-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  width: 100%;
+}
 
-  .portal-site-history-field-card {
-    width: 100%;
-    border: 1px solid var(--pw-border-soft, #e7edf3);
-    border-radius: var(--pw-radius-md, 0.65rem);
-    background: #fff;
-    padding: 0.85rem 1rem;
-    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
-  }
+.portal-site-history-modal.portal-site-history-modal--stacked .portal-site-history-field-card {
+  width: 100%;
+  border: 1px solid var(--pw-border-soft, #e7edf3);
+  border-radius: var(--pw-radius-md, 0.65rem);
+  background: #fff;
+  padding: 0.85rem 1rem;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+}
 
-  .portal-site-history-field-card__label {
-    margin: 0 0 0.45rem;
-    font-size: 0.68rem;
-    font-weight: 800;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    color: #64748b;
-  }
+.portal-site-history-modal.portal-site-history-modal--stacked .portal-site-history-field-card__label {
+  margin: 0 0 0.45rem;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #64748b;
+}
 
-  .portal-site-history-field-card__body {
-    color: #0f172a;
-    font-size: 0.875rem;
-    line-height: 1.4;
-  }
+.portal-site-history-modal.portal-site-history-modal--stacked .portal-site-history-field-card__body {
+  color: #0f172a;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
 
-  .portal-site-history-address__primary {
-    font-weight: 700;
-    line-height: 1.3;
-  }
+.portal-site-history-modal.portal-site-history-modal--stacked .portal-site-history-address__primary {
+  font-weight: 700;
+  line-height: 1.3;
+}
 
-  .portal-site-history-address__meta {
-    display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
-    margin-top: 0.25rem;
-    color: #334155;
-  }
+.portal-site-history-modal.portal-site-history-modal--stacked .portal-site-history-address__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin-top: 0.25rem;
+  color: #334155;
+}
 
-  .portal-site-history-address__subline {
-    margin-top: 0.25rem;
-  }
+.portal-site-history-modal.portal-site-history-modal--stacked .portal-site-history-address__subline {
+  margin-top: 0.25rem;
+}
 
-  .portal-site-history-result {
-    border-radius: var(--pw-radius-md, 0.65rem);
-  }
+.portal-site-history-modal.portal-site-history-modal--stacked .portal-site-history-result {
+  border-radius: var(--pw-radius-md, 0.65rem);
+}
 
-  .portal-site-history-modal .portal-site-history-result .tw-office-billing-test-result-card {
-    width: 100%;
-    border: 0;
-    padding: 0;
-    background: transparent;
-  }
+.portal-site-history-modal.portal-site-history-modal--stacked
+  .portal-site-history-result
+  .tw-office-billing-test-result-card {
+  width: 100%;
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
 
-  .portal-site-history-modal .portal-site-history-result .tw-office-result-detail {
-    font-size: 0.8125rem;
-  }
+.portal-site-history-modal.portal-site-history-modal--stacked
+  .portal-site-history-result
+  .tw-office-result-detail {
+  font-size: 0.8125rem;
+}
 
-  .portal-site-history-modal .portal-site-history-result.run-details-review-location-cell--all-good,
-  .portal-site-history-modal .portal-site-history-result.run-details-review-location-cell--passed-problems,
-  .portal-site-history-modal .portal-site-history-result.run-details-review-location-cell--failed,
-  .portal-site-history-modal .portal-site-history-result.run-details-review-location-cell--skipped,
-  .portal-site-history-modal .portal-site-history-result.run-details-review-location-cell--annual,
-  .portal-site-history-modal .portal-site-history-result.run-details-review-location-cell--on-hold,
-  .portal-site-history-modal .portal-site-history-result.run-details-review-location-cell--pending {
-    background: transparent !important;
-    padding: 0;
-  }
+.portal-site-history-modal.portal-site-history-modal--stacked
+  .portal-site-history-result.run-details-review-location-cell--all-good,
+.portal-site-history-modal.portal-site-history-modal--stacked
+  .portal-site-history-result.run-details-review-location-cell--passed-problems,
+.portal-site-history-modal.portal-site-history-modal--stacked
+  .portal-site-history-result.run-details-review-location-cell--failed,
+.portal-site-history-modal.portal-site-history-modal--stacked
+  .portal-site-history-result.run-details-review-location-cell--skipped,
+.portal-site-history-modal.portal-site-history-modal--stacked
+  .portal-site-history-result.run-details-review-location-cell--annual,
+.portal-site-history-modal.portal-site-history-modal--stacked
+  .portal-site-history-result.run-details-review-location-cell--on-hold,
+.portal-site-history-modal.portal-site-history-modal--stacked
+  .portal-site-history-result.run-details-review-location-cell--pending {
+  background: transparent !important;
+  padding: 0;
 }
 
 .pw-mock-header-status-row {

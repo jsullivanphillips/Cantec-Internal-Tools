@@ -15,7 +15,7 @@ type Props = {
   showBillingColumn?: boolean
   emptyMessageOverride?: string | null
   loadingMessage?: string
-  /** Portal phone layout: stacked field cards instead of the billing table. */
+  /** Portal phone/iPad layout: stacked field cards instead of the billing table. */
   stackedCardsLayout?: boolean
 }
 
