@@ -233,6 +233,7 @@ Many earlier migrations scaffolded routes, runs, history, inspection fields, coo
 | `app/scripts/backfill_monthly_route_coordinates.py` | Bulk geocode all library rows missing lat/lng (`--commit`) |
 | `app/scripts/fix_months_on_invoice_location_labels.py` | Move ``Months on invoice`` placeholder labels to ``billing_comments``; set label to shortened address (`--commit`) |
 | `app/scripts/backfill_monthly_service_trade_site_locations.py` | Auto-link `MonthlyLocation.service_trade_site_location_id` from active ST locations (§8.1) |
+| `app/scripts/sync_monthly_service_trade_contacts.py` | Daily sync: cache ServiceTrade contacts for linked site locations (§8.2) |
 
 ### ServiceTrade site location linking (§8.1)
 
@@ -266,6 +267,30 @@ Prints auto-matched rows, unmatched sites (with reason), and conflicts. Optional
 **API:** `PATCH /api/monthly_routes/library/<location_id>/service_trade_link` with body `{ "service_trade_site_location_id": <positive int> | null }`. Validates ST id exists (`404 service_trade_location_not_found`). Library `GET` detail includes `service_trade_site_location_id` and `service_trade_site_location_url`.
 
 **Readiness report:** `python -m app.scripts.check_monthly_migration_readiness` counts rows with/without `service_trade_site_location_id`.
+
+### ServiceTrade site contacts (§8.2)
+
+**Purpose:** Cache ServiceTrade contacts for monthly library rows with a site link so future office workflows (e.g. customer email when a route is skipped) can resolve recipients without live API calls.
+
+**Storage:** Table `service_trade_site_contact` — one row per `(service_trade_site_location_id, service_trade_contact_id)`. Multiple `MonthlyLocation` rows that share one ST site id share the same cached contacts. Contacts are fetched with `GET /contact?locationId={st_site_id}` (paginated). Only contacts with a non-empty **email** and/or **phone** field (`phone`, `mobile`, `alternatePhone`) are stored. Rows are removed when the contact disappears from ServiceTrade for that location or ServiceTrade marks the contact inactive.
+
+**Monthly library flags** (updated on each successful site sync; `null` when unlinked or never synced):
+
+| Column | Meaning |
+|--------|---------|
+| `service_trade_contacts_synced_at` | Last successful contact sync for this row's ST site id |
+| `service_trade_has_contact_email` | At least one cached contact has email — `false` flags sites for future email workflows |
+| `service_trade_has_contact_phone` | At least one cached contact has a phone field |
+
+**Daily sync** (requires `PROCESSING_USERNAME` / `PROCESSING_PASSWORD`; schedule on Heroku Scheduler):
+
+```bash
+python -m app.scripts.sync_monthly_service_trade_contacts
+python -m app.scripts.sync_monthly_service_trade_contacts --limit 20
+python -m app.scripts.sync_monthly_service_trade_contacts --st-location-id 6470762
+```
+
+Sync module: `app/monthly/service_trade_location_contacts.py`.
 
 ### Map coordinates (office UX)
 

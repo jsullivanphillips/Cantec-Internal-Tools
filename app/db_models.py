@@ -1021,6 +1021,12 @@ class MonthlyLocation(db.Model):
     route_stop_order = db.Column(db.SmallInteger, nullable=True)
 
     service_trade_site_location_id = db.Column(db.BigInteger, nullable=True, index=True)
+    #: Last successful ServiceTrade contact sync for ``service_trade_site_location_id``.
+    service_trade_contacts_synced_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    #: At least one synced ST contact with a non-empty email (null when unlinked / not synced).
+    service_trade_has_contact_email = db.Column(db.Boolean, nullable=True)
+    #: At least one synced ST contact with a non-empty phone field (null when unlinked / not synced).
+    service_trade_has_contact_phone = db.Column(db.Boolean, nullable=True)
 
     key_id = db.Column(
         db.BigInteger,
@@ -1110,6 +1116,49 @@ class MonthlyLocation(db.Model):
         back_populates="location",
         cascade="all, delete-orphan",
         lazy="dynamic",
+    )
+
+
+class ServiceTradeSiteContact(db.Model):
+    """Cached ServiceTrade contact for a building site location (``GET /contact?locationId=``)."""
+
+    __tablename__ = "service_trade_site_contact"
+    __table_args__ = (
+        db.UniqueConstraint(
+            "service_trade_site_location_id",
+            "service_trade_contact_id",
+            name="uq_st_site_contact_location_contact",
+        ),
+        db.Index("ix_st_site_contact_location_id", "service_trade_site_location_id"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    service_trade_site_location_id = db.Column(db.BigInteger, nullable=False)
+    service_trade_contact_id = db.Column(db.BigInteger, nullable=False)
+    first_name = db.Column(db.String(255), nullable=True)
+    last_name = db.Column(db.String(255), nullable=True)
+    email = db.Column(db.String(255), nullable=True)
+    phone = db.Column(db.String(64), nullable=True)
+    mobile = db.Column(db.String(64), nullable=True)
+    alternate_phone = db.Column(db.String(255), nullable=True)
+    contact_type = db.Column(db.String(64), nullable=True)
+    status = db.Column(db.String(32), nullable=True)
+    is_primary = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    synced_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        nullable=False,
+    )
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        nullable=False,
+    )
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        onupdate=db.func.now(),
+        nullable=False,
     )
 
 
