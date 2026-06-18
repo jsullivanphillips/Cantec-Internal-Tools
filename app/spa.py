@@ -8,6 +8,10 @@ from flask import abort, redirect, request, send_from_directory
 mimetypes.add_type('font/woff2', '.woff2')
 mimetypes.add_type('font/woff', '.woff')
 
+INDEX_CACHE_CONTROL = "no-cache, no-store, must-revalidate"
+ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable"
+SW_CACHE_CONTROL = "no-cache"
+
 
 def _request_host_is_loopback() -> bool:
     """True when the HTTP Host is a local loopback name (safe for Vite redirect).
@@ -24,6 +28,11 @@ def _request_host_is_loopback() -> bool:
 def frontend_dist_path() -> str:
     basedir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     return os.path.join(basedir, "frontend", "dist")
+
+
+def _with_cache_control(response, cache_control: str):
+    response.headers["Cache-Control"] = cache_control
+    return response
 
 
 def send_spa_index():
@@ -47,7 +56,7 @@ def send_spa_index():
             503,
             description="Frontend build missing. Run: cd frontend && npm install && npm run build",
         )
-    return send_from_directory(dist, "index.html")
+    return _with_cache_control(send_from_directory(dist, "index.html"), INDEX_CACHE_CONTROL)
 
 
 def register_spa_static_routes(app):
@@ -60,10 +69,12 @@ def register_spa_static_routes(app):
         if not os.path.isdir(assets_dir):
             abort(503)
         if filename.endswith(".woff2"):
-            return send_from_directory(assets_dir, filename, mimetype="font/woff2")
-        if filename.endswith(".woff"):
-            return send_from_directory(assets_dir, filename, mimetype="font/woff")
-        return send_from_directory(assets_dir, filename)
+            response = send_from_directory(assets_dir, filename, mimetype="font/woff2")
+        elif filename.endswith(".woff"):
+            response = send_from_directory(assets_dir, filename, mimetype="font/woff")
+        else:
+            response = send_from_directory(assets_dir, filename)
+        return _with_cache_control(response, ASSET_CACHE_CONTROL)
 
     # Files from frontend/public/ are copied to dist/ root by Vite; Flask must expose them explicitly
     # (unlike /assets/*). Keep this list in sync with files linked from index.html or the SPA.
@@ -84,7 +95,7 @@ def register_spa_static_routes(app):
             return True
         return filename.startswith("workbox-") and filename.endswith(".js")
 
-    def _send_dist_root(filename: str):
+    def _send_dist_root(filename: str, *, cache_control: str | None = None):
         if not _is_allowed_dist_root(filename):
             abort(404)
         path = os.path.join(dist, filename)
@@ -94,36 +105,39 @@ def register_spa_static_routes(app):
         file_real = os.path.realpath(path)
         if os.path.commonpath([dist_real, file_real]) != dist_real:
             abort(404)
-        return send_from_directory(dist, filename)
+        response = send_from_directory(dist, filename)
+        if cache_control:
+            return _with_cache_control(response, cache_control)
+        return response
 
     @app.get("/cantec-logo-horizontal.png")
     def spa_cantec_logo():
-        return _send_dist_root("cantec-logo-horizontal.png")
+        return _send_dist_root("cantec-logo-horizontal.png", cache_control=ASSET_CACHE_CONTROL)
 
     @app.get("/vite.svg")
     def spa_vite_svg():
-        return _send_dist_root("vite.svg")
+        return _send_dist_root("vite.svg", cache_control=ASSET_CACHE_CONTROL)
 
     @app.get("/favicon.png")
     def spa_favicon_png():
-        return _send_dist_root("CANTEC Fire Alarms LOGO cropped.png")
+        return _send_dist_root("CANTEC Fire Alarms LOGO cropped.png", cache_control=ASSET_CACHE_CONTROL)
 
     @app.get("/pwa-192.png")
     def spa_pwa_icon_192():
-        return _send_dist_root("pwa-192.png")
+        return _send_dist_root("pwa-192.png", cache_control=ASSET_CACHE_CONTROL)
 
     @app.get("/pwa-512.png")
     def spa_pwa_icon_512():
-        return _send_dist_root("pwa-512.png")
+        return _send_dist_root("pwa-512.png", cache_control=ASSET_CACHE_CONTROL)
 
     @app.get("/sw.js")
     def spa_service_worker():
-        return _send_dist_root("sw.js")
+        return _send_dist_root("sw.js", cache_control=SW_CACHE_CONTROL)
 
     @app.get("/manifest.webmanifest")
     def spa_web_manifest():
-        return _send_dist_root("manifest.webmanifest")
+        return _send_dist_root("manifest.webmanifest", cache_control=SW_CACHE_CONTROL)
 
     @app.get("/workbox-<workbox_hash>.js")
     def spa_workbox_helper(workbox_hash: str):
-        return _send_dist_root(f"workbox-{workbox_hash}.js")
+        return _send_dist_root(f"workbox-{workbox_hash}.js", cache_control=ASSET_CACHE_CONTROL)

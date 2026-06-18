@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Button, Card } from 'react-bootstrap'
 import { Link, isRouteErrorResponse, useLocation, useRouteError } from 'react-router-dom'
 import { isTechnicianPortalPath } from '../lib/apiClient'
+import { isChunkLoadError } from '../lib/chunkLoadError'
 
 type ErrorCopy = {
   eyebrow: string
@@ -9,15 +10,6 @@ type ErrorCopy = {
   message: string
   statusLabel?: string
 }
-
-const DYNAMIC_IMPORT_ERROR_TEXT = [
-  'failed to fetch dynamically imported module',
-  'error loading dynamically imported module',
-  'importing a module script failed',
-  'chunkloaderror',
-  'loading chunk',
-  'failed to fetch',
-]
 
 function stringifyUnknown(value: unknown): string {
   if (value == null) return ''
@@ -49,8 +41,7 @@ function errorDetails(error: unknown): string {
 }
 
 function isDynamicImportError(error: unknown): boolean {
-  const details = errorDetails(error).toLowerCase()
-  return DYNAMIC_IMPORT_ERROR_TEXT.some((text) => details.includes(text))
+  return isChunkLoadError(error)
 }
 
 function routeErrorCopy(error: unknown): ErrorCopy {

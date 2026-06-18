@@ -1,4 +1,4 @@
-import { lazy } from 'react'
+import { lazyWithChunkRetry } from './lib/lazyWithChunkRetry'
 import { createBrowserRouter, Navigate, useParams, useSearchParams } from 'react-router-dom'
 import AppRouteErrorPage from './components/AppRouteErrorPage'
 import AppLayout from './layout/AppLayout'
@@ -6,36 +6,36 @@ import KeysPublicLayout from './layout/KeysPublicLayout'
 import TechnicianPortalLayout from './layout/TechnicianPortalLayout'
 import LoginPage from './pages/LoginPage'
 
-const FindSchedulePage = lazy(() => import('./pages/FindSchedulePage'))
-const KeysHomePage = lazy(() => import('./pages/KeysHomePage'))
-const KeysAdminPage = lazy(() => import('./pages/KeysAdminPage'))
-const KeyDetailPage = lazy(() => import('./pages/KeyDetailPage'))
-const KeyByBarcodePage = lazy(() => import('./pages/KeyByBarcodePage'))
-const TechnicianMeetingPage = lazy(() => import('./pages/TechnicianMeetingPage'))
-const MonthlyHomePage = lazy(() => import('./pages/MonthlyHomePage'))
-const MonthlyRoutesPage = lazy(() => import('./pages/MonthlyRoutesPage'))
-const MonthlyRouteDetailPage = lazy(() => import('./pages/MonthlyRouteDetailPage'))
-const MonthlyRoutePaperworkPage = lazy(() => import('./pages/MonthlyRoutePaperworkPage'))
-const TechnicianWorksheetPage = lazy(() => import('./pages/TechnicianWorksheetPage'))
-const MonthlyLocationDetailPage = lazy(() => import('./pages/MonthlyLocationDetailPage'))
-const MonthlyRoutesMapPage = lazy(() => import('./pages/MonthlyRoutesMapPage'))
-const MonitoringCompaniesPage = lazy(() => import('./pages/MonitoringCompaniesPage'))
-const MonthlyBillingPage = lazy(() => import('./pages/MonthlyBillingPage'))
-const KeyMetricsPage = lazy(() => import('./pages/KeyMetricsPage'))
-const DeficiencyTrackerPage = lazy(() => import('./pages/DeficiencyTrackerPage'))
-const MondayMeetingPage = lazy(() => import('./pages/MondayMeetingPage'))
-const MondayMeetingServiceAdminPage = lazy(() => import('./pages/MondayMeetingServiceAdminPage'))
-const LimboJobTrackerPage = lazy(() => import('./pages/LimboJobTrackerPage'))
-const BatteryCapacityCalculatorPage = lazy(() => import('./pages/BatteryCapacityCalculatorPage'))
-const QuotationToolPage = lazy(() => import('./pages/QuotationToolPage'))
-const TechnicianPortalLockPage = lazy(() => import('./pages/TechnicianPortalLockPage'))
-const TechnicianPortalTechPickerPage = lazy(() => import('./pages/TechnicianPortalTechPickerPage'))
-const TechnicianPortalHubPage = lazy(() => import('./pages/TechnicianPortalHubPage'))
-const TechnicianPortalStartPage = lazy(() => import('./pages/TechnicianPortalStartPage'))
-const TechnicianPortalRoutePage = lazy(() => import('./pages/TechnicianPortalRoutePage'))
-const TechnicianPortalWorksheetPage = lazy(() => import('./pages/TechnicianPortalWorksheetPage'))
-const TechnicianPortalLocationPage = lazy(() => import('./pages/TechnicianPortalLocationPage'))
-const RedirectPortalTrainingWorksheet = lazy(
+const FindSchedulePage = lazyWithChunkRetry(() => import('./pages/FindSchedulePage'))
+const KeysHomePage = lazyWithChunkRetry(() => import('./pages/KeysHomePage'))
+const KeysAdminPage = lazyWithChunkRetry(() => import('./pages/KeysAdminPage'))
+const KeyDetailPage = lazyWithChunkRetry(() => import('./pages/KeyDetailPage'))
+const KeyByBarcodePage = lazyWithChunkRetry(() => import('./pages/KeyByBarcodePage'))
+const TechnicianMeetingPage = lazyWithChunkRetry(() => import('./pages/TechnicianMeetingPage'))
+const MonthlyHomePage = lazyWithChunkRetry(() => import('./pages/MonthlyHomePage'))
+const MonthlyRoutesPage = lazyWithChunkRetry(() => import('./pages/MonthlyRoutesPage'))
+const MonthlyRouteDetailPage = lazyWithChunkRetry(() => import('./pages/MonthlyRouteDetailPage'))
+const MonthlyRoutePaperworkPage = lazyWithChunkRetry(() => import('./pages/MonthlyRoutePaperworkPage'))
+const TechnicianWorksheetPage = lazyWithChunkRetry(() => import('./pages/TechnicianWorksheetPage'))
+const MonthlyLocationDetailPage = lazyWithChunkRetry(() => import('./pages/MonthlyLocationDetailPage'))
+const MonthlyRoutesMapPage = lazyWithChunkRetry(() => import('./pages/MonthlyRoutesMapPage'))
+const MonitoringCompaniesPage = lazyWithChunkRetry(() => import('./pages/MonitoringCompaniesPage'))
+const MonthlyBillingPage = lazyWithChunkRetry(() => import('./pages/MonthlyBillingPage'))
+const KeyMetricsPage = lazyWithChunkRetry(() => import('./pages/KeyMetricsPage'))
+const DeficiencyTrackerPage = lazyWithChunkRetry(() => import('./pages/DeficiencyTrackerPage'))
+const MondayMeetingPage = lazyWithChunkRetry(() => import('./pages/MondayMeetingPage'))
+const MondayMeetingServiceAdminPage = lazyWithChunkRetry(() => import('./pages/MondayMeetingServiceAdminPage'))
+const LimboJobTrackerPage = lazyWithChunkRetry(() => import('./pages/LimboJobTrackerPage'))
+const BatteryCapacityCalculatorPage = lazyWithChunkRetry(() => import('./pages/BatteryCapacityCalculatorPage'))
+const QuotationToolPage = lazyWithChunkRetry(() => import('./pages/QuotationToolPage'))
+const TechnicianPortalLockPage = lazyWithChunkRetry(() => import('./pages/TechnicianPortalLockPage'))
+const TechnicianPortalTechPickerPage = lazyWithChunkRetry(() => import('./pages/TechnicianPortalTechPickerPage'))
+const TechnicianPortalHubPage = lazyWithChunkRetry(() => import('./pages/TechnicianPortalHubPage'))
+const TechnicianPortalStartPage = lazyWithChunkRetry(() => import('./pages/TechnicianPortalStartPage'))
+const TechnicianPortalRoutePage = lazyWithChunkRetry(() => import('./pages/TechnicianPortalRoutePage'))
+const TechnicianPortalWorksheetPage = lazyWithChunkRetry(() => import('./pages/TechnicianPortalWorksheetPage'))
+const TechnicianPortalLocationPage = lazyWithChunkRetry(() => import('./pages/TechnicianPortalLocationPage'))
+const RedirectPortalTrainingWorksheet = lazyWithChunkRetry(
   () => import('./pages/RedirectPortalTrainingWorksheet'),
 )
 
