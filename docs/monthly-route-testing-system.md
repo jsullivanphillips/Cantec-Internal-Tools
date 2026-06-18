@@ -114,7 +114,7 @@ Primary API for library, routes, worksheet, CSV import, comments.
 
 | Area | Key endpoints |
 |------|----------------|
-| Library | `GET/POST/PATCH/DELETE /api/monthly_routes/library[...]` — filters: `q`, `route`, `skipped_any`, `annual_tested_conflict`, month range; `include_history=false` skips month cells (used by the locations list at `/monthlies/locations`) |
+| Library | `GET/POST/PATCH/DELETE /api/monthly_routes/library[...]` — filters: `q`, `route`, repeated `tag` / `exclude_tag`, `skipped_any`, `annual_tested_conflict`, month range; `include_history=false` skips month cells (used by the locations list at `/monthlies/locations`). `GET /api/monthly_routes/library/tag_options` returns distinct location tags for directory filters. |
 | Routes | `GET /api/monthly_routes/routes`, `GET /api/monthly_routes/dashboard`, `GET /api/monthly_routes/dashboard/issues`, `GET /api/monthly_routes/dashboard/route_breakdown`, `PATCH .../routes/<id>`, `GET .../routes/<id>`, `GET .../routes/<id>/key_audit`, `GET .../routes/<id>/performance_breakdown?month_date=` |
 | Worksheet | `GET .../worksheet`, `GET .../worksheet/stream` (SSE), `PATCH .../worksheet/locations/<location_id>`, clock/test_outcome/deficiency/reset sub-routes, `POST .../worksheet/reset_run` |
 | Runs | `GET .../run_details?month=`, `GET .../run_details/review?month=`, `GET .../run_details/review/locations/<location_id>?month=`, `GET .../run_details/locations/<location_id>?month=`, `POST .../runs/import_csv`, `POST .../runs/complete`, `POST .../runs/reopen` |
@@ -291,6 +291,36 @@ python -m app.scripts.sync_monthly_service_trade_contacts --st-location-id 64707
 ```
 
 Sync module: `app/monthly/service_trade_location_contacts.py`.
+
+**Read API:** `GET /api/monthly_routes/library/<location_id>/service_trade_contacts` — returns cached contacts for the location's ServiceTrade site id. Response: `{ "location_id", "has_service_trade_link", "service_trade_site_location_id", "contacts": [{ "id", "first_name", "last_name", "display_name", "email", "phone", "mobile", "alternate_phone", "contact_type", "is_primary" }] }`. Unlinked locations return `has_service_trade_link: false` and an empty `contacts` array. Contacts are sorted primary first, then name.
+
+### Monthly location tags (§8.3)
+
+**Storage:** Column `monthly_location.tags_json` (JSON, nullable) — JSON array of free-form strings. API field **`tags`** on library list and detail responses.
+
+**Rules:** Max **32** tags per location; each tag max **32** characters after trim; case-insensitive dedupe (first casing wins); empty strings dropped; `[]` clears tags (`null` in DB).
+
+**API:**
+- `GET /api/monthly_routes/library` — each location includes `tags: string[]`
+- `GET /api/monthly_routes/library/<id>` — same
+- `PATCH /api/monthly_routes/library/<id>` — `{ "tags": ["High-rise", "Key on site"] }` or `{ "tags": [] }` to clear
+- `POST /api/monthly_routes/library` — optional `tags` on create
+
+Validation errors: `invalid_tags` (400), `tag_too_long` (400), `too_many_tags` (400). Module: `app/monthly/monthly_location_tags.py`.
+
+**Office UI:** Monthly location detail hero includes an inline **tags** row — dark pills with **Edit tags** to add (Enter) or remove (×); each change persists via `PATCH` with the full `tags` array.
+
+### Location detail hero (office UI)
+
+Monthly library location detail (`/monthlies/locations/:id`) opens with a hero card:
+
+1. **Title row** — location `label`, status badge (opens status modal), **Contacts** pill (`{n} Contacts`; disabled when unlinked or empty; opens contacts modal), **Tickets** pill (`{n} Tickets`; disabled when unassigned to a route; opens tickets modal), **Actions** dropdown (route, status, ServiceTrade, delete).
+2. **Four-column grid** — **Location** (building name when set, street + city/province/postal, annual month, “Open ServiceTrade location” link when linked); **Property management** (company, key); **Route** (link, next test, last test outcome from `months`); **Billing** (monthly price, startup date).
+3. **Tags row** — editable pills at the bottom (see §8.3).
+
+Identity fields (label, building name, address, property management, annual month) are edited via **Actions → Edit** on the hero. Page body sections (**Technician details**, **Billing**, **Testing history**, **Comments**) are collapsible accordions (collapsed by default). Technician details uses cards: Access + Monitoring + Panel (row 1); Testing procedures + Tech location comments (row 2).
+
+The legacy six-card metric grid below the hero was removed; those fields live in the hero columns or elsewhere on the page.
 
 ### Map coordinates (office UX)
 
@@ -719,7 +749,7 @@ PATCH body: `{ "billed": true | false }` — upserts or deletes one row per ``(l
 
 ``pricing_updated`` is a library-level boolean on ``monthly_location`` (default ``false``). Toggle via ``PATCH /api/monthly_routes/library/<id>`` with `{ "pricing_updated": true | false }`. Saving a changed ``price_per_month`` on the same endpoint auto-sets ``pricing_updated`` to ``true``.
 
-UI: ``frontend/src/pages/MonthlyBillingPage.tsx`` at ``/monthlies/billing``. Implementation: ``app/monthly/billing_board.py``. Columns include monthly price, an **Updated** checkbox (``pricing_updated``), and quarter invoiced. Each row shows ``billing_comments`` under the address (when set); the building field is not shown on this page. The location detail **Billing** card also exposes a **Pricing updated** checkbox in its header. Edit comments on the monthly location detail page (**Billing comments** card); persisted on ``monthly_location.billing_comments`` via ``PATCH /api/monthly_routes/library/<id>``.
+UI: ``frontend/src/pages/MonthlyBillingPage.tsx`` at ``/monthlies/billing``. Implementation: ``app/monthly/billing_board.py``. Columns include monthly price, an **Updated** checkbox (``pricing_updated``), and quarter invoiced. Each row shows ``billing_comments`` under the address (when set); the building field is not shown on this page. On the location detail page, the **Billing** section includes an editable **Price per month** card (with **Pricing updated** checkbox) and billing comments below; persisted via ``PATCH /api/monthly_routes/library/<id>``.
 
 **Paperwork UI:** Single locked view per run phase (see §5.2). **Run preparation** (before `started_at`) uses **Office job comment** (`office_job_comment` on `MonthlyTestingSiteMonth`) instead of the legacy Highlight checkbox; non-empty office comments highlight the prep row purple and appear read-only in the technician portal. **Run review** shows live outcomes, billing, tickets, and deficiencies; field values use the same rich-text rendering as prep (technician edits are not highlighted separately). **Exact history** shows the frozen technician submission from `GET .../run_details/field_submission` (empty state when no snapshot exists). **Field changes** is not a Paperwork tab in this iteration. **Complete** (after field end) requires every billing location to be `bill` or `do_not_bill` (not `unset`); the same action stamps office review and closes the job.
 
@@ -729,7 +759,7 @@ UI: ``frontend/src/pages/MonthlyBillingPage.tsx`` at ``/monthlies/billing``. Imp
 
 API: `GET/POST .../routes/<id>/locations/<loc>/tickets` (optional `include_closed=1`), `GET /api/monthly_routes/tickets` (dashboard queue), `GET/PATCH /api/monthly_routes/tickets/<id>`, `POST/PATCH/DELETE .../tickets/<id>/comments/<cid>`. Dashboard `GET /api/monthly_routes/dashboard` includes `open_ticket_count`.
 
-UI: run review **Tickets** button, **Tickets** section on monthly location details, Monthlies dashboard open-ticket KPI + queue + **Create ticket** (location search).
+UI: run review **Tickets** button, hero **Tickets** pill on monthly location details (modal), Monthlies dashboard open-ticket KPI + queue + **Create ticket** (location search).
 
 **Run prep edits:** Office prep field saves use optimistic UI; the server accepts optional ``stop_number`` on worksheet stop PATCH to avoid re-sorting the route, materializes missing stop-month rows when ``run_details`` loads (prep phase, without re-seeding existing rows), and returns a lightweight PATCH payload during prep.
 
@@ -763,7 +793,7 @@ UI: run review **Tickets** button, **Tickets** section on monthly location detai
 | `app/routes/technician_portal.py` | PIN portal |
 | `app/routes/monthly_specialists.py` | Specialist snapshots |
 | `app/monthly/monthly_sites_sync.py` | V2 scaffold + dual-write (`sync_testing_sites_from_legacy`, `push_primary_testing_site_display_to_legacy`) |
-| `frontend/src/pages/MonthlyLocationDetailPage.tsx` | Library location detail (v2 testing stops section) |
+| `frontend/src/pages/MonthlyLocationDetailPage.tsx` | Library location detail — hero card (contacts + tickets pills) + **Technician details**, **Billing**, testing history, comments |
 | `frontend/src/pages/MonthlyBillingPage.tsx` | Billing board (quarter test/bill status + mark billed) |
 | `app/monthly/billing_board.py` | Billing board query + quarter billed toggle |
 | `frontend/src/features/monthlyRoutes/MonthlyLocationLibraryModal.tsx` | Edit billing + v2 testing stops |

@@ -370,3 +370,65 @@ def count_linked_monthly_locations_missing_email_contact() -> int:
         .scalar()
         or 0
     )
+
+
+def _contact_display_name(row: ServiceTradeSiteContact) -> str:
+    parts = [p for p in (row.first_name, row.last_name) if p and str(p).strip()]
+    if parts:
+        return " ".join(str(p).strip() for p in parts)
+    if row.email:
+        return str(row.email).strip()
+    for field in (row.phone, row.mobile, row.alternate_phone):
+        if field and str(field).strip():
+            return str(field).strip()
+    return f"Contact {row.service_trade_contact_id}"
+
+
+def serialize_service_trade_site_contact(row: ServiceTradeSiteContact) -> dict[str, object]:
+    return {
+        "id": int(row.service_trade_contact_id),
+        "first_name": row.first_name,
+        "last_name": row.last_name,
+        "display_name": _contact_display_name(row),
+        "email": row.email,
+        "phone": row.phone,
+        "mobile": row.mobile,
+        "alternate_phone": row.alternate_phone,
+        "contact_type": row.contact_type,
+        "is_primary": bool(row.is_primary),
+    }
+
+
+def contacts_for_service_trade_site_location_id(st_location_id: int) -> list[ServiceTradeSiteContact]:
+    rows = ServiceTradeSiteContact.query.filter_by(
+        service_trade_site_location_id=int(st_location_id),
+    ).all()
+    rows.sort(
+        key=lambda row: (
+            0 if row.is_primary else 1,
+            _contact_display_name(row).casefold(),
+            int(row.service_trade_contact_id),
+        )
+    )
+    return rows
+
+
+def build_location_service_trade_contacts_payload(location_id: int) -> dict[str, object]:
+    loc = MonthlyLocation.query.get(int(location_id))
+    if loc is None:
+        raise LookupError("location_not_found")
+    st_id = loc.service_trade_site_location_id
+    if st_id is None:
+        return {
+            "location_id": int(location_id),
+            "has_service_trade_link": False,
+            "service_trade_site_location_id": None,
+            "contacts": [],
+        }
+    rows = contacts_for_service_trade_site_location_id(int(st_id))
+    return {
+        "location_id": int(location_id),
+        "has_service_trade_link": True,
+        "service_trade_site_location_id": int(st_id),
+        "contacts": [serialize_service_trade_site_contact(row) for row in rows],
+    }

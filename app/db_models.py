@@ -1028,6 +1028,9 @@ class MonthlyLocation(db.Model):
     #: At least one synced ST contact with a non-empty phone field (null when unlinked / not synced).
     service_trade_has_contact_phone = db.Column(db.Boolean, nullable=True)
 
+    #: Free-form office tags (JSON array of strings); API field ``tags``.
+    tags_json = db.Column(db.JSON, nullable=True)
+
     key_id = db.Column(
         db.BigInteger,
         db.ForeignKey("keys.id", ondelete="SET NULL"),

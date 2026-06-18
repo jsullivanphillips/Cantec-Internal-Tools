@@ -5,7 +5,7 @@ type Props = {
   routeId: number
   locationId: number
   locationLabel: string
-  monthDate: string
+  monthDate?: string | null
   sessionUsername?: string | null
   onHide: () => void
   onTicketsChanged?: () => void

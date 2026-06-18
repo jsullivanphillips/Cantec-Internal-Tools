@@ -11,6 +11,9 @@ import {
   renderLibraryStatusDot,
   STATUS_COLUMN_STYLE,
 } from '../features/monthlyRoutes/monthlyDirectoryTableShared'
+import MonthlyLocationsTableSkeleton from '../features/monthlyRoutes/MonthlyLocationsTableSkeleton'
+import MonthlyLocationTableTagsCell from '../features/monthlyRoutes/MonthlyLocationTableTagsCell'
+import MonthlyLocationTagFilterField from '../features/monthlyRoutes/MonthlyLocationTagFilterField'
 import RouteLibraryLink from '../features/monthlyRoutes/RouteLibraryLink'
 import {
   libraryKeycodeDisplay,
@@ -36,6 +39,8 @@ type LibraryPagination = NonNullable<LibraryPayload['meta']['pagination']>
 
 function buildLibraryListQueryString(args: {
   tableSearch: string
+  includeTags: string[]
+  excludeTags: string[]
   page: number
   pageSize: number
   unpaginated: boolean
@@ -43,6 +48,12 @@ function buildLibraryListQueryString(args: {
   const params = new URLSearchParams()
   params.set('include_history', 'false')
   if (args.tableSearch.trim()) params.set('q', args.tableSearch.trim())
+  for (const tag of args.includeTags) {
+    params.append('tag', tag)
+  }
+  for (const tag of args.excludeTags) {
+    params.append('exclude_tag', tag)
+  }
   if (args.unpaginated) {
     params.set('unpaginated', 'true')
   } else {
@@ -137,6 +148,9 @@ export default function MonthlyRoutesPage() {
   const [error, setError] = useState<string | null>(null)
   const [payload, setPayload] = useState<LibraryPayload | null>(null)
   const [tableSearch, setTableSearch] = useState('')
+  const [includeTags, setIncludeTags] = useState<string[]>([])
+  const [excludeTags, setExcludeTags] = useState<string[]>([])
+  const [tagOptions, setTagOptions] = useState<string[]>([])
   const [hideCancelledMbtLocations, setHideCancelledMbtLocations] = useState(true)
   const [showCreateLocationModal, setShowCreateLocationModal] = useState(false)
   const [page, setPage] = useState(1)
@@ -160,12 +174,28 @@ export default function MonthlyRoutesPage() {
 
   useEffect(() => {
     let active = true
+    apiJson<{ tags: string[] }>('/api/monthly_routes/library/tag_options')
+      .then((data) => {
+        if (active) setTagOptions(data.tags ?? [])
+      })
+      .catch(() => {
+        if (active) setTagOptions([])
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  useEffect(() => {
+    let active = true
     const controller = new AbortController()
     setLoading(true)
     setError(null)
 
     const qs = buildLibraryListQueryString({
       tableSearch,
+      includeTags,
+      excludeTags,
       page,
       pageSize,
       unpaginated: false,
@@ -190,7 +220,7 @@ export default function MonthlyRoutesPage() {
       active = false
       controller.abort()
     }
-  }, [page, pageSize, tableSearch])
+  }, [excludeTags, includeTags, page, pageSize, tableSearch])
 
   const locations = payload?.locations ?? []
 
@@ -208,6 +238,8 @@ export default function MonthlyRoutesPage() {
     try {
       const qs = buildLibraryListQueryString({
         tableSearch,
+        includeTags,
+        excludeTags,
         page: 1,
         pageSize,
         unpaginated: true,
@@ -217,7 +249,7 @@ export default function MonthlyRoutesPage() {
       if (hideCancelledMbtLocations) {
         rows = rows.filter((loc) => (loc.status_normalized || '').trim().toLowerCase() !== 'cancelled')
       }
-      const headers = ['Status', 'Route', 'Label', 'Property Management', 'Key', 'Annual']
+      const headers = ['Status', 'Route', 'Location', 'Property Management', 'Key', 'Annual']
       const lines = [headers.map(escapeCsvField).join(',')]
       for (const loc of rows) {
         const line2 = libraryRouteOccurrenceLine(loc)
@@ -249,7 +281,7 @@ export default function MonthlyRoutesPage() {
     } finally {
       setCsvExporting(false)
     }
-  }, [hideCancelledMbtLocations, pageSize, tableSearch])
+  }, [excludeTags, hideCancelledMbtLocations, includeTags, pageSize, tableSearch])
 
   const saveAnnualForLocation = useCallback(
     async (locationId: number, annualMonth: string) => {
@@ -374,23 +406,48 @@ export default function MonthlyRoutesPage() {
           </Card.Body>
         ) : (
           <Card.Body className="monthly-results-body">
-            <div className="monthly-table-search py-2">
-              <div className="app-topbar-location-search">
-                <div className="app-topbar-location-search__field">
-                  <i className="bi bi-search app-topbar-location-search__icon" aria-hidden />
-                  <Form.Control
-                    type="search"
-                    size="sm"
-                    className="app-topbar-location-search__input"
-                    value={tableSearch}
-                    placeholder="Route, address, property, key, annual…"
-                    aria-label="Search locations"
-                    onChange={(e) => {
-                      setTableSearch(e.target.value)
-                      setPage(1)
-                    }}
-                  />
+            <div className="monthly-table-search">
+              <div className="monthly-locations-table-filters">
+                <div className="monthly-locations-filter-field monthly-locations-table-filters__search">
+                  <span className="monthly-locations-filter-field__label">Search</span>
+                  <div className="monthly-locations-filter-field__control monthly-locations-filter-field__control--search">
+                    <i className="bi bi-search monthly-locations-filter-field__icon" aria-hidden />
+                    <Form.Control
+                      type="search"
+                      size="sm"
+                      className="monthly-locations-filter-field__input"
+                      value={tableSearch}
+                      placeholder="Route, address, property, key, annual…"
+                      aria-label="Search locations"
+                      onChange={(e) => {
+                        setTableSearch(e.target.value)
+                        setPage(1)
+                      }}
+                    />
+                  </div>
                 </div>
+                <MonthlyLocationTagFilterField
+                  label="Tags"
+                  placeholder="Search tags…"
+                  options={tagOptions}
+                  selected={includeTags}
+                  blockedTags={excludeTags}
+                  onChange={(next) => {
+                    setIncludeTags(next)
+                    setPage(1)
+                  }}
+                />
+                <MonthlyLocationTagFilterField
+                  label="Exclude tag"
+                  placeholder="Search tags to exclude…"
+                  options={tagOptions}
+                  selected={excludeTags}
+                  blockedTags={includeTags}
+                  onChange={(next) => {
+                    setExcludeTags(next)
+                    setPage(1)
+                  }}
+                />
               </div>
             </div>
             <LocationsPaginationBar
@@ -401,7 +458,7 @@ export default function MonthlyRoutesPage() {
             />
             <div className="monthly-locations-table-wrap">
               {loading ? (
-                <div className="p-4 text-muted">Loading locations…</div>
+                <MonthlyLocationsTableSkeleton />
               ) : (
                 <Table
                   striped
@@ -412,6 +469,7 @@ export default function MonthlyRoutesPage() {
                     <col style={{ width: DIRECTORY_COLUMN_WIDTHS.status }} />
                     <col style={{ width: DIRECTORY_COLUMN_WIDTHS.route }} />
                     <col style={{ width: DIRECTORY_COLUMN_WIDTHS.address }} />
+                    <col style={{ width: DIRECTORY_COLUMN_WIDTHS.tags }} />
                     <col style={{ width: DIRECTORY_COLUMN_WIDTHS.property }} />
                     <col style={{ width: DIRECTORY_COLUMN_WIDTHS.key }} />
                     <col style={{ width: DIRECTORY_COLUMN_WIDTHS.annual }} />
@@ -434,7 +492,13 @@ export default function MonthlyRoutesPage() {
                         className="monthly-locations-table__label-col"
                         style={LIBRARY_TABLE_HEADER_STICKY_STYLE}
                       >
-                        Label
+                        Location
+                      </th>
+                      <th
+                        className="monthly-locations-table__tags-col"
+                        style={LIBRARY_TABLE_HEADER_STICKY_STYLE}
+                      >
+                        Tags
                       </th>
                       <th style={LIBRARY_TABLE_HEADER_STICKY_STYLE}>Property Management</th>
                       <th
@@ -454,7 +518,7 @@ export default function MonthlyRoutesPage() {
                   <tbody>
                     {filteredLocations.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="text-muted py-4">
+                        <td colSpan={7} className="text-muted py-4">
                           No locations match the current filters.
                         </td>
                       </tr>
@@ -484,6 +548,9 @@ export default function MonthlyRoutesPage() {
                                 {loc.label?.trim() || '—'}
                               </Link>
                             </div>
+                          </td>
+                          <td className="monthly-locations-table__tags-col">
+                            <MonthlyLocationTableTagsCell tags={loc.tags} />
                           </td>
                           <td className="library-table-cell-clamp">
                             <div className="library-table-cell-inner">

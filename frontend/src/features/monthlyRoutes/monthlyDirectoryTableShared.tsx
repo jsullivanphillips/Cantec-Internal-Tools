@@ -4,8 +4,9 @@ import type { CSSProperties, ReactNode } from 'react'
 export const DIRECTORY_COLUMN_WIDTHS = {
   status: '3%',
   route: '7%',
-  address: '28%',
-  property: '20%',
+  address: '24%',
+  tags: '14%',
+  property: '18%',
   key: '14%',
   annual: '12%',
 } as const

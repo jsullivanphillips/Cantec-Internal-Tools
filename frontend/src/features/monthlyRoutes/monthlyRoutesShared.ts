@@ -1,6 +1,7 @@
 /** Types and pure helpers shared by Monthly Routes library and map pages. */
 
 import { bcStatHolidayName, isBcStatHoliday, isoFromUtcDate } from './bcStatHolidays'
+import { streetLineFromAddress } from './locationDisplay'
 
 export type MonthCell = {
   /** ``null`` when a history row exists but testing has not been recorded yet. */
@@ -115,6 +116,8 @@ export type LibraryLocation = {
   /** ServiceTrade building location id (real site, not route pseudo-location). */
   service_trade_site_location_id?: number | null
   service_trade_site_location_url?: string | null
+  /** Free-form office tags (max 32 tags, 32 chars each). */
+  tags?: string[]
 }
 
 /** Row from ``GET/PUT .../routes/:id`` locations list (no month grid). */
@@ -1553,22 +1556,186 @@ export function addCalendarMonths(monthFirstIso: string, delta: number): string 
   return toMonthKey(d.getUTCFullYear(), d.getUTCMonth() + 1)
 }
 
-/**
- * First ``YYYY-MM-01`` on or after ``reference``’s local calendar month that is not in ``monthKeys``.
- * Used to show “next month to be tested” given recorded history keys.
- */
-export function nextUntestedMonthIso(
-  monthKeys: Iterable<string>,
-  reference: Date = new Date()
+/** Outcome label for a recorded month cell (Tested, Skipped, or Annual). */
+export function recordedMonthOutcomeLabel(
+  cell: MonthCell,
+  monthIso: string,
+  annualMonth?: string | null,
 ): string | null {
-  const set = new Set(monthKeys)
+  const rs = (cell.result_status || '').trim().toLowerCase()
+  if (rs === 'tested') return 'Tested'
+  if (rs !== 'skipped') return null
+  const reason = (cell.skip_reason || '').trim().toLowerCase()
+  if (reason === 'annual' || reason === 'annual_booked') return 'Annual'
+  if (isAnnualForMonth(annualMonth, monthIso)) return 'Annual'
+  return 'Skipped'
+}
+
+/**
+ * First ``YYYY-MM-01`` on or after ``reference``’s local calendar month without a recorded
+ * outcome. Placeholder history rows (e.g. prepared runs) still count as open until resolved.
+ */
+export function resolveMonthOutcomeLabel(
+  cell: MonthCell,
+  monthIso: string,
+  annualMonth?: string | null,
+): string | null {
+  const fromStatus = recordedMonthOutcomeLabel(cell, monthIso, annualMonth)
+  if (fromStatus) return fromStatus
+
+  if (!isAnnualForMonth(annualMonth, monthIso)) return null
+
+  const billing = (cell.billing_status || '').trim().toLowerCase()
+  if (billing === 'do_not_bill' || billing === 'legacy') return 'Annual'
+
+  return null
+}
+
+export function monthHasRecordedTestOutcome(
+  cell: MonthCell | undefined,
+  monthIso: string,
+  annualMonth?: string | null,
+): boolean {
+  if (!cell) return false
+  return resolveMonthOutcomeLabel(cell, monthIso, annualMonth) != null
+}
+
+export function nextUntestedMonthIso(
+  months: Record<string, MonthCell> | null | undefined,
+  reference: Date = new Date(),
+  annualMonth?: string | null,
+): string | null {
+  const map = months ?? {}
   let cursor = monthFirstIsoLocalToday(reference)
   for (let i = 0; i < 240; i++) {
-    if (!set.has(cursor)) return cursor
+    if (!monthHasRecordedTestOutcome(map[cursor], cursor, annualMonth)) return cursor
     cursor = addCalendarMonths(cursor, 1) ?? ''
     if (!cursor) return null
   }
   return null
+}
+
+export type HeroAddressLines = {
+  streetLine: string
+  localityLine: string | null
+}
+
+/** Street line plus comma-joined remainder for the location detail hero column. */
+export function splitHeroAddressLines(
+  loc: Pick<LibraryLocation, 'display_address' | 'address'>,
+): HeroAddressLines {
+  const raw = (loc.display_address || loc.address || '').trim()
+  if (!raw) {
+    return { streetLine: '—', localityLine: null }
+  }
+  const streetLine = streetLineFromAddress(raw) || '—'
+  const commaIdx = raw.indexOf(',')
+  if (commaIdx < 0) {
+    return { streetLine, localityLine: null }
+  }
+  const remainder = raw
+    .slice(commaIdx + 1)
+    .split(',')
+    .map((segment) => segment.trim())
+    .filter(Boolean)
+    .join(', ')
+  return { streetLine, localityLine: remainder || null }
+}
+
+export type LastRecordedTestSummaryOptions = {
+  annualMonth?: string | null
+  monthly_route?: MonthlyRouteSummary | null
+  reference?: Date
+}
+
+/** Most recent recorded outcome before the upcoming test month. */
+export function lastRecordedTestSummary(
+  months: Record<string, MonthCell> | null | undefined,
+  options?: LastRecordedTestSummaryOptions,
+): string | null {
+  if (!months) return null
+  const reference = options?.reference ?? new Date()
+  const annualMonth = options?.annualMonth
+
+  const anchorMonth = options?.monthly_route
+    ? upcomingTestMonthIso(
+        { months, monthly_route: options.monthly_route, annual_month: annualMonth ?? null },
+        reference,
+      )
+    : nextUntestedMonthIso(months, reference, annualMonth)
+  if (!anchorMonth) return null
+
+  let cursor = addCalendarMonths(anchorMonth, -1)
+  for (let step = 0; step < 36; step += 1) {
+    if (!cursor) return null
+    const cell = months[cursor]
+    const outcome = cell ? resolveMonthOutcomeLabel(cell, cursor, annualMonth) : null
+    if (outcome) {
+      return `${formatRouteOverviewMonthHeading(cursor)} — ${outcome}`
+    }
+    cursor = addCalendarMonths(cursor, -1)
+  }
+  return null
+}
+
+/**
+ * Route test day (``YYYY-MM-DD``) on or after today (Pacific). Starts at the earliest month
+ * without a recorded outcome; walks forward when that month's test day has already passed.
+ */
+export function nextUpcomingRouteTestDayIso(
+  location: Pick<LibraryLocation, 'months' | 'monthly_route' | 'annual_month'>,
+  reference: Date = new Date(),
+): string | null {
+  const route = location.monthly_route
+  if (!route) return null
+
+  const todayIso = pacificCalendarDateIso(reference)
+  if (!todayIso) return null
+
+  const months = location.months ?? {}
+  const annualMonth = location.annual_month
+  let monthCursor = nextUntestedMonthIso(months, reference, annualMonth)
+  if (!monthCursor) return null
+
+  for (let step = 0; step < 36; step += 1) {
+    while (monthHasRecordedTestOutcome(months[monthCursor], monthCursor, annualMonth)) {
+      const advanced = addCalendarMonths(monthCursor, 1)
+      if (!advanced) return null
+      monthCursor = advanced
+    }
+
+    const testDayIso = effectiveRouteTestDayIso(monthCursor, route)
+    if (!testDayIso) return null
+    if (testDayIso >= todayIso) return testDayIso
+
+    const advanced = addCalendarMonths(monthCursor, 1)
+    if (!advanced) return null
+    monthCursor = advanced
+  }
+
+  return null
+}
+
+export function upcomingTestMonthIso(
+  location: Pick<LibraryLocation, 'months' | 'monthly_route' | 'annual_month'>,
+  reference: Date = new Date(),
+): string | null {
+  const upcomingDay = nextUpcomingRouteTestDayIso(location, reference)
+  if (upcomingDay) {
+    const ym = parseYearMonth(upcomingDay)
+    if (ym) return toMonthKey(ym.year, ym.month)
+  }
+  return nextUntestedMonthIso(location.months, reference, location.annual_month)
+}
+
+/** Next route test day on or after today, even when the current month's run is still open. */
+export function nextSiteRouteTestDayLabel(
+  location: LibraryLocation,
+  reference: Date = new Date(),
+): string {
+  const iso = nextUpcomingRouteTestDayIso(location, reference)
+  if (!iso) return '—'
+  return formatRouteTestDayLabel(iso)
 }
 
 export function isLngLatInViewport(lng: number, lat: number, bounds: MapViewportBounds): boolean {

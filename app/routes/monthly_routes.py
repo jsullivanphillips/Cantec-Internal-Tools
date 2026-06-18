@@ -30,6 +30,15 @@ from app.db_models import (
 from app.monthly.key_serialize import linked_key_fields_for_location, serialize_linked_key_summary
 from app.monthly.key_resolve import sync_key_fk_for_location
 from app.monthly.location_building import monthly_location_building_name
+from app.monthly.monthly_location_tags import (
+    apply_library_tag_filters,
+    distinct_location_tags,
+    normalize_monthly_location_tags,
+    parse_library_tag_filter,
+    parse_library_tag_filter_list,
+    set_location_tags,
+    tags_from_location,
+)
 from app.monthly.route_inspection_csv_import import (
     parse_preamble_only,
     run_route_inspection_csv_import,
@@ -1717,6 +1726,7 @@ def _serialize_location_row(
         "route_stop_order": loc.route_stop_order,
         "monthly_route": _serialize_monthly_route_entity(mr),
         "months": months_payload,
+        "tags": tags_from_location(loc),
     }
     if list_view:
         return payload
@@ -1771,6 +1781,11 @@ def _serialize_geocode_candidate(feature: dict[str, object]) -> dict[str, object
     }
 
 
+@monthly_routes_bp.get("/api/monthly_routes/library/tag_options")
+def monthly_library_tag_options():
+    return jsonify({"tags": distinct_location_tags()})
+
+
 @monthly_routes_bp.get("/api/monthly_routes/library")
 def monthly_routes_library(*, list_view: bool | None = None):
     if list_view is None:
@@ -1781,6 +1796,8 @@ def monthly_routes_library(*, list_view: bool | None = None):
     skipped_any = (request.args.get("skipped_any") or "").strip().lower() == "true"
     annual_tested_conflict = (request.args.get("annual_tested_conflict") or "").strip().lower() == "true"
     active_only = (request.args.get("active_only") or "").strip().lower() == "true"
+    include_tags = parse_library_tag_filter_list(request.args.getlist("tag"))
+    exclude_tags = parse_library_tag_filter_list(request.args.getlist("exclude_tag"))
     include_coordinates = (request.args.get("include_coordinates") or "").strip().lower() == "true"
     include_history = (request.args.get("include_history") or "true").strip().lower() != "false"
     unpaginated = (request.args.get("unpaginated") or "").strip().lower() == "true"
@@ -1828,6 +1845,12 @@ def monthly_routes_library(*, list_view: bool | None = None):
         )
     if route:
         location_query = location_query.filter(MonthlyLocation.test_day == route)
+
+    location_query = apply_library_tag_filters(
+        location_query,
+        include_tags=include_tags,
+        exclude_tags=exclude_tags,
+    )
 
     if route:
         ordered_location_query = location_query.order_by(
@@ -2711,6 +2734,19 @@ def _ticket_value_error_response(exc: ValueError) -> tuple[object, int] | None:
         "comment_body_required": ("Comment body is required", 400),
         "comment_not_owned": ("You may only edit or delete your own comments", 403),
         "location_not_found": ("Location not found", 404),
+    }
+    if code not in mapping:
+        return None
+    message, status = mapping[code]
+    return jsonify({"error": message, "code": code}), status
+
+
+def _location_tags_value_error_response(exc: ValueError) -> tuple[object, int] | None:
+    code = str(exc)
+    mapping: dict[str, tuple[str, int]] = {
+        "invalid_tags": ("Invalid tags payload", 400),
+        "tag_too_long": ("Each tag must be 32 characters or fewer", 400),
+        "too_many_tags": ("A location may have at most 32 tags", 400),
     }
     if code not in mapping:
         return None
@@ -5848,6 +5884,8 @@ def create_monthly_route_location():
                 loc.latitude, loc.longitude = coords
 
     try:
+        if "tags" in payload:
+            set_location_tags(loc, normalize_monthly_location_tags(payload.get("tags")))
         sync_monthly_route_fk_for_location(loc)
         _sync_route_stop_order_after_fk_change(loc, None)
         if "key_id" in payload:
@@ -5868,6 +5906,9 @@ def create_monthly_route_location():
         db.session.commit()
     except ValueError as exc:
         db.session.rollback()
+        tag_resp = _location_tags_value_error_response(exc)
+        if tag_resp is not None:
+            return tag_resp
         return jsonify({"error": str(exc)}), 400
 
     db.session.refresh(loc)
@@ -6022,6 +6063,8 @@ def update_monthly_route_location(location_id: int):
             panel_val = (str(raw).strip() or None) if raw is not None else None
             loc.facp_detail = panel_val
             loc.panel = panel_val
+        if "tags" in payload:
+            set_location_tags(loc, normalize_monthly_location_tags(payload.get("tags")))
 
         months_payload = payload.get("months")
         if months_payload is not None:
@@ -6109,6 +6152,9 @@ def update_monthly_route_location(location_id: int):
         db.session.commit()
     except ValueError as exc:
         db.session.rollback()
+        tag_resp = _location_tags_value_error_response(exc)
+        if tag_resp is not None:
+            return tag_resp
         return jsonify({"error": str(exc)}), 400
     except Exception:
         db.session.rollback()
@@ -6292,6 +6338,23 @@ def get_monthly_location_service_trade_deficiencies(location_id: int):
             ),
             503,
         )
+    return jsonify(payload)
+
+
+@monthly_routes_bp.get("/api/monthly_routes/library/<int:location_id>/service_trade_contacts")
+def get_monthly_location_service_trade_contacts(location_id: int):
+    """Cached ServiceTrade contacts for a linked monthly library location."""
+    if not session.get("authenticated"):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    from app.monthly.service_trade_location_contacts import (
+        build_location_service_trade_contacts_payload,
+    )
+
+    try:
+        payload = build_location_service_trade_contacts_payload(location_id)
+    except LookupError:
+        return jsonify({"error": "Location not found"}), 404
     return jsonify(payload)
 
 

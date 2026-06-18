@@ -1,41 +1,36 @@
 import type { ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Accordion, Alert, Button, Form, Modal, OverlayTrigger, Spinner, Tooltip } from 'react-bootstrap'
+import { Accordion, Alert, Button, Form, Modal, Spinner, Table } from 'react-bootstrap'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import MonthlyLibraryCommentsPanel from '../features/monthlyRoutes/MonthlyLibraryCommentsPanel'
-import LocationTicketsPanel from '../features/monthlyRoutes/LocationTicketsPanel'
-import MonthlyLocationBillingCommentsPanel from '../features/monthlyRoutes/MonthlyLocationBillingCommentsPanel'
+import MonthlyLocationBillingPanel from '../features/monthlyRoutes/MonthlyLocationBillingPanel'
 import MonthlyLocationEditableFields, {
   type MonthlyLocationEditableFieldsHandle,
 } from '../features/monthlyRoutes/MonthlyLocationEditableFields'
+import MonthlyLocationDetailHero from '../features/monthlyRoutes/MonthlyLocationDetailHero'
+import MonthlyLocationIdentityEditModal from '../features/monthlyRoutes/MonthlyLocationIdentityEditModal'
 import MonthlyLocationServiceTradeLinkPanel, {
   MonthlyLocationServiceTradeLinkEditModal,
 } from '../features/monthlyRoutes/MonthlyLocationServiceTradeLinkPanel'
-import ServiceTradeDeficienciesButton from '../features/monthlyRoutes/ServiceTradeDeficienciesButton'
+import ServiceTradeDeficienciesModal from '../features/monthlyRoutes/ServiceTradeDeficienciesModal'
 import { notifyPaperworkMasterSiteUpdated } from '../features/monthlyRoutes/paperworkMasterSync'
 import { billingStatusLabel } from '../features/monthlyRoutes/officeRunReviewShared'
 import {
   STATUS_OPTIONS,
   effectiveRouteTestDayIso,
-  formatStartUpDateDisplay,
   formatRouteTestDayLabel,
   isMonthlyTestingHistoryEditable,
-  libraryDisplayPricePerMonth,
-  libraryRouteDisplay,
   nextUntestedMonthIso,
-  normalizeAnnualMonthForSelect,
   parseYearMonth,
   shouldShowTestingHistoryStatus,
   toMonthKey,
   type LibraryLocation,
-  type LinkedKeySummary,
-  type LinkedKeyUiStatus,
   type MonthCell,
   type MonthlyLocationComment,
   type MonthlyLocationDetailPayload,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
 import { apiJson, isAbortError } from '../lib/apiClient'
-import { formatCurrencyCad as formatPriceCad } from '../lib/formatCurrencyCad'
+import MonthlyLocationDetailPageSkeleton from './MonthlyLocationDetailPageSkeleton'
 
 function formatMonthHeading(monthIso: string): string {
   const [y, m] = monthIso.split('-').map(Number)
@@ -141,8 +136,9 @@ function testedHistoryChipLabel(
     return 'Set result'
   }
   const rs = historyMonthResultStatus(cell)
-  if (rs === 'skipped') return 'Skipped'
+  if (rs === 'skipped') return isAnnualMonthRow ? 'Annual' : 'Skipped'
   if (rs === 'tested') return 'Tested'
+  if (isAnnualMonthRow) return 'Annual'
   return 'Set result'
 }
 
@@ -205,203 +201,9 @@ function testingHistoryRouteContextLine(cell: MonthCell | undefined): ReactNode 
   )
 }
 
-function locationStatusLabel(location: LibraryLocation): string {
-  return (location.status_raw || location.status_normalized || '').replace(/_/g, ' ') || '—'
-}
-
-function LocationHeroStatusBadge({
-  normalized,
-  label,
-  onClick,
-}: {
-  normalized: string
-  label: string
-  onClick?: () => void
-}) {
-  const className = `monthly-location-hero-status-badge monthly-location-hero-status-badge--${
-    normalized || 'unknown'
-  } text-capitalize`
-
-  if (onClick) {
-    return (
-      <button type="button" className={className} onClick={onClick}>
-        {label}
-      </button>
-    )
-  }
-
-  return <span className={className}>{label}</span>
-}
-
 function normalizeStatusForSelect(value: string | null | undefined): string {
   const normalized = (value || '').trim().toLowerCase().replace(/\s+/g, '_')
   return STATUS_OPTIONS.some((option) => option.value === normalized) ? normalized : ''
-}
-
-function linkedKeyKpiIcon(ui: LinkedKeyUiStatus | undefined): {
-  icon: string
-  tone: 'out' | 'in' | 'unknown'
-  title: string
-} {
-  if (ui?.is_out) {
-    return {
-      icon: 'bi-box-arrow-up-right',
-      tone: 'out',
-      title: `Signed out to ${ui.current_loc?.trim() || '—'}`,
-    }
-  }
-  if (ui?.is_in) {
-    return {
-      icon: 'bi-check-circle-fill',
-      tone: 'in',
-      title: `At home (${ui.home_loc?.trim() || 'Office'})`,
-    }
-  }
-  return {
-    icon: 'bi-question-circle',
-    tone: 'unknown',
-    title: ui?.status_text?.trim() || 'Key status unknown',
-  }
-}
-
-function LocationKeyKpiValue({
-  keyRecord,
-  sheetKeyText,
-}: {
-  keyRecord: LinkedKeySummary | null | undefined
-  sheetKeyText: string
-}) {
-  if (keyRecord != null) {
-    const { icon, tone, title } = linkedKeyKpiIcon(keyRecord.ui)
-    return (
-      <span className="monthly-location-kpi-key" title={title}>
-        <Link
-          to={`/keys/${keyRecord.id}`}
-          className="monthly-location-kpi-key-link"
-        >
-          {keyRecord.keycode}
-        </Link>
-        <i
-          className={`bi ${icon} monthly-location-kpi-key-icon monthly-location-kpi-key-icon--${tone}`}
-          aria-hidden
-        />
-      </span>
-    )
-  }
-
-  return <span>{sheetKeyText || '—'}</span>
-}
-
-const KEY_KPI_STATUS_TOOLTIP =
-  'Checkmark means the key is in at its home location. Arrow means the key is signed out.'
-
-function KeyKpiLabelInfo() {
-  return (
-    <OverlayTrigger
-      placement="top"
-      trigger={['hover', 'focus']}
-      overlay={
-        <Tooltip id="monthly-location-key-kpi-info" className="monthly-location-kpi-info-tooltip">
-          {KEY_KPI_STATUS_TOOLTIP}
-        </Tooltip>
-      }
-    >
-      <button
-        type="button"
-        className="monthly-location-kpi-info-btn"
-        aria-label="Key status icon legend"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <i className="bi bi-info-circle" aria-hidden />
-      </button>
-    </OverlayTrigger>
-  )
-}
-
-function MonthlyLocationIdentityHero({ location }: { location: LibraryLocation }) {
-  const displayLabel = location.label?.trim() || ''
-  const navAddress = (location.address || '').trim()
-  const sameIdentity =
-    displayLabel !== '' &&
-    navAddress !== '' &&
-    displayLabel.toLowerCase() === navAddress.toLowerCase()
-
-  if (sameIdentity) {
-    return (
-      <div className="monthly-location-identity-display">
-        <h1 className="monthly-location-detail-title">{displayLabel}</h1>
-      </div>
-    )
-  }
-
-  return (
-    <div className="monthly-location-identity-display">
-      {displayLabel ? (
-        <div className="monthly-location-identity-block">
-          <h1 className="monthly-location-detail-title">{displayLabel}</h1>
-        </div>
-      ) : null}
-      {navAddress ? (
-        <div
-          className={`monthly-location-identity-block${
-            displayLabel ? ' monthly-location-identity-block--sub' : ''
-          }`}
-        >
-          <p
-            className={
-              displayLabel
-                ? 'monthly-location-nav-address-line'
-                : 'monthly-location-detail-title mb-0'
-            }
-          >
-            {navAddress}
-          </p>
-        </div>
-      ) : (
-        <h1 className="monthly-location-detail-title">Untitled location</h1>
-      )}
-    </div>
-  )
-}
-
-function DetailMetricCard({
-  label,
-  value,
-  tone,
-  onClick,
-  labelInfo,
-}: {
-  label: string
-  value: ReactNode
-  tone?: 'success' | 'warning' | 'info'
-  onClick?: () => void
-  labelInfo?: ReactNode
-}) {
-  const className = `monthly-location-metric-card${tone ? ` monthly-location-metric-card--${tone}` : ''}${
-    onClick ? ' monthly-location-metric-card--interactive' : ''
-  }`
-  const labelNode = (
-    <div className="monthly-location-metric-label">
-      {label}
-      {labelInfo}
-    </div>
-  )
-
-  if (onClick) {
-    return (
-      <button type="button" className={className} onClick={onClick}>
-        {labelNode}
-        <div className="monthly-location-metric-value">{value}</div>
-      </button>
-    )
-  }
-
-  return (
-    <div className={className}>
-      {labelNode}
-      <div className="monthly-location-metric-value">{value}</div>
-    </div>
-  )
 }
 
 export default function MonthlyLocationDetailPage() {
@@ -421,8 +223,9 @@ export default function MonthlyLocationDetailPage() {
   const [routeSaving, setRouteSaving] = useState(false)
   const [routeSaveError, setRouteSaveError] = useState<string | null>(null)
   const [showStLinkEditModal, setShowStLinkEditModal] = useState(false)
+  const [showStDeficienciesModal, setShowStDeficienciesModal] = useState(false)
+  const [showIdentityEditModal, setShowIdentityEditModal] = useState(false)
   const [sessionUsername, setSessionUsername] = useState<string | null>(null)
-  const [ticketsIncludeClosed, setTicketsIncludeClosed] = useState(false)
   /** Selected calendar year for testing-history grid; ``null`` means “use default year” until user picks one. */
   const [historyViewYear, setHistoryViewYear] = useState<number | null>(null)
   const [historyFieldEdit, setHistoryFieldEdit] = useState<HistoryFieldEdit | null>(null)
@@ -482,7 +285,7 @@ export default function MonthlyLocationDetailPage() {
 
   const nextTestingMonthIso = useMemo(() => {
     if (!location?.months) return null
-    return nextUntestedMonthIso(Object.keys(location.months))
+    return nextUntestedMonthIso(location.months, new Date(), location.annual_month)
   }, [location])
 
   const testingHistoryYears = useMemo(() => {
@@ -565,10 +368,6 @@ export default function MonthlyLocationDetailPage() {
     setLocation(updated)
     const routeId = updated.monthly_route?.id ?? updated.monthly_route_id ?? null
     if (routeId != null) notifyPaperworkMasterSiteUpdated(routeId)
-  }, [])
-
-  const scrollToAnnualField = useCallback(() => {
-    editableFieldsRef.current?.scrollToField('annual_month')
   }, [])
 
   const openStatusModal = useCallback(() => {
@@ -705,16 +504,7 @@ export default function MonthlyLocationDetailPage() {
   }
 
   if (loading) {
-    return (
-      <div className="monthly-location-detail-page">
-        <div className="monthly-location-detail-container monthly-location-detail-container--loading">
-          <div className="monthly-location-detail-loading" role="status" aria-live="polite">
-            <Spinner animation="border" />
-            <span>Loading location…</span>
-          </div>
-        </div>
-      </div>
-    )
+    return <MonthlyLocationDetailPageSkeleton />
   }
 
   if (error || !location) {
@@ -726,29 +516,9 @@ export default function MonthlyLocationDetailPage() {
     )
   }
 
-  const routeLabel = libraryRouteDisplay(location)
-  const routeLabelText = routeLabel.trim() || 'Unassigned'
-  const routeDetailId = location.monthly_route?.id ?? location.monthly_route_id ?? null
-  const displayPrice = libraryDisplayPricePerMonth(location)
-  const statusLabel = locationStatusLabel(location)
-  const keyRecord = location.key
-  const keyText = location.keys?.trim() || ''
-  const keyValue = <LocationKeyKpiValue keyRecord={keyRecord} sheetKeyText={keyText} />
-  const routeValue =
-    routeDetailId != null && routeLabel.trim() ? (
-      <Link to={`/monthlies/routes/${routeDetailId}`} className="fw-semibold text-decoration-none">
-        {routeLabelText}
-      </Link>
-    ) : (
-      <span className="fw-semibold">{routeLabelText}</span>
-    )
-  const propertyManagementLabel = location.property_management_company?.trim() || '—'
   const serviceTradeLinkedUrl = location.service_trade_site_location_url?.trim() || null
   const hasServiceTradeLink = location.service_trade_site_location_id != null
-  const annualTrimmed = location.annual_month?.trim() || ''
-  const annualValue = annualTrimmed
-    ? normalizeAnnualMonthForSelect(annualTrimmed) || annualTrimmed
-    : '—'
+  const heroActionsBusy = deleteSaving || statusSaving || routeSaving || historySaving
 
   const testingHistoryGridYear =
     testingHistoryYears.length === 0
@@ -767,143 +537,27 @@ export default function MonthlyLocationDetailPage() {
           Monthly locations
         </Link>
 
-        <section className="monthly-location-detail-hero monthly-location-detail-hero--compact monthly-location-detail-surface">
-          <div className="monthly-location-detail-hero-toprow">
-            <span className="monthly-location-detail-eyebrow">Monthly location</span>
-            <LocationHeroStatusBadge
-              normalized={location.status_normalized || 'unknown'}
-              label={statusLabel}
-              onClick={openStatusModal}
-            />
-          </div>
-          <div className="monthly-location-detail-hero-body">
-            <div className="monthly-location-detail-hero-main">
-              <MonthlyLocationIdentityHero location={location} />
-              {propertyManagementLabel !== '—' ? (
-                <p className="monthly-location-hero-property-mgmt">
-                  <i className="bi bi-building" aria-hidden />
-                  {propertyManagementLabel}
-                </p>
-              ) : null}
-            </div>
-            <div className="monthly-location-hero-actions monthly-location-detail-hero-actions">
-            <Button
-              type="button"
-              variant="outline-secondary"
-              size="sm"
-              className="monthly-location-detail-action"
-              onClick={openRouteModal}
-            >
-              <i className="bi bi-signpost-split" aria-hidden />
-              Change route
-            </Button>
-            <Button
-              type="button"
-              variant="outline-secondary"
-              size="sm"
-              className="monthly-location-detail-action"
-              onClick={openStatusModal}
-            >
-              <i className="bi bi-sliders" aria-hidden />
-              Change status
-            </Button>
-            <Button
-              type="button"
-              variant="outline-danger"
-              size="sm"
-              className="monthly-location-detail-action"
-              disabled={
-                deleteSaving ||
-                statusSaving ||
-                routeSaving ||
-                historySaving
-              }
-              onClick={openDeleteModal}
-            >
-              <i className="bi bi-trash" aria-hidden />
-              Delete Location
-            </Button>
-            {serviceTradeLinkedUrl ? (
-              <Button
-                as="a"
-                href={serviceTradeLinkedUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                variant="outline-primary"
-                size="sm"
-                className="monthly-location-detail-action"
-              >
-                <i className="bi bi-box-arrow-up-right" aria-hidden />
-                Open in Service Trade
-              </Button>
-            ) : (
-              <Button
-                type="button"
-                variant="outline-primary"
-                size="sm"
-                className="monthly-location-detail-action"
-                disabled
-                title="Link this site to ServiceTrade to open it."
-              >
-                <i className="bi bi-box-arrow-up-right" aria-hidden />
-                Open in Service Trade
-              </Button>
-            )}
-            <ServiceTradeDeficienciesButton
-              locationId={location.id}
-              hasServiceTradeLink={hasServiceTradeLink}
-              locationLabel={(location.label || location.address || '').trim() || undefined}
-              className="monthly-location-detail-action"
-              label="View ST Deficiencies"
-            />
-            <Button
-              type="button"
-              variant="outline-secondary"
-              size="sm"
-              className="monthly-location-detail-action"
-              onClick={() => setShowStLinkEditModal(true)}
-            >
-              <i className="bi bi-pencil" aria-hidden />
-              Edit ST Link
-            </Button>
-            </div>
-          </div>
-        </section>
+        <MonthlyLocationDetailHero
+          location={location}
+          heroActionsBusy={heroActionsBusy}
+          serviceTradeLinkedUrl={serviceTradeLinkedUrl}
+          hasServiceTradeLink={hasServiceTradeLink}
+          onOpenStatusModal={openStatusModal}
+          onOpenIdentityEdit={() => setShowIdentityEditModal(true)}
+          onOpenRouteModal={openRouteModal}
+          onOpenDeleteModal={openDeleteModal}
+          onOpenStDeficiencies={() => setShowStDeficienciesModal(true)}
+          onOpenStLinkEdit={() => setShowStLinkEditModal(true)}
+          onLocationUpdated={handleLocationUpdated}
+          sessionUsername={sessionUsername}
+        />
 
-        <div className="monthly-location-metric-grid monthly-location-detail-metric-grid" aria-label="Location summary">
-          <DetailMetricCard
-            label="Status"
-            value={
-              <span
-                className={`monthly-location-kpi-status monthly-location-kpi-status--${location.status_normalized || 'unknown'} text-capitalize`}
-              >
-                {statusLabel}
-              </span>
-            }
-            onClick={openStatusModal}
-          />
-          <DetailMetricCard label="Route" value={routeValue} />
-          <DetailMetricCard
-            label="Key"
-            value={keyValue}
-            labelInfo={keyRecord != null ? <KeyKpiLabelInfo /> : undefined}
-          />
-          <DetailMetricCard
-            label="Annual"
-            value={annualValue}
-            tone="info"
-            onClick={scrollToAnnualField}
-          />
-          <DetailMetricCard
-            label="Monthly Price"
-            value={formatPriceCad(displayPrice)}
-            tone="success"
-          />
-          <DetailMetricCard
-            label="Start up date"
-            value={formatStartUpDateDisplay(location.start_up_date)}
-          />
-        </div>
+        <MonthlyLocationIdentityEditModal
+          show={showIdentityEditModal}
+          location={location}
+          onHide={() => setShowIdentityEditModal(false)}
+          onLocationUpdated={handleLocationUpdated}
+        />
 
         <MonthlyLocationServiceTradeLinkPanel
           location={location}
@@ -916,6 +570,15 @@ export default function MonthlyLocationDetailPage() {
           onHide={() => setShowStLinkEditModal(false)}
           onLocationUpdated={handleLocationUpdated}
         />
+
+        {hasServiceTradeLink ? (
+          <ServiceTradeDeficienciesModal
+            show={showStDeficienciesModal}
+            onHide={() => setShowStDeficienciesModal(false)}
+            locationId={location.id}
+            locationLabel={(location.label || location.address || '').trim() || undefined}
+          />
+        ) : null}
 
         <Modal show={showStatusModal} onHide={closeStatusModal} centered size="sm">
           <Modal.Header closeButton={!statusSaving}>
@@ -1045,34 +708,52 @@ export default function MonthlyLocationDetailPage() {
         </Modal>
 
         <div className="monthly-location-detail-body">
-          <div className="monthly-location-detail-body__primary">
-            <section className="monthly-location-detail-panel monthly-location-details-panel">
-              <header className="monthly-location-section-header">
-                <div>
-                  <h2 className="monthly-location-section-title">Location details</h2>
-                </div>
-              </header>
-              <MonthlyLocationEditableFields
-                ref={editableFieldsRef}
-                location={location}
-                onLocationUpdated={handleLocationUpdated}
-              />
-            </section>
-          </div>
-
-          <div className="monthly-location-detail-body__secondary">
-            <Accordion defaultActiveKey="history" className="monthly-location-detail-accordion">
-          <Accordion.Item
-            eventKey="history"
-            className="monthly-location-testing-history-card monthly-location-detail-surface"
+          <Accordion
+            defaultActiveKey={[]}
+            alwaysOpen
+            className="monthly-location-detail-accordion"
           >
-            <Accordion.Header className="monthly-location-testing-history-card-header">
-              <span className="monthly-location-history-header">
-                <span>Testing history</span>
-                <span>{testingHistoryGridYear ?? 'No history'}</span>
-              </span>
-            </Accordion.Header>
-            <Accordion.Body className="monthly-location-testing-history-body">
+            <Accordion.Item
+              eventKey="technician"
+              className="monthly-location-detail-section monthly-location-technician-details-panel monthly-location-details-panel monthly-location-detail-surface"
+            >
+              <Accordion.Header className="monthly-location-detail-section-header">
+                <span className="monthly-location-section-accordion-title">Technician details</span>
+              </Accordion.Header>
+              <Accordion.Body className="monthly-location-detail-section-body">
+                <MonthlyLocationEditableFields
+                  ref={editableFieldsRef}
+                  location={location}
+                  onLocationUpdated={handleLocationUpdated}
+                />
+              </Accordion.Body>
+            </Accordion.Item>
+
+            <Accordion.Item
+              eventKey="billing"
+              className="monthly-location-detail-section monthly-location-billing-panel-section monthly-location-detail-surface"
+            >
+              <Accordion.Header className="monthly-location-detail-section-header">
+                <span className="monthly-location-section-accordion-title">Billing</span>
+              </Accordion.Header>
+              <Accordion.Body className="monthly-location-detail-section-body">
+                {location ? (
+                  <MonthlyLocationBillingPanel location={location} onLocationUpdated={setLocation} />
+                ) : null}
+              </Accordion.Body>
+            </Accordion.Item>
+
+            <Accordion.Item
+              eventKey="history"
+              className="monthly-location-detail-section monthly-location-testing-history-card monthly-location-detail-surface"
+            >
+              <Accordion.Header className="monthly-location-detail-section-header monthly-location-testing-history-card-header">
+                <span className="monthly-location-history-header">
+                  <span className="monthly-location-section-accordion-title">Testing history</span>
+                  <span>{testingHistoryGridYear ?? 'No history'}</span>
+                </span>
+              </Accordion.Header>
+              <Accordion.Body className="monthly-location-testing-history-body">
               {testingHistoryYears.length === 0 ? (
                 <div className="monthly-location-empty-state">No monthly test outcomes recorded yet.</div>
               ) : (
@@ -1126,18 +807,26 @@ export default function MonthlyLocationDetailPage() {
                       {historySaveError}
                     </Alert>
                   ) : null}
-                  <div
-                    className="monthly-location-testing-history-list"
-                    role="list"
-                    aria-label={`Testing history months for ${testingHistoryGridYear ?? ''}`}
-                  >
-                    <div className="monthly-location-testing-history-list-head" aria-hidden="true">
-                      <span>Month</span>
-                      <span>Tested</span>
-                      <span>Billing</span>
-                      <span>Details</span>
-                    </div>
-                    <div className="monthly-location-testing-history-list-body">
+                  <div className="monthly-location-testing-history-table-wrap">
+                    <Table
+                      className="monthly-location-testing-history-table align-middle mb-0"
+                      aria-label={`Testing history months for ${testingHistoryGridYear ?? ''}`}
+                    >
+                      <colgroup>
+                        <col className="monthly-location-testing-history-table__month-col" />
+                        <col className="monthly-location-testing-history-table__tested-col" />
+                        <col className="monthly-location-testing-history-table__billing-col" />
+                        <col className="monthly-location-testing-history-table__details-col" />
+                      </colgroup>
+                      <thead>
+                        <tr>
+                          <th scope="col">Month</th>
+                          <th scope="col">Tested</th>
+                          <th scope="col">Billing</th>
+                          <th scope="col">Details</th>
+                        </tr>
+                      </thead>
+                      <tbody>
                     {testingHistoryGridYear != null
                       ? monthIsoKeysForCalendarYear(testingHistoryGridYear).map((monthIso) => {
                           const cell = location.months[monthIso]
@@ -1158,11 +847,10 @@ export default function MonthlyLocationDetailPage() {
                           const editingBilling =
                             historyFieldEdit?.monthIso === monthIso &&
                             historyFieldEdit.field === 'billing'
-                          const canEditHistoryFields =
-                            showHistoryStatus && canEditMonth && !isAnnualMonthRow
-                          const canEditResultField = canEditHistoryFields
+                          const canEditHistoryBase = showHistoryStatus && canEditMonth
+                          const canEditResultField = canEditHistoryBase && !isAnnualMonthRow
                           const canEditBillingField =
-                            canEditHistoryFields && cell != null && !billingLocked
+                            canEditHistoryBase && cell != null && !billingLocked
                           const resultClass = showHistoryStatus
                             ? testingHistoryResultCellClass(
                                 cell,
@@ -1205,17 +893,17 @@ export default function MonthlyLocationDetailPage() {
                           const monthSaving = historySaving
 
                           return (
-                            <div key={monthIso} className={rowClass} role="listitem">
-                              <div className="monthly-location-testing-history-row-month">
+                            <tr key={monthIso} className={rowClass}>
+                              <td className="monthly-location-testing-history-table__month-col">
                                 <span
                                   className="monthly-location-testing-history-month-name"
                                   title={formatMonthHeading(monthIso)}
                                 >
                                   {monthShortNameFromKey(monthIso)}
                                 </span>
-                              </div>
+                              </td>
 
-                              <div className="monthly-location-testing-history-row-cell monthly-location-testing-history-row-cell--tested">
+                              <td className="monthly-location-testing-history-table__tested-col">
                                 {showHistoryStatus ? (
                                   editingResult ? (
                                     <Form.Select
@@ -1278,9 +966,9 @@ export default function MonthlyLocationDetailPage() {
                                 ) : (
                                   <span className="monthly-location-testing-history-row-empty">—</span>
                                 )}
-                              </div>
+                              </td>
 
-                              <div className="monthly-location-testing-history-row-cell monthly-location-testing-history-row-cell--billing">
+                              <td className="monthly-location-testing-history-table__billing-col">
                                 {showHistoryStatus ? (
                                   editingBilling ? (
                                     <Form.Select
@@ -1337,91 +1025,57 @@ export default function MonthlyLocationDetailPage() {
                                 ) : (
                                   <span className="monthly-location-testing-history-row-empty">—</span>
                                 )}
-                              </div>
+                              </td>
 
-                              <div className="monthly-location-testing-history-row-meta">
-                                {worksheetRouteId != null ? (
-                                  <Link
-                                    className="monthly-location-testing-history-worksheet-link"
-                                    to={`/monthlies/routes/${worksheetRouteId}/paperwork?month=${encodeURIComponent(monthIso)}`}
-                                    title={`Open paperwork for ${formatMonthHeading(monthIso)}`}
-                                  >
-                                    Worksheet
-                                  </Link>
-                                ) : null}
-                                {isNextSlot ? (
-                                  <span className="monthly-location-testing-history-row-next">
-                                    Next test{testDayLabel ? `: ${testDayLabel}` : ''}
-                                  </span>
-                                ) : null}
-                                {testingHistoryRouteContextLine(cell)}
-                              </div>
-                            </div>
+                              <td className="monthly-location-testing-history-table__details-col">
+                                <div className="monthly-location-testing-history-row-meta">
+                                  {worksheetRouteId != null ? (
+                                    <Link
+                                      className="monthly-location-testing-history-worksheet-link"
+                                      to={`/monthlies/routes/${worksheetRouteId}/paperwork?month=${encodeURIComponent(monthIso)}`}
+                                      title={`Open paperwork for ${formatMonthHeading(monthIso)}`}
+                                    >
+                                      Worksheet
+                                    </Link>
+                                  ) : null}
+                                  {isNextSlot ? (
+                                    <span className="monthly-location-testing-history-row-next">
+                                      Next test{testDayLabel ? `: ${testDayLabel}` : ''}
+                                    </span>
+                                  ) : null}
+                                  {testingHistoryRouteContextLine(cell)}
+                                </div>
+                              </td>
+                            </tr>
                           )
                         })
                       : null}
-                    </div>
+                      </tbody>
+                    </Table>
                   </div>
                 </div>
               )}
             </Accordion.Body>
-          </Accordion.Item>
-        </Accordion>
+            </Accordion.Item>
 
-            <section className="monthly-location-detail-panel monthly-location-billing-comments-panel">
-              <header className="monthly-location-section-header">
-                <div>
-                  <h2 className="monthly-location-section-title">Billing comments</h2>
-                </div>
-              </header>
-              {location ? (
-                <MonthlyLocationBillingCommentsPanel
-                  locationId={location.id}
-                  billingComments={location.billing_comments}
-                  onSaved={setLocation}
-                />
-              ) : null}
-            </section>
-
-            {location?.monthly_route_id ? (
-              <section className="monthly-location-detail-panel monthly-location-tickets-panel">
-                <header className="monthly-location-section-header monthly-location-tickets-header">
-                  <h2 className="monthly-location-section-title">Tickets</h2>
-                  <Form.Check
-                    type="switch"
-                    id={`show-closed-tickets-${location.id}`}
-                    className="monthly-location-tickets-show-closed"
-                    label="Show closed"
-                    checked={ticketsIncludeClosed}
-                    onChange={(e) => setTicketsIncludeClosed(e.target.checked)}
-                  />
-                </header>
-                <LocationTicketsPanel
-                  routeId={location.monthly_route_id}
-                  locationId={location.id}
-                  locationLabel={(location.label || location.address || '').trim() || `Location ${location.id}`}
+            <Accordion.Item
+              eventKey="comments"
+              className="monthly-location-detail-section monthly-location-comments-panel monthly-location-comments-card monthly-location-detail-surface"
+            >
+              <Accordion.Header className="monthly-location-detail-section-header">
+                <span className="monthly-location-section-accordion-title">Comments</span>
+              </Accordion.Header>
+              <Accordion.Body className="monthly-location-detail-section-body monthly-location-comments-body">
+                <MonthlyLibraryCommentsPanel
+                  commentsApiPrefix={`/api/monthly_routes/library/${idNum}`}
+                  comments={comments}
+                  setComments={setComments}
                   sessionUsername={sessionUsername}
-                  includeClosed={ticketsIncludeClosed}
-                  onIncludeClosedChange={setTicketsIncludeClosed}
+                  composerPlaceholder="Write a note for this location…"
                 />
-              </section>
-            ) : null}
-
-            <section className="monthly-location-detail-panel monthly-location-comments-panel">
-              <header className="monthly-location-section-header">
-                <div>
-                  <h2 className="monthly-location-section-title">Comments</h2>
-                </div>
-              </header>
-              <MonthlyLibraryCommentsPanel
-                commentsApiPrefix={`/api/monthly_routes/library/${idNum}`}
-                comments={comments}
-                setComments={setComments}
-                sessionUsername={sessionUsername}
-                composerPlaceholder="Write a note for this location…"
-              />
-            </section>
-          </div>
+              </Accordion.Body>
+            </Accordion.Item>
+          </Accordion>
         </div>
       </div>
     </div>
