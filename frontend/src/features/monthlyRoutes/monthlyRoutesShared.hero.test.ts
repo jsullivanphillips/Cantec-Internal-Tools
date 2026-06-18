@@ -3,7 +3,6 @@ import {
   lastRecordedTestSummary,
   nextSiteRouteTestDayLabel,
   nextUntestedMonthIso,
-  recordedMonthOutcomeLabel,
   resolveMonthOutcomeLabel,
   splitHeroAddressLines,
   type LibraryLocation,
@@ -80,14 +79,47 @@ describe('resolveMonthOutcomeLabel', () => {
 
 describe('lastRecordedTestSummary', () => {
   const july2026 = new Date(2026, 6, 10)
+  const route: MonthlyRouteSummary = {
+    id: 15,
+    route_number: 15,
+    label: 'R15',
+    week_occurrence: 2,
+    weekday_iso: 3,
+  }
 
-  it('returns the month before the next untested month', () => {
+  it('returns the month before the upcoming test month', () => {
     const months: Record<string, MonthCell> = {
       '2026-05-01': { result_status: 'skipped', skip_reason: 'annual' },
       '2026-06-01': { result_status: 'tested', skip_reason: null },
       '2026-07-01': { result_status: null, skip_reason: null },
     }
-    expect(lastRecordedTestSummary(months, { reference: july2026 })).toBe('June 2026 — Tested')
+    expect(
+      lastRecordedTestSummary(months, {
+        reference: july2026,
+        monthly_route: route,
+        annualMonth: 'June',
+      }),
+    ).toBe('June 2026 — Tested')
+  })
+
+  it('shows June Annual when June is open in history but billed as annual before July test', () => {
+    const months: Record<string, MonthCell> = {
+      '2026-05-01': { result_status: 'tested', skip_reason: null },
+      '2026-06-01': {
+        result_status: null,
+        skip_reason: null,
+        billing_status: 'do_not_bill',
+        run_id: 42,
+      },
+      '2026-07-01': { result_status: null, skip_reason: null },
+    }
+    expect(
+      lastRecordedTestSummary(months, {
+        reference: july2026,
+        monthly_route: route,
+        annualMonth: 'June',
+      }),
+    ).toBe('June 2026 — Annual')
   })
 
   it('shows Annual for the previous month when that run was skipped for annual', () => {
@@ -97,18 +129,22 @@ describe('lastRecordedTestSummary', () => {
       '2026-07-01': { result_status: null, skip_reason: null },
     }
     expect(
-      lastRecordedTestSummary(months, { reference: july2026, annualMonth: 'June' }),
+      lastRecordedTestSummary(months, {
+        reference: july2026,
+        monthly_route: route,
+        annualMonth: 'June',
+      }),
     ).toBe('June 2026 — Annual')
   })
 
   it('returns null when the previous month has no recorded outcome', () => {
-    expect(lastRecordedTestSummary({}, { reference: july2026 })).toBeNull()
+    expect(lastRecordedTestSummary({}, { reference: july2026, monthly_route: route })).toBeNull()
     expect(
       lastRecordedTestSummary(
         {
           '2026-07-01': { result_status: null, skip_reason: null },
         },
-        { reference: july2026 },
+        { reference: july2026, monthly_route: route },
       ),
     ).toBeNull()
   })
@@ -190,6 +226,7 @@ describe('nextSiteRouteTestDayLabel', () => {
           '2026-06-01': { result_status: null, skip_reason: null },
           '2026-07-01': { result_status: null, skip_reason: null },
         },
+        annual_month: 'June',
         monthly_route: route,
       })
       const label = nextSiteRouteTestDayLabel(location)
