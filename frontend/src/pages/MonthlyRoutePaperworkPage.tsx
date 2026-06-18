@@ -5,6 +5,9 @@ import PaperworkRunSelector from '../features/monthlyRoutes/PaperworkRunSelector
 import OfficeSkipRunModal, {
   type OfficeSkipRunPayload,
 } from '../features/monthlyRoutes/OfficeSkipRunModal'
+import UploadRunFromCsvModal, {
+  type UploadRunResponse,
+} from '../features/monthlyRoutes/UploadRunFromCsvModal'
 import RunDetailsLocationReviewList from '../features/monthlyRoutes/RunDetailsLocationReviewList'
 import RunDetailsPreRunMessageCard from '../features/monthlyRoutes/RunDetailsPreRunMessageCard'
 import RunWorkflowStepper from '../features/monthlyRoutes/RunWorkflowStepper'
@@ -68,6 +71,7 @@ import {
   prefetchPaperworkMonth,
 } from '../features/monthlyRoutes/paperworkRoutePrefetch'
 import { subscribePaperworkMasterSync } from '../features/monthlyRoutes/paperworkMasterSync'
+import { routeRunSummaryFromApi } from '../features/monthlyRoutes/routeRunsDisplay'
 import { SERVICE_TRADE_RUN_JOB_MISSING_TITLE } from '../features/monthlyRoutes/ViewServiceTradeRunJobButton'
 import { clearWorksheetCache } from '../features/monthlyRoutes/worksheetOfflineStore'
 import { apiJson, isAbortError } from '../lib/apiClient'
@@ -130,6 +134,7 @@ export default function MonthlyRoutePaperworkPage() {
   const [skipRouteModalOpen, setSkipRouteModalOpen] = useState(false)
   const [skipRouteSubmitting, setSkipRouteSubmitting] = useState(false)
   const [skipRouteError, setSkipRouteError] = useState<string | null>(null)
+  const [uploadRunOpen, setUploadRunOpen] = useState(false)
   const [historyStops, setHistoryStops] = useState<TechnicianWorksheetLocation[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
   const [historyMeta, setHistoryMeta] = useState<{
@@ -775,6 +780,44 @@ export default function MonthlyRoutePaperworkPage() {
     setSkipRouteError(null)
   }, [skipRouteSubmitting])
 
+  const openUploadCsv = useCallback(() => {
+    setUploadRunOpen(true)
+  }, [])
+
+  const closeUploadCsv = useCallback(() => {
+    setUploadRunOpen(false)
+  }, [])
+
+  const handleCsvUploaded = useCallback(
+    async (result: UploadRunResponse) => {
+      if (result.month_date && result.run) {
+        const summary = routeRunSummaryFromApi(
+          result.run as Parameters<typeof routeRunSummaryFromApi>[0],
+        )
+        setRouteMeta((prev) =>
+          prev
+            ? {
+                ...prev,
+                runs_by_month: { ...prev.runs_by_month, [result.month_date]: summary },
+              }
+            : prev,
+        )
+      }
+      const uploadedMonth = result.month_date ?? monthQuery
+      clearWorksheetCache(idNum, uploadedMonth)
+      invalidatePaperworkRouteMonth(idNum, uploadedMonth)
+      setUploadRunOpen(false)
+      if (result.month_date && result.month_date !== monthQuery) {
+        syncMonthInUrl(result.month_date)
+        return
+      }
+      runDetailsFetchSeqRef.current += 1
+      await loadRunDetails(undefined, { force: true })
+      await loadRouteMeta()
+    },
+    [idNum, monthQuery, loadRunDetails, loadRouteMeta, syncMonthInUrl],
+  )
+
   const onConfirmSkipRoute = useCallback(
     async (payload: OfficeSkipRunPayload) => {
       if (!Number.isFinite(idNum)) return
@@ -882,6 +925,8 @@ export default function MonthlyRoutePaperworkPage() {
     runInOfficePrepPhase(run) && !runCompleted && !futurePrepBlocked
   const showSkipRoute =
     prepPhase && runInOfficePrepPhase(run) && !runCompleted && !futurePrepBlocked
+  const showUploadCsv =
+    prepPhase && runInOfficePrepPhase(run) && !runCompleted && !futurePrepBlocked
   const lifecycleBusy = runLifecycleAction != null
   const prepActionBusy = lifecycleBusy || regenerateLibraryBusy || skipRouteSubmitting
   const serviceTradeJobUrl = (service_trade_run_job?.service_trade_job_url || '').trim()
@@ -890,7 +935,8 @@ export default function MonthlyRoutePaperworkPage() {
   const serviceTradeJobAriaLabel = `View ServiceTrade job for ${monthHeading}`
   const heroWorkflowActions =
     showMarkPrepared || showReturnToPrep || showReopenJob || showCompleteJob
-  const heroPrepActions = showSkipRoute || showRegenerateFromLibrary || showResetRun
+  const heroPrepActions =
+    showSkipRoute || showRegenerateFromLibrary || showResetRun || showUploadCsv
 
   return (
     <div
@@ -923,8 +969,10 @@ export default function MonthlyRoutePaperworkPage() {
         <section className="monthly-route-detail-hero monthly-location-detail-surface monthly-run-detail-hero monthly-paperwork-hero">
           <div className="monthly-route-detail-hero__copy monthly-paperwork-hero__copy-top">
             <h1 className="monthly-location-detail-title">
-              {monthHeading}
-              <span className="monthly-run-detail-hero__route-ref"> · {routeTitle}</span>
+              <Link to={routeTo} className="monthly-paperwork-hero__route-title-link">
+                {routeTitle}
+              </Link>
+              <span className="monthly-paperwork-hero__month-ref"> · {monthHeading}</span>
             </h1>
             <RunWorkflowStepper run={run} className="monthly-run-detail-workflow" />
           </div>
@@ -1030,6 +1078,11 @@ export default function MonthlyRoutePaperworkPage() {
                       ) : (
                         'Regenerate paperwork'
                       )}
+                    </Dropdown.Item>
+                  ) : null}
+                  {showUploadCsv ? (
+                    <Dropdown.Item disabled={prepActionBusy} onClick={openUploadCsv}>
+                      Upload CSV
                     </Dropdown.Item>
                   ) : null}
                   {showResetRun ? (
@@ -1205,6 +1258,15 @@ export default function MonthlyRoutePaperworkPage() {
         confirmLabel="Skip route"
         onClose={closeSkipRouteConfirm}
         onConfirm={(payload) => void onConfirmSkipRoute(payload)}
+      />
+      <UploadRunFromCsvModal
+        show={uploadRunOpen}
+        onClose={closeUploadCsv}
+        routeId={idNum}
+        routeNumber={route.route_number}
+        routeLabel={routeTitle}
+        targetMonthIso={monthQuery}
+        onUploaded={(result) => void handleCsvUploaded(result)}
       />
     </div>
   )
