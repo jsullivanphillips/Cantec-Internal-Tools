@@ -1,4 +1,5 @@
 import { Card } from 'react-bootstrap'
+import { coerceUiText } from '../../lib/apiClient'
 import type { TechnicianTopKpi } from './useTechnicianTopKpis'
 
 function TopTechnicianKpiCard({
@@ -10,8 +11,8 @@ function TopTechnicianKpiCard({
     <Card className="app-kpi-nested technician-meeting-kpi-card h-100">
       <Card.Body className="technician-meeting-kpi-card__body">
         <div className="processing-kpi-label">{label}</div>
-        <div className="technician-meeting-kpi-card__value" title={leader?.technician}>
-          {leader?.technician ?? '—'}
+        <div className="technician-meeting-kpi-card__value" title={leader ? coerceUiText(leader.technician, '') : undefined}>
+          {leader ? coerceUiText(leader.technician, '—') : '—'}
         </div>
         <div className="technician-meeting-kpi-card__meta">
           {leader ? `${leader.count.toLocaleString()} ${countLabel}` : 'No data for this range'}

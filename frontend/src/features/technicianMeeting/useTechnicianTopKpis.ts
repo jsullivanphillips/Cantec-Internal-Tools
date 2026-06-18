@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { coerceUiText } from '../../lib/apiClient'
 import {
   topTechnicianFromRecord,
   topTechnicianLeader,
@@ -28,7 +29,7 @@ export function useTechnicianTopKpis(techData: Record<string, unknown> | null): 
       | undefined
 
     const jobItemEntries = (jobItems?.technicians ?? []).map((technician, index) => ({
-      technician,
+      technician: coerceUiText(technician, 'Unknown'),
       count: jobItems?.counts?.[index] ?? 0,
     }))
 

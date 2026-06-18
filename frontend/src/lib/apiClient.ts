@@ -55,6 +55,17 @@ export function coerceUiText(value: unknown, fallback = ''): string {
   }
 }
 
+/** Coerce API numeric fields for display (plain objects like `{}` become fallback). */
+export function coerceDisplayNumber(value: unknown, fallback: number | null = null): number | null {
+  if (value == null) return fallback
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return fallback
+}
+
 /**
  * Safe text from an API `error` / `message` field for display in alerts.
  * Empty objects (e.g. `{}`) fall back instead of rendering as React children.

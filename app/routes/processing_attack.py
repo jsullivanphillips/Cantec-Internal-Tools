@@ -752,7 +752,7 @@ def get_incoming_jobs_today():
         response = api_session.get(jobs_endpoint, params=jobs_params, timeout=30)
         response.raise_for_status()
     except requests.RequestException:
-        return {}
+        return None
 
     data = response.json().get("data", {}) or {}
     jobs_data = data.get("jobs", []) or []
@@ -809,7 +809,7 @@ def get_jobs_processed_today():
         response = api_session.get(jobs_endpoint, params=jobs_params)
         response.raise_for_status()
     except requests.RequestException as e:
-        return {}
+        return None
     
     data = response.json().get("data", {})
     jobs_data = data.get("jobs", []) or []

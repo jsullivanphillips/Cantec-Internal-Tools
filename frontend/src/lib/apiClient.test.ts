@@ -1,9 +1,21 @@
 import { describe, expect, it } from 'vitest'
-import { apiErrorText, coerceUiText, formatThrownError } from './apiClient'
+import { apiErrorText, coerceDisplayNumber, coerceUiText, formatThrownError } from './apiClient'
 
 describe('coerceUiText', () => {
   it('stringifies empty objects', () => {
     expect(coerceUiText({})).toBe('{}')
+  })
+})
+
+describe('coerceDisplayNumber', () => {
+  it('returns fallback for empty objects from bad API payloads', () => {
+    expect(coerceDisplayNumber({}, 0)).toBe(0)
+    expect(coerceDisplayNumber({}, null)).toBeNull()
+  })
+
+  it('parses finite numbers', () => {
+    expect(coerceDisplayNumber(12, null)).toBe(12)
+    expect(coerceDisplayNumber('7', null)).toBe(7)
   })
 })
 

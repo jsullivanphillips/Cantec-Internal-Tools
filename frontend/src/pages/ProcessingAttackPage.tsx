@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { apiFetch, apiJson, isAbortError } from '../lib/apiClient'
+import { apiFetch, apiJson, coerceDisplayNumber, coerceUiText, isAbortError } from '../lib/apiClient'
 import { hasProcessingDataError, processingWowErrorLine } from '../lib/processingAttackShared'
 import { Button, Card, Col, Collapse, Form, Modal, Nav, Row, Tab, Table } from 'react-bootstrap'
 import { Chart } from 'react-chartjs-2'
@@ -1066,13 +1066,16 @@ export default function ProcessingAttackPage({ embeddedTab }: { embeddedTab?: Pr
         setPink(pinkNext)
       }
       if (settled[2].status === 'fulfilled') {
-        const inv = settled[2].value as { jobs_to_be_invoiced?: number }
-        toInvoiceNext = inv.jobs_to_be_invoiced ?? null
+        const inv = settled[2].value as { jobs_to_be_invoiced?: unknown }
+        toInvoiceNext = coerceDisplayNumber(inv.jobs_to_be_invoiced, null)
         setToInvoice(toInvoiceNext)
       }
       if (settled[3].status === 'fulfilled') {
-        const nc = settled[3].value as { jobs_to_be_marked_complete?: number; count?: number }
-        numCompleteNext = nc.jobs_to_be_marked_complete ?? nc.count ?? null
+        const nc = settled[3].value as { jobs_to_be_marked_complete?: unknown; count?: unknown }
+        numCompleteNext = coerceDisplayNumber(
+          nc.jobs_to_be_marked_complete ?? nc.count,
+          null,
+        )
         setNumComplete(numCompleteNext)
       }
       if (settled[4].status === 'fulfilled') {
@@ -1818,15 +1821,15 @@ export default function ProcessingAttackPage({ embeddedTab }: { embeddedTab?: Pr
   const invoicedOk = toInvoice != null ? toInvoice < KPI_TARGETS.jobsToInvoiceMax : true
   const reportConvOk = reportConversionCount < KPI_TARGETS.reportConversionJobsMax
 
-  const processedToday = jobsToday?.jobs_processed_today ?? 0
-  const incoming = jobsToday?.incoming_jobs_today ?? 0
+  const processedToday = coerceDisplayNumber(jobsToday?.jobs_processed_today, 0) ?? 0
+  const incoming = coerceDisplayNumber(jobsToday?.incoming_jobs_today, 0) ?? 0
   /** Target: more processed than new */
   const jobsTodayOk = processedToday > incoming
   /** Processed minus new: positive when you are ahead (processed more than new). */
+  const processedCount = coerceDisplayNumber(jobsToday?.jobs_processed_today, null)
+  const incomingCount = coerceDisplayNumber(jobsToday?.incoming_jobs_today, null)
   const jobsTodayNet =
-    jobsToday?.jobs_processed_today != null && jobsToday?.incoming_jobs_today != null
-      ? jobsToday.jobs_processed_today - jobsToday.incoming_jobs_today
-      : null
+    processedCount != null && incomingCount != null ? processedCount - incomingCount : null
 
   const jobsToCompleteIntradayChart = useMemo<{
     chartData: ChartData<'line'> | null
@@ -2332,7 +2335,7 @@ export default function ProcessingAttackPage({ embeddedTab }: { embeddedTab?: Pr
                             <ProcessingKpiHeroVizColumn label={jobsToCompleteIntradayLabel}>
                               {jobsToCompleteIntradayChart.emptyMessage ? (
                                 <div className="processing-intraday-chart processing-intraday-chart--empty">
-                                  <span>{jobsToCompleteIntradayChart.emptyMessage}</span>
+                                  <span>{coerceUiText(jobsToCompleteIntradayChart.emptyMessage, '')}</span>
                                 </div>
                               ) : (
                                 <div className="processing-intraday-chart">
@@ -2349,7 +2352,7 @@ export default function ProcessingAttackPage({ embeddedTab }: { embeddedTab?: Pr
                             <ProcessingKpiHeroVizColumn label={jobsToCompleteDailyLabel}>
                               {jobsToCompletePastDaysChart.emptyMessage ? (
                                 <div className="processing-intraday-chart processing-intraday-chart--empty">
-                                  <span>{jobsToCompletePastDaysChart.emptyMessage}</span>
+                                  <span>{coerceUiText(jobsToCompletePastDaysChart.emptyMessage, '')}</span>
                                 </div>
                               ) : (
                                 <div className="processing-intraday-chart">

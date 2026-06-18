@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Alert, Badge, Button, Modal, OverlayTrigger, Spinner, Tooltip } from 'react-bootstrap'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Alert, Badge, Button, Dropdown, Modal, Spinner } from 'react-bootstrap'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import PaperworkRunSelector from '../features/monthlyRoutes/PaperworkRunSelector'
 import OfficeSkipRunModal, {
@@ -68,7 +68,7 @@ import {
   prefetchPaperworkMonth,
 } from '../features/monthlyRoutes/paperworkRoutePrefetch'
 import { subscribePaperworkMasterSync } from '../features/monthlyRoutes/paperworkMasterSync'
-import ViewServiceTradeRunJobButton from '../features/monthlyRoutes/ViewServiceTradeRunJobButton'
+import { SERVICE_TRADE_RUN_JOB_MISSING_TITLE } from '../features/monthlyRoutes/ViewServiceTradeRunJobButton'
 import { clearWorksheetCache } from '../features/monthlyRoutes/worksheetOfflineStore'
 import { apiJson, isAbortError } from '../lib/apiClient'
 import MonthlyRunDetailPageSkeleton from './MonthlyRunDetailPageSkeleton'
@@ -107,17 +107,6 @@ const RESET_RUN_BUTTON_TOOLTIP =
 
 const REGENERATE_PAPERWORK_BUTTON_TOOLTIP =
   'Rebuilds this month\'s site list from the current route library (adds new buildings, removes cancelled sites, fixes stop order) and clears recorded progress on every stop. Use when the route lineup has changed.'
-
-function heroActionWithTooltip(id: string, tooltip: string, child: ReactNode) {
-  return (
-    <OverlayTrigger
-      placement="top"
-      overlay={<Tooltip id={id}>{tooltip}</Tooltip>}
-    >
-      <span className="monthly-route-detail-hero__action-tooltip-wrap">{child}</span>
-    </OverlayTrigger>
-  )
-}
 
 export default function MonthlyRoutePaperworkPage() {
   const { routeId } = useParams<{ routeId: string }>()
@@ -895,6 +884,13 @@ export default function MonthlyRoutePaperworkPage() {
     prepPhase && runInOfficePrepPhase(run) && !runCompleted && !futurePrepBlocked
   const lifecycleBusy = runLifecycleAction != null
   const prepActionBusy = lifecycleBusy || regenerateLibraryBusy || skipRouteSubmitting
+  const serviceTradeJobUrl = (service_trade_run_job?.service_trade_job_url || '').trim()
+  const hasServiceTradeJob =
+    serviceTradeJobUrl.length > 0 && service_trade_run_job?.service_trade_job_id != null
+  const serviceTradeJobAriaLabel = `View ServiceTrade job for ${monthHeading}`
+  const heroWorkflowActions =
+    showMarkPrepared || showReturnToPrep || showReopenJob || showCompleteJob
+  const heroPrepActions = showSkipRoute || showRegenerateFromLibrary || showResetRun
 
   return (
     <div
@@ -978,131 +974,120 @@ export default function MonthlyRoutePaperworkPage() {
           </div>
           <div className="monthly-route-detail-hero__right">
             <div className="monthly-route-detail-actions monthly-paperwork-hero-actions">
-              {showMarkPrepared ? (
-                <Button
-                  size="sm"
-                  variant="outline-primary"
-                  className="monthly-location-detail-action"
-                  disabled={lifecycleBusy}
-                  onClick={() => void onMarkPrepared()}
-                >
-                  {runLifecycleAction === 'prepare' ? (
-                    <>
-                      <Spinner animation="border" size="sm" className="me-1" aria-hidden />
-                      Preparing…
-                    </>
-                  ) : (
-                    'Mark prepared'
-                  )}
-                </Button>
-              ) : null}
-              {showReturnToPrep ? (
-                <Button
-                  size="sm"
+              <Dropdown align="end" className="monthly-paperwork-hero-actions-dropdown">
+                <Dropdown.Toggle
                   variant="outline-secondary"
-                  className="monthly-location-detail-action"
-                  disabled={lifecycleBusy}
-                  onClick={() => void onReturnToPrep()}
-                >
-                  {runLifecycleAction === 'unprepare' ? (
-                    <>
-                      <Spinner animation="border" size="sm" className="me-1" aria-hidden />
-                      Returning…
-                    </>
-                  ) : (
-                    'Return to prep'
-                  )}
-                </Button>
-              ) : null}
-              {showReopenJob ? (
-                <Button
                   size="sm"
-                  variant="outline-warning"
                   className="monthly-location-detail-action"
-                  disabled={lifecycleBusy}
-                  onClick={() => void onReopenJob()}
+                  id="monthly-paperwork-hero-actions"
                 >
-                  {runLifecycleAction === 'reopen' ? (
-                    <>
-                      <Spinner animation="border" size="sm" className="me-1" aria-hidden />
-                      Reopening…
-                    </>
-                  ) : (
-                    'Reopen job'
-                  )}
-                </Button>
-              ) : null}
-              {showCompleteJob ? (
-                <Button
-                  size="sm"
-                  variant="success"
-                  className="monthly-location-detail-action"
-                  disabled={lifecycleBusy}
-                  onClick={() => void onCompleteJob()}
-                >
-                  {runLifecycleAction === 'complete' ? (
-                    <>
-                      <Spinner animation="border" size="sm" className="me-1" aria-hidden />
-                      Completing…
-                    </>
-                  ) : (
-                    'Complete'
-                  )}
-                </Button>
-              ) : null}
-              {showSkipRoute ? (
-                <Button
-                  size="sm"
-                  variant="warning"
-                  className="monthly-location-detail-action monthly-route-skip-action"
-                  disabled={prepActionBusy}
-                  onClick={openSkipRouteConfirm}
-                >
-                  Skip route
-                </Button>
-              ) : null}
-              {showRegenerateFromLibrary
-                ? heroActionWithTooltip(
-                    'regenerate-paperwork-tooltip',
-                    REGENERATE_PAPERWORK_BUTTON_TOOLTIP,
-                    <Button
-                      size="sm"
-                      variant="outline-secondary"
-                      className="monthly-location-detail-action"
+                  <i className="bi bi-three-dots-vertical" aria-hidden />
+                  Actions
+                </Dropdown.Toggle>
+                <Dropdown.Menu>
+                  {showMarkPrepared ? (
+                    <Dropdown.Item disabled={lifecycleBusy} onClick={() => void onMarkPrepared()}>
+                      {runLifecycleAction === 'prepare' ? (
+                        <>
+                          <Spinner animation="border" size="sm" className="me-2" aria-hidden />
+                          Preparing…
+                        </>
+                      ) : (
+                        'Mark prepared'
+                      )}
+                    </Dropdown.Item>
+                  ) : null}
+                  {showReturnToPrep ? (
+                    <Dropdown.Item disabled={lifecycleBusy} onClick={() => void onReturnToPrep()}>
+                      {runLifecycleAction === 'unprepare' ? (
+                        <>
+                          <Spinner animation="border" size="sm" className="me-2" aria-hidden />
+                          Returning…
+                        </>
+                      ) : (
+                        'Return to prep'
+                      )}
+                    </Dropdown.Item>
+                  ) : null}
+                  {showReopenJob ? (
+                    <Dropdown.Item disabled={lifecycleBusy} onClick={() => void onReopenJob()}>
+                      {runLifecycleAction === 'reopen' ? (
+                        <>
+                          <Spinner animation="border" size="sm" className="me-2" aria-hidden />
+                          Reopening…
+                        </>
+                      ) : (
+                        'Reopen job'
+                      )}
+                    </Dropdown.Item>
+                  ) : null}
+                  {showCompleteJob ? (
+                    <Dropdown.Item disabled={lifecycleBusy} onClick={() => void onCompleteJob()}>
+                      {runLifecycleAction === 'complete' ? (
+                        <>
+                          <Spinner animation="border" size="sm" className="me-2" aria-hidden />
+                          Completing…
+                        </>
+                      ) : (
+                        'Complete'
+                      )}
+                    </Dropdown.Item>
+                  ) : null}
+                  {heroPrepActions && heroWorkflowActions ? <Dropdown.Divider /> : null}
+                  {showSkipRoute ? (
+                    <Dropdown.Item disabled={prepActionBusy} onClick={openSkipRouteConfirm}>
+                      Skip route
+                    </Dropdown.Item>
+                  ) : null}
+                  {showRegenerateFromLibrary ? (
+                    <Dropdown.Item
                       disabled={prepActionBusy}
+                      title={REGENERATE_PAPERWORK_BUTTON_TOOLTIP}
                       onClick={() => void onRegenerateFromLibrary()}
                     >
                       {regenerateLibraryBusy ? (
                         <>
-                          <Spinner animation="border" size="sm" className="me-1" aria-hidden />
+                          <Spinner animation="border" size="sm" className="me-2" aria-hidden />
                           Regenerating…
                         </>
                       ) : (
                         'Regenerate paperwork'
                       )}
-                    </Button>,
-                  )
-                : null}
-              {showResetRun
-                ? heroActionWithTooltip(
-                    'reset-run-tooltip',
-                    RESET_RUN_BUTTON_TOOLTIP,
-                    <Button
-                      size="sm"
-                      variant="outline-danger"
-                      className="monthly-location-detail-action"
+                    </Dropdown.Item>
+                  ) : null}
+                  {showResetRun ? (
+                    <Dropdown.Item
+                      className="text-danger"
                       disabled={lifecycleBusy || resetRunBusy}
+                      title={RESET_RUN_BUTTON_TOOLTIP}
                       onClick={() => setResetRunModalOpen(true)}
                     >
                       Reset run
-                    </Button>,
-                  )
-                : null}
-              <ViewServiceTradeRunJobButton
-                job={service_trade_run_job}
-                monthLabel={monthHeading}
-                className="monthly-location-detail-action monthly-paperwork-hero-actions__span"
-              />
+                    </Dropdown.Item>
+                  ) : null}
+                  {heroWorkflowActions || heroPrepActions ? <Dropdown.Divider /> : null}
+                  {hasServiceTradeJob ? (
+                    <Dropdown.Item
+                      href={serviceTradeJobUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={serviceTradeJobAriaLabel}
+                    >
+                      <i className="bi bi-box-arrow-up-right me-2" aria-hidden />
+                      View ST Job
+                    </Dropdown.Item>
+                  ) : (
+                    <Dropdown.Item
+                      disabled
+                      title={SERVICE_TRADE_RUN_JOB_MISSING_TITLE}
+                      aria-label={serviceTradeJobAriaLabel}
+                    >
+                      <i className="bi bi-box-arrow-up-right me-2" aria-hidden />
+                      View ST Job
+                    </Dropdown.Item>
+                  )}
+                </Dropdown.Menu>
+              </Dropdown>
             </div>
             {completedByLabel ? (
               <div

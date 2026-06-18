@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { coerceUiText } from '../../lib/apiClient'
 import {
   aggregateDeficiencyCountsByTech,
   compactCartesianScales,
@@ -79,7 +80,9 @@ export function useTechnicianMetricsCharts(
     const ji = techData?.job_items_created_by_tech as
       | { technicians?: string[]; counts?: number[] }
       | undefined
-    const techs = ji?.technicians || []
+    const techs = (ji?.technicians || [])
+      .map((name) => coerceUiText(name, ''))
+      .filter(Boolean)
     const counts = ji?.counts || []
     if (!techs.length) return null
     const N = techTopN === 'all' ? techs.length : techTopN
