@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import date, datetime
 from decimal import Decimal
 from zoneinfo import ZoneInfo
@@ -22,9 +23,8 @@ from app.monthly.route_expense_constants import (
 )
 from app.monthly.route_run_timing import SYNC_STATUS_OK
 from app.monthly.visit_clock_times import (
-    duration_minutes_from_start_end,
     format_visit_clock_minutes,
-    parse_visit_clock_minutes,
+    visit_duration_minutes_from_clocks,
 )
 from app.monthly.worksheet_locations import _sheet_skip_reason_is_annual
 
@@ -93,11 +93,26 @@ def _visit_minutes_from_sheet(mlm: MonthlyLocationMonth) -> tuple[int | None, st
     time_out = _normalize_text(mlm.sheet_time_out_raw)
     if not time_in or not time_out:
         return None, time_in or None, time_out or None
-    start = parse_visit_clock_minutes(time_in)
-    end = parse_visit_clock_minutes(time_out)
-    if start is None or end is None:
+    minutes = visit_duration_minutes_from_clocks(time_in, time_out)
+    if minutes is None:
         return None, time_in, time_out
-    return duration_minutes_from_start_end(start, end), time_in, time_out
+    return minutes, time_in, time_out
+
+
+def _visit_minutes_from_portal_events(
+    events: list[MonthlyStopClockEvent],
+) -> tuple[int | None, str | None, str | None]:
+    if not events:
+        return None, None, None
+    time_in = _normalize_text(events[0].time_in_raw) or None
+    closed = [e for e in events if _normalize_text(e.time_out_raw)]
+    time_out = _normalize_text(closed[-1].time_out_raw) if closed else None
+    if not time_in or not time_out:
+        return None, time_in, time_out
+    minutes = visit_duration_minutes_from_clocks(time_in, time_out)
+    if minutes is None:
+        return None, time_in, time_out
+    return minutes, time_in, time_out
 
 
 def _visit_minutes_from_portal_clocks(
@@ -108,18 +123,54 @@ def _visit_minutes_from_portal_clocks(
         .order_by(MonthlyStopClockEvent.sort_order.asc(), MonthlyStopClockEvent.id.asc())
         .all()
     )
-    if not events:
-        return None, None, None
-    time_in = _normalize_text(events[0].time_in_raw) or None
-    closed = [e for e in events if _normalize_text(e.time_out_raw)]
-    time_out = _normalize_text(closed[-1].time_out_raw) if closed else None
-    if not time_in or not time_out:
-        return None, time_in, time_out
-    start = parse_visit_clock_minutes(time_in)
-    end = parse_visit_clock_minutes(time_out)
-    if start is None or end is None:
-        return None, time_in, time_out
-    return duration_minutes_from_start_end(start, end), time_in, time_out
+    return _visit_minutes_from_portal_events(events)
+
+
+def visit_minutes_by_mlm_id(
+    mlms: list[MonthlyLocationMonth],
+) -> dict[int, tuple[int | None, str | None]]:
+    """Resolve visit minutes for many MLMs with one batched portal clock query."""
+    if not mlms:
+        return {}
+
+    out: dict[int, tuple[int | None, str | None]] = {}
+    need_portal: list[MonthlyLocationMonth] = []
+    for mlm in mlms:
+        mlm_id = int(mlm.id)
+        minutes, _time_in, _time_out = _visit_minutes_from_sheet(mlm)
+        if minutes is not None:
+            out[mlm_id] = (minutes, "sheet")
+        else:
+            need_portal.append(mlm)
+
+    if need_portal:
+        portal_ids = [int(mlm.id) for mlm in need_portal]
+        events = (
+            MonthlyStopClockEvent.query.filter(
+                MonthlyStopClockEvent.monthly_location_month_id.in_(portal_ids)
+            )
+            .order_by(
+                MonthlyStopClockEvent.monthly_location_month_id.asc(),
+                MonthlyStopClockEvent.sort_order.asc(),
+                MonthlyStopClockEvent.id.asc(),
+            )
+            .all()
+        )
+        events_by_mlm: dict[int, list[MonthlyStopClockEvent]] = defaultdict(list)
+        for event in events:
+            events_by_mlm[int(event.monthly_location_month_id)].append(event)
+
+        for mlm in need_portal:
+            mlm_id = int(mlm.id)
+            minutes, _time_in, _time_out = _visit_minutes_from_portal_events(
+                events_by_mlm.get(mlm_id, [])
+            )
+            if minutes is not None:
+                out[mlm_id] = (minutes, "portal")
+            else:
+                out[mlm_id] = (None, None)
+
+    return out
 
 
 def visit_minutes_for_mlm(

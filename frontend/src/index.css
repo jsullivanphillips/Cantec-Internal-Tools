@@ -3882,11 +3882,38 @@ button.monthly-location-hero-status-badge:focus-visible {
   text-transform: uppercase;
 }
 
-.monthly-location-testing-history-worksheet-link {
+.monthly-location-testing-history-skip-tooltip-wrap {
+  max-width: 100%;
+}
+
+.monthly-location-testing-history-skip-tooltip .tooltip-inner {
+  max-width: 16rem;
+  text-align: left;
+}
+
+.monthly-location-testing-history-view-results-btn {
   flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--bs-link-color);
   font-size: 0.72rem;
   font-weight: 700;
   text-decoration: none;
+}
+
+.monthly-location-testing-history-view-results-btn:hover,
+.monthly-location-testing-history-view-results-btn:focus-visible {
+  color: var(--bs-link-hover-color);
+  text-decoration: underline;
+}
+
+.monthly-location-testing-history-no-results {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--ml-muted);
+  font-size: 0.68rem;
+  line-height: 1.25;
 }
 
 .monthly-location-testing-history-row-meta {
@@ -8412,29 +8439,45 @@ button.monthly-location-hero-status-badge:focus-visible {
 }
 
 .monthly-route-detail-hero.monthly-location-detail-hero.monthly-location-detail-surface {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 1rem;
-  padding: 1.89rem 2.03rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  grid-template-rows: auto auto;
+  align-items: start;
+  column-gap: 1rem;
+  row-gap: 0.5rem;
+  padding: 1.55rem 2.03rem 1.89rem;
 }
 
 .monthly-route-detail-page .monthly-route-detail-hero .monthly-location-detail-hero-title-row {
-  align-items: flex-start;
+  display: contents;
+}
+
+.monthly-route-detail-page .monthly-route-detail-hero .monthly-location-detail-hero-title-group {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
 }
 
 .monthly-route-detail-page .monthly-route-detail-hero .monthly-location-detail-hero-actions {
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
+  grid-column: 2;
+  grid-row: 1 / -1;
+  align-self: start;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: flex-end;
+  justify-content: flex-start;
   min-width: 0;
   flex-shrink: 0;
 }
 
+.monthly-route-detail-page .monthly-route-detail-hero-columns {
+  grid-column: 1;
+  grid-row: 2;
+}
+
 .monthly-route-detail-hero-columns {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1rem 1.25rem;
   width: 100%;
 }
@@ -8443,6 +8486,37 @@ button.monthly-location-hero-status-badge:focus-visible {
 .monthly-route-detail-hero__sample-hint {
   font-size: 0.78rem;
   font-weight: 600;
+}
+
+.monthly-route-detail-hero__metric-info {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 0 0 0.2rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 0.78rem;
+  line-height: 1;
+  vertical-align: middle;
+  cursor: help;
+}
+
+.monthly-route-detail-hero__metric-info:hover,
+.monthly-route-detail-hero__metric-info:focus-visible {
+  color: #64748b;
+  outline: none;
+}
+
+.monthly-route-detail-hero__metric-tooltip .tooltip-inner {
+  max-width: 16rem;
+  text-align: left;
+  font-size: 0.78rem;
+  font-weight: 500;
+  line-height: 1.4;
+  text-transform: none;
+  letter-spacing: normal;
 }
 
 .monthly-route-detail-page .monthly-location-detail-title {
@@ -12383,8 +12457,8 @@ button.monthly-location-hero-status-badge:focus-visible {
 }
 
 .monthly-route-map-card__canvas-shell {
-  /* Default taller than before (was 22rem min-only); drag bottom edge to resize */
-  height: 34rem;
+  /* Default map height; drag bottom edge to resize */
+  height: calc(34rem - 40px);
   min-height: 18rem;
   max-height: min(52rem, 72vh);
   resize: vertical;
@@ -12594,7 +12668,24 @@ button.monthly-location-hero-status-badge:focus-visible {
   }
 
   .monthly-route-detail-hero.monthly-location-detail-hero.monthly-location-detail-surface {
-    padding: 1.35rem 1.45rem;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+    padding: 1.1rem 1.45rem 1.35rem;
+  }
+
+  .monthly-route-detail-page .monthly-route-detail-hero .monthly-location-detail-hero-title-row {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .monthly-route-detail-page .monthly-route-detail-hero .monthly-location-detail-hero-title-group,
+  .monthly-route-detail-page .monthly-route-detail-hero .monthly-location-detail-hero-actions,
+  .monthly-route-detail-page .monthly-route-detail-hero-columns {
+    grid-column: auto;
+    grid-row: auto;
   }
 
   .monthly-route-detail-hero-columns {
@@ -12602,6 +12693,9 @@ button.monthly-location-hero-status-badge:focus-visible {
   }
 
   .monthly-route-detail-page .monthly-route-detail-hero .monthly-location-detail-hero-actions {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
     width: 100%;
     justify-content: stretch;
   }
@@ -18271,5 +18365,25 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
   > :not(:first-child):not(.monthly-dashboard-breakdown-skeleton__money-cell)
   .home-skeleton-bar {
   margin-left: auto;
+}
+
+.monthly-route-health-capacity-badge {
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.monthly-dashboard-breakdown-skeleton__table--health {
+  grid-template-columns:
+    minmax(5.5rem, 1.35fr)
+    minmax(2rem, 0.45fr)
+    minmax(3.25rem, 0.65fr)
+    minmax(3.25rem, 0.65rem)
+    minmax(3.5rem, 0.7fr)
+    minmax(3rem, 0.65rem)
+    minmax(3rem, 0.65rem)
+    minmax(3.5rem, 0.7fr)
+    minmax(3.75rem, 0.75rem)
+    minmax(3rem, 0.65fr);
 }
 

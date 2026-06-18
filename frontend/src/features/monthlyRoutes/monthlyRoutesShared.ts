@@ -15,6 +15,10 @@ export type MonthCell = {
   worksheet_route_id?: number | null
   /** Run file id linked to this month cell, when present. */
   run_id?: number | null
+  /** True when the linked run has a frozen field submission snapshot. */
+  has_field_submission?: boolean
+  /** True when this location appears on the route worksheet for that submission month. */
+  has_site_field_submission?: boolean
 }
 
 /** Canonical monthly route entity (``MonthlyRoute``); aligns with ``monthly_route_id``. */

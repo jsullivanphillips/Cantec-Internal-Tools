@@ -99,6 +99,45 @@ def median_minutes(values: list[int]) -> int | None:
 
 MINUTES_PER_DAY = 24 * 60
 
+# Field technicians work between ~6:45 AM and 5:00 PM Pacific.
+FIELD_VISIT_EARLIEST_MINUTE = 6 * 60 + 45
+FIELD_VISIT_LATEST_MINUTE = 17 * 60
+MAX_FIELD_VISIT_DURATION_MINUTES = 8 * 60
+
+
+def is_plausible_field_visit_clock(minutes: int | None) -> bool:
+    """True when a parsed clock falls on a realistic same-day field visit."""
+    if minutes is None:
+        return False
+    # ``0:00`` / ``12:00 AM`` is a common bad placeholder, not a real visit clock.
+    if minutes == 0:
+        return False
+    return FIELD_VISIT_EARLIEST_MINUTE <= minutes <= FIELD_VISIT_LATEST_MINUTE
+
+
+def visit_duration_minutes_from_clocks(
+    time_in_raw: str | None,
+    time_out_raw: str | None,
+) -> int | None:
+    """
+    On-site visit duration from sheet/portal clock strings.
+
+    Rejects midnight placeholders, clocks outside 6:45 AM–5:00 PM, and spans that
+    cross midnight (field visits are same-day; ``11:11`` in with ``0:00`` out is invalid).
+    """
+    start = parse_visit_clock_minutes(time_in_raw)
+    end = parse_visit_clock_minutes(time_out_raw)
+    if start is None or end is None:
+        return None
+    if not is_plausible_field_visit_clock(start) or not is_plausible_field_visit_clock(end):
+        return None
+    if end < start:
+        return None
+    duration = end - start
+    if duration > MAX_FIELD_VISIT_DURATION_MINUTES:
+        return None
+    return duration
+
 
 def duration_minutes_from_start_end(start_minute: int, end_minute: int) -> int:
     duration = int(end_minute) - int(start_minute)

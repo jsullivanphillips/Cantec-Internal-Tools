@@ -5,8 +5,10 @@ from __future__ import annotations
 from app.monthly.visit_clock_times import (
     duration_minutes_from_start_end,
     format_visit_clock_minutes,
+    is_plausible_field_visit_clock,
     median_minutes,
     parse_visit_clock_minutes,
+    visit_duration_minutes_from_clocks,
 )
 
 
@@ -56,3 +58,35 @@ def test_median_minutes():
 
 def test_duration_minutes_overnight_wrap():
     assert duration_minutes_from_start_end(22 * 60, 2 * 60) == 4 * 60
+
+
+def test_visit_duration_rejects_midnight_time_out():
+    assert visit_duration_minutes_from_clocks("11:11", "0:00") is None
+
+
+def test_visit_duration_rejects_overnight_wrap():
+    start = parse_visit_clock_minutes("11:11")
+    end = parse_visit_clock_minutes("0:00")
+    assert start is not None and end == 0
+    assert visit_duration_minutes_from_clocks("11:11 AM", "12:00 AM") is None
+
+
+def test_visit_duration_accepts_normal_morning_visit():
+    assert visit_duration_minutes_from_clocks("8:00 AM", "9:00 AM") == 60
+    assert visit_duration_minutes_from_clocks("11:11", "12:30 PM") == 79
+
+
+def test_visit_duration_rejects_clocks_outside_field_hours():
+    assert visit_duration_minutes_from_clocks("6:30 AM", "7:00 AM") is None
+    assert visit_duration_minutes_from_clocks("8:00 AM", "5:30 PM") is None
+
+
+def test_visit_duration_rejects_implausibly_long_visit():
+    assert visit_duration_minutes_from_clocks("6:45 AM", "5:00 PM") is None
+
+
+def test_is_plausible_field_visit_clock():
+    assert is_plausible_field_visit_clock(0) is False
+    assert is_plausible_field_visit_clock(6 * 60 + 45) is True
+    assert is_plausible_field_visit_clock(17 * 60) is True
+    assert is_plausible_field_visit_clock(17 * 60 + 1) is False

@@ -11,6 +11,7 @@ from app.db_models import (
     MonthlyLocationComment,
     MonthlyLocationDeficiency,
     MonthlyLocationMonth,
+    MonthlyLocationVisitTimingMonth,
     MonthlyRoute,
     MonthlyRouteRun,
     MonthlyRouteRunTimingMonth,
@@ -31,6 +32,7 @@ WORKSHEET_TABLES = [
     MonthlyStopClockEvent.__table__,
     MonthlyLocationDeficiency.__table__,
     MonthlyRouteRunTimingMonth.__table__,
+    MonthlyLocationVisitTimingMonth.__table__,
 ]
 
 

@@ -1,9 +1,13 @@
 import type { ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Accordion, Alert, Button, Form, Modal, Spinner, Table } from 'react-bootstrap'
+import { Accordion, Alert, Button, Form, Modal, OverlayTrigger, Spinner, Table, Tooltip } from 'react-bootstrap'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import MonthlyLibraryCommentsPanel from '../features/monthlyRoutes/MonthlyLibraryCommentsPanel'
 import MonthlyLocationBillingPanel from '../features/monthlyRoutes/MonthlyLocationBillingPanel'
+import BillingBoardPaperworkModal, {
+  type BillingBoardPaperworkModalContext,
+} from '../features/monthlyRoutes/BillingBoardPaperworkModal'
+import { billingBoardLocationTitle } from '../features/monthlyRoutes/locationDisplay'
 import MonthlyLocationEditableFields, {
   type MonthlyLocationEditableFieldsHandle,
 } from '../features/monthlyRoutes/MonthlyLocationEditableFields'
@@ -14,7 +18,12 @@ import MonthlyLocationServiceTradeLinkPanel, {
 } from '../features/monthlyRoutes/MonthlyLocationServiceTradeLinkPanel'
 import ServiceTradeDeficienciesModal from '../features/monthlyRoutes/ServiceTradeDeficienciesModal'
 import { notifyPaperworkMasterSiteUpdated } from '../features/monthlyRoutes/paperworkMasterSync'
+import {
+  SITE_FIELD_SUBMISSION_NO_RUN_MESSAGE,
+  SITE_FIELD_SUBMISSION_NO_SITE_ROW_MESSAGE,
+} from '../features/monthlyRoutes/useSiteFieldSubmission'
 import { billingStatusLabel } from '../features/monthlyRoutes/officeRunReviewShared'
+import { formatSkipReasonDisplayText } from '../features/monthlyRoutes/portalWorkflowShared'
 import {
   STATUS_OPTIONS,
   effectiveRouteTestDayIso,
@@ -154,6 +163,27 @@ function testedHistoryChipClass(
   return ''
 }
 
+function testingHistorySkippedTooltip(chipLabel: string, cell: MonthCell | undefined): string | null {
+  if (chipLabel !== 'Skipped') return null
+  return formatSkipReasonDisplayText(cell?.skip_reason)
+}
+
+function wrapTestingHistoryResultChip(node: ReactNode, skipTooltip: string | null): ReactNode {
+  if (!skipTooltip) return node
+  return (
+    <OverlayTrigger
+      trigger={['hover', 'focus']}
+      overlay={
+        <Tooltip className="monthly-location-testing-history-skip-tooltip">{skipTooltip}</Tooltip>
+      }
+    >
+      <span className="monthly-location-testing-history-skip-tooltip-wrap d-inline-flex">
+        {node}
+      </span>
+    </OverlayTrigger>
+  )
+}
+
 function billingHistoryChipClass(status: OfficeBillingStatus): string {
   switch (status) {
     case 'bill':
@@ -187,6 +217,23 @@ function testingHistoryResultCellClass(
 
 function historyMonthHasRecordedTest(cell: MonthCell | undefined): boolean {
   return historyMonthResultStatus(cell) != null
+}
+
+function testingHistoryViewResultsInlineMessage(
+  cell: MonthCell | undefined,
+  worksheetRouteId: number | null,
+): string | null {
+  if (worksheetRouteId == null) return null
+  if (cell?.has_site_field_submission) return null
+  if (cell?.has_field_submission) return SITE_FIELD_SUBMISSION_NO_SITE_ROW_MESSAGE
+  return SITE_FIELD_SUBMISSION_NO_RUN_MESSAGE
+}
+
+function testingHistoryCanViewResults(
+  cell: MonthCell | undefined,
+  worksheetRouteId: number | null,
+): boolean {
+  return worksheetRouteId != null && Boolean(cell?.has_site_field_submission)
 }
 
 function testingHistoryRouteContextLine(cell: MonthCell | undefined): ReactNode {
@@ -234,6 +281,8 @@ export default function MonthlyLocationDetailPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [deleteSaving, setDeleteSaving] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [viewResultsModalContext, setViewResultsModalContext] =
+    useState<BillingBoardPaperworkModalContext | null>(null)
 
   const idNum = locationId ? parseInt(locationId, 10) : NaN
 
@@ -866,6 +915,11 @@ export default function MonthlyLocationDetailPage() {
                               ? 'monthly-location-testing-history-result--annual'
                               : ''
                           const worksheetRouteId = testingHistoryWorksheetRouteId(cell, location)
+                          const canViewResults = testingHistoryCanViewResults(cell, worksheetRouteId)
+                          const viewResultsInlineMessage = testingHistoryViewResultsInlineMessage(
+                            cell,
+                            worksheetRouteId,
+                          )
                           const rowClass = [
                             'monthly-location-testing-history-row',
                             resultClass,
@@ -884,6 +938,7 @@ export default function MonthlyLocationDetailPage() {
                             isAnnualMonthRow,
                           )
                           const testedChipClass = testedHistoryChipClass(cell, isAnnualMonthRow)
+                          const skippedTooltip = testingHistorySkippedTooltip(testedChipLabel, cell)
                           const billingChipClass = billingHistoryChipClass(
                             cell ? billingStatus : 'unset',
                           )
@@ -933,35 +988,46 @@ export default function MonthlyLocationDetailPage() {
                                       <option value="skipped">Skipped</option>
                                     </Form.Select>
                                   ) : canEditResultField ? (
-                                    <button
-                                      type="button"
-                                      className={[
-                                        'monthly-location-testing-history-status-chip',
-                                        'monthly-location-testing-history-status-chip--button',
-                                        testedChipClass,
-                                      ]
-                                        .filter(Boolean)
-                                        .join(' ')}
-                                      disabled={monthSaving}
-                                      onClick={() => {
-                                        if (monthSaving) return
-                                        setHistorySaveError(null)
-                                        setHistoryFieldEdit({ monthIso, field: 'result' })
-                                      }}
-                                    >
-                                      {testedChipLabel}
-                                    </button>
+                                    wrapTestingHistoryResultChip(
+                                      <button
+                                        type="button"
+                                        className={[
+                                          'monthly-location-testing-history-status-chip',
+                                          'monthly-location-testing-history-status-chip--button',
+                                          testedChipClass,
+                                        ]
+                                          .filter(Boolean)
+                                          .join(' ')}
+                                        disabled={monthSaving}
+                                        aria-label={
+                                          skippedTooltip
+                                            ? `Skipped: ${skippedTooltip}. Edit test result for ${formatMonthHeading(monthIso)}.`
+                                            : `Edit test result for ${formatMonthHeading(monthIso)}`
+                                        }
+                                        onClick={() => {
+                                          if (monthSaving) return
+                                          setHistorySaveError(null)
+                                          setHistoryFieldEdit({ monthIso, field: 'result' })
+                                        }}
+                                      >
+                                        {testedChipLabel}
+                                      </button>,
+                                      skippedTooltip,
+                                    )
                                   ) : (
-                                    <span
-                                      className={[
-                                        'monthly-location-testing-history-status-chip',
-                                        testedChipClass,
-                                      ]
-                                        .filter(Boolean)
-                                        .join(' ')}
-                                    >
-                                      {testedChipLabel}
-                                    </span>
+                                    wrapTestingHistoryResultChip(
+                                      <span
+                                        className={[
+                                          'monthly-location-testing-history-status-chip',
+                                          testedChipClass,
+                                        ]
+                                          .filter(Boolean)
+                                          .join(' ')}
+                                      >
+                                        {testedChipLabel}
+                                      </span>,
+                                      skippedTooltip,
+                                    )
                                   )
                                 ) : (
                                   <span className="monthly-location-testing-history-row-empty">—</span>
@@ -1029,14 +1095,31 @@ export default function MonthlyLocationDetailPage() {
 
                               <td className="monthly-location-testing-history-table__details-col">
                                 <div className="monthly-location-testing-history-row-meta">
-                                  {worksheetRouteId != null ? (
-                                    <Link
-                                      className="monthly-location-testing-history-worksheet-link"
-                                      to={`/monthlies/routes/${worksheetRouteId}/paperwork?month=${encodeURIComponent(monthIso)}`}
-                                      title={`Open paperwork for ${formatMonthHeading(monthIso)}`}
+                                  {canViewResults ? (
+                                    <button
+                                      type="button"
+                                      className="monthly-location-testing-history-view-results-btn"
+                                      title={`View test results for ${formatMonthHeading(monthIso)}`}
+                                      onClick={() => {
+                                        if (worksheetRouteId == null) return
+                                        setViewResultsModalContext({
+                                          locationId: location.id,
+                                          locationLabel: billingBoardLocationTitle({
+                                            building: location.building_name,
+                                            label: location.label,
+                                          }),
+                                          monthIso,
+                                          routeId: worksheetRouteId,
+                                          billingStatus: billingStatus === 'legacy' ? 'legacy' : billingStatus,
+                                        })
+                                      }}
                                     >
-                                      Worksheet
-                                    </Link>
+                                      View results
+                                    </button>
+                                  ) : viewResultsInlineMessage ? (
+                                    <span className="monthly-location-testing-history-no-results">
+                                      {viewResultsInlineMessage}
+                                    </span>
                                   ) : null}
                                   {isNextSlot ? (
                                     <span className="monthly-location-testing-history-row-next">
@@ -1078,6 +1161,12 @@ export default function MonthlyLocationDetailPage() {
           </Accordion>
         </div>
       </div>
+
+      <BillingBoardPaperworkModal
+        show={viewResultsModalContext != null}
+        context={viewResultsModalContext}
+        onHide={() => setViewResultsModalContext(null)}
+      />
     </div>
   )
 }

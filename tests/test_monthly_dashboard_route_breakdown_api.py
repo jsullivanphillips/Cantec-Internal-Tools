@@ -524,10 +524,12 @@ def test_breakdown_range_last_month(breakdown_client):
     assert body["period_end"] == "2026-05-01"
     assert body["trailing_months"] == 1
     assert body["show_avg_monthly_revenue"] is False
+    assert body["show_total_revenue"] is False
     assert len(body["revenue_columns"]) == 1
     assert body["revenue_columns"][0]["header"] == "MAY REVENUE"
     row = body["rows"][0]
     assert row["avg_monthly_revenue"] == 100.0
+    assert row["total_revenue"] == 100.0
     assert row["monthly_revenues"] == [{"month_key": "2026-05-01", "revenue": 100.0}]
     assert row["avg_hours"] == 6.0
 
@@ -556,6 +558,7 @@ def test_breakdown_range_last_quarter(breakdown_client):
     assert body["period_end"] == "2026-03-01"
     assert body["trailing_months"] == 3
     assert body["show_avg_monthly_revenue"] is True
+    assert body["show_total_revenue"] is True
     assert len(body["revenue_columns"]) == 3
     assert [c["header"] for c in body["revenue_columns"]] == [
         "JAN REVENUE",
@@ -570,6 +573,7 @@ def test_breakdown_range_last_quarter(breakdown_client):
         {"month_key": "2026-03-01", "revenue": 90.0},
     ]
     assert row["avg_monthly_revenue"] == 90.0
+    assert row["total_revenue"] == 90.0
 
 
 def test_breakdown_range_ytd(breakdown_client):

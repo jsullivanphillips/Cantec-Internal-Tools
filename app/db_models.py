@@ -878,6 +878,77 @@ class MonthlyRouteRunTimingMonth(db.Model):
     monthly_route = db.relationship("MonthlyRoute", back_populates="run_timing_months")
 
 
+class MonthlyLocationVisitTimingMonth(db.Model):
+    """
+    Cached per-location-month on-site visit duration from sheet or portal clocks.
+    Used by the dashboard Location Metrics tab to avoid repeated portal N+1 queries.
+    """
+
+    __tablename__ = "monthly_location_visit_timing_month"
+    __table_args__ = (
+        db.UniqueConstraint(
+            "monthly_location_month_id",
+            name="uq_monthly_location_visit_timing_month_mlm",
+        ),
+        db.Index(
+            "ix_monthly_location_visit_timing_month_loc_month",
+            "monthly_location_id",
+            "month_first",
+        ),
+    )
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    monthly_location_month_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monthly_location_month.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    monthly_location_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("monthly_location.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    month_first = db.Column(db.Date, nullable=False)
+    visit_minutes = db.Column(db.Integer, nullable=True)
+    #: sheet | portal
+    visit_time_source = db.Column(db.String(16), nullable=True)
+    #: ok | no_clocks
+    sync_status = db.Column(db.String(16), nullable=False)
+    last_updated_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        onupdate=db.func.now(),
+        nullable=False,
+    )
+
+    location_month = db.relationship(
+        "MonthlyLocationMonth",
+        back_populates="visit_timing_row",
+        foreign_keys=[monthly_location_month_id],
+    )
+
+
+class MonthlyDashboardLocationMetricsCache(db.Model):
+    """Cached JSON payload for ``GET .../dashboard/location_metrics`` per range window."""
+
+    __tablename__ = "monthly_dashboard_location_metrics_cache"
+    __table_args__ = (
+        db.UniqueConstraint(
+            "cache_key",
+            name="uq_monthly_dashboard_location_metrics_cache_key",
+        ),
+    )
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    cache_key = db.Column(db.String(128), nullable=False)
+    payload_json = db.Column(db.Text, nullable=False)
+    refreshed_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        nullable=False,
+    )
+
+
 class MonitoringCompany(db.Model):
     """Office-maintained monitoring vendor directory (phone numbers live here)."""
 
@@ -1266,6 +1337,12 @@ class MonthlyLocationMonth(db.Model):
     test_monthly_route = db.relationship(
         "MonthlyRoute",
         foreign_keys=[test_monthly_route_id],
+    )
+    visit_timing_row = db.relationship(
+        "MonthlyLocationVisitTimingMonth",
+        back_populates="location_month",
+        uselist=False,
+        cascade="all, delete-orphan",
     )
 
 

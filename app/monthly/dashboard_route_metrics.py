@@ -280,6 +280,13 @@ def _route_avg_monthly_revenue(route_id: int, month_keys: set[str]) -> tuple[flo
     return total / months_with_revenue, months_with_revenue
 
 
+def _total_revenue_from_monthly_revenues(monthly_revenues: list[dict[str, object]]) -> float:
+    return round(
+        sum(float(entry.get("revenue") or 0) for entry in monthly_revenues),
+        2,
+    )
+
+
 def _monthly_expense_for_route(route: MonthlyRoute, avg_hours: float | None) -> float:
     tech_count = effective_tech_count(route)
     labour = 0.0
@@ -384,6 +391,7 @@ def build_dashboard_route_breakdown(
 
     revenue_columns = build_breakdown_revenue_columns(period_start, period_end)
     show_avg_monthly_revenue = range_key != BREAKDOWN_RANGE_LAST_MONTH
+    show_total_revenue = show_avg_monthly_revenue
 
     active_routes = _active_routes_excluding_demo()
     route_ids = [int(route.id) for route in active_routes]
@@ -434,6 +442,7 @@ def build_dashboard_route_breakdown(
                 "monthly_expense": round(monthly_expense, 2),
                 "monthly_revenues": monthly_revenues,
                 "avg_monthly_revenue": round(avg_monthly_revenue, 2),
+                "total_revenue": _total_revenue_from_monthly_revenues(monthly_revenues),
                 "revenue_months_sampled": revenue_months,
                 "monthly_net": monthly_net,
                 "monthly_net_pct": monthly_net_pct,
@@ -461,6 +470,7 @@ def build_dashboard_route_breakdown(
         "period_end": period_end.isoformat(),
         "revenue_columns": revenue_columns,
         "show_avg_monthly_revenue": show_avg_monthly_revenue,
+        "show_total_revenue": show_total_revenue,
         "cost_constants": serialize_cost_constants(),
         "rows": rows_payload,
     }

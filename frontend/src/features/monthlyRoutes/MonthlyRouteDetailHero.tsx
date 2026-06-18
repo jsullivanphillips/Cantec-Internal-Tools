@@ -1,4 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import OverlayTrigger from 'react-bootstrap/OverlayTrigger'
+import Tooltip from 'react-bootstrap/Tooltip'
 import { apiJson, isAbortError } from '../../lib/apiClient'
 import { formatDistanceMeters } from './routeDistanceDisplay'
 import { formatNetPct } from './routePerformanceDisplay'
@@ -49,6 +51,31 @@ function HeroSkeletonBar({
 }
 
 const SPECIALIST_SKELETON_WIDTHS = ['9rem', '7.5rem', '8.25rem', '6.5rem'] as const
+
+const AVG_NET_PCT_TOOLTIP =
+  'Average margin on tested revenue after labour and truck expense. Each month: (tested revenue − expense) ÷ tested revenue; labour uses ServiceTrade run timing when available.'
+
+function HeroMetricInfoTooltip({ id, label, children }: { id: string; label: string; children: ReactNode }) {
+  return (
+    <OverlayTrigger
+      placement="top"
+      trigger={['hover', 'focus']}
+      overlay={
+        <Tooltip id={id} className="monthly-route-detail-hero__metric-tooltip">
+          {children}
+        </Tooltip>
+      }
+    >
+      <button
+        type="button"
+        className="monthly-route-detail-hero__metric-info"
+        aria-label={label}
+      >
+        <i className="bi bi-info-circle" aria-hidden />
+      </button>
+    </OverlayTrigger>
+  )
+}
 
 function specialistTechLabel(t: MonthlySpecialistTechRow): string {
   return (t.tech_name || t.name || '').trim() || '—'
@@ -284,11 +311,14 @@ export default function MonthlyRouteDetailHero({
                     ({heroSummary.net_pct_months_sampled} mo)
                   </span>
                 ) : null}
+                <HeroMetricInfoTooltip id="route-hero-avg-net-pct" label="About avg net percent">
+                  {AVG_NET_PCT_TOOLTIP}
+                </HeroMetricInfoTooltip>
               </>
             )}
           </HeroContentLine>
           <HeroContentLine>
-            <span className="monthly-location-detail-hero-muted-label">Avg skips</span>{' '}
+            <span className="monthly-location-detail-hero-muted-label">Avg sites skipped</span>{' '}
             {heroSummaryLoading ? (
               <HeroSkeletonBar width="2.25rem" height={12} inline />
             ) : (

@@ -15,6 +15,7 @@ const samplePayload = {
   period_end: '2026-05-01',
   revenue_columns: [{ month_key: '2026-05-01', header: 'MAY REVENUE' }],
   show_avg_monthly_revenue: false,
+  show_total_revenue: false,
   cost_constants: {
     labour_rate_per_hour: 45,
     truck_charge_per_month: 25,

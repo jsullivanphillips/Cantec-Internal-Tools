@@ -125,3 +125,37 @@ def test_test_history_index_with_field_submission(portal_client):
     assert body["months"]["2026-04-01"]["has_field_submission"] is True
     assert body["months"]["2026-05-01"]["has_field_submission"] is True
     assert body["latest_submission_month"] == "2026-05-01"
+
+
+def test_enrich_months_with_site_field_submission_flags(portal_client):
+    client, app = portal_client
+    with app.app_context():
+        route_id, location_id = seed_route_with_one_stop()
+        run = MonthlyRouteRun(
+            id=9001,
+            monthly_route_id=route_id,
+            month_date=date(2026, 4, 1),
+            field_ended_at=datetime(2026, 4, 30, 17, 0),
+        )
+        mlm = MonthlyLocationMonth(
+            id=5001,
+            monthly_location_id=location_id,
+            month_date=date(2026, 4, 1),
+            result_status="tested",
+            run_id=9001,
+            test_monthly_route_id=route_id,
+        )
+        db.session.add_all([run, mlm])
+        db.session.commit()
+
+        from app.monthly.portal_test_history import enrich_months_with_field_submission
+        from app.routes.monthly_routes import _months_payload_for_location
+
+        enriched = enrich_months_with_field_submission(
+            _months_payload_for_location(location_id),
+            location_id=location_id,
+        )
+
+    april = enriched["2026-04-01"]
+    assert april["has_field_submission"] is True
+    assert april["has_site_field_submission"] is True

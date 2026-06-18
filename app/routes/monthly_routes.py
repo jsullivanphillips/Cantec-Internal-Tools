@@ -2135,7 +2135,12 @@ def get_monthly_route_location(location_id: int):
     if loc is None:
         return jsonify({"error": "Location not found"}), 404
 
-    months_by_location = _months_payload_for_location(location_id)
+    from app.monthly.portal_test_history import enrich_months_with_field_submission
+
+    months_by_location = enrich_months_with_field_submission(
+        _months_payload_for_location(location_id),
+        location_id=location_id,
+    )
     comment_rows = (
         MonthlyLocationComment.query.filter_by(location_id=location_id)
         .order_by(MonthlyLocationComment.created_at.desc())
@@ -2856,6 +2861,69 @@ def get_monthly_routes_dashboard_route_breakdown():
         )
 
     return jsonify(build_dashboard_route_breakdown(range_key=BREAKDOWN_RANGE_LAST_MONTH))
+
+
+@monthly_routes_bp.get("/api/monthly_routes/dashboard/route_performance")
+@cached_json_response(prefix="monthly:route_performance", ttl_seconds=1800)
+def get_monthly_routes_dashboard_route_performance():
+    """Per-route operational performance metrics (cached 30 min)."""
+    from app.monthly.dashboard_route_metrics import (
+        BREAKDOWN_RANGE_CHOICES,
+        BREAKDOWN_RANGE_LAST_12_MONTHS,
+        BREAKDOWN_RANGE_LAST_MONTH,
+    )
+    from app.monthly.dashboard_route_performance import build_dashboard_route_performance
+
+    raw_range = (request.args.get("range") or "").strip().lower()
+    if raw_range in BREAKDOWN_RANGE_CHOICES:
+        return jsonify(build_dashboard_route_performance(range_key=raw_range))
+
+    raw_months = (request.args.get("months") or "").strip()
+    if raw_months:
+        try:
+            trailing_months = int(raw_months)
+        except ValueError:
+            trailing_months = 12
+        trailing_months = max(1, min(trailing_months, 24))
+        return jsonify(
+            build_dashboard_route_performance(
+                trailing_months=trailing_months,
+                range_key=BREAKDOWN_RANGE_LAST_12_MONTHS,
+            )
+        )
+
+    return jsonify(build_dashboard_route_performance(range_key=BREAKDOWN_RANGE_LAST_MONTH))
+
+
+@monthly_routes_bp.get("/api/monthly_routes/dashboard/location_metrics")
+def get_monthly_routes_dashboard_location_metrics():
+    """Location monthly price vs on-site time rankings."""
+    from app.monthly.dashboard_route_metrics import (
+        BREAKDOWN_RANGE_CHOICES,
+        BREAKDOWN_RANGE_LAST_12_MONTHS,
+        BREAKDOWN_RANGE_LAST_MONTH,
+    )
+    from app.monthly.dashboard_location_metrics import build_dashboard_location_metrics
+
+    raw_range = (request.args.get("range") or "").strip().lower()
+    if raw_range in BREAKDOWN_RANGE_CHOICES:
+        return jsonify(build_dashboard_location_metrics(range_key=raw_range))
+
+    raw_months = (request.args.get("months") or "").strip()
+    if raw_months:
+        try:
+            trailing_months = int(raw_months)
+        except ValueError:
+            trailing_months = 12
+        trailing_months = max(1, min(trailing_months, 24))
+        return jsonify(
+            build_dashboard_location_metrics(
+                trailing_months=trailing_months,
+                range_key=BREAKDOWN_RANGE_LAST_12_MONTHS,
+            )
+        )
+
+    return jsonify(build_dashboard_location_metrics(range_key=BREAKDOWN_RANGE_LAST_MONTH))
 
 
 @monthly_routes_bp.get("/api/monthly_routes/tickets")

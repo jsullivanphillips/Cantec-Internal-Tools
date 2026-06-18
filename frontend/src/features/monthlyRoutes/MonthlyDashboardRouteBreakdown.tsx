@@ -26,6 +26,7 @@ type BaseSortKey =
   | 'tech_count'
   | 'monthly_expense'
   | 'avg_monthly_revenue'
+  | 'total_revenue'
   | 'monthly_net'
   | 'monthly_net_pct'
 
@@ -182,6 +183,8 @@ function compareRows(a: DashboardRouteBreakdownRow, b: DashboardRouteBreakdownRo
       return a.monthly_expense - b.monthly_expense
     case 'avg_monthly_revenue':
       return a.avg_monthly_revenue - b.avg_monthly_revenue
+    case 'total_revenue':
+      return a.total_revenue - b.total_revenue
     case 'monthly_net':
       return (a.monthly_net ?? Number.NEGATIVE_INFINITY) - (b.monthly_net ?? Number.NEGATIVE_INFINITY)
     case 'monthly_net_pct':
@@ -354,6 +357,7 @@ function BreakdownTableHeader({
   onSort,
   revenueColumns,
   showAvgMonthlyRevenue,
+  showTotalRevenue,
   costConstants,
   avgHoursPeriodDescription,
   breakdownRange,
@@ -363,6 +367,7 @@ function BreakdownTableHeader({
   onSort: (key: SortKey) => void
   revenueColumns: DashboardRouteBreakdownRevenueColumn[]
   showAvgMonthlyRevenue: boolean
+  showTotalRevenue: boolean
   costConstants: DashboardRouteBreakdownPayload['cost_constants']
   avgHoursPeriodDescription: string
   breakdownRange: DashboardRouteBreakdownRange
@@ -456,6 +461,16 @@ function BreakdownTableHeader({
             className="text-end monthly-dashboard-breakdown__col-money"
           />
         ) : null}
+        {showTotalRevenue ? (
+          <SortableHeader
+            label="Total revenue"
+            sortKey="total_revenue"
+            activeKey={sortKey}
+            sortDir={sortDir}
+            onSort={onSort}
+            className="text-end monthly-dashboard-breakdown__col-money"
+          />
+        ) : null}
         <SortableHeader
           label="Monthly net"
           sortKey="monthly_net"
@@ -528,10 +543,12 @@ function BreakdownRow({
   row,
   revenueColumns,
   showAvgMonthlyRevenue,
+  showTotalRevenue,
 }: {
   row: DashboardRouteBreakdownRow
   revenueColumns: DashboardRouteBreakdownRevenueColumn[]
   showAvgMonthlyRevenue: boolean
+  showTotalRevenue: boolean
 }) {
   const sufficient = hasRunTimeData(row)
 
@@ -563,6 +580,11 @@ function BreakdownRow({
           {formatCurrencyCad(row.avg_monthly_revenue)}
         </td>
       ) : null}
+      {showTotalRevenue ? (
+        <td className="text-end tabular-nums monthly-dashboard-breakdown__col-money">
+          {formatCurrencyCad(row.total_revenue)}
+        </td>
+      ) : null}
       <td className="text-end tabular-nums monthly-dashboard-breakdown__col-money">
         {formatCurrencyCad(row.monthly_net)}
       </td>
@@ -580,6 +602,7 @@ function BreakdownTable({
   onSort,
   revenueColumns,
   showAvgMonthlyRevenue,
+  showTotalRevenue,
   costConstants,
   avgHoursPeriodDescription,
   breakdownRange,
@@ -590,6 +613,7 @@ function BreakdownTable({
   onSort: (key: SortKey) => void
   revenueColumns: DashboardRouteBreakdownRevenueColumn[]
   showAvgMonthlyRevenue: boolean
+  showTotalRevenue: boolean
   costConstants: DashboardRouteBreakdownPayload['cost_constants']
   avgHoursPeriodDescription: string
   breakdownRange: DashboardRouteBreakdownRange
@@ -604,6 +628,7 @@ function BreakdownTable({
             onSort={onSort}
             revenueColumns={revenueColumns}
             showAvgMonthlyRevenue={showAvgMonthlyRevenue}
+            showTotalRevenue={showTotalRevenue}
             costConstants={costConstants}
             avgHoursPeriodDescription={avgHoursPeriodDescription}
             breakdownRange={breakdownRange}
@@ -615,6 +640,7 @@ function BreakdownTable({
                 row={row}
                 revenueColumns={revenueColumns}
                 showAvgMonthlyRevenue={showAvgMonthlyRevenue}
+                showTotalRevenue={showTotalRevenue}
               />
             ))}
           </tbody>
@@ -801,6 +827,7 @@ export default function MonthlyDashboardRouteBreakdown() {
         'Monthly expense',
         ...displayPayload.revenue_columns.map((column) => column.header),
         ...(displayPayload.show_avg_monthly_revenue ? ['Avg monthly revenue'] : []),
+        ...(displayPayload.show_total_revenue ? ['Total revenue'] : []),
         'Monthly net',
         'Net %',
         'Run time data',
@@ -827,6 +854,7 @@ export default function MonthlyDashboardRouteBreakdown() {
               return revenueForMonth(row, column.month_key).toFixed(2)
             }),
             ...(displayPayload.show_avg_monthly_revenue ? [row.avg_monthly_revenue.toFixed(2)] : []),
+            ...(displayPayload.show_total_revenue ? [row.total_revenue.toFixed(2)] : []),
             row.monthly_net != null ? row.monthly_net.toFixed(2) : '—',
             sufficient && row.monthly_net_pct != null
               ? (row.monthly_net_pct * 100).toFixed(2)
@@ -857,7 +885,7 @@ export default function MonthlyDashboardRouteBreakdown() {
     return (
       <section className="monthly-dashboard-breakdown">
         <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
-          <h2 className="h5 mb-0">Route breakdown — {selectedRangeLabel}</h2>
+          <h2 className="h5 mb-0">Financial performance — {selectedRangeLabel}</h2>
         </div>
         <BreakdownRangeSelector value={range} onChange={onRangeChange} loadingRange={loadingRange} />
         <MonthlyDashboardRouteBreakdownSkeleton embedded />
@@ -897,7 +925,7 @@ export default function MonthlyDashboardRouteBreakdown() {
     <section className="monthly-dashboard-breakdown">
       <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
         <div className="d-flex flex-wrap align-items-center gap-2">
-          <h2 className="h5 mb-0">Route breakdown — {displayPayload.period_label}</h2>
+          <h2 className="h5 mb-0">Financial performance — {displayPayload.period_label}</h2>
           {rowsInsufficientRunTime.length > 0 ? (
             <Badge bg="warning" text="dark" className="monthly-dashboard-breakdown__count-badge tabular-nums">
               {rowsInsufficientRunTime.length} missing run time data
@@ -941,6 +969,7 @@ export default function MonthlyDashboardRouteBreakdown() {
                     onSort={onSort}
                     revenueColumns={displayPayload.revenue_columns}
                     showAvgMonthlyRevenue={displayPayload.show_avg_monthly_revenue}
+                    showTotalRevenue={displayPayload.show_total_revenue}
                     costConstants={displayPayload.cost_constants}
                     avgHoursPeriodDescription={avgHoursPeriodDescription}
                     breakdownRange={displayPayload.range}
@@ -968,6 +997,7 @@ export default function MonthlyDashboardRouteBreakdown() {
                     onSort={onSort}
                     revenueColumns={displayPayload.revenue_columns}
                     showAvgMonthlyRevenue={displayPayload.show_avg_monthly_revenue}
+                    showTotalRevenue={displayPayload.show_total_revenue}
                     costConstants={displayPayload.cost_constants}
                     avgHoursPeriodDescription={avgHoursPeriodDescription}
                     breakdownRange={displayPayload.range}

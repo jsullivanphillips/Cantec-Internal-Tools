@@ -22,6 +22,11 @@ export type SiteFieldSubmissionState = {
   noRoute: boolean
 }
 
+export const SITE_FIELD_SUBMISSION_NO_RUN_MESSAGE =
+  'No field submission captured for this run.'
+export const SITE_FIELD_SUBMISSION_NO_SITE_ROW_MESSAGE =
+  'No paperwork row for this site on this run.'
+
 const INITIAL_STATE: SiteFieldSubmissionState = {
   loading: false,
   stops: [],
@@ -63,7 +68,7 @@ export function useSiteFieldSubmission({
         capturedAt: cached.capturedAt,
         fieldWorkReopened: cached.fieldWorkReopened,
         emptyMessage:
-          filtered.length === 0 ? 'No paperwork row for this site on this run.' : null,
+          filtered.length === 0 ? SITE_FIELD_SUBMISSION_NO_SITE_ROW_MESSAGE : null,
         noRoute: false,
       })
     } else {
@@ -97,7 +102,7 @@ export function useSiteFieldSubmission({
           capturedAt: entry.capturedAt,
           fieldWorkReopened: entry.fieldWorkReopened,
           emptyMessage:
-            filtered.length === 0 ? 'No paperwork row for this site on this run.' : null,
+            filtered.length === 0 ? SITE_FIELD_SUBMISSION_NO_SITE_ROW_MESSAGE : null,
           noRoute: false,
         })
       } catch (e) {
@@ -108,7 +113,7 @@ export function useSiteFieldSubmission({
             stops: [],
             capturedAt: null,
             fieldWorkReopened: false,
-            emptyMessage: 'No field submission captured for this run.',
+            emptyMessage: SITE_FIELD_SUBMISSION_NO_RUN_MESSAGE,
             noRoute: false,
           })
         }

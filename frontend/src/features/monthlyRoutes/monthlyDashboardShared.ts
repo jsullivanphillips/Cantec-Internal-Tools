@@ -71,6 +71,7 @@ export type DashboardRouteBreakdownRow = {
   monthly_expense: number
   monthly_revenues: DashboardRouteBreakdownMonthRevenue[]
   avg_monthly_revenue: number
+  total_revenue: number
   revenue_months_sampled: number
   monthly_net: number | null
   monthly_net_pct: number | null
@@ -90,6 +91,7 @@ export type DashboardRouteBreakdownPayload = {
   period_end: string
   revenue_columns: DashboardRouteBreakdownRevenueColumn[]
   show_avg_monthly_revenue: boolean
+  show_total_revenue: boolean
   cost_constants: DashboardRouteBreakdownCostConstants
   rows: DashboardRouteBreakdownRow[]
 }
@@ -127,6 +129,113 @@ export async function fetchDashboardRouteBreakdown(
     throw new Error('Route breakdown returned no data.')
   }
   return JSON.parse(text) as DashboardRouteBreakdownPayload
+}
+
+export type DashboardRoutePerformanceRow = {
+  route: MonthlyRouteSummary
+  building_count: number
+  distance_meters: number | null
+  duration_seconds: number | null
+  /** ServiceTrade job clock-in to clock-out (median across range). */
+  avg_hours: number | null
+  avg_hours_months_sampled: number
+  /** First stop time-in to route end (median across range). */
+  field_avg_hours: number | null
+  field_avg_hours_months_sampled: number
+  /** Median minutes from ST job clock-in to first stop time-in. */
+  pre_route_gap_minutes: number | null
+  pre_route_gap_months_sampled: number
+  skipped_non_annual: number | null
+  skipped_months_sampled: number
+  monitoring_site_count: number
+  tech_count: number
+  monthly_net_pct: number | null
+  has_sufficient_run_time_data: boolean
+}
+
+export type DashboardRoutePerformancePayload = {
+  range: DashboardRouteBreakdownRange
+  period_label: string
+  trailing_months: number
+  period_start: string
+  period_end: string
+  rows: DashboardRoutePerformanceRow[]
+}
+
+export async function fetchDashboardRoutePerformance(
+  range: DashboardRouteBreakdownRange = DEFAULT_DASHBOARD_ROUTE_BREAKDOWN_RANGE,
+): Promise<DashboardRoutePerformancePayload> {
+  const path = `/api/monthly_routes/dashboard/route_performance?range=${encodeURIComponent(range)}`
+  const res = await apiFetch(path)
+  if (!res.ok) {
+    const body = await readApiErrorBody(res)
+    throw new Error(
+      formatApiErrorMessage(
+        res.status,
+        body,
+        'Unable to load route performance. Try again.',
+      ),
+    )
+  }
+  const text = await res.text()
+  if (!text.trim()) {
+    throw new Error('Route performance returned no data.')
+  }
+  return JSON.parse(text) as DashboardRoutePerformancePayload
+}
+
+export type DashboardLocationMetricsRow = {
+  location_id: number
+  label: string
+  address: string | null
+  price_per_month: number | null
+  route: MonthlyRouteSummary | null
+  avg_visit_minutes: number | null
+  price_per_hour: number | null
+  visits_sampled: number
+}
+
+export type DashboardLocationPriceRow = {
+  location_id: number
+  label: string
+  address: string | null
+  price_per_month: number | null
+  route: MonthlyRouteSummary | null
+}
+
+export type DashboardLocationMetricsPayload = {
+  range: DashboardRouteBreakdownRange
+  period_label: string
+  trailing_months: number
+  period_start: string
+  period_end: string
+  top_performers: DashboardLocationMetricsRow[]
+  lowest_performers: DashboardLocationMetricsRow[]
+  lowest_monthly_price_locations: DashboardLocationPriceRow[]
+  eligible_location_count: number
+  priced_location_count: number
+}
+
+export async function fetchDashboardLocationMetrics(
+  range: DashboardRouteBreakdownRange = DEFAULT_DASHBOARD_ROUTE_BREAKDOWN_RANGE,
+): Promise<DashboardLocationMetricsPayload> {
+  const path = `/api/monthly_routes/dashboard/location_metrics?range=${encodeURIComponent(range)}`
+  const res = await apiFetch(path)
+  if (!res.ok) {
+    const body = await readApiErrorBody(res)
+    throw new Error(
+      formatApiErrorMessage(
+        res.status,
+        body,
+        'Unable to load location metrics. Try again.',
+      ),
+    )
+  }
+  const text = await res.text()
+  if (!text.trim()) {
+    throw new Error('Location metrics returned no data.')
+  }
+  return JSON.parse(text) as DashboardLocationMetricsPayload
 }
 
 export type RouteOverviewCardTone =

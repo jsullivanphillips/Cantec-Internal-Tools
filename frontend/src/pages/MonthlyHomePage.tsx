@@ -17,6 +17,8 @@ import MonthlyRoutesWorkweekCalendar from '../features/monthlyRoutes/MonthlyRout
 import BulkStJobReleaseButton from '../features/monthlyRoutes/BulkStJobReleaseButton'
 import MonthlyDashboardIssues from '../features/monthlyRoutes/MonthlyDashboardIssues'
 import MonthlyDashboardRouteBreakdown from '../features/monthlyRoutes/MonthlyDashboardRouteBreakdown'
+import MonthlyDashboardRoutePerformance from '../features/monthlyRoutes/MonthlyDashboardRoutePerformance'
+import MonthlyDashboardLocationMetrics from '../features/monthlyRoutes/MonthlyDashboardLocationMetrics'
 import MonthlyTicketsQueue from '../features/monthlyRoutes/MonthlyTicketsQueue'
 import { apiJson, isAbortError } from '../lib/apiClient'
 import { PROCESSING_PAGE_TITLE_COMPACT_CLASS } from '../styles/pageTypography'
@@ -270,7 +272,13 @@ export default function MonthlyHomePage() {
                 <Nav.Link eventKey="routes">Routes</Nav.Link>
               </Nav.Item>
               <Nav.Item>
-                <Nav.Link eventKey="metrics">Metrics</Nav.Link>
+                <Nav.Link eventKey="financial-performance">Financial Performance</Nav.Link>
+              </Nav.Item>
+              <Nav.Item>
+                <Nav.Link eventKey="route-performance">Route Performance</Nav.Link>
+              </Nav.Item>
+              <Nav.Item>
+                <Nav.Link eventKey="location-metrics">Location Metrics</Nav.Link>
               </Nav.Item>
               <Nav.Item>
                 <Nav.Link eventKey="tickets">Tickets</Nav.Link>
@@ -306,8 +314,14 @@ export default function MonthlyHomePage() {
                   legend={<MonthlyDashboardLegend />}
                 />
               </Tab.Pane>
-              <Tab.Pane eventKey="metrics">
+              <Tab.Pane eventKey="financial-performance">
                 <MonthlyDashboardRouteBreakdown />
+              </Tab.Pane>
+              <Tab.Pane eventKey="route-performance">
+                <MonthlyDashboardRoutePerformance />
+              </Tab.Pane>
+              <Tab.Pane eventKey="location-metrics">
+                <MonthlyDashboardLocationMetrics />
               </Tab.Pane>
               <Tab.Pane eventKey="tickets">
                 <MonthlyTicketsQueue onTicketsChanged={refreshDashboard} />
