@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { Modal } from 'react-bootstrap'
 import type { RouteKeyAuditPayload } from '../keys/keysAdminShared'
 import type { TechnicianWorksheetLocation } from './monthlyRoutesShared'
-import { buildKeyViewItems } from './portalKeyViewShared'
+import { buildKeyViewItems, type KeyViewItem } from './portalKeyViewShared'
 
 type Props = {
   show: boolean
@@ -10,6 +10,10 @@ type Props = {
   stops: TechnicianWorksheetLocation[]
   activeStopId: number | null
   keyAudit?: RouteKeyAuditPayload | null
+  /** Shown on the printed key sheet (e.g. route display name). */
+  routeLabel?: string | null
+  /** Plain list without test-outcome row colors (route details office view). */
+  monochrome?: boolean
 }
 
 type MouseDragState = {
@@ -27,6 +31,114 @@ const MOMENTUM_FLING_THRESHOLD = 0.45
 const WHEEL_MIN_OPACITY = 0.4
 const WHEEL_CLEAR_NEIGHBOR_COUNT = 3
 const WHEEL_FOG_RAMP_ITEMS = 2.5
+const PRINT_BODY_CLASS = 'pw-key-view-print-active'
+const PRINT_MONOCHROME_BODY_CLASS = 'pw-key-view-print-monochrome'
+
+function keyIssueLabel(issue: KeyViewItem['keyIssue']): string | null {
+  switch (issue) {
+    case 'unlinked':
+      return 'Key not linked'
+    case 'unavailable':
+      return 'Key unavailable'
+    case 'wrong_route':
+      return 'Wrong route'
+    default:
+      return null
+  }
+}
+
+function formatPrintDate(): string {
+  return new Date().toLocaleDateString(undefined, {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  })
+}
+
+function KeyViewDocument({
+  items,
+  routeLabel,
+  printDateLabel,
+  showPrintDate,
+  showOutcomeColors = false,
+  className,
+  innerRef,
+}: {
+  items: KeyViewItem[]
+  routeLabel?: string | null
+  printDateLabel?: string
+  showPrintDate?: boolean
+  showOutcomeColors?: boolean
+  className?: string
+  innerRef?: RefObject<HTMLDivElement | null>
+}) {
+  const trimmedRouteLabel = routeLabel?.trim() || null
+  const stopLabel = `${items.length} ${items.length === 1 ? 'stop' : 'stops'}`
+
+  return (
+    <div
+      ref={innerRef}
+      className={className}
+      data-row-count={items.length}
+    >
+      <header className="pw-key-view-document__header">
+        <h1 className="pw-key-view-document__title">Key view</h1>
+        {trimmedRouteLabel ? (
+          <p className="pw-key-view-document__route">{trimmedRouteLabel}</p>
+        ) : null}
+        <p className="pw-key-view-document__meta">
+          {showPrintDate && printDateLabel ? (
+            <>
+              Printed {printDateLabel}
+              <span aria-hidden="true"> · </span>
+            </>
+          ) : null}
+          {stopLabel}
+        </p>
+      </header>
+      <table className="pw-key-view-document__table">
+        <thead>
+          <tr>
+            <th scope="col">Stop</th>
+            <th scope="col">Ring</th>
+            <th scope="col">Key</th>
+            <th scope="col">Address</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item) => {
+            const issueLabel = keyIssueLabel(item.keyIssue)
+            return (
+              <tr
+                key={item.locationId}
+                className={['pw-key-view-document__row', showOutcomeColors ? item.statusClass : '']
+                  .filter(Boolean)
+                  .join(' ')}
+              >
+                <td className="pw-key-view-document__stop">{item.stopNumber}</td>
+                <td>{item.ring}</td>
+                <td className="pw-key-view-document__key">
+                  {item.keyCode}
+                  {item.keyIssue ? (
+                    <span
+                      className="pw-key-view-document__issue"
+                      title={issueLabel ?? undefined}
+                      aria-label={issueLabel ?? undefined}
+                    >
+                      <i className="bi bi-exclamation-triangle-fill" aria-hidden />
+                    </span>
+                  ) : null}
+                </td>
+                <td>{item.addressLabel}</td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
 
 function wheelItemVisual(distancePx: number, itemHeight: number) {
   const rowHeight = Math.max(itemHeight, 1)
@@ -47,12 +159,21 @@ function snapScrollTop(scroller: HTMLDivElement) {
   scroller.scrollTop = Math.round(scroller.scrollTop)
 }
 
-export default function PortalKeyViewModal({ show, onHide, stops, activeStopId, keyAudit }: Props) {
+export default function PortalKeyViewModal({
+  show,
+  onHide,
+  stops,
+  activeStopId,
+  keyAudit,
+  routeLabel,
+  monochrome = false,
+}: Props) {
   const items = useMemo(
     () => buildKeyViewItems(stops, activeStopId, keyAudit),
     [stops, activeStopId, keyAudit],
   )
   const scrollerRef = useRef<HTMLDivElement | null>(null)
+  const printSheetRef = useRef<HTMLDivElement | null>(null)
   const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map())
   const dragRef = useRef<MouseDragState | null>(null)
   const momentumFrameRef = useRef(0)
@@ -60,6 +181,7 @@ export default function PortalKeyViewModal({ show, onHide, stops, activeStopId, 
   const momentumActiveRef = useRef(false)
   const settleSnapRef = useRef(false)
   const focusedIndexRef = useRef(0)
+  const [printing, setPrinting] = useState(false)
 
   const findNearestIndex = useCallback(() => {
     const scroller = scrollerRef.current
@@ -185,7 +307,7 @@ export default function PortalKeyViewModal({ show, onHide, stops, activeStopId, 
   )
 
   useEffect(() => {
-    if (!show) return
+    if (!show || monochrome) return
     const activeIndex = items.findIndex((item) => item.isActiveStop)
     const index = activeIndex >= 0 ? activeIndex : 0
     focusedIndexRef.current = index
@@ -198,11 +320,11 @@ export default function PortalKeyViewModal({ show, onHide, stops, activeStopId, 
       updateWheelVisuals()
     })
     return () => window.cancelAnimationFrame(frame)
-  }, [show, items, updateWheelVisuals])
+  }, [show, monochrome, items, updateWheelVisuals])
 
   useEffect(() => {
     const scroller = scrollerRef.current
-    if (!scroller || !show) return
+    if (!scroller || !show || monochrome) return
     let frame = 0
     const onScroll = () => {
       window.cancelAnimationFrame(frame)
@@ -227,10 +349,10 @@ export default function PortalKeyViewModal({ show, onHide, stops, activeStopId, 
       window.cancelAnimationFrame(frame)
       cancelMomentum()
     }
-  }, [show, updateWheelVisuals, snapToNearest, cancelMomentum, findNearestIndex])
+  }, [show, monochrome, updateWheelVisuals, snapToNearest, cancelMomentum, findNearestIndex])
 
   useEffect(() => {
-    if (!show) return
+    if (!show || monochrome) return
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'ArrowDown') {
         event.preventDefault()
@@ -244,7 +366,34 @@ export default function PortalKeyViewModal({ show, onHide, stops, activeStopId, 
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [show, moveSelectionBy])
+  }, [show, monochrome, moveSelectionBy])
+
+  useEffect(() => {
+    if (!show) return
+    const onAfterPrint = () => {
+      setPrinting(false)
+      document.body.classList.remove(PRINT_BODY_CLASS)
+      document.body.classList.remove(PRINT_MONOCHROME_BODY_CLASS)
+    }
+    window.addEventListener('afterprint', onAfterPrint)
+    return () => {
+      window.removeEventListener('afterprint', onAfterPrint)
+      setPrinting(false)
+      document.body.classList.remove(PRINT_BODY_CLASS)
+      document.body.classList.remove(PRINT_MONOCHROME_BODY_CLASS)
+    }
+  }, [show])
+
+  const handlePrint = useCallback(() => {
+    setPrinting(true)
+    document.body.classList.add(PRINT_BODY_CLASS)
+    if (monochrome) {
+      document.body.classList.add(PRINT_MONOCHROME_BODY_CLASS)
+    }
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => window.print()))
+  }, [monochrome])
+
+  const printDateLabel = useMemo(() => formatPrintDate(), [show, items.length])
 
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     pointerActiveRef.current = true
@@ -301,64 +450,100 @@ export default function PortalKeyViewModal({ show, onHide, stops, activeStopId, 
       show={show}
       onHide={onHide}
       fullscreen
-      className="pw-key-view-modal"
+      className={`pw-key-view-modal${monochrome ? ' pw-key-view-modal--monochrome' : ''}`}
       contentClassName="pw-key-view-modal-content"
-      backdropClassName="pw-key-view-modal-backdrop"
+      backdropClassName={`pw-key-view-modal-backdrop${monochrome ? ' pw-key-view-modal-backdrop--office' : ''}`}
     >
       <Modal.Body className="pw-key-view-modal-body">
-        <button
-          type="button"
-          className="pw-key-view-close"
-          onClick={onHide}
-          aria-label="Close key view"
-        >
-          <i className="bi bi-x-lg" aria-hidden />
-        </button>
-        <div className="pw-key-view-title">Key view</div>
-        <div className="pw-key-view-wheel">
-          <div
-            ref={scrollerRef}
-            className="pw-key-view-wheel-scroller"
-            onPointerDown={onPointerDown}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            onPointerCancel={(event) => {
-              pointerActiveRef.current = false
-              onPointerUp(event)
-            }}
+        <div className="pw-key-view-toolbar">
+          <button
+            type="button"
+            className="pw-key-view-print"
+            onClick={handlePrint}
+            aria-label="Print key view"
           >
-            {items.map((item) => {
-              const classNames = ['pw-key-view-item', item.statusClass].filter(Boolean).join(' ')
-              return (
-                <div
-                  key={item.locationId}
-                  ref={(el) => {
-                    if (el) itemRefs.current.set(item.locationId, el)
-                    else itemRefs.current.delete(item.locationId)
-                  }}
-                  className={classNames}
-                >
-                  <span className="pw-key-view-stop-num">{item.stopNumber}</span>
-                  <span className="pw-key-view-ring">
-                    <i className="bi bi-circle pw-key-view-ring-icon" aria-hidden />
-                    {item.ring}
-                  </span>
-                  <span className="pw-key-view-key-block">
-                    <span className="pw-key-view-key-code">
-                      {item.keyCode}
-                      {item.keyIssue ? (
-                        <span className="text-warning ms-1" title={item.keyIssue}>
-                          <i className="bi bi-exclamation-triangle-fill" aria-hidden />
-                        </span>
-                      ) : null}
-                    </span>
-                    <span className="pw-key-view-address">{item.addressLabel}</span>
-                  </span>
-                </div>
-              )
-            })}
-          </div>
+            <i className="bi bi-printer" aria-hidden />
+            <span className="pw-key-view-print__label">Print</span>
+          </button>
+          <button
+            type="button"
+            className="pw-key-view-close"
+            onClick={onHide}
+            aria-label="Close key view"
+          >
+            <i className="bi bi-x-lg" aria-hidden />
+          </button>
         </div>
+        {monochrome ? (
+          <KeyViewDocument
+            items={items}
+            routeLabel={routeLabel}
+            printDateLabel={printDateLabel}
+            showPrintDate={printing}
+            className="pw-key-view-document pw-key-view-document--office"
+            innerRef={printSheetRef}
+          />
+        ) : (
+          <>
+            <div className="pw-key-view-title">Key view</div>
+            <div className="pw-key-view-wheel">
+              <div
+                ref={scrollerRef}
+                className="pw-key-view-wheel-scroller"
+                onPointerDown={onPointerDown}
+                onPointerMove={onPointerMove}
+                onPointerUp={onPointerUp}
+                onPointerCancel={(event) => {
+                  pointerActiveRef.current = false
+                  onPointerUp(event)
+                }}
+              >
+                {items.map((item) => {
+                  const classNames = ['pw-key-view-item', item.statusClass].filter(Boolean).join(' ')
+                  return (
+                    <div
+                      key={item.locationId}
+                      ref={(el) => {
+                        if (el) itemRefs.current.set(item.locationId, el)
+                        else itemRefs.current.delete(item.locationId)
+                      }}
+                      className={classNames}
+                    >
+                      <span className="pw-key-view-stop-num">{item.stopNumber}</span>
+                      <span className="pw-key-view-ring">
+                        <i className="bi bi-circle pw-key-view-ring-icon" aria-hidden />
+                        {item.ring}
+                      </span>
+                      <span className="pw-key-view-key-block">
+                        <span className="pw-key-view-key-code">
+                          {item.keyCode}
+                          {item.keyIssue ? (
+                            <span
+                              className="text-warning ms-1"
+                              title={keyIssueLabel(item.keyIssue) ?? undefined}
+                            >
+                              <i className="bi bi-exclamation-triangle-fill" aria-hidden />
+                            </span>
+                          ) : null}
+                        </span>
+                        <span className="pw-key-view-address">{item.addressLabel}</span>
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+            <KeyViewDocument
+              items={items}
+              routeLabel={routeLabel}
+              printDateLabel={printDateLabel}
+              showPrintDate
+              showOutcomeColors
+              className="pw-key-view-print-sheet"
+              innerRef={printSheetRef}
+            />
+          </>
+        )}
       </Modal.Body>
     </Modal>
   )

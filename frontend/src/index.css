@@ -16071,6 +16071,11 @@ body {
   background-color: rgba(15, 23, 42, 0.18) !important;
 }
 
+.pw-key-view-modal-backdrop--office {
+  backdrop-filter: none;
+  background-color: rgba(15, 23, 42, 0.42) !important;
+}
+
 .pw-key-view-modal-content {
   border: 0;
   border-radius: 0;
@@ -16101,11 +16106,18 @@ body {
   );
 }
 
+.pw-key-view-modal--monochrome .pw-key-view-modal-content {
+  background: #fff;
+}
+
+.pw-key-view-modal--monochrome .pw-key-view-modal-body {
+  align-items: stretch;
+  justify-content: flex-start;
+  padding: 4.25rem 1.25rem 1.25rem;
+  background: #fff;
+}
+
 .pw-key-view-close {
-  position: absolute;
-  top: 1rem;
-  right: 1rem;
-  z-index: 3;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -16120,11 +16132,299 @@ body {
   box-shadow: 0 4px 14px rgba(15, 23, 42, 0.16);
 }
 
+.pw-key-view-toolbar {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.pw-key-view-print {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 3.35rem;
+  padding: 0 1rem;
+  border: 1px solid var(--pw-border, #d8e1eb);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--pw-text);
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.16);
+}
+
+.pw-key-view-print:hover,
 .pw-key-view-close:hover {
   background: #fff;
   color: var(--pw-text);
   border-color: #cbd5e1;
   box-shadow: 0 6px 18px rgba(15, 23, 42, 0.2);
+}
+
+.pw-key-view-print__label {
+  line-height: 1;
+}
+
+.pw-key-view-print-sheet {
+  display: none;
+}
+
+.pw-key-view-document {
+  width: 100%;
+  max-width: 56rem;
+  margin: 0 auto;
+  color: #0f172a;
+}
+
+.pw-key-view-document--office {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 0.25rem 0.5rem;
+}
+
+.pw-key-view-document__header {
+  margin-bottom: 1rem;
+}
+
+.pw-key-view-document__title {
+  margin: 0 0 0.25rem;
+  font-size: 1.35rem;
+  font-weight: 800;
+  line-height: 1.2;
+  color: #0f172a;
+}
+
+.pw-key-view-document__route {
+  margin: 0 0 0.15rem;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #334155;
+}
+
+.pw-key-view-document__meta {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #64748b;
+}
+
+.pw-key-view-document__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  line-height: 1.3;
+}
+
+.pw-key-view-document__table th,
+.pw-key-view-document__table td {
+  padding: 0.45rem 0.6rem;
+  border: 1px solid #cbd5e1;
+  vertical-align: top;
+  text-align: left;
+}
+
+.pw-key-view-document__table th {
+  background: #f8fafc;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #475569;
+}
+
+.pw-key-view-document__stop {
+  width: 3.25rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+.pw-key-view-document__key {
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.pw-key-view-document__issue {
+  margin-left: 0.35rem;
+  color: #b45309;
+  font-size: 0.82rem;
+}
+
+.pw-key-view-document--office .pw-key-view-document__header {
+  margin-bottom: 0.85rem;
+}
+
+.pw-key-view-document--office .pw-key-view-document__title {
+  font-size: 1.15rem;
+}
+
+.pw-key-view-document--office .pw-key-view-document__table td {
+  word-break: break-word;
+}
+
+.pw-key-view-document--office .pw-key-view-document__table .pw-key-view-document__key {
+  white-space: normal;
+}
+
+.pw-key-view-document__row.pw-key-view-item--tested td {
+  background: #ecfdf3;
+}
+
+.pw-key-view-document__row.pw-key-view-item--passed-problems td {
+  background: #fdf2f8;
+}
+
+.pw-key-view-document__row.pw-key-view-item--failed td {
+  background: #fef2f2;
+}
+
+.pw-key-view-document__row.pw-key-view-item--skipped td {
+  background: #fffbeb;
+}
+
+.pw-key-view-document--office {
+  page: key-view-mono;
+}
+
+@media print {
+  @page {
+    margin: 0.65in;
+    size: letter portrait;
+  }
+
+  @page key-view-mono {
+    margin: 0.35in;
+    size: letter portrait;
+  }
+
+  body.pw-key-view-print-active * {
+    visibility: hidden;
+  }
+
+  body.pw-key-view-print-active .pw-key-view-modal,
+  body.pw-key-view-print-active .pw-key-view-modal * {
+    visibility: visible;
+  }
+
+  body.pw-key-view-print-active .modal-backdrop,
+  body.pw-key-view-print-active .pw-key-view-toolbar,
+  body.pw-key-view-print-active .pw-key-view-title,
+  body.pw-key-view-print-active .pw-key-view-wheel {
+    display: none !important;
+  }
+
+  body.pw-key-view-print-active .pw-key-view-modal {
+    position: absolute;
+    inset: 0;
+    overflow: visible !important;
+  }
+
+  body.pw-key-view-print-active .pw-key-view-modal .modal-dialog,
+  body.pw-key-view-print-active .pw-key-view-modal .modal-content,
+  body.pw-key-view-print-active .pw-key-view-modal .modal-body {
+    position: static !important;
+    display: block !important;
+    width: 100% !important;
+    max-width: none !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+  }
+
+  body.pw-key-view-print-active .pw-key-view-print-sheet,
+  body.pw-key-view-print-active .pw-key-view-document--office {
+    display: block !important;
+    visibility: visible !important;
+  }
+
+  body.pw-key-view-print-active .pw-key-view-document--office {
+    overflow: visible !important;
+    max-width: none !important;
+    padding: 0 !important;
+  }
+
+  body.pw-key-view-print-active .pw-key-view-document__table {
+    page-break-inside: auto;
+  }
+
+  body.pw-key-view-print-active .pw-key-view-document__row {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  body.pw-key-view-print-active .pw-key-view-document__table th,
+  body.pw-key-view-print-active .pw-key-view-document__table td {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  body.pw-key-view-print-active.pw-key-view-print-monochrome .pw-key-view-document__header {
+    margin-bottom: 0.35rem;
+  }
+
+  body.pw-key-view-print-active.pw-key-view-print-monochrome .pw-key-view-document__title {
+    font-size: 0.95rem;
+    margin-bottom: 0.1rem;
+  }
+
+  body.pw-key-view-print-active.pw-key-view-print-monochrome .pw-key-view-document__route {
+    font-size: 0.82rem;
+    margin-bottom: 0.05rem;
+  }
+
+  body.pw-key-view-print-active.pw-key-view-print-monochrome .pw-key-view-document__meta {
+    font-size: 0.68rem;
+  }
+
+  body.pw-key-view-print-active.pw-key-view-print-monochrome .pw-key-view-document__table {
+    font-size: 0.75rem;
+    line-height: 1.22;
+  }
+
+  body.pw-key-view-print-active.pw-key-view-print-monochrome .pw-key-view-document__table th,
+  body.pw-key-view-print-active.pw-key-view-print-monochrome .pw-key-view-document__table td {
+    padding: 0.32rem 0.5rem;
+  }
+
+  body.pw-key-view-print-active.pw-key-view-print-monochrome .pw-key-view-document__table th {
+    font-size: 0.64rem;
+    padding-top: 0.26rem;
+    padding-bottom: 0.26rem;
+  }
+
+  body.pw-key-view-print-active.pw-key-view-print-monochrome .pw-key-view-document__row {
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+
+  /*
+   * Slightly tighten row padding when approaching 35 stops so the sheet stays on one page.
+   * data-row-count is capped at 35 on the document root.
+   */
+  body.pw-key-view-print-active.pw-key-view-print-monochrome .pw-key-view-document[data-row-count='31'] .pw-key-view-document__table td,
+  body.pw-key-view-print-active.pw-key-view-print-monochrome .pw-key-view-document[data-row-count='32'] .pw-key-view-document__table td,
+  body.pw-key-view-print-active.pw-key-view-print-monochrome .pw-key-view-document[data-row-count='33'] .pw-key-view-document__table td,
+  body.pw-key-view-print-active.pw-key-view-print-monochrome .pw-key-view-document[data-row-count='34'] .pw-key-view-document__table td,
+  body.pw-key-view-print-active.pw-key-view-print-monochrome .pw-key-view-document[data-row-count='35'] .pw-key-view-document__table td {
+    padding-top: 0.28rem;
+    padding-bottom: 0.28rem;
+  }
+
+  body.pw-key-view-print-active.pw-key-view-print-monochrome .pw-key-view-document[data-row-count='35'] .pw-key-view-document__table td {
+    padding-top: 0.26rem;
+    padding-bottom: 0.26rem;
+  }
 }
 
 .pw-key-view-title {

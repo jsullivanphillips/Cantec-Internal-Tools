@@ -1672,6 +1672,8 @@ export default function MonthlyRouteDetailPage() {
         stops={keyViewStops}
         activeStopId={null}
         keyAudit={keyViewAudit}
+        routeLabel={routeTitle}
+        monochrome
       />
         </>
       ) : null}
