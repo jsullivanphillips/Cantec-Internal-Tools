@@ -234,7 +234,13 @@ function HealthTableHeader({
           onSort={onSort}
           className="text-end monthly-dashboard-breakdown__col-compact"
           compact
-          title="Time between ServiceTrade job clock-in and first stop time-in (drive / early clock-in)"
+          infoLabel="Pre-route"
+          infoTooltip={
+            <>
+              Difference between the ServiceTrade job clock-in and the time-in on the first site.
+              It represents travel time from the office to the first site.
+            </>
+          }
         />
         <SortableHeader
           label="Sprawl"
@@ -244,6 +250,13 @@ function HealthTableHeader({
           onSort={onSort}
           className="text-end monthly-dashboard-breakdown__col-compact"
           compact
+          infoLabel="Sprawl"
+          infoTooltip={
+            <>
+              Total driving distance divided by the number of buildings. It&apos;s a rough metric
+              for how spread out the route is.
+            </>
+          }
         />
         <SortableHeader
           label="Monitoring"
