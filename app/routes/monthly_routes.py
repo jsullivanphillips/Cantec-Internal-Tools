@@ -1626,6 +1626,8 @@ def _serialize_testing_session_payload(route_id: int, month_first: date) -> dict
 
 def _serialize_route_location_list_item(loc: MonthlyLocation) -> dict[str, object]:
     """Lightweight row for route detail / reorder (no per-month grid)."""
+    from app.monthly.monitoring_companies import serialize_monitoring_company
+
     lk = loc.linked_key
     return {
         "id": loc.id,
@@ -1643,6 +1645,11 @@ def _serialize_route_location_list_item(loc: MonthlyLocation) -> dict[str, objec
         "keys": loc.keys,
         "key_id": loc.key_id,
         "key": _serialize_linked_key(lk, include_status=False),
+        "monitoring_company_id": loc.monitoring_company_id,
+        "monitoring_company": serialize_monitoring_company(loc.monitoring_company),
+        "monitoring_account_number": loc.monitoring_account_number,
+        "monitoring_password": loc.monitoring_password,
+        "monitoring_notes": loc.monitoring_notes,
         "testing_sites": [
             {
                 "id": int(loc.id),
@@ -2386,6 +2393,21 @@ def dashboard_st_job_release():
     )
 
 
+@monthly_routes_bp.get("/api/monthly_routes/routes/<int:route_id>/header")
+def get_monthly_route_header(route_id: int):
+    """Minimal route payload for fast Paperwork navigation on the route detail page."""
+    mr = _get_monthly_route(route_id)
+    if mr is None:
+        return jsonify({"error": "Route not found"}), 404
+
+    location_count = MonthlyLocation.query.filter_by(monthly_route_id=route_id).count()
+    return jsonify(
+        {
+            "route": _serialize_monthly_route_entity(mr, location_count=location_count),
+        }
+    )
+
+
 @monthly_routes_bp.get("/api/monthly_routes/routes/<int:route_id>")
 def get_monthly_route_detail(route_id: int):
     mr = _get_monthly_route(route_id)
@@ -2453,6 +2475,20 @@ def get_monthly_route_detail(route_id: int):
             "specialists_by_month": specialists_by_month,
         }
     )
+
+
+@monthly_routes_bp.get("/api/monthly_routes/routes/<int:route_id>/hero_summary")
+@cached_json_response(prefix="monthly:route_hero_summary", ttl_seconds=1800, include_query=False)
+def get_route_hero_summary(route_id: int):
+    """Lazy hero performance aggregates (kept off the main route detail payload for faster first paint)."""
+    mr = _get_monthly_route(route_id)
+    if mr is None:
+        return jsonify({"error": "Route not found"}), 404
+
+    from app.monthly.route_hero_summary import build_route_hero_summary
+
+    testing_by_month = _route_testing_by_month(route_id)
+    return jsonify({"hero_summary": build_route_hero_summary(mr, testing_by_month)})
 
 
 @monthly_routes_bp.get("/api/monthly_routes/routes/<int:route_id>/key_audit")

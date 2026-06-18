@@ -139,6 +139,11 @@ export type RouteLocationListItem = {
   keys?: string | null
   key_id?: number | null
   key?: LinkedKeySummary | null
+  monitoring_company_id?: number | null
+  monitoring_company?: MonitoringCompanySummary | null
+  monitoring_account_number?: string | null
+  monitoring_password?: string | null
+  monitoring_notes?: string | null
 }
 
 export type MonthlyRouteCalculatedPathStop = {
@@ -286,6 +291,16 @@ export type RouteRunMonthSummary = {
   stops_tested_count?: number
 }
 
+/** All-time aggregates for the route detail hero Performance column. */
+export type MonthlyRouteHeroSummary = {
+  typical_end_time: string | null
+  typical_end_time_runs_sampled: number
+  avg_net_pct: number | null
+  net_pct_months_sampled: number
+  avg_skipped_non_annual: number | null
+  skipped_months_sampled: number
+}
+
 export type MonthlyRouteDetailPayload = {
   route: MonthlyRouteSummary
   /** Stops on this route in driving order (from ``route_stop_order``). */
@@ -301,6 +316,15 @@ export type MonthlyRouteDetailPayload = {
   specialists: MonthlyRouteSpecialistsPayload | null
   /** Newest months first; month keys ``YYYY-MM-01``. */
   specialists_by_month: Record<string, MonthlyRouteSpecialistMonthPayload>
+}
+
+export type MonthlyRouteHeroSummaryPayload = {
+  hero_summary: MonthlyRouteHeroSummary
+}
+
+/** Minimal route header for fast first paint (Paperwork navigation). */
+export type MonthlyRouteHeaderPayload = {
+  route: MonthlyRouteSummary
 }
 
 export type MonthlyRouteOverviewRow = {

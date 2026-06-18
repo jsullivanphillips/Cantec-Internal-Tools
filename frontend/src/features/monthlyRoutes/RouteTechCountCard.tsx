@@ -5,7 +5,7 @@ import type { MonthlyRouteSummary } from './monthlyRoutesShared'
 
 export const DEFAULT_ROUTE_TECH_COUNT = 2
 
-function useRouteTechCountField({
+export function useRouteTechCountField({
   routeId,
   techCount,
   onTechCountPatched,

@@ -941,6 +941,16 @@ export default function MonthlyRoutePaperworkPage() {
                 </Alert>
               ) : null}
               <div className="monthly-route-detail-actions monthly-paperwork-hero-actions">
+              {runCompleted && completedByLabel ? (
+                <div
+                  className="monthly-paperwork-hero__completed-by"
+                  aria-label="ServiceTrade technicians"
+                >
+                  <Badge bg="light" text="dark" className="monthly-route-pill">
+                    {completedByLabel}
+                  </Badge>
+                </div>
+              ) : null}
               <Dropdown align="end" className="monthly-paperwork-hero-actions-dropdown">
                 <Dropdown.Toggle
                   variant="outline-secondary"
@@ -1057,7 +1067,7 @@ export default function MonthlyRoutePaperworkPage() {
               </Dropdown>
             </div>
             </div>
-            {completedByLabel ? (
+            {!runCompleted && completedByLabel ? (
               <div
                 className="monthly-route-detail-hero__specialists"
                 aria-label="ServiceTrade technicians"
@@ -1069,12 +1079,6 @@ export default function MonthlyRoutePaperworkPage() {
             ) : null}
           </div>
           <div className="monthly-paperwork-hero__copy-bottom">
-            {run == null && paperworkViewMode === 'preparation' ? (
-              <p className="small text-muted mb-0 mt-2">
-                No run file yet for this month. Review stops below, then mark prepared when
-                technicians may start field work.
-              </p>
-            ) : null}
             {futurePrepBlocked && paperworkViewMode === 'preparation' ? (
               <Alert variant="warning" className="py-2 small mb-0 mt-2">
                 {futurePrepBlockedMessage ?? 'Close the current month\'s paperwork before preparing a future month.'}{' '}

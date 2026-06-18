@@ -35,7 +35,19 @@ function SkeletonAccordionSection({ titleWidth }: { titleWidth: string }) {
   )
 }
 
-/** Skeleton layout matching the monthly route detail page (hero, metrics, accordion sections). */
+function RouteDetailAccordionSkeleton() {
+  return (
+    <div className="monthly-route-detail-accordion d-flex flex-column gap-3" aria-busy="true" aria-label="Loading route sections">
+      <SkeletonAccordionSection titleWidth="5.5rem" />
+      <SkeletonAccordionSection titleWidth="8.5rem" />
+      <SkeletonAccordionSection titleWidth="3.25rem" />
+      <SkeletonAccordionSection titleWidth="6.5rem" />
+      <SkeletonAccordionSection titleWidth="5.75rem" />
+    </div>
+  )
+}
+
+/** Skeleton layout matching the monthly route detail page (hero, accordion sections). */
 export default function MonthlyRouteDetailPageSkeleton({
   label = 'Loading route details',
 }: {
@@ -51,44 +63,31 @@ export default function MonthlyRouteDetailPageSkeleton({
         <SkeletonBar width="5.5rem" height={14} />
 
         <section className="monthly-route-detail-hero monthly-location-detail-hero monthly-location-detail-surface">
-          <div className="monthly-location-detail-hero-main">
-            <div className="monthly-location-hero-topline d-flex align-items-center gap-2 mb-2">
-              <SkeletonBar width="6.5rem" height={11} />
-              <SkeletonBar width="2.25rem" height={11} />
-            </div>
-            <SkeletonBar width="min(22rem, 92%)" height={28} className="mb-3" />
-            <div className="d-flex flex-wrap gap-2">
-              <SkeletonBar width="6.5rem" height={22} className="rounded-pill" />
-              <SkeletonBar width="5.75rem" height={22} className="rounded-pill" />
-              <SkeletonBar width="5.25rem" height={22} className="rounded-pill" />
+          <div className="monthly-location-detail-hero-title-row">
+            <SkeletonBar width="min(22rem, 92%)" height={28} />
+            <div className="monthly-location-detail-hero-actions d-flex flex-wrap gap-2">
+              <SkeletonBar width="6.5rem" height={31} className="rounded" />
+              <SkeletonBar width="5.75rem" height={31} className="rounded" />
             </div>
           </div>
-          <div className="monthly-location-hero-actions d-flex flex-wrap gap-2">
-            <SkeletonBar width="6.75rem" height={31} className="rounded" />
-            <SkeletonBar width="6.5rem" height={31} className="rounded" />
-            <SkeletonBar width="7.25rem" height={31} className="rounded" />
+          <div className="monthly-route-detail-hero-columns">
+            {Array.from({ length: 3 }, (_, i) => (
+              <div key={i} className="monthly-location-detail-hero-column">
+                <SkeletonBar width="5.5rem" height={10} className="mb-2" />
+                <SkeletonBar width="min(12rem, 100%)" height={12} className="mb-2" />
+                <SkeletonBar width="min(10rem, 88%)" height={12} className="mb-2" />
+                <SkeletonBar width="min(11rem, 92%)" height={12} />
+              </div>
+            ))}
           </div>
         </section>
 
-        <div className="monthly-route-metric-grid" aria-hidden>
-          {Array.from({ length: 4 }, (_, i) => (
-            <div key={i} className="monthly-route-metric-card">
-              <SkeletonBar width="4.5rem" height={10} />
-              <SkeletonBar width="3.25rem" height={18} className="mt-2" />
-            </div>
-          ))}
-        </div>
-
-        <div className="monthly-route-detail-accordion d-flex flex-column gap-3" aria-hidden>
-          <SkeletonAccordionSection titleWidth="5.5rem" />
-          <SkeletonAccordionSection titleWidth="8.5rem" />
-          <SkeletonAccordionSection titleWidth="3.25rem" />
-          <SkeletonAccordionSection titleWidth="6.5rem" />
-          <SkeletonAccordionSection titleWidth="5.75rem" />
-        </div>
+        <RouteDetailAccordionSkeleton />
 
         <p className="visually-hidden">{label}</p>
       </div>
     </div>
   )
 }
+
+export { RouteDetailAccordionSkeleton }

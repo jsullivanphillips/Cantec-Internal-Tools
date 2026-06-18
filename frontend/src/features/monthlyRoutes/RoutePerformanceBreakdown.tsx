@@ -51,11 +51,7 @@ export function pickDefaultPerformanceMonth(monthOptions: string[]): string | nu
   return monthOptions[0] ?? null
 }
 
-function formatNetPct(pct: number | null | undefined): string {
-  if (pct == null || !Number.isFinite(pct)) return '—'
-  return `${(pct * 100).toFixed(1)}%`
-}
-
+import { formatNetPct } from './routePerformanceDisplay'
 function formatDuration(minutes: number | null | undefined): string {
   if (minutes == null || !Number.isFinite(minutes)) return '—'
   const h = Math.floor(minutes / 60)

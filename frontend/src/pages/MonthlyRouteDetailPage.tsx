@@ -21,11 +21,9 @@ import { Accordion, Alert, Badge, Button, Col, Dropdown, Form, Modal, Row, Spinn
 import { Link, useParams } from 'react-router-dom'
 import MonthlyLibraryCommentsPanel from '../features/monthlyRoutes/MonthlyLibraryCommentsPanel'
 import EditRouteDisplayNameModal from '../features/monthlyRoutes/EditRouteDisplayNameModal'
+import MonthlyRouteDetailHero from '../features/monthlyRoutes/MonthlyRouteDetailHero'
 import RouteTechnicianNoteCard from '../features/monthlyRoutes/RouteTechnicianNoteCard'
-import {
-  DEFAULT_ROUTE_TECH_COUNT,
-  RouteTechCountKpiField,
-} from '../features/monthlyRoutes/RouteTechCountCard'
+import RouteTechCountModal from '../features/monthlyRoutes/RouteTechCountModal'
 import MonthlyRouteMapCard from '../features/monthlyRoutes/MonthlyRouteMapCard'
 import RoutePerformanceBreakdown from '../features/monthlyRoutes/RoutePerformanceBreakdown'
 import PortalKeyViewModal from '../features/monthlyRoutes/PortalKeyViewModal'
@@ -34,15 +32,15 @@ import OfficeSkipRunModal, {
 } from '../features/monthlyRoutes/OfficeSkipRunModal'
 import { fetchRouteKeyViewStops } from '../features/monthlyRoutes/portalKeyViewShared'
 import { fetchRouteKeyAudit, type RouteKeyAuditPayload } from '../features/keys/keysAdminShared'
+import { clearRouteHeroSummaryCache } from '../features/monthlyRoutes/routeHeroSummaryCache'
 import {
   activeRouteLocations,
   libraryLocationHasMapCoordinates,
   mergeVisibleRouteLocationReorder,
   monthFirstIsoPacificToday,
-  parseYearMonth,
-  toMonthKey,
   type MonthlyLocationComment,
   type MonthlyRouteDetailPayload,
+  type MonthlyRouteHeaderPayload,
   type MonthlyRouteSpecialistsPayload,
   type MonthlyRouteSummary,
   type MonthlySpecialistTechRow,
@@ -64,6 +62,7 @@ import {
   runsCardRowShowsPaperworkLink,
   runsCardRowShowsUploadCsv,
 } from '../features/monthlyRoutes/routeRunsDisplay'
+import { stopHasMonitoring } from '../features/monthlyRoutes/stopMonitoringDisplay'
 import ServiceTradeJobStatusDot from '../features/monthlyRoutes/ServiceTradeJobStatusDot'
 import { serviceTradeRunJobDot } from '../features/monthlyRoutes/serviceTradeRunJobDot'
 import ViewServiceTradeRunJobButton from '../features/monthlyRoutes/ViewServiceTradeRunJobButton'
@@ -76,7 +75,7 @@ import {
 } from '../features/monthlyRoutes/monthlyDirectoryTableShared'
 import { apiJson, apiPostFormData, isAbortError } from '../lib/apiClient'
 import { formatCurrencyCad } from '../lib/formatCurrencyCad'
-import MonthlyRouteDetailPageSkeleton from './MonthlyRouteDetailPageSkeleton'
+import { RouteDetailAccordionSkeleton } from './MonthlyRouteDetailPageSkeleton'
 
 function formatMonthHeading(monthIso: string): string {
   const [y, m] = monthIso.split('-').map(Number)
@@ -88,46 +87,12 @@ function formatMonthHeading(monthIso: string): string {
   }).format(new Date(Date.UTC(y, m - 1, 1)))
 }
 
-function monthIsoKeysForCalendarYear(year: number): string[] {
-  return Array.from({ length: 12 }, (_, i) => toMonthKey(year, i + 1))
-}
-
-function yearsFromTestingKeys(monthKeys: string[]): number[] {
-  const years = new Set<number>()
-  for (const k of monthKeys) {
-    const ym = parseYearMonth(k)
-    if (ym) years.add(ym.year)
-  }
-  return Array.from(years).sort((a, b) => a - b)
-}
-
-function defaultTestingYear(years: number[]): number | null {
-  if (years.length === 0) return null
-  const cy = new Date().getFullYear()
-  if (years.includes(cy)) return cy
-  return years[years.length - 1]
-}
-
 function specialistTechLabel(t: MonthlySpecialistTechRow): string {
   return (t.tech_name || t.name || '').trim() || '—'
 }
 
 function specialistTechJobs(t: MonthlySpecialistTechRow): number {
   return typeof t.jobs === 'number' ? t.jobs : 0
-}
-
-function specialistBadgeClass(jobs: number) {
-  if (jobs >= 15) return 'monthly-tech-badge--diamond'
-  if (jobs > 10) return 'monthly-tech-badge--gold'
-  if (jobs > 5) return 'monthly-tech-badge--silver'
-  return 'monthly-tech-badge--bronze'
-}
-
-function specialistBadgeTier(jobs: number) {
-  if (jobs >= 15) return 'Diamond'
-  if (jobs > 10) return 'Gold'
-  if (jobs > 5) return 'Silver'
-  return 'Bronze'
 }
 
 function normalizedTechName(name: string): string {
@@ -674,32 +639,6 @@ function runsStageBadgeClass(stageLabel: string): string {
   return 'monthly-route-stage-badge monthly-route-stage-badge--info'
 }
 
-function RouteKpiStrip({
-  items,
-}: {
-  items: {
-    label: string
-    value: ReactNode
-    meta?: ReactNode
-    tone?: 'success' | 'info'
-  }[]
-}) {
-  return (
-    <section className="monthly-route-kpi-strip monthly-location-detail-surface" aria-label="Route summary">
-      {items.map((item) => (
-        <div
-          key={item.label}
-          className={`monthly-route-kpi-strip__item${item.tone ? ` monthly-route-kpi-strip__item--${item.tone}` : ''}`}
-        >
-          <div className="monthly-route-kpi-strip__label">{item.label}</div>
-          <div className="monthly-route-kpi-strip__value">{item.value}</div>
-          {item.meta ? <div className="monthly-route-kpi-strip__meta">{item.meta}</div> : null}
-        </div>
-      ))}
-    </section>
-  )
-}
-
 function RouteSectionHeader({
   icon,
   title,
@@ -785,11 +724,11 @@ export default function MonthlyRouteDetailPage() {
   const [specialistsByMonth, setSpecialistsByMonth] = useState<MonthlyRouteDetailPayload['specialists_by_month']>(
     {}
   )
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [detailLoading, setDetailLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [detailError, setDetailError] = useState<string | null>(null)
   const [sessionUsername, setSessionUsername] = useState<string | null>(null)
   const [activeTechNames, setActiveTechNames] = useState<Set<string> | null>(null)
-  const [historyViewYear, setHistoryViewYear] = useState<number | null>(null)
   const [performanceHeader, setPerformanceHeader] = useState<{
     monthLabel: string
     revenue: number
@@ -810,12 +749,33 @@ export default function MonthlyRouteDetailPage() {
   const [keyViewError, setKeyViewError] = useState<string | null>(null)
   const [keyViewAudit, setKeyViewAudit] = useState<RouteKeyAuditPayload | null>(null)
   const [editLabelOpen, setEditLabelOpen] = useState(false)
+  const [editTechCountOpen, setEditTechCountOpen] = useState(false)
 
-  const load = useCallback(
+  const loadHeader = useCallback(
     async (signal?: AbortSignal) => {
       if (!routeId || Number.isNaN(idNum)) return
-      setLoading(true)
-      setError(null)
+      setLoadError(null)
+      try {
+        const data = await apiJson<MonthlyRouteHeaderPayload>(
+          `/api/monthly_routes/routes/${idNum}/header`,
+          { signal },
+        )
+        if (signal?.aborted) return
+        setRoute(data.route)
+      } catch (e) {
+        if (isAbortError(e)) return
+        setLoadError('Unable to load this route.')
+        setRoute(null)
+      }
+    },
+    [routeId, idNum],
+  )
+
+  const loadDetail = useCallback(
+    async (signal?: AbortSignal) => {
+      if (!routeId || Number.isNaN(idNum)) return
+      setDetailLoading(true)
+      setDetailError(null)
       try {
         const data = await apiJson<MonthlyRouteDetailPayload>(`/api/monthly_routes/routes/${idNum}`, {
           signal,
@@ -832,27 +792,20 @@ export default function MonthlyRouteDetailPage() {
         setOrderError(null)
       } catch (e) {
         if (isAbortError(e)) return
-        setError('Unable to load this route.')
-        setRoute(null)
-        setSpecialists(null)
-        setComments([])
-        setTestingByMonth({})
-        setRunsByMonth({})
-        setServiceTradeRunJobsByMonth({})
-        setSpecialistsByMonth({})
-        setOrderedSites([])
+        setDetailError('Unable to load full route details.')
       } finally {
-        if (!signal?.aborted) setLoading(false)
+        if (!signal?.aborted) setDetailLoading(false)
       }
     },
-    [routeId, idNum]
+    [routeId, idNum],
   )
 
   useEffect(() => {
     const c = new AbortController()
-    void load(c.signal)
+    void loadHeader(c.signal)
+    void loadDetail(c.signal)
     return () => c.abort()
-  }, [load])
+  }, [loadHeader, loadDetail])
 
   useEffect(() => {
     let active = true
@@ -892,7 +845,6 @@ export default function MonthlyRouteDetailPage() {
   }, [])
 
   useEffect(() => {
-    setHistoryViewYear(null)
     setRunsViewYear(null)
   }, [routeId])
 
@@ -983,12 +935,12 @@ export default function MonthlyRouteDetailPage() {
         setOrderedSites(res.locations ?? next)
       } catch {
         setOrderError('Unable to save stop order.')
-        void load()
+        void loadDetail()
       } finally {
         setOrderSaving(false)
       }
     },
-    [idNum, load]
+    [idNum, loadDetail]
   )
 
   const routeSitesSensors = useSensors(
@@ -1062,40 +1014,28 @@ export default function MonthlyRouteDetailPage() {
     [visibleSites, orderedSites, orderSaving, persistRouteOrder]
   )
 
-  const testingHistoryMonthKeys = useMemo(() => {
-    const keys = new Set([
-      ...Object.keys(testingByMonth),
-      ...Object.keys(specialistsByMonth),
-    ])
-    return Array.from(keys)
-  }, [testingByMonth, specialistsByMonth])
-
-  const testingHistoryYears = useMemo(
-    () => yearsFromTestingKeys(testingHistoryMonthKeys),
-    [testingHistoryMonthKeys]
-  )
-
-  const effectiveHistoryYear = useMemo(() => {
-    if (testingHistoryYears.length === 0) return null
-    if (historyViewYear != null && testingHistoryYears.includes(historyViewYear)) return historyViewYear
-    return defaultTestingYear(testingHistoryYears)
-  }, [testingHistoryYears, historyViewYear])
-
   const performanceMonthCandidates = useMemo(() => {
     const keys = new Set([...Object.keys(testingByMonth), ...Object.keys(runsByMonth)])
     return Array.from(keys).sort().reverse()
   }, [testingByMonth, runsByMonth])
 
-  const testedSitesMissingPriceYear = useMemo(() => {
-    if (effectiveHistoryYear == null) return 0
-    return monthIsoKeysForCalendarYear(effectiveHistoryYear).reduce((acc, iso) => {
-      const n = testingByMonth[iso]?.tested_sites_missing_price_count
-      return acc + (typeof n === 'number' ? n : 0)
-    }, 0)
-  }, [effectiveHistoryYear, testingByMonth])
-
   const routeStopTotal = useMemo(
     () => visibleSites.reduce((sum, loc) => sum + routeLocationStopCount(loc), 0),
+    [visibleSites],
+  )
+
+  const monitoringSiteCount = useMemo(
+    () =>
+      visibleSites.filter((loc) =>
+        stopHasMonitoring({
+          monitoring_company_id: loc.monitoring_company_id,
+          monitoring_company: loc.monitoring_company?.name ?? null,
+          monitoring_account_number: loc.monitoring_account_number,
+          monitoring_password: loc.monitoring_password,
+          monitoring_notes: loc.monitoring_notes,
+          monitoring_company_record: loc.monitoring_company,
+        }),
+      ).length,
     [visibleSites],
   )
 
@@ -1132,15 +1072,11 @@ export default function MonthlyRouteDetailPage() {
     )
   }
 
-  if (loading) {
-    return <MonthlyRouteDetailPageSkeleton />
-  }
-
-  if (error || !route) {
+  if (loadError && !route) {
     return (
       <div className="monthly-route-detail-page">
         <div className="monthly-route-detail-container">
-          <Alert variant="danger">{error || 'Route not found.'}</Alert>
+          <Alert variant="danger">{loadError}</Alert>
           <Link to="/monthlies" className="monthly-location-back-link">
             <i className="bi bi-chevron-left" aria-hidden />
             Monthlies
@@ -1150,28 +1086,21 @@ export default function MonthlyRouteDetailPage() {
     )
   }
 
-  const stUrl = route.service_trade_route_location_url
-  const routeTitle = routeDisplayLabel(route)
-  const routeLocationCount = visibleSites.length
-  const selectedYearMonthKeys =
-    effectiveHistoryYear != null ? monthIsoKeysForCalendarYear(effectiveHistoryYear) : []
-  const selectedYearRevenue = selectedYearMonthKeys.reduce((sum, monthIso) => {
-    const revenue = testingByMonth[monthIso]?.tested_revenue_total
-    return sum + (typeof revenue === 'number' && Number.isFinite(revenue) ? revenue : 0)
-  }, 0)
-  const heroTopSpecialists = (specialists?.top_technicians ?? [])
-    .filter((t) => specialistTechLabel(t) !== '—')
-    .filter((t) => {
-      if (!activeTechNames) return true
-      return activeTechNames.has(normalizedTechName(specialistTechLabel(t)))
-    })
-    .sort((a, b) => specialistTechJobs(b) - specialistTechJobs(a))
-    .slice(0, 3)
+  const stUrl = route?.service_trade_route_location_url ?? null
+  const routeTitle = route ? routeDisplayLabel(route) : ''
+  const heroTopSpecialists = detailLoading
+    ? []
+    : (specialists?.top_technicians ?? [])
+        .filter((t) => specialistTechLabel(t) !== '—')
+        .filter((t) => {
+          if (!activeTechNames) return true
+          return activeTechNames.has(normalizedTechName(specialistTechLabel(t)))
+        })
+        .sort((a, b) => specialistTechJobs(b) - specialistTechJobs(a))
+        .slice(0, 4)
   const routeMapOrderSignature = visibleSites
     .map((loc) => `${loc.id}:${loc.route_stop_order ?? ''}:${loc.latitude ?? ''}:${loc.longitude ?? ''}`)
     .join('|')
-  const metricsRevenueYear = effectiveHistoryYear ?? new Date().getFullYear()
-  const metricsRunsYear = effectiveRunsYear ?? new Date().getFullYear()
 
   return (
     <div className="monthly-route-detail-page">
@@ -1181,126 +1110,131 @@ export default function MonthlyRouteDetailPage() {
           Monthlies
         </Link>
 
-        <section className="monthly-route-detail-hero monthly-location-detail-hero monthly-location-detail-surface">
-          <div className="monthly-location-detail-hero-main">
-            <div className="monthly-location-hero-topline">
-              <span className="monthly-location-detail-eyebrow">Monthly route</span>
-              <span className="monthly-location-hero-id">R{route.route_number}</span>
-            </div>
-            <h1 className="monthly-location-detail-title">{routeTitle}</h1>
-            {heroTopSpecialists.length > 0 ? (
-              <div className="monthly-location-hero-meta monthly-route-detail-hero__specialists" aria-label="Top monthly specialists">
-                <span className="monthly-route-detail-hero__specialists-label">
-                  <i className="bi bi-award" aria-hidden />
-                  Top specialists
-                </span>
-                {heroTopSpecialists.map((tech, index) => (
-                  <span
-                    key={`${specialistTechLabel(tech)}:${index}`}
-                    className={`monthly-route-detail-hero__specialist-chip monthly-tech-badge ${specialistBadgeClass(specialistTechJobs(tech))}`}
-                    title={`${specialistBadgeTier(specialistTechJobs(tech))} tier`}
+        <MonthlyRouteDetailHero
+          routeTitle={routeTitle}
+          routeId={idNum}
+          techCount={route?.tech_count}
+          heroTopSpecialists={heroTopSpecialists}
+          routeStopTotal={routeStopTotal}
+          monitoringSiteCount={monitoringSiteCount}
+          detailLoading={detailLoading}
+          actions={
+            <>
+              {reviewPaperworkMonthIso ? (
+                <Link
+                  to={`/monthlies/routes/${idNum}/paperwork?month=${encodeURIComponent(reviewPaperworkMonthIso)}`}
+                  className="btn btn-success btn-sm monthly-location-detail-action monthly-route-detail-hero__review-paperwork-action"
+                >
+                  <i className="bi bi-clipboard-check" aria-hidden />
+                  Review Run Paperwork
+                </Link>
+              ) : null}
+              <div className="monthly-route-detail-hero__paired-actions">
+                <Link
+                  to={`/monthlies/routes/${idNum}/paperwork`}
+                  className="btn btn-primary btn-sm monthly-location-detail-action"
+                >
+                  <i className="bi bi-folder2-open" aria-hidden />
+                  Paperwork
+                </Link>
+                <Dropdown align="end" className="monthly-route-detail-hero__more d-none d-md-block">
+                  <Dropdown.Toggle
+                    variant="outline-secondary"
+                    size="sm"
+                    className="monthly-location-detail-action"
+                    id="route-detail-more-actions"
                   >
-                    {specialistTechLabel(tech)}
-                    <span className="tabular-nums">({specialistTechJobs(tech)})</span>
-                  </span>
-                ))}
+                    <i className="bi bi-three-dots" aria-hidden />
+                    More
+                  </Dropdown.Toggle>
+                  <Dropdown.Menu>
+                    {routeStopTotal > 0 ? (
+                      <Dropdown.Item onClick={() => void openKeyView()} disabled={keyViewLoading}>
+                        {keyViewLoading ? 'Loading keys…' : 'Key view'}
+                      </Dropdown.Item>
+                    ) : null}
+                    <Dropdown.Item onClick={() => setEditLabelOpen(true)} disabled={!route}>
+                      Edit label
+                    </Dropdown.Item>
+                    <Dropdown.Item onClick={() => setEditTechCountOpen(true)} disabled={!route}>
+                      Edit tech count
+                    </Dropdown.Item>
+                    <Dropdown.Item onClick={() => openUploadCsv(null)} disabled={detailLoading}>
+                      Upload CSV
+                    </Dropdown.Item>
+                    {stUrl ? (
+                      <Dropdown.Item href={stUrl} target="_blank" rel="noopener noreferrer">
+                        ServiceTrade
+                      </Dropdown.Item>
+                    ) : null}
+                  </Dropdown.Menu>
+                </Dropdown>
               </div>
-            ) : null}
-          </div>
-          <div className="monthly-location-hero-actions monthly-route-detail-hero__actions">
-            {reviewPaperworkMonthIso ? (
-              <Link
-                to={`/monthlies/routes/${idNum}/paperwork?month=${encodeURIComponent(reviewPaperworkMonthIso)}`}
-                className="btn btn-success btn-sm monthly-location-detail-action"
-              >
-                <i className="bi bi-clipboard-check" aria-hidden />
-                Review Run Paperwork
-              </Link>
-            ) : null}
-            <Link
-              to={`/monthlies/routes/${idNum}/paperwork`}
-              className="btn btn-primary btn-sm monthly-location-detail-action"
-            >
-              <i className="bi bi-folder2-open" aria-hidden />
-              Paperwork
-            </Link>
-            <Dropdown align="end" className="monthly-route-detail-hero__more d-none d-md-block">
-              <Dropdown.Toggle
-                variant="outline-secondary"
-                size="sm"
-                className="monthly-location-detail-action"
-                id="route-detail-more-actions"
-              >
-                <i className="bi bi-three-dots" aria-hidden />
-                More
-              </Dropdown.Toggle>
-              <Dropdown.Menu>
+              <div className="monthly-route-detail-hero__mobile-actions d-md-none">
                 {routeStopTotal > 0 ? (
-                  <Dropdown.Item onClick={() => void openKeyView()} disabled={keyViewLoading}>
-                    {keyViewLoading ? 'Loading keys…' : 'Key view'}
-                  </Dropdown.Item>
+                  <Button
+                    variant="outline-secondary"
+                    size="sm"
+                    className="monthly-location-detail-action"
+                    onClick={() => void openKeyView()}
+                    disabled={keyViewLoading}
+                    aria-label="Key view"
+                  >
+                    {keyViewLoading ? (
+                      <Spinner animation="border" size="sm" className="me-1" aria-hidden />
+                    ) : (
+                      <i className="bi bi-key" aria-hidden />
+                    )}
+                    Key view
+                  </Button>
                 ) : null}
-                <Dropdown.Item onClick={() => setEditLabelOpen(true)}>Edit label</Dropdown.Item>
-                <Dropdown.Item onClick={() => openUploadCsv(null)}>Upload CSV</Dropdown.Item>
+                <Button
+                  variant="outline-secondary"
+                  size="sm"
+                  className="monthly-location-detail-action"
+                  onClick={() => setEditLabelOpen(true)}
+                  disabled={!route}
+                >
+                  <i className="bi bi-tag" aria-hidden />
+                  Edit label
+                </Button>
+                <Button
+                  variant="outline-secondary"
+                  size="sm"
+                  className="monthly-location-detail-action"
+                  onClick={() => setEditTechCountOpen(true)}
+                  disabled={!route}
+                >
+                  <i className="bi bi-people" aria-hidden />
+                  Edit tech count
+                </Button>
+                <Button
+                  variant="outline-secondary"
+                  size="sm"
+                  className="monthly-location-detail-action"
+                  onClick={() => openUploadCsv(null)}
+                  disabled={detailLoading}
+                >
+                  <i className="bi bi-upload" aria-hidden />
+                  Upload CSV
+                </Button>
                 {stUrl ? (
-                  <Dropdown.Item href={stUrl} target="_blank" rel="noopener noreferrer">
+                  <Button
+                    href={stUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    variant="outline-secondary"
+                    size="sm"
+                    className="monthly-location-detail-action"
+                  >
+                    <i className="bi bi-box-arrow-up-right" aria-hidden />
                     ServiceTrade
-                  </Dropdown.Item>
+                  </Button>
                 ) : null}
-              </Dropdown.Menu>
-            </Dropdown>
-            <div className="monthly-route-detail-hero__mobile-actions d-md-none">
-              {routeStopTotal > 0 ? (
-                <Button
-                  variant="outline-secondary"
-                  size="sm"
-                  className="monthly-location-detail-action"
-                  onClick={() => void openKeyView()}
-                  disabled={keyViewLoading}
-                  aria-label="Key view"
-                >
-                  {keyViewLoading ? (
-                    <Spinner animation="border" size="sm" className="me-1" aria-hidden />
-                  ) : (
-                    <i className="bi bi-key" aria-hidden />
-                  )}
-                  Key view
-                </Button>
-              ) : null}
-              <Button
-                variant="outline-secondary"
-                size="sm"
-                className="monthly-location-detail-action"
-                onClick={() => setEditLabelOpen(true)}
-              >
-                <i className="bi bi-tag" aria-hidden />
-                Edit label
-              </Button>
-              <Button
-                variant="outline-secondary"
-                size="sm"
-                className="monthly-location-detail-action"
-                onClick={() => openUploadCsv(null)}
-              >
-                <i className="bi bi-upload" aria-hidden />
-                Upload CSV
-              </Button>
-              {stUrl ? (
-                <Button
-                  href={stUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  variant="outline-secondary"
-                  size="sm"
-                  className="monthly-location-detail-action"
-                >
-                  <i className="bi bi-box-arrow-up-right" aria-hidden />
-                  ServiceTrade
-                </Button>
-              ) : null}
-            </div>
-          </div>
-        </section>
+              </div>
+            </>
+          }
+        />
 
         {keyViewError ? (
           <Alert variant="danger" dismissible onClose={() => setKeyViewError(null)} className="mb-0">
@@ -1308,45 +1242,15 @@ export default function MonthlyRouteDetailPage() {
           </Alert>
         ) : null}
 
-        <RouteKpiStrip
-          items={[
-            {
-              label: 'Locations',
-              value: <span className="tabular-nums">{routeLocationCount}</span>,
-            },
-            {
-              label: 'Techs required',
-              value: (
-                <RouteTechCountKpiField
-                  routeId={idNum}
-                  techCount={route.tech_count}
-                  onTechCountPatched={(next) =>
-                    setRoute((prev) => (prev ? { ...prev, tech_count: next } : prev))
-                  }
-                />
-              ),
-              meta:
-                route.tech_count == null
-                  ? `Default ${DEFAULT_ROUTE_TECH_COUNT} for metrics`
-                  : undefined,
-            },
-            {
-              label: `Tested revenue (${metricsRevenueYear})`,
-              value: formatCurrencyCad(selectedYearRevenue),
-              tone: 'success',
-              meta:
-                testedSitesMissingPriceYear > 0
-                  ? `${testedSitesMissingPriceYear} missing ${testedSitesMissingPriceYear === 1 ? 'price' : 'prices'}`
-                  : undefined,
-            },
-            {
-              label: `Runs with data (${metricsRunsYear})`,
-              value: <span className="tabular-nums">{runsWithDataCount}</span>,
-              tone: 'info',
-            },
-          ]}
-        />
+        {detailError ? (
+          <Alert variant="warning" dismissible onClose={() => setDetailError(null)} className="mb-0">
+            {detailError}
+          </Alert>
+        ) : null}
 
+        {detailLoading || !route ? (
+          <RouteDetailAccordionSkeleton />
+        ) : (
         <Accordion defaultActiveKey={[]} alwaysOpen className="monthly-location-detail-accordion monthly-route-detail-accordion">
         <Accordion.Item
           eventKey="map"
@@ -1701,7 +1605,10 @@ export default function MonthlyRouteDetailPage() {
           </Accordion.Body>
         </Accordion.Item>
       </Accordion>
+        )}
       </div>
+      {route ? (
+        <>
       <UploadRunFromCsvModal
         show={uploadRunOpen}
         onClose={closeUploadCsv}
@@ -1727,6 +1634,16 @@ export default function MonthlyRouteDetailPage() {
           setRoute((prev) => (prev ? { ...prev, display_name: displayName } : prev))
         }
       />
+      <RouteTechCountModal
+        show={editTechCountOpen}
+        onHide={() => setEditTechCountOpen(false)}
+        routeId={idNum}
+        techCount={route.tech_count}
+        onTechCountPatched={(next) => {
+          clearRouteHeroSummaryCache(idNum)
+          setRoute((prev) => (prev ? { ...prev, tech_count: next } : prev))
+        }}
+      />
       <PortalKeyViewModal
         show={keyViewOpen}
         onHide={() => setKeyViewOpen(false)}
@@ -1734,6 +1651,8 @@ export default function MonthlyRouteDetailPage() {
         activeStopId={null}
         keyAudit={keyViewAudit}
       />
+        </>
+      ) : null}
     </div>
   )
 }

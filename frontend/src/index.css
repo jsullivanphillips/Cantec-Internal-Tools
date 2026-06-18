@@ -4508,6 +4508,10 @@ button.monthly-location-hero-status-badge:focus-visible {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .monthly-route-detail-hero-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .monthly-location-metric-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -8408,12 +8412,41 @@ button.monthly-location-hero-status-badge:focus-visible {
 }
 
 .monthly-route-detail-hero.monthly-location-detail-hero.monthly-location-detail-surface {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1rem;
+  padding: 1.89rem 2.03rem;
+}
+
+.monthly-route-detail-page .monthly-route-detail-hero .monthly-location-detail-hero-title-row {
   align-items: flex-start;
-  gap: 0.85rem;
-  padding: 1rem 1.15rem;
+}
+
+.monthly-route-detail-page .monthly-route-detail-hero .monthly-location-detail-hero-actions {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+.monthly-route-detail-hero-columns {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem 1.25rem;
+  width: 100%;
+}
+
+.monthly-route-detail-hero__default-hint,
+.monthly-route-detail-hero__sample-hint {
+  font-size: 0.78rem;
+  font-weight: 600;
 }
 
 .monthly-route-detail-page .monthly-location-detail-title {
+  margin-top: 0;
   font-size: 1.35rem;
   line-height: 1.2;
 }
@@ -8516,8 +8549,18 @@ button.monthly-location-hero-status-badge:focus-visible {
   flex: 0 0 auto;
   align-items: center;
   justify-content: flex-end;
+  flex-wrap: nowrap;
+  gap: 0.65rem;
   width: auto;
   min-width: 0;
+}
+
+.monthly-paperwork-hero__completed-by {
+  display: flex;
+  align-items: center;
+  flex: 0 1 auto;
+  min-width: 0;
+  margin: 0;
 }
 
 .monthly-paperwork-page .monthly-paperwork-hero-actions-dropdown .dropdown-toggle {
@@ -8559,35 +8602,51 @@ button.monthly-location-hero-status-badge:focus-visible {
 }
 
 .monthly-route-detail-hero__paired-actions {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: nowrap;
-  align-items: stretch;
+  display: grid;
+  grid-template-columns: 1fr;
   gap: 0.45rem;
-  flex: 1 1 100%;
   width: 100%;
   min-width: 0;
 }
 
 .monthly-route-detail-hero__paired-actions .monthly-location-detail-action {
-  flex: 1 1 0;
-  width: auto;
+  width: 100%;
+  min-width: max-content;
+  flex: none;
+}
+
+.monthly-route-detail-hero__paired-actions .monthly-route-detail-hero__more {
   min-width: 0;
 }
 
-.monthly-route-detail-hero__review-paperwork-action {
-  flex: 1 1 100%;
+.monthly-route-detail-hero__paired-actions .monthly-route-detail-hero__more .dropdown-toggle {
   width: 100%;
+  display: inline-flex;
+  justify-content: center;
 }
 
-.monthly-route-detail-hero .monthly-location-hero-actions .monthly-route-detail-hero__review-paperwork-action {
-  flex: 1 1 100%;
-  width: 100%;
+@media (min-width: 768px) {
+  .monthly-route-detail-hero__paired-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: max-content;
+    max-width: 100%;
+  }
+}
+
+.monthly-route-detail-hero__review-paperwork-action {
+  flex: 0 0 auto;
+  width: auto;
+}
+
+.monthly-route-detail-hero .monthly-location-detail-hero-actions .monthly-route-detail-hero__review-paperwork-action {
+  flex: 0 0 auto;
+  width: auto;
 }
 
 .monthly-route-detail-hero .monthly-location-hero-actions .monthly-route-detail-hero__paired-actions .monthly-location-detail-action {
-  flex: 1 1 0;
-  width: auto;
+  width: 100%;
+  min-width: max-content;
+  flex: none;
 }
 
 .monthly-route-pill.badge {
@@ -8607,7 +8666,7 @@ button.monthly-location-hero-status-badge:focus-visible {
   align-items: center;
   flex-wrap: wrap;
   gap: 0.4rem 0.55rem;
-  margin-top: 0;
+  margin-top: 0.5rem;
   padding-top: 0;
   border-top: none;
 }
@@ -12534,6 +12593,19 @@ button.monthly-location-hero-status-badge:focus-visible {
     padding-right: 0.5rem;
   }
 
+  .monthly-route-detail-hero.monthly-location-detail-hero.monthly-location-detail-surface {
+    padding: 1.35rem 1.45rem;
+  }
+
+  .monthly-route-detail-hero-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .monthly-route-detail-page .monthly-route-detail-hero .monthly-location-detail-hero-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
   .monthly-route-detail-hero__right {
     width: 100%;
     align-items: stretch;
@@ -12580,6 +12652,29 @@ button.monthly-location-hero-status-badge:focus-visible {
   .monthly-route-detail-actions.monthly-paperwork-hero-actions {
     width: 100%;
     justify-content: stretch;
+  }
+
+  .monthly-paperwork-page
+    .monthly-paperwork-hero-actions:has(.monthly-paperwork-hero__completed-by) {
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    width: auto;
+    max-width: 100%;
+    margin-left: auto;
+  }
+
+  .monthly-paperwork-page
+    .monthly-paperwork-hero-actions:has(.monthly-paperwork-hero__completed-by)
+    .monthly-paperwork-hero-actions-dropdown {
+    width: auto;
+    flex: 0 0 auto;
+  }
+
+  .monthly-paperwork-page
+    .monthly-paperwork-hero-actions:has(.monthly-paperwork-hero__completed-by)
+    .monthly-paperwork-hero-actions-dropdown
+    .dropdown-toggle {
+    width: auto;
   }
 
   .monthly-paperwork-page .monthly-paperwork-hero-actions-dropdown {
