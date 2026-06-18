@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent, type KeyboardEvent } 
 import { Form, Spinner } from 'react-bootstrap'
 import { Link, useNavigate } from 'react-router-dom'
 import { apiJson, isAbortError } from '../lib/apiClient'
-import { monthFirstIsoPacificToday } from '../features/monthlyRoutes/monthlyRoutesShared'
+import { monthFirstIsoPacificToday, routeDisplayLabel } from '../features/monthlyRoutes/monthlyRoutesShared'
 import {
   DEFAULT_TECHNICIAN_DEMO_ROUTE_NUMBER,
   useTechnicianDemoRouteInfo,
@@ -12,6 +12,7 @@ type PortalRoute = {
   id: number
   route_number: number
   display_name: string | null
+  display_label?: string | null
   weekday_iso: number
   week_occurrence: number
   label: string
@@ -59,8 +60,7 @@ function normalizePortalRouteQuery(raw: string): string | null {
 }
 
 function routeMeta(route: PortalRoute): string {
-  const stops = `${route.location_count} ${route.location_count === 1 ? 'stop' : 'stops'}`
-  return route.display_name ? `${stops} · ${route.display_name}` : stops
+  return `${route.location_count} ${route.location_count === 1 ? 'stop' : 'stops'}`
 }
 
 type RouteCardProps = {
@@ -315,7 +315,7 @@ export default function TechnicianPortalStartPage() {
                       onClick={() => pickSuggestion(r)}
                     >
                       <span className="portal-route-suggest__number">R{r.route_number}</span>
-                      <span className="portal-route-suggest__label">{r.label}</span>
+                      <span className="portal-route-suggest__label">{routeDisplayLabel(r)}</span>
                       <span className="portal-route-suggest__meta">{routeMeta(r)}</span>
                     </button>
                   ))}
@@ -376,7 +376,7 @@ export default function TechnicianPortalStartPage() {
                 <RouteCard
                   key={r.id}
                   routeNumber={r.route_number}
-                  title={r.label}
+                  title={routeDisplayLabel(r)}
                   meta={routeMeta(r)}
                   onClick={() => openRoute(r.id)}
                 />

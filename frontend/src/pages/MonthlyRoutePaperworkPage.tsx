@@ -19,13 +19,13 @@ import {
   type MonthlySpecialistTechRow,
   type TechnicianWorksheetRun,
   type TechnicianWorksheetLocation,
+  routeDisplayLabel,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
 import {
   computeSelectablePaperworkMonths,
   derivePaperworkViewMode,
   futureMonthPrepBlockedMessage,
   isFutureMonthPrepBlocked,
-  paperworkViewModeLabel,
   resolvePaperworkMonthQuery,
 } from '../features/monthlyRoutes/paperworkViewMode'
 import {
@@ -866,8 +866,8 @@ export default function MonthlyRoutePaperworkPage() {
   }
 
   const { route, counts, specialists_month, run, service_trade_run_job } = payload
+  const routeTitle = routeDisplayLabel(route)
   const monthHeading = formatMonthHeading(payload.month_date)
-  const viewLabel = paperworkViewModeLabel(paperworkViewMode)
   const completedByLabel = completedByTechniciansPillLabel(
     specialists_month?.top_technicians ?? [],
   )
@@ -907,7 +907,7 @@ export default function MonthlyRoutePaperworkPage() {
             /
           </span>
           <Link to={routeTo} className="monthly-location-back-link">
-            {route.label}
+            {routeTitle}
           </Link>
         </nav>
 
@@ -920,60 +920,27 @@ export default function MonthlyRoutePaperworkPage() {
           onMonthHover={onMonthHover}
         />
 
-        <section className="monthly-route-detail-hero monthly-location-detail-surface monthly-run-detail-hero">
-          <div className="monthly-route-detail-hero__copy">
-            <div className="monthly-location-detail-eyebrow">Paperwork</div>
+        <section className="monthly-route-detail-hero monthly-location-detail-surface monthly-run-detail-hero monthly-paperwork-hero">
+          <div className="monthly-route-detail-hero__copy monthly-paperwork-hero__copy-top">
             <h1 className="monthly-location-detail-title">
               {monthHeading}
-              <span className="monthly-run-detail-hero__route-ref"> · {route.label}</span>
+              <span className="monthly-run-detail-hero__route-ref"> · {routeTitle}</span>
             </h1>
-            <Badge bg="primary" className="monthly-paperwork-view-badge mb-2">
-              Viewing: {viewLabel}
-            </Badge>
-            <RunWorkflowStepper run={run} className="monthly-run-detail-workflow mb-3" />
-            {run == null && paperworkViewMode === 'preparation' ? (
-              <p className="small text-muted mb-0 mt-2">
-                No run file yet for this month. Review stops below, then mark prepared when
-                technicians may start field work.
-              </p>
-            ) : null}
-            {futurePrepBlocked && paperworkViewMode === 'preparation' ? (
-              <Alert variant="warning" className="py-2 small mb-0 mt-2">
-                {futurePrepBlockedMessage ?? 'Close the current month\'s paperwork before preparing a future month.'}{' '}
-                <Link
-                  to={`/monthlies/routes/${idNum}/paperwork?month=${encodeURIComponent(currentMonthIso)}`}
-                  className="alert-link"
-                >
-                  Open {formatMonthHeading(currentMonthIso)} paperwork
-                </Link>
-              </Alert>
-            ) : null}
-            {prepPhase && annualScheduleStatus === 'loading' ? (
-              <p className="small text-muted mb-0 mt-2">Checking ServiceTrade annual schedules…</p>
-            ) : null}
-            {prepPhase && annualScheduleStatus === 'error' && annualScheduleError ? (
-              <Alert variant="warning" className="py-2 small mb-0 mt-2">
-                {annualScheduleError}{' '}
-                <Button
-                  variant="link"
-                  size="sm"
-                  className="p-0 align-baseline"
-                  onClick={() => void refreshAnnualScheduleCheck()}
-                >
-                  Retry
-                </Button>
-              </Alert>
-            ) : null}
-            {prepPhase && annualScheduleWarningCount > 0 ? (
-              <Alert variant="warning" className="py-2 small mb-0 mt-2">
-                {annualScheduleWarningCount} site
-                {annualScheduleWarningCount === 1 ? '' : 's'} need annual schedule review before
-                technicians start.
-              </Alert>
-            ) : null}
+            <RunWorkflowStepper run={run} className="monthly-run-detail-workflow" />
           </div>
           <div className="monthly-route-detail-hero__right">
-            <div className="monthly-route-detail-actions monthly-paperwork-hero-actions">
+            <div className="monthly-paperwork-hero__toolbar">
+              {prepPhase && annualScheduleWarningCount > 0 ? (
+                <Alert
+                  variant="warning"
+                  className="monthly-paperwork-annual-schedule-warning py-2 small mb-0"
+                >
+                  {annualScheduleWarningCount} site
+                  {annualScheduleWarningCount === 1 ? '' : 's'} need annual schedule review before
+                  technicians start.
+                </Alert>
+              ) : null}
+              <div className="monthly-route-detail-actions monthly-paperwork-hero-actions">
               <Dropdown align="end" className="monthly-paperwork-hero-actions-dropdown">
                 <Dropdown.Toggle
                   variant="outline-secondary"
@@ -1089,6 +1056,7 @@ export default function MonthlyRoutePaperworkPage() {
                 </Dropdown.Menu>
               </Dropdown>
             </div>
+            </div>
             {completedByLabel ? (
               <div
                 className="monthly-route-detail-hero__specialists"
@@ -1098,6 +1066,41 @@ export default function MonthlyRoutePaperworkPage() {
                   {completedByLabel}
                 </Badge>
               </div>
+            ) : null}
+          </div>
+          <div className="monthly-paperwork-hero__copy-bottom">
+            {run == null && paperworkViewMode === 'preparation' ? (
+              <p className="small text-muted mb-0 mt-2">
+                No run file yet for this month. Review stops below, then mark prepared when
+                technicians may start field work.
+              </p>
+            ) : null}
+            {futurePrepBlocked && paperworkViewMode === 'preparation' ? (
+              <Alert variant="warning" className="py-2 small mb-0 mt-2">
+                {futurePrepBlockedMessage ?? 'Close the current month\'s paperwork before preparing a future month.'}{' '}
+                <Link
+                  to={`/monthlies/routes/${idNum}/paperwork?month=${encodeURIComponent(currentMonthIso)}`}
+                  className="alert-link"
+                >
+                  Open {formatMonthHeading(currentMonthIso)} paperwork
+                </Link>
+              </Alert>
+            ) : null}
+            {prepPhase && annualScheduleStatus === 'loading' ? (
+              <p className="small text-muted mb-0 mt-2">Checking ServiceTrade annual schedules…</p>
+            ) : null}
+            {prepPhase && annualScheduleStatus === 'error' && annualScheduleError ? (
+              <Alert variant="warning" className="py-2 small mb-0 mt-2">
+                {annualScheduleError}{' '}
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="p-0 align-baseline"
+                  onClick={() => void refreshAnnualScheduleCheck()}
+                >
+                  Retry
+                </Button>
+              </Alert>
             ) : null}
           </div>
         </section>

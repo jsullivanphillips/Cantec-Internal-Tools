@@ -7,6 +7,7 @@ import {
   worksheetLocationIsOpenClockIn,
   worksheetLocationSkipIsAnnual,
   type TechnicianWorksheetLocation,
+  routeDisplayLabel,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
 import PortalBlockingOverlay from '../features/monthlyRoutes/PortalBlockingOverlay'
 import { usePortalWorksheet } from '../features/monthlyRoutes/usePortalWorksheet'
@@ -951,7 +952,9 @@ export default function TechnicianPortalWorksheetPage() {
     )
   }
 
-  const routeLabel = payload?.route.label || `Route ${payload?.route.route_number ?? routeId}`
+  const routeLabel = payload?.route
+    ? routeDisplayLabel(payload.route)
+    : `Route ${routeId}`
   const technicianNote = (payload?.route.technician_note ?? '').trim()
   const activeStatus = active ? stopDisplayStatus(active) : 'pending'
   const activeSkipLabel = active ? skipReasonDisplay(active) : null

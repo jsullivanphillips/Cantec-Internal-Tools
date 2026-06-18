@@ -26,6 +26,8 @@ export type MonthlyRouteSummary = {
   weekday_iso: number
   week_occurrence: number
   label: string
+  /** Human-facing label including optional ``display_name`` suffix. */
+  display_label?: string | null
   /** ServiceTrade route-level pseudo-location id when linked. */
   service_trade_route_location_id?: number | null
   /** Deep link to ServiceTrade web UI for that location (when id is set). */
@@ -955,10 +957,20 @@ export function isMonthlyTestingHistoryEditable(
   return ym.year < cy || (ym.year === cy && ym.month < cm)
 }
 
-/** Prefer API ``monthly_route.label``; fall back to legacy ``test_day`` string. */
+/** Full human-facing route title: schedule label plus optional ``display_name`` suffix. */
+export function routeDisplayLabel(
+  route: Pick<MonthlyRouteSummary, 'label' | 'display_name' | 'route_number' | 'display_label'>,
+): string {
+  const base = route.label?.trim() || `R${route.route_number}`
+  const suffix = route.display_name?.trim()
+  if (suffix) return `${base} · ${suffix}`
+  const fromApi = route.display_label?.trim()
+  return fromApi || base
+}
+
+/** Prefer API ``monthly_route`` display label; fall back to legacy ``test_day`` string. */
 export function libraryRouteDisplay(loc: LibraryLocation): string {
-  const fromEntity = loc.monthly_route?.label?.trim()
-  if (fromEntity) return fromEntity
+  if (loc.monthly_route) return routeDisplayLabel(loc.monthly_route)
   return (loc.test_day || '').trim()
 }
 

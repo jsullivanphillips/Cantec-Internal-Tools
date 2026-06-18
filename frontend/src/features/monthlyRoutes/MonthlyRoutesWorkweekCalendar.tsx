@@ -9,6 +9,7 @@ import {
   formatRouteTestDayLabel,
   MONTHLY_ROUTE_OVERVIEW_WORKDAY_COLUMN_COUNT,
   MONTHLY_ROUTE_OVERVIEW_WORKDAY_HEADERS,
+  routeDisplayLabel,
 } from './monthlyRoutesShared'
 
 type RouteOverviewCardProps = {
@@ -53,7 +54,7 @@ function RouteOverviewCard({ row, showScheduleHint = false, tone }: RouteOvervie
       />
       <div className="monthly-routes-overview-calendar__card-label fw-semibold">
         {routeNumberDisplayLabel(route.route_number)}
-        {showScheduleHint ? ` · ${route.label}` : null}
+        {showScheduleHint ? ` · ${routeDisplayLabel(route)}` : null}
       </div>
       {st_schedule_mismatch ? (
         <span

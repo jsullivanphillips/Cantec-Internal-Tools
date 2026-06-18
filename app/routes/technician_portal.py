@@ -200,25 +200,21 @@ def portal_set_session_technician():
 
 def _serialize_route_for_portal(mr: MonthlyRoute, *, location_count: int) -> dict[str, object]:
     """Subset of MonthlyRouteSummary fields the portal start page needs."""
-    wd_names = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
-    wd = (
-        wd_names[mr.weekday_iso]
-        if isinstance(mr.weekday_iso, int) and 0 <= mr.weekday_iso <= 6
-        else "?"
+    from app.monthly.route_display import (
+        monthly_route_display_label,
+        monthly_route_schedule_label,
+        normalize_route_display_name,
     )
-    occ = int(mr.week_occurrence) if mr.week_occurrence is not None else 0
-    nth_suffix = "th"
-    if not (11 <= (occ % 100) <= 13):
-        nth_suffix = {1: "st", 2: "nd", 3: "rd"}.get(occ % 10, "th")
-    nth = f"{occ}{nth_suffix}" if occ >= 1 else str(occ)
-    label = f"R{mr.route_number} · {nth} {wd}"
+
+    label = monthly_route_schedule_label(mr)
     return {
         "id": int(mr.id),
         "route_number": int(mr.route_number),
-        "display_name": (mr.display_name or "").strip() or None,
+        "display_name": normalize_route_display_name(mr.display_name),
         "weekday_iso": mr.weekday_iso,
         "week_occurrence": mr.week_occurrence,
         "label": label,
+        "display_label": monthly_route_display_label(mr),
         "location_count": int(location_count),
     }
 

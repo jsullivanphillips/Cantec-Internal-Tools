@@ -17,6 +17,7 @@ import {
   readRouteBreakdownCache,
   writeRouteBreakdownCache,
 } from './routeBreakdownCache'
+import { routeDisplayLabel } from './monthlyRoutesShared'
 
 type BaseSortKey =
   | 'route'
@@ -119,20 +120,7 @@ function escapeCsvField(value: string): string {
 }
 
 function routeBreakdownLabel(row: DashboardRouteBreakdownRow): string {
-  const route = row.route
-  const displayName = (route?.display_name || '').trim()
-  const base = (route?.label || '').trim() || `R${route?.route_number ?? '?'}`
-  return displayName ? `${base} — ${displayName}` : base
-}
-
-function routePrimaryLabel(row: DashboardRouteBreakdownRow): string {
-  const route = row.route
-  return (route?.label || '').trim() || `R${route?.route_number ?? '?'}`
-}
-
-function routeDisplayName(row: DashboardRouteBreakdownRow): string | null {
-  const name = (row.route?.display_name || '').trim()
-  return name || null
+  return routeDisplayLabel(row.route)
 }
 
 function hasRunTimeData(row: DashboardRouteBreakdownRow): boolean {
@@ -506,16 +494,12 @@ function NetPctCell({ row }: { row: DashboardRouteBreakdownRow }) {
 }
 
 function RouteNameCell({ row }: { row: DashboardRouteBreakdownRow }) {
-  const displayName = routeDisplayName(row)
   const sufficient = hasRunTimeData(row)
 
   return (
     <td className="monthly-dashboard-breakdown__route-cell">
       <Link to={`/monthlies/routes/${row.route.id}`} className="monthly-dashboard-breakdown__route-link">
-        <span className="monthly-dashboard-breakdown__route-primary">{routePrimaryLabel(row)}</span>
-        {displayName ? (
-          <span className="monthly-dashboard-breakdown__route-secondary">{displayName}</span>
-        ) : null}
+        <span className="monthly-dashboard-breakdown__route-primary">{routeBreakdownLabel(row)}</span>
       </Link>
       {!sufficient ? (
         <Badge bg="warning" text="dark" className="monthly-dashboard-breakdown__insufficient-badge">

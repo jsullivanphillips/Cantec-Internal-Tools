@@ -1938,12 +1938,6 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
   white-space: nowrap;
 }
 
-.monthly-paperwork-view-badge {
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-}
-
 /* Paperwork — equal spacing between breadcrumb, month selector, hero, and content cards */
 .monthly-paperwork-page .monthly-route-detail-container {
   display: flex;
@@ -8454,18 +8448,67 @@ button.monthly-location-hero-status-badge:focus-visible {
   gap: 0.5rem;
 }
 
-/* Paperwork hero — two-column action grid so all buttons stay inside the card */
+/* Paperwork hero — grid aligns workflow warning with Actions column */
 .monthly-paperwork-page .monthly-run-detail-hero {
   min-width: 0;
 }
 
-.monthly-paperwork-page .monthly-route-detail-hero__right {
-  align-items: stretch;
-  align-self: stretch;
-  flex: 1 1 22rem;
-  justify-content: stretch;
+.monthly-paperwork-page .monthly-run-detail-hero.monthly-paperwork-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  grid-template-areas:
+    'copy-top right'
+    'copy-bottom copy-bottom';
+  column-gap: 1rem;
+  row-gap: 0.75rem;
+  align-items: start;
+}
+
+.monthly-paperwork-page .monthly-paperwork-hero__copy-top {
+  grid-area: copy-top;
   min-width: 0;
-  max-width: min(44%, 28rem);
+}
+
+.monthly-paperwork-page .monthly-paperwork-hero__copy-top .monthly-run-detail-workflow {
+  margin-top: 0.55rem;
+}
+
+.monthly-paperwork-page .monthly-paperwork-hero .monthly-route-detail-hero__right {
+  grid-area: right;
+  align-items: stretch;
+  align-self: start;
+  flex: none;
+  justify-content: flex-start;
+  min-width: max-content;
+  max-width: none;
+  width: max-content;
+}
+
+.monthly-paperwork-hero__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  gap: 0.65rem;
+  width: max-content;
+  max-width: none;
+}
+
+.monthly-paperwork-annual-schedule-warning {
+  flex: 0 0 auto;
+  width: max-content;
+  max-width: none;
+  margin: 0;
+  padding-top: 0.35rem;
+  padding-bottom: 0.35rem;
+  text-align: right;
+  white-space: nowrap;
+  overflow: visible;
+}
+
+.monthly-paperwork-page .monthly-paperwork-hero__copy-bottom {
+  grid-area: copy-bottom;
+  min-width: 0;
 }
 
 .monthly-route-detail-actions.monthly-paperwork-hero-actions {
@@ -12500,6 +12543,33 @@ button.monthly-location-hero-status-badge:focus-visible {
   .monthly-route-detail-actions {
     width: 100%;
     justify-content: stretch;
+  }
+
+  .monthly-paperwork-page .monthly-run-detail-hero.monthly-paperwork-hero {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      'copy-top'
+      'right'
+      'copy-bottom';
+  }
+
+  .monthly-paperwork-hero__toolbar {
+    flex-wrap: wrap;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .monthly-paperwork-page .monthly-paperwork-hero .monthly-route-detail-hero__right {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .monthly-paperwork-annual-schedule-warning {
+    flex: 1 1 auto;
+    width: auto;
+    max-width: 100%;
+    white-space: normal;
+    text-align: right;
   }
 
   .monthly-paperwork-page .monthly-route-detail-hero__right {

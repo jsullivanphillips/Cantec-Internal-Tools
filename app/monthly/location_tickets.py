@@ -107,10 +107,9 @@ def _location_label(loc: MonthlyLocation) -> str:
 def _route_label(route: MonthlyRoute | None) -> str | None:
     if route is None:
         return None
-    display = (route.display_name or "").strip()
-    if display:
-        return display
-    return f"Route {route.route_number}"
+    from app.monthly.route_display import monthly_route_display_label
+
+    return monthly_route_display_label(route)
 
 
 def serialize_ticket_comment(comment: MonthlyLocationTicketComment) -> dict[str, object]:

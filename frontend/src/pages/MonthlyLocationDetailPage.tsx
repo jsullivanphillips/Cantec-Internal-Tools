@@ -28,6 +28,7 @@ import {
   type MonthCell,
   type MonthlyLocationComment,
   type MonthlyLocationDetailPayload,
+  routeDisplayLabel,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
 import { apiJson, isAbortError } from '../lib/apiClient'
 import MonthlyLocationDetailPageSkeleton from './MonthlyLocationDetailPageSkeleton'
@@ -192,8 +193,7 @@ function testingHistoryRouteContextLine(cell: MonthCell | undefined): ReactNode 
   if (!historyMonthHasRecordedTest(cell)) return null
   const tr = cell?.test_monthly_route
   if (!tr?.route_number) return null
-  const dn = tr.display_name?.trim()
-  const label = dn ? `R${tr.route_number} · ${dn}` : tr.label || `R${tr.route_number}`
+  const label = routeDisplayLabel(tr)
   return (
     <div className="text-muted small mt-1" title="Route assignment when this month was recorded">
       Recorded on {label}

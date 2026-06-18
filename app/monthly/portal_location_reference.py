@@ -15,18 +15,9 @@ from app.monthly.service_trade_site_match import service_trade_site_location_url
 
 def _route_label_for_portal(mr: MonthlyRoute | None, test_day: str | None) -> str | None:
     if mr is not None:
-        wd_names = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
-        wd = (
-            wd_names[mr.weekday_iso]
-            if isinstance(mr.weekday_iso, int) and 0 <= mr.weekday_iso <= 6
-            else "?"
-        )
-        occ = int(mr.week_occurrence) if mr.week_occurrence is not None else 0
-        nth_suffix = "th"
-        if not (11 <= (occ % 100) <= 13):
-            nth_suffix = {1: "st", 2: "nd", 3: "rd"}.get(occ % 10, "th")
-        nth = f"{occ}{nth_suffix}" if occ >= 1 else str(occ)
-        return f"R{mr.route_number} · {nth} {wd}"
+        from app.monthly.route_display import monthly_route_display_label
+
+        return monthly_route_display_label(mr)
     td = (test_day or "").strip()
     return td or None
 

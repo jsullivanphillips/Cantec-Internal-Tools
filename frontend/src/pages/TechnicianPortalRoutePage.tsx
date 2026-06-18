@@ -7,6 +7,7 @@ import {
   parseYearMonth,
   worksheetRunExplicitlyCompleted,
   type TechnicianWorksheetRun,
+  routeDisplayLabel,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
 import { runFieldEnded } from '../features/monthlyRoutes/runWorkflowShared'
 import { apiJson } from '../lib/apiClient'
@@ -207,10 +208,9 @@ export default function TechnicianPortalRoutePage() {
       {!loading && data ? (
         <>
           <div className="mb-4">
-            <h1 className="h4 mb-1">{data.route.label}</h1>
+            <h1 className="h4 mb-1">{routeDisplayLabel(data.route)}</h1>
             <div className="small text-muted">
               {data.route.location_count} {data.route.location_count === 1 ? 'stop' : 'stops'}
-              {data.route.display_name ? ` · ${data.route.display_name}` : ''}
             </div>
           </div>
 

@@ -292,24 +292,23 @@ def _serialize_monthly_route_entity(
     """Nested route summary for API consumers (single source of truth: ``MonthlyRoute``)."""
     if mr is None:
         return None
-    wd_names = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
-    wd = (
-        wd_names[mr.weekday_iso]
-        if isinstance(mr.weekday_iso, int) and 0 <= mr.weekday_iso <= 6
-        else "?"
+    from app.monthly.route_display import (
+        monthly_route_display_label,
+        monthly_route_schedule_label,
+        normalize_route_display_name,
     )
-    occ = int(mr.week_occurrence) if mr.week_occurrence is not None else 0
-    nth = _english_ordinal(occ) if occ >= 1 else str(occ)
-    label = f"R{mr.route_number} · {nth} {wd}"
+
+    label = monthly_route_schedule_label(mr)
     st_rid = mr.service_trade_route_location_id
-    dn = (mr.display_name or "").strip()
+    dn = normalize_route_display_name(mr.display_name)
     out: dict[str, object] = {
         "id": mr.id,
         "route_number": mr.route_number,
-        "display_name": dn or None,
+        "display_name": dn,
         "weekday_iso": mr.weekday_iso,
         "week_occurrence": mr.week_occurrence,
         "label": label,
+        "display_label": monthly_route_display_label(mr),
         "service_trade_route_location_id": int(st_rid) if st_rid is not None else None,
         "service_trade_route_location_url": (
             f"{SERVICE_TRADE_APP_LOCATIONS_BASE}/{int(st_rid)}" if st_rid is not None else None
@@ -2485,7 +2484,9 @@ def get_route_performance_breakdown(route_id: int):
 
 @monthly_routes_bp.patch("/api/monthly_routes/routes/<int:route_id>")
 def patch_monthly_route(route_id: int):
-    """Office: update route-level fields (technician note, expense tech count)."""
+    """Office: update route-level fields (technician note, expense tech count, display name)."""
+    from app.monthly.route_display import normalize_route_display_name
+
     mr = _get_monthly_route(route_id)
     if mr is None:
         return jsonify({"error": "Route not found"}), 404
@@ -2500,8 +2501,11 @@ def patch_monthly_route(route_id: int):
 
     has_note = "technician_note" in data
     has_tech_count = "tech_count" in data
-    if not has_note and not has_tech_count:
-        return jsonify({"error": "At least one of technician_note or tech_count required"}), 400
+    has_display_name = "display_name" in data
+    if not has_note and not has_tech_count and not has_display_name:
+        return jsonify(
+            {"error": "At least one of technician_note, tech_count, or display_name required"}
+        ), 400
 
     if has_note:
         raw = data.get("technician_note")
@@ -2522,6 +2526,16 @@ def patch_monthly_route(route_id: int):
             if tech_count < 1 or tech_count > 9:
                 return jsonify({"error": "tech_count must be between 1 and 9"}), 400
             mr.tech_count = tech_count
+
+    if has_display_name:
+        raw_display = data.get("display_name")
+        if raw_display is None:
+            mr.display_name = None
+        elif not isinstance(raw_display, str):
+            return jsonify({"error": "display_name must be a string or null"}), 400
+        else:
+            normalized = normalize_route_display_name(raw_display)
+            mr.display_name = normalized
 
     db.session.commit()
     db.session.refresh(mr)

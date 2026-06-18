@@ -20,6 +20,7 @@ import {
 import { Accordion, Alert, Badge, Button, Col, Dropdown, Form, Modal, Row, Spinner, Table } from 'react-bootstrap'
 import { Link, useParams } from 'react-router-dom'
 import MonthlyLibraryCommentsPanel from '../features/monthlyRoutes/MonthlyLibraryCommentsPanel'
+import EditRouteDisplayNameModal from '../features/monthlyRoutes/EditRouteDisplayNameModal'
 import RouteTechnicianNoteCard from '../features/monthlyRoutes/RouteTechnicianNoteCard'
 import {
   DEFAULT_ROUTE_TECH_COUNT,
@@ -48,6 +49,7 @@ import {
   type RouteLocationListItem,
   type ServiceTradeRunJobMonth,
   type TechnicianWorksheetLocation,
+  routeDisplayLabel,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
 import {
   availableRunsCardYears,
@@ -335,7 +337,13 @@ type UploadRunIssue = {
 /** ``POST /api/monthly_routes/routes/:id/runs/import_csv`` success payload. */
 type UploadRunResponse = {
   ok: true
-  route: { id: number; route_number: number; label: string }
+  route: {
+    id: number
+    route_number: number
+    label: string
+    display_name?: string | null
+    display_label?: string | null
+  }
   month_date: string
   run: {
     id: number
@@ -464,7 +472,7 @@ function UploadRunFromCsvModal({
         {result ? (
           <>
             <Alert variant="success" className="mb-3">
-              Run materialized for <strong>{result.route.label}</strong> ·{' '}
+              Run materialized for <strong>{routeDisplayLabel(result.route)}</strong> ·{' '}
               <strong>{formattedMonth}</strong>.
             </Alert>
             <Row className="g-3 mb-3">
@@ -801,6 +809,7 @@ export default function MonthlyRouteDetailPage() {
   const [keyViewLoading, setKeyViewLoading] = useState(false)
   const [keyViewError, setKeyViewError] = useState<string | null>(null)
   const [keyViewAudit, setKeyViewAudit] = useState<RouteKeyAuditPayload | null>(null)
+  const [editLabelOpen, setEditLabelOpen] = useState(false)
 
   const load = useCallback(
     async (signal?: AbortSignal) => {
@@ -1142,6 +1151,7 @@ export default function MonthlyRouteDetailPage() {
   }
 
   const stUrl = route.service_trade_route_location_url
+  const routeTitle = routeDisplayLabel(route)
   const routeLocationCount = visibleSites.length
   const selectedYearMonthKeys =
     effectiveHistoryYear != null ? monthIsoKeysForCalendarYear(effectiveHistoryYear) : []
@@ -1177,7 +1187,7 @@ export default function MonthlyRouteDetailPage() {
               <span className="monthly-location-detail-eyebrow">Monthly route</span>
               <span className="monthly-location-hero-id">R{route.route_number}</span>
             </div>
-            <h1 className="monthly-location-detail-title">{route.label}</h1>
+            <h1 className="monthly-location-detail-title">{routeTitle}</h1>
             {heroTopSpecialists.length > 0 ? (
               <div className="monthly-location-hero-meta monthly-route-detail-hero__specialists" aria-label="Top monthly specialists">
                 <span className="monthly-route-detail-hero__specialists-label">
@@ -1230,6 +1240,7 @@ export default function MonthlyRouteDetailPage() {
                     {keyViewLoading ? 'Loading keys…' : 'Key view'}
                   </Dropdown.Item>
                 ) : null}
+                <Dropdown.Item onClick={() => setEditLabelOpen(true)}>Edit label</Dropdown.Item>
                 <Dropdown.Item onClick={() => openUploadCsv(null)}>Upload CSV</Dropdown.Item>
                 {stUrl ? (
                   <Dropdown.Item href={stUrl} target="_blank" rel="noopener noreferrer">
@@ -1256,6 +1267,15 @@ export default function MonthlyRouteDetailPage() {
                   Key view
                 </Button>
               ) : null}
+              <Button
+                variant="outline-secondary"
+                size="sm"
+                className="monthly-location-detail-action"
+                onClick={() => setEditLabelOpen(true)}
+              >
+                <i className="bi bi-tag" aria-hidden />
+                Edit label
+              </Button>
               <Button
                 variant="outline-secondary"
                 size="sm"
@@ -1687,7 +1707,7 @@ export default function MonthlyRouteDetailPage() {
         onClose={closeUploadCsv}
         routeId={idNum}
         routeNumber={route.route_number}
-        routeLabel={route.label}
+        routeLabel={routeTitle}
         targetMonthIso={uploadTargetMonthIso}
         onUploaded={handleCsvUploaded}
       />
@@ -1698,6 +1718,14 @@ export default function MonthlyRouteDetailPage() {
         error={skipError}
         onClose={closeSkipConfirm}
         onConfirm={(payload) => void confirmSkipRun(payload)}
+      />
+      <EditRouteDisplayNameModal
+        show={editLabelOpen}
+        route={route}
+        onClose={() => setEditLabelOpen(false)}
+        onSaved={(displayName) =>
+          setRoute((prev) => (prev ? { ...prev, display_name: displayName } : prev))
+        }
       />
       <PortalKeyViewModal
         show={keyViewOpen}

@@ -31,6 +31,7 @@ import {
   type TechnicianWorksheetPayload,
   type TechnicianWorksheetRow,
   WORKSHEET_CLOCK_IN_BLOCKED_MESSAGE,
+  routeDisplayLabel,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
 import {
   backoffMs,
@@ -1280,7 +1281,7 @@ export default function TechnicianWorksheetPage() {
             <div className="tw-office-summary-main">
               <div>
                 <div className="tw-office-summary-eyebrow">Office worksheet</div>
-                <h2 className="tw-office-summary-title">{payload.route.label}</h2>
+                <h2 className="tw-office-summary-title">{routeDisplayLabel(payload.route)}</h2>
                 <div className="tw-office-summary-meta">
                   {formatMonthHeading(payload.month_date)}
                   {startedLabel ? <span>Field run started {startedLabel}</span> : null}
@@ -1385,7 +1386,7 @@ export default function TechnicianWorksheetPage() {
                   <i className="bi bi-arrow-left-circle-fill" aria-hidden />
                 </Link>
                 <div>
-                  <div className="fw-semibold">{payload.route.label}</div>
+                  <div className="fw-semibold">{routeDisplayLabel(payload.route)}</div>
                   <div className="small text-muted">
                     {isEmptyHistorical ? (
                       <>{formatMonthHeading(payload.month_date)} — no worksheet recorded</>
