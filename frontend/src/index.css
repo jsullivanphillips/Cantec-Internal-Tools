@@ -8699,6 +8699,26 @@ button.monthly-location-hero-status-badge:focus-visible {
   justify-content: center;
 }
 
+.monthly-route-detail-page .monthly-route-detail-hero-actions-dropdown .dropdown-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 2.35rem;
+  padding: 0.34rem 0.75rem;
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+
+.monthly-route-detail-page .monthly-route-detail-hero-actions-dropdown .dropdown-menu .dropdown-item {
+  display: flex;
+  align-items: center;
+  font-size: 0.8125rem;
+}
+
+.monthly-route-detail-page .monthly-route-detail-hero-actions-dropdown .dropdown-menu .dropdown-item .spinner-border {
+  flex-shrink: 0;
+}
+
 @media (min-width: 768px) {
   .monthly-route-detail-hero__paired-actions {
     grid-template-columns: repeat(2, minmax(0, 1fr));

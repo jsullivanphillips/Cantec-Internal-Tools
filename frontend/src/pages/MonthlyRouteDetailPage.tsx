@@ -1137,35 +1137,57 @@ export default function MonthlyRouteDetailPage() {
                   <i className="bi bi-folder2-open" aria-hidden />
                   Paperwork
                 </Link>
-                <Dropdown align="end" className="monthly-route-detail-hero__more d-none d-md-block">
+                <Dropdown
+                  align="end"
+                  className="monthly-route-detail-hero__more monthly-route-detail-hero-actions-dropdown d-none d-md-block"
+                >
                   <Dropdown.Toggle
                     variant="outline-secondary"
                     size="sm"
                     className="monthly-location-detail-action"
                     id="route-detail-more-actions"
                   >
-                    <i className="bi bi-three-dots" aria-hidden />
+                    <i className="bi bi-three-dots-vertical" aria-hidden />
                     More
                   </Dropdown.Toggle>
                   <Dropdown.Menu>
                     {routeStopTotal > 0 ? (
                       <Dropdown.Item onClick={() => void openKeyView()} disabled={keyViewLoading}>
-                        {keyViewLoading ? 'Loading keys…' : 'Key view'}
+                        {keyViewLoading ? (
+                          <>
+                            <Spinner animation="border" size="sm" className="me-2" aria-hidden />
+                            Loading keys…
+                          </>
+                        ) : (
+                          <>
+                            <i className="bi bi-key me-2" aria-hidden />
+                            Key view
+                          </>
+                        )}
                       </Dropdown.Item>
                     ) : null}
+                    {routeStopTotal > 0 ? <Dropdown.Divider /> : null}
                     <Dropdown.Item onClick={() => setEditLabelOpen(true)} disabled={!route}>
+                      <i className="bi bi-tag me-2" aria-hidden />
                       Edit label
                     </Dropdown.Item>
                     <Dropdown.Item onClick={() => setEditTechCountOpen(true)} disabled={!route}>
+                      <i className="bi bi-people me-2" aria-hidden />
                       Edit tech count
                     </Dropdown.Item>
+                    <Dropdown.Divider />
                     <Dropdown.Item onClick={() => openUploadCsv(null)} disabled={detailLoading}>
+                      <i className="bi bi-upload me-2" aria-hidden />
                       Upload CSV
                     </Dropdown.Item>
                     {stUrl ? (
-                      <Dropdown.Item href={stUrl} target="_blank" rel="noopener noreferrer">
-                        ServiceTrade
-                      </Dropdown.Item>
+                      <>
+                        <Dropdown.Divider />
+                        <Dropdown.Item href={stUrl} target="_blank" rel="noopener noreferrer">
+                          <i className="bi bi-box-arrow-up-right me-2" aria-hidden />
+                          Open in Service Trade
+                        </Dropdown.Item>
+                      </>
                     ) : null}
                   </Dropdown.Menu>
                 </Dropdown>
