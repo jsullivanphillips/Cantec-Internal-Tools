@@ -173,6 +173,10 @@ export function quarterOptionLabel(year: number, quarter: number): string {
   return `Q${quarter} ${year} (${months})`
 }
 
+export function quarterSelectionLabel(year: number, quarter: number): string {
+  return `Q${quarter} ${year}`
+}
+
 export function quarterSelectionOptions(
   countBackQuarters = 6,
   countForwardQuarters = 1,
@@ -275,7 +279,7 @@ export function formatMonthHeader(monthIso: string): string {
 }
 
 export function quarterTitle(year: number, quarter: number): string {
-  return quarterOptionLabel(year, quarter)
+  return quarterSelectionLabel(year, quarter)
 }
 
 const TEST_SUMMARY_LABELS: Record<BillingBoardTestSummaryKey, string> = {

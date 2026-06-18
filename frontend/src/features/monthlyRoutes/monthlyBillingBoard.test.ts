@@ -9,6 +9,7 @@ import {
   isPastPacificMonth,
   quarterFromCalendarMonth,
   quarterOptionLabel,
+  quarterSelectionLabel,
   quarterSelectionKey,
   quarterSelectionOptions,
   parseQuarterSelectionKey,
@@ -102,6 +103,10 @@ describe('calendar quarter helpers', () => {
   it('labels quarters with their months', () => {
     expect(quarterOptionLabel(2026, 1)).toBe('Q1 2026 (January, February, March)')
     expect(quarterOptionLabel(2026, 2)).toBe('Q2 2026 (April, May, June)')
+  })
+
+  it('labels selected quarters without months', () => {
+    expect(quarterSelectionLabel(2026, 2)).toBe('Q2 2026')
   })
 
   it('round-trips quarter selection keys', () => {

@@ -7276,6 +7276,109 @@ button.monthly-location-hero-status-badge:focus-visible {
   background: #fafbfc;
 }
 
+.monthly-billing-table-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.45rem 0.6rem;
+  width: 100%;
+  padding-bottom: 0.5rem;
+}
+
+.monthly-billing-table-toolbar__search {
+  flex: 1 1 11rem;
+  min-width: 10rem;
+  max-width: 16rem;
+}
+
+.monthly-billing-table-toolbar__quarter,
+.monthly-billing-table-toolbar__route {
+  flex: 0 1 9.5rem;
+  min-width: 8rem;
+}
+
+.monthly-billing-table-toolbar__filters {
+  flex: 1 1 18rem;
+  margin: 0;
+  min-width: 0;
+  justify-content: flex-start;
+}
+
+.monthly-billing-table-toolbar__filters.run-review-filter {
+  margin-bottom: 0;
+}
+
+.monthly-locations-filter-field__control--select {
+  padding: 0 0.4rem 0 0.45rem;
+  cursor: default;
+}
+
+.monthly-billing-table-toolbar__select-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+}
+
+.monthly-billing-table-toolbar__select-wrap > .bi {
+  color: #64748b;
+  font-size: 0.78rem;
+  flex-shrink: 0;
+}
+
+.monthly-billing-table-toolbar__select {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+  max-width: none;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.monthly-billing-table-toolbar__select:focus {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.monthly-billing-table-toolbar__select-wrap--quarter {
+  position: relative;
+}
+
+.monthly-billing-table-toolbar__quarter-display {
+  position: absolute;
+  left: 1.2rem;
+  right: 1rem;
+  pointer-events: none;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.monthly-billing-table-toolbar__select-wrap--quarter:focus-within
+  .monthly-billing-table-toolbar__quarter-display {
+  visibility: hidden;
+}
+
+.monthly-billing-table-toolbar__select--quarter-value {
+  color: transparent;
+}
+
+.monthly-billing-table-toolbar__select--quarter-value:focus {
+  color: #0f172a;
+}
+
+.monthly-billing-table-toolbar__select--quarter-value option {
+  color: #0f172a;
+}
+
 .monthly-page .monthly-billing-table {
   font-size: 0.75rem;
 }

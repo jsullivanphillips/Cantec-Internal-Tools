@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { apiFetch } from '../lib/apiClient'
+import { apiFetch, coerceUiText } from '../lib/apiClient'
 import { Alert, Button, Container, Form } from 'react-bootstrap'
 
 function safeLoginRedirect(next: string): string | null {
@@ -29,7 +29,7 @@ export default function LoginPage() {
       })
       const d = await r.json()
       if (!d.ok) {
-        setError(d.error || 'Login failed')
+        setError(coerceUiText(d.error, 'Login failed'))
         return
       }
       const nextParam = searchParams.get('next')
