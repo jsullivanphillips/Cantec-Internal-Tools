@@ -871,7 +871,7 @@ export default function MonthlyDashboardRouteBreakdown() {
 
   if (isLoadingCurrentRange && !displayPayload && !error) {
     return (
-      <section className="monthly-dashboard-breakdown mt-4">
+      <section className="monthly-dashboard-breakdown">
         <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
           <h2 className="h5 mb-0">Route breakdown — {selectedRangeLabel}</h2>
         </div>
@@ -883,7 +883,7 @@ export default function MonthlyDashboardRouteBreakdown() {
 
   if (error && !displayPayload) {
     return (
-      <section className="monthly-dashboard-breakdown mt-4">
+      <section className="monthly-dashboard-breakdown">
         <BreakdownRangeSelector value={range} onChange={onRangeChange} loadingRange={loadingRange} />
         <BreakdownLoadErrorAlert
           message={error}
@@ -910,13 +910,13 @@ export default function MonthlyDashboardRouteBreakdown() {
   )
 
   return (
-    <section className="monthly-dashboard-breakdown mt-4">
+    <section className="monthly-dashboard-breakdown">
       <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
         <div className="d-flex flex-wrap align-items-center gap-2">
           <h2 className="h5 mb-0">Route breakdown — {displayPayload.period_label}</h2>
-          {rowsWithRunTime.length > 0 ? (
-            <Badge bg="secondary" className="monthly-dashboard-breakdown__count-badge tabular-nums">
-              {rowsWithRunTime.length} with run time data
+          {rowsInsufficientRunTime.length > 0 ? (
+            <Badge bg="warning" text="dark" className="monthly-dashboard-breakdown__count-badge tabular-nums">
+              {rowsInsufficientRunTime.length} missing run time data
             </Badge>
           ) : null}
         </div>

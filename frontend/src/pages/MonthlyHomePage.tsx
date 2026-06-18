@@ -19,6 +19,7 @@ import MonthlyDashboardIssues from '../features/monthlyRoutes/MonthlyDashboardIs
 import MonthlyDashboardRouteBreakdown from '../features/monthlyRoutes/MonthlyDashboardRouteBreakdown'
 import MonthlyTicketsQueue from '../features/monthlyRoutes/MonthlyTicketsQueue'
 import { apiJson, isAbortError } from '../lib/apiClient'
+import { PROCESSING_PAGE_TITLE_COMPACT_CLASS } from '../styles/pageTypography'
 
 function MonthlyDashboardLegend() {
   return (
@@ -229,10 +230,21 @@ export default function MonthlyHomePage() {
 
   return (
     <div className="monthlies-dashboard-page d-flex flex-column gap-3">
-      <Card className="app-surface-card">
-        <Card.Body className="p-3 p-md-4">
-          <h2 className="processing-page-title mb-1">Monthlies</h2>
-          <p className="text-muted mb-0">{currentMonthHeading}</p>
+      <Card className="app-surface-card monthly-hero-card monthlies-dashboard-hero">
+        <Card.Body className="monthly-hero-card__body">
+          <div className="monthly-hero-card__row">
+            <div className="monthlies-dashboard-hero__title-line">
+              <h1 className={`${PROCESSING_PAGE_TITLE_COMPACT_CLASS} m-0`}>Monthlies</h1>
+              <span className="monthlies-dashboard-hero__month text-muted">{currentMonthHeading}</span>
+            </div>
+          </div>
+          {!loading && !error ? (
+            <MonthlyDashboardKpiStrip
+              routesToProcess={routesToProcess}
+              routesToPrepare={routesToPrepare}
+              openTicketCount={openTicketCount}
+            />
+          ) : null}
         </Card.Body>
       </Card>
 
@@ -269,12 +281,7 @@ export default function MonthlyHomePage() {
             </Nav>
             <Tab.Content className="processing-tabs-shell__panel">
               <Tab.Pane eventKey="routes">
-                <MonthlyDashboardKpiStrip
-                  routesToProcess={routesToProcess}
-                  routesToPrepare={routesToPrepare}
-                  openTicketCount={openTicketCount}
-                />
-                <div className="monthly-dashboard-routes-toolbar mb-3 mt-3">
+                <div className="monthly-dashboard-routes-toolbar mb-3">
                   <div className="monthly-dashboard-routes-toolbar__side" aria-hidden />
                   <RouteOverviewMonthToolbar
                     monthFirstIso={calendarMonthFirstIso}

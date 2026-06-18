@@ -77,7 +77,7 @@ export default function MonthlyDashboardRouteBreakdownSkeleton({ embedded = fals
 
   return (
     <section
-      className="monthly-dashboard-breakdown mt-4 home-skeleton"
+      className="monthly-dashboard-breakdown home-skeleton"
       aria-busy="true"
       aria-label="Loading route breakdown"
     >

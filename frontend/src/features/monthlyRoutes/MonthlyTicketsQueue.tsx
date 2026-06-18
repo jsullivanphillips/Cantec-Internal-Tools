@@ -68,20 +68,24 @@ export default function MonthlyTicketsQueue({ sessionUsername = null, onTicketsC
 
   return (
     <section className="monthly-tickets-queue">
-      <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
-        <h3 className="h5 mb-0">Open tickets</h3>
-        <div className="d-flex flex-wrap align-items-center gap-3">
-          <Form.Check
-            type="switch"
-            id="dashboard-show-closed-tickets"
-            label="Show closed"
-            checked={includeClosed}
-            onChange={(e) => setIncludeClosed(e.target.checked)}
-          />
-          <Button size="sm" variant="primary" onClick={() => setCreateOpen(true)}>
-            Create ticket
-          </Button>
-        </div>
+      <div className="monthly-tickets-queue__header mb-3">
+        <h3 className="h5 mb-0 monthly-tickets-queue__title">Tickets</h3>
+        <Button
+          size="sm"
+          variant="primary"
+          className="monthly-tickets-queue__create-btn"
+          onClick={() => setCreateOpen(true)}
+        >
+          Create ticket
+        </Button>
+        <Form.Check
+          type="switch"
+          id="dashboard-show-closed-tickets"
+          label="Show closed"
+          className="monthly-tickets-queue__show-closed mb-0"
+          checked={includeClosed}
+          onChange={(e) => setIncludeClosed(e.target.checked)}
+        />
       </div>
       {error ? (
         <Alert variant="danger" className="py-2 small">
@@ -93,8 +97,8 @@ export default function MonthlyTicketsQueue({ sessionUsername = null, onTicketsC
       ) : tickets.length === 0 ? (
         <p className="text-muted mb-0">No tickets in this view.</p>
       ) : (
-        <div className="table-responsive">
-          <Table size="sm" hover className="mb-0 align-middle">
+        <div className="monthly-dashboard-table-wrap table-responsive">
+          <Table size="sm" hover className="mb-0 align-middle monthly-dashboard-table">
             <thead>
               <tr>
                 <th>#</th>

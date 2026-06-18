@@ -5660,6 +5660,44 @@ button.monthly-location-hero-status-badge:focus-visible {
 /* Tab shell: content card attaches to selected tab (Jobs Backlog + Performance Summary) */
 .processing-page .processing-tabs-shell.app-surface-card,
 .performance-summary-page .processing-tabs-shell.app-surface-card,
+.monthlies-dashboard-page .monthly-hero-card__body {
+  padding: 1rem 1.25rem;
+}
+
+@media (min-width: 768px) {
+  .monthlies-dashboard-page .monthly-hero-card__body {
+    padding: 1.15rem 1.5rem;
+  }
+}
+
+.monthlies-dashboard-page .monthly-hero-card__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem 1.25rem;
+}
+
+.monthlies-dashboard-hero__title-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 0.75rem;
+  min-width: 0;
+}
+
+.monthlies-dashboard-hero__month {
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.monthlies-dashboard-page .monthly-hero-card .monthly-dashboard-kpi-strip {
+  margin-top: 0.85rem;
+  margin-bottom: 0;
+}
+
 .monthlies-dashboard-page .processing-tabs-shell.app-surface-card,
 .monday-meeting-page .processing-tabs-shell.app-surface-card {
   border: 1px solid #e7eaf0;
@@ -8830,10 +8868,84 @@ button.monthly-location-hero-status-badge:focus-visible {
   margin-bottom: 0;
 }
 
-.monthly-dashboard-st-bulk-release-btn.btn {
+.monthly-dashboard-routes-toolbar .monthly-route-year-toolbar__button.btn,
+.monthly-dashboard-routes-toolbar .monthly-dashboard-st-bulk-release-btn.btn {
   border-radius: 999px;
   font-weight: 750;
-  padding: 0.5rem 1.25rem;
+}
+
+.monthly-dashboard-routes-toolbar .monthly-dashboard-st-bulk-release-btn.btn-primary,
+.monthly-tickets-queue__create-btn.btn-primary {
+  border-radius: 999px;
+  font-weight: 750;
+  --bs-btn-color: #fff;
+  --bs-btn-bg: #5a7da8;
+  --bs-btn-border-color: #5a7da8;
+  --bs-btn-hover-color: #fff;
+  --bs-btn-hover-bg: #4d6f98;
+  --bs-btn-hover-border-color: #496992;
+  --bs-btn-focus-shadow-rgb: 90, 125, 168;
+  --bs-btn-active-color: #fff;
+  --bs-btn-active-bg: #476889;
+  --bs-btn-active-border-color: #446382;
+  --bs-btn-disabled-color: #fff;
+  --bs-btn-disabled-bg: #5a7da8;
+  --bs-btn-disabled-border-color: #5a7da8;
+}
+
+.monthly-tickets-queue__header {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 0.75rem;
+  row-gap: 0.5rem;
+}
+
+.monthly-tickets-queue__title {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.monthly-tickets-queue__show-closed {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.monthly-tickets-queue__create-btn {
+  grid-column: 2;
+  grid-row: 1 / -1;
+  align-self: center;
+  justify-self: end;
+}
+
+.monthly-dashboard-table-wrap {
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 1px solid #e7eaf0;
+  border-radius: 0.6rem;
+  background: #fff;
+}
+
+.monthly-dashboard-table-wrap .monthly-dashboard-table {
+  --bs-table-bg: transparent;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.monthly-dashboard-table-wrap .monthly-dashboard-table thead th {
+  border-top-width: 0;
+  border-left-width: 0;
+  border-right-width: 0;
+}
+
+.monthly-dashboard-table-wrap .monthly-dashboard-table tbody td {
+  border-left-width: 0;
+  border-right-width: 0;
+}
+
+.monthly-dashboard-table-wrap .monthly-dashboard-table tbody tr:last-child td {
+  border-bottom-width: 0;
 }
 
 .monthly-dashboard-st-bulk-release-log {
@@ -17259,12 +17371,11 @@ body.portal-worksheet-body-field-editing .pw-mock-dock.pw-mock-dock--field-editi
   }
 }
 
-/* Monthlies dashboard — compact KPI strip (Routes tab) */
+/* Monthlies dashboard — compact KPI strip (hero card) */
 .monthly-dashboard-kpi-strip {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.625rem;
-  margin-bottom: 0.15rem;
 }
 
 @media (max-width: 767.98px) {

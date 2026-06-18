@@ -158,8 +158,8 @@ export default function MonthlyDashboardIssues() {
           No active sites are missing a ServiceTrade link, price, key link, or map pin.
         </p>
       ) : (
-        <div className="table-responsive">
-          <Table size="sm" hover className="mb-0 align-middle">
+        <div className="monthly-dashboard-table-wrap table-responsive">
+          <Table size="sm" hover className="mb-0 align-middle monthly-dashboard-table">
             <thead>
               <tr>
                 <th>Site</th>
