@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { apiFetch, apiJson, isAbortError } from '../lib/apiClient'
+import { hasProcessingDataError, processingWowErrorLine } from '../lib/processingAttackShared'
 import { Button, Card, Col, Collapse, Form, Modal, Nav, Row, Tab, Table } from 'react-bootstrap'
 import { Chart } from 'react-chartjs-2'
 import type { ChartData, ChartOptions } from 'chart.js'
@@ -1380,8 +1381,11 @@ export default function ProcessingAttackPage({ embeddedTab }: { embeddedTab?: Pr
     if (!processed) {
       return { trend: 'unknown' as WowTrend, line: 'Weekly totals could not be loaded.' }
     }
-    if (processed.error) {
-      return { trend: 'unknown' as WowTrend, line: processed.error }
+    if (hasProcessingDataError(processed.error)) {
+      return {
+        trend: 'unknown' as WowTrend,
+        line: processingWowErrorLine(processed.error, 'Weekly totals could not be loaded.'),
+      }
     }
     return wowNumeric(
       processed.total_jobs_processed,
@@ -1395,8 +1399,11 @@ export default function ProcessingAttackPage({ embeddedTab }: { embeddedTab?: Pr
     if (!processed) {
       return { trend: 'unknown' as WowTrend, line: 'Weekly totals could not be loaded.' }
     }
-    if (processed.error) {
-      return { trend: 'unknown' as WowTrend, line: processed.error }
+    if (hasProcessingDataError(processed.error)) {
+      return {
+        trend: 'unknown' as WowTrend,
+        line: processingWowErrorLine(processed.error, 'Weekly totals could not be loaded.'),
+      }
     }
     return wowNumeric(
       processed.total_tech_hours_processed,

@@ -5,6 +5,7 @@ import { Button, Offcanvas } from 'react-bootstrap'
 import CollapsibleAppSidebar from './CollapsibleAppSidebar'
 import { SidebarNav } from './SidebarNav'
 import MonthlyLocationHeaderSearch from './MonthlyLocationHeaderSearch'
+import AppRenderErrorBoundary from '../components/AppRenderErrorBoundary'
 
 export default function AppLayout() {
   const nav = useNavigate()
@@ -123,7 +124,9 @@ export default function AppLayout() {
               </div>
             }
           >
-            <Outlet />
+            <AppRenderErrorBoundary>
+              <Outlet />
+            </AppRenderErrorBoundary>
           </Suspense>
         </main>
       </div>

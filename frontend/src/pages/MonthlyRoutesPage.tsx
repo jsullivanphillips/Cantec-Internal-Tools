@@ -104,7 +104,7 @@ function LocationsPaginationBar({
 }) {
   return (
     <div
-      className="monthly-locations-pagination d-flex flex-wrap justify-content-between align-items-center gap-2 py-2"
+      className="monthly-locations-pagination d-flex flex-wrap justify-content-between align-items-center gap-2"
     >
       {loading ? (
         <span
@@ -115,7 +115,7 @@ function LocationsPaginationBar({
       ) : (
         <span className="small text-muted mb-0">{summary}</span>
       )}
-      <div className="d-flex gap-2">
+      <div className="monthly-locations-pagination__controls">
         <Button
           size="sm"
           variant="outline-secondary"
@@ -324,78 +324,7 @@ export default function MonthlyRoutesPage() {
     <div className="monthly-page monthly-routes-library-page d-flex flex-column gap-3">
       <Card className="app-surface-card monthly-filters-card monthly-hero-card">
         <Card.Body className="monthly-hero-card__body">
-          <div className="monthly-hero-card__row">
-            <h1 className={`${PROCESSING_PAGE_TITLE_COMPACT_CLASS} m-0`}>Monthly Locations</h1>
-            <div className="monthly-hero-card__controls">
-              <label className="monthly-hero-card__select-wrap">
-                <i className="bi bi-list-ul" aria-hidden />
-                <Form.Select
-                  size="sm"
-                  className="monthly-hero-card__select"
-                  value={pageSize}
-                  style={{ minWidth: '5.5rem' }}
-                  aria-label="Rows per page"
-                  onChange={(e) => {
-                    setPageSize(Number(e.target.value))
-                    setPage(1)
-                  }}
-                >
-                  {PAGE_SIZE_OPTIONS.map((size) => (
-                    <option key={size} value={size}>
-                      {size}
-                    </option>
-                  ))}
-                </Form.Select>
-              </label>
-              <Button
-                variant="primary"
-                size="sm"
-                className="fw-semibold text-nowrap"
-                onClick={() => setShowCreateLocationModal(true)}
-              >
-                <i className="bi bi-plus-lg me-1" aria-hidden />
-                Add Location
-              </Button>
-            </div>
-          </div>
-          <div className="monthly-hero-card__filters">
-            <div
-              className="run-review-filter monthly-hero-card__filter-pills"
-              role="group"
-              aria-label="Location filters"
-            >
-              <HeroFilterPill
-                id="monthly-routes-hide-cancelled"
-                icon="bi-eye-slash"
-                label="Hide cancelled"
-                checked={hideCancelledMbtLocations}
-                onChange={(checked) => {
-                  setHideCancelledMbtLocations(checked)
-                  setPage(1)
-                }}
-              />
-            </div>
-            <Button
-              type="button"
-              variant="outline-secondary"
-              size="sm"
-              className="d-inline-flex align-items-center gap-2 ms-sm-auto text-nowrap"
-              disabled={csvExporting}
-              onClick={() => void exportResultsAsCsv()}
-            >
-              {csvExporting ? (
-                <>
-                  <span className="spinner-border spinner-border-sm" role="status" aria-hidden />
-                  Exporting…
-                </>
-              ) : (
-                <>
-                  <i className="bi bi-download" aria-hidden />
-                  Export CSV
-                </>
-              )}
-            </Button>
-          </div>
+          <h1 className={`${PROCESSING_PAGE_TITLE_COMPACT_CLASS} m-0`}>Monthly Locations</h1>
         </Card.Body>
       </Card>
 
@@ -448,6 +377,72 @@ export default function MonthlyRoutesPage() {
                     setPage(1)
                   }}
                 />
+                <div
+                  className="run-review-filter monthly-locations-table-filters__toggle"
+                  role="group"
+                  aria-label="Location filters"
+                >
+                  <HeroFilterPill
+                    id="monthly-routes-hide-cancelled"
+                    icon="bi-eye-slash"
+                    label="Hide cancelled"
+                    checked={hideCancelledMbtLocations}
+                    onChange={(checked) => {
+                      setHideCancelledMbtLocations(checked)
+                      setPage(1)
+                    }}
+                  />
+                </div>
+                <div className="monthly-locations-table-filters__actions">
+                  <label className="monthly-locations-table-filters__page-size">
+                    <i className="bi bi-list-ul" aria-hidden />
+                    <Form.Select
+                      size="sm"
+                      className="monthly-locations-table-filters__page-size-select"
+                      value={pageSize}
+                      aria-label="Rows per page"
+                      onChange={(e) => {
+                        setPageSize(Number(e.target.value))
+                        setPage(1)
+                      }}
+                    >
+                      {PAGE_SIZE_OPTIONS.map((size) => (
+                        <option key={size} value={size}>
+                          {size}
+                        </option>
+                      ))}
+                    </Form.Select>
+                  </label>
+                  <Button
+                    type="button"
+                    variant="outline-secondary"
+                    size="sm"
+                    className="text-nowrap"
+                    disabled={csvExporting}
+                    onClick={() => void exportResultsAsCsv()}
+                  >
+                    {csvExporting ? (
+                      <>
+                        <span className="spinner-border spinner-border-sm" role="status" aria-hidden />
+                        Exporting…
+                      </>
+                    ) : (
+                      <>
+                        <i className="bi bi-download" aria-hidden />
+                        Export CSV
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    className="text-nowrap"
+                    onClick={() => setShowCreateLocationModal(true)}
+                  >
+                    <i className="bi bi-plus-lg" aria-hidden />
+                    Add Location
+                  </Button>
+                </div>
               </div>
             </div>
             <LocationsPaginationBar

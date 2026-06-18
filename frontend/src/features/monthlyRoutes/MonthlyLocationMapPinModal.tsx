@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Alert, Button, Form, Modal } from 'react-bootstrap'
 import { Link } from 'react-router-dom'
-import { apiJson } from '../../lib/apiClient'
+import { apiJson, apiErrorText } from '../../lib/apiClient'
 import type { GeocodeCandidate, LibraryLocation, LibraryLocationGeocodeResult } from './monthlyRoutesShared'
 
 export type MonthlyLocationMapPinModalProps = {
@@ -125,15 +125,18 @@ export default function MonthlyLocationMapPinModal({
         return
       }
       setAutoGeocodeMessage(
-        res.error ||
-          'Could not geocode this address automatically. Search for the correct pin below.'
+        apiErrorText(
+          res.error,
+          'Could not geocode this address automatically. Search for the correct pin below.',
+        ),
       )
     } catch (err) {
-      if (typeof err === 'object' && err && 'error' in err) {
-        setAutoGeocodeMessage(String((err as { error: unknown }).error))
-      } else {
-        setAutoGeocodeMessage('Unable to run automatic geocoding.')
-      }
+      setAutoGeocodeMessage(
+        apiErrorText(
+          typeof err === 'object' && err && 'error' in err ? (err as { error?: unknown }).error : err,
+          'Unable to run automatic geocoding.',
+        ),
+      )
     } finally {
       setAutoGeocoding(false)
     }

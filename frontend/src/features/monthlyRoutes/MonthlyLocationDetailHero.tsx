@@ -347,13 +347,13 @@ export default function MonthlyLocationDetailHero({
 
         <div className="monthly-location-detail-hero-columns">
           <HeroColumn label="Location">
+            <HeroContentLine>{streetLine}</HeroContentLine>
+            {localityLine ? <HeroContentLine>{localityLine}</HeroContentLine> : null}
             {buildingName ? (
               <HeroContentLine>
                 <span className="monthly-location-detail-hero-muted-label">Building</span> {buildingName}
               </HeroContentLine>
             ) : null}
-            <HeroContentLine>{streetLine}</HeroContentLine>
-            {localityLine ? <HeroContentLine>{localityLine}</HeroContentLine> : null}
             <HeroContentLine>
               <span className="monthly-location-detail-hero-muted-label">Annual month</span> {annualValue}
             </HeroContentLine>

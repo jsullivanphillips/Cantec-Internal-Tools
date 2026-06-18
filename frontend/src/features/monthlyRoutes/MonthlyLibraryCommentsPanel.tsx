@@ -1,7 +1,7 @@
 import type { Dispatch, FormEvent, SetStateAction } from 'react'
 import { useState } from 'react'
 import { Alert, Button, Form } from 'react-bootstrap'
-import { apiFetch } from '../../lib/apiClient'
+import { apiFetch, apiErrorText } from '../../lib/apiClient'
 import {
   formatMonthlyCommentTimestamp,
   monthlyCommentAuthorsMatch,
@@ -50,7 +50,7 @@ export default function MonthlyLibraryCommentsPanel({
       })
       const payload = await res.json().catch(() => ({}))
       if (!res.ok) {
-        setCommentError((payload as { error?: string }).error || 'Could not save comment.')
+        setCommentError(apiErrorText((payload as { error?: unknown }).error, 'Could not save comment.'))
         return
       }
       const row = (payload as { comment?: MonthlyLocationComment }).comment
@@ -92,7 +92,7 @@ export default function MonthlyLibraryCommentsPanel({
       })
       const payload = await res.json().catch(() => ({}))
       if (!res.ok) {
-        setCommentRowError((payload as { error?: string }).error || 'Could not update comment.')
+        setCommentRowError(apiErrorText((payload as { error?: unknown }).error, 'Could not update comment.'))
         return
       }
       const updated = (payload as { comment?: MonthlyLocationComment }).comment
@@ -116,7 +116,7 @@ export default function MonthlyLibraryCommentsPanel({
       })
       if (!res.ok) {
         const payload = await res.json().catch(() => ({}))
-        setCommentRowError((payload as { error?: string }).error || 'Could not delete comment.')
+        setCommentRowError(apiErrorText((payload as { error?: unknown }).error, 'Could not delete comment.'))
         return
       }
       setComments((prev) => prev.filter((x) => x.id !== commentId))

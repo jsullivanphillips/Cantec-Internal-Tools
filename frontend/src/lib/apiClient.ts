@@ -55,6 +55,35 @@ export function coerceUiText(value: unknown, fallback = ''): string {
   }
 }
 
+/**
+ * Safe text from an API `error` / `message` field for display in alerts.
+ * Empty objects (e.g. `{}`) fall back instead of rendering as React children.
+ */
+export function apiErrorText(value: unknown, fallback: string): string {
+  if (value == null || value === '') return fallback
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    const keys = Object.keys(value as object)
+    if (keys.length === 0) return fallback
+  }
+  const text = coerceUiText(value, fallback).trim()
+  return text || fallback
+}
+
+/** User-facing message from a thrown API error or unknown value. */
+export function formatThrownError(err: unknown, fallback: string): string {
+  if (err instanceof Error) {
+    const fromMessage = err.message.trim()
+    return fromMessage || fallback
+  }
+  if (typeof err === 'object' && err != null && 'error' in err) {
+    return apiErrorText((err as { error?: unknown }).error, fallback)
+  }
+  if (typeof err === 'object' && err != null && 'message' in err) {
+    return apiErrorText((err as { message?: unknown }).message, fallback)
+  }
+  return apiErrorText(err, fallback)
+}
+
 /** User-facing message from a non-2xx API response body and status code. */
 export function formatApiErrorMessage(
   status: number,
@@ -63,11 +92,13 @@ export function formatApiErrorMessage(
 ): string {
   if (body && typeof body === 'object' && body !== null) {
     const record = body as Record<string, unknown>
-    if (typeof record.error === 'string' && record.error.trim()) {
-      return record.error.trim()
+    if (record.error != null) {
+      const fromError = apiErrorText(record.error, '')
+      if (fromError) return fromError
     }
-    if (typeof record.message === 'string' && record.message.trim()) {
-      return record.message.trim()
+    if (record.message != null) {
+      const fromMessage = apiErrorText(record.message, '')
+      if (fromMessage) return fromMessage
     }
   }
   if (typeof body === 'string') {

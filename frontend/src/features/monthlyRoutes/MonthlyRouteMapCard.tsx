@@ -8,7 +8,7 @@ import mapboxgl from 'mapbox-gl'
 
 import 'mapbox-gl/dist/mapbox-gl.css'
 
-import { apiJson, isAbortError } from '../../lib/apiClient'
+import { apiJson, apiErrorText, isAbortError } from '../../lib/apiClient'
 
 import MonthlyLocationMapPinModal from './MonthlyLocationMapPinModal'
 
@@ -598,7 +598,7 @@ export default function MonthlyRouteMapCard({
 
               ? 'At least two stops need coordinates before a route can be calculated.'
 
-              : payload?.error || 'Mapbox could not calculate this route.'}
+              : apiErrorText(payload?.error, 'Mapbox could not calculate this route.')}
 
         </Alert>
 

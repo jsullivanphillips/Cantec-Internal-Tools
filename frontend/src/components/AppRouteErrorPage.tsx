@@ -3,41 +3,14 @@ import { Button, Card } from 'react-bootstrap'
 import { Link, isRouteErrorResponse, useLocation, useRouteError } from 'react-router-dom'
 import { isTechnicianPortalPath } from '../lib/apiClient'
 import { isChunkLoadError } from '../lib/chunkLoadError'
+import { parseReactMinifiedError } from '../lib/reactErrorDetails'
+import { formatRouteErrorTechnicalDetails } from './routeErrorTechnicalDetails'
 
 type ErrorCopy = {
   eyebrow: string
   title: string
   message: string
   statusLabel?: string
-}
-
-function stringifyUnknown(value: unknown): string {
-  if (value == null) return ''
-  if (typeof value === 'string') return value
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
-  try {
-    return JSON.stringify(value)
-  } catch {
-    return String(value)
-  }
-}
-
-function errorDetails(error: unknown): string {
-  if (isRouteErrorResponse(error)) {
-    return [
-      `Status: ${error.status}`,
-      error.statusText ? `Status text: ${error.statusText}` : '',
-      stringifyUnknown(error.data),
-    ]
-      .filter(Boolean)
-      .join('\n')
-  }
-
-  if (error instanceof Error) {
-    return [error.name, error.message, error.stack].filter(Boolean).join('\n')
-  }
-
-  return stringifyUnknown(error)
 }
 
 function isDynamicImportError(error: unknown): boolean {
@@ -51,6 +24,19 @@ function routeErrorCopy(error: unknown): ErrorCopy {
       title: 'Schedule Assist could not load this page',
       message:
         'This usually happens when the app was updated while your browser was open, or when the connection to Schedule Assist is temporarily unavailable. Reload the page once the site is back online.',
+    }
+  }
+
+  if (error instanceof Error) {
+    const reactError = parseReactMinifiedError(error.message)
+    if (reactError?.code === 31) {
+      return {
+        eyebrow: 'Render error',
+        title: 'Schedule Assist could not display this page',
+        message:
+          'The page tried to show a data value that was not plain text (often an empty object from an API error field). Reload the page. If this keeps happening on Monday Meeting, weekly processing totals may be unavailable.',
+        statusLabel: `React #${reactError.code}`,
+      }
     }
   }
 
@@ -87,7 +73,10 @@ export default function AppRouteErrorPage() {
   const location = useLocation()
   const [logoFailed, setLogoFailed] = useState(false)
   const copy = useMemo(() => routeErrorCopy(error), [error])
-  const details = useMemo(() => errorDetails(error), [error])
+  const details = useMemo(
+    () => formatRouteErrorTechnicalDetails(error, { pathname: location.pathname }),
+    [error, location.pathname],
+  )
   const onTechPortal = isTechnicianPortalPath(location.pathname)
   const showSignIn = !location.pathname.startsWith('/login') && !onTechPortal
   const signInPath = onTechPortal ? '/tech' : '/login'
@@ -139,7 +128,7 @@ export default function AppRouteErrorPage() {
                 </div>
 
                 {details ? (
-                  <details className="app-route-error__details">
+                  <details className="app-route-error__details" open>
                     <summary className="text-muted small">Technical details</summary>
                     <pre className="mt-2 mb-0 small">{details}</pre>
                   </details>

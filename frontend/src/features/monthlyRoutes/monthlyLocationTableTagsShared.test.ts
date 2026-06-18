@@ -26,4 +26,11 @@ describe('normalizeMonthlyLocationTableTags', () => {
   it('trims and drops empty values', () => {
     expect(normalizeMonthlyLocationTableTags([' Keys ', '', '  '])).toEqual(['Keys'])
   })
+
+  it('drops non-string tag values', () => {
+    expect(normalizeMonthlyLocationTableTags(['Keys', {}, null as unknown as string, 42 as unknown as string])).toEqual([
+      'Keys',
+      '42',
+    ])
+  })
 })

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { apiFetch, apiJson, isAbortError } from '../lib/apiClient'
+import { apiFetch, apiJson, apiErrorText, isAbortError } from '../lib/apiClient'
 import { Alert, Button, Card, Form, Pagination, Spinner, Table, Toast, ToastContainer } from 'react-bootstrap'
 
 type KeyDetail = {
@@ -96,7 +96,7 @@ export default function KeyDetailPage() {
       })
       if (!r.ok) {
         const j = await r.json().catch(() => ({}))
-        setErr((j as { error?: string }).error || 'Sign out failed')
+        setErr(apiErrorText((j as { error?: unknown }).error, 'Sign out failed'))
         return
       }
       setSignTo('')
@@ -121,7 +121,7 @@ export default function KeyDetailPage() {
       })
       if (!r.ok) {
         const j = await r.json().catch(() => ({}))
-        setErr((j as { error?: string }).error || 'Return failed')
+        setErr(apiErrorText((j as { error?: unknown }).error, 'Return failed'))
         return
       }
       setReturnedBy('')

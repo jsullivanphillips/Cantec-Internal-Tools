@@ -33,5 +33,12 @@ export function normalizeMonthlyLocationTableTags(tags: string[] | null | undefi
   if (!tags?.length) {
     return []
   }
-  return tags.map((tag) => tag.trim()).filter(Boolean)
+  return tags
+    .map((tag) => {
+      if (typeof tag === 'string') return tag.trim()
+      if (tag == null) return ''
+      if (typeof tag === 'number' || typeof tag === 'boolean') return String(tag)
+      return ''
+    })
+    .filter(Boolean)
 }
