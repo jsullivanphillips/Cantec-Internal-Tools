@@ -222,6 +222,17 @@ describe('portalStopVisualTone', () => {
     expect(portalStopVisualTone(legacy, '2026-05-01')).toBe('all_good')
     expect(portalNavStopStatusClass(legacy, '2026-05-01')).toBe('pw-mock-nav-stop--tested')
   })
+
+  it('skipped stops use yellow skip tone even when annual month matches the run', () => {
+    const annualSkipped = baseStop({
+      annual_month: 'July',
+      test_outcome: 'skipped',
+      skip_category: 'access_issues',
+    })
+    expect(portalStopVisualTone(annualSkipped, '2026-07-01')).toBe('skipped')
+    expect(portalNavStopStatusClass(annualSkipped, '2026-07-01')).toBe('pw-mock-nav-stop--skipped')
+    expect(portalHeaderBandClass(annualSkipped, '2026-07-01')).toBe('pw-mock-header--skipped')
+  })
 })
 
 describe('officeOutcomeSelectValue', () => {

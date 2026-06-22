@@ -15,7 +15,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Alert, Table } from 'react-bootstrap'
+import { Alert, Button, Table } from 'react-bootstrap'
 import { Link } from 'react-router-dom'
 import { annualMonthHint } from './annualMonthHint'
 import RunDetailsPrepareAnnualSchedulePill from './RunDetailsPrepareAnnualSchedulePill'
@@ -52,7 +52,11 @@ import type { RunDetailsStopPatchApi } from './useRunDetailsStopPatch'
 import { useMonitoringCompanies } from './useMonitoringCompanies'
 import { apiJson } from '../../lib/apiClient'
 import { locationDisplaySubline, locationPrimaryLabel } from './locationDisplay'
-import { officeWorksheetPrepTableCssVars } from './officeWorksheetTableShared'
+import { officeWorksheetPrepTableCssVars, stopIsOfficePrepSkipped } from './officeWorksheetTableShared'
+import OfficeSkipSiteModal, { type OfficeSkipSitePayload } from './OfficeSkipSiteModal'
+import { deletePrepSiteSkip, postPrepSiteSkip } from './prepSiteSkipApi'
+import { detailPatchFromWorksheetStop } from './runDetailsPrepPatch'
+import type { MonthlyRunDetailLocation, TechnicianWorksheetRun } from './monthlyRoutesShared'
 
 type PrepDragHandleProps = Pick<ReturnType<typeof useSortable>, 'attributes' | 'listeners'>
 
@@ -90,20 +94,35 @@ function PrepTableHeaderRow() {
   )
 }
 
-function prepRowClassName(annualDue: boolean, highlighted: boolean, onHold: boolean): string | undefined {
-  return (
-    [
-      'tw-office-table-row',
-      onHold
-        ? 'run-details-prep-office-row--on-hold'
-        : annualDue
-          ? 'run-details-prep-office-row--annual'
-          : '',
-      highlighted ? 'run-details-prep-office-row--attention' : '',
-    ]
-      .filter(Boolean)
-      .join(' ') || undefined
-  )
+type PrepRowTone = 'skipped' | 'annual-due' | 'on-hold' | 'attention'
+
+function prepRowTone(
+  stop: RunDetailPrepRow['location'],
+  annualDue: boolean,
+  annualThisMonth: boolean,
+  highlighted: boolean,
+  onHold: boolean,
+): PrepRowTone | null {
+  if (stopIsOfficePrepSkipped(stop)) return 'skipped'
+  if (highlighted) return 'attention'
+  if (annualDue || annualThisMonth) return 'annual-due'
+  if (onHold) return 'on-hold'
+  return null
+}
+
+function prepRowClassName(tone: PrepRowTone | null): string | undefined {
+  if (!tone) return 'tw-office-table-row'
+  const modifier =
+    tone === 'skipped'
+      ? 'run-details-prep-office-row--skipped'
+      : tone === 'annual-due'
+        ? 'run-details-prep-office-row--annual'
+        : tone === 'on-hold'
+          ? 'run-details-prep-office-row--on-hold'
+          : tone === 'attention'
+            ? 'run-details-prep-office-row--attention'
+            : ''
+  return ['tw-office-table-row', modifier].filter(Boolean).join(' ')
 }
 
 function PrepStopOrderCell({
@@ -197,6 +216,9 @@ export default function RunDetailsPrepareTable({
   onDeficiencyUpdated,
   prepEditsDisabled = false,
   readyEditLocked = false,
+  draftPrepSkipEnabled = false,
+  onPrepSkipPatched,
+  onRunPatched,
   reorderDisabled = false,
   onRouteOrderChanged,
   annualScheduleStatus = 'idle',
@@ -214,6 +236,10 @@ export default function RunDetailsPrepareTable({
   prepEditsDisabled?: boolean
   /** Block edits while run is prepared (Ready) until returned to preparation. */
   readyEditLocked?: boolean
+  /** Draft prep only: show Skip / Unskip on active sites. */
+  draftPrepSkipEnabled?: boolean
+  onPrepSkipPatched?: (locationId: number, patch: Partial<MonthlyRunDetailLocation>) => void
+  onRunPatched?: (run: TechnicianWorksheetRun) => void
   reorderDisabled?: boolean
   onRouteOrderChanged?: (orderedLocationIds: number[]) => void | Promise<void>
   annualScheduleStatus?: AnnualScheduleCheckStatus
@@ -224,6 +250,13 @@ export default function RunDetailsPrepareTable({
   const [optimisticRows, setOptimisticRows] = useState<RunDetailPrepRow[] | null>(null)
   const [orderSaving, setOrderSaving] = useState(false)
   const [orderError, setOrderError] = useState<string | null>(null)
+  const [skipModalLocation, setSkipModalLocation] = useState<{
+    locationId: number
+    label: string
+  } | null>(null)
+  const [skipSubmitting, setSkipSubmitting] = useState(false)
+  const [skipError, setSkipError] = useState<string | null>(null)
+  const [unskipBusyLocationId, setUnskipBusyLocationId] = useState<number | null>(null)
   const { patchStop: commitStopPatch, patchStopForRow, error, isFieldSaving } = stopPatch
   const { companies, loading: companiesLoading, refresh, appendCompany } = useMonitoringCompanies()
 
@@ -323,6 +356,48 @@ export default function RunDetailsPrepareTable({
 
   const fieldKey = (locationId: number, suffix: string) => `${locationId}-${suffix}`
 
+  const applyPrepSkipPatch = useCallback(
+    (locationId: number, stop: Parameters<typeof detailPatchFromWorksheetStop>[0]) => {
+      onPrepSkipPatched?.(locationId, detailPatchFromWorksheetStop(stop))
+    },
+    [onPrepSkipPatched],
+  )
+
+  const handleConfirmPrepSkip = useCallback(
+    async (payload: OfficeSkipSitePayload) => {
+      if (!skipModalLocation) return
+      setSkipSubmitting(true)
+      setSkipError(null)
+      try {
+        const body = await postPrepSiteSkip(routeId, skipModalLocation.locationId, monthDate, payload)
+        applyPrepSkipPatch(skipModalLocation.locationId, body.stop)
+        if (body.run) onRunPatched?.(body.run)
+        setSkipModalLocation(null)
+      } catch (e) {
+        setSkipError(e instanceof Error ? e.message : 'Could not skip this site.')
+      } finally {
+        setSkipSubmitting(false)
+      }
+    },
+    [applyPrepSkipPatch, monthDate, onRunPatched, routeId, skipModalLocation],
+  )
+
+  const handleUnskipSite = useCallback(
+    async (locationId: number) => {
+      setUnskipBusyLocationId(locationId)
+      setSkipError(null)
+      try {
+        const body = await deletePrepSiteSkip(routeId, locationId, monthDate)
+        applyPrepSkipPatch(locationId, body.stop)
+      } catch (e) {
+        setSkipError(e instanceof Error ? e.message : 'Could not unskip this site.')
+      } finally {
+        setUnskipBusyLocationId(null)
+      }
+    },
+    [applyPrepSkipPatch, monthDate, routeId],
+  )
+
   const renderPrepRow = useCallback(
     (
       row: RunDetailPrepRow,
@@ -370,6 +445,12 @@ export default function RunDetailsPrepareTable({
       const highlighted = officeComment.length > 0
       const onHold = isOnHoldMonthlyLocation(stop)
       const annualThisMonth = isAnnualForMonth(stop.annual_month, monthDate)
+      const rowTone = prepRowTone(stop, annualDue, annualThisMonth, highlighted, onHold)
+      const prepSkipped = stopIsOfficePrepSkipped(stop)
+      const isActiveSite =
+        (stop.status_normalized || 'active').trim().toLowerCase() === 'active'
+      const showSkipControl =
+        draftPrepSkipEnabled && options.isPrimaryForLocation && isActiveSite && !prepEditsDisabled
       const fieldLayout = PREP_FIELD_LAYOUT
 
       return (
@@ -377,7 +458,7 @@ export default function RunDetailsPrepareTable({
           key={sid}
           ref={options.setNodeRef}
           style={options.style}
-          className={prepRowClassName(annualDue, highlighted, onHold)}
+          className={prepRowClassName(rowTone)}
         >
           <td className="tw-office-sticky tw-office-sticky-order tw-office-sticky-order--neutral">
             <PrepStopOrderCell
@@ -390,12 +471,35 @@ export default function RunDetailsPrepareTable({
           </td>
           <td className="tw-office-sticky tw-office-sticky-address">
             <div className="tw-office-address-cell">
-              <Link to={`/monthlies/locations/${stop.location_id}`} className="tw-office-location-link">
-                {primaryLabel}
-              </Link>
-              {addressSubline ? (
-                <div className="tw-office-address-subline text-muted small">{addressSubline}</div>
-              ) : null}
+              <div className="run-details-prep-office-address-head">
+                <div className="run-details-prep-office-address-main">
+                  <Link to={`/monthlies/locations/${stop.location_id}`} className="tw-office-location-link">
+                    {primaryLabel}
+                  </Link>
+                  {addressSubline ? (
+                    <div className="tw-office-address-subline text-muted small">{addressSubline}</div>
+                  ) : null}
+                </div>
+                {showSkipControl ? (
+                  <Button
+                    type="button"
+                    variant="outline-secondary"
+                    size="sm"
+                    className="run-details-prep-skip-btn"
+                    disabled={skipSubmitting || unskipBusyLocationId === sid}
+                    onClick={() => {
+                      if (prepSkipped) {
+                        void handleUnskipSite(sid)
+                        return
+                      }
+                      setSkipError(null)
+                      setSkipModalLocation({ locationId: sid, label: primaryLabel })
+                    }}
+                  >
+                    {unskipBusyLocationId === sid ? '…' : prepSkipped ? 'Unskip' : 'Skip'}
+                  </Button>
+                ) : null}
+              </div>
               {options.isPrimaryForLocation && annualThisMonth ? (
                 <RunDetailsPrepareAnnualPill />
               ) : null}
@@ -688,6 +792,8 @@ export default function RunDetailsPrepareTable({
       companies,
       companiesLoading,
       isFieldSaving,
+      draftPrepSkipEnabled,
+      handleUnskipSite,
       monthDate,
       onAnnualScheduleRefresh,
       onDeficiencyUpdated,
@@ -697,6 +803,8 @@ export default function RunDetailsPrepareTable({
       readyEditLocked,
       refresh,
       routeId,
+      skipSubmitting,
+      unskipBusyLocationId,
     ],
   )
 
@@ -754,7 +862,7 @@ export default function RunDetailsPrepareTable({
 
   return (
     <div className="run-details-history-section run-details-prep-section">
-      {(prepEditsDisabled || orderError || error) && (
+      {(prepEditsDisabled || orderError || error || skipError) && (
         <div className="run-details-prep-section__alerts">
           {prepEditsDisabled ? (
             <Alert variant="warning" className="py-2 small mb-2">
@@ -771,6 +879,11 @@ export default function RunDetailsPrepareTable({
               {error}
             </Alert>
           ) : null}
+          {skipError && !skipModalLocation ? (
+            <Alert variant="danger" className="py-2 small mb-2">
+              {skipError}
+            </Alert>
+          ) : null}
         </div>
       )}
       <div className="run-details-history-shell">
@@ -782,6 +895,19 @@ export default function RunDetailsPrepareTable({
           tableShell
         )}
       </div>
+      <OfficeSkipSiteModal
+        show={skipModalLocation != null}
+        monthIso={monthDate}
+        locationLabel={skipModalLocation?.label ?? ''}
+        submitting={skipSubmitting}
+        error={skipError}
+        onClose={() => {
+          if (skipSubmitting) return
+          setSkipModalLocation(null)
+          setSkipError(null)
+        }}
+        onConfirm={(payload) => void handleConfirmPrepSkip(payload)}
+      />
     </div>
   )
 }

@@ -107,6 +107,9 @@ export default function RunDetailsLocationReviewList({
   paperworkViewMode,
   prepEditsDisabled = false,
   readyEditLocked = false,
+  draftPrepSkipEnabled = false,
+  onPrepSkipPatched,
+  onRunPatchedFromPrepSkip,
   outcomeCounts,
   onRouteOrderChanged,
   annualScheduleStatus = 'idle',
@@ -139,6 +142,10 @@ export default function RunDetailsLocationReviewList({
   prepEditsDisabled?: boolean
   /** Block prep edits while run is prepared (Ready) until returned to preparation. */
   readyEditLocked?: boolean
+  /** Draft prep only: allow Skip / Unskip on active sites. */
+  draftPrepSkipEnabled?: boolean
+  onPrepSkipPatched?: (locationId: number, patch: Partial<MonthlyRunDetailLocation>) => void
+  onRunPatchedFromPrepSkip?: (run: TechnicianWorksheetRun) => void
   outcomeCounts?: RunReviewOutcomeCounts
   onRouteOrderChanged?: (orderedLocationIds: number[]) => void | Promise<void>
   annualScheduleStatus?: AnnualScheduleCheckStatus
@@ -278,6 +285,9 @@ export default function RunDetailsLocationReviewList({
           onDeficiencyUpdated={onDeficiencyUpdated}
           prepEditsDisabled={prepEditsDisabled}
           readyEditLocked={readyEditLocked}
+          draftPrepSkipEnabled={draftPrepSkipEnabled}
+          onPrepSkipPatched={onPrepSkipPatched}
+          onRunPatched={onRunPatchedFromPrepSkip}
           onRouteOrderChanged={onRouteOrderChanged}
           annualScheduleStatus={annualScheduleStatus}
           annualScheduleByLocationId={annualScheduleByLocationId}

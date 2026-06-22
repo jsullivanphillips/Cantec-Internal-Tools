@@ -149,6 +149,14 @@ export function runInOfficeReadyPhase(run: TechnicianWorksheetRun | null | undef
   return canOfficeReturnRunToPrep(run)
 }
 
+/** Draft preparation only — not marked prepared (Ready) and field work not started. */
+export function runInOfficeDraftPrepPhase(run: TechnicianWorksheetRun | null | undefined): boolean {
+  if (run && runExplicitlyCompleted(run)) return false
+  if (run && hasTs(run.started_at)) return false
+  if (run && hasTs(run.prepared_at)) return false
+  return true
+}
+
 export const PREP_READY_EDIT_LOCKED_MESSAGE =
   'This run is marked prepared. Use Return to prep in the Actions menu to edit paperwork.'
 

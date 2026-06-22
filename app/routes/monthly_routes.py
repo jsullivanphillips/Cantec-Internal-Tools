@@ -5620,6 +5620,136 @@ def post_monthly_route_run_review_complete(route_id: int):
     return jsonify({"ok": True, "run": _serialize_run(run)})
 
 
+def _prep_skip_stop_response(
+    route_id: int,
+    month_first: date,
+    loc,
+    mlm,
+    *,
+    run=None,
+) -> dict[str, object]:
+    from app.monthly.worksheet_locations import (
+        resolve_worksheet_stop_number,
+        serialize_worksheet_stop_office_prep_patch,
+    )
+
+    stop_num = resolve_worksheet_stop_number(route_id, month_first, int(loc.id))
+    stop_payload = serialize_worksheet_stop_office_prep_patch(
+        loc,
+        mlm,
+        month_first=month_first,
+        stop_number=stop_num,
+    )
+    body: dict[str, object] = {"ok": True, "stop": stop_payload}
+    if run is not None:
+        body["run"] = _serialize_run(run)
+    return body
+
+
+@monthly_routes_bp.post(
+    "/api/monthly_routes/routes/<int:route_id>/worksheet/locations/<int:location_id>/prep_skip"
+)
+@monthly_routes_bp.post(
+    "/api/monthly_routes/routes/<int:route_id>/worksheet/stops/<int:location_id>/prep_skip"
+)
+def post_worksheet_location_prep_skip(route_id: int, location_id: int):
+    """Office draft prep: mark one active site skipped with category, reason, and office job comment."""
+    if not session.get("authenticated"):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    month_first, err = _parse_portal_workflow_month()
+    if err is not None:
+        return err
+    if _get_monthly_route(route_id) is None:
+        return jsonify({"error": "Route not found"}), 404
+
+    blocked = _reject_if_future_month_prep_blocked(route_id, month_first)
+    if blocked is not None:
+        return blocked
+
+    run = MonthlyRouteRun.query.filter_by(
+        monthly_route_id=route_id,
+        month_date=month_first,
+    ).one_or_none()
+
+    data = request.get_json(silent=True) or {}
+    skip_category = data.get("skip_category")
+    skip_note = data.get("skip_note") or data.get("skip_reason")
+
+    from app.monthly.prep_site_skip import PrepSiteSkipError, office_prep_skip_site
+
+    try:
+        mlm, loc, run = office_prep_skip_site(
+            route_id,
+            location_id,
+            month_first,
+            skip_category=skip_category,
+            skip_note=skip_note,
+            run=run,
+        )
+    except PrepSiteSkipError as exc:
+        if exc.code == "location_not_found":
+            status = 404
+        elif exc.code in {"skip_category_required", "skip_reason_required"}:
+            status = 400
+        else:
+            status = 409
+        return jsonify({"error": exc.message, "code": exc.code}), status
+
+    db.session.commit()
+    return jsonify(
+        _prep_skip_stop_response(route_id, month_first, loc, mlm, run=run)
+    )
+
+
+@monthly_routes_bp.delete(
+    "/api/monthly_routes/routes/<int:route_id>/worksheet/locations/<int:location_id>/prep_skip"
+)
+@monthly_routes_bp.delete(
+    "/api/monthly_routes/routes/<int:route_id>/worksheet/stops/<int:location_id>/prep_skip"
+)
+def delete_worksheet_location_prep_skip(route_id: int, location_id: int):
+    """Office draft prep: clear a prep skip and office job comment from one site."""
+    if not session.get("authenticated"):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    month_first, err = _parse_portal_workflow_month()
+    if err is not None:
+        return err
+    if _get_monthly_route(route_id) is None:
+        return jsonify({"error": "Route not found"}), 404
+
+    blocked = _reject_if_future_month_prep_blocked(route_id, month_first)
+    if blocked is not None:
+        return blocked
+
+    run = MonthlyRouteRun.query.filter_by(
+        monthly_route_id=route_id,
+        month_date=month_first,
+    ).one_or_none()
+
+    from app.monthly.prep_site_skip import PrepSiteSkipError, office_prep_unskip_site
+
+    try:
+        mlm, loc = office_prep_unskip_site(
+            route_id,
+            location_id,
+            month_first,
+            run=run,
+        )
+    except PrepSiteSkipError as exc:
+        if exc.code == "location_not_found":
+            status = 404
+        elif exc.code == "not_skipped":
+            status = 409
+        else:
+            status = 409
+        return jsonify({"error": exc.message, "code": exc.code}), status
+
+    db.session.commit()
+    return jsonify(_prep_skip_stop_response(route_id, month_first, loc, mlm))
+
+
 @monthly_routes_bp.post("/api/monthly_routes/routes/<int:route_id>/runs/skip")
 def post_monthly_route_run_skip(route_id: int):
     """Office: skip a route-month — all library sites skipped, do not bill, run closed."""

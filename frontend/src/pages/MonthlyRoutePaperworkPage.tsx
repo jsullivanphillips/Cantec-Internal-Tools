@@ -42,6 +42,7 @@ import { useAnnualScheduleCheck } from '../features/monthlyRoutes/useAnnualSched
 import {
   canOfficeCompleteRun,
   canOfficeReturnRunToPrep,
+  runInOfficeDraftPrepPhase,
   runInOfficePrepPhase,
   runIsPrepared,
 } from '../features/monthlyRoutes/runWorkflowShared'
@@ -880,6 +881,10 @@ export default function MonthlyRoutePaperworkPage() {
 
   const routeTo = `/monthlies/routes/${idNum}`
 
+  const onRunPatchedFromPrepSkip = useCallback((patchedRun: TechnicianWorksheetRun) => {
+    setPayload((prev) => (prev ? { ...prev, run: patchedRun } : prev))
+  }, [])
+
   const locations = payload?.locations ?? []
   const prepPhase = paperworkViewMode === 'preparation'
 
@@ -931,6 +936,8 @@ export default function MonthlyRoutePaperworkPage() {
     !runCompleted && (run == null || !runIsPrepared(run)) && !futurePrepBlocked
   const showReturnToPrep = run != null && canOfficeReturnRunToPrep(run)
   const readyPrepLocked = showReturnToPrep
+  const draftPrepSkipEnabled =
+    prepPhase && runInOfficeDraftPrepPhase(run) && !runCompleted && !futurePrepBlocked
   const showCompleteJob = run != null && !runCompleted && canOfficeCompleteRun(run)
   const showReopenJob = run != null && runCompleted
   const showResetRun = run != null && !runCompleted
@@ -1216,6 +1223,9 @@ export default function MonthlyRoutePaperworkPage() {
             paperworkViewMode={paperworkViewMode}
             prepEditsDisabled={futurePrepBlocked}
             readyEditLocked={readyPrepLocked}
+            draftPrepSkipEnabled={draftPrepSkipEnabled}
+            onPrepSkipPatched={onStopPatched}
+            onRunPatchedFromPrepSkip={onRunPatchedFromPrepSkip}
             onRouteOrderChanged={(orderedLocationIds) => void onRouteOrderChanged(orderedLocationIds)}
             annualScheduleStatus={annualScheduleStatus}
             annualScheduleByLocationId={annualScheduleByLocationId}

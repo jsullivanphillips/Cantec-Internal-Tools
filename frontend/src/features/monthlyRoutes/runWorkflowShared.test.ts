@@ -7,6 +7,7 @@ import {
   canOfficeReturnRunToPrep,
   portalShowStartRun,
   runDetailsOfficeReviewReadOnly,
+  runInOfficeDraftPrepPhase,
   runInOfficeReadyPhase,
 } from './runWorkflowShared'
 
@@ -86,6 +87,26 @@ describe('portalShowStartRun', () => {
         runStarted: false,
         isCurrentMonth: false,
       }),
+    ).toBe(false)
+  })
+})
+
+describe('runInOfficeDraftPrepPhase', () => {
+  it('is true only before prepare and field start', () => {
+    expect(
+      runInOfficeDraftPrepPhase(
+        run({ prepared_at: null, started_at: null, field_ended_at: null }),
+      ),
+    ).toBe(true)
+    expect(
+      runInOfficeDraftPrepPhase(
+        run({ prepared_at: `${MONTH}T00:00:00Z`, started_at: null }),
+      ),
+    ).toBe(false)
+    expect(
+      runInOfficeDraftPrepPhase(
+        run({ prepared_at: null, started_at: `${MONTH}T01:00:00Z` }),
+      ),
     ).toBe(false)
   })
 })

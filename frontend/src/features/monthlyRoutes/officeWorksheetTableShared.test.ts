@@ -3,6 +3,9 @@ import {
   groupOfficeWorksheetStops,
   groupOfficeWorksheetStopsInSubmissionOrder,
   officeStopStatus,
+  skippedStopDisplayTone,
+  stopHasSkippedOutcome,
+  stopIsOfficePrepSkipped,
   worksheetStopIsAnnualSkip,
 } from './officeWorksheetTableShared'
 import type { TechnicianWorksheetLocation } from './monthlyRoutesShared'
@@ -80,6 +83,25 @@ describe('groupOfficeWorksheetStopsInSubmissionOrder', () => {
   })
 })
 
+describe('stopIsOfficePrepSkipped', () => {
+  it('is false for legacy sheet result_status without test_outcome', () => {
+    const ws = stop(1, 10, 1)
+    ws.annual_month = 'July'
+    ws.month_date = '2026-07-01'
+    ws.result_status = 'skipped'
+    ws.skip_reason = 'annual'
+    expect(stopIsOfficePrepSkipped(ws)).toBe(false)
+    expect(stopHasSkippedOutcome(ws)).toBe(true)
+  })
+
+  it('is true when office prep skip set test_outcome', () => {
+    const ws = stop(1, 10, 1)
+    ws.test_outcome = 'skipped'
+    ws.skip_category = 'access_issues'
+    expect(stopIsOfficePrepSkipped(ws)).toBe(true)
+  })
+})
+
 describe('worksheetStopIsAnnualSkip', () => {
   it('infers annual from site month when skip has no explicit reason', () => {
     const ws = stop(1, 10, 1)
@@ -87,7 +109,8 @@ describe('worksheetStopIsAnnualSkip', () => {
     ws.month_date = '2026-06-01'
     ws.result_status = 'skipped'
     expect(worksheetStopIsAnnualSkip(ws, '2026-06-01')).toBe(true)
-    expect(officeStopStatus(ws, '2026-06-01')).toBe('annual')
+    expect(skippedStopDisplayTone(ws, '2026-06-01')).toBe('skipped')
+    expect(officeStopStatus(ws, '2026-06-01')).toBe('skipped')
   })
 
   it('honors explicit non-annual skip reason over matching annual month', () => {

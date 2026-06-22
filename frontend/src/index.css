@@ -17484,6 +17484,20 @@ body {
   min-height: 3.6rem;
 }
 
+.portal-worksheet-mockup .pw-mock-field-row--office-attention .pw-mock-field-label {
+  background: #ede4ff;
+  color: #6b21a8;
+  border-bottom-color: #e9d5ff;
+}
+
+.portal-worksheet-mockup .pw-mock-field-row--office-attention .pw-mock-field-value {
+  background: #f5f0ff;
+}
+
+.portal-worksheet-mockup .pw-mock-field-row--office-attention.pw-mock-field-row--multiline .pw-mock-field-label {
+  border-right: 0;
+}
+
 .pw-mock-field-label {
   display: flex;
   flex-direction: column;

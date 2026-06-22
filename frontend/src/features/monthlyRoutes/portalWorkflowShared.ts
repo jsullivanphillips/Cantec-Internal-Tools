@@ -479,9 +479,7 @@ export function portalStopVisualTone(
 ): PortalStopVisualTone {
   if (portalStopHasTestOutcome(stop)) {
     const outcome = norm(stop.test_outcome).toLowerCase()
-    if (outcome === 'skipped') {
-      return worksheetLocationSkipIsAnnual(stop) ? 'annual' : 'skipped'
-    }
+    if (outcome === 'skipped') return 'skipped'
     if (outcome === 'passed_with_problems') return 'passed_with_problems'
     if (outcome === 'failed') return 'failed'
     return 'all_good'
@@ -489,7 +487,7 @@ export function portalStopVisualTone(
   if (stop.is_legacy_outcome) {
     const rs = norm(stop.result_status).toLowerCase()
     if (rs === 'tested') return 'all_good'
-    if (rs === 'skipped') return worksheetLocationSkipIsAnnual(stop) ? 'annual' : 'skipped'
+    if (rs === 'skipped') return 'skipped'
   }
   if (worksheetLocationIsOpenClockIn(stop)) return 'in_progress'
   if (isAnnualForMonth(stop.annual_month, runMonthIso)) return 'annual'

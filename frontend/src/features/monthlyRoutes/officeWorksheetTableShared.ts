@@ -82,6 +82,37 @@ export function stopExplicitSkipReasonBlocksAnnualInference(
   return true
 }
 
+export function stopHasSkippedOutcome(
+  stop: Pick<TechnicianWorksheetLocation, 'test_outcome' | 'result_status'>,
+): boolean {
+  const rs = (stop.result_status || '').trim().toLowerCase()
+  const outcome = (stop.test_outcome || '').trim().toLowerCase()
+  return rs === 'skipped' || outcome === 'skipped'
+}
+
+/** Draft prep Skip/Unskip and yellow row — office prep skip only (not legacy sheet result_status). */
+export function stopIsOfficePrepSkipped(
+  stop: Pick<TechnicianWorksheetLocation, 'test_outcome'>,
+): boolean {
+  return (stop.test_outcome || '').trim().toLowerCase() === 'skipped'
+}
+
+type SkippedDisplayToneStop = Pick<
+  TechnicianWorksheetLocation,
+  'test_outcome' | 'result_status' | 'annual_month' | 'skip_category'
+> & {
+  skip_reason?: string | null
+}
+
+/** Row/nav tone for skipped stops (yellow). Annual-month styling does not override skip. */
+export function skippedStopDisplayTone(
+  stop: SkippedDisplayToneStop,
+  _monthDate: string,
+): 'skipped' | null {
+  if (!stopHasSkippedOutcome(stop)) return null
+  return 'skipped'
+}
+
 export function worksheetStopIsAnnualSkip(stop: TechnicianWorksheetLocation, monthDate: string): boolean {
   const rs = (stop.result_status || '').trim().toLowerCase()
   const outcome = (stop.test_outcome || '').trim().toLowerCase()
@@ -100,7 +131,7 @@ export function officeStopStatus(stop: TechnicianWorksheetLocation, monthDate: s
   const outcome = (stop.test_outcome || '').trim().toLowerCase()
   if (rs === 'tested') return 'tested'
   if (rs === 'skipped' || outcome === 'skipped') {
-    return worksheetStopIsAnnualSkip(stop, monthDate) ? 'annual' : 'skipped'
+    return skippedStopDisplayTone(stop, monthDate) ?? 'skipped'
   }
   if (isAnnualForMonth(stop.annual_month, monthDate)) return 'annual'
   if (worksheetLocationOnHoldPendingOutcome(stop)) return 'on_hold'

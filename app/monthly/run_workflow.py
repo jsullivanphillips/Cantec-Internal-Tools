@@ -83,6 +83,17 @@ def run_in_office_prep_phase(run: MonthlyRouteRun | None) -> bool:
     return True
 
 
+def run_in_office_draft_prep_phase(run: MonthlyRouteRun | None) -> bool:
+    """Draft preparation only — not marked prepared (Ready) and field work not started."""
+    if run is not None and run_explicitly_completed(run):
+        return False
+    if run is not None and run.started_at is not None:
+        return False
+    if run is not None and run.prepared_at is not None:
+        return False
+    return True
+
+
 def portal_may_edit_run(run: MonthlyRouteRun | None) -> bool:
     """Portal stop/clock/deficiency edits while field work is active."""
     if run is None or run_explicitly_completed(run):

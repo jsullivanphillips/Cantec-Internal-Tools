@@ -83,6 +83,8 @@ export default function PortalEditableFieldRow({
   const showEditActionButtons = inlineEditActions ?? !richText
   const displayEmpty = richText ? richTextIsEmpty(value) : !value.trim()
   const display = monthSelect ? normalizedValue || '—' : displayEmpty ? '—' : value.trim()
+  const officeCommentHighlight = fieldKey === 'office_job_comment' && !displayEmpty
+  const rowHighlightClass = officeCommentHighlight ? ' pw-mock-field-row--office-attention' : ''
 
   const monthSelectChoices = useMemo(() => {
     if (!monthSelect) return []
@@ -256,7 +258,7 @@ export default function PortalEditableFieldRow({
       <div
         className={`pw-mock-field-row${multiline ? ' pw-mock-field-row--multiline' : ''}${
           readOnly ? '' : ' pw-mock-field-row--editable'
-        }`}
+        }${rowHighlightClass}`}
         data-portal-field-key={fieldKey}
         role={readOnly ? undefined : 'button'}
         tabIndex={readOnly ? undefined : 0}
@@ -282,7 +284,7 @@ export default function PortalEditableFieldRow({
       ref={rowRef}
       className={`pw-mock-field-row pw-mock-field-row--editing${
         multiline ? ' pw-mock-field-row--multiline' : ''
-      }${richText ? ' pw-mock-field-row--rich-text' : ''}`}
+      }${richText ? ' pw-mock-field-row--rich-text' : ''}${rowHighlightClass}`}
       data-portal-field-key={fieldKey}
     >
       <label className="pw-mock-field-label" htmlFor={inputId}>

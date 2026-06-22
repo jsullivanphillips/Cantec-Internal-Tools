@@ -7,11 +7,13 @@ from app.db_models import MonthlyLocationMonth
 HISTORY_SOURCE_MASTER_SHEET = "master_sheet"
 HISTORY_SOURCE_ROUTE_CSV = "route_csv"
 HISTORY_SOURCE_TECHNICIAN_PORTAL = "technician_portal"
+HISTORY_SOURCE_OFFICE_PREP = "office_prep"
 
 PROTECTED_HISTORY_SOURCES = frozenset(
     {
         HISTORY_SOURCE_ROUTE_CSV,
         HISTORY_SOURCE_TECHNICIAN_PORTAL,
+        HISTORY_SOURCE_OFFICE_PREP,
     }
 )
 

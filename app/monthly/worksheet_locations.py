@@ -1528,6 +1528,11 @@ def serialize_worksheet_stop_office_prep_patch(
         "office_job_comment": mlm.office_job_comment,
         "office_attention": bool(mlm.office_attention),
         "prior_month_out_of_order_dismissed": bool(mlm.prior_month_out_of_order_dismissed),
+        "result_status": mlm.result_status,
+        "test_outcome": mlm.test_outcome,
+        "skip_reason": mlm.skip_reason,
+        "skip_category": mlm.skip_category,
+        "skip_note": mlm.skip_note,
         "stop_number": int(stop_number),
     }
     return _enrich_location_display_fields(stop, loc)
