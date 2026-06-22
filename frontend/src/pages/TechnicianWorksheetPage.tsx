@@ -221,7 +221,15 @@ function worksheetGridIsTouchLikePointer(pointerType: string): boolean {
 }
 
 function worksheetRowIsAnnualSkip(row: TechnicianWorksheetRow, monthDate: string): boolean {
-  return worksheetStopIsAnnualSkip(row, monthDate)
+  const rs = (row.result_status || '').trim().toLowerCase()
+  const skipped = rs === 'skipped'
+  if (skipped) {
+    const reason = (row.skip_reason || '').trim().toLowerCase()
+    if (reason === 'annual' || reason === 'annual_booked') return true
+    if (reason && reason !== 'sheet_value') return false
+    return isAnnualForMonth(row.annual_month, monthDate)
+  }
+  return isAnnualForMonth(row.annual_month, monthDate)
 }
 
 function worksheetRowStatusClass(row: TechnicianWorksheetRow, monthDate: string): string | undefined {

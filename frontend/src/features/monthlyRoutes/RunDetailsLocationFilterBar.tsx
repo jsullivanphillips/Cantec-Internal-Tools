@@ -21,6 +21,7 @@ const FILTER_LABELS: Record<RunLocationReviewFilter, string> = {
   submitted: 'Submitted',
   needs_attention: 'Needs attention',
   billing_unset: 'Billing unset',
+  no_test_result: 'No test result',
   all_good: 'All good',
   passed_with_problems: 'Passed w/ problems',
   failed: 'Failed',
