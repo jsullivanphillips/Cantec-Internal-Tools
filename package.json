@@ -2,7 +2,7 @@
   "name": "schedule-assist",
   "private": true,
   "engines": {
-    "node": "20.x"
+    "node": "24.x"
   },
   "scripts": {
     "heroku-postbuild": "cd frontend && npm install --no-audit --no-fund --include=dev && npm run build"
