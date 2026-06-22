@@ -55,7 +55,11 @@ def portal_run_is_read_only(run: MonthlyRouteRun | None) -> bool:
     if run is None:
         return False
     source = (run.source or "").strip().lower()
-    if source in {"csv_import", "office_skip"}:
+    if source == "csv_import":
+        from app.monthly.run_workflow import run_explicitly_completed
+
+        return run_explicitly_completed(run) or run.field_ended_at is not None
+    if source == "office_skip":
         return True
     return False
 

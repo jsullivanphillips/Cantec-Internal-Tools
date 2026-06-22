@@ -1,28 +1,33 @@
 /* Exact history — compact enterprise worksheet snapshot on Paperwork */
 
-/* Wider table: bleed into app-main padding and drop the 1480px cap on exact history. */
-.app-main.app-main--monthly-route-detail:has(.monthly-paperwork-page--exact-history) {
+/* Wider table: bleed into app-main padding and drop the 1480px cap on exact history / prep. */
+.app-main.app-main--monthly-route-detail:has(.monthly-paperwork-page--exact-history),
+.app-main.app-main--monthly-route-detail:has(.monthly-paperwork-page--preparation) {
   padding-left: 0.5rem;
   padding-right: 0.5rem;
 }
 
-.monthly-paperwork-page--exact-history {
+.monthly-paperwork-page--exact-history,
+.monthly-paperwork-page--preparation {
   padding-left: 0.25rem;
   padding-right: 0.25rem;
   padding-bottom: 0.75rem;
 }
 
-.monthly-paperwork-page--exact-history .monthly-route-detail-container {
+.monthly-paperwork-page--exact-history .monthly-route-detail-container,
+.monthly-paperwork-page--preparation .monthly-route-detail-container {
   width: 100%;
   max-width: none;
   gap: 0.65rem;
 }
 
-.monthly-paperwork-page--exact-history .monthly-route-detail-hero {
+.monthly-paperwork-page--exact-history .monthly-route-detail-hero,
+.monthly-paperwork-page--preparation .monthly-route-detail-hero {
   padding: 0.85rem 0.75rem;
 }
 
-.monthly-paperwork-page--exact-history .paperwork-run-selector {
+.monthly-paperwork-page--exact-history .paperwork-run-selector,
+.monthly-paperwork-page--preparation .paperwork-run-selector {
   padding: 0.55rem 0.65rem;
 }
 
@@ -518,4 +523,287 @@
   font-size: 0.625rem;
   line-height: 1.35;
   font-style: italic;
+}
+
+/* Run preparation — exact-history layout with editable fields */
+
+.monthly-run-detail-page .run-details-prep-section.run-details-history-section {
+  --tw-office-col-stop: 3.25rem;
+  --tw-office-col-address: 11.5rem;
+  --tw-office-col-access: 8.25rem;
+  --tw-office-col-panel: 8.25rem;
+  --tw-office-col-monitoring: 12rem;
+  --tw-office-col-deficiencies: 8rem;
+  --tw-office-col-procedures: 10rem;
+  --tw-office-col-location-comments: 10rem;
+  --tw-office-col-office-comments: 10rem;
+  --tw-office-table-w: calc(
+    var(--tw-office-col-stop) +
+    var(--tw-office-col-address) +
+    var(--tw-office-col-access) +
+    var(--tw-office-col-panel) +
+    var(--tw-office-col-monitoring) +
+    var(--tw-office-col-deficiencies) +
+    var(--tw-office-col-procedures) +
+    var(--tw-office-col-location-comments) +
+    var(--tw-office-col-office-comments)
+  );
+}
+
+.monthly-run-detail-page .run-details-prep-section__alerts {
+  margin-bottom: 0.5rem;
+}
+
+.monthly-run-detail-page .run-details-prep-section .tw-office-stop-table .tw-office-col-deficiencies {
+  width: var(--tw-office-col-deficiencies);
+}
+
+.monthly-run-detail-page .run-details-prep-section .tw-office-stop-table .tw-office-col-office-comments {
+  width: var(--tw-office-col-office-comments);
+}
+
+.monthly-run-detail-page .run-details-prep-section .tw-office-sticky-order {
+  text-align: left;
+  font-weight: 700;
+}
+
+.monthly-run-detail-page .run-details-prep-office-stop-order-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.monthly-run-detail-page .run-details-prep-office-drag-handle {
+  flex: 0 0 auto;
+  line-height: 1;
+  opacity: 0.55;
+}
+
+.monthly-run-detail-page .run-details-prep-office-drag-handle:hover:not(:disabled) {
+  opacity: 1;
+}
+
+.monthly-run-detail-page .run-details-prep-office-stop-num {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: center;
+  font-size: 0.625rem;
+}
+
+.monthly-run-detail-page .run-details-prep-office-address-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+  margin-top: 0.25rem;
+}
+
+.monthly-run-detail-page .run-details-prep-annual-pill {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  margin-top: 0.2rem;
+  border: 1px solid #e8873a;
+  border-radius: 999px;
+  padding: 0.12rem 0.5rem;
+  background: #f79442;
+  color: #ffffff;
+  font-size: 0.5rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.monthly-run-detail-page .run-details-prep-office-deficiency-cell {
+  font-size: 0.625rem;
+}
+
+.monthly-run-detail-page .run-details-prep-section .tw-office-access-cell .tw-office-compact-field-list {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.monthly-run-detail-page .run-details-prep-section .tw-office-panel-cell .tw-office-compact-field-list,
+.monthly-run-detail-page .run-details-prep-section .tw-office-monitoring-cell .tw-office-compact-field-list {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.monthly-run-detail-page .run-details-prep-section .tw-office-compact-field--stacked {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.08rem;
+}
+
+.monthly-run-detail-page .run-details-prep-section .tw-office-compact-field--stacked .tw-office-compact-label {
+  display: block;
+  margin-right: 0;
+}
+
+.monthly-run-detail-page .run-details-prep-section .tw-office-compact-field--stacked .tw-office-compact-value {
+  display: block;
+  width: 100%;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prep-office-field--editable {
+  cursor: pointer;
+  border-radius: 0.2rem;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prep-office-field--editable:hover {
+  background: rgba(13, 110, 253, 0.06);
+  outline: 1px dashed rgba(13, 110, 253, 0.25);
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prep-ready-locked-wrap {
+  cursor: not-allowed;
+  display: block;
+  width: 100%;
+}
+
+.run-details-prep-ready-locked-tooltip {
+  max-width: 18rem;
+  text-align: left;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prep-office-field--editing {
+  background: #ffffff;
+  border-radius: 0.25rem;
+  outline: 1px solid rgba(13, 110, 253, 0.35);
+  padding: 0.15rem;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prep-office-editor {
+  font-size: 0.625rem;
+  margin-top: 0.12rem;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prep-office-editor--multiline {
+  min-height: 2.25rem;
+  resize: vertical;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prep-office-field-hint {
+  margin-top: 0.1rem;
+  color: var(--ml-muted, #64748b);
+  font-size: 0.5rem;
+  line-height: 1.2;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prep-office-edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.2rem;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prep-office-edit-btn {
+  border: 1px solid var(--ml-border-soft, #e2e8f0);
+  border-radius: 0.25rem;
+  padding: 0.08rem 0.35rem;
+  background: #ffffff;
+  color: var(--ml-muted-strong, #475569);
+  font-size: 0.5625rem;
+  line-height: 1.2;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prep-office-edit-btn--primary {
+  border-color: #0d6efd;
+  background: #0d6efd;
+  color: #ffffff;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prep-office-longtext {
+  position: relative;
+  min-height: 1.5rem;
+  height: auto;
+}
+
+/* Long-text prep cells: surface fills the table cell so click-to-edit works anywhere in the cell. */
+.monthly-run-detail-page .run-details-prep-section .tw-office-stop-table tbody td.tw-office-detail-cell {
+  padding: 0;
+  height: 1px;
+  vertical-align: top;
+}
+
+.monthly-run-detail-page .run-details-prep-section td.tw-office-detail-cell > .run-details-prep-office-longtext {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 0.28rem 0.35rem;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prep-office-longtext .tw-office-long-text {
+  flex: 1 1 auto;
+  width: 100%;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prep-office-field--editable.run-details-prep-office-longtext {
+  cursor: cell;
+}
+
+/* Prep rows grow to fit long comment/procedure content (exact history stays compact). */
+.monthly-run-detail-page .run-details-prep-section .tw-office-long-text {
+  max-height: none;
+  overflow: visible;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prep-office-longtext .rich-text-display {
+  max-height: none;
+  overflow: visible;
+  font-size: 0.625rem;
+  line-height: 1.25;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prep-office-longtext--editing {
+  background: #ffffff;
+  border-radius: 0.25rem;
+  outline: 1px solid rgba(13, 110, 253, 0.35);
+  padding: 0.15rem;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prep-office-cell-editor {
+  font-size: 0.625rem;
+  min-height: 3rem;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prep-office-rich-toolbar {
+  margin-bottom: 0.15rem;
+}
+
+.monthly-run-detail-page .run-details-prep-section .run-details-prep-office-field-spinner {
+  width: 0.65rem;
+  height: 0.65rem;
+}
+
+.monthly-run-detail-page .run-details-prep-section .tw-office-table-row.run-details-prep-office-row--attention td {
+  background: #f5f0ff !important;
+}
+
+.monthly-run-detail-page .run-details-prep-section .tw-office-table-row.run-details-prep-office-row--attention .tw-office-sticky {
+  background: #f5f0ff !important;
+}
+
+.monthly-run-detail-page .run-details-prep-section .tw-office-table-row.run-details-prep-office-row--annual td {
+  background: #f9ae6e !important;
+  background: color-mix(in srgb, #f79442 52%, #ffffff) !important;
+}
+
+.monthly-run-detail-page .run-details-prep-section .tw-office-table-row.run-details-prep-office-row--annual .tw-office-sticky {
+  background: #f9ae6e !important;
+  background: color-mix(in srgb, #f79442 52%, #ffffff) !important;
+}
+
+.monthly-run-detail-page .run-details-prep-section .tw-office-table-row.run-details-prep-office-row--on-hold td {
+  background: #fef2f2 !important;
+}
+
+.monthly-run-detail-page .run-details-prep-section .tw-office-table-row.run-details-prep-office-row--on-hold .tw-office-sticky {
+  background: #fef2f2 !important;
 }

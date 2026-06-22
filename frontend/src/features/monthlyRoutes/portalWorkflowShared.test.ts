@@ -352,6 +352,15 @@ describe('portalStopOfficeAttention', () => {
     expect(portalNavStopStatusClass(done, '2026-05-01')).toBe('pw-mock-nav-stop--skipped')
     expect(portalHeaderBandClass(done, '2026-05-01')).toBe('pw-mock-header--skipped')
   })
+
+  it('shows purple when an office job comment exists without office_attention', () => {
+    const commented = baseStop({
+      office_attention: false,
+      office_job_comment: '<p>Verify the annunciator panel</p>',
+    })
+    expect(portalNavStopStatusClass(commented, '2026-05-01')).toBe('pw-mock-nav-stop--office-attention')
+    expect(portalHeaderBandClass(commented, '2026-05-01')).toBe('pw-mock-header--office-attention')
+  })
 })
 
 describe('portalStopOnHold', () => {

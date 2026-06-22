@@ -508,3 +508,42 @@ export function officeWorksheetTableCssVars(
     ].join(' + ')})`,
   }
 }
+
+const OFFICE_PREP_COL_WIDTH_REM = {
+  stop: '3.25rem',
+  address: '11.5rem',
+  access: '8.25rem',
+  panel: '8.25rem',
+  monitoring: '12rem',
+  deficiencies: '8rem',
+  procedures: '10rem',
+  locationComments: '10rem',
+  officeComments: '10rem',
+} as const
+
+/** CSS variables for run-prep table (exact-history layout, no result column). */
+export function officeWorksheetPrepTableCssVars(): Record<string, string> {
+  const w = OFFICE_PREP_COL_WIDTH_REM
+  return {
+    '--tw-office-col-stop': w.stop,
+    '--tw-office-col-address': w.address,
+    '--tw-office-col-access': w.access,
+    '--tw-office-col-panel': w.panel,
+    '--tw-office-col-monitoring': w.monitoring,
+    '--tw-office-col-deficiencies': w.deficiencies,
+    '--tw-office-col-procedures': w.procedures,
+    '--tw-office-col-location-comments': w.locationComments,
+    '--tw-office-col-office-comments': w.officeComments,
+    '--tw-office-table-w': `calc(${[
+      w.stop,
+      w.address,
+      w.access,
+      w.panel,
+      w.monitoring,
+      w.deficiencies,
+      w.procedures,
+      w.locationComments,
+      w.officeComments,
+    ].join(' + ')})`,
+  }
+}

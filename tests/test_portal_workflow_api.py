@@ -493,18 +493,25 @@ def test_test_outcome_validation_rules(portal_client, monkeypatch):
 
 
 def test_csv_import_run_is_portal_read_only(portal_client, monkeypatch):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
     from app.routes import monthly_routes as mr_mod
 
+    PACIFIC_TZ = ZoneInfo("America/Vancouver")
     monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
 
     client, app = portal_client
     with app.app_context():
         route_id, _loc_id, stop_a, _stop_b = _seed_route_with_two_stops()
+        now = datetime(2026, 5, 15, 12, 0, tzinfo=PACIFIC_TZ)
         run = MonthlyRouteRun(
             id=50,
             monthly_route_id=route_id,
             month_date=date(2026, 5, 1),
             status="completed",
+            completed_at=now,
+            field_ended_at=now,
             source="csv_import",
         )
         db.session.add(run)
@@ -517,6 +524,62 @@ def test_csv_import_run_is_portal_read_only(portal_client, monkeypatch):
     )
     assert blocked.status_code == 409
     assert blocked.get_json().get("code") == "portal_read_only"
+
+
+def test_csv_import_future_month_prep_allows_portal_workflow(portal_client, monkeypatch):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from app.routes import monthly_routes as mr_mod
+    from app.monthly.worksheet_locations import ensure_worksheet_stops_for_route_month
+    from tests.run_workflow_helpers import portal_start_run
+
+    PACIFIC_TZ = ZoneInfo("America/Vancouver")
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 7, 1))
+
+    client, app = portal_client
+    with app.app_context():
+        route_id, _loc_id, stop_a, _stop_b = _seed_route_with_two_stops()
+        now = datetime(2026, 6, 15, 12, 0, tzinfo=PACIFIC_TZ)
+        run = MonthlyRouteRun(
+            id=51,
+            monthly_route_id=route_id,
+            month_date=date(2026, 7, 1),
+            opened_at=now,
+            prepared_at=now,
+            prepared_by="csv_import",
+            status="open",
+            source="csv_import",
+        )
+        db.session.add(run)
+        db.session.commit()
+        ensure_worksheet_stops_for_route_month(route_id, date(2026, 7, 1), run)
+        db.session.commit()
+
+    ws = client.get(
+        f"/api/monthly_routes/routes/{route_id}/worksheet?month=2026-07-01&tech_portal=1"
+    )
+    assert ws.status_code == 200, ws.get_json()
+    stops = ws.get_json().get("stops") or []
+    assert stops
+    assert stops[0].get("portal_read_only") is False
+
+    portal_start_run(client, route_id, "2026-07-01")
+
+    clock_in = client.post(
+        f"/api/monthly_routes/routes/{route_id}/worksheet/locations/{stop_a}/clock_events/clock_in"
+        f"?month=2026-07-01&tech_portal=1",
+        json={"time_in": "8:00 AM"},
+    )
+    assert clock_in.status_code == 200, clock_in.get_json()
+
+    outcome = client.put(
+        f"/api/monthly_routes/routes/{route_id}/worksheet/locations/{stop_a}/test_outcome"
+        f"?month=2026-07-01&tech_portal=1",
+        json={"test_outcome": "all_good"},
+    )
+    assert outcome.status_code == 200, outcome.get_json()
+    assert outcome.get_json()["stop"]["test_outcome"] == "all_good"
 
 
 def test_test_outcome_annual_skip_category(portal_client, monkeypatch):

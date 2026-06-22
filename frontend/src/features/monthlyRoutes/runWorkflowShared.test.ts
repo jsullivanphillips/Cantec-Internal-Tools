@@ -4,8 +4,10 @@ import {
   canOfficeCompleteRun,
   canOfficeEditBilling,
   canOfficeEditOutcomes,
+  canOfficeReturnRunToPrep,
   portalShowStartRun,
   runDetailsOfficeReviewReadOnly,
+  runInOfficeReadyPhase,
 } from './runWorkflowShared'
 
 const MONTH = '2026-05-01'
@@ -84,6 +86,31 @@ describe('portalShowStartRun', () => {
         runStarted: false,
         isCurrentMonth: false,
       }),
+    ).toBe(false)
+  })
+})
+
+describe('runInOfficeReadyPhase', () => {
+  it('is true when prepared and field work has not started', () => {
+    expect(
+      runInOfficeReadyPhase(
+        run({ prepared_at: `${MONTH}T00:00:00Z`, started_at: null, field_ended_at: null }),
+      ),
+    ).toBe(true)
+    expect(canOfficeReturnRunToPrep(run({ prepared_at: `${MONTH}T00:00:00Z`, started_at: null }))).toBe(
+      true,
+    )
+  })
+
+  it('is false for draft, in-progress, or completed runs', () => {
+    expect(runInOfficeReadyPhase(run({ prepared_at: null, started_at: null }))).toBe(false)
+    expect(runInOfficeReadyPhase(run({ prepared_at: `${MONTH}T00:00:00Z`, started_at: `${MONTH}T01:00:00Z` }))).toBe(
+      false,
+    )
+    expect(
+      runInOfficeReadyPhase(
+        run({ status: 'completed', completed_at: '2026-05-10T00:00:00Z' }),
+      ),
     ).toBe(false)
   })
 })

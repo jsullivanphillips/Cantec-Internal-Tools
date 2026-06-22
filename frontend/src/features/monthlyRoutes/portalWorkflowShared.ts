@@ -496,8 +496,13 @@ export function portalStopVisualTone(
   return 'pending'
 }
 
+export function portalStopHasOfficeJobComment(stop: TechnicianWorksheetLocation): boolean {
+  return (stop.office_job_comment || '').trim().length > 0
+}
+
 export function portalStopOfficeAttentionActive(stop: TechnicianWorksheetLocation): boolean {
-  return Boolean(stop.office_attention) && !portalStopHasTestOutcome(stop)
+  if (portalStopHasTestOutcome(stop)) return false
+  return Boolean(stop.office_attention) || portalStopHasOfficeJobComment(stop)
 }
 
 /** Yellow pre-color for library stops marked on hold (before a test outcome is recorded). */

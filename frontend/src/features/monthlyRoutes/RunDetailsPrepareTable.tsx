@@ -19,6 +19,7 @@ import { Alert, Table } from 'react-bootstrap'
 import { Link } from 'react-router-dom'
 import { annualMonthHint } from './annualMonthHint'
 import RunDetailsPrepareAnnualSchedulePill from './RunDetailsPrepareAnnualSchedulePill'
+import RunDetailsPrepareAnnualPill from './RunDetailsPrepareAnnualPill'
 import RunDetailsPreparePriorMonthEditsPill from './RunDetailsPreparePriorMonthEditsPill'
 import {
   mergePrepAnnualScheduleRow,
@@ -30,6 +31,7 @@ import {
   PrepCompactField,
   PrepCompanyField,
   PrepLongTextCell,
+  PrepReadOnlyCompactField,
 } from './RunDetailsPrepareFields'
 import RunDetailsDeficiencyList from './RunDetailsDeficiencyList'
 import { openDeficiencySummaries } from './runDetailsDeficiencyDisplay'
@@ -41,6 +43,7 @@ import {
 } from './runDetailsLocationReview'
 import {
   isOnHoldMonthlyLocation,
+  isAnnualForMonth,
   type AnnualScheduleCheckLocation,
   type AnnualScheduleCheckStatus,
   type MonthlyRunDetailDeficiencySummary,
@@ -48,21 +51,25 @@ import {
 import type { RunDetailsStopPatchApi } from './useRunDetailsStopPatch'
 import { useMonitoringCompanies } from './useMonitoringCompanies'
 import { apiJson } from '../../lib/apiClient'
-import { shortStreetAddress } from './locationDisplay'
+import { locationDisplaySubline, locationPrimaryLabel } from './locationDisplay'
+import { officeWorksheetPrepTableCssVars } from './officeWorksheetTableShared'
 
 type PrepDragHandleProps = Pick<ReturnType<typeof useSortable>, 'attributes' | 'listeners'>
+
+const PREP_FIELD_LAYOUT = 'office' as const
 
 function PrepTableColGroup() {
   return (
     <colgroup>
-      <col className="run-details-prepare-col-stop" />
-      <col className="run-details-prepare-col-address" />
-      <col className="run-details-prepare-col-access" />
-      <col className="run-details-prepare-col-monitoring" />
-      <col className="run-details-prepare-col-deficiencies" />
-      <col className="run-details-prepare-col-run-comments" />
-      <col className="run-details-prepare-col-procedures" />
-      <col className="run-details-prepare-col-location-comments" />
+      <col className="tw-office-col-stop" />
+      <col className="tw-office-col-address" />
+      <col className="tw-office-col-access" />
+      <col className="tw-office-col-panel" />
+      <col className="tw-office-col-monitoring" />
+      <col className="tw-office-col-deficiencies" />
+      <col className="tw-office-col-procedures" />
+      <col className="tw-office-col-location-comments" />
+      <col className="tw-office-col-office-comments" />
     </colgroup>
   )
 }
@@ -70,14 +77,15 @@ function PrepTableColGroup() {
 function PrepTableHeaderRow() {
   return (
     <tr>
-      <th className="run-details-prepare-sticky-order">#</th>
-      <th className="run-details-prepare-sticky-address">Address</th>
+      <th className="tw-office-sticky tw-office-sticky-order">#</th>
+      <th className="tw-office-sticky tw-office-sticky-address">Address</th>
       <th>Access</th>
+      <th>Panel</th>
       <th>Monitoring</th>
       <th>Deficiencies</th>
-      <th>Office job comment</th>
       <th>Testing procedures</th>
       <th>Location comments</th>
+      <th>Office comments</th>
     </tr>
   )
 }
@@ -85,8 +93,13 @@ function PrepTableHeaderRow() {
 function prepRowClassName(annualDue: boolean, highlighted: boolean, onHold: boolean): string | undefined {
   return (
     [
-      onHold ? 'run-details-prepare-row--on-hold' : annualDue ? 'run-details-prepare-row--annual' : '',
-      highlighted ? 'run-details-prepare-row--attention' : '',
+      'tw-office-table-row',
+      onHold
+        ? 'run-details-prep-office-row--on-hold'
+        : annualDue
+          ? 'run-details-prep-office-row--annual'
+          : '',
+      highlighted ? 'run-details-prep-office-row--attention' : '',
     ]
       .filter(Boolean)
       .join(' ') || undefined
@@ -107,21 +120,21 @@ function PrepStopOrderCell({
   dragHandleProps?: PrepDragHandleProps
 }) {
   return (
-    <div className="run-details-prepare-stop-order-cell">
+    <div className="run-details-prep-office-stop-order-cell">
       {showDragHandle ? (
         <button
           type="button"
-          className="btn btn-link p-0 text-muted run-details-prepare-drag-handle"
+          className="btn btn-link p-0 text-muted run-details-prep-office-drag-handle"
           style={{ cursor: orderSaving ? 'not-allowed' : 'grab' }}
           disabled={orderSaving}
           aria-label={`Drag to reorder: ${locationLabel}`}
           {...(dragHandleProps?.attributes ?? {})}
           {...(dragHandleProps?.listeners ?? {})}
         >
-          <i className="bi bi-grip-vertical fs-5" aria-hidden />
+          <i className="bi bi-grip-vertical" aria-hidden />
         </button>
       ) : null}
-      <span className="run-details-prepare-stop-num">{stopNumber}</span>
+      <span className="run-details-prep-office-stop-num tabular-nums">{stopNumber}</span>
     </div>
   )
 }
@@ -183,6 +196,7 @@ export default function RunDetailsPrepareTable({
   stopPatch,
   onDeficiencyUpdated,
   prepEditsDisabled = false,
+  readyEditLocked = false,
   reorderDisabled = false,
   onRouteOrderChanged,
   annualScheduleStatus = 'idle',
@@ -198,6 +212,8 @@ export default function RunDetailsPrepareTable({
     updated: MonthlyRunDetailDeficiencySummary,
   ) => void | Promise<void>
   prepEditsDisabled?: boolean
+  /** Block edits while run is prepared (Ready) until returned to preparation. */
+  readyEditLocked?: boolean
   reorderDisabled?: boolean
   onRouteOrderChanged?: (orderedLocationIds: number[]) => void | Promise<void>
   annualScheduleStatus?: AnnualScheduleCheckStatus
@@ -211,7 +227,8 @@ export default function RunDetailsPrepareTable({
   const { patchStop: commitStopPatch, patchStopForRow, error, isFieldSaving } = stopPatch
   const { companies, loading: companiesLoading, refresh, appendCompany } = useMonitoringCompanies()
 
-  const reorderEnabled = !prepEditsDisabled && !reorderDisabled
+  const reorderEnabled = !prepEditsDisabled && !reorderDisabled && !readyEditLocked
+  const tableCssVars = useMemo(() => officeWorksheetPrepTableCssVars() as CSSProperties, [])
 
   useEffect(() => {
     setOptimisticRows(null)
@@ -318,8 +335,15 @@ export default function RunDetailsPrepareTable({
       },
     ) => {
       const stop = row.location
-    const locationLabel = row.location.location_label
-      const displayLocationLabel = shortStreetAddress(locationLabel)
+      const locationLabel = row.location.location_label
+      const primaryLabel = locationPrimaryLabel({
+        label: stop.label,
+        display_address: stop.display_address || locationLabel,
+      })
+      const addressSubline = locationDisplaySubline(
+        { label: stop.label, display_address: stop.display_address || locationLabel },
+        { primaryLabel },
+      )
       const sid = stop.location_id
       const siteLabel = (stop.label || '').trim() || 'Primary testing location'
       const companyId = stop.monitoring_company_id ?? null
@@ -345,6 +369,8 @@ export default function RunDetailsPrepareTable({
       const officeComment = (stop.office_job_comment || '').trim()
       const highlighted = officeComment.length > 0
       const onHold = isOnHoldMonthlyLocation(stop)
+      const annualThisMonth = isAnnualForMonth(stop.annual_month, monthDate)
+      const fieldLayout = PREP_FIELD_LAYOUT
 
       return (
         <tr
@@ -353,43 +379,44 @@ export default function RunDetailsPrepareTable({
           style={options.style}
           className={prepRowClassName(annualDue, highlighted, onHold)}
         >
-          <td className="run-details-prepare-sticky-order tabular-nums align-middle">
+          <td className="tw-office-sticky tw-office-sticky-order tw-office-sticky-order--neutral">
             <PrepStopOrderCell
               stopNumber={stop.stop_number}
               showDragHandle={options.showDragHandle}
               orderSaving={orderSaving}
-              locationLabel={displayLocationLabel}
+              locationLabel={primaryLabel}
               dragHandleProps={options.dragHandleProps}
             />
           </td>
-          <td className="run-details-prepare-sticky-address align-middle">
-            <Link
-              to={`/monthlies/locations/${stop.location_id}`}
-              className="run-details-prepare-address-link"
-            >
-              {displayLocationLabel}
-            </Link>
-            {options.isPrimaryForLocation ? (
-              <RunDetailsPreparePriorMonthEditsPill location={stop} />
-            ) : null}
-            {options.isPrimaryForLocation && onHold ? (
-              <span className="badge run-details-prep-badge run-details-prep-badge--on-hold mt-1 d-block">
-                On hold
-              </span>
-            ) : null}
-            {options.isPrimaryForLocation ? (
-              <RunDetailsPrepareAnnualSchedulePill schedule={scheduleRow} />
-            ) : null}
-            {multiSite ? (
-              <div
-                className={`run-details-prepare-site-label text-muted small${multiSite ? ' run-details-prepare-site-label--multi' : ''}`}
-              >
-                {siteLabel}
-              </div>
-            ) : null}
+          <td className="tw-office-sticky tw-office-sticky-address">
+            <div className="tw-office-address-cell">
+              <Link to={`/monthlies/locations/${stop.location_id}`} className="tw-office-location-link">
+                {primaryLabel}
+              </Link>
+              {addressSubline ? (
+                <div className="tw-office-address-subline text-muted small">{addressSubline}</div>
+              ) : null}
+              {options.isPrimaryForLocation && annualThisMonth ? (
+                <RunDetailsPrepareAnnualPill />
+              ) : null}
+              {options.isPrimaryForLocation ? (
+                <div className="run-details-prep-office-address-pills">
+                  <RunDetailsPreparePriorMonthEditsPill location={stop} />
+                  {onHold ? (
+                    <span className="badge run-details-prep-badge run-details-prep-badge--on-hold">
+                      On hold
+                    </span>
+                  ) : null}
+                  <RunDetailsPrepareAnnualSchedulePill schedule={scheduleRow} />
+                </div>
+              ) : null}
+              {multiSite ? (
+                <div className="tw-office-site-subline">{siteLabel}</div>
+              ) : null}
+            </div>
           </td>
-          <td className="align-middle run-details-prepare-stack-cell">
-            <div className="run-details-prepare-stack">
+          <td className="tw-office-access-cell">
+            <div className="tw-office-compact-field-list">
               <PrepCompactField
                 fieldKey={fk('ring')}
                 label="Ring"
@@ -398,18 +425,22 @@ export default function RunDetailsPrepareTable({
                 activeKey={activeFieldKey}
                 onActivate={setActiveFieldKey}
                 disabled={prepEditsDisabled}
+                readyEditLocked={readyEditLocked}
+                layoutVariant={fieldLayout}
                 onCommit={(next) =>
                   void patchRow(sid, fk('ring'), { ring: next.trim() || null }, { ring: stop.ring })
                 }
               />
               <PrepCompactField
                 fieldKey={fk('key')}
-                label="Key"
+                label="Key #"
                 value={stop.key_number || ''}
                 saving={isFieldSaving(sid, fk('key'))}
                 activeKey={activeFieldKey}
                 onActivate={setActiveFieldKey}
                 disabled={prepEditsDisabled}
+                readyEditLocked={readyEditLocked}
+                layoutVariant={fieldLayout}
                 onCommit={(next) =>
                   void patchRow(
                     sid,
@@ -421,12 +452,14 @@ export default function RunDetailsPrepareTable({
               />
               <PrepCompactField
                 fieldKey={fk('door')}
-                label="Door"
+                label="Door code"
                 value={stop.door_code || ''}
                 saving={isFieldSaving(sid, fk('door'))}
                 activeKey={activeFieldKey}
                 onActivate={setActiveFieldKey}
                 disabled={prepEditsDisabled}
+                readyEditLocked={readyEditLocked}
+                layoutVariant={fieldLayout}
                 onCommit={(next) =>
                   void patchRow(
                     sid,
@@ -438,13 +471,15 @@ export default function RunDetailsPrepareTable({
               />
               <PrepAnnualMonthField
                 fieldKey={fk('annual')}
-                label="Annual month"
+                label="Annual"
                 value={stop.annual_month}
                 saving={isFieldSaving(sid, fk('annual'))}
                 activeKey={activeFieldKey}
                 onActivate={setActiveFieldKey}
                 hint={annualMonthHint(stop, locationLabel, monthDate) ?? undefined}
                 disabled={prepEditsDisabled}
+                readyEditLocked={readyEditLocked}
+                layoutVariant={fieldLayout}
                 onCommit={(next) =>
                   void commitStopPatch(
                     sid,
@@ -457,8 +492,14 @@ export default function RunDetailsPrepareTable({
               />
             </div>
           </td>
-          <td className="align-middle run-details-prepare-stack-cell">
-            <div className="run-details-prepare-stack">
+          <td className="tw-office-panel-cell">
+            <div className="tw-office-compact-field-list">
+              <PrepReadOnlyCompactField label="Panel" value={stop.panel} stacked wide />
+              <PrepReadOnlyCompactField label="Panel location" value={stop.panel_location} stacked wide />
+            </div>
+          </td>
+          <td className="tw-office-monitoring-cell">
+            <div className="tw-office-compact-field-list">
               <PrepCompanyField
                 fieldKey={fk('company')}
                 label="Company"
@@ -470,6 +511,9 @@ export default function RunDetailsPrepareTable({
                 activeKey={activeFieldKey}
                 onActivate={setActiveFieldKey}
                 disabled={prepEditsDisabled}
+                readyEditLocked={readyEditLocked}
+                layoutVariant={fieldLayout}
+                stacked
                 onCommit={(nextId) =>
                   void patchRow(
                     sid,
@@ -495,6 +539,10 @@ export default function RunDetailsPrepareTable({
                 activeKey={activeFieldKey}
                 onActivate={setActiveFieldKey}
                 disabled={prepEditsDisabled}
+                readyEditLocked={readyEditLocked}
+                layoutVariant={fieldLayout}
+                stacked
+                wide
                 onCommit={(next) =>
                   void patchRow(
                     sid,
@@ -512,6 +560,10 @@ export default function RunDetailsPrepareTable({
                 activeKey={activeFieldKey}
                 onActivate={setActiveFieldKey}
                 disabled={prepEditsDisabled}
+                readyEditLocked={readyEditLocked}
+                layoutVariant={fieldLayout}
+                stacked
+                wide
                 onCommit={(next) =>
                   void patchRow(
                     sid,
@@ -529,7 +581,11 @@ export default function RunDetailsPrepareTable({
                 activeKey={activeFieldKey}
                 onActivate={setActiveFieldKey}
                 multiline
+                stacked
+                wide
                 disabled={prepEditsDisabled}
+                readyEditLocked={readyEditLocked}
+                layoutVariant={fieldLayout}
                 onCommit={(next) =>
                   void patchRow(
                     sid,
@@ -541,41 +597,23 @@ export default function RunDetailsPrepareTable({
               />
             </div>
           </td>
-          <td className="align-top run-details-prepare-deficiency-cell">
+          <td className="run-details-prep-office-deficiency-cell">
             <RunDetailsDeficiencyList
               deficiencies={openDeficiencies}
               routeId={routeId}
               monthDate={monthDate}
               locationId={sid}
               compact
+              readOnly={readyEditLocked}
               onDeficiencyUpdated={onDeficiencyUpdated}
               modalContext={{
-                locationLabel: displayLocationLabel,
+                locationLabel: primaryLabel,
                 stopNumber: stop.stop_number,
                 siteLabel: multiSite ? siteLabel : undefined,
               }}
             />
           </td>
-          <td className="align-top run-details-prepare-longtext-cell">
-            <PrepLongTextCell
-              fieldKey={fk('office-job-comment')}
-              value={stop.office_job_comment || ''}
-              saving={isFieldSaving(sid, fk('office-job-comment'))}
-              activeKey={activeFieldKey}
-              onActivate={setActiveFieldKey}
-              disabled={prepEditsDisabled}
-              richText
-              onCommit={(next) =>
-                void patchRow(
-                  sid,
-                  fk('office-job-comment'),
-                  { office_job_comment: next },
-                  { office_job_comment: stop.office_job_comment },
-                )
-              }
-            />
-          </td>
-          <td className="align-top run-details-prepare-longtext-cell">
+          <td className="tw-office-detail-cell">
             <PrepLongTextCell
               fieldKey={fk('procedures')}
               value={stop.testing_procedures || ''}
@@ -583,7 +621,9 @@ export default function RunDetailsPrepareTable({
               activeKey={activeFieldKey}
               onActivate={setActiveFieldKey}
               disabled={prepEditsDisabled}
+              readyEditLocked={readyEditLocked}
               richText
+              layoutVariant={fieldLayout}
               onCommit={(next) =>
                 void patchRow(
                   sid,
@@ -594,7 +634,7 @@ export default function RunDetailsPrepareTable({
               }
             />
           </td>
-          <td className="align-top run-details-prepare-longtext-cell">
+          <td className="tw-office-detail-cell">
             <PrepLongTextCell
               fieldKey={fk('loc-notes')}
               value={stop.inspection_tech_notes || ''}
@@ -602,13 +642,36 @@ export default function RunDetailsPrepareTable({
               activeKey={activeFieldKey}
               onActivate={setActiveFieldKey}
               disabled={prepEditsDisabled}
+              readyEditLocked={readyEditLocked}
               richText
+              layoutVariant={fieldLayout}
               onCommit={(next) =>
                 void patchRow(
                   sid,
                   fk('loc-notes'),
                   { inspection_tech_notes: next },
                   { inspection_tech_notes: stop.inspection_tech_notes },
+                )
+              }
+            />
+          </td>
+          <td className="tw-office-detail-cell">
+            <PrepLongTextCell
+              fieldKey={fk('office-job-comment')}
+              value={stop.office_job_comment || ''}
+              saving={isFieldSaving(sid, fk('office-job-comment'))}
+              activeKey={activeFieldKey}
+              onActivate={setActiveFieldKey}
+              disabled={prepEditsDisabled}
+              readyEditLocked={readyEditLocked}
+              richText
+              layoutVariant={fieldLayout}
+              onCommit={(next) =>
+                void patchRow(
+                  sid,
+                  fk('office-job-comment'),
+                  { office_job_comment: next },
+                  { office_job_comment: stop.office_job_comment },
                 )
               }
             />
@@ -631,6 +694,7 @@ export default function RunDetailsPrepareTable({
       orderSaving,
       patchStopForRow,
       prepEditsDisabled,
+      readyEditLocked,
       refresh,
       routeId,
     ],
@@ -665,30 +729,33 @@ export default function RunDetailsPrepareTable({
     </tbody>
   )
 
-  const tableClassName = `run-details-prepare-table mb-0${reorderEnabled ? ' run-details-prepare-table--reorderable' : ''}`
-
   const tableShell = (
-    <div className="run-details-prepare-table-shell">
-      <Table size="sm" className={tableClassName}>
-        <PrepTableColGroup />
-        <thead>
-          <PrepTableHeaderRow />
-        </thead>
-        {reorderEnabled ? (
-          <SortableContext items={sortableLocationIds} strategy={verticalListSortingStrategy}>
-            {tableBody}
-          </SortableContext>
-        ) : (
-          tableBody
-        )}
-      </Table>
+    <div
+      className={`tw-office-table-card tw-office-table-card--embedded${reorderEnabled ? ' run-details-prep-office-table--reorderable' : ''}`}
+      style={tableCssVars}
+    >
+      <div className="tw-office-table-wrap">
+        <Table size="sm" className="mb-0 tw-office-stop-table">
+          <PrepTableColGroup />
+          <thead>
+            <PrepTableHeaderRow />
+          </thead>
+          {reorderEnabled ? (
+            <SortableContext items={sortableLocationIds} strategy={verticalListSortingStrategy}>
+              {tableBody}
+            </SortableContext>
+          ) : (
+            tableBody
+          )}
+        </Table>
+      </div>
     </div>
   )
 
   return (
-    <div className="run-details-prep-section monthly-location-detail-surface">
+    <div className="run-details-history-section run-details-prep-section">
       {(prepEditsDisabled || orderError || error) && (
-        <div className="run-details-prepare-alerts">
+        <div className="run-details-prep-section__alerts">
           {prepEditsDisabled ? (
             <Alert variant="warning" className="py-2 small mb-2">
               Close the current month&apos;s paperwork before editing a future month.
@@ -706,13 +773,15 @@ export default function RunDetailsPrepareTable({
           ) : null}
         </div>
       )}
-      {reorderEnabled ? (
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          {tableShell}
-        </DndContext>
-      ) : (
-        tableShell
-      )}
+      <div className="run-details-history-shell">
+        {reorderEnabled ? (
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            {tableShell}
+          </DndContext>
+        ) : (
+          tableShell
+        )}
+      </div>
     </div>
   )
 }

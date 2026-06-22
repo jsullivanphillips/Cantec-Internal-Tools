@@ -240,6 +240,27 @@ def test_run_details_locations_multi_stop_single_entry(run_details_client):
     assert len(locations) >= 2
 
 
+def test_run_details_locations_include_panel_fields(run_details_client):
+    client, app = run_details_client
+    with app.app_context():
+        _seed_basic_route_data()
+        loc = db.session.get(MonthlyLocation, 101)
+        assert loc is not None
+        loc.facp_detail = "Notifier NFS2"
+        loc.panel_location = "Electrical room"
+        mlm = db.session.get(MonthlyLocationMonth, 5001)
+        assert mlm is not None
+        mlm.panel = "Notifier NFS2"
+        mlm.panel_location = "Electrical room"
+        db.session.commit()
+
+    res = client.get(BASE_URL)
+    assert res.status_code == 200
+    row = next(loc for loc in res.get_json()["locations"] if int(loc["location_id"]) == 101)
+    assert row["panel"] == "Notifier NFS2"
+    assert row["panel_location"] == "Electrical room"
+
+
 def test_run_details_locations_deficiency_summaries(run_details_client):
     client, app = run_details_client
     with app.app_context():

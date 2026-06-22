@@ -2281,6 +2281,15 @@ def apply_worksheet_stop_field_change(
 
     from app.monthly.rich_text_sanitize import is_rich_text_comment_field, sanitize_rich_text_comment
 
+    if field_name == "office_job_comment":
+        new_val = sanitize_rich_text_comment(raw_value)
+        old_val = mlm.office_job_comment
+        if old_val == new_val and bool(mlm.office_attention) == (new_val is not None):
+            return False, None
+        mlm.office_job_comment = new_val
+        mlm.office_attention = new_val is not None
+        return True, None
+
     if is_rich_text_comment_field(field_name):
         new_val = sanitize_rich_text_comment(raw_value)
     else:

@@ -241,7 +241,8 @@
 }
 
 .monthly-run-detail-page .run-details-prepare-table.table tbody tr.run-details-prepare-row--annual td {
-  background: #fed7aa;
+  background: #f9ae6e;
+  background: color-mix(in srgb, #f79442 52%, #ffffff);
 }
 
 .monthly-run-detail-page .run-details-prepare-table.table tbody tr.run-details-prepare-row--on-hold td {
@@ -320,7 +321,8 @@
 
 .monthly-run-detail-page .run-details-prepare-table.table tbody tr.run-details-prepare-row--annual .run-details-prepare-sticky-order,
 .monthly-run-detail-page .run-details-prepare-table.table tbody tr.run-details-prepare-row--annual .run-details-prepare-sticky-address {
-  background: #fed7aa;
+  background: #f9ae6e;
+  background: color-mix(in srgb, #f79442 52%, #ffffff);
 }
 
 .monthly-run-detail-page .run-details-prepare-table.table tbody tr.run-details-prepare-row--on-hold .run-details-prepare-sticky-order,
@@ -334,8 +336,8 @@
 }
 
 .monthly-run-detail-page .run-details-prepare-table.table tbody tr.run-details-prepare-row--annual .run-details-prepare-stop-num {
-  background: #fb923c;
-  color: #c2410c;
+  background: #f79442;
+  color: #7c2d12;
 }
 
 .monthly-run-detail-page .run-details-prepare-table.table tbody tr.run-details-prepare-row--on-hold .run-details-prepare-stop-num {

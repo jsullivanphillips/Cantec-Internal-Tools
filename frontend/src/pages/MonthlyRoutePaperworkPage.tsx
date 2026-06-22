@@ -930,6 +930,7 @@ export default function MonthlyRoutePaperworkPage() {
   const showMarkPrepared =
     !runCompleted && (run == null || !runIsPrepared(run)) && !futurePrepBlocked
   const showReturnToPrep = run != null && canOfficeReturnRunToPrep(run)
+  const readyPrepLocked = showReturnToPrep
   const showCompleteJob = run != null && !runCompleted && canOfficeCompleteRun(run)
   const showReopenJob = run != null && runCompleted
   const showResetRun = run != null && !runCompleted
@@ -954,7 +955,7 @@ export default function MonthlyRoutePaperworkPage() {
     <div
       className={`monthly-route-detail-page monthly-run-detail-page monthly-paperwork-page${
         paperworkViewMode === 'exact_history' ? ' monthly-paperwork-page--exact-history' : ''
-      }`}
+      }${paperworkViewMode === 'preparation' ? ' monthly-paperwork-page--preparation' : ''}`}
     >
       <div className="monthly-route-detail-container">
         <nav className="monthly-run-detail-breadcrumb" aria-label="Breadcrumb">
@@ -1181,6 +1182,7 @@ export default function MonthlyRoutePaperworkPage() {
             run={run}
             onPreRunMessagePatched={onPreRunMessagePatched}
             prepEditsDisabled={futurePrepBlocked}
+            readyEditLocked={readyPrepLocked}
           />
         ) : null}
 
@@ -1213,6 +1215,7 @@ export default function MonthlyRoutePaperworkPage() {
             onTicketsChanged={() => void loadRunDetails(undefined, { background: true })}
             paperworkViewMode={paperworkViewMode}
             prepEditsDisabled={futurePrepBlocked}
+            readyEditLocked={readyPrepLocked}
             onRouteOrderChanged={(orderedLocationIds) => void onRouteOrderChanged(orderedLocationIds)}
             annualScheduleStatus={annualScheduleStatus}
             annualScheduleByLocationId={annualScheduleByLocationId}

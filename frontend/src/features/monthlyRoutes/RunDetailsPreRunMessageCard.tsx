@@ -15,12 +15,14 @@ export default function RunDetailsPreRunMessageCard({
   run,
   onPreRunMessagePatched,
   prepEditsDisabled = false,
+  readyEditLocked = false,
 }: {
   routeId: number
   monthDate: string
   run: TechnicianWorksheetRun | null
   onPreRunMessagePatched: (preRunMessage: string | null) => void
   prepEditsDisabled?: boolean
+  readyEditLocked?: boolean
 }) {
   const [activeFieldKey, setActiveFieldKey] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -80,6 +82,7 @@ export default function RunDetailsPreRunMessageCard({
         fieldKey={FIELD_KEY}
         value={value}
         disabled={saving || prepEditsDisabled}
+        readyEditLocked={readyEditLocked}
         saving={saving}
         activeKey={activeFieldKey}
         onActivate={setActiveFieldKey}

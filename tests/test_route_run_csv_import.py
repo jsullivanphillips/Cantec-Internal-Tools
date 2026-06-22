@@ -77,8 +77,14 @@ def _seed_route8_with_two_stops() -> tuple[int, int, int]:
     return int(route.id), int(loc1.id), int(loc2.id)
 
 
-def _build_csv(*, address_header: str, tech_notes_header: str) -> bytes:
-    """Two-stop R8 / April 2026 sheet matching the seeded locations.
+def _build_csv(
+    *,
+    address_header: str,
+    tech_notes_header: str,
+    month_label: str = "April",
+    year: str = "2026",
+) -> bytes:
+    """Two-stop R8 sheet matching the seeded locations.
 
     The preamble follows the production layout (``ROUTE:`` and ``DATE:`` rows
     in column B, route number text in column E). The data header row uses the
@@ -89,7 +95,7 @@ def _build_csv(*, address_header: str, tech_notes_header: str) -> bytes:
         "MONTHLY BELL TESTING,,,,,,,,,,,",
         ",,,,,,,,,,,",
         ",ROUTE:,1st Thurs,,Route 8,Downtown 1,,,,,,",
-        ",DATE:,April,,2026,,,,,,,",
+        f",DATE:,{month_label},,{year},,,,,,,",
         ",,,,,,,,,,,",
         f"#,{address_header},Annual,Ring,Key #,FACP,Monitoring,Testing Procedures,{tech_notes_header},Time In:,Time Out:",
         '1,"800 Johnson Street\nName:TDMC Holdings\nManagement: Invermay",July,R1,TH008,EDWARDS 6632,Telus,Test bells,Site contact Allison,8:30am,9:15am',
@@ -496,6 +502,34 @@ def test_historical_csv_import_closes_run(import_client, monkeypatch):
     assert run.get("workflow_stage") == "completed"
     assert run.get("office_review_completed_at") is not None
     assert run.get("field_ended_at") is not None
+
+
+def test_future_month_csv_import_stays_prepared(import_client, monkeypatch):
+    """Future-month prep CSV stays open for technician runs (no auto-close)."""
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 6, 1))
+
+    client, app = import_client
+    with app.app_context():
+        route_id, _, _ = _seed_route8_with_two_stops()
+
+    csv_bytes = _build_csv(
+        address_header="Address",
+        tech_notes_header="Tech Comments & Notes",
+        month_label="July",
+    )
+    res = _post_csv(client, route_id, csv_bytes)
+    assert res.status_code == 200, res.get_data(as_text=True)
+    body = res.get_json()
+    assert body.get("historical_run_closed") is False
+    assert body.get("month_date") == "2026-07-01"
+    run = body["run"]
+    assert run.get("completed_at") is None
+    assert run.get("field_ended_at") is None
+    assert run.get("workflow_stage") != "completed"
+    assert run.get("source") == "csv_import"
+    assert run.get("prepared_at") is not None
 
 
 def test_csv_import_syncs_tested_outcome_after_run_prepared(import_client):

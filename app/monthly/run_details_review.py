@@ -869,6 +869,8 @@ def _serialize_run_detail_location(
         "ring": stop.get("ring"),
         "key_number": stop.get("key_number"),
         "door_code": stop.get("door_code"),
+        "panel": stop.get("panel"),
+        "panel_location": stop.get("panel_location"),
         "monitoring_company": stop.get("monitoring_company"),
         "monitoring_company_id": stop.get("monitoring_company_id"),
         "monitoring_account_number": stop.get("monitoring_account_number"),

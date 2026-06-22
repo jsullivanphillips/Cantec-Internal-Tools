@@ -544,6 +544,8 @@ export type MonthlyRunDetailLocation = {
   ring?: string | null
   key_number?: string | null
   door_code?: string | null
+  panel?: string | null
+  panel_location?: string | null
   monitoring_company?: string | null
   monitoring_company_id?: number | null
   monitoring_account_number?: string | null

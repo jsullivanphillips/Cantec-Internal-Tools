@@ -144,6 +144,14 @@ export function canOfficeReturnRunToPrep(run: TechnicianWorksheetRun | null | un
   return !hasTs(run.started_at)
 }
 
+/** Prepared and awaiting field start — prep table is read-only until returned to preparation. */
+export function runInOfficeReadyPhase(run: TechnicianWorksheetRun | null | undefined): boolean {
+  return canOfficeReturnRunToPrep(run)
+}
+
+export const PREP_READY_EDIT_LOCKED_MESSAGE =
+  'This run is marked prepared. Use Return to prep in the Actions menu to edit paperwork.'
+
 export function routeMonthRunStatusLabel(
   runSummary: { workflow_stage?: string; workflow_stage_label?: string } | null | undefined,
   hasSheetHistory: boolean,

@@ -106,6 +106,7 @@ export default function RunDetailsLocationReviewList({
   onTicketsChanged,
   paperworkViewMode,
   prepEditsDisabled = false,
+  readyEditLocked = false,
   outcomeCounts,
   onRouteOrderChanged,
   annualScheduleStatus = 'idle',
@@ -136,6 +137,8 @@ export default function RunDetailsLocationReviewList({
   paperworkViewMode?: PaperworkViewMode
   /** Block prep edits until the Pacific current month run is closed (future months). */
   prepEditsDisabled?: boolean
+  /** Block prep edits while run is prepared (Ready) until returned to preparation. */
+  readyEditLocked?: boolean
   outcomeCounts?: RunReviewOutcomeCounts
   onRouteOrderChanged?: (orderedLocationIds: number[]) => void | Promise<void>
   annualScheduleStatus?: AnnualScheduleCheckStatus
@@ -274,6 +277,7 @@ export default function RunDetailsLocationReviewList({
           stopPatch={stopPatch}
           onDeficiencyUpdated={onDeficiencyUpdated}
           prepEditsDisabled={prepEditsDisabled}
+          readyEditLocked={readyEditLocked}
           onRouteOrderChanged={onRouteOrderChanged}
           annualScheduleStatus={annualScheduleStatus}
           annualScheduleByLocationId={annualScheduleByLocationId}

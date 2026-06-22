@@ -1274,6 +1274,52 @@ def test_patch_office_attention_office_prep_only(stops_client, monkeypatch):
     assert locked.get_json().get("code") == "run_prep_locked"
 
 
+def test_patch_office_job_comment_sets_office_attention(stops_client, monkeypatch):
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
+
+    client, app = stops_client
+    with app.app_context():
+        _seed_route_with_two_stops()
+        ts_id = int(MonthlyLocation.query.order_by(MonthlyLocation.id.asc()).first().id)
+        run = MonthlyRouteRun(
+            id=5012,
+            monthly_route_id=1,
+            month_date=date(2026, 5, 1),
+            status="open",
+            source="office_manual",
+        )
+        db.session.add(run)
+        db.session.commit()
+        from app.monthly.worksheet_locations import ensure_worksheet_stops_for_route_month
+
+        ensure_worksheet_stops_for_route_month(1, date(2026, 5, 1), run)
+        db.session.commit()
+
+    with client.session_transaction() as sess:
+        sess["authenticated"] = True
+
+    qs = "month=2026-05-01"
+    set_comment = client.patch(
+        f"/api/monthly_routes/routes/1/worksheet/locations/{ts_id}?{qs}",
+        json={"changes": {"office_job_comment": "<p>Check the panel</p>"}},
+    )
+    assert set_comment.status_code == 200
+    stop = set_comment.get_json()["stop"]
+    assert (stop["office_job_comment"] or "").strip() == "Check the panel"
+    assert stop["office_attention"] is True
+
+    clear_comment = client.patch(
+        f"/api/monthly_routes/routes/1/worksheet/locations/{ts_id}?{qs}",
+        json={"changes": {"office_job_comment": ""}},
+    )
+    assert clear_comment.status_code == 200
+    cleared = clear_comment.get_json()["stop"]
+    assert cleared["office_job_comment"] is None
+    assert cleared["office_attention"] is False
+
+
 def test_patch_prior_month_out_of_order_dismissed_office_prep_only(stops_client, monkeypatch):
     from app.routes import monthly_routes as mr_mod
 
