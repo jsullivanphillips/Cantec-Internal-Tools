@@ -1,33 +1,26 @@
 """Tests for deficiency service eligibility classification."""
 
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 
 from app.deficiency.service_eligibility import (
     DeficiencyInput,
     compute_eligibility_records,
     description_hash,
-    jaccard,
     normalize_description,
     phrase_matches,
     summarize_eligibility_records,
     tally_phrase_matches,
-    tokenize,
 )
 
 
 def _classify(
     deficiencies: list[DeficiencyInput],
     phrases: list[tuple[str, str]] | None = None,
-    quoted_ids: set[int] | None = None,
-    *,
-    today: date = date(2026, 6, 16),
 ) -> list[dict]:
     classified_at = datetime(2026, 6, 16, 12, 0, tzinfo=timezone.utc)
     return compute_eligibility_records(
         deficiencies,
         phrases or [],
-        quoted_ids or set(),
-        today=today,
         classified_at=classified_at,
     )
 
@@ -64,12 +57,6 @@ def test_description_hash_changes_when_text_changes():
     assert first != second
 
 
-def test_jaccard_similarity():
-    left = tokenize("missing fire safety plan posted on site")
-    right = tokenize("no fire safety plan available on site")
-    assert jaccard(left, right) >= 0.35
-
-
 def test_classify_keyword_exclusion():
     records = _classify(
         [
@@ -90,7 +77,7 @@ def test_classify_keyword_exclusion():
     assert row["detail"] == "fire safety plan"
 
 
-def test_classify_stale_similarity_cluster():
+def test_similar_descriptions_stay_eligible_without_keyword_match():
     stale_date = datetime(2026, 1, 1, tzinfo=timezone.utc)
     records = _classify(
         [
@@ -108,11 +95,12 @@ def test_classify_stale_similarity_cluster():
     )
     summary = summarize_eligibility_records(records, 2, datetime.now(timezone.utc))
 
-    assert summary["excluded_stale_cluster"] == 2
-    assert all(_by_id(records)[def_id]["reason"] == "stale_cluster" for def_id in (2001, 2002))
+    assert summary["excluded_stale_cluster"] == 0
+    assert summary["excluded_keyword"] == 0
+    assert all(_by_id(records)[def_id]["eligible"] is True for def_id in (2001, 2002))
 
 
-def test_cluster_member_quoted_immunizes_cluster():
+def test_similar_descriptions_remain_eligible_when_one_was_quoted():
     stale_date = datetime(2026, 1, 1, tzinfo=timezone.utc)
     records = _classify(
         [
@@ -127,7 +115,6 @@ def test_cluster_member_quoted_immunizes_cluster():
                 deficiency_created_on=stale_date,
             ),
         ],
-        quoted_ids={3001},
     )
     rows = _by_id(records)
     summary = summarize_eligibility_records(records, 2, datetime.now(timezone.utc))
@@ -393,7 +380,6 @@ def test_classify_all_skips_included_override_rows(monkeypatch):
             )(),
         )
         monkeypatch.setattr(se, "_load_active_phrases", lambda: [("fire safety plan", "FSP")])
-        monkeypatch.setattr(se, "_load_quoted_deficiency_ids", lambda: set())
         monkeypatch.setattr(se.db.session, "add", lambda *args, **kwargs: None)
         monkeypatch.setattr(se.db.session, "commit", lambda: None)
 

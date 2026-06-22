@@ -1,17 +1,19 @@
 """Admin API for non-quoteable deficiency phrase management."""
 
 import threading
+from zoneinfo import ZoneInfo
 
 from flask import Blueprint, current_app, jsonify, request, session
 
 from app.db_models import DeficiencyNonQuoteablePhrase, db, vancouver_now
 from app.deficiency.service_eligibility import (
-    PACIFIC_TZ,
     classify_all_deficiencies,
     count_phrase_matches_in_window,
     normalize_phrase,
 )
 from app.routes.performance_summary import get_date_window
+
+PACIFIC_TZ = ZoneInfo("America/Vancouver")
 
 deficiency_service_admin_bp = Blueprint("deficiency_service_admin", __name__)
 

@@ -166,9 +166,8 @@ export default function MondayMeetingServiceAdminPage() {
           </div>
 
           <Alert variant="light" className="small mb-3">
-            <strong>Similar unquoted cluster rule:</strong> after 90 business days without a quote, deficiencies
-            with similar descriptions are grouped automatically. Clusters of 2 or more where no member was ever
-            quoted are excluded from service metrics.
+            Deficiencies are excluded from service metrics only when their description matches an active keyword
+            phrase below. Similar descriptions are not grouped or filtered automatically.
           </Alert>
 
           {error ? (
@@ -227,8 +226,8 @@ export default function MondayMeetingServiceAdminPage() {
 
           {lastSummary ? (
             <Alert variant="success" className="py-2 small">
-              Last run: {lastSummary.eligible} eligible, {lastSummary.excluded_keyword} keyword,{' '}
-              {lastSummary.excluded_stale_cluster} stale cluster ({lastSummary.classified_at})
+              Last run: {lastSummary.eligible} eligible, {lastSummary.excluded_keyword} keyword excluded (
+              {lastSummary.classified_at})
             </Alert>
           ) : null}
 

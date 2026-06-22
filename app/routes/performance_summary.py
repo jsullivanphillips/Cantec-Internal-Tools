@@ -1476,8 +1476,7 @@ def update_deficiencies(start_date=None, end_date=None):
         tqdm.write(
             "📋 Service eligibility: "
             f"{summary['eligible']} eligible, "
-            f"{summary['excluded_keyword']} keyword, "
-            f"{summary['excluded_stale_cluster']} stale cluster"
+            f"{summary['excluded_keyword']} keyword excluded"
         )
     except Exception as e:
         tqdm.write(f"[WARNING] Service eligibility classification failed: {e}")

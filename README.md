@@ -62,10 +62,7 @@ Technicians open it from `/tech/start` → **Training route (live sync)** after 
 
 ## Monday Meeting — service deficiency filters
 
-The **Service** tab excludes record-only deficiencies from pipeline KPIs using:
-
-1. **Keyword denylist** — phrases in `deficiency_non_quoteable_phrase` (managed at `/monday_meeting/service/admin`).
-2. **Stale similarity clusters** — unquoted deficiencies 90+ business days old that match similar descriptions in groups of 2+, where no cluster member was ever quoted.
+The **Service** tab excludes record-only deficiencies from pipeline KPIs using a **keyword denylist** — phrases in `deficiency_non_quoteable_phrase` (managed at `/monday_meeting/service/admin`).
 
 Classification runs automatically after `update_deficiencies()` and can be refreshed manually from the admin page or:
 

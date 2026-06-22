@@ -4,11 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import re
-from collections import defaultdict
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from typing import Iterable
-from zoneinfo import ZoneInfo
 
 from sqlalchemy import and_
 
@@ -16,24 +14,9 @@ from app.db_models import (
     Deficiency,
     DeficiencyNonQuoteablePhrase,
     DeficiencyServiceEligibility,
-    QuoteDeficiencyLink,
     db,
 )
-from app.utils.business_days import business_days_between
 
-PACIFIC_TZ = ZoneInfo("America/Vancouver")
-
-STALE_CLUSTER_MIN_BUSINESS_DAYS = 90
-STALE_CLUSTER_MIN_SIZE = 2
-STALE_CLUSTER_JACCARD_THRESHOLD = 0.35
-STALE_CLUSTER_MIN_SHARED_TOKENS = 2
-
-STOPWORDS = frozenset(
-    """
-    a an and are as at be by for from has have he her hers him his i in is it its
-    of on or she that the their them they this to was we were will with you your
-    """.split()
-)
 
 WORD_BOUNDARY_PHRASE_MAX_LEN = 4
 
@@ -59,14 +42,6 @@ def description_hash(text: str | None) -> str:
 
 def normalize_phrase(phrase: str) -> str:
     return normalize_description(phrase)
-
-
-def tokenize(text: str | None) -> set[str]:
-    normalized = normalize_description(text)
-    if not normalized:
-        return set()
-    tokens = re.findall(r"[a-z0-9]+", normalized)
-    return {t for t in tokens if len(t) >= 3 and t not in STOPWORDS}
 
 
 def phrase_matches(description: str | None, phrase: str) -> bool:
@@ -116,48 +91,6 @@ def count_phrase_matches_in_window(window_start: datetime, window_end: datetime)
     return tally_phrase_matches((row[0] for row in descriptions), phrases)
 
 
-def jaccard(a: set[str], b: set[str]) -> float:
-    if not a or not b:
-        return 0.0
-    intersection = len(a & b)
-    union = len(a | b)
-    return intersection / union if union else 0.0
-
-
-class UnionFind:
-    def __init__(self) -> None:
-        self.parent: dict[int, int] = {}
-
-    def find(self, node: int) -> int:
-        if node not in self.parent:
-            self.parent[node] = node
-        while self.parent[node] != node:
-            self.parent[node] = self.parent[self.parent[node]]
-            node = self.parent[node]
-        return node
-
-    def union(self, a: int, b: int) -> None:
-        root_a = self.find(a)
-        root_b = self.find(b)
-        if root_a != root_b:
-            self.parent[root_b] = root_a
-
-
-def _to_pacific_date(dt: datetime | None) -> date | None:
-    if dt is None:
-        return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(PACIFIC_TZ).date()
-
-
-def _is_stale_unquoted(created_on: datetime | None, today: date) -> bool:
-    created_date = _to_pacific_date(created_on)
-    if created_date is None:
-        return False
-    return business_days_between(created_date, today) >= STALE_CLUSTER_MIN_BUSINESS_DAYS
-
-
 def _load_active_phrases() -> list[tuple[str, str]]:
     rows = (
         DeficiencyNonQuoteablePhrase.query.filter(DeficiencyNonQuoteablePhrase.active.is_(True))
@@ -165,11 +98,6 @@ def _load_active_phrases() -> list[tuple[str, str]]:
         .all()
     )
     return [(row.phrase, row.label or row.phrase) for row in rows]
-
-
-def _load_quoted_deficiency_ids() -> set[int]:
-    rows = db.session.query(QuoteDeficiencyLink.deficiency_id).distinct().all()
-    return {int(r[0]) for r in rows}
 
 
 def _match_keyword(
@@ -181,63 +109,23 @@ def _match_keyword(
     return None
 
 
-def build_similarity_clusters(
-    deficiency_ids: list[int], tokens_by_id: dict[int, set[str]]
-) -> dict[int, list[int]]:
-    inverted: dict[str, list[int]] = defaultdict(list)
-    for def_id, tokens in tokens_by_id.items():
-        for token in tokens:
-            inverted[token].append(def_id)
-
-    uf = UnionFind()
-    for def_id in deficiency_ids:
-        uf.find(def_id)
-
-    pair_counts: dict[tuple[int, int], int] = defaultdict(int)
-    for members in inverted.values():
-        if len(members) < 2:
-            continue
-        unique_members = sorted(set(members))
-        for i, left in enumerate(unique_members):
-            for right in unique_members[i + 1 :]:
-                pair_counts[(left, right)] += 1
-
-    for (left, right), shared in pair_counts.items():
-        if shared < STALE_CLUSTER_MIN_SHARED_TOKENS:
-            continue
-        left_tokens = tokens_by_id.get(left, set())
-        right_tokens = tokens_by_id.get(right, set())
-        if jaccard(left_tokens, right_tokens) >= STALE_CLUSTER_JACCARD_THRESHOLD:
-            uf.union(left, right)
-
-    clusters: dict[int, list[int]] = defaultdict(list)
-    for def_id in deficiency_ids:
-        clusters[uf.find(def_id)].append(def_id)
-    return dict(clusters)
-
-
 def compute_eligibility_records(
     deficiencies: list[DeficiencyInput],
     phrases: list[tuple[str, str]],
-    quoted_ids: set[int],
     *,
-    today: date,
     classified_at: datetime,
 ) -> list[dict]:
     """Pure classification pass used by classify_all_deficiencies and unit tests."""
-    keyword_excluded: dict[int, str] = {}
-    tokens_by_id: dict[int, set[str]] = {}
-    deficiency_by_id: dict[int, DeficiencyInput] = {}
+    keyword_excluded: set[int] = set()
     records: list[dict] = []
 
     for deficiency in deficiencies:
         def_id = int(deficiency.deficiency_id)
-        deficiency_by_id[def_id] = deficiency
         desc_hash = description_hash(deficiency.description)
 
         match = _match_keyword(deficiency.description, phrases)
         if match is not None:
-            keyword_excluded[def_id] = match[0]
+            keyword_excluded.add(def_id)
             records.append(
                 {
                     "deficiency_id": def_id,
@@ -248,44 +136,10 @@ def compute_eligibility_records(
                     "classified_at": classified_at,
                 }
             )
-            continue
 
-        tokens = tokenize(deficiency.description)
-        if tokens:
-            tokens_by_id[def_id] = tokens
-
-    clusterable_ids = sorted(tokens_by_id.keys())
-    clusters = build_similarity_clusters(clusterable_ids, tokens_by_id)
-
-    stale_excluded: set[int] = set()
-    for members in clusters.values():
-        if len(members) < STALE_CLUSTER_MIN_SIZE:
-            continue
-        if any(member in quoted_ids for member in members):
-            continue
-        cluster_key = f"cluster:{min(members)}"
-        for member in members:
-            deficiency = deficiency_by_id[member]
-            if member in quoted_ids:
-                continue
-            if not _is_stale_unquoted(deficiency.deficiency_created_on, today):
-                continue
-            stale_excluded.add(member)
-            records.append(
-                {
-                    "deficiency_id": member,
-                    "eligible": False,
-                    "reason": "stale_cluster",
-                    "detail": cluster_key,
-                    "description_hash": description_hash(deficiency.description),
-                    "classified_at": classified_at,
-                }
-            )
-
-    classified_ids = keyword_excluded.keys() | stale_excluded
     for deficiency in deficiencies:
         def_id = int(deficiency.deficiency_id)
-        if def_id in classified_ids:
+        if def_id in keyword_excluded:
             continue
         records.append(
             {
@@ -319,15 +173,13 @@ def summarize_eligibility_records(
 
 def classify_all_deficiencies(*, commit: bool = True) -> dict:
     """
-    Full reclassification pass: keyword denylist then stale similarity clusters.
+    Full reclassification pass using the keyword denylist only.
     Returns summary counts for logging and admin UI.
     """
     classified_at = datetime.now(timezone.utc)
-    today_pacific = datetime.now(PACIFIC_TZ).date()
 
     deficiencies = Deficiency.query.all()
     phrases = _load_active_phrases()
-    quoted_ids = _load_quoted_deficiency_ids()
 
     inputs = [
         DeficiencyInput(
@@ -340,8 +192,6 @@ def classify_all_deficiencies(*, commit: bool = True) -> dict:
     records = compute_eligibility_records(
         inputs,
         phrases,
-        quoted_ids,
-        today=today_pacific,
         classified_at=classified_at,
     )
     def_ids = [int(record["deficiency_id"]) for record in records]
@@ -384,9 +234,7 @@ def classify_single_deficiency(
         return None
 
     classified_at = datetime.now(timezone.utc)
-    today_pacific = datetime.now(PACIFIC_TZ).date()
     phrases = _load_active_phrases()
-    quoted_ids = _load_quoted_deficiency_ids()
     inputs = [
         DeficiencyInput(
             deficiency_id=int(deficiency.deficiency_id),
@@ -397,8 +245,6 @@ def classify_single_deficiency(
     records = compute_eligibility_records(
         inputs,
         phrases,
-        quoted_ids,
-        today=today_pacific,
         classified_at=classified_at,
     )
     record = records[0]

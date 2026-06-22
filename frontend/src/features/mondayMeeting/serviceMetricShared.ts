@@ -7,7 +7,7 @@ export const DEFICIENCY_COHORT_TOOLTIP =
   'Based on deficiencies reported in the selected quarter. Quote, approval, and job steps count whenever they happened.'
 
 export const PIPELINE_EXCLUSION_TOOLTIP =
-  'Deficiency counts exclude record-only items: keyword matches (e.g. fire safety plan, monitoring company) and similar deficiencies never quoted after 90 business days.'
+  'Deficiency counts exclude record-only items that match keyword phrases (e.g. fire safety plan, monitoring company).'
 
 export const DEFICIENCIES_REPAIRED_TOOLTIP =
   'Tracks deficiency repairs completed for deficiencies reported in the selected quarter.'

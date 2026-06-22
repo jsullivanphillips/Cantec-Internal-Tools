@@ -12,8 +12,7 @@ def main() -> None:
         print(
             f"Classified {result['total']} deficiencies: "
             f"{result['eligible']} eligible, "
-            f"{result['excluded_keyword']} keyword, "
-            f"{result['excluded_stale_cluster']} stale cluster"
+            f"{result['excluded_keyword']} keyword excluded"
         )
 
 
