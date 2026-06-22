@@ -5845,6 +5845,38 @@ button.monthly-location-hero-status-badge:focus-visible {
   width: 100%;
 }
 
+.processing-history-trend-range-select {
+  width: auto;
+  min-width: 8.5rem;
+}
+
+.processing-history-trend-range-warning-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.3;
+  color: #92400e;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  animation: processing-history-warning-fade-in 0.2s ease;
+}
+
+@keyframes processing-history-warning-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* Performance Summary — filters + chart cards (style guide: navy structure, orange focus) */
 .performance-summary-page .performance-filters-card {
   border: 1px solid #e7eaf0;

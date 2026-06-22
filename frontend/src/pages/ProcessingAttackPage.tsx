@@ -54,6 +54,15 @@ const KPI_TARGETS = {
   earliestConversionWindowDays: 14,
 } as const
 
+const BACKLOG_TREND_RANGE_OPTIONS = [
+  { weeks: 6, label: '6 weeks' },
+  { weeks: 13, label: '1 quarter' },
+  { weeks: 26, label: '6 months' },
+  { weeks: 52, label: '1 year' },
+] as const
+
+type BacklogTrendWeekRange = (typeof BACKLOG_TREND_RANGE_OPTIONS)[number]['weeks']
+
 /** Row from weekly or daily processing KPI history endpoints (oldest first). */
 type ProcessingStatusHistoryRow = {
   week_start?: string | null
@@ -733,6 +742,17 @@ function toLocalYmd(d: Date): string {
   return `${y}-${m}-${day}`
 }
 
+function mondayOfCalendarWeek(d: Date): Date {
+  const monday = new Date(d)
+  monday.setHours(0, 0, 0, 0)
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7))
+  return monday
+}
+
+function formatBacklogTrendDate(d: Date): string {
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
 function weeksSinceDate(iso: string | undefined): number | null {
   if (!iso) return null
   const d = new Date(iso)
@@ -954,6 +974,10 @@ export default function ProcessingAttackPage({ embeddedTab }: { embeddedTab?: Pr
   const [weeklyTabHistory, setWeeklyTabHistory] = useState<ProcessingStatusHistoryRow[]>([])
   const [statusHistory, setStatusHistory] = useState<ProcessingStatusHistoryRow[]>([])
   const [statusHistoryDaily, setStatusHistoryDaily] = useState<ProcessingStatusHistoryRow[]>([])
+  const [backlogTrendWeeks, setBacklogTrendWeeks] = useState<BacklogTrendWeekRange>(6)
+  const [backlogTrendDailyHistory, setBacklogTrendDailyHistory] = useState<ProcessingStatusHistoryRow[]>([])
+  const [backlogTrendLoading, setBacklogTrendLoading] = useState(true)
+  const [showBacklogTrendRangeWarning, setShowBacklogTrendRangeWarning] = useState(false)
   const [intradayHistory, setIntradayHistory] = useState<ProcessingIntradayRow[]>([])
   const [oldestJobsModalOpen, setOldestJobsModalOpen] = useState(false)
   const [pinkFolderModalOpen, setPinkFolderModalOpen] = useState(false)
@@ -1012,7 +1036,7 @@ export default function ProcessingAttackPage({ embeddedTab }: { embeddedTab?: Pr
           if (!Array.isArray(j)) throw new Error('history weekly not an array')
           return j as ProcessingStatusHistoryRow[]
         }),
-        apiFetch('/processing_attack/history_processing_status_daily', { signal }).then(async (r) => {
+        apiFetch('/processing_attack/history_processing_status_daily?weeks=24', { signal }).then(async (r) => {
           if (!r.ok) return []
           try {
             const j = await r.json()
@@ -1180,6 +1204,34 @@ export default function ProcessingAttackPage({ embeddedTab }: { embeddedTab?: Pr
     return () => controller.abort()
   }, [loadWeekly])
 
+  const loadBacklogTrendHistory = useCallback(async (weeks: BacklogTrendWeekRange, signal?: AbortSignal) => {
+    setBacklogTrendLoading(true)
+    try {
+      const response = await apiFetch(`/processing_attack/history_processing_status_daily?weeks=${weeks}`, {
+        signal,
+      })
+      if (signal?.aborted) return
+      if (!response.ok) {
+        setBacklogTrendDailyHistory([])
+        return
+      }
+      const payload = await response.json()
+      setBacklogTrendDailyHistory(Array.isArray(payload) ? (payload as ProcessingStatusHistoryRow[]) : [])
+    } catch (e) {
+      if (isAbortError(e)) return
+      console.error(e)
+      setBacklogTrendDailyHistory([])
+    } finally {
+      if (!signal?.aborted) setBacklogTrendLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    void loadBacklogTrendHistory(backlogTrendWeeks, controller.signal)
+    return () => controller.abort()
+  }, [backlogTrendWeeks, loadBacklogTrendHistory])
+
   const historyRowsForWeekly = useMemo(
     () => (weeklyTabHistory.length > 0 ? weeklyTabHistory : statusHistory),
     [weeklyTabHistory, statusHistory],
@@ -1240,7 +1292,7 @@ export default function ProcessingAttackPage({ embeddedTab }: { embeddedTab?: Pr
   }, [weekSelectorOpen])
 
   const jobsToProcess24WeekTrend = useMemo(() => {
-    const dayPoints = statusHistoryDaily
+    const dayPoints = backlogTrendDailyHistory
       .map((r) => {
         const snapshotDate = parseLocalCalendarDate(r.snapshot_date)
         const backlog = r.jobs_to_be_marked_complete
@@ -1267,7 +1319,7 @@ export default function ProcessingAttackPage({ embeddedTab }: { embeddedTab?: Pr
       return { ...p, weekKey: toLocalYmd(weekStart), weekStart }
     })
 
-    const distinctWeekKeys = Array.from(new Set(pointsWithWeek.map((p) => p.weekKey))).slice(-6)
+    const distinctWeekKeys = Array.from(new Set(pointsWithWeek.map((p) => p.weekKey))).slice(-backlogTrendWeeks)
     if (!distinctWeekKeys.length) return null
     const selectedWeekKeys = new Set(distinctWeekKeys)
     const filteredPoints = pointsWithWeek.filter((p) => selectedWeekKeys.has(p.weekKey))
@@ -1354,7 +1406,7 @@ export default function ProcessingAttackPage({ embeddedTab }: { embeddedTab?: Pr
       scales: {
         x: {
           grid: { display: false },
-          ticks: { maxTicksLimit: 12 },
+          ticks: { maxTicksLimit: backlogTrendWeeks <= 13 ? 12 : backlogTrendWeeks <= 26 ? 18 : 24 },
         },
         backlog: {
           type: 'linear',
@@ -1373,12 +1425,37 @@ export default function ProcessingAttackPage({ embeddedTab }: { embeddedTab?: Pr
       },
     }
 
+    const rangeLabel =
+      BACKLOG_TREND_RANGE_OPTIONS.find((option) => option.weeks === backlogTrendWeeks)?.label ??
+      `${backlogTrendWeeks} weeks`
+
+    const dataStart = filteredPoints[0].snapshotDate
+    const dataEnd = filteredPoints[filteredPoints.length - 1].snapshotDate
+    const requestedRangeStart = mondayOfCalendarWeek(startOfToday())
+    requestedRangeStart.setDate(requestedRangeStart.getDate() - (backlogTrendWeeks - 1) * 7)
+    const hasPartialCoverage =
+      distinctWeekKeys.length < backlogTrendWeeks || dataStart.getTime() > requestedRangeStart.getTime()
+    const partialDataWarning = hasPartialCoverage
+      ? `We only have data from ${formatBacklogTrendDate(dataStart)} to ${formatBacklogTrendDate(dataEnd)} for this range.`
+      : null
+
     return {
       chartData,
       options,
-      windowText: `Past ${distinctWeekKeys.length} week${distinctWeekKeys.length === 1 ? '' : 's'}`,
+      windowText: rangeLabel,
+      partialDataWarning,
     }
-  }, [statusHistoryDaily])
+  }, [backlogTrendDailyHistory, backlogTrendWeeks])
+
+  useEffect(() => {
+    if (backlogTrendLoading || !jobsToProcess24WeekTrend?.partialDataWarning) {
+      setShowBacklogTrendRangeWarning(false)
+      return
+    }
+    setShowBacklogTrendRangeWarning(true)
+    const timer = window.setTimeout(() => setShowBacklogTrendRangeWarning(false), 5000)
+    return () => window.clearTimeout(timer)
+  }, [backlogTrendLoading, backlogTrendWeeks, jobsToProcess24WeekTrend?.partialDataWarning])
 
   const jobsProcessedWow = useMemo(() => {
     if (!processed) {
@@ -2926,11 +3003,46 @@ export default function ProcessingAttackPage({ embeddedTab }: { embeddedTab?: Pr
           </Tab.Pane>
           <Tab.Pane eventKey="weekly">
             <Card className="app-surface-card mb-3">
-              <Card.Header className="fw-semibold">Jobs Backlog vs Weekly Throughput</Card.Header>
+              <Card.Header className="fw-semibold d-flex flex-wrap align-items-center justify-content-between gap-2">
+                <span>Jobs Backlog vs Weekly Throughput</span>
+                <div className="d-flex align-items-center gap-2">
+                  <Form.Label htmlFor="backlog-trend-range" className="small text-muted mb-0 text-uppercase">
+                    Range
+                  </Form.Label>
+                  <Form.Select
+                    id="backlog-trend-range"
+                    size="sm"
+                    className="processing-history-trend-range-select"
+                    value={String(backlogTrendWeeks)}
+                    aria-label="History range"
+                    onChange={(e) => setBacklogTrendWeeks(Number(e.target.value) as BacklogTrendWeekRange)}
+                  >
+                    {BACKLOG_TREND_RANGE_OPTIONS.map((option) => (
+                      <option key={option.weeks} value={option.weeks}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </Form.Select>
+                </div>
+              </Card.Header>
               <Card.Body className="p-3">
-                {jobsToProcess24WeekTrend ? (
+                {backlogTrendLoading ? (
+                  <ProcessingHistoryChartSkeleton minHeight={220} />
+                ) : jobsToProcess24WeekTrend ? (
                   <>
-                    <div className="small text-muted mb-2">{jobsToProcess24WeekTrend.windowText}</div>
+                    <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
+                      <div className="small text-muted">{jobsToProcess24WeekTrend.windowText}</div>
+                      {showBacklogTrendRangeWarning && jobsToProcess24WeekTrend.partialDataWarning ? (
+                        <span
+                          className="processing-history-trend-range-warning-pill"
+                          role="status"
+                          aria-live="polite"
+                        >
+                          <i className="bi bi-exclamation-triangle" aria-hidden />
+                          {jobsToProcess24WeekTrend.partialDataWarning}
+                        </span>
+                      ) : null}
+                    </div>
                     <div className="processing-history-trend-chart-wrap">
                       <Chart
                         type="line"

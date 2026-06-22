@@ -875,15 +875,24 @@ def processing_attack_history_jobs_to_be_marked_complete():
 )
 def processing_attack_history_processing_status_daily():
     """
-    Returns up to the last 120 weekday snapshots from processing_status_daily
+    Returns weekday snapshots from processing_status_daily
     (same fields as history_jobs_to_be_marked_complete, but snapshot_date instead of week_start).
+
+    Optional query param `weeks` (1–52, default 6) controls how many weeks of history to return.
     """
     if not inspect(db.engine).has_table(ProcessingStatusDaily.__table__.name):
         return jsonify([]), 200
 
+    weeks_param = request.args.get("weeks", "6")
+    try:
+        weeks = max(1, min(52, int(weeks_param)))
+    except (TypeError, ValueError):
+        weeks = 6
+    limit = weeks * 5
+
     records = (
         ProcessingStatusDaily.query.order_by(ProcessingStatusDaily.snapshot_date.desc())
-        .limit(120)
+        .limit(limit)
         .all()
     )
     history = []
