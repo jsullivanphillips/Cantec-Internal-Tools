@@ -723,6 +723,8 @@ export type TechnicianWorksheetRun = {
   completed_at: string | null
   /** Office prep note for technicians on the route hub (this run only). */
   pre_run_message?: string | null
+  /** Technician end-of-run debrief (rich text HTML) after portal field end. */
+  field_end_summary?: string | null
   /** Where the run was created: ``technician_app``, ``csv_import``, ``office_manual``. */
   source: string
   /** Server-derived workflow stage id (see ``runWorkflowShared``). */

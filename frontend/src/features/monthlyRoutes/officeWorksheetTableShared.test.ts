@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   groupOfficeWorksheetStops,
   groupOfficeWorksheetStopsInSubmissionOrder,
+  officeStopStatus,
+  worksheetStopIsAnnualSkip,
 } from './officeWorksheetTableShared'
 import type { TechnicianWorksheetLocation } from './monthlyRoutesShared'
 
@@ -75,5 +77,26 @@ describe('groupOfficeWorksheetStopsInSubmissionOrder', () => {
     )
     expect(submissionOrder).toEqual([3, 1, 2])
     expect(sortedOrder).toEqual([1, 2, 3])
+  })
+})
+
+describe('worksheetStopIsAnnualSkip', () => {
+  it('infers annual from site month when skip has no explicit reason', () => {
+    const ws = stop(1, 10, 1)
+    ws.annual_month = 'June'
+    ws.month_date = '2026-06-01'
+    ws.result_status = 'skipped'
+    expect(worksheetStopIsAnnualSkip(ws, '2026-06-01')).toBe(true)
+    expect(officeStopStatus(ws, '2026-06-01')).toBe('annual')
+  })
+
+  it('honors explicit non-annual skip reason over matching annual month', () => {
+    const ws = stop(1, 10, 1)
+    ws.annual_month = 'June'
+    ws.month_date = '2026-06-01'
+    ws.result_status = 'skipped'
+    ws.skip_category = 'access_issues'
+    expect(worksheetStopIsAnnualSkip(ws, '2026-06-01')).toBe(false)
+    expect(officeStopStatus(ws, '2026-06-01')).toBe('skipped')
   })
 })

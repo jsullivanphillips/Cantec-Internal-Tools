@@ -69,16 +69,39 @@ function sheetSkipReasonIsAnnual(skipReason: string | null | undefined): boolean
   return s === 'annual' || s === 'annual_booked'
 }
 
+/** User-chosen skip reason that should override annual-month inference on paperwork. */
+export function stopExplicitSkipReasonBlocksAnnualInference(
+  stop: TechnicianWorksheetLocation,
+): boolean {
+  const cat = (stop.skip_category || '').trim().toLowerCase()
+  if (cat) return cat !== 'annual'
+
+  const reason = (stop.skip_reason || '').trim().toLowerCase()
+  if (!reason || reason === 'sheet_value') return false
+  if (reason === 'annual' || reason === 'annual_booked') return false
+  return true
+}
+
 export function worksheetStopIsAnnualSkip(stop: TechnicianWorksheetLocation, monthDate: string): boolean {
   const rs = (stop.result_status || '').trim().toLowerCase()
-  if (rs !== 'skipped') return isAnnualForMonth(stop.annual_month, monthDate)
-  return sheetSkipReasonIsAnnual(stop.skip_reason) || isAnnualForMonth(stop.annual_month, monthDate)
+  const outcome = (stop.test_outcome || '').trim().toLowerCase()
+  const skipped = rs === 'skipped' || outcome === 'skipped'
+  if (skipped) {
+    if (sheetSkipReasonIsAnnual(stop.skip_reason)) return true
+    if ((stop.skip_category || '').trim().toLowerCase() === 'annual') return true
+    if (stopExplicitSkipReasonBlocksAnnualInference(stop)) return false
+    return isAnnualForMonth(stop.annual_month, monthDate)
+  }
+  return isAnnualForMonth(stop.annual_month, monthDate)
 }
 
 export function officeStopStatus(stop: TechnicianWorksheetLocation, monthDate: string): OfficeStopStatus {
   const rs = (stop.result_status || '').trim().toLowerCase()
+  const outcome = (stop.test_outcome || '').trim().toLowerCase()
   if (rs === 'tested') return 'tested'
-  if (rs === 'skipped') return worksheetStopIsAnnualSkip(stop, monthDate) ? 'annual' : 'skipped'
+  if (rs === 'skipped' || outcome === 'skipped') {
+    return worksheetStopIsAnnualSkip(stop, monthDate) ? 'annual' : 'skipped'
+  }
   if (isAnnualForMonth(stop.annual_month, monthDate)) return 'annual'
   if (worksheetLocationOnHoldPendingOutcome(stop)) return 'on_hold'
   return 'pending'

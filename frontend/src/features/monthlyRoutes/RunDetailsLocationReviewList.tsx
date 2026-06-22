@@ -18,6 +18,7 @@ import type {
 import {
   computeRunDetailsProgress,
   countBillingUnsetLocations,
+  countNoTestResultLocations,
   countRunDetailFieldEditLocations,
   filterRunDetailFieldEditLocations,
   filterRunDetailLocationsByOutcomes,
@@ -183,6 +184,11 @@ export default function RunDetailsLocationReviewList({
 
   const billingUnsetCount = useMemo(() => countBillingUnsetLocations(locations), [locations])
 
+  const noTestResultCount = useMemo(
+    () => countNoTestResultLocations(locations, monthDate),
+    [locations, monthDate],
+  )
+
   const filteredReviewLocations = useMemo(
     () => filterRunDetailLocationsByOutcomes(locations, activeReviewFilters, monthDate),
     [locations, activeReviewFilters, monthDate],
@@ -334,6 +340,14 @@ export default function RunDetailsLocationReviewList({
                     )
                   })
                 : null}
+              <button
+                type="button"
+                aria-pressed={activeReviewFilters.includes('no_test_result')}
+                className={`run-review-filter__btn run-details-review-pill--no-test-result${activeReviewFilters.includes('no_test_result') ? ' run-review-filter__btn--active' : ''}`}
+                onClick={() => toggleReviewFilter('no_test_result')}
+              >
+                {reviewPillLabel('No test result', noTestResultCount)}
+              </button>
               {activeReviewFilters.length > 0 ? (
                 <button
                   type="button"

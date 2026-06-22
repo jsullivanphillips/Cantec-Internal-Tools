@@ -141,12 +141,6 @@ function isAnnualForMonth(annualMonth: string | null | undefined, monthIso: stri
   return raw === monthFull || raw === monthShort
 }
 
-/** Matches ``_sheet_skip_reason_is_annual`` in ``monthly_routes.py`` (sheet / CSV classification). */
-function sheetSkipReasonIsAnnual(skipReason: string | null | undefined): boolean {
-  const s = (skipReason || '').trim().toLowerCase()
-  return s === 'annual' || s === 'annual_booked'
-}
-
 /** Importer / sheet internal codes — omit separate reason line (status still shows Skipped). */
 function worksheetSkipReasonDisplayBlock(skipReason: string | null | undefined): string | null {
   const s = (skipReason ?? '').trim()
@@ -227,9 +221,7 @@ function worksheetGridIsTouchLikePointer(pointerType: string): boolean {
 }
 
 function worksheetRowIsAnnualSkip(row: TechnicianWorksheetRow, monthDate: string): boolean {
-  const rs = (row.result_status || '').trim().toLowerCase()
-  if (rs !== 'skipped') return isAnnualForMonth(row.annual_month, monthDate)
-  return sheetSkipReasonIsAnnual(row.skip_reason) || isAnnualForMonth(row.annual_month, monthDate)
+  return worksheetStopIsAnnualSkip(row, monthDate)
 }
 
 function worksheetRowStatusClass(row: TechnicianWorksheetRow, monthDate: string): string | undefined {

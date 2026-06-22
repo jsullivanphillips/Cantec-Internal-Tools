@@ -10,6 +10,12 @@ describe('waitForPortalRouteSyncIdle', () => {
   it('returns true when queues are already idle', async () => {
     vi.stubGlobal('navigator', { onLine: true })
     vi.spyOn(worksheetOfflineStore, 'hasPendingSyncForRouteMonth').mockReturnValue(false)
+    vi.spyOn(worksheetOfflineStore, 'countPendingSyncBreakdownForRouteMonth').mockReturnValue({
+      field: 0,
+      workflow: 0,
+      runLifecycle: 0,
+      total: 0,
+    })
 
     const result = await waitForPortalRouteSyncIdle(7, '2026-05-01', {
       runRunLifecycleSyncQueue: vi.fn(async () => {}),
@@ -29,7 +35,11 @@ describe('waitForPortalRouteSyncIdle', () => {
       .spyOn(worksheetOfflineStore, 'hasPendingSyncForRouteMonth')
       .mockReturnValueOnce(true)
       .mockReturnValue(false)
+    const breakdownSpy = vi
+      .spyOn(worksheetOfflineStore, 'countPendingSyncBreakdownForRouteMonth')
+      .mockReturnValue({ field: 0, workflow: 1, runLifecycle: 0, total: 1 })
     const runWorkflowSyncQueue = vi.fn(async () => {})
+    const onProgress = vi.fn()
 
     const result = await waitForPortalRouteSyncIdle(7, '2026-05-01', {
       runRunLifecycleSyncQueue: vi.fn(async () => {}),
@@ -38,10 +48,12 @@ describe('waitForPortalRouteSyncIdle', () => {
       isFieldSyncing: () => false,
       isWorkflowSyncing: () => false,
       isRunLifecycleSyncing: () => false,
-    })
+    }, { onProgress })
 
     expect(result).toBe(true)
     expect(runWorkflowSyncQueue).toHaveBeenCalled()
     expect(pendingSpy.mock.calls.length).toBeGreaterThan(1)
+    expect(breakdownSpy).toHaveBeenCalled()
+    expect(onProgress).toHaveBeenCalled()
   })
 })

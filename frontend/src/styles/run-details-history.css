@@ -473,3 +473,49 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* End-of-run summary — compact shell above exact history table */
+.monthly-paperwork-page--exact-history .run-details-field-end-summary-section {
+  margin-bottom: 0;
+}
+
+.monthly-run-detail-page .run-details-field-end-summary--compact .run-details-history-shell__header {
+  padding: 0.4rem 0.75rem 0.3rem;
+}
+
+.monthly-run-detail-page .run-details-field-end-summary--compact .run-details-history-shell__title {
+  margin-top: 0.04rem;
+}
+
+.monthly-run-detail-page .run-details-field-end-summary--compact .run-details-field-end-summary__compact-body {
+  padding: 0.3rem 0.75rem 0.4rem;
+  border-top: none;
+  background: #ffffff;
+  color: var(--ml-text, #1f2937);
+}
+
+.monthly-run-detail-page .run-details-field-end-summary__compact-rich,
+.monthly-run-detail-page .run-details-field-end-summary__compact-rich .rich-text-display {
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--ml-text, #1f2937);
+}
+
+.monthly-run-detail-page .run-details-field-end-summary__compact-rich p {
+  margin-bottom: 0.25rem;
+}
+
+.monthly-run-detail-page .run-details-field-end-summary__compact-rich p:last-child {
+  margin-bottom: 0;
+}
+
+.monthly-run-detail-page .run-details-field-end-summary__compact-empty {
+  margin: 0;
+  padding: 0.3rem 0.75rem 0.4rem;
+  border-top: none;
+  background: #ffffff;
+  color: var(--ml-muted, #64748b);
+  font-size: 0.625rem;
+  line-height: 1.35;
+  font-style: italic;
+}

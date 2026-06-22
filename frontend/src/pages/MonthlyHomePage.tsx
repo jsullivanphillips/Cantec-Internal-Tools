@@ -275,7 +275,7 @@ export default function MonthlyHomePage() {
                 <Nav.Link eventKey="financial-performance">Financial Performance</Nav.Link>
               </Nav.Item>
               <Nav.Item>
-                <Nav.Link eventKey="route-performance">Route Performance</Nav.Link>
+                <Nav.Link eventKey="route-performance">Route Capacity</Nav.Link>
               </Nav.Item>
               <Nav.Item>
                 <Nav.Link eventKey="location-metrics">Location Metrics</Nav.Link>

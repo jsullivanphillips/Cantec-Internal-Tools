@@ -105,6 +105,35 @@
   margin-bottom: 0.35rem;
 }
 
+.monthly-run-detail-page .run-details-field-end-summary {
+  padding: 1rem 1.15rem;
+}
+
+.monthly-run-detail-page .run-details-field-end-summary .run-details-prepare-cell-surface {
+  min-height: 2.75rem;
+}
+
+.monthly-run-detail-page .run-details-field-end-summary__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35rem 1rem;
+  margin-bottom: 0.65rem;
+}
+
+.monthly-run-detail-page .run-details-field-end-summary__body {
+  display: block;
+  font-size: 0.95rem;
+  line-height: 1.55;
+  color: var(--ml-text, #0f172a);
+}
+
+.monthly-run-detail-page .run-details-field-end-summary__empty {
+  margin: 0;
+  line-height: 1.45;
+}
+
 .monthly-run-detail-page .run-details-prepare-table-shell {
   --rdp-col-stop: 2.75rem;
   --rdp-col-highlight: 3.25rem;

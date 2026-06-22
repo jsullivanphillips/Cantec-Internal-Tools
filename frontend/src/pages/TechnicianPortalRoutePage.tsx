@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { Alert, Button, Card, Spinner } from 'react-bootstrap'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import RunWorkflowStepper from '../features/monthlyRoutes/RunWorkflowStepper'
-import PortalBlockingOverlay from '../features/monthlyRoutes/PortalBlockingOverlay'
+import PortalRunLifecycleProgressOverlay from '../features/monthlyRoutes/PortalRunLifecycleProgressOverlay'
+import { createRunLifecycleProgress, type PortalRunLifecycleProgress } from '../features/monthlyRoutes/portalRunLifecycleProgress'
 import {
   parseYearMonth,
   worksheetRunExplicitlyCompleted,
@@ -75,8 +76,9 @@ export default function TechnicianPortalRoutePage() {
   const [data, setData] = useState<PortalRouteSummaryResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [runLifecycleBusy, setRunLifecycleBusy] = useState(false)
-  const [runLifecycleMessage, setRunLifecycleMessage] = useState('Updating run…')
+  const [runLifecycleProgress, setRunLifecycleProgress] =
+    useState<PortalRunLifecycleProgress | null>(null)
+  const runLifecycleBusy = runLifecycleProgress != null
   const [keyAudit, setKeyAudit] = useState<RouteKeyAuditPayload | null>(null)
   const load = useCallback(async () => {
     if (Number.isNaN(idNum)) {
@@ -135,8 +137,7 @@ export default function TechnicianPortalRoutePage() {
 
   const endFieldRun = useCallback(async () => {
     if (Number.isNaN(idNum)) return
-    setRunLifecycleMessage('Ending field run…')
-    setRunLifecycleBusy(true)
+    setRunLifecycleProgress(createRunLifecycleProgress('end_run_direct', 'submit'))
     try {
       const body = await apiJson<{ run: TechnicianWorksheetRun }>(
         `/api/technician_portal/routes/${idNum}/runs/end`,
@@ -150,14 +151,13 @@ export default function TechnicianPortalRoutePage() {
     } catch {
       window.alert('Could not end run. Try again.')
     } finally {
-      setRunLifecycleBusy(false)
+      setRunLifecycleProgress(null)
     }
   }, [idNum])
 
   const reopenFieldRun = useCallback(async () => {
     if (Number.isNaN(idNum)) return
-    setRunLifecycleMessage('Reopening run…')
-    setRunLifecycleBusy(true)
+    setRunLifecycleProgress(createRunLifecycleProgress('reopen_field', 'submit'))
     try {
       const body = await apiJson<{ run: TechnicianWorksheetRun }>(
         `/api/technician_portal/routes/${idNum}/runs/reopen_field`,
@@ -171,7 +171,7 @@ export default function TechnicianPortalRoutePage() {
     } catch {
       window.alert('Could not reopen run. Try again.')
     } finally {
-      setRunLifecycleBusy(false)
+      setRunLifecycleProgress(null)
     }
   }, [idNum])
 
@@ -192,7 +192,7 @@ export default function TechnicianPortalRoutePage() {
 
   return (
     <div className="container py-4" style={{ maxWidth: '40rem' }}>
-      <PortalBlockingOverlay show={runLifecycleBusy} message={runLifecycleMessage} />
+      <PortalRunLifecycleProgressOverlay progress={runLifecycleProgress} />
       <div className="mb-3">
         <Link to="/tech/home" className="portal-flow-back d-inline-block mb-2">
           ← Back to home

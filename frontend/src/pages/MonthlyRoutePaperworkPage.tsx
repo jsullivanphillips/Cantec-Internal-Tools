@@ -10,6 +10,7 @@ import UploadRunFromCsvModal, {
 } from '../features/monthlyRoutes/UploadRunFromCsvModal'
 import RunDetailsLocationReviewList from '../features/monthlyRoutes/RunDetailsLocationReviewList'
 import RunDetailsPreRunMessageCard from '../features/monthlyRoutes/RunDetailsPreRunMessageCard'
+import RunDetailsFieldEndSummaryCard from '../features/monthlyRoutes/RunDetailsFieldEndSummaryCard'
 import RunWorkflowStepper from '../features/monthlyRoutes/RunWorkflowStepper'
 import {
   monthFirstIsoPacificToday,
@@ -52,6 +53,7 @@ import {
   patchRunDetailPayloadRun,
   patchRouteMetaRunMonth,
   patchRunDetailPreRunMessage,
+  patchRunDetailFieldEndSummary,
   patchRunDetailLocationStop,
   reorderRunDetailLocations,
   runDetailLocationOrderMatches,
@@ -498,6 +500,16 @@ export default function MonthlyRoutePaperworkPage() {
       return {
         ...prev,
         run: patchRunDetailPreRunMessage(prev.run, preRunMessage),
+      }
+    })
+  }, [])
+
+  const onFieldEndSummaryPatched = useCallback((fieldEndSummary: string | null) => {
+    setPayload((prev) => {
+      if (!prev?.run) return prev
+      return {
+        ...prev,
+        run: patchRunDetailFieldEndSummary(prev.run, fieldEndSummary),
       }
     })
   }, [])
@@ -1169,6 +1181,17 @@ export default function MonthlyRoutePaperworkPage() {
             run={run}
             onPreRunMessagePatched={onPreRunMessagePatched}
             prepEditsDisabled={futurePrepBlocked}
+          />
+        ) : null}
+
+        {!prepPhase ? (
+          <RunDetailsFieldEndSummaryCard
+            routeId={idNum}
+            monthDate={payload.month_date}
+            run={run}
+            onFieldEndSummaryPatched={onFieldEndSummaryPatched}
+            editsDisabled={runCompleted || paperworkViewMode === 'exact_history'}
+            compact={paperworkViewMode === 'exact_history'}
           />
         ) : null}
 

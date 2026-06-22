@@ -185,6 +185,15 @@ def _mlm_qualifies_for_auto_do_not_bill(
         cat = (_normalize_text(mlm.skip_category) or "").lower()
         if cat == "annual" or _sheet_skip_reason_is_annual(mlm.skip_reason):
             return True
+        from app.monthly.worksheet_locations import (
+            _explicit_skip_reason_blocks_annual_month_inference,
+        )
+
+        if _explicit_skip_reason_blocks_annual_month_inference(
+            skip_category=mlm.skip_category,
+            skip_reason=mlm.skip_reason,
+        ):
+            return False
         return _is_annual_for_month(month_first, annual_month)
 
     return _is_annual_for_month(month_first, annual_month)

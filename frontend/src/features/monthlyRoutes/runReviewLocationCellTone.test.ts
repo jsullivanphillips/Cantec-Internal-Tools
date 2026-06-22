@@ -84,6 +84,33 @@ describe('runReviewLocationCellTone', () => {
     ).toBe('skipped')
   })
 
+  it('keeps explicit skip reason when site annual month matches run month', () => {
+    expect(
+      runReviewLocationCellTone(
+        baseStop({
+          test_outcome: 'skipped',
+          result_status: 'skipped',
+          skip_category: 'access_issues',
+          annual_month: 'June',
+          month_date: JUNE_MONTH,
+        }),
+        JUNE_MONTH,
+      ),
+    ).toBe('skipped')
+    expect(
+      runReviewOutcomeHeadline(
+        baseStop({
+          test_outcome: 'skipped',
+          result_status: 'skipped',
+          skip_reason: 'no_access',
+          annual_month: 'June',
+          month_date: JUNE_MONTH,
+        }),
+        JUNE_MONTH,
+      ),
+    ).not.toBe(OFFICE_OUTCOME_SKIPPED_ANNUAL_LABEL)
+  })
+
   it('uses pending for stops without a recorded outcome', () => {
     expect(runReviewLocationCellTone(baseStop(), MONTH)).toBe('pending')
   })

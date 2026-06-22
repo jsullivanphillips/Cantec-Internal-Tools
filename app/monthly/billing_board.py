@@ -183,8 +183,18 @@ def _location_month_skip_reason_category_label(
     if outcome == "skipped" or rs == "skipped":
         if _legacy_skip_reason_category_label(skip_reason) == "Annual":
             return "Annual"
-        if _is_annual_for_month(month_first, annual):
+        if (_normalize_text(skip_category) or "").lower() == "annual":
             return "Annual"
+        from app.monthly.worksheet_locations import (
+            _explicit_skip_reason_blocks_annual_month_inference,
+        )
+
+        if not _explicit_skip_reason_blocks_annual_month_inference(
+            skip_category=skip_category,
+            skip_reason=skip_reason,
+        ):
+            if _is_annual_for_month(month_first, annual):
+                return "Annual"
         cat_label = _skip_category_label(skip_category)
         if cat_label:
             return cat_label

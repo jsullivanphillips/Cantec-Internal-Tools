@@ -72,3 +72,48 @@ def test_patch_pre_run_message_blocked_after_field_start(prep_message_client):
     )
     assert res.status_code == 409
     assert res.get_json().get("code") == "run_prep_locked"
+
+
+def _seed_field_ended_run(app) -> None:
+    with app.app_context():
+        route = MonthlyRoute(id=1, route_number=1, weekday_iso=0, week_occurrence=1)
+        now = datetime.now(PACIFIC_TZ)
+        run = MonthlyRouteRun(
+            id=100,
+            monthly_route_id=1,
+            month_date=date(2026, 5, 1),
+            status="open",
+            source="office_manual",
+            prepared_at=now,
+            started_at=now,
+            field_ended_at=now,
+        )
+        db.session.add_all([route, run])
+        db.session.commit()
+
+
+def test_patch_field_end_summary_in_run_review(prep_message_client):
+    client, app = prep_message_client
+    _seed_field_ended_run(app)
+    res = client.patch(
+        "/api/monthly_routes/routes/1/runs",
+        json={
+            "month_date": "2026-05-01",
+            "field_end_summary": "Office edited <b>summary</b>.",
+        },
+    )
+    assert res.status_code == 200
+    body = res.get_json()
+    assert "Office edited" in (body["run"]["field_end_summary"] or "")
+    assert "summary" in (body["run"]["field_end_summary"] or "")
+
+
+def test_patch_field_end_summary_blocked_before_field_end(prep_message_client):
+    client, app = prep_message_client
+    _seed_route_run(app, started=True)
+    res = client.patch(
+        "/api/monthly_routes/routes/1/runs",
+        json={"month_date": "2026-05-01", "field_end_summary": "Too early"},
+    )
+    assert res.status_code == 409
+    assert res.get_json().get("code") == "run_review_locked"

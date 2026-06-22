@@ -371,21 +371,36 @@ export function hasPendingSyncForRouteMonth(routeId: number, monthIso: string): 
   return countPendingSyncForRouteMonth(routeId, monthIso) > 0
 }
 
-/** Total queued field, workflow, and run-lifecycle mutations for one route-month. */
-export function countPendingSyncForRouteMonth(routeId: number, monthIso: string): number {
-  const fieldCount = loadSyncQueue().filter(
+export type PortalSyncBreakdown = {
+  field: number
+  workflow: number
+  runLifecycle: number
+  total: number
+}
+
+/** Queued field, workflow, and run-lifecycle mutations for one route-month. */
+export function countPendingSyncBreakdownForRouteMonth(
+  routeId: number,
+  monthIso: string,
+): PortalSyncBreakdown {
+  const field = loadSyncQueue().filter(
     (item) =>
       item.routeId === routeId &&
       item.monthIso === monthIso &&
       item.locationId != null,
   ).length
-  const workflowCount = loadWorkflowSyncQueue().filter(
+  const workflow = loadWorkflowSyncQueue().filter(
     (item) => item.routeId === routeId && item.monthIso === monthIso,
   ).length
-  const runLifecycleCount = loadRunLifecycleSyncQueue().filter(
+  const runLifecycle = loadRunLifecycleSyncQueue().filter(
     (item) => item.routeId === routeId && item.monthIso === monthIso,
   ).length
-  return fieldCount + workflowCount + runLifecycleCount
+  return { field, workflow, runLifecycle, total: field + workflow + runLifecycle }
+}
+
+/** Total queued field, workflow, and run-lifecycle mutations for one route-month. */
+export function countPendingSyncForRouteMonth(routeId: number, monthIso: string): number {
+  return countPendingSyncBreakdownForRouteMonth(routeId, monthIso).total
 }
 
 /** Unsynced field edits for one stop (optionally skip queue items already applied on the server). */

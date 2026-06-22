@@ -764,6 +764,8 @@ class MonthlyRouteRun(db.Model):
     completed_at = db.Column(db.DateTime(timezone=True), nullable=True)
     #: Office prep note shown to technicians on the route hub before/during the run.
     pre_run_message = db.Column(db.Text, nullable=True)
+    #: Technician end-of-run debrief after portal field end (rich text HTML).
+    field_end_summary = db.Column(db.Text, nullable=True)
     status = db.Column(db.String(16), nullable=False, server_default="open")
     source = db.Column(db.String(32), nullable=False, server_default="technician_app")
     created_at = db.Column(

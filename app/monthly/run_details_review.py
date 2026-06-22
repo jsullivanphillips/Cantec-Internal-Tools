@@ -20,6 +20,7 @@ from app.monthly.worksheet_locations import (
     _is_annual_for_month,
     _is_on_hold_pending_outcome,
     _normalize_text,
+    _office_stop_status,
     _run_details_counts_from_stops,
     _worksheet_stop_portal_outcome,
     load_stop_for_patch,
@@ -265,24 +266,6 @@ def _change_sort_index(label: str) -> int:
         return _CHANGE_LABEL_ORDER.index(label)
     except ValueError:
         return len(_CHANGE_LABEL_ORDER)
-
-
-def _office_stop_status(stop: dict[str, object], month_first: date) -> str:
-    rs = (str(stop.get("result_status") or "")).strip().lower()
-    if rs == "tested":
-        return "tested"
-    if rs == "skipped":
-        skip_reason = (str(stop.get("skip_reason") or "")).strip().lower()
-        if skip_reason in {"annual", "annual_booked"}:
-            return "annual"
-        if _is_annual_for_month(month_first, stop.get("annual_month")):
-            return "annual"
-        return "skipped"
-    if _is_annual_for_month(month_first, stop.get("annual_month")):
-        return "annual"
-    if _is_on_hold_pending_outcome(stop):
-        return "on_hold"
-    return "pending"
 
 
 def _office_stop_status_label(status: str) -> str:

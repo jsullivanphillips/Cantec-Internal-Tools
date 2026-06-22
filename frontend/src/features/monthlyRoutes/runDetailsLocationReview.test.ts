@@ -3,6 +3,7 @@ import type { MonthlyRunDetailLocation, MonthlyRunDetailPayload, MonthlyRouteDet
 import {
   computeRunDetailsPrepSummary,
   countBillingUnsetLocations,
+  countNoTestResultLocations,
   countSubmittedLocations,
   filterRunDetailLocations,
   filterRunDetailLocationsByOutcomes,
@@ -14,6 +15,7 @@ import {
   patchRunDetailPayloadRun,
   patchRouteMetaRunMonth,
   patchRunDetailPreRunMessage,
+  patchRunDetailFieldEndSummary,
   priorMonthFieldEditsHint,
   stopHasSubmittedTestResult,
   locationHasAllStopsSubmitted,
@@ -312,6 +314,29 @@ describe('patchRunDetailPreRunMessage', () => {
   })
 })
 
+describe('patchRunDetailFieldEndSummary', () => {
+  it('trims empty rich text to null', () => {
+    const run = patchRunDetailFieldEndSummary(
+      {
+        monthly_route_id: 1,
+        month_date: MONTH,
+        is_historical: false,
+        id: 1,
+        source: 'technician_app',
+        status: 'active',
+        opened_at: null,
+        started_at: null,
+        completed_at: null,
+        workflow_stage: 'awaiting_office_review',
+        workflow_stage_label: 'Awaiting office review',
+        field_end_summary: '<p> </p>',
+      },
+      '<p> </p>',
+    )
+    expect(run.field_end_summary).toBeNull()
+  })
+})
+
 describe('filterRunDetailLocations', () => {
   it('filters billing_unset locations', () => {
     const filtered = filterRunDetailLocations(
@@ -417,5 +442,22 @@ describe('filterRunDetailLocationsByOutcomes', () => {
     ]
     const filtered = filterRunDetailLocationsByOutcomes(locations, ['billing_unset', 'failed'], MONTH)
     expect(filtered.map((loc) => loc.location_id)).toEqual([101, 102])
+  })
+
+  it('filters no_test_result stops without a recorded outcome', () => {
+    const locations = [
+      baseLocation({ location_id: 101, test_outcome: 'all_good' }),
+      baseLocation({ location_id: 102, stop_number: 2, test_outcome: null, result_status: null }),
+      baseLocation({
+        location_id: 103,
+        stop_number: 3,
+        test_outcome: null,
+        result_status: null,
+        annual_month: 'May',
+      }),
+    ]
+    const filtered = filterRunDetailLocationsByOutcomes(locations, ['no_test_result'], MONTH)
+    expect(filtered.map((loc) => loc.location_id)).toEqual([102])
+    expect(countNoTestResultLocations(locations, MONTH)).toBe(1)
   })
 })

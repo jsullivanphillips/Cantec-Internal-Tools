@@ -563,6 +563,71 @@ def portal_end_current_month_run(route_id: int):
     mark_field_ended(run, now=now)
     db.session.add(run)
     db.session.commit()
+    from app.monthly.portal_run_summary import build_portal_run_summary
+
+    run_summary = build_portal_run_summary(route_id, month_first, run)
+    return jsonify({"ok": True, "run": _serialize_run(run), "run_summary": run_summary})
+
+
+@technician_portal_bp.patch("/routes/<int:route_id>/runs/field_end_summary")
+def portal_patch_field_end_summary(route_id: int):
+    """Technicians save optional end-of-run debrief after field end."""
+    if not session.get(SESSION_FLAG):
+        return jsonify({"error": "Portal locked", "code": "portal_locked"}), 401
+    from app.routes.monthly_routes import (
+        _current_pacific_month_first,
+        _run_explicitly_completed,
+        _serialize_run,
+    )
+    from app.monthly.rich_text_sanitize import sanitize_rich_text_comment
+
+    data = request.get_json(silent=True) or {}
+    if "field_end_summary" not in data:
+        return jsonify({"error": "field_end_summary required", "code": "invalid_body"}), 400
+
+    mr = MonthlyRoute.query.filter_by(id=route_id).one_or_none()
+    if mr is None:
+        return jsonify({"error": "Route not found", "code": "not_found"}), 404
+
+    month_first = _current_pacific_month_first()
+    run = MonthlyRouteRun.query.filter_by(
+        monthly_route_id=route_id,
+        month_date=month_first,
+    ).one_or_none()
+    if run is None or run.started_at is None:
+        return (
+            jsonify(
+                {
+                    "error": "No active run for this month.",
+                    "code": "run_not_started",
+                }
+            ),
+            409,
+        )
+    if _run_explicitly_completed(run):
+        return (
+            jsonify(
+                {
+                    "error": "This run is completed. Ask the office to reopen the job.",
+                    "code": "run_completed",
+                }
+            ),
+            409,
+        )
+    if run.field_ended_at is None:
+        return (
+            jsonify(
+                {
+                    "error": "End field work before saving an end-of-run summary.",
+                    "code": "field_not_ended",
+                }
+            ),
+            409,
+        )
+
+    run.field_end_summary = sanitize_rich_text_comment(data.get("field_end_summary"))
+    db.session.add(run)
+    db.session.commit()
     return jsonify({"ok": True, "run": _serialize_run(run)})
 
 

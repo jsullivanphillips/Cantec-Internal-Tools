@@ -23,6 +23,7 @@ import {
   backoffMs,
   enqueuePortalRunLifecycleAction,
   enqueueWorksheetChange,
+  countPendingSyncBreakdownForRouteMonth,
   countPendingSyncForRouteMonth,
   hasPendingRunLifecycleForRouteMonth,
   hasPendingSyncForRouteMonth,
@@ -59,6 +60,14 @@ import {
   evaluatePortalEndRunPreflight,
   type PortalEndRunModalState,
 } from './portalEndRunPreflight'
+import type { PortalRunSummary } from './portalRunSummary'
+import {
+  completeRunLifecycleStep,
+  createRunLifecycleProgress,
+  syncProgressFromSnapshot,
+  type PortalRunLifecycleProgress,
+  type PortalSyncProgressSnapshot,
+} from './portalRunLifecycleProgress'
 
 const MONTH_FIRST_RE = /^\d{4}-\d{2}-01$/
 
@@ -93,10 +102,10 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
   const [loading, setLoading] = useState(true)
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [portalStartingRun, setPortalStartingRun] = useState(false)
-  const [runLifecycleBusy, setRunLifecycleBusy] = useState(false)
-  const [runLifecycleMessage, setRunLifecycleMessage] = useState<string | null>(null)
+  const [runLifecycleProgress, setRunLifecycleProgress] =
+    useState<PortalRunLifecycleProgress | null>(null)
   const [endRunModal, setEndRunModal] = useState<PortalEndRunModalState | null>(null)
+  const [runSummaryModal, setRunSummaryModal] = useState<PortalRunSummary | null>(null)
   const [syncState, setSyncState] = useState<PortalWorksheetSyncState>('synced')
   const [syncMessage, setSyncMessage] = useState<string | null>(null)
   const syncingRef = useRef(false)
@@ -442,16 +451,30 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
     void runRunLifecycleSyncQueueRef.current()
   }
 
-  const waitForPortalSyncIdle = useCallback(async (): Promise<boolean> => {
-    return waitForPortalRouteSyncIdle(routeId, monthIso, {
-      runRunLifecycleSyncQueue: () => runRunLifecycleSyncQueueRef.current(),
-      runFieldSyncQueue: () => runSyncQueueRef.current(),
-      runWorkflowSyncQueue: () => runWorkflowSyncQueueRef.current(),
-      isFieldSyncing: () => syncingRef.current,
-      isWorkflowSyncing: () => workflowSyncingRef.current,
-      isRunLifecycleSyncing: () => runLifecycleSyncingRef.current,
-    })
-  }, [routeId, monthIso])
+  const waitForPortalSyncIdle = useCallback(
+    async (onProgress?: (snapshot: PortalSyncProgressSnapshot) => void): Promise<boolean> => {
+      return waitForPortalRouteSyncIdle(
+        routeId,
+        monthIso,
+        {
+          runRunLifecycleSyncQueue: () => runRunLifecycleSyncQueueRef.current(),
+          runFieldSyncQueue: () => runSyncQueueRef.current(),
+          runWorkflowSyncQueue: () => runWorkflowSyncQueueRef.current(),
+          isFieldSyncing: () => syncingRef.current,
+          isWorkflowSyncing: () => workflowSyncingRef.current,
+          isRunLifecycleSyncing: () => runLifecycleSyncingRef.current,
+        },
+        { onProgress },
+      )
+    },
+    [routeId, monthIso],
+  )
+
+  const applySyncProgress = useCallback((snapshot: PortalSyncProgressSnapshot) => {
+    setRunLifecycleProgress((prev) => (prev ? syncProgressFromSnapshot(prev, snapshot) : prev))
+  }, [])
+
+  const runLifecycleBusy = runLifecycleProgress != null
 
   const workflowActions = usePortalWorkflowActions({
     routeId,
@@ -489,7 +512,8 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
   const onPortalStartRun = useCallback(async () => {
     if (Number.isNaN(routeId) || viewingHistoricalRun) return
     if (payload?.run != null && payload.run.started_at != null) return
-    setPortalStartingRun(true)
+    let progress = createRunLifecycleProgress('start_run', 'register')
+    setRunLifecycleProgress(progress)
     try {
       const now = new Date().toISOString()
       setPayload((prev) => {
@@ -519,14 +543,30 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
         Date.now() + 2500,
       )
       void runRunLifecycleSyncQueueRef.current()
-    } finally {
-      setPortalStartingRun(false)
-    }
-  }, [routeId, monthIso, payload?.run, viewingHistoricalRun])
 
-  const postPortalEndRun = useCallback(async (): Promise<boolean> => {
+      progress = completeRunLifecycleStep(progress)
+      const breakdown = countPendingSyncBreakdownForRouteMonth(routeId, monthIso)
+      progress = {
+        ...progress,
+        sync: {
+          initialTotal: breakdown.total,
+          remaining: breakdown.total,
+          activeQueue: null,
+        },
+      }
+      setRunLifecycleProgress(progress)
+
+      if (breakdown.total > 0 || hasPendingSyncForRouteMonth(routeId, monthIso)) {
+        await waitForPortalSyncIdle(applySyncProgress)
+      }
+    } finally {
+      setRunLifecycleProgress(null)
+    }
+  }, [routeId, monthIso, payload?.run, viewingHistoricalRun, waitForPortalSyncIdle, applySyncProgress])
+
+  const postPortalEndRun = useCallback(async (): Promise<PortalRunSummary | null> => {
     try {
-      const body = await apiJson<{ run: TechnicianWorksheetRun }>(
+      const body = await apiJson<{ run: TechnicianWorksheetRun; run_summary?: PortalRunSummary }>(
         `/api/technician_portal/routes/${routeId}/runs/end`,
         {
           method: 'POST',
@@ -535,39 +575,61 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
         },
       )
       applyServerRunToPayload(body.run)
-      setEndRunModal(null)
-      return true
+      return body.run_summary ?? null
     } catch {
       window.alert('Could not end run. Try again.')
-      return false
+      return null
     }
   }, [routeId, applyServerRunToPayload])
+
+  const dismissRunSummaryModal = useCallback(() => {
+    setRunSummaryModal(null)
+  }, [])
 
   const requestPortalEndRun = useCallback(async () => {
     if (Number.isNaN(routeId) || !monthOk) return
     const run = payload?.run
     if (!run?.started_at || worksheetRunExplicitlyCompleted(run) || runFieldEnded(run)) return
     const runMonthIso = payload?.month_date ?? monthIso
-    setRunLifecycleBusy(true)
-    setRunLifecycleMessage('Checking worksheet…')
+    const breakdown = countPendingSyncBreakdownForRouteMonth(routeId, monthIso)
+    let progress = createRunLifecycleProgress('end_run', 'sync')
+    progress = {
+      ...progress,
+      sync: {
+        initialTotal: breakdown.total,
+        remaining: breakdown.total,
+        activeQueue: null,
+      },
+    }
+    setRunLifecycleProgress(progress)
+    let pendingRunSummary: PortalRunSummary | null = null
     try {
-      const syncIdle = await waitForPortalSyncIdle()
+      const syncIdle = await waitForPortalSyncIdle(applySyncProgress)
       if (!syncIdle) {
         window.alert(
           'Worksheet changes are still syncing. Wait a moment for pending actions to finish, then try again.',
         )
         return
       }
+      progress = completeRunLifecycleStep(progress)
+      setRunLifecycleProgress(progress)
+
       const preflight = evaluatePortalEndRunPreflight(projectedStops, runMonthIso)
       if (preflight) {
+        setRunLifecycleProgress(null)
         setEndRunModal(preflight)
         return
       }
-      setRunLifecycleMessage('Ending field run…')
-      await postPortalEndRun()
+
+      progress = completeRunLifecycleStep(progress)
+      setRunLifecycleProgress(progress)
+      pendingRunSummary = await postPortalEndRun()
     } finally {
-      setRunLifecycleBusy(false)
-      setRunLifecycleMessage(null)
+      setRunLifecycleProgress(null)
+      if (pendingRunSummary) {
+        setEndRunModal(null)
+        setRunSummaryModal(pendingRunSummary)
+      }
     }
   }, [
     routeId,
@@ -577,6 +639,7 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
     payload?.month_date,
     projectedStops,
     waitForPortalSyncIdle,
+    applySyncProgress,
     postPortalEndRun,
   ])
 
@@ -591,35 +654,63 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
     const run = payload?.run
     if (!run?.started_at || worksheetRunExplicitlyCompleted(run) || runFieldEnded(run)) return
 
-    setRunLifecycleBusy(true)
-    setRunLifecycleMessage('Skipping remaining stops…')
+    const stopsToSkip = endRunModal.stops
+    const skipTotal = stopsToSkip.length
+    setEndRunModal(null)
+    let progress = createRunLifecycleProgress('skip_and_end', 'skip')
+    progress = { ...progress, skip: { current: 0, total: skipTotal } }
+    setRunLifecycleProgress(progress)
+    let pendingRunSummary: PortalRunSummary | null = null
     try {
-      for (const stop of endRunModal.stops) {
+      let skipCurrent = 0
+      for (const stop of stopsToSkip) {
         await workflowActions.setTestOutcome(stop, 'skipped', {
           skipCategory: 'lack_of_time',
           skipNote: '',
         })
+        skipCurrent += 1
+        progress = { ...progress, skip: { current: skipCurrent, total: skipTotal } }
+        setRunLifecycleProgress(progress)
       }
-      const syncIdle = await waitForPortalSyncIdle()
+
+      progress = completeRunLifecycleStep(progress)
+      const breakdown = countPendingSyncBreakdownForRouteMonth(routeId, monthIso)
+      progress = {
+        ...progress,
+        sync: {
+          initialTotal: breakdown.total,
+          remaining: breakdown.total,
+          activeQueue: null,
+        },
+      }
+      setRunLifecycleProgress(progress)
+
+      const syncIdle = await waitForPortalSyncIdle(applySyncProgress)
       if (!syncIdle) {
         window.alert(
           'Worksheet changes are still syncing. Wait a moment for pending actions to finish, then try again.',
         )
         return
       }
-      setRunLifecycleMessage('Ending field run…')
-      await postPortalEndRun()
+
+      progress = completeRunLifecycleStep(progress)
+      setRunLifecycleProgress(progress)
+      pendingRunSummary = await postPortalEndRun()
     } finally {
-      setRunLifecycleBusy(false)
-      setRunLifecycleMessage(null)
+      setRunLifecycleProgress(null)
+      if (pendingRunSummary) {
+        setRunSummaryModal(pendingRunSummary)
+      }
     }
   }, [
     routeId,
+    monthIso,
     monthOk,
     endRunModal,
     payload?.run,
     workflowActions,
     waitForPortalSyncIdle,
+    applySyncProgress,
     postPortalEndRun,
   ])
 
@@ -628,7 +719,8 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
   const onPortalReopenField = useCallback(async () => {
     if (Number.isNaN(routeId) || !monthOk || payload?.run == null) return
     if (!runFieldEnded(payload.run) || worksheetRunExplicitlyCompleted(payload.run)) return
-    setRunLifecycleBusy(true)
+    const progress = createRunLifecycleProgress('reopen_field', 'submit')
+    setRunLifecycleProgress(progress)
     try {
       const body = await apiJson<{ run: TechnicianWorksheetRun }>(
         `/api/technician_portal/routes/${routeId}/runs/reopen_field`,
@@ -642,7 +734,7 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
     } catch {
       window.alert('Could not reopen run. Try again.')
     } finally {
-      setRunLifecycleBusy(false)
+      setRunLifecycleProgress(null)
     }
   }, [routeId, monthOk, payload?.run, applyServerRunToPayload])
 
@@ -843,7 +935,7 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
     error,
     monthOk,
     monthHeading: formatMonthHeading(monthIso),
-    portalStartingRun,
+    runLifecycleProgress,
     runLifecycleBusy,
     syncState,
     syncMessage,
@@ -859,7 +951,9 @@ export function usePortalWorksheet(routeId: number, monthIso: string) {
     endRunModal,
     dismissEndRunModal,
     confirmSkipUntestedAndEndRun,
-    runLifecycleMessage,
+    runSummaryModal,
+    dismissRunSummaryModal,
+    applyServerRunToPayload,
     onPortalReopenField,
     onPortalReopenRun,
     runStarted,

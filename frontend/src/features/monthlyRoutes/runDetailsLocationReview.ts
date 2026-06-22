@@ -16,6 +16,7 @@ import {
   runReviewOutcomeBadgeClass,
   runReviewOutcomeHeadline,
   runReviewStopIsAnnualSkip,
+  stopHasNoTestResult,
   stopMatchesOutcomeFilter,
   stopPortalOutcome,
   type OfficeBillingStatus,
@@ -23,11 +24,13 @@ import {
 import { officeStopStatus } from './officeWorksheetTableShared'
 import { portalStopHasTestOutcome, type PortalTestOutcome } from './portalWorkflowShared'
 import { openDeficiencySummaries } from './runDetailsDeficiencyDisplay'
+import { richTextIsEmpty } from '../richText/richTextSanitize'
 
 export type RunLocationReviewFilter =
   | RunReviewFilter
   | 'needs_attention'
   | 'billing_unset'
+  | 'no_test_result'
   | 'submitted'
 
 export function runDetailLocationAsWorksheetLocation(
@@ -91,6 +94,20 @@ export function stopHasSubmittedTestResult(loc: TechnicianWorksheetLocation): bo
 
 export function locationHasSubmittedResult(location: MonthlyRunDetailLocation): boolean {
   return stopHasSubmittedTestResult(runDetailLocationAsWorksheetLocation(location))
+}
+
+export function locationHasNoTestResult(
+  location: MonthlyRunDetailLocation,
+  monthDate: string,
+): boolean {
+  return stopHasNoTestResult(runDetailLocationAsWorksheetLocation(location), monthDate)
+}
+
+export function countNoTestResultLocations(
+  locations: MonthlyRunDetailLocation[],
+  monthDate: string,
+): number {
+  return locations.filter((loc) => locationHasNoTestResult(loc, monthDate)).length
 }
 
 /** @deprecated Use ``locationHasSubmittedResult``. */
@@ -511,6 +528,7 @@ export function locationMatchesFilter(
   if (filter === 'needs_attention') return location.attention_flags.needs_attention
   if (filter === 'billing_unset') return location.attention_flags.billing_unset
   if (filter === 'submitted') return locationHasSubmittedResult(location)
+  if (filter === 'no_test_result') return locationHasNoTestResult(location, monthDate)
   if (filter === 'all') return true
   if (filter === 'updated') return location.attention_flags.has_field_edits
   const ws = runDetailLocationAsWorksheetLocation(location)
@@ -526,7 +544,7 @@ export function filterRunDetailLocations(
   return locations.filter((loc) => locationMatchesFilter(loc, filter, monthDate))
 }
 
-export type RunDetailReviewPillFilter = PortalTestOutcome | 'billing_unset'
+export type RunDetailReviewPillFilter = PortalTestOutcome | 'billing_unset' | 'no_test_result'
 
 /** When ``filters`` is empty, all locations are returned (OR semantics when non-empty). */
 export function filterRunDetailLocationsByOutcomes(
@@ -665,6 +683,14 @@ export function patchRunDetailPreRunMessage(
 ): TechnicianWorksheetRun {
   const text = (preRunMessage ?? '').trim()
   return { ...run, pre_run_message: text.length > 0 ? text : null }
+}
+
+export function patchRunDetailFieldEndSummary(
+  run: TechnicianWorksheetRun,
+  fieldEndSummary: string | null,
+): TechnicianWorksheetRun {
+  const text = (fieldEndSummary ?? '').trim()
+  return { ...run, field_end_summary: richTextIsEmpty(text) ? null : text }
 }
 
 export function patchRunDetailPayloadRun(

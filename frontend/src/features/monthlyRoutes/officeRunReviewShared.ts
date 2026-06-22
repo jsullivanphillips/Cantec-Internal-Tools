@@ -289,3 +289,8 @@ export function stopHasOutcomeOnlyReview(stop: TechnicianWorksheetLocation, mont
   if (!outcome && officeStopStatus(stop, monthDate) === 'tested') return true
   return false
 }
+
+/** Stops with no recorded test outcome (excludes annual-month and on-hold pending). */
+export function stopHasNoTestResult(stop: TechnicianWorksheetLocation, monthDate: string): boolean {
+  return runReviewLocationCellTone(stop, monthDate) === 'pending'
+}

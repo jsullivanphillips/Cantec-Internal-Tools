@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { apiJson, isAbortError } from '../lib/apiClient'
-import { Card, Col, Row, Modal, Table, Button, Spinner, Form } from 'react-bootstrap'
+import { Card, Col, Row, Modal, Table, Button, Spinner, Form, OverlayTrigger, Tooltip } from 'react-bootstrap'
 import { Chart } from 'react-chartjs-2'
 
 type SchedulingKpis = {
@@ -592,7 +592,10 @@ export default function SchedulingAttackPage() {
           <Card className="app-surface-card scheduling-chart-card">
             <Card.Body>
               <div className="scheduling-chart-card__header">
-                <h2 className="h6 mb-0">Forward Schedule Utilization</h2>
+                <div className="scheduling-chart-card__title-row">
+                  <h2 className="h6 mb-0">Forward Schedule Utilization</h2>
+                  <ForwardScheduleUtilizationInfo />
+                </div>
                 <span className="scheduling-chart-card__updated">Updated {formatUpdated(forward?.generated_at)}</span>
               </div>
               <div className="scheduling-chart-card__canvas scheduling-chart-card__canvas--tall">
@@ -878,6 +881,31 @@ function jobsLeftFooterText(slot: JobsLeftMonthSlot): string {
     return 'From ServiceTrade · click to override'
   }
   return 'No data · click to set'
+}
+
+function ForwardScheduleUtilizationInfo() {
+  return (
+    <OverlayTrigger
+      placement="top"
+      trigger={['hover', 'focus']}
+      overlay={
+        <Tooltip id="forward-schedule-utilization-info" className="scheduling-chart-card__info-tooltip">
+          <div className="scheduling-chart-card__info-tooltip-body">
+            Scheduled job hours compared to available tech time. 40 hours per tech minus booked time off. RRSC and
+            Project Blocking are treated as unavailable.
+          </div>
+        </Tooltip>
+      }
+    >
+      <button
+        type="button"
+        className="scheduling-chart-card__info"
+        aria-label="How forward schedule utilization is calculated"
+      >
+        <i className="bi bi-info-circle" aria-hidden />
+      </button>
+    </OverlayTrigger>
+  )
 }
 
 function clampPct(value: number): number {

@@ -9,7 +9,7 @@ import {
   type TechnicianWorksheetLocation,
   routeDisplayLabel,
 } from '../features/monthlyRoutes/monthlyRoutesShared'
-import PortalBlockingOverlay from '../features/monthlyRoutes/PortalBlockingOverlay'
+import PortalRunLifecycleProgressOverlay from '../features/monthlyRoutes/PortalRunLifecycleProgressOverlay'
 import { usePortalWorksheet } from '../features/monthlyRoutes/usePortalWorksheet'
 import {
   isTechnicianDemoRoute,
@@ -50,6 +50,7 @@ import {
   type PortalMapsProvider,
 } from '../features/monthlyRoutes/portalMapsLinks'
 import PortalEndRunModals from '../features/monthlyRoutes/PortalEndRunModals'
+import PortalRunSummaryModal from '../features/monthlyRoutes/PortalRunSummaryModal'
 import PortalRecordResultsModal, {
   type RecordResultsCompletePayload,
 } from '../features/monthlyRoutes/PortalRecordResultsModal'
@@ -244,9 +245,11 @@ export default function TechnicianPortalWorksheetPage() {
     endRunModal,
     dismissEndRunModal,
     confirmSkipUntestedAndEndRun,
-    portalStartingRun,
+    runSummaryModal,
+    dismissRunSummaryModal,
+    applyServerRunToPayload,
+    runLifecycleProgress,
     runLifecycleBusy,
-    runLifecycleMessage,
     isCurrentMonth,
     viewingHistoricalRun,
     hasRunFile,
@@ -983,16 +986,9 @@ export default function TechnicianPortalWorksheetPage() {
         editingField ? ' portal-worksheet-mockup--field-editing' : ''
       }`}
     >
-      <PortalBlockingOverlay
-        show={portalStartingRun || runLifecycleBusy}
-        message={
-          portalStartingRun
-            ? 'Starting run…'
-            : runLifecycleMessage ?? 'Updating run…'
-        }
-      />
+      <PortalRunLifecycleProgressOverlay progress={runLifecycleProgress} />
       <PortalEndRunModals
-        modal={endRunModal}
+        modal={runLifecycleBusy ? null : endRunModal}
         onDismiss={dismissEndRunModal}
         onGoToClockedInStop={(locationId) => {
           setActiveId(locationId)
@@ -1000,6 +996,13 @@ export default function TechnicianPortalWorksheetPage() {
         }}
         onConfirmSkipUntestedAndEnd={() => void confirmSkipUntestedAndEndRun()}
         endRunBusy={runLifecycleBusy}
+      />
+      <PortalRunSummaryModal
+        summary={runSummaryModal}
+        routeId={idNum}
+        initialFieldEndSummary={payload?.run?.field_end_summary}
+        onDismiss={dismissRunSummaryModal}
+        onSaved={applyServerRunToPayload}
       />
       <header className="pw-mock-chrome">
         <div
@@ -1047,10 +1050,10 @@ export default function TechnicianPortalWorksheetPage() {
                 size="sm"
                 variant="primary"
                 className="pw-mock-chrome-run-action"
-                disabled={portalStartingRun || runLifecycleBusy}
+                disabled={runLifecycleBusy}
                 onClick={() => void onPortalStartRun()}
               >
-                {portalStartingRun ? (
+                {runLifecycleBusy && runLifecycleProgress?.operation === 'start_run' ? (
                   <>
                     <Spinner animation="border" size="sm" className="me-1" aria-hidden />
                     Starting…
@@ -1065,10 +1068,12 @@ export default function TechnicianPortalWorksheetPage() {
                 size="sm"
                 variant="outline-success"
                 className="pw-mock-chrome-run-action"
-                disabled={runLifecycleBusy || portalStartingRun}
+                disabled={runLifecycleBusy}
                 onClick={() => void requestPortalEndRun()}
               >
-                {runLifecycleBusy && !portalStartingRun ? (
+                {runLifecycleBusy &&
+                (runLifecycleProgress?.operation === 'end_run' ||
+                  runLifecycleProgress?.operation === 'skip_and_end') ? (
                   <>
                     <Spinner animation="border" size="sm" className="me-1" aria-hidden />
                     Ending…
@@ -1083,10 +1088,10 @@ export default function TechnicianPortalWorksheetPage() {
                 size="sm"
                 variant="outline-warning"
                 className="pw-mock-chrome-run-action"
-                disabled={runLifecycleBusy || portalStartingRun}
+                disabled={runLifecycleBusy}
                 onClick={() => void onPortalReopenField()}
               >
-                {runLifecycleBusy && !portalStartingRun ? (
+                {runLifecycleBusy && runLifecycleProgress?.operation === 'reopen_field' ? (
                   <>
                     <Spinner animation="border" size="sm" className="me-1" aria-hidden />
                     Reopening…

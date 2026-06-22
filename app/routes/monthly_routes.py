@@ -1340,6 +1340,7 @@ def _serialize_run(run: MonthlyRouteRun | None) -> dict[str, object] | None:
         "source": run.source,
         "is_historical": bool(is_historical),
         "pre_run_message": _normalize_ws_text(run.pre_run_message),
+        "field_end_summary": run.field_end_summary if run.field_end_summary else None,
     }
     base.update(serialize_run_workflow_fields(run))
     return base
@@ -5048,6 +5049,7 @@ def post_monthly_route_worksheet_reset_run(route_id: int):
 
         clear_workflow_on_reset(run)
         run.pre_run_message = None
+        run.field_end_summary = None
 
     from app.monthly.worksheet_locations import reset_worksheet_run_for_route_month
 
@@ -5485,13 +5487,18 @@ def post_monthly_route_run_unprepare(route_id: int):
 
 @monthly_routes_bp.patch("/api/monthly_routes/routes/<int:route_id>/runs")
 def patch_monthly_route_run(route_id: int):
-    """Office: set/clear pre-run message for technicians (prep phase only)."""
+    """Office: pre-run message (prep) and/or end-of-run summary (run review)."""
     if not session.get("authenticated"):
         return jsonify({"error": "Unauthorized"}), 401
 
     data = request.get_json(silent=True) or {}
-    if "pre_run_message" not in data:
-        return jsonify({"error": "pre_run_message required"}), 400
+    updating_pre = "pre_run_message" in data
+    updating_end = "field_end_summary" in data
+    if not updating_pre and not updating_end:
+        return (
+            jsonify({"error": "pre_run_message or field_end_summary required"}),
+            400,
+        )
     month_first = _parse_month(data.get("month_date"))
     if month_first is None:
         return jsonify({"error": "month_date required (YYYY-MM-01)"}), 400
@@ -5503,6 +5510,8 @@ def patch_monthly_route_run(route_id: int):
         month_date=month_first,
     ).one_or_none()
     if run is None:
+        if updating_end:
+            return jsonify({"error": "Run not found", "code": "run_not_found"}), 404
         from app.monthly.runs import get_or_create_monthly_route_run
 
         run = get_or_create_monthly_route_run(
@@ -5511,39 +5520,62 @@ def patch_monthly_route_run(route_id: int):
             source="office_manual",
         )
 
-    from app.monthly.run_workflow import run_explicitly_completed, run_in_office_prep_phase
+    from app.monthly.run_workflow import (
+        office_may_edit_outcomes,
+        run_explicitly_completed,
+        run_in_office_prep_phase,
+    )
 
     if run_explicitly_completed(run):
         return (
             jsonify(
                 {
-                    "error": "This run is completed; reopen it before editing the pre-run message.",
+                    "error": "This run is completed; reopen it before editing run paperwork.",
                     "code": "run_completed",
                 }
             ),
             409,
         )
-    if not run_in_office_prep_phase(run):
-        return (
-            jsonify(
-                {
-                    "error": "Pre-run message can only be edited before field work starts.",
-                    "code": "run_prep_locked",
-                }
-            ),
-            409,
-        )
 
-    blocked = _reject_if_future_month_prep_blocked(route_id, month_first)
-    if blocked is not None:
-        return blocked
+    if updating_pre:
+        if not run_in_office_prep_phase(run):
+            return (
+                jsonify(
+                    {
+                        "error": "Pre-run message can only be edited before field work starts.",
+                        "code": "run_prep_locked",
+                    }
+                ),
+                409,
+            )
 
-    raw = data.get("pre_run_message")
-    if raw is None:
-        run.pre_run_message = None
-    else:
-        text = str(raw).strip()
-        run.pre_run_message = text or None
+        blocked = _reject_if_future_month_prep_blocked(route_id, month_first)
+        if blocked is not None:
+            return blocked
+
+        raw = data.get("pre_run_message")
+        if raw is None:
+            run.pre_run_message = None
+        else:
+            text = str(raw).strip()
+            run.pre_run_message = text or None
+
+    if updating_end:
+        if not office_may_edit_outcomes(run):
+            return (
+                jsonify(
+                    {
+                        "error": "End-of-run summary can only be edited during run review.",
+                        "code": "run_review_locked",
+                    }
+                ),
+                409,
+            )
+
+        from app.monthly.rich_text_sanitize import sanitize_rich_text_comment
+
+        run.field_end_summary = sanitize_rich_text_comment(data.get("field_end_summary"))
+
     db.session.add(run)
     db.session.commit()
     return jsonify({"ok": True, "run": _serialize_run(run)})

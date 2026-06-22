@@ -1605,6 +1605,32 @@ def _sheet_skip_reason_is_annual(skip_reason: object) -> bool:
     return s in {"annual", "annual_booked"}
 
 
+def _explicit_skip_reason_blocks_annual_month_inference(
+    *,
+    skip_category: object = None,
+    skip_reason: object = None,
+) -> bool:
+    """True when a user-chosen skip reason should override annual-month inference."""
+    cat = (_normalize_text(skip_category) or "").lower()
+    if cat:
+        return cat != "annual"
+    reason = (_normalize_text(skip_reason) or "").lower()
+    if not reason or reason == "sheet_value":
+        return False
+    if _sheet_skip_reason_is_annual(skip_reason):
+        return False
+    return True
+
+
+def _stop_explicit_skip_reason_blocks_annual_month_inference(
+    stop: dict[str, object],
+) -> bool:
+    return _explicit_skip_reason_blocks_annual_month_inference(
+        skip_category=stop.get("skip_category"),
+        skip_reason=stop.get("skip_reason"),
+    )
+
+
 def _is_on_hold_pending_outcome(stop: dict[str, object]) -> bool:
     status = (str(stop.get("status_normalized") or "")).strip().lower()
     if status != "on_hold":
@@ -1652,18 +1678,22 @@ def office_review_billing_location_ids(route_id: int, month_first: date) -> set[
     return {int(s["location_id"]) for s in stops}
 
 
-def _office_stop_status_for_count(
+def _office_stop_status(
     stop: dict[str, object],
     month_first: date,
 ) -> str:
-    """Mirror ``run_details_review._office_stop_status`` (kept here to avoid import cycles)."""
     rs = (str(stop.get("result_status") or "")).strip().lower()
+    outcome = (str(stop.get("test_outcome") or "")).strip().lower()
     if rs == "tested":
         return "tested"
-    if rs == "skipped":
+    if rs == "skipped" or outcome == "skipped":
         skip_reason = (str(stop.get("skip_reason") or "")).strip().lower()
         if skip_reason in {"annual", "annual_booked"}:
             return "annual"
+        if (_normalize_text(stop.get("skip_category")) or "").lower() == "annual":
+            return "annual"
+        if _stop_explicit_skip_reason_blocks_annual_month_inference(stop):
+            return "skipped"
         if _is_annual_for_month(month_first, stop.get("annual_month")):
             return "annual"
         return "skipped"
@@ -1696,7 +1726,7 @@ def _run_details_counts_from_stops(
     for stop in stops:
         outcome = _worksheet_stop_portal_outcome(stop)
         status = (
-            _office_stop_status_for_count(stop, month_first)
+            _office_stop_status(stop, month_first)
             if month_first is not None
             else "pending"
         )
