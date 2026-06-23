@@ -1,10 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   lastRecordedTestSummary,
+  monthHasRecordedTestOutcome,
   nextSiteRouteTestDayLabel,
   nextUntestedMonthIso,
   resolveMonthOutcomeLabel,
+  siteUpcomingAnnualDue,
   splitHeroAddressLines,
+  testingHistoryChipLabel,
+  testingHistoryIsNextSlot,
+  testingHistoryShowRouteContext,
   type LibraryLocation,
   type MonthCell,
   type MonthlyRouteSummary,
@@ -52,6 +57,160 @@ describe('nextUntestedMonthIso', () => {
       '2026-07-01': { result_status: 'skipped', skip_reason: 'annual' },
     }
     expect(nextUntestedMonthIso(months, june2026)).toBe('2026-08-01')
+  })
+
+  it('does not treat prepared annual billing-only rows as recorded', () => {
+    const months: Record<string, MonthCell> = {
+      '2026-06-01': { result_status: 'tested', skip_reason: null },
+      '2026-07-01': {
+        result_status: null,
+        skip_reason: null,
+        billing_status: 'do_not_bill',
+        run_id: 42,
+        run_workflow_stage: 'prepared',
+      },
+    }
+    expect(nextUntestedMonthIso(months, june2026, 'July')).toBe('2026-07-01')
+  })
+
+  it('does not treat annual_booked on a prepared run as recorded', () => {
+    const months: Record<string, MonthCell> = {
+      '2026-06-01': { result_status: 'tested', skip_reason: null },
+      '2026-07-01': {
+        result_status: 'skipped',
+        skip_reason: 'annual_booked',
+        run_id: 53,
+        run_workflow_stage: 'prepared',
+      },
+    }
+    expect(nextUntestedMonthIso(months, june2026, 'July')).toBe('2026-07-01')
+  })
+})
+
+describe('monthHasRecordedTestOutcome', () => {
+  it('returns false for prepared placeholders without result_status', () => {
+    expect(
+      monthHasRecordedTestOutcome(
+        {
+          result_status: null,
+          skip_reason: null,
+          run_id: 10,
+          run_workflow_stage: 'prepared',
+        },
+        '2026-07-01',
+        'July',
+      ),
+    ).toBe(false)
+  })
+
+  it('returns true after annual skip is recorded', () => {
+    expect(
+      monthHasRecordedTestOutcome(
+        { result_status: 'skipped', skip_reason: 'annual' },
+        '2026-07-01',
+        'July',
+      ),
+    ).toBe(true)
+  })
+
+  it('ignores sheet annual_booked on a prepared run until field work', () => {
+    expect(
+      monthHasRecordedTestOutcome(
+        {
+          result_status: 'skipped',
+          skip_reason: 'annual_booked',
+          run_id: 53,
+          run_workflow_stage: 'prepared',
+        },
+        '2026-07-01',
+        'July',
+      ),
+    ).toBe(false)
+  })
+})
+
+describe('testingHistoryIsNextSlot', () => {
+  it('treats prepared placeholder cells as the next slot', () => {
+    expect(
+      testingHistoryIsNextSlot(
+        '2026-07-01',
+        '2026-07-01',
+        { result_status: null, skip_reason: null, run_id: 9, run_workflow_stage: 'prepared' },
+        'July',
+      ),
+    ).toBe(true)
+  })
+})
+
+describe('testingHistoryChipLabel', () => {
+  it('shows Annual for next slot when ST annual is scheduled', () => {
+    expect(
+      testingHistoryChipLabel(
+        { result_status: null, skip_reason: null, run_id: 9, run_workflow_stage: 'prepared' },
+        '2026-07-01',
+        'July',
+        {
+          isNextSlot: true,
+          isAnnualMonthRow: true,
+          annualDueOnSchedule: true,
+        },
+      ),
+    ).toBe('Annual')
+  })
+
+  it('shows Pending for next slot when annual month lacks ST schedule match', () => {
+    expect(
+      testingHistoryChipLabel(
+        { result_status: null, skip_reason: null },
+        '2026-07-01',
+        'July',
+        {
+          isNextSlot: true,
+          isAnnualMonthRow: true,
+          annualDueOnSchedule: false,
+        },
+      ),
+    ).toBe('Pending')
+  })
+})
+
+describe('testingHistoryShowRouteContext', () => {
+  it('hides route context until a result is recorded', () => {
+    expect(
+      testingHistoryShowRouteContext(
+        { result_status: null, skip_reason: null, run_id: 9, run_workflow_stage: 'prepared' },
+        '2026-07-01',
+        'July',
+      ),
+    ).toBe(false)
+    expect(
+      testingHistoryShowRouteContext(
+        { result_status: 'skipped', skip_reason: 'annual_booked', run_workflow_stage: 'prepared' },
+        '2026-07-01',
+        'July',
+      ),
+    ).toBe(false)
+    expect(
+      testingHistoryShowRouteContext(
+        { result_status: 'skipped', skip_reason: 'annual', run_workflow_stage: 'completed' },
+        '2026-07-01',
+        'July',
+      ),
+    ).toBe(true)
+  })
+})
+
+describe('siteUpcomingAnnualDue', () => {
+  it('requires both annual month match and scheduled inspection', () => {
+    expect(
+      siteUpcomingAnnualDue('July', '2026-07-01', { has_scheduled_annual_in_month: true }),
+    ).toBe(true)
+    expect(
+      siteUpcomingAnnualDue('July', '2026-06-01', { has_scheduled_annual_in_month: true }),
+    ).toBe(false)
+    expect(siteUpcomingAnnualDue('July', '2026-07-01', { has_scheduled_annual_in_month: false })).toBe(
+      false,
+    )
   })
 })
 

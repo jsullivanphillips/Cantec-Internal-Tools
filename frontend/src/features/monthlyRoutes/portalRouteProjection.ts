@@ -13,6 +13,7 @@ import {
   optimisticUpdateDeficiencyPatch,
   optimisticVerifyDeficiencyPatch,
   optimisticResetStopPatch,
+  optimisticUpdateClockEventPatch,
   portalHhmmNow,
   type PortalSkipCategory,
   type PortalTestOutcome,
@@ -39,6 +40,18 @@ export function applyWorkflowActionToStop(
     }
     case 'cancel_clock_in':
       return { ...stop, ...optimisticCancelClockInPatch(stop) }
+    case 'update_clock_event': {
+      const clockEventId = Number(payload.clock_event_id)
+      const patch: { time_in?: string; time_out?: string | null } = {}
+      if (payload.time_in != null) patch.time_in = String(payload.time_in)
+      if ('time_out' in payload) {
+        patch.time_out =
+          payload.time_out == null || payload.time_out === ''
+            ? null
+            : String(payload.time_out)
+      }
+      return { ...stop, ...optimisticUpdateClockEventPatch(stop, clockEventId, patch) }
+    }
     case 'test_outcome': {
       const outcome = payload.test_outcome as PortalTestOutcome
       return {

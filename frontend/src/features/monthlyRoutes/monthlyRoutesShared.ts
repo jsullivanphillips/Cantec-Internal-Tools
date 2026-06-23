@@ -15,6 +15,8 @@ export type MonthCell = {
   worksheet_route_id?: number | null
   /** Run file id linked to this month cell, when present. */
   run_id?: number | null
+  /** Linked run workflow stage when ``run_id`` is set (e.g. ``prepared``, ``completed``). */
+  run_workflow_stage?: string | null
   /** True when the linked run has a frozen field submission snapshot. */
   has_field_submission?: boolean
   /** True when this location appears on the route worksheet for that submission month. */
@@ -824,6 +826,8 @@ export type TechnicianWorksheetLocation = {
   version_updated_at: string | null
   /** Library location status (``active``, ``on_hold``, ``cancelled``, ``waiting_keys``). */
   status_normalized?: string | null
+  /** ServiceTrade annual inspection scheduled and annual month matches run month. */
+  scheduled_annual_auto_skip?: boolean
 }
 
 export type TechnicianWorksheetPayload = {
@@ -1635,13 +1639,79 @@ export function resolveMonthOutcomeLabel(
   return null
 }
 
+function runWorkflowStageIsPreField(stage: string | null | undefined): boolean {
+  const s = (stage || '').trim().toLowerCase()
+  return s === 'draft' || s === 'prepared'
+}
+
+/** True when the site annual month matches the row and ServiceTrade has a qualifying inspection. */
+export function siteUpcomingAnnualDue(
+  annualMonth: string | null | undefined,
+  monthIso: string,
+  scheduleRow: Pick<AnnualScheduleCheckLocation, 'has_scheduled_annual_in_month'> | null | undefined,
+): boolean {
+  return isAnnualForMonth(annualMonth, monthIso) && Boolean(scheduleRow?.has_scheduled_annual_in_month)
+}
+
 export function monthHasRecordedTestOutcome(
   cell: MonthCell | undefined,
   monthIso: string,
   annualMonth?: string | null,
 ): boolean {
   if (!cell) return false
-  return resolveMonthOutcomeLabel(cell, monthIso, annualMonth) != null
+  if (runWorkflowStageIsPreField(cell.run_workflow_stage)) return false
+  if (recordedMonthOutcomeLabel(cell, monthIso, annualMonth) != null) return true
+  if (cell.run_id != null && !(cell.run_workflow_stage || '').trim()) return false
+  if (!isAnnualForMonth(annualMonth, monthIso)) return false
+  const billing = (cell.billing_status || '').trim().toLowerCase()
+  return billing === 'do_not_bill' || billing === 'legacy'
+}
+
+/** Next open test month for the location detail history grid (placeholder rows count as open). */
+export function testingHistoryIsNextSlot(
+  monthIso: string,
+  nextUntestedMonthIso: string | null,
+  cell: MonthCell | undefined,
+  annualMonth?: string | null,
+): boolean {
+  if (nextUntestedMonthIso !== monthIso) return false
+  return !monthHasRecordedTestOutcome(cell, monthIso, annualMonth)
+}
+
+export type TestingHistoryChipLabelOptions = {
+  isNextSlot: boolean
+  isAnnualMonthRow: boolean
+  annualDueOnSchedule: boolean
+}
+
+/** Tested-column chip label for the location detail testing history grid. */
+export function testingHistoryChipLabel(
+  cell: MonthCell | undefined,
+  monthIso: string,
+  annualMonth: string | null | undefined,
+  opts: TestingHistoryChipLabelOptions,
+): string {
+  const { isNextSlot, isAnnualMonthRow, annualDueOnSchedule } = opts
+  const recorded = cell ? recordedMonthOutcomeLabel(cell, monthIso, annualMonth) : null
+  if (recorded === 'Tested') return 'Tested'
+  if (recorded === 'Annual') return 'Annual'
+  if (recorded === 'Skipped') return isAnnualMonthRow ? 'Annual' : 'Skipped'
+  if (isNextSlot) {
+    if (annualDueOnSchedule) return 'Annual'
+    return 'Pending'
+  }
+  if (isAnnualMonthRow) return 'Annual'
+  if (!cell) return 'Set result'
+  return 'Set result'
+}
+
+/** Whether the history row should show the route the month was recorded on. */
+export function testingHistoryShowRouteContext(
+  cell: MonthCell | undefined,
+  monthIso: string,
+  annualMonth?: string | null,
+): boolean {
+  return monthHasRecordedTestOutcome(cell, monthIso, annualMonth)
 }
 
 export function nextUntestedMonthIso(

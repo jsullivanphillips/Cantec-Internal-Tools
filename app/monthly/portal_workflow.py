@@ -51,6 +51,15 @@ def _normalize_text(value: object) -> str | None:
     return text or None
 
 
+def _validate_portal_clock_time_raw(raw: str | None) -> str:
+    from app.monthly.visit_clock_times import parse_visit_clock_minutes
+
+    text = _normalize_text(raw)
+    if not text or parse_visit_clock_minutes(text) is None:
+        raise ValueError("invalid_clock_time")
+    return text
+
+
 def portal_run_is_read_only(run: MonthlyRouteRun | None) -> bool:
     if run is None:
         return False
@@ -355,6 +364,37 @@ def clock_in_stop(
         mlm.skip_note = None
         mlm.result_status = None
         mlm.skip_reason = None
+
+    sync_legacy_times_from_clock_events(mlm)
+    return ev
+
+
+def update_clock_event(
+    mlm: MonthlyLocationMonth,
+    clock_event_id: int,
+    *,
+    time_in_raw: str | None = None,
+    time_out_raw: str | None = None,
+    unset_time_out: bool = False,
+) -> MonthlyStopClockEvent:
+    """Update stored clock-in/out text for an existing portal clock event."""
+    ev = (
+        MonthlyStopClockEvent.query.filter_by(
+            id=int(clock_event_id),
+            monthly_location_month_id=int(mlm.id),
+        )
+        .first()
+    )
+    if ev is None:
+        raise ValueError("clock_event_not_found")
+
+    if time_in_raw is not None:
+        ev.time_in_raw = _validate_portal_clock_time_raw(time_in_raw)
+
+    if unset_time_out:
+        ev.time_out_raw = None
+    elif time_out_raw is not None:
+        ev.time_out_raw = _validate_portal_clock_time_raw(time_out_raw)
 
     sync_legacy_times_from_clock_events(mlm)
     return ev

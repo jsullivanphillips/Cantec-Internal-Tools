@@ -12,6 +12,7 @@ import {
   worksheetLocationSkipIsAnnual,
   type TechnicianWorksheetLocation,
 } from './monthlyRoutesShared'
+import { stopScheduledAnnualAutoSkipActive } from './prepAnnualSchedule'
 
 export type PortalTestOutcome = 'all_good' | 'passed_with_problems' | 'failed' | 'skipped'
 
@@ -238,6 +239,30 @@ export function optimisticCancelClockInPatch(
     clock_events: events,
     time_in: events.length ? events[0]?.time_in ?? null : null,
     time_out: lastClosed?.time_out ?? null,
+  }
+}
+
+export function optimisticUpdateClockEventPatch(
+  stop: TechnicianWorksheetLocation,
+  clockEventId: number,
+  patch: { time_in?: string; time_out?: string | null },
+): Partial<TechnicianWorksheetLocation> {
+  const events = (stop.clock_events ?? []).map((ev) => {
+    if (ev.id !== clockEventId) return ev
+    return {
+      ...ev,
+      ...(patch.time_in !== undefined ? { time_in: patch.time_in } : {}),
+      ...(patch.time_out !== undefined ? { time_out: patch.time_out } : {}),
+    }
+  })
+  const closed = events.filter((ev) => ev.time_out?.trim())
+  const lastClosed = closed.length > 0 ? closed[closed.length - 1] : null
+  const hasOpen = events.some((ev) => ev.time_in && !norm(ev.time_out))
+  return {
+    clock_events: events,
+    time_in: events.length ? events[0]?.time_in ?? null : null,
+    time_out: hasOpen ? null : lastClosed?.time_out ?? null,
+    has_run_changes: true,
   }
 }
 
@@ -487,10 +512,16 @@ export function portalStopVisualTone(
   if (stop.is_legacy_outcome) {
     const rs = norm(stop.result_status).toLowerCase()
     if (rs === 'tested') return 'all_good'
-    if (rs === 'skipped') return 'skipped'
+    if (rs === 'skipped') {
+      if (stopScheduledAnnualAutoSkipActive(stop)) return 'annual'
+      if (worksheetLocationSkipIsAnnual(stop) || isAnnualForMonth(stop.annual_month, runMonthIso)) {
+        return 'pending'
+      }
+      return 'skipped'
+    }
   }
   if (worksheetLocationIsOpenClockIn(stop)) return 'in_progress'
-  if (isAnnualForMonth(stop.annual_month, runMonthIso)) return 'annual'
+  if (stopScheduledAnnualAutoSkipActive(stop)) return 'annual'
   return 'pending'
 }
 

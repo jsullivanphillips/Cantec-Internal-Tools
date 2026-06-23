@@ -1,11 +1,31 @@
-import { useCallback } from 'react'
+import { Suspense, useCallback } from 'react'
 import { Card, Nav, Tab } from 'react-bootstrap'
 import { useSearchParams } from 'react-router-dom'
-import MondayMeetingProcessingEmbed from '../features/mondayMeeting/MondayMeetingProcessingEmbed'
-import MondayMeetingProcessingHistoryEmbed from '../features/mondayMeeting/MondayMeetingProcessingHistoryEmbed'
-import MondayMeetingSchedulingEmbed from '../features/mondayMeeting/MondayMeetingSchedulingEmbed'
-import MondayMeetingServiceTab from '../features/mondayMeeting/MondayMeetingServiceTab'
+import { lazyWithChunkRetry } from '../lib/lazyWithChunkRetry'
 import '../features/mondayMeeting/mondayMeeting.css'
+
+const MondayMeetingProcessingEmbed = lazyWithChunkRetry(
+  () => import('../features/mondayMeeting/MondayMeetingProcessingEmbed'),
+)
+const MondayMeetingProcessingHistoryEmbed = lazyWithChunkRetry(
+  () => import('../features/mondayMeeting/MondayMeetingProcessingHistoryEmbed'),
+)
+const MondayMeetingSchedulingEmbed = lazyWithChunkRetry(
+  () => import('../features/mondayMeeting/MondayMeetingSchedulingEmbed'),
+)
+const MondayMeetingServiceTab = lazyWithChunkRetry(
+  () => import('../features/mondayMeeting/MondayMeetingServiceTab'),
+)
+
+function MondayMeetingTabFallback() {
+  return (
+    <div className="monday-meeting-service-loading" aria-busy="true" aria-label="Loading tab">
+      <div className="spinner-border text-primary" role="status">
+        <span className="visually-hidden">Loading…</span>
+      </div>
+    </div>
+  )
+}
 
 type MondayMeetingTabKey = 'processing' | 'processing-history' | 'scheduling' | 'service'
 
@@ -58,17 +78,25 @@ export default function MondayMeetingPage() {
             </Nav.Item>
           </Nav>
           <Tab.Content className="processing-tabs-shell__panel">
-            <Tab.Pane eventKey="processing">
-              <MondayMeetingProcessingEmbed />
+            <Tab.Pane eventKey="processing" mountOnEnter unmountOnExit>
+              <Suspense fallback={<MondayMeetingTabFallback />}>
+                <MondayMeetingProcessingEmbed />
+              </Suspense>
             </Tab.Pane>
-            <Tab.Pane eventKey="scheduling">
-              <MondayMeetingSchedulingEmbed />
+            <Tab.Pane eventKey="scheduling" mountOnEnter unmountOnExit>
+              <Suspense fallback={<MondayMeetingTabFallback />}>
+                <MondayMeetingSchedulingEmbed />
+              </Suspense>
             </Tab.Pane>
-            <Tab.Pane eventKey="service">
-              <MondayMeetingServiceTab />
+            <Tab.Pane eventKey="service" mountOnEnter unmountOnExit>
+              <Suspense fallback={<MondayMeetingTabFallback />}>
+                <MondayMeetingServiceTab />
+              </Suspense>
             </Tab.Pane>
-            <Tab.Pane eventKey="processing-history">
-              <MondayMeetingProcessingHistoryEmbed />
+            <Tab.Pane eventKey="processing-history" mountOnEnter unmountOnExit>
+              <Suspense fallback={<MondayMeetingTabFallback />}>
+                <MondayMeetingProcessingHistoryEmbed />
+              </Suspense>
             </Tab.Pane>
           </Tab.Content>
         </div>

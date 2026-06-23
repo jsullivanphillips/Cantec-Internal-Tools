@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Alert, Badge, Button, Spinner } from 'react-bootstrap'
+import { stopScheduledAnnualAutoSkipActive } from '../features/monthlyRoutes/prepAnnualSchedule'
 import {
   WORKSHEET_CLOCK_IN_BLOCKED_MESSAGE,
   isAnnualForMonth,
@@ -40,6 +41,7 @@ import type { MonitoringCompanySummary } from '../features/monthlyRoutes/monthly
 import type { WorksheetStopChangeSet } from '../features/monthlyRoutes/worksheetOfflineStore'
 import PortalWorksheetSkeleton from './PortalWorksheetSkeleton'
 import PortalClockEventsCard from '../features/monthlyRoutes/PortalClockEventsCard'
+import PortalOfficeJobCommentCard from '../features/monthlyRoutes/PortalOfficeJobCommentCard'
 import PortalSkipModal from '../features/monthlyRoutes/PortalSkipModal'
 import PortalMapsChoiceModal from '../features/monthlyRoutes/PortalMapsChoiceModal'
 import {
@@ -95,8 +97,18 @@ function stopDisplayStatus(stop: TechnicianWorksheetLocation): StopDisplayStatus
   if (stop.is_legacy_outcome) {
     const rs = (stop.result_status || '').trim().toLowerCase()
     if (rs === 'tested') return 'tested'
-    if (rs === 'skipped') return 'skipped'
+    if (rs === 'skipped') {
+      if (stopScheduledAnnualAutoSkipActive(stop)) return 'skipped'
+      if (
+        worksheetLocationSkipIsAnnual(stop) ||
+        isAnnualForMonth(stop.annual_month, stop.month_date)
+      ) {
+        return 'pending'
+      }
+      return 'skipped'
+    }
   }
+  if (stopScheduledAnnualAutoSkipActive(stop)) return 'skipped'
   if (worksheetLocationIsOpenClockIn(stop)) return 'in_progress'
   return 'pending'
 }
@@ -106,7 +118,9 @@ function statusLabel(status: StopDisplayStatus, stop: TechnicianWorksheetLocatio
   if (outcomeLabel && portalStopHasTestOutcome(stop)) return outcomeLabel
   if (status === 'tested') return 'Tested'
   if (status === 'skipped') {
-    return worksheetLocationSkipIsAnnual(stop) ? 'Annual skip' : 'Skipped'
+    return worksheetLocationSkipIsAnnual(stop) || stopScheduledAnnualAutoSkipActive(stop)
+      ? 'Annual skip'
+      : 'Skipped'
   }
   if (status === 'in_progress') return 'In progress'
   return 'Pending'
@@ -114,12 +128,14 @@ function statusLabel(status: StopDisplayStatus, stop: TechnicianWorksheetLocatio
 
 function showAnnualMonthPill(
   stop: TechnicianWorksheetLocation,
-  runMonthIso: string,
+  _runMonthIso: string,
   status: StopDisplayStatus,
 ): boolean {
   if (portalStopHasTestOutcome(stop)) return false
-  if (status === 'skipped') return worksheetLocationSkipIsAnnual(stop)
-  return isAnnualForMonth(stop.annual_month, runMonthIso)
+  if (status === 'skipped') {
+    return worksheetLocationSkipIsAnnual(stop) || stopScheduledAnnualAutoSkipActive(stop)
+  }
+  return stopScheduledAnnualAutoSkipActive(stop)
 }
 
 function skipReasonDisplay(stop: TechnicianWorksheetLocation): string | null {
@@ -493,7 +509,7 @@ export default function TechnicianPortalWorksheetPage() {
     const skipped = projectedStops.filter((s) => stopDisplayStatus(s) === 'skipped').length
     const annual = projectedStops.filter(
       (s) =>
-        isAnnualForMonth(s.annual_month, runMonthIso) ||
+        stopScheduledAnnualAutoSkipActive(s) ||
         (stopDisplayStatus(s) === 'skipped' && worksheetLocationSkipIsAnnual(s)),
     ).length
     const open = projectedStops.length - tested - skipped
@@ -1316,7 +1332,14 @@ export default function TechnicianPortalWorksheetPage() {
               </div>
 
               <div className="pw-mock-fields">
-                <PortalClockEventsCard stop={active} />
+                <PortalOfficeJobCommentCard stop={active} />
+                <PortalClockEventsCard
+                  stop={active}
+                  readOnly={workflowReadOnly}
+                  onUpdateClockEvent={(eventId, patch) => {
+                    void workflowActions.updateClockEvent(active, eventId, patch)
+                  }}
+                />
                 <div className="pw-mock-field-group">
                   <div className="pw-mock-field-group-title">Site</div>
                   <PortalEditableFieldRow
@@ -1440,17 +1463,6 @@ export default function TechnicianPortalWorksheetPage() {
                 />
                 <div className="pw-mock-field-group">
                   <div className="pw-mock-field-group-title">Comments</div>
-                  {(active.office_job_comment || '').trim() ? (
-                    <PortalEditableFieldRow
-                      fieldKey="office_job_comment"
-                      label="Office job comment"
-                      value={active.office_job_comment ?? ''}
-                      multiline
-                      onSave={async () => {}}
-                      {...fieldEditProps}
-                      readOnly
-                    />
-                  ) : null}
                   <PortalEditableFieldRow
                     fieldKey="testing_procedures"
                     label="Testing procedures"

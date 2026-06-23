@@ -984,7 +984,7 @@ export default function ProcessingAttackPage({ embeddedTab }: { embeddedTab?: Pr
   const [reportConversionModalOpen, setReportConversionModalOpen] = useState(false)
   const [pinkTechExpanded, setPinkTechExpanded] = useState<Record<string, boolean>>({})
   const [loading, setLoading] = useState(true)
-  const [weeklyLoading, setWeeklyLoading] = useState(true)
+  const [weeklyLoading, setWeeklyLoading] = useState(activeTab === 'weekly')
 
   const refreshStatus = useCallback(async (signal?: AbortSignal) => {
     setLoading(true)
@@ -1199,10 +1199,11 @@ export default function ProcessingAttackPage({ embeddedTab }: { embeddedTab?: Pr
   }, [selectedMonday])
 
   useEffect(() => {
+    if (activeTab !== 'weekly') return
     const controller = new AbortController()
     void loadWeekly(controller.signal)
     return () => controller.abort()
-  }, [loadWeekly])
+  }, [activeTab, loadWeekly])
 
   const loadBacklogTrendHistory = useCallback(async (weeks: BacklogTrendWeekRange, signal?: AbortSignal) => {
     setBacklogTrendLoading(true)
@@ -2373,7 +2374,7 @@ export default function ProcessingAttackPage({ embeddedTab }: { embeddedTab?: Pr
             </Nav.Item>
           </Nav>
           <Tab.Content className="processing-tabs-shell__panel">
-            <Tab.Pane eventKey="status">
+            <Tab.Pane eventKey="status" mountOnEnter unmountOnExit>
             {statusBootloading ? (
               <ProcessingStatusTabSkeleton />
             ) : (
@@ -3001,7 +3002,7 @@ export default function ProcessingAttackPage({ embeddedTab }: { embeddedTab?: Pr
               </>
             )}
           </Tab.Pane>
-          <Tab.Pane eventKey="weekly">
+          <Tab.Pane eventKey="weekly" mountOnEnter unmountOnExit>
             <Card className="app-surface-card mb-3">
               <Card.Header className="fw-semibold d-flex flex-wrap align-items-center justify-content-between gap-2">
                 <span>Jobs Backlog vs Weekly Throughput</span>

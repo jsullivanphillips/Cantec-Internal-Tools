@@ -70,6 +70,15 @@ async function executeWorkflowItem(
         `${base}/clock_events/cancel_clock_in${q}`,
         { method: 'POST', body: JSON.stringify(item.payload) },
       )
+    case 'update_clock_event': {
+      const clockEventId = item.payload.clock_event_id
+      const body = { ...item.payload }
+      delete body.clock_event_id
+      return apiJson<{ ok: boolean; stop: TechnicianWorksheetLocation }>(
+        `${base}/clock_events/${clockEventId}${q}`,
+        { method: 'PATCH', body: JSON.stringify(body) },
+      )
+    }
     case 'test_outcome':
       return apiJson<{ ok: boolean; stop: TechnicianWorksheetLocation }>(
         `${base}/test_outcome${q}`,

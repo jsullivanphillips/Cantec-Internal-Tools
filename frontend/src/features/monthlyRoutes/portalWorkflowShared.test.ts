@@ -8,6 +8,7 @@ import {
   portalStopCanReset,
   portalStopDockBand,
   optimisticClockInPatch,
+  optimisticUpdateClockEventPatch,
   portalStopHasOpenClock,
   portalStopNeedsDeficiencyVerify,
   portalStopNeedsNoDeficiencyConfirm,
@@ -89,6 +90,24 @@ describe('portalStopHasOpenClock', () => {
     expect(portalStopHasOpenClock(stop)).toBe(true)
     expect(portalStopVisitComplete(stop)).toBe(false)
     expect(portalStopDockBand(stop, false)).toBe('B')
+  })
+})
+
+describe('optimisticUpdateClockEventPatch', () => {
+  it('updates clock event times and legacy sheet fields', () => {
+    const stop = baseStop({
+      clock_events: [{ id: 7, sort_order: 1, time_in: '9:00 AM', time_out: '9:30 AM' }],
+      time_in: '9:00 AM',
+      time_out: '9:30 AM',
+    })
+    const patch = optimisticUpdateClockEventPatch(stop, 7, {
+      time_in: '8:55 AM',
+      time_out: '9:40 AM',
+    })
+    expect(patch.clock_events?.[0]?.time_in).toBe('8:55 AM')
+    expect(patch.clock_events?.[0]?.time_out).toBe('9:40 AM')
+    expect(patch.time_in).toBe('8:55 AM')
+    expect(patch.time_out).toBe('9:40 AM')
   })
 })
 
@@ -206,9 +225,12 @@ describe('portalSkipReasonDetail', () => {
       'pw-mock-header--passed-problems',
     )
 
-    const annualDue = baseStop({ annual_month: 'May' })
+    const annualDue = baseStop({ annual_month: 'May', scheduled_annual_auto_skip: true })
     expect(portalStopVisualTone(annualDue, '2026-05-01')).toBe('annual')
     expect(portalStatusPillClass(annualDue, '2026-05-01')).toBe('pending')
+
+    const annualMonthOnly = baseStop({ annual_month: 'May', scheduled_annual_auto_skip: false })
+    expect(portalStopVisualTone(annualMonthOnly, '2026-05-01')).toBe('pending')
   })
 })
 
@@ -232,6 +254,28 @@ describe('portalStopVisualTone', () => {
     expect(portalStopVisualTone(annualSkipped, '2026-07-01')).toBe('skipped')
     expect(portalNavStopStatusClass(annualSkipped, '2026-07-01')).toBe('pw-mock-nav-stop--skipped')
     expect(portalHeaderBandClass(annualSkipped, '2026-07-01')).toBe('pw-mock-header--skipped')
+  })
+
+  it('legacy annual sheet skip without ServiceTrade appointment stays uncolored', () => {
+    const legacyAnnual = baseStop({
+      annual_month: 'July',
+      result_status: 'skipped',
+      skip_reason: 'annual',
+      is_legacy_outcome: true,
+      scheduled_annual_auto_skip: false,
+    })
+    expect(portalStopVisualTone(legacyAnnual, '2026-07-01')).toBe('pending')
+    expect(portalNavStopStatusClass(legacyAnnual, '2026-07-01')).toBe('')
+  })
+
+  it('ServiceTrade annual auto-skip uses orange annual tone', () => {
+    const autoAnnual = baseStop({
+      annual_month: 'July',
+      scheduled_annual_auto_skip: true,
+    })
+    expect(portalStopVisualTone(autoAnnual, '2026-07-01')).toBe('annual')
+    expect(portalNavStopStatusClass(autoAnnual, '2026-07-01')).toBe('pw-mock-nav-stop--annual')
+    expect(portalHeaderBandClass(autoAnnual, '2026-07-01')).toBe('pw-mock-header--annual')
   })
 })
 

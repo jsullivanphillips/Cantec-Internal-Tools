@@ -139,6 +139,75 @@ def test_clock_in_conflict_and_workflow(portal_client, monkeypatch):
         assert get_location_billing_status(101, date(2026, 5, 1)) == "bill"
 
 
+def test_update_clock_event_times(portal_client, monkeypatch):
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
+
+    client, app = portal_client
+    with app.app_context():
+        route_id, stop_id = seed_route_with_one_stop()
+
+    _start_run(client)
+    month = "2026-05-01"
+
+    cin = client.post(
+        f"/api/monthly_routes/routes/{route_id}/worksheet/locations/{stop_id}/clock_events/clock_in"
+        f"?month={month}&tech_portal=1",
+        json={"time_in": "9:00 AM"},
+    )
+    assert cin.status_code == 200
+
+    cout = client.post(
+        f"/api/monthly_routes/routes/{route_id}/worksheet/locations/{stop_id}/clock_events/clock_out"
+        f"?month={month}&tech_portal=1",
+        json={"time_out": "9:30 AM"},
+    )
+    assert cout.status_code == 200
+    clock_event_id = cout.get_json()["stop"]["clock_events"][0]["id"]
+
+    patch = client.patch(
+        f"/api/monthly_routes/routes/{route_id}/worksheet/locations/{stop_id}/clock_events/{clock_event_id}"
+        f"?month={month}&tech_portal=1",
+        json={"time_in": "8:55 AM", "time_out": "9:40 AM"},
+    )
+    assert patch.status_code == 200
+    stop = patch.get_json()["stop"]
+    assert stop["clock_events"][0]["time_in"] == "8:55 AM"
+    assert stop["clock_events"][0]["time_out"] == "9:40 AM"
+    assert stop["time_in"] == "8:55 AM"
+    assert stop["time_out"] == "9:40 AM"
+
+
+def test_update_clock_event_rejects_invalid_time(portal_client, monkeypatch):
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
+
+    client, app = portal_client
+    with app.app_context():
+        route_id, stop_id = seed_route_with_one_stop()
+
+    _start_run(client)
+    month = "2026-05-01"
+
+    cin = client.post(
+        f"/api/monthly_routes/routes/{route_id}/worksheet/locations/{stop_id}/clock_events/clock_in"
+        f"?month={month}&tech_portal=1",
+        json={"time_in": "9:00 AM"},
+    )
+    assert cin.status_code == 200
+    clock_event_id = cin.get_json()["stop"]["clock_events"][0]["id"]
+
+    patch = client.patch(
+        f"/api/monthly_routes/routes/{route_id}/worksheet/locations/{stop_id}/clock_events/{clock_event_id}"
+        f"?month={month}&tech_portal=1",
+        json={"time_in": "not a time"},
+    )
+    assert patch.status_code == 400
+    assert patch.get_json()["code"] == "invalid_clock_time"
+
+
 def test_transition_clock_between_stops(portal_client, monkeypatch):
     from app.routes import monthly_routes as mr_mod
 

@@ -1158,6 +1158,7 @@ def serialize_worksheet_location(
     run: MonthlyRouteRun | None = None,
     include_portal_extras: bool = True,
     portal_extras_prefetch: _PortalWorkflowExtrasPrefetch | None = None,
+    annual_schedule_by_location_id: dict[int, dict[str, object]] | None = None,
 ) -> dict[str, object]:
     company, mon_notes, mcid, mon_acct, mon_pwd, mc = _monitoring_labels(mlm, loc)
     panel = None
@@ -1289,6 +1290,15 @@ def serialize_worksheet_location(
         "stop_number": stop_number,
         "version_updated_at": version,
         "status_normalized": (loc.status_normalized or "active").strip().lower(),
+        "scheduled_annual_auto_skip": _scheduled_annual_auto_skip(
+            annual_month,
+            month_first,
+            (
+                annual_schedule_by_location_id.get(int(loc.id))
+                if annual_schedule_by_location_id is not None
+                else None
+            ),
+        ),
     }
     if include_portal_extras:
         stop.update(
@@ -1538,6 +1548,18 @@ def serialize_worksheet_stop_office_prep_patch(
     return _enrich_location_display_fields(stop, loc)
 
 
+def _scheduled_annual_auto_skip(
+    annual_month: object,
+    month_first: date,
+    schedule_row: dict[str, object] | None,
+) -> bool:
+    if schedule_row is None:
+        return False
+    if not _is_annual_for_month(month_first, annual_month):
+        return False
+    return bool(schedule_row.get("has_scheduled_annual_in_month"))
+
+
 def worksheet_locations_for_route_month(
     route_id: int,
     month_first: date,
@@ -1564,6 +1586,19 @@ def worksheet_locations_for_route_month(
         if include_portal_extras
         else None
     )
+    annual_schedule_by_location_id = None
+    if include_portal_extras:
+        try:
+            from app.monthly.service_trade_annual_schedule import (
+                annual_schedule_location_rows_by_id,
+            )
+
+            annual_schedule_by_location_id = annual_schedule_location_rows_by_id(
+                route_id,
+                month_first,
+            )
+        except Exception:
+            annual_schedule_by_location_id = None
     out: list[dict[str, object]] = []
     for idx, (mlm, loc) in enumerate(pairs, start=1):
         out.append(
@@ -1576,6 +1611,7 @@ def worksheet_locations_for_route_month(
                 run=run,
                 include_portal_extras=include_portal_extras,
                 portal_extras_prefetch=prefetch,
+                annual_schedule_by_location_id=annual_schedule_by_location_id,
             )
         )
     return out

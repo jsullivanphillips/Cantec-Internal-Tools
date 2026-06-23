@@ -3,12 +3,12 @@
  */
 
 import {
-  isAnnualForMonth,
   worksheetLocationIsOpenClockIn,
   worksheetLocationOnHoldPendingOutcome,
   type TechnicianWorksheetLocation,
 } from './monthlyRoutesShared'
 import { projectStopsWithWorkflowQueue } from './portalRouteProjection'
+import { stopScheduledAnnualAutoSkipActive } from './prepAnnualSchedule'
 import { portalStopHasTestOutcome } from './portalWorkflowShared'
 import type { PortalWorkflowQueueItem } from './worksheetOfflineStore'
 
@@ -25,11 +25,11 @@ export function projectedOpenClockStops(
 /** Non-annual / non-on-hold stops on the run that have no portal ``test_outcome`` yet. */
 export function stopsMissingTestOutcome(
   stops: TechnicianWorksheetLocation[],
-  runMonthIso: string,
+  _runMonthIso: string,
 ): TechnicianWorksheetLocation[] {
   return stops.filter((stop) => {
     if (portalStopHasTestOutcome(stop)) return false
-    if (isAnnualForMonth(stop.annual_month, runMonthIso)) return false
+    if (stopScheduledAnnualAutoSkipActive(stop)) return false
     if (worksheetLocationOnHoldPendingOutcome(stop)) return false
     return true
   })

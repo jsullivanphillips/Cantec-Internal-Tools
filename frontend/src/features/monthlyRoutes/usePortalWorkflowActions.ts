@@ -12,6 +12,7 @@ import {
   optimisticCreateDeficiencyPatch,
   optimisticOutcomePatch,
   optimisticResetStopPatch,
+  optimisticUpdateClockEventPatch,
   optimisticUpdateDeficiencyPatch,
   optimisticVerifyDeficiencyPatch,
   portalHhmmNow,
@@ -365,6 +366,25 @@ export function usePortalWorkflowActions({
     [routeId, monthIso, patchStopLocal],
   )
 
+  const updateClockEvent = useCallback(
+    async (
+      stop: TechnicianWorksheetLocation,
+      clockEventId: number,
+      patch: { time_in?: string; time_out?: string | null },
+    ) => {
+      const payload: Record<string, unknown> = { clock_event_id: clockEventId }
+      if (patch.time_in !== undefined) payload.time_in = patch.time_in
+      if (patch.time_out !== undefined) payload.time_out = patch.time_out
+      return runAction(
+        stop,
+        'update_clock_event',
+        payload,
+        optimisticUpdateClockEventPatch(stop, clockEventId, patch),
+      )
+    },
+    [runAction],
+  )
+
   return {
     clockIn,
     clockOut,
@@ -376,6 +396,7 @@ export function usePortalWorkflowActions({
     verifyDeficiency,
     resetStop,
     refreshDeficiencies,
+    updateClockEvent,
     mergeStop,
   }
 }

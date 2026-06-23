@@ -116,6 +116,7 @@ export type PortalWorkflowAction =
   | 'clock_in'
   | 'clock_out'
   | 'cancel_clock_in'
+  | 'update_clock_event'
   | 'test_outcome'
   | 'create_deficiency'
   | 'update_deficiency'

@@ -326,3 +326,33 @@ def build_route_annual_schedule_snapshot(
         "warning_count": warning_count,
         "locations": locations,
     }
+
+
+_ANNUAL_SNAPSHOT_BY_ROUTE_MONTH: dict[tuple[int, str], tuple[float, dict[int, dict[str, object]]]] = {}
+_ANNUAL_SNAPSHOT_TTL_SECONDS = 3600
+
+
+def annual_schedule_location_rows_by_id(
+    route_id: int,
+    month_first: date,
+) -> dict[int, dict[str, object]] | None:
+    """Per-location ServiceTrade annual schedule rows; ``None`` when ST is unavailable."""
+    import time
+
+    key = (int(route_id), month_first.isoformat())
+    now = time.time()
+    cached = _ANNUAL_SNAPSHOT_BY_ROUTE_MONTH.get(key)
+    if cached is not None and cached[0] > now:
+        return cached[1]
+    try:
+        snapshot = build_route_annual_schedule_snapshot(route_id, month_first)
+    except Exception:
+        return None
+    raw = snapshot.get("locations") or {}
+    by_id: dict[int, dict[str, object]] = {}
+    if isinstance(raw, dict):
+        for loc_key, row in raw.items():
+            if isinstance(row, dict):
+                by_id[int(loc_key)] = row
+    _ANNUAL_SNAPSHOT_BY_ROUTE_MONTH[key] = (now + _ANNUAL_SNAPSHOT_TTL_SECONDS, by_id)
+    return by_id

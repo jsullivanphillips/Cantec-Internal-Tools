@@ -48,9 +48,14 @@ describe('stopsMissingTestOutcome', () => {
     expect(stopsMissingTestOutcome(stops, MONTH)[0].location_id).toBe(1)
   })
 
-  it('excludes annual-month stops for the run month', () => {
-    const stops = [baseStop({ location_id: 1, annual_month: 'May' })]
+  it('excludes ServiceTrade annual auto-skip stops', () => {
+    const stops = [baseStop({ location_id: 1, annual_month: 'May', scheduled_annual_auto_skip: true })]
     expect(stopsMissingTestOutcome(stops, MONTH)).toHaveLength(0)
+  })
+
+  it('includes annual-month stops without a ServiceTrade appointment', () => {
+    const stops = [baseStop({ location_id: 1, annual_month: 'May', scheduled_annual_auto_skip: false })]
+    expect(stopsMissingTestOutcome(stops, MONTH)).toHaveLength(1)
   })
 
   it('excludes on-hold stops without a test outcome', () => {

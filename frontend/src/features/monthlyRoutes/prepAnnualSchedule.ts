@@ -2,6 +2,7 @@ import type {
   AnnualScheduleCheckLocation,
   AnnualScheduleCheckStatus,
   PrepAnnualScheduleWarning,
+  TechnicianWorksheetLocation,
 } from './monthlyRoutesShared'
 import { isAnnualForMonth } from './monthlyRoutesShared'
 
@@ -58,6 +59,13 @@ export function prepRowAnnualDueForStop(
   const merged = mergePrepAnnualScheduleRow(scheduleRow, annualMonth, monthDate)
   if (scheduleStatus !== 'ready' || !merged) return false
   return merged.annual_month_matches_run && merged.has_scheduled_annual_in_month
+}
+
+/** Worksheet stop flag from server (same gate as prep orange row / portal annual auto-skip). */
+export function stopScheduledAnnualAutoSkipActive(
+  stop: Pick<TechnicianWorksheetLocation, 'scheduled_annual_auto_skip'>,
+): boolean {
+  return stop.scheduled_annual_auto_skip === true
 }
 
 export function prepAnnualScheduleWarningLabel(

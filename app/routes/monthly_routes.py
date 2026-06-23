@@ -418,6 +418,11 @@ def _months_payload_for_location(location_id: int) -> dict[str, dict[str, object
                 worksheet_route_id = int(row.test_monthly_route_id)
         elif row.test_monthly_route_id is not None:
             worksheet_route_id = int(row.test_monthly_route_id)
+        run_workflow_stage = None
+        if row.run is not None:
+            from app.monthly.run_workflow import derive_run_workflow_stage
+
+            run_workflow_stage = derive_run_workflow_stage(row.run)
         out[row.month_date.isoformat()] = {
             "result_status": row.result_status,
             "skip_reason": row.skip_reason,
@@ -425,6 +430,7 @@ def _months_payload_for_location(location_id: int) -> dict[str, dict[str, object
             "test_monthly_route": _serialize_monthly_route_entity(row.test_monthly_route),
             "worksheet_route_id": worksheet_route_id,
             "run_id": int(row.run_id) if row.run_id is not None else None,
+            "run_workflow_stage": run_workflow_stage,
         }
     return out
 
@@ -4523,6 +4529,81 @@ def post_worksheet_stop_cancel_clock_in(route_id: int, location_id: int):
         code = str(exc)
         if code in ("no_open_clock", "visit_has_outcome"):
             return jsonify({"error": code.replace("_", " "), "code": code}), 400
+        raise
+
+    if is_primary_stop(ctx["ts"], ctx["loc"]):
+        sync_primary_history_from_stop(ctx["mtsm"], ctx["loc"], route_id, month_first)
+    db.session.commit()
+    return jsonify({"ok": True, "stop": ctx["stop_payload"](_patch_stop_number_hint(payload))})
+
+
+@monthly_routes_bp.patch(
+    "/api/monthly_routes/routes/<int:route_id>/worksheet/stops/<int:location_id>/clock_events/<int:clock_event_id>"
+)
+@monthly_routes_bp.patch(
+    "/api/monthly_routes/routes/<int:route_id>/worksheet/locations/<int:location_id>/clock_events/<int:clock_event_id>"
+)
+def patch_worksheet_stop_clock_event(route_id: int, location_id: int, clock_event_id: int):
+    month_first, err = _parse_portal_workflow_month()
+    if err is not None:
+        return err
+    ctx, err_resp = _portal_workflow_stop_context(route_id, location_id, month_first)
+    if err_resp is not None:
+        return err_resp
+
+    from app.monthly.portal_workflow import find_open_clock_event_on_route, update_clock_event
+    from app.monthly.worksheet_locations import is_primary_stop, sync_primary_history_from_stop
+
+    payload = request.get_json(silent=True) or {}
+    if "time_in" not in payload and "time_out" not in payload:
+        return jsonify({"error": "time_in or time_out is required"}), 400
+
+    time_in = _normalize_ws_text(payload.get("time_in")) if "time_in" in payload else None
+    if "time_in" in payload and not time_in:
+        return jsonify({"error": "time_in cannot be empty", "code": "time_in_required"}), 400
+
+    unset_time_out = "time_out" in payload and payload.get("time_out") is None
+    time_out = _normalize_ws_text(payload.get("time_out")) if "time_out" in payload and not unset_time_out else None
+    if "time_out" in payload and not unset_time_out and not time_out:
+        return jsonify({"error": "time_out cannot be empty", "code": "time_out_required"}), 400
+
+    if unset_time_out:
+        conflict = find_open_clock_event_on_route(
+            route_id,
+            month_first,
+            exclude_testing_site_id=location_id,
+        )
+        if conflict is not None:
+            return jsonify(
+                {
+                    "error": "Clock out of the current stop before clocking in elsewhere.",
+                    "code": "open_clock_in_conflict",
+                    "location_id": int(conflict[0].monthly_location_id),
+                    "testing_site_id": int(conflict[0].monthly_location_id),
+                }
+            ), 409
+
+    try:
+        update_clock_event(
+            ctx["mtsm"],
+            int(clock_event_id),
+            time_in_raw=time_in if "time_in" in payload else None,
+            time_out_raw=time_out if "time_out" in payload and not unset_time_out else None,
+            unset_time_out=unset_time_out,
+        )
+    except ValueError as exc:
+        code = str(exc)
+        if code == "clock_event_not_found":
+            return jsonify({"error": "Clock event not found.", "code": code}), 404
+        if code == "time_in_required":
+            return jsonify({"error": "time_in cannot be empty", "code": code}), 400
+        if code == "invalid_clock_time":
+            return jsonify(
+                {
+                    "error": "Enter a valid time (e.g. 9:00 AM or 14:30).",
+                    "code": code,
+                }
+            ), 400
         raise
 
     if is_primary_stop(ctx["ts"], ctx["loc"]):

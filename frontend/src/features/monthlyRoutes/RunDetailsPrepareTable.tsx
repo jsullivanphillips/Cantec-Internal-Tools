@@ -99,13 +99,12 @@ type PrepRowTone = 'skipped' | 'annual-due' | 'on-hold' | 'attention'
 function prepRowTone(
   stop: RunDetailPrepRow['location'],
   annualDue: boolean,
-  annualThisMonth: boolean,
   highlighted: boolean,
   onHold: boolean,
 ): PrepRowTone | null {
   if (stopIsOfficePrepSkipped(stop)) return 'skipped'
   if (highlighted) return 'attention'
-  if (annualDue || annualThisMonth) return 'annual-due'
+  if (annualDue) return 'annual-due'
   if (onHold) return 'on-hold'
   return null
 }
@@ -445,7 +444,7 @@ export default function RunDetailsPrepareTable({
       const highlighted = officeComment.length > 0
       const onHold = isOnHoldMonthlyLocation(stop)
       const annualThisMonth = isAnnualForMonth(stop.annual_month, monthDate)
-      const rowTone = prepRowTone(stop, annualDue, annualThisMonth, highlighted, onHold)
+      const rowTone = prepRowTone(stop, annualDue, highlighted, onHold)
       const prepSkipped = stopIsOfficePrepSkipped(stop)
       const isActiveSite =
         (stop.status_normalized || 'active').trim().toLowerCase() === 'active'
