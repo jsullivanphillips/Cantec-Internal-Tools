@@ -14,7 +14,6 @@ import {
   libraryKeycodeDisplay,
   libraryRouteDisplay,
   nextSiteRouteTestDayLabel,
-  normalizeAnnualMonthForSelect,
   splitHeroAddressLines,
   type LibraryLocation,
   type LinkedKeyUiStatus,
@@ -159,18 +158,13 @@ export default function MonthlyLocationDetailHero({
   const displayPrice = libraryDisplayPricePerMonth(location)
   const propertyManagementLabel = location.property_management_company?.trim() || '—'
   const buildingName = location.building_name?.trim() || ''
-  const annualTrimmed = location.annual_month?.trim() || ''
-  const annualValue = annualTrimmed
-    ? normalizeAnnualMonthForSelect(annualTrimmed) || annualTrimmed
-    : '—'
   const nextTestDay = useMemo(() => nextSiteRouteTestDayLabel(location), [location])
   const lastTest = useMemo(
     () =>
       lastRecordedTestSummary(location.months, {
-        annualMonth: location.annual_month,
         monthly_route: location.monthly_route,
       }),
-    [location.months, location.annual_month, location.monthly_route],
+    [location.months, location.monthly_route],
   )
 
   useEffect(() => {
@@ -354,9 +348,6 @@ export default function MonthlyLocationDetailHero({
                 <span className="monthly-location-detail-hero-muted-label">Building</span> {buildingName}
               </HeroContentLine>
             ) : null}
-            <HeroContentLine>
-              <span className="monthly-location-detail-hero-muted-label">Annual month</span> {annualValue}
-            </HeroContentLine>
             {serviceTradeLinkedUrl ? (
               <HeroContentLine>
                 <a

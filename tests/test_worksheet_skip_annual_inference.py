@@ -1,4 +1,4 @@
-"""Explicit user skip reasons must override annual-month inference on paperwork."""
+"""ST-based annual skip inference on paperwork."""
 
 from __future__ import annotations
 
@@ -8,10 +8,10 @@ from app.monthly.billing_board import _location_month_skip_reason_category_label
 from app.monthly.worksheet_locations import _office_stop_status
 
 
-def test_office_stop_status_uses_annual_month_when_skip_has_no_reason():
+def test_office_stop_status_uses_scheduled_annual_when_skip_has_no_reason():
     stop = {
         "result_status": "skipped",
-        "annual_month": "June",
+        "scheduled_annual_auto_skip": True,
         "skip_reason": None,
         "skip_category": None,
     }
@@ -22,7 +22,7 @@ def test_office_stop_status_honors_explicit_non_annual_skip_reason():
     stop = {
         "result_status": "skipped",
         "test_outcome": "skipped",
-        "annual_month": "June",
+        "scheduled_annual_auto_skip": True,
         "skip_reason": "no_access",
         "skip_category": "access_issues",
     }
@@ -35,8 +35,5 @@ def test_billing_board_skip_label_honors_explicit_non_annual_skip_reason():
         result_status="skipped",
         skip_category="access_issues",
         skip_reason="no_access",
-        annual_month="June",
-        month_first=date(2026, 6, 1),
-        loc_annual_month="June",
     )
     assert label == "Access issues"

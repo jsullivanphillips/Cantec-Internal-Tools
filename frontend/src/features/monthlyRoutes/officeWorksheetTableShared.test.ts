@@ -28,7 +28,6 @@ function stop(
     door_code: null,
     ring: null,
     key_number: null,
-    annual_month: null,
     monitoring_company: null,
     monitoring_notes: null,
     result_status: null,
@@ -86,7 +85,6 @@ describe('groupOfficeWorksheetStopsInSubmissionOrder', () => {
 describe('stopIsOfficePrepSkipped', () => {
   it('is false for legacy sheet result_status without test_outcome', () => {
     const ws = stop(1, 10, 1)
-    ws.annual_month = 'July'
     ws.month_date = '2026-07-01'
     ws.result_status = 'skipped'
     ws.skip_reason = 'annual'
@@ -103,23 +101,29 @@ describe('stopIsOfficePrepSkipped', () => {
 })
 
 describe('worksheetStopIsAnnualSkip', () => {
-  it('infers annual from site month when skip has no explicit reason', () => {
+  it('uses scheduled annual auto-skip when skip has no explicit reason', () => {
     const ws = stop(1, 10, 1)
-    ws.annual_month = 'June'
     ws.month_date = '2026-06-01'
     ws.result_status = 'skipped'
+    ws.scheduled_annual_auto_skip = true
     expect(worksheetStopIsAnnualSkip(ws, '2026-06-01')).toBe(true)
     expect(skippedStopDisplayTone(ws, '2026-06-01')).toBe('skipped')
     expect(officeStopStatus(ws, '2026-06-01')).toBe('skipped')
   })
 
-  it('honors explicit non-annual skip reason over matching annual month', () => {
+  it('honors explicit non-annual skip reason over scheduled annual auto-skip', () => {
     const ws = stop(1, 10, 1)
-    ws.annual_month = 'June'
     ws.month_date = '2026-06-01'
     ws.result_status = 'skipped'
     ws.skip_category = 'access_issues'
+    ws.scheduled_annual_auto_skip = true
     expect(worksheetStopIsAnnualSkip(ws, '2026-06-01')).toBe(false)
     expect(officeStopStatus(ws, '2026-06-01')).toBe('skipped')
+  })
+
+  it('marks pending stops with scheduled annual auto-skip as annual', () => {
+    const ws = stop(1, 10, 1)
+    ws.scheduled_annual_auto_skip = true
+    expect(officeStopStatus(ws, '2026-06-01')).toBe('annual')
   })
 })

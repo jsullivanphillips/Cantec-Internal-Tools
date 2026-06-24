@@ -184,13 +184,11 @@ def _mlm_qualifies_for_auto_do_not_bill(
     month_first: date,
     *,
     loc: MonthlyLocation | None = None,
+    route_id: int | None = None,
 ) -> bool:
-    """Annual skip or annual month — same gate as office run-review orange cells."""
-    from app.monthly.worksheet_locations import _is_annual_for_month, _sheet_skip_reason_is_annual
-
-    if loc is None:
-        loc = MonthlyLocation.query.get(int(mlm.monthly_location_id))
-    annual_month = loc.annual_month if loc is not None else None
+    """Annual skip from ServiceTrade schedule or explicit annual skip category."""
+    from app.monthly.service_trade_annual_schedule import location_annual_skip_recommended
+    from app.monthly.worksheet_locations import _sheet_skip_reason_is_annual
 
     outcome = (_normalize_text(mlm.test_outcome) or "").lower()
     result = (_normalize_text(mlm.result_status) or "").lower()
@@ -207,9 +205,24 @@ def _mlm_qualifies_for_auto_do_not_bill(
             skip_reason=mlm.skip_reason,
         ):
             return False
-        return _is_annual_for_month(month_first, annual_month)
 
-    return _is_annual_for_month(month_first, annual_month)
+    if mlm.annual_test_override:
+        return False
+
+    if route_id is not None:
+        try:
+            from app.monthly.service_trade_annual_schedule import (
+                annual_schedule_location_rows_by_id,
+            )
+
+            schedule_row = annual_schedule_location_rows_by_id(route_id, month_first)
+            row = schedule_row.get(int(mlm.monthly_location_id)) if schedule_row else None
+            if location_annual_skip_recommended(row, annual_test_override=False):
+                return True
+        except Exception:
+            pass
+
+    return False
 
 
 def apply_billing_defaults_for_location(
@@ -236,7 +249,7 @@ def apply_billing_defaults_for_location(
 
     if outcome == "skipped":
         loc = MonthlyLocation.query.get(int(location_id))
-        if _mlm_qualifies_for_auto_do_not_bill(mlm, month_first, loc=loc):
+        if _mlm_qualifies_for_auto_do_not_bill(mlm, month_first, loc=loc, route_id=route_id):
             mlm.billing_status = "do_not_bill"
         else:
             mlm.billing_status = "unset"

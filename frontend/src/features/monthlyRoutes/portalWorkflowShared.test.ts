@@ -46,7 +46,6 @@ function baseStop(overrides: Partial<TechnicianWorksheetLocation> = {}): Technic
     door_code: null,
     ring: null,
     key_number: null,
-    annual_month: null,
     monitoring_company: null,
     monitoring_notes: null,
     result_status: null,
@@ -225,12 +224,12 @@ describe('portalSkipReasonDetail', () => {
       'pw-mock-header--passed-problems',
     )
 
-    const annualDue = baseStop({ annual_month: 'May', scheduled_annual_auto_skip: true })
+    const annualDue = baseStop({ scheduled_annual_auto_skip: true })
     expect(portalStopVisualTone(annualDue, '2026-05-01')).toBe('annual')
     expect(portalStatusPillClass(annualDue, '2026-05-01')).toBe('pending')
 
-    const annualMonthOnly = baseStop({ annual_month: 'May', scheduled_annual_auto_skip: false })
-    expect(portalStopVisualTone(annualMonthOnly, '2026-05-01')).toBe('pending')
+    const pendingOnly = baseStop({ scheduled_annual_auto_skip: false })
+    expect(portalStopVisualTone(pendingOnly, '2026-05-01')).toBe('pending')
   })
 })
 
@@ -245,9 +244,9 @@ describe('portalStopVisualTone', () => {
     expect(portalNavStopStatusClass(legacy, '2026-05-01')).toBe('pw-mock-nav-stop--tested')
   })
 
-  it('skipped stops use yellow skip tone even when annual month matches the run', () => {
+  it('skipped stops use yellow skip tone even when scheduled annual auto-skip is active', () => {
     const annualSkipped = baseStop({
-      annual_month: 'July',
+      scheduled_annual_auto_skip: true,
       test_outcome: 'skipped',
       skip_category: 'access_issues',
     })
@@ -258,7 +257,6 @@ describe('portalStopVisualTone', () => {
 
   it('legacy annual sheet skip without ServiceTrade appointment stays uncolored', () => {
     const legacyAnnual = baseStop({
-      annual_month: 'July',
       result_status: 'skipped',
       skip_reason: 'annual',
       is_legacy_outcome: true,
@@ -270,7 +268,6 @@ describe('portalStopVisualTone', () => {
 
   it('ServiceTrade annual auto-skip uses orange annual tone', () => {
     const autoAnnual = baseStop({
-      annual_month: 'July',
       scheduled_annual_auto_skip: true,
     })
     expect(portalStopVisualTone(autoAnnual, '2026-07-01')).toBe('annual')
@@ -302,11 +299,11 @@ describe('officeOutcomeSelectValue', () => {
     expect(officeOutcomeSelectValue(baseStop())).toBe(OFFICE_OUTCOME_PENDING_VALUE)
   })
 
-  it('maps auto annual-month stops without an outcome to the office annual select value', () => {
+  it('maps auto annual skip stops without an outcome to the office annual select value', () => {
     expect(
-      officeOutcomeSelectValue(baseStop({ annual_month: 'May' })),
+      officeOutcomeSelectValue(baseStop({ scheduled_annual_auto_skip: true })),
     ).toBe(OFFICE_OUTCOME_SKIPPED_ANNUAL_VALUE)
-    expect(runReviewOutcomeHeadline(baseStop({ annual_month: 'May' }), '2026-05-01')).toBe(
+    expect(runReviewOutcomeHeadline(baseStop({ scheduled_annual_auto_skip: true }), '2026-05-01')).toBe(
       OFFICE_OUTCOME_SKIPPED_ANNUAL_LABEL,
     )
   })
@@ -361,7 +358,7 @@ describe('portalKeyViewOutcomeStatusClass', () => {
   it('returns no class for pending stops', () => {
     expect(portalKeyViewOutcomeStatusClass(baseStop())).toBe('')
     expect(
-      portalKeyViewOutcomeStatusClass(baseStop({ annual_month: 'May', result_status: null })),
+      portalKeyViewOutcomeStatusClass(baseStop({ scheduled_annual_auto_skip: true, result_status: null })),
     ).toBe('')
     expect(
       portalKeyViewOutcomeStatusClass(baseStop({ office_attention: true })),

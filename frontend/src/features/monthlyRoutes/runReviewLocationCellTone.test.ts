@@ -29,7 +29,6 @@ function baseStop(overrides: Partial<TechnicianWorksheetLocation> = {}): Technic
     door_code: null,
     ring: null,
     key_number: null,
-    annual_month: null,
     monitoring_company: null,
     monitoring_notes: null,
     result_status: null,
@@ -67,7 +66,6 @@ describe('runReviewLocationCellTone', () => {
           test_outcome: 'skipped',
           result_status: 'skipped',
           skip_reason: 'annual',
-          annual_month: 'May',
         }),
         MONTH,
       ),
@@ -91,7 +89,6 @@ describe('runReviewLocationCellTone', () => {
           test_outcome: 'skipped',
           result_status: 'skipped',
           skip_category: 'access_issues',
-          annual_month: 'June',
           month_date: JUNE_MONTH,
         }),
         JUNE_MONTH,
@@ -103,7 +100,6 @@ describe('runReviewLocationCellTone', () => {
           test_outcome: 'skipped',
           result_status: 'skipped',
           skip_reason: 'no_access',
-          annual_month: 'June',
           month_date: JUNE_MONTH,
         }),
         JUNE_MONTH,
@@ -115,8 +111,8 @@ describe('runReviewLocationCellTone', () => {
     expect(runReviewLocationCellTone(baseStop(), MONTH)).toBe('pending')
   })
 
-  it('uses annual tone for auto annual-month stops without a recorded outcome', () => {
-    expect(runReviewLocationCellTone(baseStop({ annual_month: 'May' }), MONTH)).toBe('annual')
+  it('uses annual tone for scheduled annual auto-skip stops without a recorded outcome', () => {
+    expect(runReviewLocationCellTone(baseStop({ scheduled_annual_auto_skip: true }), MONTH)).toBe('annual')
   })
 
   it('shows orange on-hold styling when tech submitted no outcome', () => {
@@ -129,7 +125,7 @@ describe('runReviewLocationCellTone', () => {
       month_date: MONTH,
       result_status: null,
       test_outcome: null,
-      annual_month: null,
+      scheduled_annual_auto_skip: false,
       status_normalized: 'on_hold',
       run_comments: null,
       testing_procedures: null,
@@ -153,7 +149,7 @@ describe('runReviewLocationCellTone', () => {
     expect(runReviewOutcomeIconKind(ws, MONTH)).toBe('on_hold')
   })
 
-  it('shows orange annual styling for June run review when tech submitted no outcome', () => {
+  it('shows orange annual styling for auto-skip run review when tech submitted no outcome', () => {
     const ws = runDetailLocationAsWorksheetLocation({
       location_id: 500,
       location_label: '500 Fort Street',
@@ -163,7 +159,7 @@ describe('runReviewLocationCellTone', () => {
       month_date: JUNE_MONTH,
       result_status: null,
       test_outcome: null,
-      annual_month: 'June',
+      scheduled_annual_auto_skip: true,
       run_comments: null,
       testing_procedures: null,
       inspection_tech_notes: null,
@@ -216,7 +212,6 @@ describe('runReviewOutcomeIconKind', () => {
           test_outcome: 'skipped',
           result_status: 'skipped',
           skip_reason: 'annual',
-          annual_month: 'May',
         }),
         MONTH,
       ),

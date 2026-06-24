@@ -17,17 +17,14 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { Alert, Button, Table } from 'react-bootstrap'
 import { Link } from 'react-router-dom'
-import { annualMonthHint } from './annualMonthHint'
 import RunDetailsPrepareAnnualSchedulePill from './RunDetailsPrepareAnnualSchedulePill'
-import RunDetailsPrepareAnnualPill from './RunDetailsPrepareAnnualPill'
 import RunDetailsPreparePriorMonthEditsPill from './RunDetailsPreparePriorMonthEditsPill'
 import {
-  mergePrepAnnualScheduleRow,
   prepRowAnnualDueForStop,
+  prepRowShowsAnnualTestControl,
 } from './prepAnnualSchedule'
 import { monitoringCompanyDisplayName } from './MonitoringCompanySelect'
 import {
-  PrepAnnualMonthField,
   PrepCompactField,
   PrepCompanyField,
   PrepLongTextCell,
@@ -43,7 +40,6 @@ import {
 } from './runDetailsLocationReview'
 import {
   isOnHoldMonthlyLocation,
-  isAnnualForMonth,
   type AnnualScheduleCheckLocation,
   type AnnualScheduleCheckStatus,
   type MonthlyRunDetailDeficiencySummary,
@@ -55,6 +51,7 @@ import { locationDisplaySubline, locationPrimaryLabel } from './locationDisplay'
 import { officeWorksheetPrepTableCssVars, stopIsOfficePrepSkipped } from './officeWorksheetTableShared'
 import OfficeSkipSiteModal, { type OfficeSkipSitePayload } from './OfficeSkipSiteModal'
 import { deletePrepSiteSkip, postPrepSiteSkip } from './prepSiteSkipApi'
+import { deletePrepAnnualTest, postPrepAnnualTest } from './prepAnnualTestApi'
 import { detailPatchFromWorksheetStop } from './runDetailsPrepPatch'
 import type { MonthlyRunDetailLocation, TechnicianWorksheetRun } from './monthlyRoutesShared'
 
@@ -256,6 +253,8 @@ export default function RunDetailsPrepareTable({
   const [skipSubmitting, setSkipSubmitting] = useState(false)
   const [skipError, setSkipError] = useState<string | null>(null)
   const [unskipBusyLocationId, setUnskipBusyLocationId] = useState<number | null>(null)
+  const [annualTestBusyLocationId, setAnnualTestBusyLocationId] = useState<number | null>(null)
+  const [annualTestError, setAnnualTestError] = useState<string | null>(null)
   const { patchStop: commitStopPatch, patchStopForRow, error, isFieldSaving } = stopPatch
   const { companies, loading: companiesLoading, refresh, appendCompany } = useMonitoringCompanies()
 
@@ -397,6 +396,41 @@ export default function RunDetailsPrepareTable({
     [applyPrepSkipPatch, monthDate, routeId],
   )
 
+  const handleApplyAnnualTest = useCallback(
+    async (locationId: number) => {
+      setAnnualTestBusyLocationId(locationId)
+      setAnnualTestError(null)
+      try {
+        const body = await postPrepAnnualTest(routeId, locationId, monthDate)
+        applyPrepSkipPatch(locationId, body.stop)
+        if (body.run) onRunPatched?.(body.run)
+        await onAnnualScheduleRefresh?.()
+      } catch (e) {
+        setAnnualTestError(e instanceof Error ? e.message : 'Could not force test for this site.')
+      } finally {
+        setAnnualTestBusyLocationId(null)
+      }
+    },
+    [applyPrepSkipPatch, monthDate, onAnnualScheduleRefresh, onRunPatched, routeId],
+  )
+
+  const handleClearAnnualTest = useCallback(
+    async (locationId: number) => {
+      setAnnualTestBusyLocationId(locationId)
+      setAnnualTestError(null)
+      try {
+        const body = await deletePrepAnnualTest(routeId, locationId, monthDate)
+        applyPrepSkipPatch(locationId, body.stop)
+        await onAnnualScheduleRefresh?.()
+      } catch (e) {
+        setAnnualTestError(e instanceof Error ? e.message : 'Could not clear annual test override.')
+      } finally {
+        setAnnualTestBusyLocationId(null)
+      }
+    },
+    [applyPrepSkipPatch, monthDate, onAnnualScheduleRefresh, routeId],
+  )
+
   const renderPrepRow = useCallback(
     (
       row: RunDetailPrepRow,
@@ -427,29 +461,24 @@ export default function RunDetailsPrepareTable({
         monitoringCompanyDisplayName(companyId, companies, stop.monitoring_company)
       const openDeficiencies = openDeficiencySummaries(stop.deficiency_summaries)
       const multiSite = false
-      const annualDue = prepRowAnnualDueForStop(
-        annualScheduleStatus,
-        annualScheduleByLocationId?.[sid] ?? null,
-        stop.annual_month,
-        monthDate,
-      )
-      const scheduleRow = mergePrepAnnualScheduleRow(
-        annualScheduleByLocationId?.[sid] ?? null,
-        stop.annual_month,
-        monthDate,
-      )
+      const scheduleRow = annualScheduleByLocationId?.[sid] ?? null
+      const annualDue = prepRowAnnualDueForStop(annualScheduleStatus, scheduleRow, stop)
       const fk = (suffix: string) => fieldKey(sid, suffix)
       const patchRow = patchStopForRow(stop.stop_number)
       const officeComment = (stop.office_job_comment || '').trim()
       const highlighted = officeComment.length > 0
       const onHold = isOnHoldMonthlyLocation(stop)
-      const annualThisMonth = isAnnualForMonth(stop.annual_month, monthDate)
       const rowTone = prepRowTone(stop, annualDue, highlighted, onHold)
       const prepSkipped = stopIsOfficePrepSkipped(stop)
       const isActiveSite =
         (stop.status_normalized || 'active').trim().toLowerCase() === 'active'
-      const showSkipControl =
+      const showPrepActionControl =
         draftPrepSkipEnabled && options.isPrimaryForLocation && isActiveSite && !prepEditsDisabled
+      const showAnnualTestControl =
+        showPrepActionControl &&
+        prepRowShowsAnnualTestControl(annualScheduleStatus, scheduleRow, stop)
+      const showSkipControl = showPrepActionControl && !showAnnualTestControl
+      const annualTestOverrideActive = Boolean(stop.annual_test_override)
       const fieldLayout = PREP_FIELD_LAYOUT
 
       return (
@@ -479,29 +508,49 @@ export default function RunDetailsPrepareTable({
                     <div className="tw-office-address-subline text-muted small">{addressSubline}</div>
                   ) : null}
                 </div>
-                {showSkipControl ? (
+                {showAnnualTestControl ? (
+                  <Button
+                    type="button"
+                    variant="outline-primary"
+                    size="sm"
+                    className="run-details-prep-skip-btn"
+                    disabled={annualTestBusyLocationId === sid || skipSubmitting}
+                    onClick={() => void handleApplyAnnualTest(sid)}
+                  >
+                    {annualTestBusyLocationId === sid ? '…' : 'Test'}
+                  </Button>
+                ) : showSkipControl ? (
                   <Button
                     type="button"
                     variant="outline-secondary"
                     size="sm"
                     className="run-details-prep-skip-btn"
-                    disabled={skipSubmitting || unskipBusyLocationId === sid}
+                    disabled={
+                      skipSubmitting ||
+                      unskipBusyLocationId === sid ||
+                      annualTestBusyLocationId === sid
+                    }
                     onClick={() => {
                       if (prepSkipped) {
                         void handleUnskipSite(sid)
+                        return
+                      }
+                      if (annualTestOverrideActive) {
+                        void handleClearAnnualTest(sid)
                         return
                       }
                       setSkipError(null)
                       setSkipModalLocation({ locationId: sid, label: primaryLabel })
                     }}
                   >
-                    {unskipBusyLocationId === sid ? '…' : prepSkipped ? 'Unskip' : 'Skip'}
+                    {unskipBusyLocationId === sid || annualTestBusyLocationId === sid
+                      ? '…'
+                      : prepSkipped
+                        ? 'Unskip'
+                        : 'Skip'}
                   </Button>
                 ) : null}
               </div>
-              {options.isPrimaryForLocation && annualThisMonth ? (
-                <RunDetailsPrepareAnnualPill />
-              ) : null}
               {options.isPrimaryForLocation ? (
                 <div className="run-details-prep-office-address-pills">
                   <RunDetailsPreparePriorMonthEditsPill location={stop} />
@@ -570,27 +619,6 @@ export default function RunDetailsPrepareTable({
                     { door_code: next.trim() || null },
                     { door_code: stop.door_code },
                   )
-                }
-              />
-              <PrepAnnualMonthField
-                fieldKey={fk('annual')}
-                label="Annual"
-                value={stop.annual_month}
-                saving={isFieldSaving(sid, fk('annual'))}
-                activeKey={activeFieldKey}
-                onActivate={setActiveFieldKey}
-                hint={annualMonthHint(stop, locationLabel, monthDate) ?? undefined}
-                disabled={prepEditsDisabled}
-                readyEditLocked={readyEditLocked}
-                layoutVariant={fieldLayout}
-                onCommit={(next) =>
-                  void commitStopPatch(
-                    sid,
-                    fk('annual'),
-                    { annual_month: next.trim() || null },
-                    { annual_month: stop.annual_month },
-                    stop.stop_number,
-                  ).then(() => onAnnualScheduleRefresh?.())
                 }
               />
             </div>
@@ -792,7 +820,10 @@ export default function RunDetailsPrepareTable({
       companiesLoading,
       isFieldSaving,
       draftPrepSkipEnabled,
+      handleApplyAnnualTest,
+      handleClearAnnualTest,
       handleUnskipSite,
+      annualTestBusyLocationId,
       monthDate,
       onAnnualScheduleRefresh,
       onDeficiencyUpdated,
@@ -861,7 +892,7 @@ export default function RunDetailsPrepareTable({
 
   return (
     <div className="run-details-history-section run-details-prep-section">
-      {(prepEditsDisabled || orderError || error || skipError) && (
+      {(prepEditsDisabled || orderError || error || skipError || annualTestError) && (
         <div className="run-details-prep-section__alerts">
           {prepEditsDisabled ? (
             <Alert variant="warning" className="py-2 small mb-2">
@@ -881,6 +912,11 @@ export default function RunDetailsPrepareTable({
           {skipError && !skipModalLocation ? (
             <Alert variant="danger" className="py-2 small mb-2">
               {skipError}
+            </Alert>
+          ) : null}
+          {annualTestError ? (
+            <Alert variant="danger" className="py-2 small mb-2">
+              {annualTestError}
             </Alert>
           ) : null}
         </div>

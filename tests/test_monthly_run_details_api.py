@@ -36,6 +36,19 @@ from app.monthly.service_trade_route_run_timing import SYNC_STATUS_OK
 PACIFIC_TZ = ZoneInfo("America/Vancouver")
 
 
+def _mock_annual_schedule_for_locations(monkeypatch, *, route_id: int, location_ids: list[int]):
+    from app.monthly import service_trade_annual_schedule as stas
+
+    stas._ANNUAL_SNAPSHOT_BY_ROUTE_MONTH.clear()
+
+    def _rows(rid: int, _month_first: date) -> dict[int, dict[str, object]]:
+        if int(rid) != int(route_id):
+            return {}
+        return {int(lid): {"annual_skip_recommended": True} for lid in location_ids}
+
+    monkeypatch.setattr(stas, "annual_schedule_location_rows_by_id", _rows)
+
+
 @pytest.fixture
 def run_details_client(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
@@ -66,7 +79,6 @@ def _seed_basic_route_data():
         property_management_company="Acme",
         property_management_company_normalized="acme",
         monthly_route_id=1,
-        annual_month="May",
     )
     mlm = MonthlyLocationMonth(
         id=5001,
@@ -120,6 +132,9 @@ def test_get_run_details_base_payload_shape(run_details_client):
         "service_trade_job_id": None,
         "service_trade_job_url": None,
         "sync_status": None,
+        "service_trade_job_status": None,
+        "service_trade_qualifying_appointment_on": None,
+        "service_trade_appointment_released": None,
     }
     assert isinstance(body["locations"], list)
     assert body["review_summary"]["stop_count"] >= 1
@@ -542,10 +557,11 @@ def test_run_details_review_includes_tested_stop_without_property_edits(run_deta
     assert (notable[0].get("result_status") or "").strip().lower() == "tested"
 
 
-def test_run_details_notable_stops_includes_annual_month_without_technician_action(
-    run_details_client
+def test_run_details_notable_stops_includes_scheduled_annual_without_technician_action(
+    run_details_client, monkeypatch,
 ):
-    """Annual-month sites appear in run review even with no skip/test outcome recorded."""
+    """ServiceTrade annual-skip sites appear in run review with no outcome recorded."""
+    _mock_annual_schedule_for_locations(monkeypatch, route_id=1, location_ids=[103])
     client, app = run_details_client
     with app.app_context():
         _seed_basic_route_data()
@@ -555,7 +571,6 @@ def test_run_details_notable_stops_includes_annual_month_without_technician_acti
             property_management_company="Acme",
             property_management_company_normalized="acme",
             monthly_route_id=1,
-            annual_month="May",
         )
         db.session.add(loc_annual)
         db.session.add(
@@ -576,18 +591,16 @@ def test_run_details_notable_stops_includes_annual_month_without_technician_acti
     notable = review.get_json()["stops"]
     annual_stop = next((s for s in notable if int(s["location_id"]) == 103), None)
     assert annual_stop is not None
-    assert annual_stop.get("annual_month") == "May"
     assert not (annual_stop.get("result_status") or "").strip()
     assert body["counts"]["skipped_count"] == 1
     assert body["counts"]["all_good_count"] == 1
 
 
-def test_run_details_counts_annual_month_site_not_when_tested(run_details_client):
-    """Tested outcome wins over annual month on the same site."""
+def test_run_details_counts_scheduled_annual_site_not_when_tested(run_details_client):
+    """Tested outcome wins over ServiceTrade annual skip on the same site."""
     client, app = run_details_client
     with app.app_context():
         route, loc, mlm, _run = _seed_basic_route_data()
-        assert loc.annual_month == "May"
         assert (mlm.result_status or "").strip().lower() == "tested"
         loc_annual_only = MonthlyLocation(
             id=104,
@@ -600,7 +613,6 @@ def test_run_details_counts_annual_month_site_not_when_tested(run_details_client
             status_normalized="active",
             status_raw="Active",
             monthly_route_id=route.id,
-            annual_month="May"
 )
         db.session.add(loc_annual_only)
         db.session.commit()
@@ -612,8 +624,9 @@ def test_run_details_counts_annual_month_site_not_when_tested(run_details_client
     assert counts["skipped_count"] == 0
 
 
-def test_run_details_skipped_count_includes_annual_and_legacy_skips(run_details_client):
-    """Skipped KPI matches run-review filter (portal, legacy, and annual-month sites)."""
+def test_run_details_skipped_count_includes_annual_and_legacy_skips(run_details_client, monkeypatch):
+    """Skipped KPI matches run-review filter (portal, legacy, and annual-skip sites)."""
+    _mock_annual_schedule_for_locations(monkeypatch, route_id=1, location_ids=[103])
     client, app = run_details_client
     with app.app_context():
         _seed_basic_route_data()
@@ -623,7 +636,6 @@ def test_run_details_skipped_count_includes_annual_and_legacy_skips(run_details_
             property_management_company="Acme",
             property_management_company_normalized="acme",
             monthly_route_id=1,
-            annual_month="May",
         )
         loc_other = make_location(
             id=104,
@@ -943,9 +955,9 @@ def test_run_details_field_changes_lists_all_distinct_fields_per_location(run_de
                 location_id=101,
                 location_month_row_id=int(mlm.id),
                 month_date=date(2026, 5, 1),
-                field_name="annual_month",
-                old_value="May",
-                new_value="June",
+                field_name="testing_procedures",
+                old_value="Old proc",
+                new_value="New proc",
                 source="technician_app"
 )
         )
@@ -957,7 +969,7 @@ def test_run_details_field_changes_lists_all_distinct_fields_per_location(run_de
     )
     assert detail.status_code == 200
     labels = {c["label"] for c in detail.get_json()["changes"]}
-    assert labels == {"Ring", "Door code", "Annual"}
+    assert labels == {"Ring", "Door code", "Testing procedures"}
 
 
 def test_run_details_field_changes_groups_two_locations(run_details_client):
@@ -1083,7 +1095,6 @@ def test_runs_by_month_includes_worksheet_stop_counts(run_details_client):
             property_management_company_normalized="acme",
             monthly_route_id=1,
             route_stop_order=0,
-            annual_month="May",
         )
         loc_annex = make_location(
             id=88002,
@@ -1203,7 +1214,6 @@ def test_run_details_prep_fields_on_location_stops(run_details_client):
             route_stop_order=1,
             keys="K-42",
             ring_detail="Ring B",
-            annual_month="June"
 )
         run = MonthlyRouteRun(
             id=9002,
@@ -1226,7 +1236,7 @@ def test_run_details_prep_fields_on_location_stops(run_details_client):
     assert stop.get("key_number") == "K-42"
     assert stop.get("ring") == "Ring B"
     assert stop.get("door_code") == "4821#"
-    assert stop.get("annual_month") == "June"
+    assert stop.get("scheduled_annual_auto_skip") is not True
 
 
 def test_office_prep_patch_materializes_stop_and_saves_key(run_details_client):
@@ -1298,7 +1308,6 @@ def test_run_details_prep_fields_fallback_when_empty_mtsm_snapshot(run_details_c
             route_stop_order=1,
             keys="MA 5611 K2",
             ring_detail="Ring B",
-            annual_month="June",
             inspection_tech_notes="Site notes from library"
 )
         run = MonthlyRouteRun(
@@ -1314,7 +1323,6 @@ def test_run_details_prep_fields_fallback_when_empty_mtsm_snapshot(run_details_c
         ts_id = int(loc.id)
         ts = MonthlyLocation.query.get(ts_id)
         assert ts is not None
-        ts.annual_month = "June"
         ts.keys = "MA 5611 K2"
         ts.ring_detail = "Ring B"
         ts.inspection_tech_notes = "Site notes from library"
@@ -1334,7 +1342,6 @@ def test_run_details_prep_fields_fallback_when_empty_mtsm_snapshot(run_details_c
     stop = res.get_json()["locations"][0]
     assert stop.get("key_number") == "MA 5611 K2"
     assert stop.get("ring") == "Ring B"
-    assert stop.get("annual_month") == "June"
     assert stop.get("inspection_tech_notes") == "Site notes from library"
 
 

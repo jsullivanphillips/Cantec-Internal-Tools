@@ -70,7 +70,7 @@ describe('nextUntestedMonthIso', () => {
         run_workflow_stage: 'prepared',
       },
     }
-    expect(nextUntestedMonthIso(months, june2026, 'July')).toBe('2026-07-01')
+    expect(nextUntestedMonthIso(months, june2026)).toBe('2026-07-01')
   })
 
   it('does not treat annual_booked on a prepared run as recorded', () => {
@@ -83,7 +83,7 @@ describe('nextUntestedMonthIso', () => {
         run_workflow_stage: 'prepared',
       },
     }
-    expect(nextUntestedMonthIso(months, june2026, 'July')).toBe('2026-07-01')
+    expect(nextUntestedMonthIso(months, june2026)).toBe('2026-07-01')
   })
 })
 
@@ -98,7 +98,6 @@ describe('monthHasRecordedTestOutcome', () => {
           run_workflow_stage: 'prepared',
         },
         '2026-07-01',
-        'July',
       ),
     ).toBe(false)
   })
@@ -108,7 +107,6 @@ describe('monthHasRecordedTestOutcome', () => {
       monthHasRecordedTestOutcome(
         { result_status: 'skipped', skip_reason: 'annual' },
         '2026-07-01',
-        'July',
       ),
     ).toBe(true)
   })
@@ -123,7 +121,6 @@ describe('monthHasRecordedTestOutcome', () => {
           run_workflow_stage: 'prepared',
         },
         '2026-07-01',
-        'July',
       ),
     ).toBe(false)
   })
@@ -136,7 +133,6 @@ describe('testingHistoryIsNextSlot', () => {
         '2026-07-01',
         '2026-07-01',
         { result_status: null, skip_reason: null, run_id: 9, run_workflow_stage: 'prepared' },
-        'July',
       ),
     ).toBe(true)
   })
@@ -148,25 +144,21 @@ describe('testingHistoryChipLabel', () => {
       testingHistoryChipLabel(
         { result_status: null, skip_reason: null, run_id: 9, run_workflow_stage: 'prepared' },
         '2026-07-01',
-        'July',
         {
           isNextSlot: true,
-          isAnnualMonthRow: true,
           annualDueOnSchedule: true,
         },
       ),
     ).toBe('Annual')
   })
 
-  it('shows Pending for next slot when annual month lacks ST schedule match', () => {
+  it('shows Pending for next slot when annual skip is not recommended', () => {
     expect(
       testingHistoryChipLabel(
         { result_status: null, skip_reason: null },
         '2026-07-01',
-        'July',
         {
           isNextSlot: true,
-          isAnnualMonthRow: true,
           annualDueOnSchedule: false,
         },
       ),
@@ -180,37 +172,28 @@ describe('testingHistoryShowRouteContext', () => {
       testingHistoryShowRouteContext(
         { result_status: null, skip_reason: null, run_id: 9, run_workflow_stage: 'prepared' },
         '2026-07-01',
-        'July',
       ),
     ).toBe(false)
     expect(
       testingHistoryShowRouteContext(
         { result_status: 'skipped', skip_reason: 'annual_booked', run_workflow_stage: 'prepared' },
         '2026-07-01',
-        'July',
       ),
     ).toBe(false)
     expect(
       testingHistoryShowRouteContext(
         { result_status: 'skipped', skip_reason: 'annual', run_workflow_stage: 'completed' },
         '2026-07-01',
-        'July',
       ),
     ).toBe(true)
   })
 })
 
 describe('siteUpcomingAnnualDue', () => {
-  it('requires both annual month match and scheduled inspection', () => {
-    expect(
-      siteUpcomingAnnualDue('July', '2026-07-01', { has_scheduled_annual_in_month: true }),
-    ).toBe(true)
-    expect(
-      siteUpcomingAnnualDue('July', '2026-06-01', { has_scheduled_annual_in_month: true }),
-    ).toBe(false)
-    expect(siteUpcomingAnnualDue('July', '2026-07-01', { has_scheduled_annual_in_month: false })).toBe(
-      false,
-    )
+  it('uses annual_skip_recommended from the schedule check row', () => {
+    expect(siteUpcomingAnnualDue('2026-07-01', { annual_skip_recommended: true })).toBe(true)
+    expect(siteUpcomingAnnualDue('2026-06-01', { annual_skip_recommended: true })).toBe(true)
+    expect(siteUpcomingAnnualDue('2026-07-01', { annual_skip_recommended: false })).toBe(false)
   })
 })
 
@@ -220,19 +203,17 @@ describe('resolveMonthOutcomeLabel', () => {
       resolveMonthOutcomeLabel(
         { result_status: 'skipped', skip_reason: 'annual' },
         '2026-05-01',
-        'May',
       ),
     ).toBe('Annual')
   })
 
-  it('infers Annual from billing when the site annual month row lacks result_status', () => {
+  it('does not infer Annual from billing-only prepared rows', () => {
     expect(
       resolveMonthOutcomeLabel(
         { result_status: null, skip_reason: null, billing_status: 'do_not_bill', run_id: 99 },
         '2026-06-01',
-        'June',
       ),
-    ).toBe('Annual')
+    ).toBeNull()
   })
 })
 
@@ -256,12 +237,11 @@ describe('lastRecordedTestSummary', () => {
       lastRecordedTestSummary(months, {
         reference: july2026,
         monthly_route: route,
-        annualMonth: 'June',
       }),
     ).toBe('June 2026 — Tested')
   })
 
-  it('shows June Annual when June is open in history but billed as annual before July test', () => {
+  it('skips billing-only months without a recorded outcome when finding last test', () => {
     const months: Record<string, MonthCell> = {
       '2026-05-01': { result_status: 'tested', skip_reason: null },
       '2026-06-01': {
@@ -276,9 +256,8 @@ describe('lastRecordedTestSummary', () => {
       lastRecordedTestSummary(months, {
         reference: july2026,
         monthly_route: route,
-        annualMonth: 'June',
       }),
-    ).toBe('June 2026 — Annual')
+    ).toBe('May 2026 — Tested')
   })
 
   it('shows Annual for the previous month when that run was skipped for annual', () => {
@@ -291,7 +270,6 @@ describe('lastRecordedTestSummary', () => {
       lastRecordedTestSummary(months, {
         reference: july2026,
         monthly_route: route,
-        annualMonth: 'June',
       }),
     ).toBe('June 2026 — Annual')
   })
@@ -317,7 +295,6 @@ describe('nextSiteRouteTestDayLabel', () => {
       status_normalized: 'active',
       keys: null,
       test_day: null,
-      annual_month: null,
       price_per_month: null,
       months: {},
       ...overrides,
@@ -385,7 +362,6 @@ describe('nextSiteRouteTestDayLabel', () => {
           '2026-06-01': { result_status: null, skip_reason: null },
           '2026-07-01': { result_status: null, skip_reason: null },
         },
-        annual_month: 'June',
         monthly_route: route,
       })
       const label = nextSiteRouteTestDayLabel(location)

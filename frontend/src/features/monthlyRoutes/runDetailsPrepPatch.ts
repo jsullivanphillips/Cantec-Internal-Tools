@@ -31,9 +31,6 @@ export function prepChangesToStopPatch(changes: PrepStopPatchChanges): Partial<M
     patch.inspection_tech_notes =
       changes.inspection_tech_notes == null ? null : String(changes.inspection_tech_notes)
   }
-  if ('annual_month' in changes) {
-    patch.annual_month = normNullableText(changes.annual_month)
-  }
   if ('office_attention' in changes) {
     patch.office_attention = Boolean(changes.office_attention)
   }
@@ -73,7 +70,6 @@ export function prepPatchFromWorksheetStop(
   if (keys.has('office_job_comment')) patch.office_job_comment = stop.office_job_comment ?? null
   if (keys.has('testing_procedures')) patch.testing_procedures = stop.testing_procedures
   if (keys.has('inspection_tech_notes')) patch.inspection_tech_notes = stop.inspection_tech_notes
-  if (keys.has('annual_month')) patch.annual_month = stop.annual_month
   if (keys.has('office_attention')) patch.office_attention = Boolean(stop.office_attention)
   if (keys.has('ring')) patch.ring = stop.ring ?? null
   if (keys.has('key_number')) patch.key_number = stop.key_number ?? null
@@ -100,7 +96,6 @@ type PrepRollbackStop = Pick<
   | 'office_job_comment'
   | 'testing_procedures'
   | 'inspection_tech_notes'
-  | 'annual_month'
   | 'office_attention'
   | 'prior_month_out_of_order'
   | 'prior_month_tested_after_address'
@@ -129,7 +124,6 @@ export function rollbackPatchForChanges(
   if ('inspection_tech_notes' in changes) {
     rollback.inspection_tech_notes = stop.inspection_tech_notes ?? null
   }
-  if ('annual_month' in changes) rollback.annual_month = stop.annual_month ?? null
   if ('office_attention' in changes) rollback.office_attention = Boolean(stop.office_attention)
   if ('prior_month_out_of_order_dismissed' in changes) {
     rollback.prior_month_out_of_order_dismissed = Boolean(stop.prior_month_out_of_order_dismissed)
@@ -268,7 +262,6 @@ export function detailPatchFromWorksheetStop(
     office_job_comment: stop.office_job_comment ?? null,
     testing_procedures: stop.testing_procedures,
     inspection_tech_notes: stop.inspection_tech_notes,
-    annual_month: stop.annual_month,
     office_attention: Boolean(stop.office_attention),
     ring: stop.ring ?? null,
     key_number: stop.key_number ?? null,

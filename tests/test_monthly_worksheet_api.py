@@ -121,7 +121,6 @@ def _seed_basic_route_data():
         status_normalized="active",
         status_raw="Active",
         monthly_route_id=1,
-        annual_month="May"
 )
     mlm = MonthlyLocationMonth(
                 id=5001,
@@ -164,7 +163,6 @@ def test_monthly_location_history_cell_includes_worksheet_link_route(worksheet_c
             status_normalized="active",
             status_raw="Active",
             monthly_route_id=2,
-            annual_month="May"
 )
         run = MonthlyRouteRun(
             id=7001,
@@ -1319,7 +1317,6 @@ def test_portal_worksheet_preview_without_monthly_route_run(portal_only_client, 
             status_normalized="active",
             status_raw="Active",
             monthly_route_id=1,
-            annual_month="May"
 )
         db.session.add_all([route, loc])
         db.session.commit()
@@ -1352,7 +1349,6 @@ def test_portal_post_runs_then_get_worksheet(portal_only_client, monkeypatch):
             status_normalized="active",
             status_raw="Active",
             monthly_route_id=1,
-            annual_month="May"
 )
         db.session.add_all([route, loc])
         db.session.commit()
@@ -1390,7 +1386,6 @@ def test_portal_reopen_completed_run_forbidden(portal_only_client, monkeypatch):
             status_normalized="active",
             status_raw="Active",
             monthly_route_id=1,
-            annual_month="May"
 )
         run = MonthlyRouteRun(
             id=5001,
@@ -1433,7 +1428,6 @@ def test_portal_patch_blocked_when_run_completed(portal_only_client, monkeypatch
             status_normalized="active",
             status_raw="Active",
             monthly_route_id=1,
-            annual_month="May"
 )
         run = MonthlyRouteRun(
             id=5002,
@@ -1701,7 +1695,6 @@ def test_hybrid_staff_portal_uses_tech_portal_param_for_lazy_worksheet(monkeypat
             status_normalized="active",
             status_raw="Active",
             monthly_route_id=79,
-            annual_month="May"
 )
         run = MonthlyRouteRun(
             id=79001,

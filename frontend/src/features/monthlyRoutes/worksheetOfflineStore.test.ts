@@ -29,7 +29,6 @@ function stop(overrides: Partial<TechnicianWorksheetLocation> = {}): TechnicianW
     door_code: null,
     ring: null,
     key_number: null,
-    annual_month: null,
     monitoring_company: null,
     monitoring_notes: null,
     result_status: null,

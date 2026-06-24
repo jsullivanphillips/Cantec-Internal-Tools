@@ -46,7 +46,6 @@ function defaultInspectionForm(): LocationEditForm {
     panel_location: '',
     door_code: '',
     property_management_company: '',
-    annual_month: '',
     monitoring_company_id: '',
     monitoring_account_number: '',
     monitoring_password: '',

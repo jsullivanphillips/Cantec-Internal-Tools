@@ -170,38 +170,20 @@ def _location_month_skip_reason_category_label(
     result_status: str | None,
     skip_category: str | None,
     skip_reason: str | None,
-    annual_month: str | None,
-    month_first: date,
-    loc_annual_month: str | None,
 ) -> str | None:
-    from app.monthly.worksheet_locations import _is_annual_for_month
-
     outcome = (_normalize_text(test_outcome) or "").lower()
     rs = (_normalize_text(result_status) or "").lower()
-    annual = annual_month or loc_annual_month
 
     if outcome == "skipped" or rs == "skipped":
         if _legacy_skip_reason_category_label(skip_reason) == "Annual":
             return "Annual"
         if (_normalize_text(skip_category) or "").lower() == "annual":
             return "Annual"
-        from app.monthly.worksheet_locations import (
-            _explicit_skip_reason_blocks_annual_month_inference,
-        )
-
-        if not _explicit_skip_reason_blocks_annual_month_inference(
-            skip_category=skip_category,
-            skip_reason=skip_reason,
-        ):
-            if _is_annual_for_month(month_first, annual):
-                return "Annual"
         cat_label = _skip_category_label(skip_category)
         if cat_label:
             return cat_label
         return _legacy_skip_reason_category_label(skip_reason)
 
-    if _is_annual_for_month(month_first, annual):
-        return "Annual"
     return None
 
 
@@ -231,11 +213,8 @@ def _rollup_test_summary(
     test_outcome: str | None,
     result_status: str | None,
     month_first: date,
-    annual_month: str | None,
 ) -> dict[str, object]:
     """Test display for a flat location-month row."""
-    from app.monthly.worksheet_locations import _is_annual_for_month
-
     o = (_normalize_text(test_outcome) or "").lower()
     r = (_normalize_text(result_status) or "").lower()
     raw_outcomes: list[str] = []
@@ -252,10 +231,7 @@ def _rollup_test_summary(
         raw_outcomes.append("skipped")
 
     if not keys:
-        if _is_annual_for_month(month_first, annual_month):
-            summary_key = "annual"
-        else:
-            summary_key = "pending"
+        summary_key = "pending"
         return {
             "summary_key": summary_key,
             "outcomes": raw_outcomes,
@@ -412,16 +388,10 @@ def _serialize_board_row(
         billing = _normalize_text(mlm.billing_status) if mlm is not None else None
         if billing is None:
             billing = "unset"
-        annual_month = (
-            mlm.annual_month
-            if mlm is not None and _normalize_text(mlm.annual_month)
-            else loc.annual_month
-        )
         test_summary = _rollup_test_summary(
             test_outcome=mlm.test_outcome if mlm is not None else None,
             result_status=mlm.result_status if mlm is not None else None,
             month_first=month_first,
-            annual_month=annual_month,
         )
         skip_reason_category = None
         skip_reason_note = None
@@ -431,9 +401,6 @@ def _serialize_board_row(
                 result_status=mlm.result_status,
                 skip_category=mlm.skip_category,
                 skip_reason=mlm.skip_reason,
-                annual_month=mlm.annual_month,
-                month_first=month_first,
-                loc_annual_month=loc.annual_month,
             )
             skip_reason_note = _location_month_skip_reason_note(
                 skip_note=mlm.skip_note,

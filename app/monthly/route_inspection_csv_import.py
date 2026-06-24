@@ -1356,7 +1356,6 @@ def _apply_csv_row_to_location(
 
     _append_route_mismatch_issue(result, logical_row=logical_row, loc=loc, route=route)
 
-    loc.annual_month = parsed.annual
     if building_name:
         loc.building_name = building_name
     loc.ring_detail = parsed.ring_detail
@@ -1410,7 +1409,6 @@ def _apply_csv_row_to_location(
         panel_location=parsed.panel_location_text,
         ring_detail=parsed.ring_detail,
         keys_text=parsed.keys_text,
-        annual_month=parsed.annual,
         testing_procedures=parsed.testing_procedures,
         inspection_tech_notes=parsed.tech_notes,
         monitoring_notes=parsed.cleaned_monitoring_notes,

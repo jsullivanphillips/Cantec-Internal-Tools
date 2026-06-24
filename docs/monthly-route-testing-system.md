@@ -476,16 +476,16 @@ Ambiguous ``h:mm`` values without AM/PM infer meridiem for field-route visits: *
 - ``MonthlyRouteRun.pre_run_message`` — per-month note on the paperwork/run-details page; shown on the technician route hub below **Open run**; cleared on run reset.
 - ``MonthlyTestingSiteMonth.office_attention`` — purple stop styling on the portal worksheet until any ``test_outcome`` is recorded; pair with **Job comment** (`run_comments`) when needed.
 
-**Annual schedule check (office prep only):** After the paperwork prep table loads, the UI calls ``GET /api/monthly_routes/routes/<id>/runs/annual_schedule_check?month_date=YYYY-MM-01`` (cached 1 hour). ServiceTrade jobs of type inspection/replacement/upgrade/installation with a **scheduled or completed** appointment whose ``windowStart`` falls in the run month (Pacific) count as booked. Cancelled jobs/appointments are ignored.
+**Annual schedule check (office prep only):** After the paperwork prep table loads, the UI calls ``GET /api/monthly_routes/routes/<id>/runs/annual_schedule_check?month_date=YYYY-MM-01`` (cached 1 hour). ServiceTrade jobs of type inspection/replacement/upgrade/installation with a **scheduled or completed** appointment whose ``windowStart`` falls in the run month (Pacific) count as booked. Cancelled jobs/appointments are ignored. Spanning jobs (appointments in two calendar months) auto-select the **skip month** as the route test day **closer** to the annual appointments; the farther month is testable unless office forces test.
 
 | Prep row | Condition |
 |----------|-----------|
-| Orange annual row | ``annual_month`` matches run month **and** qualifying ST appointment exists (prep UI merges live row ``annual_month`` with cached ST check so edits update immediately) |
-| Pill “No annual scheduled” | ``annual_month`` matches run month, ST link present, no qualifying appointment (+ **ServiceTrade** link) |
-| Pill “No ServiceTrade link” | ``annual_month`` matches run month, no ``service_trade_site_location_id`` |
-| Pill “Annual scheduled for this month” | ``annual_month`` ≠ run month but qualifying ST appointment exists |
+| Orange annual row | ServiceTrade ``annual_skip_recommended`` for this month **and** no ``annual_test_override`` on the stop |
+| Pill “Annual spans months” | Spanning inspection job touches this month |
+| Pill “Annual skip tie — review” | Route test days equidistant from annual appointments (earlier month skipped by default) |
+| Pill “No ServiceTrade link” | Rare: scheduled annual activity but no ``service_trade_site_location_id`` |
 
-Technician portal / field worksheet orange annual styling still uses ``annual_month`` only (not ServiceTrade). CSV ``annual_booked`` import is unchanged. Module: ``app/monthly/service_trade_annual_schedule.py``.
+Draft prep **Test** on orange rows toggles ``annual_test_override`` so technicians test despite ST (one click, no reason required). After override, the **Skip** button clears the override (or **Unskip** if the site was prep-skipped). Non-annual rows keep **Skip** / **Unskip** as before. Technician portal orange annual styling uses ``scheduled_annual_auto_skip`` (same ST gate). Module: ``app/monthly/service_trade_annual_schedule.py``.
 
 Logic: ``app/monthly/run_workflow.py``. UI stepper: ``RunWorkflowStepper.tsx``.
 
@@ -541,7 +541,6 @@ Master data lives on **`MonthlyTestingSite`** (migration `z4a5b6c7d8e9`):
 |-------|-----------|
 | Ring | `ring_detail` |
 | Key | `keys`, `key_id`, `barcode` |
-| Annual | `annual_month` |
 | Property management company | `property_management_company` |
 | Building name (if any) | `building_name` |
 | Panel | `panel` (legacy `facp_detail` kept in sync) |
@@ -832,7 +831,7 @@ UI: run review **Tickets** button, hero **Tickets** pill on monthly location det
 | `frontend/src/features/monthlyRoutes/portalRouteProjection.ts` | Workflow queue projection + open-clock gating |
 | `frontend/src/features/monthlyRoutes/portalWorkflowQueueRunner.ts` | Serial workflow drain |
 
-**Location detail testing history:** Month cells from ``GET /api/monthly_routes/library/:id`` include ``run_workflow_stage`` when a run file is linked. Prepared placeholder rows (``result_status`` null) still count as the **next** open month even when a ``MonthlyLocationMonth`` row exists. Billing-only annual inference (``do_not_bill`` / ``legacy`` without ``result_status``) does not close a month while the linked run is still **draft** or **prepared**. The **Tested** chip for the upcoming month uses the cached ServiceTrade annual schedule check (same double-match as office prep: site ``annual_month`` matches the run month **and** a qualifying inspection is scheduled). Otherwise the chip shows **Pending**. **Recorded on …** and field-submission messages appear only after a real ``tested`` / ``skipped`` outcome is recorded.
+**Location detail testing history:** Month cells from ``GET /api/monthly_routes/library/:id`` include ``run_workflow_stage`` when a run file is linked. Prepared placeholder rows (``result_status`` null) still count as the **next** open month even when a ``MonthlyLocationMonth`` row exists. The **Tested** chip for the upcoming month uses the cached ServiceTrade annual schedule check (``annual_skip_recommended``). Otherwise the chip shows **Pending**. **Recorded on …** and field-submission messages appear only after a real ``tested`` / ``skipped`` outcome is recorded.
 
 ---
 

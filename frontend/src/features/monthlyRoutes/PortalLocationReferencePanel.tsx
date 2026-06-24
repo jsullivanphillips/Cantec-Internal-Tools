@@ -39,7 +39,6 @@ export type PortalLocationReference = {
   access_instructions?: string | null
   testing_procedures?: string | null
   inspection_tech_notes?: string | null
-  annual_month?: string | null
   latitude?: number | null
   longitude?: number | null
   latest_run_comment?: string | null
@@ -150,12 +149,6 @@ export default function PortalLocationReferencePanel({ location }: PortalLocatio
           </button>
         ) : null}
       </section>
-
-      {location.annual_month?.trim() ? (
-        <div className="portal-location-ref-annual">
-          Annual month: <strong>{location.annual_month.trim()}</strong>
-        </div>
-      ) : null}
 
       {location.property_management_company?.trim() ? (
         <section className="portal-location-ref-section">

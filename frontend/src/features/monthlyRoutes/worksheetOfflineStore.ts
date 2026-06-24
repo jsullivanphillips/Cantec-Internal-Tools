@@ -20,7 +20,6 @@ import {
 export type WorksheetChangeSet = Partial<
   Pick<
     TechnicianWorksheetRow,
-    | 'annual_month'
     | 'ring'
     | 'key_number'
     | 'facp'
@@ -38,7 +37,6 @@ export type WorksheetChangeSet = Partial<
 export type WorksheetStopChangeSet = Partial<
   Pick<
     TechnicianWorksheetLocation,
-    | 'annual_month'
     | 'ring'
     | 'key_number'
     | 'panel'

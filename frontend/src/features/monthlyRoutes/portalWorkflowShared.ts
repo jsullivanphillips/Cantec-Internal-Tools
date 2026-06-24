@@ -6,7 +6,6 @@ import {
   worksheetStopIsAnnualSkip,
 } from './officeWorksheetTableShared'
 import {
-  isAnnualForMonth,
   worksheetLocationIsOpenClockIn,
   worksheetLocationOnHoldPendingOutcome,
   worksheetLocationSkipIsAnnual,
@@ -514,7 +513,7 @@ export function portalStopVisualTone(
     if (rs === 'tested') return 'all_good'
     if (rs === 'skipped') {
       if (stopScheduledAnnualAutoSkipActive(stop)) return 'annual'
-      if (worksheetLocationSkipIsAnnual(stop) || isAnnualForMonth(stop.annual_month, runMonthIso)) {
+      if (worksheetLocationSkipIsAnnual(stop)) {
         return 'pending'
       }
       return 'skipped'

@@ -20,7 +20,6 @@ function baseStop(overrides: Partial<TechnicianWorksheetLocation> = {}): Technic
     door_code: null,
     ring: null,
     key_number: null,
-    annual_month: null,
     monitoring_company: null,
     monitoring_notes: null,
     result_status: null,
@@ -49,12 +48,12 @@ describe('stopsMissingTestOutcome', () => {
   })
 
   it('excludes ServiceTrade annual auto-skip stops', () => {
-    const stops = [baseStop({ location_id: 1, annual_month: 'May', scheduled_annual_auto_skip: true })]
+    const stops = [baseStop({ location_id: 1, scheduled_annual_auto_skip: true })]
     expect(stopsMissingTestOutcome(stops, MONTH)).toHaveLength(0)
   })
 
-  it('includes annual-month stops without a ServiceTrade appointment', () => {
-    const stops = [baseStop({ location_id: 1, annual_month: 'May', scheduled_annual_auto_skip: false })]
+  it('includes stops without scheduled annual auto-skip', () => {
+    const stops = [baseStop({ location_id: 1, scheduled_annual_auto_skip: false })]
     expect(stopsMissingTestOutcome(stops, MONTH)).toHaveLength(1)
   })
 

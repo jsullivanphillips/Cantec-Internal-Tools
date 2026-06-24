@@ -243,14 +243,6 @@ export default function RunDetailsStopSiteEditableFields({
               onSave={saveField('door_code')}
               {...fieldEditProps}
             />
-            <PortalEditableFieldRow
-              fieldKey="annual_month"
-              label="Annual"
-              value={stop.annual_month ?? ''}
-              monthSelect
-              onSave={saveField('annual_month')}
-              {...fieldEditProps}
-            />
           </div>
         </div>
         <div className="pw-mock-field-group">

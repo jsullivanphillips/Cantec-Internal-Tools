@@ -1,7 +1,7 @@
 /** Office run-details review: portal outcomes, billing labels, location grouping. */
 
 import type { TechnicianWorksheetLocation } from './monthlyRoutesShared'
-import { officeStopStatus, officeStopStatusLabel } from './officeWorksheetTableShared'
+import { officeStopStatus, officeStopStatusLabel, worksheetStopIsAnnualSkip } from './officeWorksheetTableShared'
 import {
   formatSkipReasonDisplayText,
   OFFICE_OUTCOME_SKIPPED_ANNUAL_LABEL,
@@ -44,7 +44,7 @@ export function runReviewStopIsAnnualSkip(
   const outcome = stopPortalOutcome(stop)
   const rs = norm(stop.result_status).toLowerCase()
   const skipped = outcome === 'skipped' || rs === 'skipped'
-  if (!skipped) return false
+  if (skipped) return worksheetStopIsAnnualSkip(stop, monthDate)
   return officeStopStatus(stop, monthDate) === 'annual'
 }
 

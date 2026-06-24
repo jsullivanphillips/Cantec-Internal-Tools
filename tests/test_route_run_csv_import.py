@@ -61,7 +61,6 @@ def _seed_route8_with_two_stops() -> tuple[int, int, int]:
         property_management_company="Invermay",
         property_management_company_normalized="invermay",
         monthly_route_id=8,
-        annual_month="July",
     )
     loc2 = make_location(
         id=802,
@@ -70,7 +69,6 @@ def _seed_route8_with_two_stops() -> tuple[int, int, int]:
         property_management_company="Singleton Maintenance Solutions",
         property_management_company_normalized="singleton maintenance solutions",
         monthly_route_id=8,
-        annual_month="January",
     )
     db.session.add_all([route, loc1, loc2])
     db.session.commit()
@@ -335,7 +333,6 @@ def test_import_creates_run_and_snapshots(import_client):
         assert h1.facp == "EDWARDS 6632"
         assert h1.ring == "R1"
         assert h1.key_number == "TH008"
-        assert h1.annual_month == "July"
         assert h1.testing_procedures == "Test bells"
         assert h1.inspection_tech_notes == "Site contact Allison"
         assert h1.result_status == "tested"
@@ -722,7 +719,6 @@ def test_import_preserves_existing_tested_row_and_overwrites_snapshots(import_cl
         assert h.facp == "EDWARDS 6632"
         assert h.ring == "R1"
         assert h.key_number == "TH008"
-        assert h.annual_month == "July"
         assert h.testing_procedures == "Test bells"
         assert h.inspection_tech_notes == "Site contact Allison"
 
@@ -1063,7 +1059,6 @@ def test_import_r15_style_headers_multiline_snapshots(import_client):
         assert h.facp == "EDWARDS 6500"
         assert "SIGNALS: A T" in (h.monitoring_notes or "")
         assert h.ring == "w/ Parking Attendant"
-        assert h.annual_month == "December"
         assert h.testing_procedures == "RING BELLS BY 7:45AM"
         assert h.inspection_tech_notes is not None and "Mike" in h.inspection_tech_notes
         assert h.sheet_time_in_raw == "7:08"

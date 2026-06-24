@@ -1,9 +1,8 @@
 import {
-  isAnnualMonthNotAtSite,
-  parseYearMonth,
   worksheetLocationOnHoldPendingOutcome,
   type TechnicianWorksheetLocation,
 } from './monthlyRoutesShared'
+import { stopScheduledAnnualAutoSkipActive } from './prepAnnualSchedule'
 import { locationDisplaySubline, locationPrimaryLabel } from './locationDisplay'
 
 export type OfficeStopStatus = 'tested' | 'skipped' | 'annual' | 'on_hold' | 'pending'
@@ -51,19 +50,6 @@ export function officeFirstDisplayValue(...values: Array<string | null | undefin
   return null
 }
 
-function isAnnualForMonth(annualMonth: string | null | undefined, monthIso: string): boolean {
-  if (isAnnualMonthNotAtSite(annualMonth)) return false
-  const raw = (annualMonth || '').trim().toLowerCase()
-  if (!raw) return false
-  const ym = parseYearMonth(monthIso)
-  if (!ym) return false
-  const monthFull = new Intl.DateTimeFormat('en-CA', { month: 'long', timeZone: 'UTC' })
-    .format(new Date(Date.UTC(ym.year, ym.month - 1, 1)))
-    .toLowerCase()
-  const monthShort = monthFull.slice(0, 3)
-  return raw === monthFull || raw === monthShort
-}
-
 function sheetSkipReasonIsAnnual(skipReason: string | null | undefined): boolean {
   const s = (skipReason || '').trim().toLowerCase()
   return s === 'annual' || s === 'annual_booked'
@@ -99,7 +85,7 @@ export function stopIsOfficePrepSkipped(
 
 type SkippedDisplayToneStop = Pick<
   TechnicianWorksheetLocation,
-  'test_outcome' | 'result_status' | 'annual_month' | 'skip_category'
+  'test_outcome' | 'result_status' | 'skip_category'
 > & {
   skip_reason?: string | null
 }
@@ -121,9 +107,9 @@ export function worksheetStopIsAnnualSkip(stop: TechnicianWorksheetLocation, mon
     if (sheetSkipReasonIsAnnual(stop.skip_reason)) return true
     if ((stop.skip_category || '').trim().toLowerCase() === 'annual') return true
     if (stopExplicitSkipReasonBlocksAnnualInference(stop)) return false
-    return isAnnualForMonth(stop.annual_month, monthDate)
+    return stopScheduledAnnualAutoSkipActive(stop)
   }
-  return isAnnualForMonth(stop.annual_month, monthDate)
+  return stopScheduledAnnualAutoSkipActive(stop)
 }
 
 export function officeStopStatus(stop: TechnicianWorksheetLocation, monthDate: string): OfficeStopStatus {
@@ -133,7 +119,7 @@ export function officeStopStatus(stop: TechnicianWorksheetLocation, monthDate: s
   if (rs === 'skipped' || outcome === 'skipped') {
     return skippedStopDisplayTone(stop, monthDate) ?? 'skipped'
   }
-  if (isAnnualForMonth(stop.annual_month, monthDate)) return 'annual'
+  if (stopScheduledAnnualAutoSkipActive(stop)) return 'annual'
   if (worksheetLocationOnHoldPendingOutcome(stop)) return 'on_hold'
   return 'pending'
 }
@@ -203,7 +189,6 @@ const AUDIT_FIELD_TO_COMPACT_LABEL: Record<string, string> = {
   ring: 'Ring',
   key_number: 'Key #',
   door_code: 'Door code',
-  annual_month: 'Annual',
   panel: 'Panel',
   facp: 'Panel',
   panel_location: 'Panel location',
@@ -335,7 +320,7 @@ export function renderFieldChangeInline(change: OfficeFieldChange): string {
   return `${formatOfficeAuditValue(change.old_value)} → ${formatOfficeAuditValue(change.new_value)}`
 }
 
-const ACCESS_AUDIT_LABELS = ['Ring', 'Key #', 'Door code', 'Annual'] as const
+const ACCESS_AUDIT_LABELS = ['Ring', 'Key #', 'Door code'] as const
 const PANEL_AUDIT_LABELS = ['Panel', 'Panel location'] as const
 const MONITORING_AUDIT_LABELS = ['Company', 'Account #', 'Password', 'Notes'] as const
 const ADDRESS_AUDIT_LABELS = ['Building', 'PMC'] as const

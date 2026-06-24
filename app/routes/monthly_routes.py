@@ -114,15 +114,6 @@ def _normalize_status(value: str | None) -> tuple[str, str | None]:
     return "unknown", cleaned
 
 
-def _is_annual_month(month_date: date, annual_month: str | None) -> bool:
-    annual = (annual_month or "").strip().lower()
-    if not annual or annual == "to":
-        return False
-    full = month_date.strftime("%B").lower()
-    short = month_date.strftime("%b").lower()
-    return annual in {full, short}
-
-
 def _parse_price(value: object) -> Decimal | None:
     if value is None or value == "":
         return None
@@ -264,23 +255,32 @@ def _english_ordinal(n: int) -> str:
 
 
 def _annual_active_location_count_by_route(month_first: date) -> dict[int, int]:
-    """Active locations per route whose ``annual_month`` matches ``month_first``."""
-    annual_full = month_first.strftime("%B").lower()
-    annual_short = month_first.strftime("%b").lower()
-    rows = (
-        db.session.query(
-            MonthlyLocation.monthly_route_id,
-            func.count(MonthlyLocation.id),
-        )
+    """Active locations per route with ServiceTrade annual skip recommended this month."""
+    from app.monthly.service_trade_annual_schedule import annual_schedule_location_rows_by_id
+
+    counts: dict[int, int] = {}
+    route_ids = [
+        int(rid)
+        for (rid,) in db.session.query(MonthlyLocation.monthly_route_id)
         .filter(
             MonthlyLocation.monthly_route_id.isnot(None),
             MonthlyLocation.status_normalized == "active",
-            func.lower(func.trim(MonthlyLocation.annual_month)).in_([annual_full, annual_short]),
         )
-        .group_by(MonthlyLocation.monthly_route_id)
+        .distinct()
         .all()
-    )
-    return {int(mid): int(n) for mid, n in rows if mid is not None}
+        if rid is not None
+    ]
+    for route_id in route_ids:
+        try:
+            rows = annual_schedule_location_rows_by_id(route_id, month_first)
+        except Exception:
+            rows = None
+        if not rows:
+            continue
+        n = sum(1 for row in rows.values() if row.get("annual_skip_recommended"))
+        if n:
+            counts[route_id] = n
+    return counts
 
 
 def _serialize_monthly_route_entity(
@@ -795,7 +795,6 @@ def _ensure_worksheet_rows_for_route_month(
                 "facp": prior.facp,
                 "ring": prior.ring,
                 "key_number": prior.key_number,
-                "annual_month": prior.annual_month,
                 "testing_procedures": prior.testing_procedures,
                 "inspection_tech_notes": prior.inspection_tech_notes,
                 "monitoring_notes": prior.monitoring_notes,
@@ -805,7 +804,6 @@ def _ensure_worksheet_rows_for_route_month(
             "facp": loc.facp_detail,
             "ring": loc.ring_detail,
             "key_number": loc.keys,
-            "annual_month": loc.annual_month,
             "testing_procedures": loc.testing_procedures,
             "inspection_tech_notes": loc.inspection_tech_notes,
             "monitoring_notes": None,
@@ -887,7 +885,6 @@ def _ensure_worksheet_rows_for_route_month(
             "facp",
             "ring",
             "key_number",
-            "annual_month",
             "testing_procedures",
             "inspection_tech_notes",
             "monitoring_notes",
@@ -1025,7 +1022,6 @@ def _worksheet_preview_row_from_location(
         "display_address": display_address,
         "label": (loc.label or "").strip() or None,
         "property_management_company": ((loc.property_management_company or "").strip() or None),
-        "annual_month": loc.annual_month,
         "ring": loc.ring_detail,
         "key_number": loc.keys,
         **linked_key_fields_for_location(loc),
@@ -1113,7 +1109,6 @@ def _worksheet_row_from_history(
         "property_management_company": (loc.property_management_company or "").strip() if loc else None,
         # Run-scoped snapshot fields: read only from the history row so old months
         # never bleed in current "library" values.
-        "annual_month": row.annual_month,
         "ring": row.ring,
         "key_number": row.key_number,
         "facp": row.facp,
@@ -1643,7 +1638,6 @@ def _serialize_route_location_list_item(loc: MonthlyLocation) -> dict[str, objec
         "label": loc.label,
         "building_name": loc.building_name,
         "status_normalized": loc.status_normalized,
-        "annual_month": loc.annual_month,
         "latitude": float(loc.latitude) if loc.latitude is not None else None,
         "longitude": float(loc.longitude) if loc.longitude is not None else None,
         "route_stop_order": loc.route_stop_order,
@@ -1662,7 +1656,6 @@ def _serialize_route_location_list_item(loc: MonthlyLocation) -> dict[str, objec
                 "id": int(loc.id),
                 "sort_order": 0,
                 "label": loc.label,
-                "annual_month": loc.annual_month,
             }
         ],
     }
@@ -1732,7 +1725,6 @@ def _serialize_location_row(
         "key_id": loc.key_id,
         "key": _serialize_linked_key(lk, include_status=not list_view),
         "test_day": loc.test_day,
-        "annual_month": loc.annual_month,
         "latitude": loc.latitude,
         "longitude": loc.longitude,
         "monthly_route_id": loc.monthly_route_id,
@@ -1799,6 +1791,14 @@ def monthly_library_tag_options():
     return jsonify({"tags": distinct_location_tags()})
 
 
+def _history_row_is_annual_classified_skip(row: MonthlyLocationMonth) -> bool:
+    cat = (row.skip_category or "").strip().lower()
+    if cat == "annual":
+        return True
+    reason = (row.skip_reason or "").strip().lower()
+    return reason in {"annual", "annual_booked"}
+
+
 @monthly_routes_bp.get("/api/monthly_routes/library")
 def monthly_routes_library(*, list_view: bool | None = None):
     if list_view is None:
@@ -1853,7 +1853,6 @@ def monthly_routes_library(*, list_view: bool | None = None):
                 func.lower(func.coalesce(MonthlyLocation.test_day, "")).contains(q),
                 func.lower(func.coalesce(MonthlyLocation.property_management_company, "")).contains(q),
                 func.lower(func.coalesce(MonthlyLocation.keys, "")).contains(q),
-                func.lower(func.coalesce(MonthlyLocation.annual_month, "")).contains(q),
             )
         )
     if route:
@@ -1878,7 +1877,6 @@ def monthly_routes_library(*, list_view: bool | None = None):
     if special_library_filters:
         candidate_locations = ordered_location_query.all()
         candidate_ids = [loc.id for loc in candidate_locations]
-        annual_by_location = {loc.id: loc.annual_month for loc in candidate_locations}
 
         id_sets: list[set[int]] = []
 
@@ -1892,7 +1890,7 @@ def monthly_routes_library(*, list_view: bool | None = None):
                 if range_conditions:
                     skipped_hist_query = skipped_hist_query.filter(and_(*range_conditions))
                 for row in skipped_hist_query.all():
-                    if not _is_annual_month(row.month_date, annual_by_location.get(row.monthly_location_id)):
+                    if not _history_row_is_annual_classified_skip(row):
                         skipped_ids.add(row.monthly_location_id)
             id_sets.append(skipped_ids)
 
@@ -1906,7 +1904,7 @@ def monthly_routes_library(*, list_view: bool | None = None):
                 if range_conditions:
                     tested_hist_query = tested_hist_query.filter(and_(*range_conditions))
                 for row in tested_hist_query.all():
-                    if _is_annual_month(row.month_date, annual_by_location.get(row.monthly_location_id)):
+                    if row.annual_test_override:
                         conflict_ids.add(row.monthly_location_id)
             id_sets.append(conflict_ids)
 
@@ -3764,7 +3762,6 @@ def patch_monthly_route_worksheet_row(route_id: int, location_id: int):
         "inspection_tech_notes": "inspection_tech_notes",
         "time_in": "sheet_time_in_raw",
         "time_out": "sheet_time_out_raw",
-        "annual_month": "annual_month",
         "ring": "ring",
         "key_number": "key_number",
         "facp": "facp",
@@ -3772,7 +3769,6 @@ def patch_monthly_route_worksheet_row(route_id: int, location_id: int):
     }
     # Map field -> attribute on ``MonthlyLocation`` for the latest-run mirror.
     library_mirror_fields = {
-        "annual_month": "annual_month",
         "ring": "ring_detail",
         "key_number": "keys",
         "facp": "facp_detail",
@@ -4312,7 +4308,6 @@ def patch_monthly_route_worksheet_stop(route_id: int, location_id: int):
     snapshot_changed = changed_any and bool(snapshot_patch_keys.intersection(changes_eff))
 
     stop_library_mirror_fields = {
-        "annual_month": "annual_month",
         "ring": "ring_detail",
         "key_number": "keys",
         "facp": "facp_detail",
@@ -4346,8 +4341,6 @@ def patch_monthly_route_worksheet_stop(route_id: int, location_id: int):
 
     if changed_any:
         db.session.commit()
-        if office_prep_phase and "annual_month" in changes_eff:
-            invalidate_cache_prefix("monthly:annual_schedule_check")
     else:
         db.session.rollback()
 
@@ -5831,6 +5824,104 @@ def delete_worksheet_location_prep_skip(route_id: int, location_id: int):
     return jsonify(_prep_skip_stop_response(route_id, month_first, loc, mlm))
 
 
+@monthly_routes_bp.post(
+    "/api/monthly_routes/routes/<int:route_id>/worksheet/locations/<int:location_id>/prep_annual_test"
+)
+@monthly_routes_bp.post(
+    "/api/monthly_routes/routes/<int:route_id>/worksheet/stops/<int:location_id>/prep_annual_test"
+)
+def post_worksheet_location_prep_annual_test(route_id: int, location_id: int):
+    """Office draft prep: force monthly test despite ServiceTrade annual skip."""
+    if not session.get("authenticated"):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    month_first, err = _parse_portal_workflow_month()
+    if err is not None:
+        return err
+    if _get_monthly_route(route_id) is None:
+        return jsonify({"error": "Route not found"}), 404
+
+    blocked = _reject_if_future_month_prep_blocked(route_id, month_first)
+    if blocked is not None:
+        return blocked
+
+    payload = request.get_json(silent=True) or {}
+    reason = (payload.get("reason") or payload.get("office_job_comment") or "").strip()
+
+    run = MonthlyRouteRun.query.filter_by(
+        monthly_route_id=route_id,
+        month_date=month_first,
+    ).one_or_none()
+
+    from app.monthly.prep_annual_test_override import (
+        PrepAnnualTestError,
+        office_prep_apply_annual_test_override,
+    )
+
+    try:
+        mlm, loc, run = office_prep_apply_annual_test_override(
+            route_id,
+            location_id,
+            month_first,
+            reason=reason,
+            run=run,
+        )
+    except PrepAnnualTestError as exc:
+        status = 404 if exc.code == "location_not_found" else 409
+        return jsonify({"error": exc.message, "code": exc.code}), status
+
+    db.session.commit()
+    invalidate_cache_prefix("monthly:annual_schedule_check")
+    return jsonify(_prep_skip_stop_response(route_id, month_first, loc, mlm, run=run))
+
+
+@monthly_routes_bp.delete(
+    "/api/monthly_routes/routes/<int:route_id>/worksheet/locations/<int:location_id>/prep_annual_test"
+)
+@monthly_routes_bp.delete(
+    "/api/monthly_routes/routes/<int:route_id>/worksheet/stops/<int:location_id>/prep_annual_test"
+)
+def delete_worksheet_location_prep_annual_test(route_id: int, location_id: int):
+    """Office draft prep: revert forced monthly test override."""
+    if not session.get("authenticated"):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    month_first, err = _parse_portal_workflow_month()
+    if err is not None:
+        return err
+    if _get_monthly_route(route_id) is None:
+        return jsonify({"error": "Route not found"}), 404
+
+    blocked = _reject_if_future_month_prep_blocked(route_id, month_first)
+    if blocked is not None:
+        return blocked
+
+    run = MonthlyRouteRun.query.filter_by(
+        monthly_route_id=route_id,
+        month_date=month_first,
+    ).one_or_none()
+
+    from app.monthly.prep_annual_test_override import (
+        PrepAnnualTestError,
+        office_prep_clear_annual_test_override,
+    )
+
+    try:
+        mlm, loc = office_prep_clear_annual_test_override(
+            route_id,
+            location_id,
+            month_first,
+            run=run,
+        )
+    except PrepAnnualTestError as exc:
+        status = 404 if exc.code == "location_not_found" else 409
+        return jsonify({"error": exc.message, "code": exc.code}), status
+
+    db.session.commit()
+    invalidate_cache_prefix("monthly:annual_schedule_check")
+    return jsonify(_prep_skip_stop_response(route_id, month_first, loc, mlm))
+
+
 @monthly_routes_bp.post("/api/monthly_routes/routes/<int:route_id>/runs/skip")
 def post_monthly_route_run_skip(route_id: int):
     """Office: skip a route-month — all library sites skipped, do not bill, run closed."""
@@ -6213,7 +6304,6 @@ def create_monthly_route_location():
         keys=keys,
         access_instructions=_clean_text(payload.get("access_instructions")),
         test_day=_clean_text(payload.get("test_day")),
-        annual_month=_clean_text(payload.get("annual_month")),
         display_address=_clean_text(payload.get("display_address")),
         building_name=_clean_text(payload.get("building_name")),
     )
@@ -6375,8 +6465,6 @@ def update_monthly_route_location(location_id: int):
             _sync_route_stop_order_after_fk_change(loc, prev_mr_id)
             invalidate_monthly_route_path(prev_mr_id)
             invalidate_monthly_route_path(loc.monthly_route_id)
-        if "annual_month" in payload:
-            loc.annual_month = _clean_text(payload.get("annual_month"))
         if "ring_detail" in payload or "ring" in payload:
             raw = payload.get("ring_detail") if "ring_detail" in payload else payload.get("ring")
             loc.ring_detail = (str(raw).strip() or None) if raw is not None else None

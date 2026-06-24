@@ -36,7 +36,6 @@ function worksheetStop(overrides: Partial<TechnicianWorksheetLocation> = {}): Te
     door_code: null,
     ring: null,
     key_number: null,
-    annual_month: null,
     monitoring_company: null,
     monitoring_notes: null,
     result_status: null,
@@ -64,7 +63,6 @@ function baseLocation(overrides: Partial<MonthlyRunDetailLocation> = {}): Monthl
     month_date: MONTH,
     result_status: null,
     test_outcome: 'all_good',
-    annual_month: null,
     run_comments: null,
     testing_procedures: null,
     inspection_tech_notes: null,
@@ -205,7 +203,7 @@ describe('listAutoOfficeBillingUpdates', () => {
 
     expect(
       listAutoOfficeBillingUpdates(
-        [baseLocation({ test_outcome: null, result_status: null, annual_month: 'May' })],
+        [baseLocation({ test_outcome: null, result_status: null, scheduled_annual_auto_skip: true })],
         MONTH,
       ),
     ).toEqual([{ locationId: 101, billingStatus: 'do_not_bill' }])
@@ -453,7 +451,7 @@ describe('filterRunDetailLocationsByOutcomes', () => {
         stop_number: 3,
         test_outcome: null,
         result_status: null,
-        annual_month: 'May',
+        scheduled_annual_auto_skip: true,
       }),
     ]
     const filtered = filterRunDetailLocationsByOutcomes(locations, ['no_test_result'], MONTH)

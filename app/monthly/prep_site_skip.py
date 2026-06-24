@@ -48,6 +48,8 @@ def apply_office_prep_site_skip(
     skip_note: str,
 ) -> None:
     office_comment = sanitize_rich_text_comment(skip_note)
+    mlm.annual_test_override = False
+    mlm.annual_test_override_reason = None
     mlm.test_outcome = "skipped"
     mlm.skip_category = skip_category
     mlm.skip_note = skip_note

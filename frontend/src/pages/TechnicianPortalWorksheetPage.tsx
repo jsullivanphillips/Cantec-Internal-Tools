@@ -4,7 +4,6 @@ import { Alert, Badge, Button, Spinner } from 'react-bootstrap'
 import { stopScheduledAnnualAutoSkipActive } from '../features/monthlyRoutes/prepAnnualSchedule'
 import {
   WORKSHEET_CLOCK_IN_BLOCKED_MESSAGE,
-  isAnnualForMonth,
   worksheetLocationIsOpenClockIn,
   worksheetLocationSkipIsAnnual,
   type TechnicianWorksheetLocation,
@@ -99,10 +98,7 @@ function stopDisplayStatus(stop: TechnicianWorksheetLocation): StopDisplayStatus
     if (rs === 'tested') return 'tested'
     if (rs === 'skipped') {
       if (stopScheduledAnnualAutoSkipActive(stop)) return 'skipped'
-      if (
-        worksheetLocationSkipIsAnnual(stop) ||
-        isAnnualForMonth(stop.annual_month, stop.month_date)
-      ) {
+      if (worksheetLocationSkipIsAnnual(stop)) {
         return 'pending'
       }
       return 'skipped'
@@ -1379,14 +1375,6 @@ export default function TechnicianPortalWorksheetPage() {
                       label="Door code"
                       value={active.door_code ?? ''}
                       onSave={saveField('door_code')}
-                      {...fieldEditProps}
-                    />
-                    <PortalEditableFieldRow
-                      fieldKey="annual_month"
-                      label="Annual"
-                      value={active.annual_month ?? ''}
-                      monthSelect
-                      onSave={saveField('annual_month')}
                       {...fieldEditProps}
                     />
                     <PortalEditableFieldRow

@@ -17,7 +17,6 @@ from app.monthly.worksheet_locations import (
     RUN_DETAILS_EXCLUDED_AUDIT_FIELDS,
     RUN_DETAILS_OFFICE_ONLY_AUDIT_FIELDS,
     RUN_DETAILS_OFFICE_PREP_AUDIT_SOURCES,
-    _is_annual_for_month,
     _is_on_hold_pending_outcome,
     _normalize_text,
     _office_stop_status,
@@ -45,7 +44,6 @@ _AUDIT_FIELD_DISPLAY_LABEL: dict[str, str] = {
     "ring": "Ring",
     "key_number": "Key #",
     "door_code": "Door code",
-    "annual_month": "Annual",
     "panel": "Panel",
     "facp": "Panel",
     "panel_location": "Panel location",
@@ -301,11 +299,11 @@ def _is_notable_stop(
     lid = int(stop["location_id"])
     rs = (str(stop.get("result_status") or "")).strip().lower()
     has_run_comments = _stop_has_run_comments(stop)
-    is_annual_month = _is_annual_for_month(month_first, stop.get("annual_month"))
+    is_scheduled_annual = stop.get("scheduled_annual_auto_skip") is True
     is_on_hold = _is_on_hold_pending_outcome(stop)
     has_outcome = _normalize_text(stop.get("test_outcome")) is not None
     has_updates = lid in audit_loc_ids or rs == "skipped" or has_run_comments
-    return bool(has_updates or rs == "tested" or is_annual_month or is_on_hold or has_outcome)
+    return bool(has_updates or rs == "tested" or is_scheduled_annual or is_on_hold or has_outcome)
 
 
 def _lean_locations_for_route_month(route_id: int, month_first: date) -> list[dict[str, object]]:
@@ -482,7 +480,6 @@ def _serialize_review_stop_summary(
         "skip_reason": stop.get("skip_reason"),
         "skip_category": stop.get("skip_category"),
         "skip_note": stop.get("skip_note"),
-        "annual_month": stop.get("annual_month"),
         "run_comments": stop.get("run_comments"),
         "confirmed_no_deficiencies": bool(stop.get("confirmed_no_deficiencies"))
         and not _location_has_any_open_deficiencies(lid),
@@ -865,7 +862,6 @@ def _serialize_run_detail_location(
         "skip_reason": stop.get("skip_reason"),
         "skip_category": stop.get("skip_category"),
         "skip_note": stop.get("skip_note"),
-        "annual_month": stop.get("annual_month"),
         "ring": stop.get("ring"),
         "key_number": stop.get("key_number"),
         "door_code": stop.get("door_code"),

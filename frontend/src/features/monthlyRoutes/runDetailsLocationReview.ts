@@ -48,7 +48,6 @@ export function runDetailLocationAsWorksheetLocation(
     door_code: loc.door_code ?? null,
     ring: loc.ring ?? null,
     key_number: loc.key_number ?? null,
-    annual_month: loc.annual_month,
     monitoring_company: loc.monitoring_company ?? null,
     monitoring_company_id: loc.monitoring_company_id ?? null,
     monitoring_company_record: loc.monitoring_company_record ?? null,
@@ -72,6 +71,7 @@ export function runDetailLocationAsWorksheetLocation(
     stop_number: loc.stop_number,
     version_updated_at: null,
     status_normalized: loc.status_normalized ?? null,
+    scheduled_annual_auto_skip: loc.scheduled_annual_auto_skip,
   }
 }
 
@@ -608,10 +608,6 @@ function normComment(value: string | null | undefined): string {
 
 export function locationNeedsPrep(location: MonthlyRunDetailLocation, monthDate: string): boolean {
   if (normComment(location.run_comments)) return true
-  const ws = runDetailLocationAsWorksheetLocation(location)
-  if (officeStopStatus(ws, monthDate) === 'annual' && !normComment(location.annual_month)) {
-    return true
-  }
   if (normComment(location.testing_procedures) && location.testing_procedures!.length > 120) {
     return true
   }

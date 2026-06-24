@@ -1,9 +1,9 @@
 import {
-  isAnnualForMonth,
   worksheetLocationIsOpenClockIn,
   worksheetLocationSkipIsAnnual,
   type TechnicianWorksheetLocation,
 } from './monthlyRoutesShared'
+import { stopScheduledAnnualAutoSkipActive } from './prepAnnualSchedule'
 import {
   portalHeaderBandClass,
   portalOutcomeDisplay,
@@ -69,7 +69,7 @@ export function runDetailsShowAnnualMonthPill(
 ): boolean {
   if (runDetailsStopHasTestedOutcome(stop)) return false
   if (status === 'skipped') return worksheetLocationSkipIsAnnual(stop)
-  return isAnnualForMonth(stop.annual_month, runMonthIso)
+  return stopScheduledAnnualAutoSkipActive(stop)
 }
 
 export function runDetailsHeaderMonitoringDisplay(stop: TechnicianWorksheetLocation): string {

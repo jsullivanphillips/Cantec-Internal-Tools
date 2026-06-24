@@ -5,17 +5,13 @@ Used by API, technician UI, office approval flows, and Excel import scripts.
 Append-only revisions store ``value_previous`` / ``value_new`` as JSON documents.
 
 Plain-text fields (string or null in JSON):
-  ``annual_month``, ``ring``, ``keys``, ``facp``, ``testing_procedures``,
+  ``ring``, ``keys``, ``facp``, ``testing_procedures``,
   ``inspection_tech_notes``
 
 Monitoring (structured):
   - Linked directory company: ``{"monitoring_company_id": <int>}``
   - Pending new company (proposal selected on location): ``{"monitoring_company_proposal_id": <int>}``
   - Cleared / unknown until set: ``null``
-
-Annual pending (technician proposal for office approval):
-  - Same as plain text for ``annual_month`` pending pipeline; canonical ``annual_month``
-    on ``MonthlyLocation`` updates only after office approval.
 
 Restore:
   - Set ``restored_from_revision_id`` on the new revision row to the revision whose
@@ -56,7 +52,6 @@ VALID_MONITORING_PROPOSAL_STATUSES: frozenset[str] = frozenset(
 
 
 class InspectionFieldKey(str, Enum):
-    annual_month = "annual_month"
     ring = "ring"
     keys = "keys"
     facp = "facp"

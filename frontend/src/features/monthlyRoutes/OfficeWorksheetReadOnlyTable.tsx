@@ -412,11 +412,6 @@ function OfficeStopTableRow({
               value={stop.door_code}
               change={auditChangeForCompactLabel(lid, 'Door code', fieldChangesByLocation)}
             />
-            <OfficeCompactField
-              label="Annual"
-              value={stop.annual_month}
-              change={auditChangeForCompactLabel(lid, 'Annual', fieldChangesByLocation)}
-            />
           </div>
         </td>
       ) : null}

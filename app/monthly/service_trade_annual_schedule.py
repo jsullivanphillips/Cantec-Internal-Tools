@@ -10,17 +10,15 @@ from zoneinfo import ZoneInfo
 
 import requests
 
-from app.db_models import MonthlyLocation
+from app.db_models import MonthlyLocation, MonthlyRoute
+from app.monthly.route_test_day import effective_route_test_day
 from app.monthly.service_trade_site_match import (
     SERVICE_TRADE_API_BASE,
     service_trade_site_location_url,
 )
 from app.monthly.worksheet_locations import (
-    _coalesce_with_master,
-    _is_annual_for_month,
     _resolve_worksheet_route_locations,
     _worksheet_location_pairs_for_route_month,
-    master_template_fields,
 )
 
 PACIFIC_TZ = ZoneInfo("America/Vancouver")
@@ -39,19 +37,25 @@ PrepWarning = str | None
 @dataclass(frozen=True)
 class AnnualScheduleLocationSnapshot:
     location_id: int
-    annual_month_matches_run: bool
     has_service_trade_link: bool
     service_trade_site_location_url: str | None
     has_scheduled_annual_in_month: bool
+    annual_spans_months: bool
+    annual_skip_recommended: bool
+    annual_test_recommended: bool
+    spanning_job_id: int | None
     prep_warning: PrepWarning
 
     def to_dict(self) -> dict[str, object]:
         return {
             "location_id": self.location_id,
-            "annual_month_matches_run": self.annual_month_matches_run,
             "has_service_trade_link": self.has_service_trade_link,
             "service_trade_site_location_url": self.service_trade_site_location_url,
             "has_scheduled_annual_in_month": self.has_scheduled_annual_in_month,
+            "annual_spans_months": self.annual_spans_months,
+            "annual_skip_recommended": self.annual_skip_recommended,
+            "annual_test_recommended": self.annual_test_recommended,
+            "spanning_job_id": self.spanning_job_id,
             "prep_warning": self.prep_warning,
         }
 
@@ -66,6 +70,11 @@ def month_window_pacific(month_first: date) -> tuple[int, int]:
     return int(start.timestamp()), int(end.timestamp())
 
 
+def month_first_from_pacific_ts(ts: int) -> date:
+    dt = datetime.fromtimestamp(int(ts), tz=PACIFIC_TZ)
+    return date(dt.year, dt.month, 1)
+
+
 def job_qualifies(job: dict[str, Any]) -> bool:
     status = (str(job.get("status") or "")).strip().lower()
     if status in _CANCELLED_STATUSES:
@@ -77,8 +86,8 @@ def job_qualifies(job: dict[str, Any]) -> bool:
 def appointment_qualifies(
     appointment: dict[str, Any],
     *,
-    start_ts: int,
-    end_ts: int,
+    start_ts: int | None = None,
+    end_ts: int | None = None,
 ) -> bool:
     status = (str(appointment.get("status") or "")).strip().lower()
     if status in _CANCELLED_STATUSES:
@@ -92,23 +101,38 @@ def appointment_qualifies(
         ts = int(window_start)
     except (TypeError, ValueError):
         return False
-    return start_ts <= ts < end_ts
+    if start_ts is not None and end_ts is not None:
+        return start_ts <= ts < end_ts
+    return True
+
+
+def _appointment_pacific_date(appointment: dict[str, Any]) -> date | None:
+    if not appointment_qualifies(appointment):
+        return None
+    window_start = appointment.get("windowStart")
+    if window_start is None:
+        return None
+    try:
+        ts = int(window_start)
+    except (TypeError, ValueError):
+        return None
+    dt = datetime.fromtimestamp(ts, tz=PACIFIC_TZ)
+    return date(dt.year, dt.month, dt.day)
 
 
 def derive_prep_warning(
     *,
-    annual_month_matches_run: bool,
     has_service_trade_link: bool,
     has_scheduled_annual_in_month: bool,
+    annual_spans_months: bool,
+    annual_skip_tie: bool,
 ) -> PrepWarning:
-    if annual_month_matches_run:
-        if not has_service_trade_link:
-            return "no_servicetrade_link"
-        if not has_scheduled_annual_in_month:
-            return "no_annual_scheduled"
-        return None
-    if has_scheduled_annual_in_month:
-        return "annual_scheduled_wrong_month"
+    if not has_service_trade_link and has_scheduled_annual_in_month:
+        return "no_servicetrade_link"
+    if annual_skip_tie:
+        return "annual_skip_tie"
+    if annual_spans_months:
+        return "annual_spans_months"
     return None
 
 
@@ -125,28 +149,18 @@ def _job_location_id(job: dict[str, Any]) -> int | None:
         return None
 
 
-def _annual_month_for_location(
-    loc: MonthlyLocation,
-    mlm_annual_month: object | None,
-) -> str | None:
-    master = master_template_fields(loc)
-    annual_month = _coalesce_with_master(mlm_annual_month, master.get("annual_month"))
-    if annual_month is None:
+def _job_id_int(job: dict[str, Any]) -> int | None:
+    job_id = job.get("id")
+    if job_id is None:
         return None
-    text = str(annual_month).strip()
-    return text or None
+    try:
+        return int(job_id)
+    except (TypeError, ValueError):
+        return None
 
 
-def _route_location_rows(route_id: int, month_first: date) -> list[tuple[MonthlyLocation, str | None]]:
-    locs = _resolve_worksheet_route_locations(route_id, month_first)
-    if not locs:
-        return []
-    pairs = _worksheet_location_pairs_for_route_month(route_id, month_first, locs=locs)
-    rows: list[tuple[MonthlyLocation, str | None]] = []
-    for mlm, loc in pairs:
-        annual_month = _annual_month_for_location(loc, mlm.annual_month if mlm is not None else None)
-        rows.append((loc, annual_month))
-    return rows
+def _route_location_rows(route_id: int, month_first: date) -> list[MonthlyLocation]:
+    return _resolve_worksheet_route_locations(route_id, month_first)
 
 
 def _authenticate_service_trade(http: requests.Session, *, username: str, password: str) -> None:
@@ -212,46 +226,181 @@ def _fetch_appointments_for_job(
     return list(data.get("appointments") or [])
 
 
-def _locations_with_qualifying_appointments(
-    http: requests.Session,
-    st_location_ids: set[int],
+@dataclass(frozen=True)
+class _JobAnnualContext:
+    job_id: int
+    st_location_id: int
+    appointment_dates: tuple[date, ...]
+    spanned_month_firsts: tuple[date, ...]
+    has_in_target_month: bool
+
+
+def _distinct_month_firsts(dates: list[date]) -> list[date]:
+    seen: set[tuple[int, int]] = set()
+    out: list[date] = []
+    for day in sorted(dates):
+        key = (day.year, day.month)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(date(day.year, day.month, 1))
+    return out
+
+
+def _route_test_day_distance(
+    month_first: date,
     *,
+    weekday_iso: int,
+    week_occurrence: int,
+    appointment_dates: tuple[date, ...],
+) -> int | None:
+    test_day = effective_route_test_day(
+        month_first,
+        weekday_iso=weekday_iso,
+        week_occurrence=week_occurrence,
+    )
+    if test_day is None or not appointment_dates:
+        return None
+    return min(abs((test_day - appt).days) for appt in appointment_dates)
+
+
+def _skip_month_for_spanning_job(
+    spanned_month_firsts: list[date],
+    *,
+    weekday_iso: int,
+    week_occurrence: int,
+    appointment_dates: tuple[date, ...],
+) -> tuple[date, bool]:
+    """Return ``(skip_month_first, is_tie)`` for a spanning annual job."""
+    if not spanned_month_firsts:
+        raise ValueError("spanned_month_firsts required")
+
+    distances: list[tuple[date, int | None]] = [
+        (
+            month_first,
+            _route_test_day_distance(
+                month_first,
+                weekday_iso=weekday_iso,
+                week_occurrence=week_occurrence,
+                appointment_dates=appointment_dates,
+            ),
+        )
+        for month_first in spanned_month_firsts
+    ]
+
+    valid = [(m, d) for m, d in distances if d is not None]
+    if not valid:
+        return min(spanned_month_firsts), False
+
+    min_dist = min(d for _, d in valid)
+    closest = [m for m, d in valid if d == min_dist]
+    if len(closest) > 1:
+        return min(closest), True
+    return closest[0], False
+
+
+def _build_job_contexts_for_month(
+    http: requests.Session,
+    jobs: list[dict[str, Any]],
+    *,
+    st_location_ids: set[int],
+    month_first: date,
     start_ts: int,
     end_ts: int,
-) -> set[int]:
-    if not st_location_ids:
-        return set()
-
-    st_ids_sorted = sorted(st_location_ids)
-    jobs: list[dict[str, Any]] = []
-    for offset in range(0, len(st_ids_sorted), _LOCATION_ID_CHUNK_SIZE):
-        chunk = st_ids_sorted[offset : offset + _LOCATION_ID_CHUNK_SIZE]
-        jobs.extend(_fetch_jobs_for_location_chunk(http, chunk, start_ts=start_ts, end_ts=end_ts))
-
-    matched: set[int] = set()
+) -> dict[int, list[_JobAnnualContext]]:
+    """Map ST location id → job annual contexts touching ``month_first``."""
+    by_location: dict[int, list[_JobAnnualContext]] = {sid: [] for sid in st_location_ids}
     seen_job_ids: set[int] = set()
+
     for job in jobs:
         if not job_qualifies(job):
             continue
         st_location_id = _job_location_id(job)
         if st_location_id is None or st_location_id not in st_location_ids:
             continue
-        job_id = job.get("id")
-        if job_id is None:
+        job_id = _job_id_int(job)
+        if job_id is None or job_id in seen_job_ids:
             continue
-        try:
-            job_id_int = int(job_id)
-        except (TypeError, ValueError):
-            continue
-        if job_id_int in seen_job_ids:
-            continue
-        seen_job_ids.add(job_id_int)
 
-        for appointment in _fetch_appointments_for_job(http, job_id_int):
+        has_in_month = False
+        for appointment in job.get("_appointments") or []:
             if appointment_qualifies(appointment, start_ts=start_ts, end_ts=end_ts):
-                matched.add(st_location_id)
+                has_in_month = True
                 break
-    return matched
+        if not has_in_month:
+            continue
+
+        seen_job_ids.add(job_id)
+        all_appointments = _fetch_appointments_for_job(http, job_id)
+        appt_dates: list[date] = []
+        for appointment in all_appointments:
+            day = _appointment_pacific_date(appointment)
+            if day is not None:
+                appt_dates.append(day)
+        if not appt_dates:
+            continue
+
+        spanned = _distinct_month_firsts(appt_dates)
+        touches_target = any(m == month_first for m in spanned)
+        if not touches_target:
+            continue
+
+        ctx = _JobAnnualContext(
+            job_id=job_id,
+            st_location_id=int(st_location_id),
+            appointment_dates=tuple(appt_dates),
+            spanned_month_firsts=tuple(spanned),
+            has_in_target_month=any(
+                appointment_qualifies(a, start_ts=start_ts, end_ts=end_ts)
+                for a in all_appointments
+            ),
+        )
+        by_location[int(st_location_id)].append(ctx)
+
+    return by_location
+
+
+def _location_flags_from_contexts(
+    contexts: list[_JobAnnualContext],
+    month_first: date,
+    *,
+    weekday_iso: int,
+    week_occurrence: int,
+) -> tuple[bool, bool, bool, bool, int | None, bool]:
+    """Return flags for one location in ``month_first``."""
+    if not contexts:
+        return False, False, False, False, None, False
+
+    has_scheduled = any(ctx.has_in_target_month for ctx in contexts)
+    spanning = [ctx for ctx in contexts if len(ctx.spanned_month_firsts) >= 2]
+    primary = spanning[0] if spanning else contexts[0]
+
+    if len(primary.spanned_month_firsts) < 2:
+        return (
+            has_scheduled,
+            False,
+            has_scheduled,
+            False,
+            primary.job_id if has_scheduled else None,
+            False,
+        )
+
+    skip_month, is_tie = _skip_month_for_spanning_job(
+        list(primary.spanned_month_firsts),
+        weekday_iso=weekday_iso,
+        week_occurrence=week_occurrence,
+        appointment_dates=primary.appointment_dates,
+    )
+    skip_recommended = month_first == skip_month
+    test_recommended = has_scheduled and not skip_recommended
+    return (
+        has_scheduled,
+        True,
+        skip_recommended,
+        test_recommended,
+        primary.job_id,
+        is_tie,
+    )
 
 
 def build_route_annual_schedule_snapshot(
@@ -268,29 +417,49 @@ def build_route_annual_schedule_snapshot(
     if not user or not pwd:
         raise RuntimeError("Missing ServiceTrade creds. Set PROCESSING_USERNAME/PROCESSING_PASSWORD.")
 
-    rows = _route_location_rows(route_id, month_first)
+    route = MonthlyRoute.query.get(int(route_id))
+    if route is None:
+        raise ValueError(f"Route {route_id} not found")
+    weekday_iso = int(route.weekday_iso) if route.weekday_iso is not None else 0
+    week_occurrence = int(route.week_occurrence) if route.week_occurrence is not None else 1
+
+    locs = _route_location_rows(route_id, month_first)
     start_ts, end_ts = month_window_pacific(month_first)
 
     st_location_ids = {
         int(loc.service_trade_site_location_id)
-        for loc, _annual_month in rows
+        for loc in locs
         if loc.service_trade_site_location_id is not None
     }
 
     http = session or requests.Session()
     _authenticate_service_trade(http, username=user, password=pwd)
-    st_locations_with_appointments = _locations_with_qualifying_appointments(
+
+    st_ids_sorted = sorted(st_location_ids)
+    jobs: list[dict[str, Any]] = []
+    for offset in range(0, len(st_ids_sorted), _LOCATION_ID_CHUNK_SIZE):
+        chunk = st_ids_sorted[offset : offset + _LOCATION_ID_CHUNK_SIZE]
+        jobs.extend(_fetch_jobs_for_location_chunk(http, chunk, start_ts=start_ts, end_ts=end_ts))
+
+    # Pre-fetch in-month appointments for job filtering (avoid duplicate fetches later).
+    for job in jobs:
+        job_id = _job_id_int(job)
+        if job_id is not None:
+            job["_appointments"] = _fetch_appointments_for_job(http, job_id)
+
+    contexts_by_st_id = _build_job_contexts_for_month(
         http,
-        st_location_ids,
+        jobs,
+        st_location_ids=st_location_ids,
+        month_first=month_first,
         start_ts=start_ts,
         end_ts=end_ts,
     )
 
     locations: dict[str, dict[str, object]] = {}
     warning_count = 0
-    for loc, annual_month in rows:
+    for loc in locs:
         location_id = int(loc.id)
-        annual_month_matches_run = _is_annual_for_month(month_first, annual_month)
         st_site_id = loc.service_trade_site_location_id
         has_service_trade_link = st_site_id is not None
         st_url = (
@@ -298,22 +467,41 @@ def build_route_annual_schedule_snapshot(
             if st_site_id is not None
             else None
         )
-        has_scheduled = (
-            int(st_site_id) in st_locations_with_appointments if st_site_id is not None else False
+        contexts = (
+            contexts_by_st_id.get(int(st_site_id), [])
+            if st_site_id is not None
+            else []
+        )
+        (
+            has_scheduled,
+            spans_months,
+            skip_recommended,
+            test_recommended,
+            spanning_job_id,
+            skip_tie,
+        ) = _location_flags_from_contexts(
+            contexts,
+            month_first,
+            weekday_iso=weekday_iso,
+            week_occurrence=week_occurrence,
         )
         prep_warning = derive_prep_warning(
-            annual_month_matches_run=annual_month_matches_run,
             has_service_trade_link=has_service_trade_link,
             has_scheduled_annual_in_month=has_scheduled,
+            annual_spans_months=spans_months,
+            annual_skip_tie=skip_tie,
         )
         if prep_warning is not None:
             warning_count += 1
         snapshot = AnnualScheduleLocationSnapshot(
             location_id=location_id,
-            annual_month_matches_run=annual_month_matches_run,
             has_service_trade_link=has_service_trade_link,
             service_trade_site_location_url=st_url,
             has_scheduled_annual_in_month=has_scheduled,
+            annual_spans_months=spans_months,
+            annual_skip_recommended=skip_recommended,
+            annual_test_recommended=test_recommended,
+            spanning_job_id=spanning_job_id,
             prep_warning=prep_warning,
         )
         locations[str(location_id)] = snapshot.to_dict()
@@ -356,3 +544,15 @@ def annual_schedule_location_rows_by_id(
                 by_id[int(loc_key)] = row
     _ANNUAL_SNAPSHOT_BY_ROUTE_MONTH[key] = (now + _ANNUAL_SNAPSHOT_TTL_SECONDS, by_id)
     return by_id
+
+
+def location_annual_skip_recommended(
+    schedule_row: dict[str, object] | None,
+    *,
+    annual_test_override: bool = False,
+) -> bool:
+    if annual_test_override:
+        return False
+    if schedule_row is None:
+        return False
+    return bool(schedule_row.get("annual_skip_recommended"))

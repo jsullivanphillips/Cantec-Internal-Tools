@@ -1084,7 +1084,6 @@ def test_stop_patch_writes_audit_for_each_property_field(stops_client, monkeypat
         route_id, ts_id, _ = _seed_route_with_two_stops()
         loc = db.session.get(MonthlyLocation, 101)
         assert loc is not None
-        loc.annual_month = "May"
         run = MonthlyRouteRun(
             id=5099,
             monthly_route_id=route_id,
@@ -1102,7 +1101,7 @@ def test_stop_patch_writes_audit_for_each_property_field(stops_client, monkeypat
 ).one()
         mtsm.ring = "RING-OLD"
         mtsm.door_code = "1111"
-        mtsm.annual_month = "May"
+        mtsm.key_number = "KEY-OLD"
         db.session.commit()
 
     qs = "month=2026-05-01&tech_portal=1"
@@ -1112,7 +1111,7 @@ def test_stop_patch_writes_audit_for_each_property_field(stops_client, monkeypat
             "changes": {
                 "ring": "RING-NEW",
                 "door_code": "2222",
-                "annual_month": "June",
+                "key_number": "KEY-NEW",
             },
         }
 )
@@ -1129,8 +1128,8 @@ def test_stop_patch_writes_audit_for_each_property_field(stops_client, monkeypat
         assert by_field["ring"].new_value == "RING-NEW"
         assert by_field["door_code"].old_value == "1111"
         assert by_field["door_code"].new_value == "2222"
-        assert by_field["annual_month"].old_value == "May"
-        assert by_field["annual_month"].new_value == "June"
+        assert by_field["key_number"].old_value == "KEY-OLD"
+        assert by_field["key_number"].new_value == "KEY-NEW"
 
 
 def test_patch_monitoring_password_mirrors_to_testing_site_master(stops_client, monkeypatch):

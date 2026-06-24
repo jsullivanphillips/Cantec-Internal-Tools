@@ -59,7 +59,6 @@ def _seed_location_with_may_billing():
         property_management_company_normalized="acme",
         monthly_route_id=1,
         test_day="Tuesday",
-        annual_month="May",
     )
     mlm = MonthlyLocationMonth(
         id=5001,
@@ -223,7 +222,6 @@ def test_billing_board_do_not_bill_any_month_filter(billing_board_client):
         label="Skip St",
         monthly_route_id=1,
         test_day="Tuesday",
-        annual_month="May",
     )
     bill_mlm = MonthlyLocationMonth(
         id=5011,
@@ -375,18 +373,17 @@ def test_billing_board_do_not_bill_includes_skip_reason_category(billing_board_c
         label="Annual Skip St",
         monthly_route_id=1,
         test_day="Tuesday",
-        annual_month="May",
     )
     mlm = MonthlyLocationMonth(
         id=5002,
         monthly_location_id=301,
         month_date=date(2026, 5, 1),
         result_status="skipped",
-        skip_reason="testing_not_required",
+        skip_reason="annual",
         test_monthly_route_id=1,
         billing_status="do_not_bill",
         test_outcome="skipped",
-        skip_category="testing_not_required",
+        skip_category="annual",
     )
     db.session.add_all([route, loc, mlm])
     db.session.commit()

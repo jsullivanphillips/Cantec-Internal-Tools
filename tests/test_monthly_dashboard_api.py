@@ -110,6 +110,13 @@ def test_dashboard_completed_run(dashboard_client, monkeypatch):
 def test_dashboard_includes_annual_count_for_current_month(dashboard_client, monkeypatch):
     client, app = dashboard_client
     _patch_dashboard_month(monkeypatch)
+    from app.monthly import service_trade_annual_schedule as stas
+
+    monkeypatch.setattr(
+        stas,
+        "annual_schedule_location_rows_by_id",
+        lambda route_id, month_first: {101: {"annual_skip_recommended": True}},
+    )
     with app.app_context():
         route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
         june_annual = make_location(
@@ -117,21 +124,18 @@ def test_dashboard_includes_annual_count_for_current_month(dashboard_client, mon
             address="June Annual St",
             label="June Annual St",
             monthly_route_id=1,
-            annual_month="June",
         )
         may_annual = make_location(
             id=102,
             address="May Annual St",
             label="May Annual St",
             monthly_route_id=1,
-            annual_month="May",
         )
         no_annual = make_location(
             id=103,
             address="Monthly Only St",
             label="Monthly Only St",
             monthly_route_id=1,
-            annual_month=None,
         )
         db.session.add_all([route, june_annual, may_annual, no_annual])
         db.session.commit()

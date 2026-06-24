@@ -21,7 +21,6 @@ function stop(patch: Partial<TechnicianWorksheetLocation> = {}): TechnicianWorks
     property_management_company: null,
     ring: null,
     key_number: null,
-    annual_month: null,
     door_code: null,
     panel: null,
     panel_location: null,

@@ -1,17 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Button, Form, Modal } from 'react-bootstrap'
-import {
-  annualMonthDropdownOptions,
-  normalizeAnnualMonthForSelect,
-  type TechnicianWorksheetLocation,
-} from './monthlyRoutesShared'
+import type { TechnicianWorksheetLocation } from './monthlyRoutesShared'
 import type { WorksheetStopChangeSet } from './worksheetOfflineStore'
 
 export type PortalStopFieldsDraft = {
   ring: string
   key_number: string
   door_code: string
-  annual_month: string
   panel: string
   panel_location: string
   property_management_company: string
@@ -27,7 +22,6 @@ function draftFromStop(stop: TechnicianWorksheetLocation): PortalStopFieldsDraft
     ring: stop.ring ?? '',
     key_number: stop.key_number ?? '',
     door_code: stop.door_code ?? '',
-    annual_month: normalizeAnnualMonthForSelect(stop.annual_month),
     panel: stop.panel ?? '',
     panel_location: stop.panel_location ?? '',
     property_management_company: stop.property_management_company ?? '',
@@ -45,7 +39,6 @@ function draftToPatch(draft: PortalStopFieldsDraft): WorksheetStopChangeSet {
     ring: trim(draft.ring) || null,
     key_number: trim(draft.key_number) || null,
     door_code: trim(draft.door_code) || null,
-    annual_month: trim(draft.annual_month) || null,
     panel: trim(draft.panel) || null,
     panel_location: trim(draft.panel_location) || null,
     property_management_company: trim(draft.property_management_company) || null,
@@ -127,22 +120,6 @@ export default function PortalStopFieldsEditModal({
                 onChange={(e) => update({ door_code: e.target.value })}
                 disabled={!stop}
               />
-            </Form.Group>
-          </div>
-          <div className="col-md-6">
-            <Form.Group>
-              <Form.Label className="small">Annual month</Form.Label>
-              <Form.Select
-                value={draft.annual_month}
-                onChange={(e) => update({ annual_month: e.target.value })}
-                disabled={!stop}
-              >
-                {annualMonthDropdownOptions(draft.annual_month).map((opt) => (
-                  <option key={opt.value || '__empty'} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </Form.Select>
             </Form.Group>
           </div>
           <div className="col-12">

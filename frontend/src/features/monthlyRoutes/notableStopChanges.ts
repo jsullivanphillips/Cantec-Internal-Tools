@@ -250,7 +250,6 @@ export function reviewSummaryAsWorksheetStop(summary: RunReviewStopSummary): Tec
     door_code: null,
     ring: null,
     key_number: null,
-    annual_month: summary.annual_month,
     monitoring_company: null,
     monitoring_notes: null,
     result_status: summary.result_status,

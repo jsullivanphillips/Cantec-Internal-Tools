@@ -8,7 +8,6 @@ from __future__ import annotations
 
 # Library / master row (``MonthlyTestingSite``)
 LIBRARY_STRING_FIELDS = (
-    "annual_month",
     "property_management_company",
     "building_name",
     "panel_location",
@@ -33,7 +32,6 @@ LIBRARY_TEXT_FIELDS = (
 # Run-month snapshot (``MonthlyTestingSiteMonth``) — route CSV import maps sheet
 # columns onto these keys via ``upsert_stop_month_from_csv_import``.
 SNAPSHOT_STRING_FIELDS = (
-    "annual_month",
     "property_management_company",
     "building_name",
     "panel_location",

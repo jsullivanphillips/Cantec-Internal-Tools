@@ -1,12 +1,7 @@
 import { useCallback, useEffect, useState, type CSSProperties } from 'react'
 import { Alert, Button, Form, Modal, Spinner } from 'react-bootstrap'
 import { apiJson, isAbortError } from '../../lib/apiClient'
-import {
-  annualMonthDropdownOptions,
-  normalizeAnnualMonthForSelect,
-  type GeocodeCandidate,
-  type LibraryLocation,
-} from './monthlyRoutesShared'
+import type { GeocodeCandidate, LibraryLocation } from './monthlyRoutesShared'
 
 const GEOCODE_DEBOUNCE_MS = 250
 
@@ -19,7 +14,6 @@ type IdentityForm = {
   label: string
   building_name: string
   property_management_company: string
-  annual_month: string
 }
 
 type Props = {
@@ -34,7 +28,6 @@ function formFromLocation(location: LibraryLocation): IdentityForm {
     label: location.label ?? '',
     building_name: location.building_name ?? '',
     property_management_company: location.property_management_company ?? '',
-    annual_month: normalizeAnnualMonthForSelect(location.annual_month),
   }
 }
 
@@ -131,7 +124,6 @@ export default function MonthlyLocationIdentityEditModal({
       label: form.label.trim() || null,
       building_name: form.building_name.trim() || null,
       property_management_company: form.property_management_company.trim() || null,
-      annual_month: form.annual_month.trim() || null,
     }
 
     if (addressChanged && selectedCandidate) {
@@ -166,7 +158,6 @@ export default function MonthlyLocationIdentityEditModal({
     }
   }, [
     addressChanged,
-    form.annual_month,
     form.building_name,
     form.label,
     form.property_management_company,
@@ -175,8 +166,6 @@ export default function MonthlyLocationIdentityEditModal({
     onLocationUpdated,
     selectedCandidate,
   ])
-
-  const annualOptions = annualMonthDropdownOptions(location.annual_month)
 
   return (
     <Modal show={show} onHide={close} centered size="lg" className="monthly-location-identity-edit-modal">
@@ -266,20 +255,6 @@ export default function MonthlyLocationIdentityEditModal({
               setForm((prev) => ({ ...prev, property_management_company: e.target.value }))
             }
           />
-        </Form.Group>
-        <Form.Group>
-          <Form.Label>Annual month</Form.Label>
-          <Form.Select
-            value={form.annual_month}
-            disabled={saving}
-            onChange={(e) => setForm((prev) => ({ ...prev, annual_month: e.target.value }))}
-          >
-            {annualOptions.map((option) => (
-              <option key={option.value || '__blank'} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </Form.Select>
         </Form.Group>
       </Modal.Body>
       <Modal.Footer>

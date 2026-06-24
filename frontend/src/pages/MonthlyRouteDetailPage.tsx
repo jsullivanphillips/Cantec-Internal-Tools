@@ -68,7 +68,6 @@ import { serviceTradeRunJobDot } from '../features/monthlyRoutes/serviceTradeRun
 import ViewServiceTradeRunJobButton from '../features/monthlyRoutes/ViewServiceTradeRunJobButton'
 import { locationAddressSubline, locationPrimaryLabel } from '../features/monthlyRoutes/locationDisplay'
 import {
-  ANNUAL_COLUMN_STYLE,
   KEYS_COLUMN_STYLE,
   LIBRARY_TABLE_HEADER_STICKY_STYLE,
   renderLibraryStatusDot,
@@ -111,9 +110,9 @@ function routeSiteLabelSubtext(
   return parts.length > 0 ? parts.join(' · ') : null
 }
 
-type RouteSiteRow = { id: number; sort_order: number; label: string | null; annual_month: string | null }
+type RouteSiteRow = { id: number; sort_order: number; label: string | null }
 function testingSitesForRouteLocation(loc: RouteLocationListItem): RouteSiteRow[] {
-  return [{ id: loc.id, sort_order: 0, label: loc.label ?? null, annual_month: loc.annual_month ?? null }]
+  return [{ id: loc.id, sort_order: 0, label: loc.label ?? null }]
 }
 
 function routeLocationStopCount(loc: RouteLocationListItem): number {
@@ -193,7 +192,6 @@ function SortableRouteSiteRow({
         const isPrimaryRow = siteIndex === 0
         const siteLabel = routeLocationTitle(site, siteIndex, testingSites.length, loc)
         const rowLabel = testingSites.length > 1 ? siteLabel : locationLabel
-        const annual = site.annual_month?.trim() || loc.annual_month?.trim() || ''
         const siteRevenue =
           typeof loc.price_per_month === 'number' && Number.isFinite(loc.price_per_month)
             ? loc.price_per_month
@@ -252,11 +250,6 @@ function SortableRouteSiteRow({
                     {routeSiteLabelSubtext(loc, rowLabel)}
                   </span>
                 ) : null}
-              </div>
-            </td>
-            <td className="library-table-cell-clamp text-center monthly-route-sites-table__annual-col">
-              <div className="library-table-cell-inner">
-                {annual ? <span>{annual}</span> : <span className="text-muted">—</span>}
               </div>
             </td>
             <td className="library-table-cell-clamp text-end tabular-nums monthly-route-sites-table__revenue-col">
@@ -1001,7 +994,6 @@ export default function MonthlyRouteDetailPage() {
                       <col className="monthly-route-sites-table__stop-col" />
                       <col className="monthly-route-sites-table__status-col" />
                       <col className="monthly-route-sites-table__location-col" />
-                      <col className="monthly-route-sites-table__annual-col" />
                       <col className="monthly-route-sites-table__revenue-col" />
                       <col className="monthly-route-sites-table__key-col" />
                     </colgroup>
@@ -1032,12 +1024,6 @@ export default function MonthlyRouteDetailPage() {
                           style={LIBRARY_TABLE_HEADER_STICKY_STYLE}
                         >
                           Location
-                        </th>
-                        <th
-                          className="text-center monthly-route-sites-table__annual-col"
-                          style={{ ...ANNUAL_COLUMN_STYLE, ...LIBRARY_TABLE_HEADER_STICKY_STYLE }}
-                        >
-                          Annual
                         </th>
                         <th
                           className="text-end monthly-route-sites-table__revenue-col"

@@ -95,7 +95,6 @@ export type LibraryLocation = {
   key_id?: number | null
   key?: LinkedKeySummary | null
   test_day: string | null
-  annual_month: string | null
   latitude?: number | null
   longitude?: number | null
   barcode?: string | null
@@ -136,7 +135,6 @@ export type RouteLocationListItem = {
   label?: string | null
   building_name?: string | null
   status_normalized: string
-  annual_month?: string | null
   latitude?: number | null
   longitude?: number | null
   route_stop_order: number | null
@@ -542,7 +540,6 @@ export type MonthlyRunDetailLocation = {
   skip_reason?: string | null
   skip_category?: string | null
   skip_note?: string | null
-  annual_month: string | null
   ring?: string | null
   key_number?: string | null
   door_code?: string | null
@@ -579,19 +576,23 @@ export type MonthlyRunDetailLocation = {
   status_normalized?: string | null
   service_trade_site_location_id?: number | null
   has_service_trade_link?: boolean
+  scheduled_annual_auto_skip?: boolean
 }
 
 export type PrepAnnualScheduleWarning =
-  | 'no_annual_scheduled'
   | 'no_servicetrade_link'
-  | 'annual_scheduled_wrong_month'
+  | 'annual_spans_months'
+  | 'annual_skip_tie'
 
 export type AnnualScheduleCheckLocation = {
   location_id: number
-  annual_month_matches_run: boolean
   has_service_trade_link: boolean
   service_trade_site_location_url: string | null
   has_scheduled_annual_in_month: boolean
+  annual_spans_months: boolean
+  annual_skip_recommended: boolean
+  annual_test_recommended: boolean
+  spanning_job_id: number | null
   prep_warning: PrepAnnualScheduleWarning | null
 }
 
@@ -616,7 +617,6 @@ export type RunReviewStopSummary = {
   skip_reason?: string | null
   skip_category?: string | null
   skip_note?: string | null
-  annual_month: string | null
   run_comments: string | null
   confirmed_no_deficiencies?: boolean
   billing_status?: string | null
@@ -680,7 +680,6 @@ export type TechnicianWorksheetRow = {
   building?: string | null
   building_name?: string | null
   property_management_company: string | null
-  annual_month: string | null
   ring: string | null
   key_number: string | null
   facp: string | null
@@ -791,7 +790,6 @@ export type TechnicianWorksheetLocation = {
   key_number: string | null
   key_id?: number | null
   linked_key?: LinkedKeySummary | null
-  annual_month: string | null
   monitoring_company: string | null
   monitoring_company_id?: number | null
   monitoring_company_record?: MonitoringCompanySummary | null
@@ -826,8 +824,10 @@ export type TechnicianWorksheetLocation = {
   version_updated_at: string | null
   /** Library location status (``active``, ``on_hold``, ``cancelled``, ``waiting_keys``). */
   status_normalized?: string | null
-  /** ServiceTrade annual inspection scheduled and annual month matches run month. */
+  /** ServiceTrade annual inspection skip recommended for this run month. */
   scheduled_annual_auto_skip?: boolean
+  annual_test_override?: boolean
+  annual_test_override_reason?: string | null
 }
 
 export type TechnicianWorksheetPayload = {
@@ -1102,7 +1102,6 @@ export type LocationEditForm = {
   panel_location: string
   door_code: string
   property_management_company: string
-  annual_month: string
   monitoring_company_id: string
   monitoring_account_number: string
   monitoring_password: string
@@ -1122,7 +1121,6 @@ export function buildLocationEditForm(loc: LibraryLocation): LocationEditForm {
     panel_location: loc.panel_location ?? '',
     door_code: loc.door_code ?? '',
     property_management_company: loc.property_management_company ?? '',
-    annual_month: normalizeAnnualMonthForSelect(loc.annual_month),
     monitoring_company_id:
       loc.monitoring_company_id != null ? String(loc.monitoring_company_id) : '',
     monitoring_account_number: loc.monitoring_account_number ?? '',
@@ -1150,7 +1148,6 @@ export function locationPayloadFromEditForm(form: LocationEditForm): Record<stri
     panel_location: form.panel_location.trim() || null,
     door_code: form.door_code.trim() || null,
     property_management_company: form.property_management_company.trim() || null,
-    annual_month: form.annual_month.trim() || null,
     monitoring_company_id,
     monitoring_account_number: form.monitoring_account_number.trim() || null,
     monitoring_password: form.monitoring_password.trim() || null,
@@ -1608,14 +1605,12 @@ export function addCalendarMonths(monthFirstIso: string, delta: number): string 
 export function recordedMonthOutcomeLabel(
   cell: MonthCell,
   monthIso: string,
-  annualMonth?: string | null,
 ): string | null {
   const rs = (cell.result_status || '').trim().toLowerCase()
   if (rs === 'tested') return 'Tested'
   if (rs !== 'skipped') return null
   const reason = (cell.skip_reason || '').trim().toLowerCase()
   if (reason === 'annual' || reason === 'annual_booked') return 'Annual'
-  if (isAnnualForMonth(annualMonth, monthIso)) return 'Annual'
   return 'Skipped'
 }
 
@@ -1626,16 +1621,9 @@ export function recordedMonthOutcomeLabel(
 export function resolveMonthOutcomeLabel(
   cell: MonthCell,
   monthIso: string,
-  annualMonth?: string | null,
 ): string | null {
-  const fromStatus = recordedMonthOutcomeLabel(cell, monthIso, annualMonth)
+  const fromStatus = recordedMonthOutcomeLabel(cell, monthIso)
   if (fromStatus) return fromStatus
-
-  if (!isAnnualForMonth(annualMonth, monthIso)) return null
-
-  const billing = (cell.billing_status || '').trim().toLowerCase()
-  if (billing === 'do_not_bill' || billing === 'legacy') return 'Annual'
-
   return null
 }
 
@@ -1644,27 +1632,24 @@ function runWorkflowStageIsPreField(stage: string | null | undefined): boolean {
   return s === 'draft' || s === 'prepared'
 }
 
-/** True when the site annual month matches the row and ServiceTrade has a qualifying inspection. */
+/** True when ServiceTrade recommends skipping monthly testing this month. */
 export function siteUpcomingAnnualDue(
-  annualMonth: string | null | undefined,
   monthIso: string,
-  scheduleRow: Pick<AnnualScheduleCheckLocation, 'has_scheduled_annual_in_month'> | null | undefined,
+  scheduleRow: Pick<AnnualScheduleCheckLocation, 'annual_skip_recommended'> | null | undefined,
 ): boolean {
-  return isAnnualForMonth(annualMonth, monthIso) && Boolean(scheduleRow?.has_scheduled_annual_in_month)
+  void monthIso
+  return Boolean(scheduleRow?.annual_skip_recommended)
 }
 
 export function monthHasRecordedTestOutcome(
   cell: MonthCell | undefined,
   monthIso: string,
-  annualMonth?: string | null,
 ): boolean {
   if (!cell) return false
   if (runWorkflowStageIsPreField(cell.run_workflow_stage)) return false
-  if (recordedMonthOutcomeLabel(cell, monthIso, annualMonth) != null) return true
+  if (recordedMonthOutcomeLabel(cell, monthIso) != null) return true
   if (cell.run_id != null && !(cell.run_workflow_stage || '').trim()) return false
-  if (!isAnnualForMonth(annualMonth, monthIso)) return false
-  const billing = (cell.billing_status || '').trim().toLowerCase()
-  return billing === 'do_not_bill' || billing === 'legacy'
+  return false
 }
 
 /** Next open test month for the location detail history grid (placeholder rows count as open). */
@@ -1672,15 +1657,13 @@ export function testingHistoryIsNextSlot(
   monthIso: string,
   nextUntestedMonthIso: string | null,
   cell: MonthCell | undefined,
-  annualMonth?: string | null,
 ): boolean {
   if (nextUntestedMonthIso !== monthIso) return false
-  return !monthHasRecordedTestOutcome(cell, monthIso, annualMonth)
+  return !monthHasRecordedTestOutcome(cell, monthIso)
 }
 
 export type TestingHistoryChipLabelOptions = {
   isNextSlot: boolean
-  isAnnualMonthRow: boolean
   annualDueOnSchedule: boolean
 }
 
@@ -1688,19 +1671,17 @@ export type TestingHistoryChipLabelOptions = {
 export function testingHistoryChipLabel(
   cell: MonthCell | undefined,
   monthIso: string,
-  annualMonth: string | null | undefined,
   opts: TestingHistoryChipLabelOptions,
 ): string {
-  const { isNextSlot, isAnnualMonthRow, annualDueOnSchedule } = opts
-  const recorded = cell ? recordedMonthOutcomeLabel(cell, monthIso, annualMonth) : null
+  const { isNextSlot, annualDueOnSchedule } = opts
+  const recorded = cell ? recordedMonthOutcomeLabel(cell, monthIso) : null
   if (recorded === 'Tested') return 'Tested'
   if (recorded === 'Annual') return 'Annual'
-  if (recorded === 'Skipped') return isAnnualMonthRow ? 'Annual' : 'Skipped'
+  if (recorded === 'Skipped') return 'Skipped'
   if (isNextSlot) {
     if (annualDueOnSchedule) return 'Annual'
     return 'Pending'
   }
-  if (isAnnualMonthRow) return 'Annual'
   if (!cell) return 'Set result'
   return 'Set result'
 }
@@ -1709,20 +1690,18 @@ export function testingHistoryChipLabel(
 export function testingHistoryShowRouteContext(
   cell: MonthCell | undefined,
   monthIso: string,
-  annualMonth?: string | null,
 ): boolean {
-  return monthHasRecordedTestOutcome(cell, monthIso, annualMonth)
+  return monthHasRecordedTestOutcome(cell, monthIso)
 }
 
 export function nextUntestedMonthIso(
   months: Record<string, MonthCell> | null | undefined,
   reference: Date = new Date(),
-  annualMonth?: string | null,
 ): string | null {
   const map = months ?? {}
   let cursor = monthFirstIsoLocalToday(reference)
   for (let i = 0; i < 240; i++) {
-    if (!monthHasRecordedTestOutcome(map[cursor], cursor, annualMonth)) return cursor
+    if (!monthHasRecordedTestOutcome(map[cursor], cursor)) return cursor
     cursor = addCalendarMonths(cursor, 1) ?? ''
     if (!cursor) return null
   }
@@ -1757,7 +1736,6 @@ export function splitHeroAddressLines(
 }
 
 export type LastRecordedTestSummaryOptions = {
-  annualMonth?: string | null
   monthly_route?: MonthlyRouteSummary | null
   reference?: Date
 }
@@ -1769,21 +1747,17 @@ export function lastRecordedTestSummary(
 ): string | null {
   if (!months) return null
   const reference = options?.reference ?? new Date()
-  const annualMonth = options?.annualMonth
 
   const anchorMonth = options?.monthly_route
-    ? upcomingTestMonthIso(
-        { months, monthly_route: options.monthly_route, annual_month: annualMonth ?? null },
-        reference,
-      )
-    : nextUntestedMonthIso(months, reference, annualMonth)
+    ? upcomingTestMonthIso({ months, monthly_route: options.monthly_route }, reference)
+    : nextUntestedMonthIso(months, reference)
   if (!anchorMonth) return null
 
   let cursor = addCalendarMonths(anchorMonth, -1)
   for (let step = 0; step < 36; step += 1) {
     if (!cursor) return null
     const cell = months[cursor]
-    const outcome = cell ? resolveMonthOutcomeLabel(cell, cursor, annualMonth) : null
+    const outcome = cell ? resolveMonthOutcomeLabel(cell, cursor) : null
     if (outcome) {
       return `${formatRouteOverviewMonthHeading(cursor)} — ${outcome}`
     }
@@ -1797,7 +1771,7 @@ export function lastRecordedTestSummary(
  * without a recorded outcome; walks forward when that month's test day has already passed.
  */
 export function nextUpcomingRouteTestDayIso(
-  location: Pick<LibraryLocation, 'months' | 'monthly_route' | 'annual_month'>,
+  location: Pick<LibraryLocation, 'months' | 'monthly_route'>,
   reference: Date = new Date(),
 ): string | null {
   const route = location.monthly_route
@@ -1807,12 +1781,11 @@ export function nextUpcomingRouteTestDayIso(
   if (!todayIso) return null
 
   const months = location.months ?? {}
-  const annualMonth = location.annual_month
-  let monthCursor = nextUntestedMonthIso(months, reference, annualMonth)
+  let monthCursor = nextUntestedMonthIso(months, reference)
   if (!monthCursor) return null
 
   for (let step = 0; step < 36; step += 1) {
-    while (monthHasRecordedTestOutcome(months[monthCursor], monthCursor, annualMonth)) {
+    while (monthHasRecordedTestOutcome(months[monthCursor], monthCursor)) {
       const advanced = addCalendarMonths(monthCursor, 1)
       if (!advanced) return null
       monthCursor = advanced
@@ -1831,7 +1804,7 @@ export function nextUpcomingRouteTestDayIso(
 }
 
 export function upcomingTestMonthIso(
-  location: Pick<LibraryLocation, 'months' | 'monthly_route' | 'annual_month'>,
+  location: Pick<LibraryLocation, 'months' | 'monthly_route'>,
   reference: Date = new Date(),
 ): string | null {
   const upcomingDay = nextUpcomingRouteTestDayIso(location, reference)
@@ -1839,7 +1812,7 @@ export function upcomingTestMonthIso(
     const ym = parseYearMonth(upcomingDay)
     if (ym) return toMonthKey(ym.year, ym.month)
   }
-  return nextUntestedMonthIso(location.months, reference, location.annual_month)
+  return nextUntestedMonthIso(location.months, reference)
 }
 
 /** Next route test day on or after today, even when the current month's run is still open. */

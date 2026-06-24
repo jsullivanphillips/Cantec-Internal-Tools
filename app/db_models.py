@@ -1080,7 +1080,6 @@ class MonthlyLocation(db.Model):
     keys = db.Column(db.Text, nullable=True)
     access_instructions = db.Column(db.Text, nullable=True)
     test_day = db.Column(db.String(255), nullable=True)
-    annual_month = db.Column(db.String(32), nullable=True)
     display_address = db.Column(db.String(255), nullable=True)
     latitude = db.Column(db.Float, nullable=True)
     longitude = db.Column(db.Float, nullable=True)
@@ -1123,10 +1122,6 @@ class MonthlyLocation(db.Model):
         nullable=True,
         index=True,
     )
-
-    annual_month_pending = db.Column(db.String(64), nullable=True)
-    annual_month_pending_submitted_at = db.Column(db.DateTime(timezone=True), nullable=True)
-    annual_month_pending_submitted_by_name = db.Column(db.String(255), nullable=True)
 
     ring_detail = db.Column(db.Text, nullable=True)
     facp_detail = db.Column(db.Text, nullable=True)
@@ -1282,7 +1277,8 @@ class MonthlyLocationMonth(db.Model):
     property_management_company = db.Column(db.String(255), nullable=True)
     ring = db.Column(db.String(255), nullable=True)
     key_number = db.Column(db.String(255), nullable=True)
-    annual_month = db.Column(db.String(32), nullable=True)
+    annual_test_override = db.Column(db.Boolean, nullable=False, default=False)
+    annual_test_override_reason = db.Column(db.Text, nullable=True)
     testing_procedures = db.Column(db.Text, nullable=True)
     inspection_tech_notes = db.Column(db.Text, nullable=True)
     run_comments = db.Column(db.Text, nullable=True)

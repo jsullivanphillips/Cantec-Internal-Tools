@@ -27,7 +27,6 @@ def master_template_fields(loc: MonthlyLocation) -> dict[str, object]:
     if loc.monitoring_company is not None:
         company_name = _normalize_text(loc.monitoring_company.name)
     return {
-        "annual_month": loc.annual_month,
         "property_management_company": _normalize_text(loc.property_management_company),
         "building_name": monthly_location_building_name(loc),
         "panel_location": loc.panel_location,

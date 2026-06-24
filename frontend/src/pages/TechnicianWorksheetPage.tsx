@@ -22,6 +22,7 @@ import {
   groupOfficeWorksheetStops,
   worksheetStopIsAnnualSkip,
 } from '../features/monthlyRoutes/officeWorksheetTableShared'
+import { stopScheduledAnnualAutoSkipActive } from '../features/monthlyRoutes/prepAnnualSchedule'
 import { parseMonitoringSheetDisplay } from '../features/monthlyRoutes/monitoringSheetDisplay'
 import {
   monthFirstIsoPacificToday,
@@ -129,16 +130,38 @@ function worksheetSkipReasonDuplicatesTimeInNote(
   return normalizedActionCellDetail(skipReasonBlock) === normalizedActionCellDetail(note)
 }
 
-function isAnnualForMonth(annualMonth: string | null | undefined, monthIso: string): boolean {
-  const raw = (annualMonth || '').trim().toLowerCase()
-  if (!raw || raw === 'to') return false
-  const ym = parseYearMonth(monthIso)
-  if (!ym) return false
-  const monthFull = new Intl.DateTimeFormat('en-CA', { month: 'long', timeZone: 'UTC' })
-    .format(new Date(Date.UTC(ym.year, ym.month - 1, 1)))
-    .toLowerCase()
-  const monthShort = monthFull.slice(0, 3)
-  return raw === monthFull || raw === monthShort
+function worksheetRowIsAnnualSkip(row: TechnicianWorksheetRow, monthDate: string): boolean {
+  const rs = (row.result_status || '').trim().toLowerCase()
+  const skipped = rs === 'skipped'
+  if (skipped) {
+    const reason = (row.skip_reason || '').trim().toLowerCase()
+    if (reason === 'annual' || reason === 'annual_booked') return true
+    if (reason && reason !== 'sheet_value') return false
+  }
+  void monthDate
+  return false
+}
+
+function worksheetRowStatusClass(row: TechnicianWorksheetRow, monthDate: string): string | undefined {
+  const rs = (row.result_status || '').trim().toLowerCase()
+  if (rs === 'skipped') {
+    return worksheetRowIsAnnualSkip(row, monthDate) ? 'tw-row-annual' : 'tw-row-skipped'
+  }
+  return undefined
+}
+
+function worksheetAddressCellStatusClass(
+  row: TechnicianWorksheetRow,
+  monthDate: string,
+): string | undefined {
+  const rs = (row.result_status || '').trim().toLowerCase()
+  if (rs === 'tested') return 'tw-address-cell-tested'
+  if (rs === 'skipped') {
+    return worksheetRowIsAnnualSkip(row, monthDate)
+      ? 'tw-address-cell-annual'
+      : 'tw-address-cell-skipped-other'
+  }
+  return undefined
 }
 
 /** Importer / sheet internal codes — omit separate reason line (status still shows Skipped). */
@@ -220,42 +243,6 @@ function worksheetGridIsTouchLikePointer(pointerType: string): boolean {
   return pointerType === 'touch' || pointerType === 'pen'
 }
 
-function worksheetRowIsAnnualSkip(row: TechnicianWorksheetRow, monthDate: string): boolean {
-  const rs = (row.result_status || '').trim().toLowerCase()
-  const skipped = rs === 'skipped'
-  if (skipped) {
-    const reason = (row.skip_reason || '').trim().toLowerCase()
-    if (reason === 'annual' || reason === 'annual_booked') return true
-    if (reason && reason !== 'sheet_value') return false
-    return isAnnualForMonth(row.annual_month, monthDate)
-  }
-  return isAnnualForMonth(row.annual_month, monthDate)
-}
-
-function worksheetRowStatusClass(row: TechnicianWorksheetRow, monthDate: string): string | undefined {
-  const rs = (row.result_status || '').trim().toLowerCase()
-  if (rs === 'skipped') {
-    return worksheetRowIsAnnualSkip(row, monthDate) ? 'tw-row-annual' : 'tw-row-skipped'
-  }
-  if (isAnnualForMonth(row.annual_month, monthDate)) return 'tw-row-annual'
-  return undefined
-}
-
-function worksheetAddressCellStatusClass(
-  row: TechnicianWorksheetRow,
-  monthDate: string,
-): string | undefined {
-  const rs = (row.result_status || '').trim().toLowerCase()
-  if (rs === 'tested') return 'tw-address-cell-tested'
-  if (rs === 'skipped') {
-    return worksheetRowIsAnnualSkip(row, monthDate)
-      ? 'tw-address-cell-annual'
-      : 'tw-address-cell-skipped-other'
-  }
-  if (isAnnualForMonth(row.annual_month, monthDate)) return 'tw-address-cell-annual'
-  return undefined
-}
-
 function WorksheetTableColGroup() {
   return (
     <colgroup>
@@ -296,7 +283,6 @@ export default function TechnicianWorksheetPage() {
   const [skipReasonDraft, setSkipReasonDraft] = useState('')
   /** Time Out → Skipped: apply ``time_out`` only when skip reason is submitted (avoids time_out without skipped/tested). */
   const pendingTimeOutForSkipModalRef = useRef<string | null>(null)
-  const [annualTestAnywayRows, setAnnualTestAnywayRows] = useState<Set<number>>(new Set())
   const [topbarHeight, setTopbarHeight] = useState(0)
   const syncingRef = useRef(false)
   const topbarRef = useRef<HTMLDivElement | null>(null)
@@ -427,7 +413,6 @@ export default function TechnicianWorksheetPage() {
       setPayload(res.worksheet)
       if (isPortalMode) saveWorksheetCache(res.worksheet)
       else clearWorksheetCache(idNum, monthQuery)
-      setAnnualTestAnywayRows(new Set())
       setResetRunModalOpen(false)
       setSyncMessage(null)
     } catch (e) {
@@ -736,7 +721,7 @@ export default function TechnicianWorksheetPage() {
       const status = (stop.result_status || '').trim().toLowerCase()
       if (status === 'tested') tested += 1
       if (status === 'skipped') skipped += 1
-      if (isAnnualForMonth(stop.annual_month, payload?.month_date ?? monthQuery) || worksheetStopIsAnnualSkip(stop, payload?.month_date ?? monthQuery)) {
+      if (stopScheduledAnnualAutoSkipActive(stop) || worksheetStopIsAnnualSkip(stop, payload?.month_date ?? monthQuery)) {
         annual += 1
       }
     }
@@ -1574,7 +1559,6 @@ export default function TechnicianWorksheetPage() {
                         className={worksheetRowStatusClass(row, payload.month_date)}
                       >
                         {(() => {
-                          const annualKey = `annual_month:${row.location_id}`
                           const ringKey = `ring:${row.location_id}`
                           const keyNumberKey = `key_number:${row.location_id}`
                           const isHistorical = isHistoricalView
@@ -1587,7 +1571,6 @@ export default function TechnicianWorksheetPage() {
                           const displayTimeOut = (row.time_out || '').trim()
                           const hasTimeIn = displayTimeIn.length > 0
                           const hasTimeOut = displayTimeOut.length > 0
-                          const annualMatch = isAnnualForMonth(row.annual_month, payload.month_date)
                           /** Icons for tested/skipped when the Result column is non-interactive. */
                           const showHistoricalStatusIcons = outcomeColumnReadOnly
                           const worksheetResultKey = (row.result_status || '').trim().toLowerCase()
@@ -1600,13 +1583,6 @@ export default function TechnicianWorksheetPage() {
                               displayTimeIn,
                             )
                           const showWorksheetTimeOutLine = hasTimeOut && shouldShowWorksheetTimeOutRow(displayTimeIn, displayTimeOut)
-                          const showAnnualPromptBeforeTesting =
-                            !worksheetFrozenNoRun &&
-                            !isOfficeReadOnly &&
-                            !isHistorical &&
-                            !hasTimeIn &&
-                            annualMatch &&
-                            !annualTestAnywayRows.has(row.location_id)
                           return (
                             <>
                         <td className="tw-col-order text-center tabular-nums">{index + 1}</td>
@@ -1674,23 +1650,6 @@ export default function TechnicianWorksheetPage() {
                               onBlur={(e) => {
                                 onFieldChange(row, 'key_number', e.target.value)
                                 if (activeEditorKey === keyNumberKey) setActiveEditorKey(null)
-                              }}
-                            />
-                            <label className="tw-stacked-label">Annual</label>
-                            <input
-                              key={`annual:${row.location_id}:${row.month_date}:${row.annual_month ?? ''}`}
-                              className={`form-control form-control-sm ${isEditorActive(annualKey) ? '' : 'tw-readonly-field'}`}
-                              defaultValue={row.annual_month ?? ''}
-                              readOnly={isOfficeReadOnly || worksheetFrozenNoRun || !isEditorActive(annualKey)}
-                              autoFocus={isEditorActive(annualKey)}
-                              onClick={
-                                isOfficeReadOnly || worksheetFrozenNoRun
-                                  ? undefined
-                                  : (e) => activateEditorAndFocus(annualKey, e.currentTarget)
-                              }
-                              onBlur={(e) => {
-                                onFieldChange(row, 'annual_month', e.target.value)
-                                if (activeEditorKey === annualKey) setActiveEditorKey(null)
                               }}
                             />
                           </div>
@@ -1796,27 +1755,6 @@ export default function TechnicianWorksheetPage() {
                                     ) : null}
                                     {!hasTimeIn ? (
                                       <>
-                                        {showAnnualPromptBeforeTesting ? (
-                                          <>
-                                            <div className="small fw-semibold text-uppercase text-warning-emphasis text-center">
-                                              ANNUAL
-                                            </div>
-                                            <Button
-                                              size="sm"
-                                              variant="outline-secondary"
-                                              onClick={() =>
-                                                setAnnualTestAnywayRows((prev) => {
-                                                  const next = new Set(prev)
-                                                  next.add(row.location_id)
-                                                  return next
-                                                })
-                                              }
-                                            >
-                                              Test Anyway
-                                            </Button>
-                                          </>
-                                        ) : (
-                                          <>
                                             <Button
                                               size="sm"
                                               variant="success"
@@ -1835,23 +1773,6 @@ export default function TechnicianWorksheetPage() {
                                             >
                                               Skip
                                             </Button>
-                                            {annualMatch && annualTestAnywayRows.has(row.location_id) ? (
-                                              <Button
-                                                size="sm"
-                                                variant="outline-secondary"
-                                                onClick={() =>
-                                                  setAnnualTestAnywayRows((prev) => {
-                                                    const next = new Set(prev)
-                                                    next.delete(row.location_id)
-                                                    return next
-                                                  })
-                                                }
-                                              >
-                                                Cancel
-                                              </Button>
-                                            ) : null}
-                                          </>
-                                        )}
                                       </>
                                     ) : !hasTimeOut ? (
                                       <>
@@ -1878,11 +1799,6 @@ export default function TechnicianWorksheetPage() {
                                           size="sm"
                                           variant="outline-secondary"
                                           onClick={() => {
-                                            setAnnualTestAnywayRows((prev) => {
-                                              const next = new Set(prev)
-                                              next.delete(row.location_id)
-                                              return next
-                                            })
                                             queueRowChanges(row, {
                                               result_status: null,
                                               skip_reason: null,

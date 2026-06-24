@@ -4,7 +4,6 @@ import { Link } from 'react-router-dom'
 import AddMonthlyLocationWizardModal from '../features/monthlyRoutes/AddMonthlyLocationWizardModal'
 import HeroFilterPill from '../components/HeroFilterPill'
 import {
-  ANNUAL_COLUMN_STYLE,
   DIRECTORY_COLUMN_WIDTHS,
   KEYS_COLUMN_STYLE,
   LIBRARY_TABLE_HEADER_STICKY_STYLE,
@@ -27,13 +26,6 @@ import { PROCESSING_PAGE_TITLE_COMPACT_CLASS } from '../styles/pageTypography'
 
 const DEFAULT_PAGE_SIZE = 50
 const PAGE_SIZE_OPTIONS = [25, 50, 100] as const
-
-const MONTH_NAME_OPTIONS = Array.from({ length: 12 }).map((_, idx) =>
-  new Intl.DateTimeFormat('en-US', {
-    month: 'long',
-    timeZone: 'UTC',
-  }).format(new Date(Date.UTC(2000, idx, 1)))
-)
 
 type LibraryPagination = NonNullable<LibraryPayload['meta']['pagination']>
 
@@ -155,8 +147,6 @@ export default function MonthlyRoutesPage() {
   const [showCreateLocationModal, setShowCreateLocationModal] = useState(false)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE)
-  const [annualEditLocationId, setAnnualEditLocationId] = useState<number | null>(null)
-  const [annualSavingLocationId, setAnnualSavingLocationId] = useState<number | null>(null)
   const [csvExporting, setCsvExporting] = useState(false)
 
   const mergeUpdatedLocation = useCallback((updated: LibraryLocation) => {
@@ -249,7 +239,7 @@ export default function MonthlyRoutesPage() {
       if (hideCancelledMbtLocations) {
         rows = rows.filter((loc) => (loc.status_normalized || '').trim().toLowerCase() !== 'cancelled')
       }
-      const headers = ['Status', 'Route', 'Location', 'Property Management', 'Key', 'Annual']
+      const headers = ['Status', 'Route', 'Location', 'Property Management', 'Key']
       const lines = [headers.map(escapeCsvField).join(',')]
       for (const loc of rows) {
         const line2 = libraryRouteOccurrenceLine(loc)
@@ -262,7 +252,6 @@ export default function MonthlyRoutesPage() {
             loc.label?.trim() || '',
             loc.property_management_company || '',
             keyText,
-            loc.annual_month || '',
           ]
             .map(escapeCsvField)
             .join(',')
@@ -282,38 +271,6 @@ export default function MonthlyRoutesPage() {
       setCsvExporting(false)
     }
   }, [excludeTags, hideCancelledMbtLocations, includeTags, pageSize, tableSearch])
-
-  const saveAnnualForLocation = useCallback(
-    async (locationId: number, annualMonth: string) => {
-      setAnnualSavingLocationId(locationId)
-      try {
-        const response = await apiJson<{ location: LibraryLocation }>(
-          `/api/monthly_routes/library/${locationId}`,
-          {
-            method: 'PATCH',
-            body: JSON.stringify({
-              annual_month: annualMonth || null,
-            }),
-          }
-        )
-        setPayload((prev) => {
-          if (!prev) return prev
-          return {
-            ...prev,
-            locations: prev.locations.map((loc) =>
-              loc.id === response.location.id ? response.location : loc
-            ),
-          }
-        })
-      } catch {
-        setError('Unable to update annual month.')
-      } finally {
-        setAnnualSavingLocationId(null)
-        setAnnualEditLocationId(null)
-      }
-    },
-    []
-  )
 
   const renderStatusDot = useCallback(
     (status: string | null | undefined) => renderLibraryStatusDot(status),
@@ -346,7 +303,7 @@ export default function MonthlyRoutesPage() {
                       size="sm"
                       className="monthly-locations-filter-field__input"
                       value={tableSearch}
-                      placeholder="Route, address, property, key, annual…"
+                      placeholder="Route, address, property, key…"
                       aria-label="Search locations"
                       onChange={(e) => {
                         setTableSearch(e.target.value)
@@ -467,7 +424,6 @@ export default function MonthlyRoutesPage() {
                     <col style={{ width: DIRECTORY_COLUMN_WIDTHS.tags }} />
                     <col style={{ width: DIRECTORY_COLUMN_WIDTHS.property }} />
                     <col style={{ width: DIRECTORY_COLUMN_WIDTHS.key }} />
-                    <col style={{ width: DIRECTORY_COLUMN_WIDTHS.annual }} />
                   </colgroup>
                   <thead>
                     <tr>
@@ -502,18 +458,12 @@ export default function MonthlyRoutesPage() {
                       >
                         Key
                       </th>
-                      <th
-                        className="text-center"
-                        style={{ ...ANNUAL_COLUMN_STYLE, ...LIBRARY_TABLE_HEADER_STICKY_STYLE }}
-                      >
-                        Annual
-                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredLocations.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="text-muted py-4">
+                        <td colSpan={6} className="text-muted py-4">
                           No locations match the current filters.
                         </td>
                       </tr>
@@ -565,50 +515,6 @@ export default function MonthlyRoutesPage() {
                                 loc.keys || '—'
                               )}
                             </div>
-                          </td>
-                          <td
-                            className={
-                              annualEditLocationId === loc.id
-                                ? 'text-center'
-                                : 'text-center library-table-cell-clamp'
-                            }
-                            style={ANNUAL_COLUMN_STYLE}
-                          >
-                            {annualEditLocationId === loc.id ? (
-                              <Form.Select
-                                size="sm"
-                                className="monthly-locations-table__annual-select"
-                                value={loc.annual_month || ''}
-                                disabled={annualSavingLocationId === loc.id}
-                                onChange={(e) => saveAnnualForLocation(loc.id, e.target.value)}
-                                onBlur={() => {
-                                  if (annualSavingLocationId !== loc.id) setAnnualEditLocationId(null)
-                                }}
-                                autoFocus
-                              >
-                                <option value="">—</option>
-                                {MONTH_NAME_OPTIONS.map((monthName) => (
-                                  <option key={monthName} value={monthName}>
-                                    {monthName}
-                                  </option>
-                                ))}
-                              </Form.Select>
-                            ) : (
-                              <div className="library-table-cell-inner">
-                                <button
-                                  type="button"
-                                  className="monthly-locations-table__annual-btn"
-                                  aria-label={`Change annual month${loc.annual_month ? ` (${loc.annual_month})` : ''}`}
-                                  onClick={() => setAnnualEditLocationId(loc.id)}
-                                >
-                                  <span>{loc.annual_month || '—'}</span>
-                                  <i
-                                    className="bi bi-chevron-down monthly-locations-table__annual-btn-caret"
-                                    aria-hidden
-                                  />
-                                </button>
-                              </div>
-                            )}
                           </td>
                         </tr>
                       ))

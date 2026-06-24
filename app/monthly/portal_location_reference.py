@@ -34,7 +34,6 @@ def _active_location_search_filter(q: str):
         func.lower(func.coalesce(MonthlyLocation.test_day, "")).contains(needle),
         func.lower(func.coalesce(MonthlyLocation.property_management_company, "")).contains(needle),
         func.lower(func.coalesce(MonthlyLocation.keys, "")).contains(needle),
-        func.lower(func.coalesce(MonthlyLocation.annual_month, "")).contains(needle),
     )
 
 
@@ -99,7 +98,6 @@ def serialize_portal_location_reference(loc: MonthlyLocation) -> dict[str, objec
         "key_id": loc.key_id,
         "key": _serialize_linked_key(loc.linked_key, include_status=True),
         "test_day": loc.test_day,
-        "annual_month": loc.annual_month,
         "latitude": loc.latitude,
         "longitude": loc.longitude,
         "monthly_route_id": loc.monthly_route_id,

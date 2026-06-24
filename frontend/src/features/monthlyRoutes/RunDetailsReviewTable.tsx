@@ -408,10 +408,6 @@ export default function RunDetailsReviewTable({
                         <ReviewReadonlyStackField label="Ring" value={stop.ring} />
                         <ReviewReadonlyStackField label="Key" value={stop.key_number} />
                         <ReviewReadonlyStackField label="Door" value={stop.door_code} />
-                        <ReviewReadonlyStackField
-                          label="Annual month"
-                          value={stop.annual_month}
-                        />
                       </div>
                     </td>
                     <td className="align-middle run-details-prepare-stack-cell run-details-review-stack-cell-td">

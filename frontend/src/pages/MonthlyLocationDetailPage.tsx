@@ -65,15 +65,6 @@ function formatScheduledTestDay(monthIso: string, loc: LibraryLocation): string 
   return formatRouteTestDayLabel(iso)
 }
 
-function monthNameFromKey(monthKey: string): string {
-  const ym = parseYearMonth(monthKey)
-  if (!ym) return ''
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'long',
-    timeZone: 'UTC',
-  }).format(new Date(Date.UTC(ym.year, ym.month - 1, 1)))
-}
-
 function monthShortNameFromKey(monthKey: string): string {
   const ym = parseYearMonth(monthKey)
   if (!ym) return monthKey
@@ -81,14 +72,6 @@ function monthShortNameFromKey(monthKey: string): string {
     month: 'short',
     timeZone: 'UTC',
   }).format(new Date(Date.UTC(ym.year, ym.month - 1, 1)))
-}
-
-function isAnnualMonth(monthKey: string, annualMonth: string | null | undefined): boolean {
-  const annual = (annualMonth || '').trim().toLowerCase()
-  if (!annual || annual === 'to') return false
-  const full = monthNameFromKey(monthKey).toLowerCase()
-  const short = full.slice(0, 3)
-  return annual === full || annual === short
 }
 
 function yearsWithTestingData(monthKeys: string[], nextMonthIso: string | null): number[] {
@@ -144,10 +127,10 @@ function historyMonthResultStatus(cell: MonthCell | undefined): 'tested' | 'skip
 
 function testedHistoryChipClass(
   cell: MonthCell | undefined,
-  isAnnualMonthRow: boolean,
+  annualDueOnSchedule: boolean,
   chipLabel: string,
 ): string {
-  if (chipLabel === 'Annual' || isAnnualMonthRow) {
+  if (chipLabel === 'Annual' || annualDueOnSchedule) {
     return 'monthly-location-testing-history-status-chip--annual'
   }
   const rs = historyMonthResultStatus(cell)
@@ -193,9 +176,9 @@ function billingHistoryChipClass(status: OfficeBillingStatus): string {
 function testingHistoryResultCellClass(
   cell: MonthCell | undefined,
   opts: { editing: boolean; editValue?: 'tested' | 'skipped' },
-  isAnnualMonthRow: boolean
+  annualDueOnSchedule: boolean,
 ): string {
-  if (isAnnualMonthRow) return 'monthly-location-testing-history-result--annual'
+  if (annualDueOnSchedule) return 'monthly-location-testing-history-result--annual'
   if (opts.editing && opts.editValue) {
     return opts.editValue === 'tested'
       ? 'monthly-location-testing-history-result--tested'
@@ -211,11 +194,10 @@ function testingHistoryResultCellClass(
 function testingHistoryViewResultsInlineMessage(
   cell: MonthCell | undefined,
   monthIso: string,
-  annualMonth: string | null | undefined,
   worksheetRouteId: number | null,
 ): string | null {
   if (worksheetRouteId == null || !cell) return null
-  if (!monthHasRecordedTestOutcome(cell, monthIso, annualMonth)) return null
+  if (!monthHasRecordedTestOutcome(cell, monthIso)) return null
   if (cell.has_site_field_submission) return null
   if (cell.has_field_submission) return SITE_FIELD_SUBMISSION_NO_SITE_ROW_MESSAGE
   return SITE_FIELD_SUBMISSION_NO_RUN_MESSAGE
@@ -231,9 +213,8 @@ function testingHistoryCanViewResults(
 function testingHistoryRouteContextLine(
   cell: MonthCell | undefined,
   monthIso: string,
-  annualMonth: string | null | undefined,
 ): ReactNode {
-  if (!testingHistoryShowRouteContext(cell, monthIso, annualMonth)) return null
+  if (!testingHistoryShowRouteContext(cell, monthIso)) return null
   const tr = cell?.test_monthly_route
   if (!tr?.route_number) return null
   const label = routeDisplayLabel(tr)
@@ -333,7 +314,7 @@ export default function MonthlyLocationDetailPage() {
 
   const nextTestingMonthIso = useMemo(() => {
     if (!location?.months) return null
-    return nextUntestedMonthIso(location.months, new Date(), location.annual_month)
+    return nextUntestedMonthIso(location.months, new Date())
   }, [location])
 
   useEffect(() => {
@@ -910,11 +891,8 @@ export default function MonthlyLocationDetailPage() {
                             monthIso,
                             nextTestingMonthIso,
                             cell,
-                            location.annual_month,
                           )
-                          const isAnnualMonthRow = isAnnualMonth(monthIso, location.annual_month)
                           const annualDueOnSchedule = siteUpcomingAnnualDue(
-                            location.annual_month,
                             monthIso,
                             annualScheduleByMonth[monthIso] ?? null,
                           )
@@ -933,7 +911,8 @@ export default function MonthlyLocationDetailPage() {
                             historyFieldEdit?.monthIso === monthIso &&
                             historyFieldEdit.field === 'billing'
                           const canEditHistoryBase = showHistoryStatus && canEditMonth
-                          const canEditResultField = canEditHistoryBase && !isAnnualMonthRow
+                          const canEditResultField =
+                            canEditHistoryBase && !(isNextSlot && annualDueOnSchedule)
                           const canEditBillingField =
                             canEditHistoryBase && cell != null && !billingLocked
                           const resultClass = showHistoryStatus
@@ -945,9 +924,9 @@ export default function MonthlyLocationDetailPage() {
                                     ? resultValue || 'tested'
                                     : undefined,
                                 },
-                                isAnnualMonthRow
+                                isNextSlot && annualDueOnSchedule,
                               )
-                            : isAnnualMonthRow
+                            : isNextSlot && annualDueOnSchedule
                               ? 'monthly-location-testing-history-result--annual'
                               : ''
                           const worksheetRouteId = testingHistoryWorksheetRouteId(cell, location)
@@ -955,7 +934,6 @@ export default function MonthlyLocationDetailPage() {
                           const viewResultsInlineMessage = testingHistoryViewResultsInlineMessage(
                             cell,
                             monthIso,
-                            location.annual_month,
                             worksheetRouteId,
                           )
                           const rowClass = [
@@ -968,15 +946,13 @@ export default function MonthlyLocationDetailPage() {
                           ]
                             .filter(Boolean)
                             .join(' ')
-                          const testedChipLabel = testingHistoryChipLabel(
-                            cell,
-                            monthIso,
-                            location.annual_month,
-                            { isNextSlot, isAnnualMonthRow, annualDueOnSchedule },
-                          )
+                          const testedChipLabel = testingHistoryChipLabel(cell, monthIso, {
+                            isNextSlot,
+                            annualDueOnSchedule,
+                          })
                           const testedChipClass = testedHistoryChipClass(
                             cell,
-                            isAnnualMonthRow,
+                            isNextSlot && annualDueOnSchedule,
                             testedChipLabel,
                           )
                           const skippedTooltip = testingHistorySkippedTooltip(testedChipLabel, cell)
@@ -1167,7 +1143,7 @@ export default function MonthlyLocationDetailPage() {
                                       Next test{testDayLabel ? `: ${testDayLabel}` : ''}
                                     </span>
                                   ) : null}
-                                  {testingHistoryRouteContextLine(cell, monthIso, location.annual_month)}
+                                  {testingHistoryRouteContextLine(cell, monthIso)}
                                 </div>
                               </td>
                             </tr>

@@ -7,7 +7,9 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from app.monthly.route_test_day import effective_route_test_day
 from app.monthly.service_trade_annual_schedule import (
+    _skip_month_for_spanning_job,
     appointment_qualifies,
     derive_prep_warning,
     job_qualifies,
@@ -78,21 +80,41 @@ def test_job_rejects_cancelled_and_other_types():
 
 
 @pytest.mark.parametrize(
-    ("annual_matches", "has_link", "has_scheduled", "expected"),
+    ("has_link", "has_scheduled", "spans", "tie", "expected"),
     [
-        (True, False, False, "no_servicetrade_link"),
-        (True, True, False, "no_annual_scheduled"),
-        (True, True, True, None),
-        (False, True, True, "annual_scheduled_wrong_month"),
-        (False, False, False, None),
+        (False, True, False, False, "no_servicetrade_link"),
+        (True, True, True, False, "annual_spans_months"),
+        (True, True, False, True, "annual_skip_tie"),
+        (True, True, False, False, None),
     ],
 )
-def test_derive_prep_warning(annual_matches, has_link, has_scheduled, expected):
+def test_derive_prep_warning(has_link, has_scheduled, spans, tie, expected):
     assert (
         derive_prep_warning(
-            annual_month_matches_run=annual_matches,
             has_service_trade_link=has_link,
             has_scheduled_annual_in_month=has_scheduled,
+            annual_spans_months=spans,
+            annual_skip_tie=tie,
         )
         == expected
     )
+
+
+def test_skip_month_for_spanning_job_closer_to_july():
+    june_first = date(2026, 6, 1)
+    july_first = date(2026, 7, 1)
+    june_test = effective_route_test_day(june_first, weekday_iso=2, week_occurrence=1)
+    july_test = effective_route_test_day(july_first, weekday_iso=2, week_occurrence=1)
+    assert june_test is not None and july_test is not None
+    appt_dates = (
+        date(2026, 6, 28),
+        date(2026, 7, 3),
+    )
+    skip_month, is_tie = _skip_month_for_spanning_job(
+        [june_first, july_first],
+        weekday_iso=2,
+        week_occurrence=1,
+        appointment_dates=appt_dates,
+    )
+    assert not is_tie
+    assert skip_month == july_first

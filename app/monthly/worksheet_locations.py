@@ -62,7 +62,6 @@ _MLM_OUTCOME_KEYS = (
 )
 
 _MLM_SNAPSHOT_DISPLAY_KEYS = (
-    "annual_month",
     "property_management_company",
     "panel_location",
     "door_code",
@@ -92,6 +91,8 @@ _MLM_RUN_RESET_ATTRS = (
     "skip_note",
     "confirmed_no_deficiencies",
     "billing_status",
+    "annual_test_override",
+    "annual_test_override_reason",
 )
 
 
@@ -107,6 +108,8 @@ def _cleared_outcome_fields() -> dict[str, object]:
         "skip_category": None,
         "skip_note": None,
         "confirmed_no_deficiencies": False,
+        "annual_test_override": False,
+        "annual_test_override_reason": None,
     }
 
 
@@ -120,7 +123,6 @@ def _fill_snapshot_gaps_from_master(
 ) -> None:
     template = master_template_fields(loc)
     for key in (
-        "annual_month",
         "property_management_company",
         "panel_location",
         "door_code",
@@ -581,7 +583,6 @@ def upsert_location_month_from_csv_import(
     panel_location: str | None,
     ring_detail: str | None,
     keys_text: str | None,
-    annual_month: str | None,
     testing_procedures: str | None,
     inspection_tech_notes: str | None,
     monitoring_notes: str | None,
@@ -616,7 +617,6 @@ def upsert_location_month_from_csv_import(
             upsert_history_source = HISTORY_SOURCE_ROUTE_CSV
 
     snapshot_values: dict[str, object] = {
-        "annual_month": annual_month,
         "ring": ring_detail,
         "key_number": keys_text,
         "panel": panel,
@@ -1164,7 +1164,8 @@ def serialize_worksheet_location(
     panel = None
     ring = None
     key_number = None
-    annual_month = None
+    annual_test_override = False
+    annual_test_override_reason = None
     procedures = None
     tech_notes = None
     run_comments = None
@@ -1184,7 +1185,8 @@ def serialize_worksheet_location(
         panel = _normalize_text(mlm.panel) or _normalize_text(mlm.facp)
         ring = mlm.ring
         key_number = mlm.key_number
-        annual_month = mlm.annual_month
+        annual_test_override = bool(mlm.annual_test_override)
+        annual_test_override_reason = mlm.annual_test_override_reason
         procedures = mlm.testing_procedures
         tech_notes = mlm.inspection_tech_notes
         run_comments = mlm.run_comments
@@ -1209,7 +1211,6 @@ def serialize_worksheet_location(
         master = master_template_fields(loc)
         ring = _coalesce_with_master(ring, master.get("ring"))
         key_number = _coalesce_with_master(key_number, master.get("key_number"))
-        annual_month = _coalesce_with_master(annual_month, master.get("annual_month"))
         procedures = _coalesce_with_master(procedures, master.get("testing_procedures"))
         tech_notes = _coalesce_with_master(tech_notes, master.get("inspection_tech_notes"))
         panel = panel or _normalize_text(master.get("panel"))
@@ -1221,7 +1222,8 @@ def serialize_worksheet_location(
         panel = _normalize_text(preview.get("panel"))
         ring = preview.get("ring")
         key_number = preview.get("key_number")
-        annual_month = preview.get("annual_month")
+        annual_test_override = False
+        annual_test_override_reason = None
         procedures = preview.get("testing_procedures")
         tech_notes = preview.get("inspection_tech_notes")
         run_comments = None
@@ -1264,7 +1266,8 @@ def serialize_worksheet_location(
         "ring": ring,
         "key_number": key_number,
         **linked_key_fields_for_location(loc),
-        "annual_month": annual_month,
+        "annual_test_override": annual_test_override,
+        "annual_test_override_reason": annual_test_override_reason,
         "monitoring_company": company,
         "monitoring_company_id": mcid,
         "monitoring_company_record": serialize_monitoring_company(mc),
@@ -1291,8 +1294,7 @@ def serialize_worksheet_location(
         "version_updated_at": version,
         "status_normalized": (loc.status_normalized or "active").strip().lower(),
         "scheduled_annual_auto_skip": _scheduled_annual_auto_skip(
-            annual_month,
-            month_first,
+            annual_test_override,
             (
                 annual_schedule_by_location_id.get(int(loc.id))
                 if annual_schedule_by_location_id is not None
@@ -1525,7 +1527,8 @@ def serialize_worksheet_stop_office_prep_patch(
         "door_code": mlm.door_code,
         "ring": mlm.ring,
         "key_number": mlm.key_number,
-        "annual_month": mlm.annual_month,
+        "annual_test_override": bool(mlm.annual_test_override),
+        "annual_test_override_reason": mlm.annual_test_override_reason,
         "monitoring_company": company,
         "monitoring_company_id": mcid,
         "monitoring_company_record": serialize_monitoring_company(mc),
@@ -1549,15 +1552,15 @@ def serialize_worksheet_stop_office_prep_patch(
 
 
 def _scheduled_annual_auto_skip(
-    annual_month: object,
-    month_first: date,
+    annual_test_override: bool,
     schedule_row: dict[str, object] | None,
 ) -> bool:
-    if schedule_row is None:
-        return False
-    if not _is_annual_for_month(month_first, annual_month):
-        return False
-    return bool(schedule_row.get("has_scheduled_annual_in_month"))
+    from app.monthly.service_trade_annual_schedule import location_annual_skip_recommended
+
+    return location_annual_skip_recommended(
+        schedule_row,
+        annual_test_override=annual_test_override,
+    )
 
 
 def worksheet_locations_for_route_month(
@@ -1587,18 +1590,17 @@ def worksheet_locations_for_route_month(
         else None
     )
     annual_schedule_by_location_id = None
-    if include_portal_extras:
-        try:
-            from app.monthly.service_trade_annual_schedule import (
-                annual_schedule_location_rows_by_id,
-            )
+    try:
+        from app.monthly.service_trade_annual_schedule import (
+            annual_schedule_location_rows_by_id,
+        )
 
-            annual_schedule_by_location_id = annual_schedule_location_rows_by_id(
-                route_id,
-                month_first,
-            )
-        except Exception:
-            annual_schedule_by_location_id = None
+        annual_schedule_by_location_id = annual_schedule_location_rows_by_id(
+            route_id,
+            month_first,
+        )
+    except Exception:
+        annual_schedule_by_location_id = None
     out: list[dict[str, object]] = []
     for idx, (mlm, loc) in enumerate(pairs, start=1):
         out.append(
@@ -1719,6 +1721,10 @@ def office_review_billing_location_ids(route_id: int, month_first: date) -> set[
     return {int(s["location_id"]) for s in stops}
 
 
+def _stop_is_scheduled_annual_skip(stop: dict[str, object]) -> bool:
+    return stop.get("scheduled_annual_auto_skip") is True
+
+
 def _office_stop_status(
     stop: dict[str, object],
     month_first: date,
@@ -1735,10 +1741,10 @@ def _office_stop_status(
             return "annual"
         if _stop_explicit_skip_reason_blocks_annual_month_inference(stop):
             return "skipped"
-        if _is_annual_for_month(month_first, stop.get("annual_month")):
+        if _stop_is_scheduled_annual_skip(stop):
             return "annual"
         return "skipped"
-    if _is_annual_for_month(month_first, stop.get("annual_month")):
+    if _stop_is_scheduled_annual_skip(stop):
         return "annual"
     if _is_on_hold_pending_outcome(stop):
         return "on_hold"
@@ -1817,13 +1823,13 @@ def notable_worksheet_stops_for_run_details(
         lid = int(stop["location_id"])
         rs = (str(stop.get("result_status") or "")).strip().lower()
         has_run_comments = _normalize_text(stop.get("run_comments")) is not None
-        is_annual_month = _is_annual_for_month(month_first, stop.get("annual_month"))
+        is_scheduled_annual = _stop_is_scheduled_annual_skip(stop)
         is_on_hold = _is_on_hold_pending_outcome(stop)
         has_outcome = _normalize_text(stop.get("test_outcome")) is not None
         has_updates = (
             lid in property_change_location_ids or rs == "skipped" or has_run_comments
         )
-        if has_updates or rs == "tested" or is_annual_month or is_on_hold or has_outcome:
+        if has_updates or rs == "tested" or is_scheduled_annual or is_on_hold or has_outcome:
             filtered.append(dict(stop))
     return filtered
 
@@ -1957,6 +1963,9 @@ def _clear_mlm_run_scoped_fields(mlm: MonthlyLocationMonth) -> None:
         if attr == "billing_status" and billing_locked:
             continue
         if attr == "confirmed_no_deficiencies":
+            setattr(mlm, attr, False)
+            continue
+        if attr == "annual_test_override":
             setattr(mlm, attr, False)
             continue
         setattr(mlm, attr, None)
@@ -2191,7 +2200,6 @@ STOP_PATCH_FIELD_MAP: dict[str, str] = {
     "prior_month_out_of_order_dismissed": "prior_month_out_of_order_dismissed",
     "time_in": "sheet_time_in_raw",
     "time_out": "sheet_time_out_raw",
-    "annual_month": "annual_month",
     "ring": "ring",
     "key_number": "key_number",
     "panel": "panel",
@@ -2353,7 +2361,6 @@ def mirror_master_to_mlm_snapshot(loc: MonthlyLocation, mlm: MonthlyLocationMont
             setattr(mlm, attr, value)
             changed = True
 
-    _set("annual_month", template.get("annual_month"))
     _set("property_management_company", template.get("property_management_company"))
     _set("panel_location", template.get("panel_location"))
     _set("door_code", template.get("door_code"))
