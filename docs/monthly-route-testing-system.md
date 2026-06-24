@@ -476,11 +476,13 @@ Ambiguous ``h:mm`` values without AM/PM infer meridiem for field-route visits: *
 - ``MonthlyRouteRun.pre_run_message`` — per-month note on the paperwork/run-details page; shown on the technician route hub below **Open run**; cleared on run reset.
 - ``MonthlyTestingSiteMonth.office_attention`` — purple stop styling on the portal worksheet until any ``test_outcome`` is recorded; pair with **Job comment** (`run_comments`) when needed.
 
-**Annual schedule check (office prep only):** After the paperwork prep table loads, the UI calls ``GET /api/monthly_routes/routes/<id>/runs/annual_schedule_check?month_date=YYYY-MM-01`` (cached 1 hour). ServiceTrade jobs of type inspection/replacement/upgrade/installation with a **scheduled or completed** appointment whose ``windowStart`` falls in the run month (Pacific) count as booked. Cancelled jobs/appointments are ignored. Spanning jobs (appointments in two calendar months) auto-select the **skip month** as the route test day **closer** to the annual appointments; the farther month is testable unless office forces test.
+**Annual schedule cache:** ServiceTrade annual flags are persisted on ``monthly_location_month`` (``st_annual_skip_recommended``, ``st_annual_prep_warning``, ``st_annual_synced_at``, etc.). **Live ServiceTrade sync** runs when office opens paperwork prep or location detail (``GET …/runs/annual_schedule_check``), which writes the cache. Dashboard ``annual_count``, worksheets, portal, and run details read the cache only — routes show **0 annuals** until someone syncs that route/month.
+
+**Annual schedule check (office prep + location detail):** The UI calls ``GET /api/monthly_routes/routes/<id>/runs/annual_schedule_check?month_date=YYYY-MM-01`` (HTTP response cached 1 hour after sync). ServiceTrade jobs of type inspection/replacement/upgrade/installation with a **scheduled or completed** appointment whose ``windowStart`` falls in the run month (Pacific) count as booked. Cancelled jobs/appointments are ignored. Spanning jobs (appointments in two calendar months) auto-select the **skip month** as the route test day **closer** to the annual appointments; the farther month is testable unless office forces test.
 
 | Prep row | Condition |
 |----------|-----------|
-| Orange annual row | ServiceTrade ``annual_skip_recommended`` for this month **and** no ``annual_test_override`` on the stop |
+| Orange annual row | Cached ``st_annual_skip_recommended`` for this month **and** no ``annual_test_override`` on the stop |
 | Pill “Annual spans months” | Spanning inspection job touches this month |
 | Pill “Annual skip tie — review” | Route test days equidistant from annual appointments (earlier month skipped by default) |
 | Pill “No ServiceTrade link” | Rare: scheduled annual activity but no ``service_trade_site_location_id`` |
@@ -831,7 +833,7 @@ UI: run review **Tickets** button, hero **Tickets** pill on monthly location det
 | `frontend/src/features/monthlyRoutes/portalRouteProjection.ts` | Workflow queue projection + open-clock gating |
 | `frontend/src/features/monthlyRoutes/portalWorkflowQueueRunner.ts` | Serial workflow drain |
 
-**Location detail testing history:** Month cells from ``GET /api/monthly_routes/library/:id`` include ``run_workflow_stage`` when a run file is linked. Prepared placeholder rows (``result_status`` null) still count as the **next** open month even when a ``MonthlyLocationMonth`` row exists. The **Tested** chip for the upcoming month uses the cached ServiceTrade annual schedule check (``annual_skip_recommended``). Otherwise the chip shows **Pending**. **Recorded on …** and field-submission messages appear only after a real ``tested`` / ``skipped`` outcome is recorded.
+**Location detail testing history:** Month cells from ``GET /api/monthly_routes/library/:id`` include ``run_workflow_stage`` when a run file is linked. Prepared placeholder rows (``result_status`` null) still count as the **next** open month even when a ``MonthlyLocationMonth`` row exists. The **Tested** chip for the upcoming month uses the cached ServiceTrade annual schedule (``st_annual_skip_recommended`` / sync via ``annual_schedule_check``). Otherwise the chip shows **Pending**. **Recorded on …** and field-submission messages appear only after a real ``tested`` / ``skipped`` outcome is recorded.
 
 ---
 

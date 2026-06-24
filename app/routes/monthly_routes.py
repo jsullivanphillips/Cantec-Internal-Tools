@@ -255,32 +255,32 @@ def _english_ordinal(n: int) -> str:
 
 
 def _annual_active_location_count_by_route(month_first: date) -> dict[int, int]:
-    """Active locations per route with ServiceTrade annual skip recommended this month."""
-    from app.monthly.service_trade_annual_schedule import annual_schedule_location_rows_by_id
+    """Active locations per route with cached ServiceTrade annual skip recommended this month."""
+    from sqlalchemy import func
 
-    counts: dict[int, int] = {}
-    route_ids = [
-        int(rid)
-        for (rid,) in db.session.query(MonthlyLocation.monthly_route_id)
+    rows = (
+        db.session.query(
+            MonthlyLocationMonth.test_monthly_route_id,
+            func.count(MonthlyLocationMonth.id),
+        )
+        .join(
+            MonthlyLocation,
+            MonthlyLocationMonth.monthly_location_id == MonthlyLocation.id,
+        )
         .filter(
-            MonthlyLocation.monthly_route_id.isnot(None),
+            MonthlyLocationMonth.month_date == month_first,
+            MonthlyLocationMonth.st_annual_skip_recommended.is_(True),
+            MonthlyLocationMonth.test_monthly_route_id.isnot(None),
             MonthlyLocation.status_normalized == "active",
         )
-        .distinct()
+        .group_by(MonthlyLocationMonth.test_monthly_route_id)
         .all()
-        if rid is not None
-    ]
-    for route_id in route_ids:
-        try:
-            rows = annual_schedule_location_rows_by_id(route_id, month_first)
-        except Exception:
-            rows = None
-        if not rows:
-            continue
-        n = sum(1 for row in rows.values() if row.get("annual_skip_recommended"))
-        if n:
-            counts[route_id] = n
-    return counts
+    )
+    return {
+        int(route_id): int(count)
+        for route_id, count in rows
+        if route_id is not None
+    }
 
 
 def _serialize_monthly_route_entity(
@@ -2741,10 +2741,10 @@ def get_monthly_route_annual_schedule_check(route_id: int):
         return jsonify({"error": "Route not found"}), 404
 
     month_first = date(month_dt.year, month_dt.month, 1)
-    from app.monthly.service_trade_annual_schedule import build_route_annual_schedule_snapshot
+    from app.monthly.service_trade_annual_schedule import sync_route_annual_schedule
 
     try:
-        payload = build_route_annual_schedule_snapshot(route_id, month_first)
+        payload = sync_route_annual_schedule(route_id, month_first)
     except RuntimeError as exc:
         return jsonify({"error": str(exc), "code": "service_trade_config"}), 503
     except Exception as exc:

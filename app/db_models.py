@@ -1245,6 +1245,11 @@ class MonthlyLocationMonth(db.Model):
         ),
         db.Index("ix_mlm_month_date", "month_date"),
         db.Index("ix_mlm_run_id", "run_id"),
+        db.Index(
+            "ix_mlm_route_month_st_annual_skip",
+            "test_monthly_route_id",
+            "month_date",
+        ),
     )
 
     id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
@@ -1279,6 +1284,13 @@ class MonthlyLocationMonth(db.Model):
     key_number = db.Column(db.String(255), nullable=True)
     annual_test_override = db.Column(db.Boolean, nullable=False, default=False)
     annual_test_override_reason = db.Column(db.Text, nullable=True)
+    st_annual_skip_recommended = db.Column(db.Boolean, nullable=True)
+    st_annual_test_recommended = db.Column(db.Boolean, nullable=True)
+    st_annual_spans_months = db.Column(db.Boolean, nullable=True)
+    st_has_scheduled_annual_in_month = db.Column(db.Boolean, nullable=True)
+    st_annual_prep_warning = db.Column(db.String(64), nullable=True)
+    st_spanning_job_id = db.Column(db.BigInteger, nullable=True)
+    st_annual_synced_at = db.Column(db.DateTime(timezone=True), nullable=True)
     testing_procedures = db.Column(db.Text, nullable=True)
     inspection_tech_notes = db.Column(db.Text, nullable=True)
     run_comments = db.Column(db.Text, nullable=True)

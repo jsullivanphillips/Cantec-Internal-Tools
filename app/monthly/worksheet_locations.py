@@ -1295,10 +1295,10 @@ def serialize_worksheet_location(
         "status_normalized": (loc.status_normalized or "active").strip().lower(),
         "scheduled_annual_auto_skip": _scheduled_annual_auto_skip(
             annual_test_override,
-            (
-                annual_schedule_by_location_id.get(int(loc.id))
-                if annual_schedule_by_location_id is not None
-                else None
+            _annual_schedule_row_for_stop(
+                loc,
+                mlm,
+                annual_schedule_by_location_id,
             ),
         ),
     }
@@ -1551,6 +1551,20 @@ def serialize_worksheet_stop_office_prep_patch(
     return _enrich_location_display_fields(stop, loc)
 
 
+def _annual_schedule_row_for_stop(
+    loc: MonthlyLocation,
+    mlm: MonthlyLocationMonth | None,
+    annual_schedule_by_location_id: dict[int, dict[str, object]] | None,
+) -> dict[str, object] | None:
+    if annual_schedule_by_location_id is not None:
+        return annual_schedule_by_location_id.get(int(loc.id))
+    if mlm is None:
+        return None
+    from app.monthly.service_trade_annual_schedule import annual_schedule_row_from_mlm
+
+    return annual_schedule_row_from_mlm(mlm, loc)
+
+
 def _scheduled_annual_auto_skip(
     annual_test_override: bool,
     schedule_row: dict[str, object] | None,
@@ -1632,15 +1646,6 @@ def _route_month_has_run_comments(route_id: int, month_first: date) -> bool:
         .first()
         is not None
     )
-
-
-def _is_annual_for_month(month_first: date, annual_month: object) -> bool:
-    annual = (str(annual_month).strip().lower() if annual_month is not None else "")
-    if not annual or annual == "to":
-        return False
-    full = month_first.strftime("%B").lower()
-    short = month_first.strftime("%b").lower()
-    return annual in {full, short}
 
 
 def _sheet_skip_reason_is_annual(skip_reason: object) -> bool:

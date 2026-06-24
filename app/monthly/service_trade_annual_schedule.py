@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 
 import requests
 
-from app.db_models import MonthlyLocation, MonthlyRoute
+from app.db_models import MonthlyLocation, MonthlyLocationMonth, MonthlyRoute, db
 from app.monthly.route_test_day import effective_route_test_day
 from app.monthly.service_trade_site_match import (
     SERVICE_TRADE_API_BASE,
@@ -516,34 +516,135 @@ def build_route_annual_schedule_snapshot(
     }
 
 
-_ANNUAL_SNAPSHOT_BY_ROUTE_MONTH: dict[tuple[int, str], tuple[float, dict[int, dict[str, object]]]] = {}
-_ANNUAL_SNAPSHOT_TTL_SECONDS = 3600
+def _snapshot_row_to_mlm_cache(row: dict[str, object], synced_at: datetime) -> dict[str, object]:
+    prep_warning = row.get("prep_warning")
+    spanning_job_id = row.get("spanning_job_id")
+    return {
+        "st_annual_skip_recommended": bool(row.get("annual_skip_recommended")),
+        "st_annual_test_recommended": bool(row.get("annual_test_recommended")),
+        "st_annual_spans_months": bool(row.get("annual_spans_months")),
+        "st_has_scheduled_annual_in_month": bool(row.get("has_scheduled_annual_in_month")),
+        "st_annual_prep_warning": (
+            str(prep_warning).strip() if prep_warning not in (None, "") else None
+        ),
+        "st_spanning_job_id": int(spanning_job_id) if spanning_job_id is not None else None,
+        "st_annual_synced_at": synced_at,
+    }
+
+
+def persist_route_annual_schedule_snapshot(
+    route_id: int,
+    month_first: date,
+    snapshot: dict[str, object],
+) -> None:
+    """Write ServiceTrade annual schedule flags onto ``monthly_location_month`` rows."""
+    from app.monthly.runs import get_or_create_monthly_route_run
+    from app.monthly.worksheet_locations import ensure_worksheet_stops_for_route_month
+
+    run = get_or_create_monthly_route_run(
+        route_id,
+        month_first,
+        source="office_manual",
+    )
+    ensure_worksheet_stops_for_route_month(route_id, month_first, run)
+
+    raw = snapshot.get("locations") or {}
+    if not isinstance(raw, dict) or not raw:
+        return
+
+    location_ids = [int(loc_key) for loc_key in raw.keys()]
+    rows = {
+        int(r.monthly_location_id): r
+        for r in MonthlyLocationMonth.query.filter(
+            MonthlyLocationMonth.month_date == month_first,
+            MonthlyLocationMonth.monthly_location_id.in_(location_ids),
+        ).all()
+    }
+
+    checked_at_raw = snapshot.get("checked_at")
+    if isinstance(checked_at_raw, str) and checked_at_raw.strip():
+        try:
+            synced_at = datetime.fromisoformat(checked_at_raw.strip())
+        except ValueError:
+            synced_at = datetime.now(PACIFIC_TZ)
+    else:
+        synced_at = datetime.now(PACIFIC_TZ)
+
+    for loc_key, row in raw.items():
+        if not isinstance(row, dict):
+            continue
+        location_id = int(loc_key)
+        mlm = rows.get(location_id)
+        if mlm is None:
+            continue
+        cache_fields = _snapshot_row_to_mlm_cache(row, synced_at)
+        for attr, value in cache_fields.items():
+            setattr(mlm, attr, value)
+        if mlm.test_monthly_route_id is None:
+            mlm.test_monthly_route_id = int(route_id)
+        if mlm.run_id is None:
+            mlm.run_id = int(run.id)
+    db.session.commit()
+
+
+def sync_route_annual_schedule(route_id: int, month_first: date) -> dict[str, object]:
+    """Live ServiceTrade sync, persist to DB, and return the snapshot payload."""
+    snapshot = build_route_annual_schedule_snapshot(route_id, month_first)
+    persist_route_annual_schedule_snapshot(route_id, month_first, snapshot)
+    return snapshot
+
+
+def annual_schedule_row_from_mlm(
+    mlm: MonthlyLocationMonth,
+    loc: MonthlyLocation,
+) -> dict[str, object] | None:
+    """Rebuild API schedule row shape from cached MLM columns."""
+    if mlm.st_annual_synced_at is None:
+        return None
+    st_site_id = loc.service_trade_site_location_id
+    has_service_trade_link = st_site_id is not None
+    st_url = (
+        service_trade_site_location_url(int(st_site_id))
+        if st_site_id is not None
+        else None
+    )
+    return {
+        "location_id": int(mlm.monthly_location_id),
+        "has_service_trade_link": has_service_trade_link,
+        "service_trade_site_location_url": st_url,
+        "has_scheduled_annual_in_month": bool(mlm.st_has_scheduled_annual_in_month),
+        "annual_spans_months": bool(mlm.st_annual_spans_months),
+        "annual_skip_recommended": bool(mlm.st_annual_skip_recommended),
+        "annual_test_recommended": bool(mlm.st_annual_test_recommended),
+        "spanning_job_id": mlm.st_spanning_job_id,
+        "prep_warning": mlm.st_annual_prep_warning,
+    }
+
+
+def annual_schedule_location_rows_from_db(
+    route_id: int,
+    month_first: date,
+) -> dict[int, dict[str, object]] | None:
+    """Read cached ServiceTrade annual schedule rows for a route/month."""
+    pairs = _worksheet_location_pairs_for_route_month(route_id, month_first)
+    if not pairs:
+        return None
+    by_id: dict[int, dict[str, object]] = {}
+    for mlm, loc in pairs:
+        if mlm is None:
+            continue
+        row = annual_schedule_row_from_mlm(mlm, loc)
+        if row is not None:
+            by_id[int(loc.id)] = row
+    return by_id
 
 
 def annual_schedule_location_rows_by_id(
     route_id: int,
     month_first: date,
 ) -> dict[int, dict[str, object]] | None:
-    """Per-location ServiceTrade annual schedule rows; ``None`` when ST is unavailable."""
-    import time
-
-    key = (int(route_id), month_first.isoformat())
-    now = time.time()
-    cached = _ANNUAL_SNAPSHOT_BY_ROUTE_MONTH.get(key)
-    if cached is not None and cached[0] > now:
-        return cached[1]
-    try:
-        snapshot = build_route_annual_schedule_snapshot(route_id, month_first)
-    except Exception:
-        return None
-    raw = snapshot.get("locations") or {}
-    by_id: dict[int, dict[str, object]] = {}
-    if isinstance(raw, dict):
-        for loc_key, row in raw.items():
-            if isinstance(row, dict):
-                by_id[int(loc_key)] = row
-    _ANNUAL_SNAPSHOT_BY_ROUTE_MONTH[key] = (now + _ANNUAL_SNAPSHOT_TTL_SECONDS, by_id)
-    return by_id
+    """Per-location cached ServiceTrade annual schedule rows from the database."""
+    return annual_schedule_location_rows_from_db(route_id, month_first)
 
 
 def location_annual_skip_recommended(

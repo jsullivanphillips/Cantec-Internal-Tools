@@ -36,17 +36,26 @@ from app.monthly.service_trade_route_run_timing import SYNC_STATUS_OK
 PACIFIC_TZ = ZoneInfo("America/Vancouver")
 
 
-def _mock_annual_schedule_for_locations(monkeypatch, *, route_id: int, location_ids: list[int]):
-    from app.monthly import service_trade_annual_schedule as stas
-
-    stas._ANNUAL_SNAPSHOT_BY_ROUTE_MONTH.clear()
-
-    def _rows(rid: int, _month_first: date) -> dict[int, dict[str, object]]:
-        if int(rid) != int(route_id):
-            return {}
-        return {int(lid): {"annual_skip_recommended": True} for lid in location_ids}
-
-    monkeypatch.setattr(stas, "annual_schedule_location_rows_by_id", _rows)
+def _seed_annual_schedule_cache(
+    *,
+    location_ids: list[int],
+    route_id: int,
+    month_first: date,
+    skip_recommended: bool = True,
+) -> None:
+    synced_at = datetime.now(PACIFIC_TZ)
+    for location_id in location_ids:
+        mlm = MonthlyLocationMonth.query.filter_by(
+            monthly_location_id=int(location_id),
+            month_date=month_first,
+        ).one_or_none()
+        assert mlm is not None, f"missing MLM for location {location_id}"
+        mlm.st_annual_skip_recommended = skip_recommended
+        mlm.st_has_scheduled_annual_in_month = skip_recommended
+        mlm.st_annual_synced_at = synced_at
+        if mlm.test_monthly_route_id is None:
+            mlm.test_monthly_route_id = int(route_id)
+    db.session.commit()
 
 
 @pytest.fixture
@@ -558,10 +567,9 @@ def test_run_details_review_includes_tested_stop_without_property_edits(run_deta
 
 
 def test_run_details_notable_stops_includes_scheduled_annual_without_technician_action(
-    run_details_client, monkeypatch,
+    run_details_client,
 ):
     """ServiceTrade annual-skip sites appear in run review with no outcome recorded."""
-    _mock_annual_schedule_for_locations(monkeypatch, route_id=1, location_ids=[103])
     client, app = run_details_client
     with app.app_context():
         _seed_basic_route_data()
@@ -582,6 +590,7 @@ def test_run_details_notable_stops_includes_scheduled_annual_without_technician_
             )
         )
         db.session.commit()
+        _seed_annual_schedule_cache(location_ids=[103], route_id=1, month_first=date(2026, 5, 1))
 
     res = client.get(BASE_URL)
     assert res.status_code == 200
@@ -624,9 +633,8 @@ def test_run_details_counts_scheduled_annual_site_not_when_tested(run_details_cl
     assert counts["skipped_count"] == 0
 
 
-def test_run_details_skipped_count_includes_annual_and_legacy_skips(run_details_client, monkeypatch):
+def test_run_details_skipped_count_includes_annual_and_legacy_skips(run_details_client):
     """Skipped KPI matches run-review filter (portal, legacy, and annual-skip sites)."""
-    _mock_annual_schedule_for_locations(monkeypatch, route_id=1, location_ids=[103])
     client, app = run_details_client
     with app.app_context():
         _seed_basic_route_data()
@@ -667,6 +675,7 @@ def test_run_details_skipped_count_includes_annual_and_legacy_skips(run_details_
             )
         )
         db.session.commit()
+        _seed_annual_schedule_cache(location_ids=[103], route_id=1, month_first=date(2026, 5, 1))
 
     res = client.get("/api/monthly_routes/routes/1/run_details?month=2026-05-01")
     assert res.status_code == 200

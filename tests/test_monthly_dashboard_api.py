@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 import pytest
 
 from app import create_app
-from app.db_models import MonthlyRoute, MonthlyRouteRunTimingMonth, db
-from tests.monthly_location_helpers import WORKSHEET_TABLES, make_location, seed_route_with_one_stop
+from app.db_models import MonthlyLocationMonth, MonthlyRoute, MonthlyRouteRunTimingMonth, db
+from tests.monthly_location_helpers import (
+    WORKSHEET_TABLES,
+    make_location,
+    make_location_month,
+    seed_route_with_one_stop,
+)
 from tests.run_workflow_helpers import seed_prepared_started_run
 
 DASHBOARD_MONTH = date(2026, 6, 1)
@@ -110,13 +116,6 @@ def test_dashboard_completed_run(dashboard_client, monkeypatch):
 def test_dashboard_includes_annual_count_for_current_month(dashboard_client, monkeypatch):
     client, app = dashboard_client
     _patch_dashboard_month(monkeypatch)
-    from app.monthly import service_trade_annual_schedule as stas
-
-    monkeypatch.setattr(
-        stas,
-        "annual_schedule_location_rows_by_id",
-        lambda route_id, month_first: {101: {"annual_skip_recommended": True}},
-    )
     with app.app_context():
         route = MonthlyRoute(id=1, route_number=2, weekday_iso=0, week_occurrence=1)
         june_annual = make_location(
@@ -138,6 +137,16 @@ def test_dashboard_includes_annual_count_for_current_month(dashboard_client, mon
             monthly_route_id=1,
         )
         db.session.add_all([route, june_annual, may_annual, no_annual])
+        db.session.add(
+            make_location_month(
+                id=9101,
+                location_id=101,
+                month_date=DASHBOARD_MONTH,
+                route_id=1,
+                st_annual_skip_recommended=True,
+                st_annual_synced_at=datetime(2026, 6, 1, 8, 0, tzinfo=ZoneInfo("America/Vancouver")),
+            )
+        )
         db.session.commit()
 
     res = client.get("/api/monthly_routes/dashboard")
