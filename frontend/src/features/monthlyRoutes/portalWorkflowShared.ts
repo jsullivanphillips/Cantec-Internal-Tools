@@ -499,7 +499,7 @@ export type PortalStopVisualTone =
 
 export function portalStopVisualTone(
   stop: TechnicianWorksheetLocation,
-  runMonthIso: string,
+  _runMonthIso: string,
 ): PortalStopVisualTone {
   if (portalStopHasTestOutcome(stop)) {
     const outcome = norm(stop.test_outcome).toLowerCase()

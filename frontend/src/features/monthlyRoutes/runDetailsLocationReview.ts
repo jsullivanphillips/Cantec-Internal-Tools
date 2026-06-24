@@ -606,7 +606,7 @@ function normComment(value: string | null | undefined): string {
   return (value ?? '').trim()
 }
 
-export function locationNeedsPrep(location: MonthlyRunDetailLocation, monthDate: string): boolean {
+export function locationNeedsPrep(location: MonthlyRunDetailLocation, _monthDate: string): boolean {
   if (normComment(location.run_comments)) return true
   if (normComment(location.testing_procedures) && location.testing_procedures!.length > 120) {
     return true

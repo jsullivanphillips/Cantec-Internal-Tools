@@ -662,10 +662,6 @@ export default function TechnicianWorksheetPage() {
   }, [payload])
 
   useEffect(() => {
-    setAnnualTestAnywayRows(new Set())
-  }, [idNum, monthQuery, payload?.month_date])
-
-  useEffect(() => {
     setWorksheetGridSelection(null)
     setWorksheetGridEditing(false)
   }, [idNum, monthQuery])
@@ -1725,11 +1721,6 @@ export default function TechnicianWorksheetPage() {
                                       size="sm"
                                       variant="outline-secondary"
                                       onClick={() => {
-                                        setAnnualTestAnywayRows((prev) => {
-                                          const next = new Set(prev)
-                                          next.delete(row.location_id)
-                                          return next
-                                        })
                                         queueRowChanges(row, {
                                           result_status: null,
                                           skip_reason: null,

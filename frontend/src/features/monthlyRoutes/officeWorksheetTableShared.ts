@@ -99,7 +99,7 @@ export function skippedStopDisplayTone(
   return 'skipped'
 }
 
-export function worksheetStopIsAnnualSkip(stop: TechnicianWorksheetLocation, monthDate: string): boolean {
+export function worksheetStopIsAnnualSkip(stop: TechnicianWorksheetLocation, _monthDate: string): boolean {
   const rs = (stop.result_status || '').trim().toLowerCase()
   const outcome = (stop.test_outcome || '').trim().toLowerCase()
   const skipped = rs === 'skipped' || outcome === 'skipped'

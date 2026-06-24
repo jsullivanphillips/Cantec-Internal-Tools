@@ -64,7 +64,7 @@ export function runDetailsStopHasTestedOutcome(stop: TechnicianWorksheetLocation
 
 export function runDetailsShowAnnualMonthPill(
   stop: TechnicianWorksheetLocation,
-  runMonthIso: string,
+  _runMonthIso: string,
   status: RunDetailsStopDisplayStatus,
 ): boolean {
   if (runDetailsStopHasTestedOutcome(stop)) return false

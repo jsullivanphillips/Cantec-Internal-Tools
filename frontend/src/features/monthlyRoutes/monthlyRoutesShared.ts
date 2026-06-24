@@ -577,6 +577,8 @@ export type MonthlyRunDetailLocation = {
   service_trade_site_location_id?: number | null
   has_service_trade_link?: boolean
   scheduled_annual_auto_skip?: boolean
+  annual_test_override?: boolean
+  annual_test_override_reason?: string | null
 }
 
 export type PrepAnnualScheduleWarning =
@@ -1604,7 +1606,7 @@ export function addCalendarMonths(monthFirstIso: string, delta: number): string 
 /** Outcome label for a recorded month cell (Tested, Skipped, or Annual). */
 export function recordedMonthOutcomeLabel(
   cell: MonthCell,
-  monthIso: string,
+  _monthIso: string,
 ): string | null {
   const rs = (cell.result_status || '').trim().toLowerCase()
   if (rs === 'tested') return 'Tested'

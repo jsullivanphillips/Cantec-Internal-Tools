@@ -36,7 +36,6 @@ export function linkedMonthlyLocationToLibraryLocation(
     status_normalized: 'active',
     keys: null,
     test_day: null,
-    annual_month: null,
     months: {},
   }
 }
