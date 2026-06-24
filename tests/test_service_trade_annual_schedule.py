@@ -9,6 +9,7 @@ import pytest
 
 from app.monthly.route_test_day import effective_route_test_day
 from app.monthly.service_trade_annual_schedule import (
+    _pick_saved_annual_month,
     _skip_month_for_spanning_job,
     appointment_qualifies,
     derive_prep_warning,
@@ -118,3 +119,25 @@ def test_skip_month_for_spanning_job_closer_to_july():
     )
     assert not is_tie
     assert skip_month == july_first
+
+
+def test_pick_saved_annual_month_prefers_upcoming():
+    current = date(2026, 6, 1)
+    assert (
+        _pick_saved_annual_month(
+            [date(2026, 5, 1), date(2026, 9, 1)],
+            current_month=current,
+        )
+        == "September"
+    )
+
+
+def test_pick_saved_annual_month_falls_back_to_recent_past():
+    current = date(2026, 6, 1)
+    assert (
+        _pick_saved_annual_month(
+            [date(2026, 4, 1), date(2026, 5, 1)],
+            current_month=current,
+        )
+        == "May"
+    )

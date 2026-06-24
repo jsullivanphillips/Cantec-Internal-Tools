@@ -121,6 +121,8 @@ type Props = {
   heroActionsBusy: boolean
   serviceTradeLinkedUrl: string | null
   hasServiceTradeLink: boolean
+  savedAnnualMonthLabel?: string | null
+  savedAnnualMonthSyncing?: boolean
   onOpenStatusModal: () => void
   onOpenIdentityEdit: () => void
   onOpenRouteModal: () => void
@@ -136,6 +138,8 @@ export default function MonthlyLocationDetailHero({
   heroActionsBusy,
   serviceTradeLinkedUrl,
   hasServiceTradeLink,
+  savedAnnualMonthLabel = null,
+  savedAnnualMonthSyncing = false,
   onOpenStatusModal,
   onOpenIdentityEdit,
   onOpenRouteModal,
@@ -158,6 +162,9 @@ export default function MonthlyLocationDetailHero({
   const displayPrice = libraryDisplayPricePerMonth(location)
   const propertyManagementLabel = location.property_management_company?.trim() || '—'
   const buildingName = location.building_name?.trim() || ''
+  const savedAnnualMonthDisplay = savedAnnualMonthSyncing
+    ? '…'
+    : savedAnnualMonthLabel?.trim() || '—'
   const nextTestDay = useMemo(() => nextSiteRouteTestDayLabel(location), [location])
   const lastTest = useMemo(
     () =>
@@ -366,6 +373,10 @@ export default function MonthlyLocationDetailHero({
             <HeroContentLine>
               <span className="monthly-location-detail-hero-muted-label">Key</span>{' '}
               <HeroKeyValue location={location} />
+            </HeroContentLine>
+            <HeroContentLine>
+              <span className="monthly-location-detail-hero-muted-label">Annual</span>{' '}
+              {savedAnnualMonthDisplay}
             </HeroContentLine>
           </HeroColumn>
           <HeroColumn label="Route">

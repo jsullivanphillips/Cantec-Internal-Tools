@@ -263,6 +263,8 @@ export default function MonthlyLocationDetailPage() {
   const [annualScheduleByMonth, setAnnualScheduleByMonth] = useState<
     Record<string, AnnualScheduleCheckLocation | null>
   >({})
+  const [savedAnnualMonthLabel, setSavedAnnualMonthLabel] = useState<string | null>(null)
+  const [savedAnnualMonthSyncing, setSavedAnnualMonthSyncing] = useState(false)
 
   const idNum = locationId ? parseInt(locationId, 10) : NaN
 
@@ -316,6 +318,36 @@ export default function MonthlyLocationDetailPage() {
     if (!location?.months) return null
     return nextUntestedMonthIso(location.months, new Date())
   }, [location])
+
+  useEffect(() => {
+    if (!locationId || Number.isNaN(idNum) || !location) {
+      setSavedAnnualMonthLabel(null)
+      setSavedAnnualMonthSyncing(false)
+      return
+    }
+
+    const ac = new AbortController()
+    setSavedAnnualMonthSyncing(true)
+    void (async () => {
+      try {
+        const data = await apiJson<{
+          saved_annual_month?: string | null
+        }>(`/api/monthly_routes/library/${idNum}/saved_annual_month?sync=1`, {
+          signal: ac.signal,
+        })
+        if (ac.signal.aborted) return
+        const label = data.saved_annual_month?.trim() || null
+        setSavedAnnualMonthLabel(label)
+      } catch (e) {
+        if (isAbortError(e)) return
+        if (!ac.signal.aborted) setSavedAnnualMonthLabel(null)
+      } finally {
+        if (!ac.signal.aborted) setSavedAnnualMonthSyncing(false)
+      }
+    })()
+
+    return () => ac.abort()
+  }, [location, locationId, idNum])
 
   useEffect(() => {
     const routeId = location?.monthly_route?.id ?? location?.monthly_route_id ?? null
@@ -598,6 +630,8 @@ export default function MonthlyLocationDetailPage() {
           heroActionsBusy={heroActionsBusy}
           serviceTradeLinkedUrl={serviceTradeLinkedUrl}
           hasServiceTradeLink={hasServiceTradeLink}
+          savedAnnualMonthLabel={savedAnnualMonthLabel}
+          savedAnnualMonthSyncing={savedAnnualMonthSyncing}
           onOpenStatusModal={openStatusModal}
           onOpenIdentityEdit={() => setShowIdentityEditModal(true)}
           onOpenRouteModal={openRouteModal}

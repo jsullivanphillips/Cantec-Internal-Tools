@@ -5,6 +5,8 @@ import {
   nextSiteRouteTestDayLabel,
   nextUntestedMonthIso,
   resolveMonthOutcomeLabel,
+  resolveSavedAnnualMonthLabel,
+  savedAnnualMonthLabelForScheduleRow,
   siteUpcomingAnnualDue,
   splitHeroAddressLines,
   testingHistoryChipLabel,
@@ -194,6 +196,61 @@ describe('siteUpcomingAnnualDue', () => {
     expect(siteUpcomingAnnualDue('2026-07-01', { annual_skip_recommended: true })).toBe(true)
     expect(siteUpcomingAnnualDue('2026-06-01', { annual_skip_recommended: true })).toBe(true)
     expect(siteUpcomingAnnualDue('2026-07-01', { annual_skip_recommended: false })).toBe(false)
+  })
+})
+
+describe('savedAnnualMonthLabelForScheduleRow', () => {
+  const baseRow = {
+    has_service_trade_link: true,
+    has_scheduled_annual_in_month: false,
+    annual_skip_recommended: false,
+  }
+
+  it('returns month name when annual skip is recommended', () => {
+    expect(
+      savedAnnualMonthLabelForScheduleRow(
+        { ...baseRow, annual_skip_recommended: true },
+        '2026-06-01',
+      ),
+    ).toBe('June')
+  })
+
+  it('returns null when no annual is scheduled', () => {
+    expect(savedAnnualMonthLabelForScheduleRow(baseRow, '2026-06-01')).toBeNull()
+  })
+})
+
+describe('resolveSavedAnnualMonthLabel', () => {
+  it('prefers the first month in lookup order with a scheduled annual', () => {
+    expect(
+      resolveSavedAnnualMonthLabel(
+        {
+          '2026-06-01': {
+            location_id: 1,
+            has_service_trade_link: true,
+            service_trade_site_location_url: null,
+            has_scheduled_annual_in_month: false,
+            annual_spans_months: false,
+            annual_skip_recommended: false,
+            annual_test_recommended: false,
+            spanning_job_id: null,
+            prep_warning: null,
+          },
+          '2026-07-01': {
+            location_id: 1,
+            has_service_trade_link: true,
+            service_trade_site_location_url: null,
+            has_scheduled_annual_in_month: true,
+            annual_spans_months: false,
+            annual_skip_recommended: true,
+            annual_test_recommended: false,
+            spanning_job_id: null,
+            prep_warning: null,
+          },
+        },
+        ['2026-06-01', '2026-07-01'],
+      ),
+    ).toBe('July')
   })
 })
 

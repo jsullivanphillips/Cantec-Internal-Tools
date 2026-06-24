@@ -2161,6 +2161,48 @@ def get_monthly_route_location(location_id: int):
     )
 
 
+@monthly_routes_bp.get("/api/monthly_routes/library/<int:location_id>/saved_annual_month")
+def get_library_location_saved_annual_month(location_id: int):
+    """ServiceTrade annual month for the location detail hero (wide schedule window)."""
+    if not session.get("authenticated"):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    loc = _get_monthly_location(location_id)
+    if loc is None:
+        return jsonify({"error": "Location not found"}), 404
+
+    force_sync = (request.args.get("sync") or "").strip().lower() in {"1", "true", "yes"}
+    if not force_sync:
+        return jsonify(
+            {
+                "location_id": int(loc.id),
+                "has_service_trade_link": loc.service_trade_site_location_id is not None,
+                "saved_annual_month": None,
+                "synced_at": None,
+                "error": "sync=1 required",
+                "code": "sync_required",
+            }
+        ), 400
+
+    from app.monthly.service_trade_annual_schedule import sync_saved_annual_month_for_location
+
+    try:
+        payload = sync_saved_annual_month_for_location(loc)
+    except RuntimeError as exc:
+        return jsonify({"error": str(exc), "code": "service_trade_config"}), 503
+    except Exception as exc:
+        return (
+            jsonify(
+                {
+                    "error": f"ServiceTrade annual month lookup failed: {exc}",
+                    "code": "service_trade_unavailable",
+                }
+            ),
+            503,
+        )
+    return jsonify(payload)
+
+
 @monthly_routes_bp.get("/api/monthly_routes/routes")
 def list_monthly_routes():
     """Route list for the office routes landing page."""

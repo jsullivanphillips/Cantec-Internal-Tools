@@ -1643,6 +1643,53 @@ export function siteUpcomingAnnualDue(
   return Boolean(scheduleRow?.annual_skip_recommended)
 }
 
+/** Full English month name from ``YYYY-MM-01`` (e.g. ``June``). */
+export function calendarMonthLongNameFromIso(monthIso: string): string | null {
+  const [y, m] = monthIso.split('-').map(Number)
+  if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12) return null
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'long',
+    timeZone: 'UTC',
+  }).format(new Date(Date.UTC(y, m - 1, 1)))
+}
+
+/** ServiceTrade-synced annual month for one route/month row, or null when none. */
+export function savedAnnualMonthLabelForScheduleRow(
+  scheduleRow: Pick<
+    AnnualScheduleCheckLocation,
+    'has_service_trade_link' | 'has_scheduled_annual_in_month' | 'annual_skip_recommended'
+  > | null
+  | undefined,
+  monthIso: string,
+): string | null {
+  if (!scheduleRow) return null
+  if (
+    !scheduleRow.has_service_trade_link &&
+    !scheduleRow.has_scheduled_annual_in_month
+  ) {
+    return null
+  }
+  if (
+    scheduleRow.annual_skip_recommended ||
+    scheduleRow.has_scheduled_annual_in_month
+  ) {
+    return calendarMonthLongNameFromIso(monthIso)
+  }
+  return null
+}
+
+/** First saved annual month across synced months (current month, then upcoming test month). */
+export function resolveSavedAnnualMonthLabel(
+  rowsByMonth: Record<string, AnnualScheduleCheckLocation | null | undefined>,
+  monthIsos: string[],
+): string | null {
+  for (const monthIso of monthIsos) {
+    const label = savedAnnualMonthLabelForScheduleRow(rowsByMonth[monthIso], monthIso)
+    if (label) return label
+  }
+  return null
+}
+
 export function monthHasRecordedTestOutcome(
   cell: MonthCell | undefined,
   monthIso: string,

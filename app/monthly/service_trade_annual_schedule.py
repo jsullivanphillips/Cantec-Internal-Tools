@@ -70,6 +70,161 @@ def month_window_pacific(month_first: date) -> tuple[int, int]:
     return int(start.timestamp()), int(end.timestamp())
 
 
+def _add_month_first(month_first: date, delta_months: int) -> date:
+    year = month_first.year
+    month = month_first.month + delta_months
+    while month > 12:
+        year += 1
+        month -= 12
+    while month < 1:
+        year -= 1
+        month += 12
+    return date(year, month, 1)
+
+
+def _pacific_ts_range_for_month_firsts(
+    start_month: date,
+    end_month_inclusive: date,
+) -> tuple[int, int]:
+    start_ts, _ = month_window_pacific(start_month)
+    end_exclusive = _add_month_first(end_month_inclusive, 1)
+    end_ts = int(
+        datetime(
+            end_exclusive.year,
+            end_exclusive.month,
+            end_exclusive.day,
+            tzinfo=PACIFIC_TZ,
+        ).timestamp()
+    )
+    return start_ts, end_ts
+
+
+def _month_long_name_pacific(month_first: date) -> str:
+    return month_first.strftime("%B")
+
+
+def _skip_month_from_spanned(
+    spanned: list[date],
+    *,
+    appointment_dates: tuple[date, ...],
+    weekday_iso: int,
+    week_occurrence: int,
+) -> date:
+    if len(spanned) == 1:
+        return spanned[0]
+    skip_month, _ = _skip_month_for_spanning_job(
+        spanned,
+        weekday_iso=weekday_iso,
+        week_occurrence=week_occurrence,
+        appointment_dates=appointment_dates,
+    )
+    return skip_month
+
+
+def _pick_saved_annual_month(
+    skip_months: list[date],
+    *,
+    current_month: date,
+) -> str | None:
+    if not skip_months:
+        return None
+    in_window = sorted(set(skip_months))
+    upcoming = [month for month in in_window if month >= current_month]
+    pick = min(upcoming) if upcoming else max(in_window)
+    return _month_long_name_pacific(pick)
+
+
+def sync_saved_annual_month_for_location(
+    loc: MonthlyLocation,
+    *,
+    username: str | None = None,
+    password: str | None = None,
+    session: requests.Session | None = None,
+    look_back_months: int = 11,
+    look_ahead_months: int = 12,
+) -> dict[str, object]:
+    """Live ServiceTrade lookup for the library location hero annual month."""
+    st_site_id = loc.service_trade_site_location_id
+    if st_site_id is None:
+        return {
+            "location_id": int(loc.id),
+            "has_service_trade_link": False,
+            "saved_annual_month": None,
+            "synced_at": None,
+        }
+
+    route = loc.monthly_route
+    if route is None and loc.monthly_route_id is not None:
+        route = MonthlyRoute.query.get(int(loc.monthly_route_id))
+    weekday_iso = int(route.weekday_iso) if route and route.weekday_iso is not None else 0
+    week_occurrence = int(route.week_occurrence) if route and route.week_occurrence is not None else 1
+
+    today = datetime.now(PACIFIC_TZ).date()
+    current_month = date(today.year, today.month, 1)
+    window_start = _add_month_first(current_month, -look_back_months)
+    window_end = _add_month_first(current_month, look_ahead_months - 1)
+    start_ts, end_ts = _pacific_ts_range_for_month_firsts(window_start, window_end)
+
+    user = username or os.getenv("PROCESSING_USERNAME")
+    pwd = password or os.getenv("PROCESSING_PASSWORD")
+    if not user or not pwd:
+        raise RuntimeError("Missing ServiceTrade creds. Set PROCESSING_USERNAME/PROCESSING_PASSWORD.")
+
+    http = session or requests.Session()
+    own_session = session is None
+    try:
+        if own_session:
+            _authenticate_service_trade(http, username=user, password=pwd)
+        jobs = _fetch_jobs_for_location_chunk(
+            http,
+            [int(st_site_id)],
+            start_ts=start_ts,
+            end_ts=end_ts,
+        )
+        skip_month_candidates: list[date] = []
+        seen_job_ids: set[int] = set()
+        for job in jobs:
+            if not job_qualifies(job):
+                continue
+            job_id = _job_id_int(job)
+            if job_id is None or job_id in seen_job_ids:
+                continue
+            seen_job_ids.add(job_id)
+            all_appointments = _fetch_appointments_for_job(http, job_id)
+            appt_dates: list[date] = []
+            for appointment in all_appointments:
+                day = _appointment_pacific_date(appointment)
+                if day is not None:
+                    appt_dates.append(day)
+            if not appt_dates:
+                continue
+            spanned = _distinct_month_firsts(appt_dates)
+            if not spanned:
+                continue
+            skip_month = _skip_month_from_spanned(
+                spanned,
+                appointment_dates=tuple(appt_dates),
+                weekday_iso=weekday_iso,
+                week_occurrence=week_occurrence,
+            )
+            if window_start <= skip_month <= window_end:
+                skip_month_candidates.append(skip_month)
+
+        synced_at = datetime.now(PACIFIC_TZ).isoformat()
+        return {
+            "location_id": int(loc.id),
+            "has_service_trade_link": True,
+            "saved_annual_month": _pick_saved_annual_month(
+                skip_month_candidates,
+                current_month=current_month,
+            ),
+            "synced_at": synced_at,
+        }
+    finally:
+        if own_session:
+            http.close()
+
+
 def month_first_from_pacific_ts(ts: int) -> date:
     dt = datetime.fromtimestamp(int(ts), tz=PACIFIC_TZ)
     return date(dt.year, dt.month, 1)
@@ -190,8 +345,11 @@ def _fetch_jobs_for_location_chunk(
             f"{SERVICE_TRADE_API_BASE}/job",
             params={
                 "locationId": location_param,
-                "scheduleDateFrom": start_ts,
-                "scheduleDateTo": end_ts,
+                # ServiceTrade ignores completed inspections when using scheduleDateFrom/To
+                # without status; scheduledDate + scheduled/completed matches appointment data.
+                "scheduledDateFrom": start_ts,
+                "scheduledDateTo": end_ts,
+                "status": "scheduled,completed",
                 "type": ",".join(sorted(QUALIFYING_JOB_TYPES)),
                 "limit": limit,
                 "page": page,
