@@ -40,13 +40,42 @@ export function prepRowAnnualDueForStop(
   return scheduleRow.annual_skip_recommended
 }
 
+export function annualScheduleRowHasActivity(
+  scheduleRow: AnnualScheduleCheckLocation | null | undefined,
+): boolean {
+  if (!scheduleRow) return false
+  return (
+    scheduleRow.has_scheduled_annual_in_month ||
+    scheduleRow.annual_spans_months ||
+    scheduleRow.annual_skip_recommended
+  )
+}
+
+export function prepRowHasAnnualScheduleActivity(
+  scheduleStatus: AnnualScheduleCheckStatus,
+  scheduleRow: AnnualScheduleCheckLocation | null | undefined,
+): boolean {
+  if (scheduleStatus !== 'ready') return false
+  return annualScheduleRowHasActivity(scheduleRow)
+}
+
+export function prepRowShowsAnnualOverriddenPill(
+  scheduleStatus: AnnualScheduleCheckStatus,
+  scheduleRow: AnnualScheduleCheckLocation | null | undefined,
+  stop: Pick<TechnicianWorksheetLocation, 'annual_test_override'> | null | undefined,
+): boolean {
+  if (scheduleStatus !== 'ready') return false
+  if (!stop?.annual_test_override) return false
+  return annualScheduleRowHasActivity(scheduleRow)
+}
+
 export function prepRowShowsAnnualTestControl(
   scheduleStatus: AnnualScheduleCheckStatus,
   scheduleRow: AnnualScheduleCheckLocation | null | undefined,
   stop: Pick<TechnicianWorksheetLocation, 'annual_test_override'> | null | undefined,
 ): boolean {
   if (stop?.annual_test_override) return false
-  return prepRowAnnualDueForStop(scheduleStatus, scheduleRow, stop)
+  return prepRowHasAnnualScheduleActivity(scheduleStatus, scheduleRow)
 }
 
 /** Worksheet stop flag from server (same gate as prep orange row / portal annual auto-skip). */

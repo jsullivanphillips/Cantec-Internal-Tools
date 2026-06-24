@@ -209,3 +209,43 @@ def test_prep_annual_test_blocked_for_on_hold_site(stops_client, monkeypatch):
     )
     assert blocked.status_code == 409
     assert blocked.get_json().get("code") == "location_not_active"
+
+
+def test_prep_annual_test_idempotent_when_already_overridden(stops_client, monkeypatch):
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
+
+    client, app = stops_client
+    with app.app_context():
+        _seed_route_with_two_stops()
+        ts_id = int(MonthlyLocation.query.order_by(MonthlyLocation.id.asc()).first().id)
+        run = MonthlyRouteRun(
+            id=5035,
+            monthly_route_id=1,
+            month_date=date(2026, 5, 1),
+            status="open",
+            source="office_manual",
+        )
+        db.session.add(run)
+        db.session.commit()
+        from app.monthly.worksheet_locations import ensure_worksheet_stops_for_route_month
+
+        ensure_worksheet_stops_for_route_month(1, date(2026, 5, 1), run)
+        db.session.commit()
+
+    with client.session_transaction() as sess:
+        sess["authenticated"] = True
+
+    qs = "month=2026-05-01"
+    first = client.post(
+        f"/api/monthly_routes/routes/1/worksheet/locations/{ts_id}/prep_annual_test?{qs}",
+    )
+    assert first.status_code == 200
+    assert first.get_json()["stop"]["annual_test_override"] is True
+
+    second = client.post(
+        f"/api/monthly_routes/routes/1/worksheet/locations/{ts_id}/prep_annual_test?{qs}",
+    )
+    assert second.status_code == 200
+    assert second.get_json()["stop"]["annual_test_override"] is True

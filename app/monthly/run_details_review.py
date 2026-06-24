@@ -905,6 +905,8 @@ def _serialize_run_detail_location(
         ],
         "attention_flags": {},
         "status_normalized": stop.get("status_normalized"),
+        "annual_test_override": bool(stop.get("annual_test_override")),
+        "annual_test_override_reason": stop.get("annual_test_override_reason"),
     }
 
 

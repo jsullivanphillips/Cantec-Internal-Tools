@@ -279,5 +279,7 @@ export function detailPatchFromWorksheetStop(
     skip_note: stop.skip_note ?? null,
     confirmed_no_deficiencies: stop.confirmed_no_deficiencies,
     billing_status: stop.billing_status ?? null,
+    annual_test_override: Boolean(stop.annual_test_override),
+    annual_test_override_reason: stop.annual_test_override_reason ?? null,
   }
 }

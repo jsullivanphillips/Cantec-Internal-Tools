@@ -5,6 +5,7 @@ import {
   prepAnnualScheduleWarningLabel,
   prepRowAnnualDue,
   prepRowAnnualDueForStop,
+  prepRowShowsAnnualOverriddenPill,
   prepRowShowsAnnualTestControl,
   stopScheduledAnnualAutoSkipActive,
 } from './prepAnnualSchedule'
@@ -81,12 +82,50 @@ describe('prepRowShowsAnnualTestControl', () => {
     expect(prepRowShowsAnnualTestControl('ready', row, null)).toBe(true)
   })
 
+  it('shows Test when annual spans months and test is recommended for this month', () => {
+    const row = baseRow({
+      annual_skip_recommended: false,
+      annual_test_recommended: true,
+      annual_spans_months: true,
+      has_scheduled_annual_in_month: true,
+    })
+    expect(prepRowShowsAnnualTestControl('ready', row, null)).toBe(true)
+  })
+
   it('shows Skip instead of Test when override is active', () => {
     const row = baseRow({
       annual_skip_recommended: true,
       has_scheduled_annual_in_month: true,
     })
     expect(prepRowShowsAnnualTestControl('ready', row, { annual_test_override: true })).toBe(false)
+  })
+})
+
+describe('prepRowShowsAnnualOverriddenPill', () => {
+  it('shows when override is set and the site has annual schedule activity', () => {
+    const row = baseRow({
+      annual_skip_recommended: true,
+      has_scheduled_annual_in_month: true,
+    })
+    expect(prepRowShowsAnnualOverriddenPill('ready', row, { annual_test_override: true })).toBe(
+      true,
+    )
+  })
+
+  it('hides when override is set but there is no annual activity', () => {
+    expect(
+      prepRowShowsAnnualOverriddenPill('ready', baseRow({}), { annual_test_override: true }),
+    ).toBe(false)
+  })
+
+  it('hides until schedule check is ready', () => {
+    const row = baseRow({
+      annual_skip_recommended: true,
+      has_scheduled_annual_in_month: true,
+    })
+    expect(prepRowShowsAnnualOverriddenPill('loading', row, { annual_test_override: true })).toBe(
+      false,
+    )
   })
 })
 

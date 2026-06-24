@@ -329,7 +329,7 @@ export default function MonthlyLocationDetailPage() {
     void (async () => {
       try {
         const data = await apiJson<AnnualScheduleCheckResponse>(
-          `/api/monthly_routes/routes/${routeId}/runs/annual_schedule_check?month_date=${encodeURIComponent(monthIso)}`,
+          `/api/monthly_routes/routes/${routeId}/runs/annual_schedule_check?month_date=${encodeURIComponent(monthIso)}&sync=1`,
           { signal: ac.signal },
         )
         if (ac.signal.aborted) return

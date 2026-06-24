@@ -87,10 +87,7 @@ def office_prep_apply_annual_test_override(
             "location_not_active",
         )
     if mlm.annual_test_override:
-        raise PrepAnnualTestError(
-            "This site already has an annual test override.",
-            "already_overridden",
-        )
+        return mlm, loc, run
 
     apply_office_prep_annual_test_override(mlm, reason=reason)
     if mlm.run_id is None:
@@ -120,7 +117,7 @@ def office_prep_clear_annual_test_override(
             "location_route_mismatch",
         )
     if not mlm.annual_test_override:
-        raise PrepAnnualTestError("This site does not have an annual test override.", "not_overridden")
+        return mlm, loc
 
     clear_office_prep_annual_test_override(mlm)
     return mlm, loc

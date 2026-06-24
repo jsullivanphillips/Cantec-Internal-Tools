@@ -587,6 +587,54 @@ def persist_route_annual_schedule_snapshot(
     db.session.commit()
 
 
+def route_annual_schedule_has_db_cache(route_id: int, month_first: date) -> bool:
+    """True when every worksheet stop for the route/month has persisted ST annual flags."""
+    pairs = _worksheet_location_pairs_for_route_month(route_id, month_first)
+    if not pairs:
+        return False
+    for mlm, _loc in pairs:
+        if mlm is None or mlm.st_annual_synced_at is None:
+            return False
+    return True
+
+
+def build_route_annual_schedule_payload_from_db(
+    route_id: int,
+    month_first: date,
+) -> dict[str, object]:
+    """Build annual schedule check JSON from cached ``monthly_location_month`` columns."""
+    pairs = _worksheet_location_pairs_for_route_month(route_id, month_first)
+    locations: dict[str, dict[str, object]] = {}
+    warning_count = 0
+    latest_synced_at: datetime | None = None
+    for mlm, loc in pairs:
+        if mlm is None:
+            continue
+        row = annual_schedule_row_from_mlm(mlm, loc)
+        if row is None:
+            continue
+        locations[str(int(loc.id))] = row
+        if row.get("prep_warning"):
+            warning_count += 1
+        synced_at = mlm.st_annual_synced_at
+        if synced_at is not None and (
+            latest_synced_at is None or synced_at > latest_synced_at
+        ):
+            latest_synced_at = synced_at
+    checked_at = (
+        latest_synced_at.astimezone(PACIFIC_TZ).isoformat()
+        if latest_synced_at is not None
+        else datetime.now(PACIFIC_TZ).isoformat()
+    )
+    return {
+        "route_id": int(route_id),
+        "month_date": month_first.isoformat(),
+        "checked_at": checked_at,
+        "warning_count": warning_count,
+        "locations": locations,
+    }
+
+
 def sync_route_annual_schedule(route_id: int, month_first: date) -> dict[str, object]:
     """Live ServiceTrade sync, persist to DB, and return the snapshot payload."""
     snapshot = build_route_annual_schedule_snapshot(route_id, month_first)

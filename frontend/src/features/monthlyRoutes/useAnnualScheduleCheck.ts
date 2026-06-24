@@ -28,7 +28,7 @@ export function useAnnualScheduleCheck(
   const fetchCheck = useCallback(
     async (cacheBust = false) => {
       if (!enabled || !Number.isFinite(routeId) || !monthDate.trim()) return
-      setStatus('loading')
+      setStatus((prev) => (prev === 'ready' && cacheBust ? 'ready' : 'loading'))
       setError(null)
       try {
         const qs = new URLSearchParams({ month_date: monthDate })

@@ -139,7 +139,7 @@ def test_annual_schedule_check_endpoint_persists_snapshot(cache_client, monkeypa
     )
 
     res = client.get(
-        f"/api/monthly_routes/routes/1/runs/annual_schedule_check?month_date={month_first.isoformat()}"
+        f"/api/monthly_routes/routes/1/runs/annual_schedule_check?month_date={month_first.isoformat()}&sync=1"
     )
     assert res.status_code == 200
     body = res.get_json()
@@ -253,3 +253,73 @@ def test_sync_route_annual_schedule_calls_live_and_persist(cache_client, monkeyp
         payload = sync_route_annual_schedule(1, month_first)
         assert payload["route_id"] == 1
         assert calls == [(1, month_first)]
+
+
+def test_annual_schedule_check_reads_db_without_live_sync(cache_client, monkeypatch):
+    client, app = cache_client
+    month_first = date(2026, 6, 1)
+
+    def _fail_live_sync(*_args, **_kwargs):
+        raise AssertionError("live ServiceTrade sync should not run when DB cache exists")
+
+    monkeypatch.setattr(
+        "app.monthly.service_trade_annual_schedule.build_route_annual_schedule_snapshot",
+        _fail_live_sync,
+    )
+
+    with app.app_context():
+        _route_id, primary_id, secondary_id = _seed_route_with_two_stops()
+        for location_id in (int(primary_id), int(secondary_id)):
+            mlm = MonthlyLocationMonth(
+                id=99003 if location_id == int(primary_id) else 99004,
+                monthly_location_id=location_id,
+                month_date=month_first,
+                test_monthly_route_id=1,
+                st_annual_skip_recommended=location_id == int(primary_id),
+                st_has_scheduled_annual_in_month=location_id == int(primary_id),
+                st_annual_synced_at=datetime(2026, 6, 1, 8, 0, tzinfo=PACIFIC_TZ),
+            )
+            db.session.add(mlm)
+        db.session.commit()
+
+    res = client.get(
+        f"/api/monthly_routes/routes/1/runs/annual_schedule_check?month_date={month_first.isoformat()}"
+    )
+    assert res.status_code == 200
+    body = res.get_json()
+    assert body["locations"][str(primary_id)]["annual_skip_recommended"] is True
+
+
+def test_annual_schedule_check_live_sync_when_cache_incomplete(cache_client, monkeypatch):
+    client, app = cache_client
+    month_first = date(2026, 7, 1)
+    calls: list[tuple[int, date]] = []
+
+    def _fake_sync(route_id: int, month: date) -> dict[str, object]:
+        calls.append((route_id, month))
+        return _sample_snapshot(route_id, month, 101)
+
+    monkeypatch.setattr(
+        "app.monthly.service_trade_annual_schedule.sync_route_annual_schedule",
+        _fake_sync,
+    )
+
+    with app.app_context():
+        _route_id, primary_id, _secondary_id = _seed_route_with_two_stops()
+        mlm = MonthlyLocationMonth(
+            id=99005,
+            monthly_location_id=int(primary_id),
+            month_date=month_first,
+            test_monthly_route_id=1,
+            st_annual_skip_recommended=True,
+            st_has_scheduled_annual_in_month=True,
+            st_annual_synced_at=datetime(2026, 6, 1, 8, 0, tzinfo=PACIFIC_TZ),
+        )
+        db.session.add(mlm)
+        db.session.commit()
+
+    res = client.get(
+        f"/api/monthly_routes/routes/1/runs/annual_schedule_check?month_date={month_first.isoformat()}"
+    )
+    assert res.status_code == 200
+    assert calls == [(1, month_first)]

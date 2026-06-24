@@ -1522,8 +1522,28 @@
   font-weight: 500;
 }
 
-.monthly-run-detail-page .run-details-prepare-annual-schedule__link {
-  font-size: 0.6875rem;
-  line-height: 1.2;
-  padding: 0.15rem 0.45rem;
+.monthly-run-detail-page .run-details-prepare-annual-schedule__pill--override {
+  background: #dbeafe;
+  color: #1e40af;
+  border-color: #93c5fd;
+}
+
+.monthly-run-detail-page .run-details-prepare-annual-schedule__pill--servicetrade {
+  background: #1e3a5f;
+  color: #fff;
+  border-color: #1e3a5f;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.monthly-run-detail-page .run-details-prepare-annual-schedule__pill--servicetrade:hover,
+.monthly-run-detail-page .run-details-prepare-annual-schedule__pill--servicetrade:focus-visible {
+  color: #fff;
+  background: #234b78;
+  border-color: #234b78;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(30, 58, 95, 0.4);
 }

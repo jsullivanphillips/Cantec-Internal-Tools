@@ -56,6 +56,16 @@ describe('detailPatchFromWorksheetStop', () => {
     const stop = sampleWorksheetStop({ run_comments: 'Job note' })
     expect(detailPatchFromWorksheetStop(stop).run_comments).toBe('Job note')
   })
+
+  it('maps annual test override fields from worksheet stop', () => {
+    const stop = sampleWorksheetStop({
+      annual_test_override: true,
+      annual_test_override_reason: 'Office chose to test',
+    })
+    const patch = detailPatchFromWorksheetStop(stop)
+    expect(patch.annual_test_override).toBe(true)
+    expect(patch.annual_test_override_reason).toBe('Office chose to test')
+  })
 })
 
 describe('prepPatchFromWorksheetStop', () => {

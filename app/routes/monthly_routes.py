@@ -2741,10 +2741,24 @@ def get_monthly_route_annual_schedule_check(route_id: int):
         return jsonify({"error": "Route not found"}), 404
 
     month_first = date(month_dt.year, month_dt.month, 1)
-    from app.monthly.service_trade_annual_schedule import sync_route_annual_schedule
+    from app.monthly.service_trade_annual_schedule import (
+        build_route_annual_schedule_payload_from_db,
+        route_annual_schedule_has_db_cache,
+        sync_route_annual_schedule,
+    )
+
+    force_sync = (request.args.get("sync") or "").strip().lower() in {"1", "true", "yes"}
+    cache_bust = (request.args.get("cache_bust") or "").strip().lower() in {"1", "true", "yes"}
+    use_live_sync = force_sync or cache_bust or not route_annual_schedule_has_db_cache(
+        route_id,
+        month_first,
+    )
 
     try:
-        payload = sync_route_annual_schedule(route_id, month_first)
+        if use_live_sync:
+            payload = sync_route_annual_schedule(route_id, month_first)
+        else:
+            payload = build_route_annual_schedule_payload_from_db(route_id, month_first)
     except RuntimeError as exc:
         return jsonify({"error": str(exc), "code": "service_trade_config"}), 503
     except Exception as exc:

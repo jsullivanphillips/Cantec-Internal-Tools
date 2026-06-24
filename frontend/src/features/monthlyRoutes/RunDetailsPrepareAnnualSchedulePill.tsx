@@ -1,16 +1,18 @@
-import { Button } from 'react-bootstrap'
-
 import type { AnnualScheduleCheckLocation } from './monthlyRoutesShared'
 import { prepAnnualScheduleWarningLabel } from './prepAnnualSchedule'
 
 export default function RunDetailsPrepareAnnualSchedulePill({
   schedule,
+  annualTestOverride = false,
 }: {
   schedule: AnnualScheduleCheckLocation | null | undefined
+  annualTestOverride?: boolean
 }) {
   const warning = schedule?.prep_warning ?? null
-  const label = prepAnnualScheduleWarningLabel(warning)
-  if (!label) return null
+  const warningLabel = prepAnnualScheduleWarningLabel(warning)
+  const showOverridePill = annualTestOverride
+
+  if (!warningLabel && !showOverridePill) return null
 
   const serviceTradeUrl = schedule?.service_trade_site_location_url ?? null
   const showServiceTradeButton =
@@ -18,18 +20,23 @@ export default function RunDetailsPrepareAnnualSchedulePill({
 
   return (
     <div className="run-details-prepare-annual-schedule mt-1">
-      <span className="badge run-details-prepare-annual-schedule__pill">{label}</span>
+      {showOverridePill ? (
+        <span className="badge run-details-prepare-annual-schedule__pill run-details-prepare-annual-schedule__pill--override">
+          Annual overridden
+        </span>
+      ) : null}
+      {warningLabel ? (
+        <span className="badge run-details-prepare-annual-schedule__pill">{warningLabel}</span>
+      ) : null}
       {showServiceTradeButton ? (
-        <Button
-          size="sm"
-          variant="outline-secondary"
-          className="run-details-prepare-annual-schedule__link ms-1"
+        <a
+          className="badge run-details-prepare-annual-schedule__pill run-details-prepare-annual-schedule__pill--servicetrade"
           href={serviceTradeUrl!}
           target="_blank"
           rel="noopener noreferrer"
         >
           ServiceTrade
-        </Button>
+        </a>
       ) : null}
     </div>
   )

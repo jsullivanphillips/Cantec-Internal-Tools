@@ -21,6 +21,7 @@ import RunDetailsPrepareAnnualSchedulePill from './RunDetailsPrepareAnnualSchedu
 import RunDetailsPreparePriorMonthEditsPill from './RunDetailsPreparePriorMonthEditsPill'
 import {
   prepRowAnnualDueForStop,
+  prepRowShowsAnnualOverriddenPill,
   prepRowShowsAnnualTestControl,
 } from './prepAnnualSchedule'
 import { monitoringCompanyDisplayName } from './MonitoringCompanySelect'
@@ -404,14 +405,13 @@ export default function RunDetailsPrepareTable({
         const body = await postPrepAnnualTest(routeId, locationId, monthDate)
         applyPrepSkipPatch(locationId, body.stop)
         if (body.run) onRunPatched?.(body.run)
-        await onAnnualScheduleRefresh?.()
       } catch (e) {
         setAnnualTestError(e instanceof Error ? e.message : 'Could not force test for this site.')
       } finally {
         setAnnualTestBusyLocationId(null)
       }
     },
-    [applyPrepSkipPatch, monthDate, onAnnualScheduleRefresh, onRunPatched, routeId],
+    [applyPrepSkipPatch, monthDate, onRunPatched, routeId],
   )
 
   const handleClearAnnualTest = useCallback(
@@ -421,14 +421,13 @@ export default function RunDetailsPrepareTable({
       try {
         const body = await deletePrepAnnualTest(routeId, locationId, monthDate)
         applyPrepSkipPatch(locationId, body.stop)
-        await onAnnualScheduleRefresh?.()
       } catch (e) {
         setAnnualTestError(e instanceof Error ? e.message : 'Could not clear annual test override.')
       } finally {
         setAnnualTestBusyLocationId(null)
       }
     },
-    [applyPrepSkipPatch, monthDate, onAnnualScheduleRefresh, routeId],
+    [applyPrepSkipPatch, monthDate, routeId],
   )
 
   const renderPrepRow = useCallback(
@@ -479,6 +478,11 @@ export default function RunDetailsPrepareTable({
         prepRowShowsAnnualTestControl(annualScheduleStatus, scheduleRow, stop)
       const showSkipControl = showPrepActionControl && !showAnnualTestControl
       const annualTestOverrideActive = Boolean(stop.annual_test_override)
+      const showAnnualOverriddenPill = prepRowShowsAnnualOverriddenPill(
+        annualScheduleStatus,
+        scheduleRow,
+        stop,
+      )
       const fieldLayout = PREP_FIELD_LAYOUT
 
       return (
@@ -559,7 +563,10 @@ export default function RunDetailsPrepareTable({
                       On hold
                     </span>
                   ) : null}
-                  <RunDetailsPrepareAnnualSchedulePill schedule={scheduleRow} />
+                  <RunDetailsPrepareAnnualSchedulePill
+                    schedule={scheduleRow}
+                    annualTestOverride={showAnnualOverriddenPill}
+                  />
                 </div>
               ) : null}
               {multiSite ? (

@@ -234,6 +234,7 @@ Many earlier migrations scaffolded routes, runs, history, inspection fields, coo
 | `app/scripts/fix_months_on_invoice_location_labels.py` | Move ``Months on invoice`` placeholder labels to ``billing_comments``; set label to shortened address (`--commit`) |
 | `app/scripts/backfill_monthly_service_trade_site_locations.py` | Auto-link `MonthlyLocation.service_trade_site_location_id` from active ST locations (§8.1) |
 | `app/scripts/sync_monthly_service_trade_contacts.py` | Daily sync: cache ServiceTrade contacts for linked site locations (§8.2) |
+| `app/scripts/sync_monthly_route_annual_schedules.py` | Bulk sync ServiceTrade annual skip/test flags onto ``monthly_location_month`` (dashboard ``annual_count``, prep orange rows). Default: current + next Pacific month for all active routes. |
 
 ### ServiceTrade site location linking (§8.1)
 
@@ -288,9 +289,12 @@ Prints auto-matched rows, unmatched sites (with reason), and conflicts. Optional
 python -m app.scripts.sync_monthly_service_trade_contacts
 python -m app.scripts.sync_monthly_service_trade_contacts --limit 20
 python -m app.scripts.sync_monthly_service_trade_contacts --st-location-id 6470762
+python -m app.scripts.sync_monthly_route_annual_schedules
+python -m app.scripts.sync_monthly_route_annual_schedules --month 2026-06-01
+python -m app.scripts.sync_monthly_route_annual_schedules --route-number 5 --lookahead 0
 ```
 
-Sync module: `app/monthly/service_trade_location_contacts.py`.
+Sync module: `app/monthly/service_trade_location_contacts.py`. Annual schedule bulk sync: `app/scripts/sync_monthly_route_annual_schedules.py` → `app/monthly/service_trade_annual_schedule.py`.
 
 **Read API:** `GET /api/monthly_routes/library/<location_id>/service_trade_contacts` — returns cached contacts for the location's ServiceTrade site id. Response: `{ "location_id", "has_service_trade_link", "service_trade_site_location_id", "contacts": [{ "id", "first_name", "last_name", "display_name", "email", "phone", "mobile", "alternate_phone", "contact_type", "is_primary" }] }`. Unlinked locations return `has_service_trade_link: false` and an empty `contacts` array. Contacts are sorted primary first, then name.
 
@@ -476,13 +480,14 @@ Ambiguous ``h:mm`` values without AM/PM infer meridiem for field-route visits: *
 - ``MonthlyRouteRun.pre_run_message`` — per-month note on the paperwork/run-details page; shown on the technician route hub below **Open run**; cleared on run reset.
 - ``MonthlyTestingSiteMonth.office_attention`` — purple stop styling on the portal worksheet until any ``test_outcome`` is recorded; pair with **Job comment** (`run_comments`) when needed.
 
-**Annual schedule cache:** ServiceTrade annual flags are persisted on ``monthly_location_month`` (``st_annual_skip_recommended``, ``st_annual_prep_warning``, ``st_annual_synced_at``, etc.). **Live ServiceTrade sync** runs when office opens paperwork prep or location detail (``GET …/runs/annual_schedule_check``), which writes the cache. Dashboard ``annual_count``, worksheets, portal, and run details read the cache only — routes show **0 annuals** until someone syncs that route/month.
+**Annual schedule cache:** ServiceTrade annual flags are persisted on ``monthly_location_month`` (``st_annual_skip_recommended``, ``st_annual_prep_warning``, ``st_annual_synced_at``, etc.). **Live ServiceTrade sync** runs when any worksheet stop for the route/month lacks ``st_annual_synced_at``, when ``sync=1`` is passed (location detail), or when ``cache_bust=1`` is passed (manual refresh). When every stop is cached, ``GET …/runs/annual_schedule_check`` reads DB columns only (fast). Bulk backfill: ``python -m app.scripts.sync_monthly_route_annual_schedules`` (current + next Pacific month by default). Dashboard ``annual_count``, worksheets, portal, and run details read the cache only — routes show **0 annuals** until synced.
 
-**Annual schedule check (office prep + location detail):** The UI calls ``GET /api/monthly_routes/routes/<id>/runs/annual_schedule_check?month_date=YYYY-MM-01`` (HTTP response cached 1 hour after sync). ServiceTrade jobs of type inspection/replacement/upgrade/installation with a **scheduled or completed** appointment whose ``windowStart`` falls in the run month (Pacific) count as booked. Cancelled jobs/appointments are ignored. Spanning jobs (appointments in two calendar months) auto-select the **skip month** as the route test day **closer** to the annual appointments; the farther month is testable unless office forces test.
+**Annual schedule check (office prep + location detail):** The UI calls ``GET /api/monthly_routes/routes/<id>/runs/annual_schedule_check?month_date=YYYY-MM-01`` (HTTP response cached 1 hour). Prep uses DB cache when ``st_annual_synced_at`` exists; location detail adds ``&sync=1`` for a live refresh. ServiceTrade jobs of type inspection/replacement/upgrade/installation with a **scheduled or completed** appointment whose ``windowStart`` falls in the run month (Pacific) count as booked. Cancelled jobs/appointments are ignored. Spanning jobs (appointments in two calendar months) auto-select the **skip month** as the route test day **closer** to the annual appointments; the farther month is testable unless office forces test.
 
 | Prep row | Condition |
 |----------|-----------|
 | Orange annual row | Cached ``st_annual_skip_recommended`` for this month **and** no ``annual_test_override`` on the stop |
+| Pill “Annual overridden” | Site has annual schedule activity **and** office forced test via ``annual_test_override`` |
 | Pill “Annual spans months” | Spanning inspection job touches this month |
 | Pill “Annual skip tie — review” | Route test days equidistant from annual appointments (earlier month skipped by default) |
 | Pill “No ServiceTrade link” | Rare: scheduled annual activity but no ``service_trade_site_location_id`` |

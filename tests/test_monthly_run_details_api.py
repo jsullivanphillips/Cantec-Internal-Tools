@@ -230,6 +230,23 @@ def test_run_details_locations_include_all_worksheet_stops(run_details_client):
     assert total_stops >= 2
 
 
+def test_run_details_locations_include_annual_test_override(run_details_client):
+    client, app = run_details_client
+    with app.app_context():
+        _seed_basic_route_data()
+        mlm = db.session.get(MonthlyLocationMonth, 5001)
+        assert mlm is not None
+        mlm.annual_test_override = True
+        mlm.annual_test_override_reason = "Office forced test"
+        db.session.commit()
+
+    res = client.get(BASE_URL)
+    assert res.status_code == 200
+    loc = next(row for row in res.get_json()["locations"] if int(row["location_id"]) == 101)
+    assert loc["annual_test_override"] is True
+    assert loc["annual_test_override_reason"] == "Office forced test"
+
+
 def test_run_details_locations_multi_stop_single_entry(run_details_client):
     client, app = run_details_client
     with app.app_context():
