@@ -6,6 +6,7 @@ import { routeNumberDisplayLabel } from './technicianDemoRoute'
 import {
   buildPacificWorkweekCalendarGrid,
   effectiveRouteTestDayIso,
+  formatRouteOverviewMonthHeading,
   formatRouteTestDayLabel,
   MONTHLY_ROUTE_OVERVIEW_WORKDAY_COLUMN_COUNT,
   MONTHLY_ROUTE_OVERVIEW_WORKDAY_HEADERS,
@@ -14,13 +15,14 @@ import {
 
 type RouteOverviewCardProps = {
   row: MonthlyDashboardRouteRow
+  monthFirstIso: string
   /** When false (calendar cell), only show route number — date is on the cell. */
   showScheduleHint?: boolean
   tone?: RouteOverviewCardTone
 }
 
 function routeOverviewCardClassName(tone?: RouteOverviewCardTone): string {
-  const classes = ['monthly-routes-overview-calendar__card', 'text-decoration-none']
+  const classes = ['monthly-routes-overview-calendar__card']
   if (tone) {
     classes.push(`monthly-routes-overview-calendar__card--tone-${tone}`)
   }
@@ -36,38 +38,61 @@ function formatRouteOverviewCardMeta(route: MonthlyDashboardRouteRow['route']): 
   return `${locationLabel} · ${annualLabel}`
 }
 
-function RouteOverviewCard({ row, showScheduleHint = false, tone }: RouteOverviewCardProps) {
+function RouteOverviewCard({
+  row,
+  monthFirstIso,
+  showScheduleHint = false,
+  tone,
+}: RouteOverviewCardProps) {
   const { route, service_trade_job_dot, st_schedule_mismatch } = row
   const countLabel = formatRouteOverviewCardMeta(route)
+  const routeLabel = routeNumberDisplayLabel(route.route_number)
+  const monthHeading = formatRouteOverviewMonthHeading(monthFirstIso)
   const mismatchTooltip = st_schedule_mismatch
     ? `Route ${formatRouteTestDayLabel(st_schedule_mismatch.route_date)} · ServiceTrade appointment ${formatRouteTestDayLabel(st_schedule_mismatch.appointment_date)}`
     : undefined
 
   return (
-    <Link
-      to={`/monthlies/routes/${route.id}`}
-      className={routeOverviewCardClassName(tone)}
-    >
-      <ServiceTradeJobStatusDot
-        dot={service_trade_job_dot}
-        className="monthly-routes-overview-calendar__st-dot-wrap"
-      />
-      <div className="monthly-routes-overview-calendar__card-label fw-semibold">
-        {routeNumberDisplayLabel(route.route_number)}
-        {showScheduleHint ? ` · ${routeDisplayLabel(route)}` : null}
-      </div>
-      {st_schedule_mismatch ? (
-        <span
-          className="monthly-routes-overview-calendar__schedule-mismatch-pill badge rounded-pill"
-          title={mismatchTooltip}
+    <div className={routeOverviewCardClassName(tone)}>
+      <div className="monthly-routes-overview-calendar__card-header">
+        <Link
+          to={`/monthlies/routes/${route.id}`}
+          className="monthly-routes-overview-calendar__card-main text-decoration-none"
         >
-          Date mismatch
-        </span>
-      ) : null}
-      {countLabel ? (
-        <div className="monthly-routes-overview-calendar__card-meta small text-muted">{countLabel}</div>
-      ) : null}
-    </Link>
+          <div className="monthly-routes-overview-calendar__card-label fw-semibold">
+            {routeLabel}
+            {showScheduleHint ? ` · ${routeDisplayLabel(route)}` : null}
+          </div>
+          {st_schedule_mismatch ? (
+            <span
+              className="monthly-routes-overview-calendar__schedule-mismatch-pill badge rounded-pill"
+              title={mismatchTooltip}
+            >
+              Date mismatch
+            </span>
+          ) : null}
+          {countLabel ? (
+            <div className="monthly-routes-overview-calendar__card-meta small text-muted">
+              {countLabel}
+            </div>
+          ) : null}
+        </Link>
+        <div className="monthly-routes-overview-calendar__card-actions">
+          <Link
+            to={`/monthlies/routes/${route.id}/paperwork?month=${encodeURIComponent(monthFirstIso)}`}
+            className="monthly-routes-overview-calendar__paperwork-btn"
+            title="Open paperwork"
+            aria-label={`Open paperwork for ${routeLabel}, ${monthHeading}`}
+          >
+            <i className="bi bi-folder2-open" aria-hidden />
+          </Link>
+          <ServiceTradeJobStatusDot
+            dot={service_trade_job_dot}
+            className="monthly-routes-overview-calendar__st-dot-wrap"
+          />
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -195,6 +220,7 @@ export default function MonthlyRoutesWorkweekCalendar({
                         <RouteOverviewCard
                           key={row.route.id}
                           row={row}
+                          monthFirstIso={monthFirstIso}
                           tone={cardToneByRouteId?.get(row.route.id)}
                         />
                       ))}
@@ -213,6 +239,7 @@ export default function MonthlyRoutesWorkweekCalendar({
               <RouteOverviewCard
                 key={row.route.id}
                 row={row}
+                monthFirstIso={monthFirstIso}
                 showScheduleHint
                 tone={cardToneByRouteId?.get(row.route.id)}
               />
