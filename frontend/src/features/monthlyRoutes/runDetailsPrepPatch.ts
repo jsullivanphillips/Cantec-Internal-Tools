@@ -42,6 +42,8 @@ export function prepChangesToStopPatch(changes: PrepStopPatchChanges): Partial<M
   if ('ring' in changes) patch.ring = normNullableText(changes.ring)
   if ('key_number' in changes) patch.key_number = normNullableText(changes.key_number)
   if ('door_code' in changes) patch.door_code = normNullableText(changes.door_code)
+  if ('panel' in changes) patch.panel = normNullableText(changes.panel)
+  if ('panel_location' in changes) patch.panel_location = normNullableText(changes.panel_location)
   if ('monitoring_account_number' in changes) {
     patch.monitoring_account_number = normNullableText(changes.monitoring_account_number)
   }
@@ -74,6 +76,8 @@ export function prepPatchFromWorksheetStop(
   if (keys.has('ring')) patch.ring = stop.ring ?? null
   if (keys.has('key_number')) patch.key_number = stop.key_number ?? null
   if (keys.has('door_code')) patch.door_code = stop.door_code ?? null
+  if (keys.has('panel')) patch.panel = stop.panel ?? null
+  if (keys.has('panel_location')) patch.panel_location = stop.panel_location ?? null
   if (keys.has('monitoring_account_number')) {
     patch.monitoring_account_number = stop.monitoring_account_number ?? null
   }
@@ -103,6 +107,8 @@ type PrepRollbackStop = Pick<
   | 'ring'
   | 'key_number'
   | 'door_code'
+  | 'panel'
+  | 'panel_location'
   | 'monitoring_account_number'
   | 'monitoring_password'
   | 'monitoring_notes'
@@ -133,6 +139,8 @@ export function rollbackPatchForChanges(
   if ('ring' in changes) rollback.ring = stop.ring ?? null
   if ('key_number' in changes) rollback.key_number = stop.key_number ?? null
   if ('door_code' in changes) rollback.door_code = stop.door_code ?? null
+  if ('panel' in changes) rollback.panel = stop.panel ?? null
+  if ('panel_location' in changes) rollback.panel_location = stop.panel_location ?? null
   if ('monitoring_account_number' in changes) {
     rollback.monitoring_account_number = stop.monitoring_account_number ?? null
   }
@@ -266,6 +274,8 @@ export function detailPatchFromWorksheetStop(
     ring: stop.ring ?? null,
     key_number: stop.key_number ?? null,
     door_code: stop.door_code ?? null,
+    panel: stop.panel ?? null,
+    panel_location: stop.panel_location ?? null,
     monitoring_company: stop.monitoring_company ?? null,
     monitoring_company_id: stop.monitoring_company_id ?? null,
     monitoring_account_number: stop.monitoring_account_number ?? null,

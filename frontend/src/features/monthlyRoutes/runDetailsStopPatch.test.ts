@@ -109,6 +109,19 @@ describe('prepChangesToStopPatch', () => {
     })
   })
 
+  it('maps panel fields with trim', () => {
+    expect(
+      prepChangesToStopPatch({ panel: '  Notifier NFS-320  ', panel_location: '  Electrical room  ' }),
+    ).toEqual({
+      panel: 'Notifier NFS-320',
+      panel_location: 'Electrical room',
+    })
+    expect(prepChangesToStopPatch({ panel: '   ', panel_location: '' })).toEqual({
+      panel: null,
+      panel_location: null,
+    })
+  })
+
   it('clears out-of-order hint when dismissed', () => {
     expect(
       prepChangesToStopPatch({ prior_month_out_of_order_dismissed: true }),

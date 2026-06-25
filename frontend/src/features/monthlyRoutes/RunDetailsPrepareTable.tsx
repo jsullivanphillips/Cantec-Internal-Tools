@@ -29,7 +29,6 @@ import {
   PrepCompactField,
   PrepCompanyField,
   PrepLongTextCell,
-  PrepReadOnlyCompactField,
 } from './RunDetailsPrepareFields'
 import RunDetailsDeficiencyList from './RunDetailsDeficiencyList'
 import { openDeficiencySummaries } from './runDetailsDeficiencyDisplay'
@@ -632,8 +631,48 @@ export default function RunDetailsPrepareTable({
           </td>
           <td className="tw-office-panel-cell">
             <div className="tw-office-compact-field-list">
-              <PrepReadOnlyCompactField label="Panel" value={stop.panel} stacked wide />
-              <PrepReadOnlyCompactField label="Panel location" value={stop.panel_location} stacked wide />
+              <PrepCompactField
+                fieldKey={fk('panel')}
+                label="Panel"
+                value={stop.panel || ''}
+                saving={isFieldSaving(sid, fk('panel'))}
+                activeKey={activeFieldKey}
+                onActivate={setActiveFieldKey}
+                disabled={prepEditsDisabled}
+                readyEditLocked={readyEditLocked}
+                layoutVariant={fieldLayout}
+                stacked
+                wide
+                onCommit={(next) =>
+                  void patchRow(
+                    sid,
+                    fk('panel'),
+                    { panel: next.trim() || null },
+                    { panel: stop.panel },
+                  )
+                }
+              />
+              <PrepCompactField
+                fieldKey={fk('panel-location')}
+                label="Panel location"
+                value={stop.panel_location || ''}
+                saving={isFieldSaving(sid, fk('panel-location'))}
+                activeKey={activeFieldKey}
+                onActivate={setActiveFieldKey}
+                disabled={prepEditsDisabled}
+                readyEditLocked={readyEditLocked}
+                layoutVariant={fieldLayout}
+                stacked
+                wide
+                onCommit={(next) =>
+                  void patchRow(
+                    sid,
+                    fk('panel-location'),
+                    { panel_location: next.trim() || null },
+                    { panel_location: stop.panel_location },
+                  )
+                }
+              />
             </div>
           </td>
           <td className="tw-office-monitoring-cell">
