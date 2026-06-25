@@ -22,6 +22,11 @@ import MonthlyDashboardLocationMetrics from '../features/monthlyRoutes/MonthlyDa
 import MonthlyTicketsQueue from '../features/monthlyRoutes/MonthlyTicketsQueue'
 import { apiJson, isAbortError } from '../lib/apiClient'
 import { PROCESSING_PAGE_TITLE_COMPACT_CLASS } from '../styles/pageTypography'
+import {
+  MonthlyDashboardKpiStripSkeleton,
+  MonthlyDashboardTabsSkeleton,
+  MonthlyRoutesCalendarSkeleton,
+} from './MonthlyHomePageSkeleton'
 
 function MonthlyDashboardLegend() {
   return (
@@ -240,7 +245,9 @@ export default function MonthlyHomePage() {
               <span className="monthlies-dashboard-hero__month text-muted">{currentMonthHeading}</span>
             </div>
           </div>
-          {!loading && !error ? (
+          {loading && !error ? (
+            <MonthlyDashboardKpiStripSkeleton />
+          ) : !loading && !error ? (
             <MonthlyDashboardKpiStrip
               routesToProcess={routesToProcess}
               routesToPrepare={routesToPrepare}
@@ -257,13 +264,7 @@ export default function MonthlyHomePage() {
           </Card.Body>
         </Card>
       ) : null}
-      {loading ? (
-        <Card className="app-surface-card">
-          <Card.Body className="p-3 p-md-4">
-            <div className="text-muted">Loading dashboard...</div>
-          </Card.Body>
-        </Card>
-      ) : null}
+      {loading && !error ? <MonthlyDashboardTabsSkeleton /> : null}
       {!loading && !error ? (
         <Tab.Container defaultActiveKey="routes">
           <div className="processing-tabs-shell app-surface-card">
@@ -304,15 +305,16 @@ export default function MonthlyHomePage() {
                 </div>
                 {calendarError ? <div className="text-danger mb-3">{calendarError}</div> : null}
                 {calendarLoading ? (
-                  <div className="text-muted mb-3">Loading routes for {calendarMonthHeading}...</div>
-                ) : null}
-                <MonthlyRoutesWorkweekCalendar
-                  rows={calendarRows}
-                  monthFirstIso={calendarMonthFirstIso}
-                  monthHeading={calendarMonthHeading}
-                  cardToneByRouteId={cardToneByRouteId}
-                  legend={<MonthlyDashboardLegend />}
-                />
+                  <MonthlyRoutesCalendarSkeleton />
+                ) : (
+                  <MonthlyRoutesWorkweekCalendar
+                    rows={calendarRows}
+                    monthFirstIso={calendarMonthFirstIso}
+                    monthHeading={calendarMonthHeading}
+                    cardToneByRouteId={cardToneByRouteId}
+                    legend={<MonthlyDashboardLegend />}
+                  />
+                )}
               </Tab.Pane>
               <Tab.Pane eventKey="financial-performance">
                 <MonthlyDashboardRouteBreakdown />

@@ -6,6 +6,11 @@ import {
   fetchMonitoringCompanies,
   invalidateMonitoringCompaniesCache,
 } from '../features/monthlyRoutes/monitoringCompaniesShared'
+import {
+  LIBRARY_TABLE_HEADER_STICKY_STYLE,
+  renderLibraryStatusDot,
+  STATUS_COLUMN_STYLE,
+} from '../features/monthlyRoutes/monthlyDirectoryTableShared'
 import type { MonitoringCompanySummary } from '../features/monthlyRoutes/monthlyRoutesShared'
 import { PROCESSING_PAGE_TITLE_COMPACT_CLASS } from '../styles/pageTypography'
 
@@ -20,15 +25,116 @@ function emptyForm(): EditForm {
   return { name: '', primary_phone: '', secondary_phone: '', active: true }
 }
 
-function MonitoringCompanyStatus({ active }: { active: boolean }) {
+const MONITORING_COMPANIES_TABLE_CLASS =
+  'align-middle monthly-routes-library-table monthly-locations-directory-table monitoring-companies-table mb-0'
+
+const MONITORING_COMPANIES_STATUS_COL_WIDTH = '4.75rem'
+
+const MONITORING_COMPANIES_SKELETON_ROW_COUNT = 8
+
+const MONITORING_COMPANY_NAME_WIDTHS = ['72%', '58%', '84%', '66%', '78%', '62%', '70%', '54%'] as const
+const MONITORING_COMPANY_PHONE_WIDTHS = ['5.5rem', '6rem', '5.25rem', '5.75rem', '5.5rem', '6.25rem', '5rem', '5.5rem'] as const
+
+function MonitoringCompaniesTableHead() {
   return (
-    <span
-      className={`monitoring-companies-status${
-        active ? ' monitoring-companies-status--active' : ' monitoring-companies-status--inactive'
-      }`}
+    <thead>
+      <tr>
+        <th
+          className="text-center monthly-locations-table__status-col"
+          style={{ ...STATUS_COLUMN_STYLE, ...LIBRARY_TABLE_HEADER_STICKY_STYLE }}
+        >
+          Status
+        </th>
+        <th className="monthly-locations-table__label-col" style={LIBRARY_TABLE_HEADER_STICKY_STYLE}>
+          Name
+        </th>
+        <th style={LIBRARY_TABLE_HEADER_STICKY_STYLE}>Primary phone</th>
+        <th style={LIBRARY_TABLE_HEADER_STICKY_STYLE}>Secondary phone</th>
+        <th
+          className="text-end monitoring-companies-table__actions-col"
+          style={LIBRARY_TABLE_HEADER_STICKY_STYLE}
+        >
+          Actions
+        </th>
+      </tr>
+    </thead>
+  )
+}
+
+function MonitoringCompaniesTableColgroup() {
+  return (
+    <colgroup>
+      <col style={{ width: MONITORING_COMPANIES_STATUS_COL_WIDTH }} />
+      <col />
+      <col style={{ width: '14%' }} />
+      <col style={{ width: '14%' }} />
+      <col style={{ width: '5.5rem' }} />
+    </colgroup>
+  )
+}
+
+function MonitoringCompaniesTableSkeleton() {
+  return (
+    <div
+      className="monthly-locations-table-wrap home-skeleton"
+      aria-busy="true"
+      aria-label="Loading monitoring companies"
     >
-      {active ? 'Active' : 'Inactive'}
-    </span>
+      <Table striped className={MONITORING_COMPANIES_TABLE_CLASS}>
+        <MonitoringCompaniesTableColgroup />
+        <MonitoringCompaniesTableHead />
+        <tbody>
+          {Array.from({ length: MONITORING_COMPANIES_SKELETON_ROW_COUNT }, (_, rowIndex) => (
+            <tr key={rowIndex}>
+              <td className="text-center monthly-locations-table__status-col" style={STATUS_COLUMN_STYLE}>
+                <span
+                  className="home-skeleton-bar d-inline-block"
+                  style={{ width: '0.62rem', height: '0.62rem', borderRadius: '50%' }}
+                  aria-hidden
+                />
+              </td>
+              <td className="monthly-locations-table__label-col">
+                <span
+                  className="home-skeleton-bar d-block"
+                  style={{
+                    width: MONITORING_COMPANY_NAME_WIDTHS[rowIndex % MONITORING_COMPANY_NAME_WIDTHS.length],
+                    height: '0.65rem',
+                  }}
+                  aria-hidden
+                />
+              </td>
+              <td>
+                <span
+                  className="home-skeleton-bar d-inline-block"
+                  style={{
+                    width: MONITORING_COMPANY_PHONE_WIDTHS[rowIndex % MONITORING_COMPANY_PHONE_WIDTHS.length],
+                    height: '0.65rem',
+                  }}
+                  aria-hidden
+                />
+              </td>
+              <td>
+                <span
+                  className="home-skeleton-bar d-inline-block"
+                  style={{
+                    width: MONITORING_COMPANY_PHONE_WIDTHS[(rowIndex + 2) % MONITORING_COMPANY_PHONE_WIDTHS.length],
+                    height: '0.65rem',
+                  }}
+                  aria-hidden
+                />
+              </td>
+              <td className="text-end">
+                <span
+                  className="home-skeleton-bar d-inline-block"
+                  style={{ width: '3.75rem', height: '1.75rem', borderRadius: '0.35rem' }}
+                  aria-hidden
+                />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </Table>
+    </div>
   )
 }
 
@@ -189,7 +295,7 @@ export default function MonitoringCompaniesPage() {
             </div>
           </div>
 
-          <div className="monitoring-companies-results-bar border-bottom py-2">
+          <div className="monitoring-companies-results-bar py-2">
             {loading ? (
               <span
                 className="home-skeleton-bar d-inline-block"
@@ -206,51 +312,59 @@ export default function MonitoringCompaniesPage() {
               {error}
             </p>
           ) : loading ? (
-            <p className="text-muted small mb-0 pt-3">Loading…</p>
+            <MonitoringCompaniesTableSkeleton />
           ) : filtered.length === 0 ? (
             <p className="text-muted small mb-0 pt-3">No monitoring companies match your filters.</p>
           ) : (
-            <Table responsive striped hover className="mb-0 align-middle monitoring-companies-table">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Primary phone</th>
-                  <th>Secondary phone</th>
-                  <th className="text-center">Status</th>
-                  <th className="text-end monitoring-companies-table__actions-col">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((row) => {
-                  const isActive = row.active !== false
-                  return (
-                    <tr key={row.id}>
-                      <td className="fw-semibold">{row.name?.trim() || '—'}</td>
-                      <td className="tabular-nums text-muted">
-                        {row.primary_phone?.trim() || '—'}
-                      </td>
-                      <td className="tabular-nums text-muted">
-                        {row.secondary_phone?.trim() || '—'}
-                      </td>
-                      <td className="text-center">
-                        <MonitoringCompanyStatus active={isActive} />
-                      </td>
-                      <td className="text-end">
-                        <Button
-                          variant="outline-secondary"
-                          size="sm"
-                          className="monitoring-companies-table__edit-btn"
-                          onClick={() => openEdit(row)}
+            <div className="monthly-locations-table-wrap">
+              <Table striped hover className={MONITORING_COMPANIES_TABLE_CLASS}>
+                <MonitoringCompaniesTableColgroup />
+                <MonitoringCompaniesTableHead />
+                <tbody>
+                  {filtered.map((row) => {
+                    const isActive = row.active !== false
+                    return (
+                      <tr key={row.id}>
+                        <td
+                          className="text-center library-table-cell-clamp monthly-locations-table__status-col"
+                          style={STATUS_COLUMN_STYLE}
                         >
-                          <i className="bi bi-pencil" aria-hidden />
-                          Edit
-                        </Button>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </Table>
+                          <div className="library-table-cell-inner">
+                            {renderLibraryStatusDot(isActive ? 'active' : 'inactive')}
+                          </div>
+                        </td>
+                        <td className="library-table-cell-clamp monthly-locations-table__label-col">
+                          <div className="library-table-cell-inner fw-semibold">
+                            {row.name?.trim() || '—'}
+                          </div>
+                        </td>
+                        <td className="library-table-cell-clamp tabular-nums text-muted">
+                          <div className="library-table-cell-inner">
+                            {row.primary_phone?.trim() || '—'}
+                          </div>
+                        </td>
+                        <td className="library-table-cell-clamp tabular-nums text-muted">
+                          <div className="library-table-cell-inner">
+                            {row.secondary_phone?.trim() || '—'}
+                          </div>
+                        </td>
+                        <td className="text-end">
+                          <Button
+                            variant="outline-secondary"
+                            size="sm"
+                            className="monitoring-companies-table__edit-btn"
+                            onClick={() => openEdit(row)}
+                          >
+                            <i className="bi bi-pencil" aria-hidden />
+                            Edit
+                          </Button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </Table>
+            </div>
           )}
         </Card.Body>
       </Card>

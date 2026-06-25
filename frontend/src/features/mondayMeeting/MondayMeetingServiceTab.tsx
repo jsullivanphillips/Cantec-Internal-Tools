@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Form, Spinner } from 'react-bootstrap'
+import { Alert, Form } from 'react-bootstrap'
 import { Link } from 'react-router-dom'
 import { apiFetch, isAbortError } from '../../lib/apiClient'
 import ExcludedDeficienciesModal from './ExcludedDeficienciesModal'
+import { MondayMeetingServiceTabSkeleton } from './MondayMeetingTabSkeletons'
 import MondayMeetingServiceMetricsView from './MondayMeetingServiceMetricsView'
 import MondayMeetingServiceVisualsView from './MondayMeetingServiceVisualsView'
 import {
@@ -104,9 +105,7 @@ export default function MondayMeetingServiceTab() {
       ) : null}
 
       {loading ? (
-        <div className="monday-meeting-service-loading" aria-busy="true" aria-label="Loading service metrics">
-          <Spinner />
-        </div>
+        <MondayMeetingServiceTabSkeleton includeToolbar={false} />
       ) : data ? (
         <>
           {viewMode === 'metrics' ? (

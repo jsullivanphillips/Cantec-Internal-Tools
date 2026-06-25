@@ -22,3 +22,16 @@ export function formatLongOrdinalDate(value: string | null | undefined): string 
   const monthLabel = new Intl.DateTimeFormat('en-US', { month: 'long' }).format(date)
   return `${monthLabel} ${englishOrdinal(date.getDate())}, ${date.getFullYear()}`
 }
+
+/** e.g. October 1st, 2026 at 10:42 AM */
+export function formatLongOrdinalDateTime(value: string | null | undefined): string {
+  const raw = value?.trim()
+  if (!raw) return '—'
+  const date = new Date(raw)
+  if (Number.isNaN(date.getTime())) return raw
+  const timeLabel = new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(date)
+  return `${formatLongOrdinalDate(raw)} at ${timeLabel}`
+}

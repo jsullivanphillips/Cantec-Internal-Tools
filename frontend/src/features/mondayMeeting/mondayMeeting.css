@@ -47,6 +47,10 @@
   padding: 0;
 }
 
+.monday-meeting-page .monday-meeting-processing-embed .processing-status-freshness-meta {
+  margin-bottom: 1rem;
+}
+
 .monday-meeting-service-tab {
   display: flex;
   flex-direction: column;

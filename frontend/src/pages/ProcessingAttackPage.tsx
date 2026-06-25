@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { apiFetch, apiJson, coerceDisplayNumber, coerceUiText, isAbortError } from '../lib/apiClient'
+import { formatLongOrdinalDateTime } from '../lib/formatLongOrdinalDate'
 import { hasProcessingDataError, processingWowErrorLine } from '../lib/processingAttackShared'
 import { Button, Card, Col, Collapse, Form, Modal, Nav, Row, Tab, Table } from 'react-bootstrap'
 import { Chart } from 'react-chartjs-2'
@@ -595,6 +596,33 @@ function ProcessingKpiHeroVizColumn({
   )
 }
 
+function ProcessingStatusFreshnessMeta({
+  lastUpdatedAt,
+  refreshing,
+}: {
+  lastUpdatedAt: string | null
+  refreshing: boolean
+}) {
+  return (
+    <div
+      className="processing-status-freshness-meta"
+      role="status"
+      aria-live="polite"
+      aria-busy={refreshing}
+    >
+      <span className="processing-status-freshness-meta__label">
+        Data last updated: {formatLongOrdinalDateTime(lastUpdatedAt)}
+      </span>
+      {refreshing ? (
+        <span className="processing-status-freshness-meta__updating">
+          <span className="spinner-border spinner-border-sm" aria-hidden="true" />
+          Updating…
+        </span>
+      ) : null}
+    </div>
+  )
+}
+
 function ProcessingKpiTileSkeleton({ hero = false }: { hero?: boolean }) {
   return (
     <Card className={`app-kpi-nested processing-tile h-100 ${hero ? 'processing-tile--hero' : ''}`}>
@@ -984,6 +1012,10 @@ export default function ProcessingAttackPage({ embeddedTab }: { embeddedTab?: Pr
   const [reportConversionModalOpen, setReportConversionModalOpen] = useState(false)
   const [pinkTechExpanded, setPinkTechExpanded] = useState<Record<string, boolean>>({})
   const [loading, setLoading] = useState(true)
+  const [statusLastUpdatedAt, setStatusLastUpdatedAt] = useState<string | null>(() => {
+    const cached = readProcessingStatusCache()
+    return cached ? new Date(cached.ts).toISOString() : null
+  })
   const [weeklyLoading, setWeeklyLoading] = useState(activeTab === 'weekly')
 
   const refreshStatus = useCallback(async (signal?: AbortSignal) => {
@@ -1129,6 +1161,7 @@ export default function ProcessingAttackPage({ embeddedTab }: { embeddedTab?: Pr
         statusHistoryDaily: statusHistoryDailyNext,
         intradayHistory: intradayHistoryNext,
       })
+      setStatusLastUpdatedAt(new Date().toISOString())
     } catch (e) {
       if (isAbortError(e)) return
       console.error(e)
@@ -1148,6 +1181,7 @@ export default function ProcessingAttackPage({ embeddedTab }: { embeddedTab?: Pr
       setStatusHistory(cached.statusHistory)
       setStatusHistoryDaily(cached.statusHistoryDaily)
       setIntradayHistory(cached.intradayHistory)
+      setStatusLastUpdatedAt(new Date(cached.ts).toISOString())
       setLoading(false)
     }
     const controller = new AbortController()
@@ -1880,6 +1914,7 @@ export default function ProcessingAttackPage({ embeddedTab }: { embeddedTab?: Pr
     intradayHistory.length > 0
   const statusBootloading = loading && !jobsToday
   const statusRefreshingWithCachedData = loading && hasCachedStatusData
+  const processingTileRefreshingClass = statusRefreshingWithCachedData ? ' processing-tile--refreshing' : ''
 
   const conversionJobs = complete?.jobs_to_be_converted ?? []
   const reportConversionCount = conversionJobs.length
@@ -2379,18 +2414,16 @@ export default function ProcessingAttackPage({ embeddedTab }: { embeddedTab?: Pr
               <ProcessingStatusTabSkeleton />
             ) : (
               <>
-            {statusRefreshingWithCachedData ? (
-              <div className="processing-refreshing-indicator" role="status" aria-live="polite">
-                <span className="spinner-border spinner-border-sm" aria-hidden="true" />
-                <span>Refreshing data</span>
-              </div>
-            ) : null}
+            <ProcessingStatusFreshnessMeta
+              lastUpdatedAt={statusLastUpdatedAt}
+              refreshing={statusRefreshingWithCachedData}
+            />
             <Card className="app-surface-card processing-status-card">
               <Card.Body className="p-3">
                 <Row className="g-3">
                   <Col lg={12}>
                     <Card
-                      className={`app-kpi-nested processing-tile processing-tile--hero d-flex flex-column ${completeOk ? 'processing-tile--status-good' : 'processing-tile--status-warn'}`}
+                      className={`app-kpi-nested processing-tile processing-tile--hero d-flex flex-column ${completeOk ? 'processing-tile--status-good' : 'processing-tile--status-warn'}${processingTileRefreshingClass}`}
                     >
                       <Card.Body className="processing-kpi-card-body p-3 flex-grow-1">
                         <div className="processing-kpi-grid processing-kpi-grid--hero-quad">
@@ -2464,7 +2497,7 @@ export default function ProcessingAttackPage({ embeddedTab }: { embeddedTab?: Pr
                   </Col>
                   <Col md={4}>
                     <Card
-                      className={`app-kpi-nested processing-tile h-100 d-flex flex-column ${jobsTodayOk ? 'processing-tile--status-good' : 'processing-tile--status-warn'}`}
+                      className={`app-kpi-nested processing-tile h-100 d-flex flex-column ${jobsTodayOk ? 'processing-tile--status-good' : 'processing-tile--status-warn'}${processingTileRefreshingClass}`}
                     >
                       <Card.Body className="processing-kpi-card-body p-3 flex-grow-1">
                         <ProcessingKpiCardGrid
@@ -2497,7 +2530,7 @@ export default function ProcessingAttackPage({ embeddedTab }: { embeddedTab?: Pr
                   </Col>
                   <Col md={4}>
                     <Card
-                      className={`app-kpi-nested processing-tile processing-kpi-card--clickable h-100 d-flex flex-column ${oldestOk ? 'processing-tile--status-good' : 'processing-tile--status-warn'}`}
+                      className={`app-kpi-nested processing-tile processing-kpi-card--clickable h-100 d-flex flex-column ${oldestOk ? 'processing-tile--status-good' : 'processing-tile--status-warn'}${processingTileRefreshingClass}`}
                       role="button"
                       tabIndex={0}
                       aria-haspopup="dialog"
@@ -2557,7 +2590,7 @@ export default function ProcessingAttackPage({ embeddedTab }: { embeddedTab?: Pr
                   </Col>
                   <Col md={4}>
                     <Card
-                      className={`app-kpi-nested processing-tile processing-kpi-card--clickable h-100 d-flex flex-column ${pinkOk ? 'processing-tile--status-good' : 'processing-tile--status-warn'}`}
+                      className={`app-kpi-nested processing-tile processing-kpi-card--clickable h-100 d-flex flex-column ${pinkOk ? 'processing-tile--status-good' : 'processing-tile--status-warn'}${processingTileRefreshingClass}`}
                       role="button"
                       tabIndex={0}
                       aria-haspopup="dialog"
@@ -2600,7 +2633,7 @@ export default function ProcessingAttackPage({ embeddedTab }: { embeddedTab?: Pr
                   </Col>
                   <Col md={4}>
                     <Card
-                      className={`app-kpi-nested processing-tile h-100 d-flex flex-column ${invoicedOk ? 'processing-tile--status-good' : 'processing-tile--status-warn'}`}
+                      className={`app-kpi-nested processing-tile h-100 d-flex flex-column ${invoicedOk ? 'processing-tile--status-good' : 'processing-tile--status-warn'}${processingTileRefreshingClass}`}
                     >
                       <Card.Body className="processing-kpi-card-body p-3 flex-grow-1">
                         <ProcessingKpiCardGrid
@@ -2632,7 +2665,7 @@ export default function ProcessingAttackPage({ embeddedTab }: { embeddedTab?: Pr
                   </Col>
                   <Col md={4}>
                     <Card
-                      className={`app-kpi-nested processing-tile processing-kpi-card--clickable h-100 d-flex flex-column ${reportConvOk ? 'processing-tile--status-good' : 'processing-tile--status-warn'}`}
+                      className={`app-kpi-nested processing-tile processing-kpi-card--clickable h-100 d-flex flex-column ${reportConvOk ? 'processing-tile--status-good' : 'processing-tile--status-warn'}${processingTileRefreshingClass}`}
                       role="button"
                       tabIndex={0}
                       aria-haspopup="dialog"
@@ -2677,7 +2710,7 @@ export default function ProcessingAttackPage({ embeddedTab }: { embeddedTab?: Pr
                   </Col>
                   <Col md={4}>
                     <Card
-                      className={`app-kpi-nested processing-tile h-100 d-flex flex-column ${earliestConversionOk ? 'processing-tile--status-good' : 'processing-tile--status-warn'}`}
+                      className={`app-kpi-nested processing-tile h-100 d-flex flex-column ${earliestConversionOk ? 'processing-tile--status-good' : 'processing-tile--status-warn'}${processingTileRefreshingClass}`}
                     >
                       <Card.Body className="processing-kpi-card-body p-3 flex-grow-1">
                         <ProcessingKpiCardGrid

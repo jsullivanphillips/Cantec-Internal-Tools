@@ -6110,24 +6110,92 @@ button.monthly-location-hero-status-badge:focus-visible {
   background: transparent;
 }
 
-.processing-page .processing-refreshing-indicator {
-  display: inline-flex;
+.processing-page .processing-status-freshness-meta {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem;
+  justify-content: flex-end;
+  gap: 0.35rem 0.75rem;
   margin: 0 0 0.85rem;
-  padding: 0.45rem 0.75rem;
-  border: 1px solid #d7dee8;
-  border-radius: 999px;
-  background: #f6f8fb;
-  color: #35506d;
-  font-size: 0.82rem;
-  font-weight: 600;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  color: #64748b;
 }
 
-.processing-page .processing-refreshing-indicator .spinner-border {
-  width: 0.9rem;
-  height: 0.9rem;
+.processing-page .processing-status-freshness-meta__label {
+  white-space: nowrap;
+}
+
+.processing-page .processing-status-freshness-meta__updating {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: #35506d;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.processing-page .processing-status-freshness-meta__updating .spinner-border {
+  width: 0.75rem;
+  height: 0.75rem;
   border-width: 0.14em;
+}
+
+.processing-page .app-kpi-nested.processing-tile.processing-tile--refreshing {
+  position: relative;
+  isolation: isolate;
+}
+
+.processing-page .app-kpi-nested.processing-tile.processing-tile--refreshing > .card-body {
+  position: relative;
+  z-index: 1;
+}
+
+.processing-page .app-kpi-nested.processing-tile.processing-tile--refreshing::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 0;
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    transparent 33.33%,
+    rgba(148, 163, 184, 0.06) 42%,
+    rgba(226, 232, 240, 0.38) 50%,
+    rgba(148, 163, 184, 0.06) 58%,
+    transparent 66.66%,
+    transparent 100%
+  );
+  background-size: 300vw 100%;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  animation: brand-skeleton-shimmer var(--brand-skeleton-shimmer-cycle, 0.9s) linear infinite;
+}
+
+.processing-page .app-kpi-nested.processing-tile.processing-tile--refreshing::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 0;
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    transparent 33.33%,
+    rgba(148, 163, 184, 0.04) 42%,
+    rgba(241, 245, 249, 0.22) 50%,
+    rgba(148, 163, 184, 0.04) 58%,
+    transparent 66.66%,
+    transparent 100%
+  );
+  background-size: 300vw 100%;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  animation: brand-skeleton-shimmer var(--brand-skeleton-shimmer-cycle, 0.9s) linear infinite;
+  animation-delay: var(--brand-skeleton-shimmer-echo-delay, 0.5s);
 }
 
 .processing-page-title {
@@ -7511,29 +7579,12 @@ button.monthly-location-hero-status-badge:focus-visible {
   margin-top: 0.15rem;
 }
 
-.monthly-page .monitoring-companies-table {
-  font-size: 0.75rem;
-}
-
-.monthly-page .monitoring-companies-table thead th {
-  color: var(--ml-muted-strong, #475569);
-  font-size: 0.65rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  line-height: 1.2;
-  padding: 0.35rem 0.4rem;
-  text-transform: uppercase;
-  vertical-align: middle;
-  border-left-width: 0;
-  border-right-width: 0;
-}
-
-.monthly-page .monitoring-companies-table tbody td {
-  line-height: 1.25;
-  padding: 0.28rem 0.4rem;
-  vertical-align: middle;
-  border-left-width: 0;
-  border-right-width: 0;
+.monthly-page .monitoring-companies-table .monthly-locations-table__status-col {
+  width: 4.75rem;
+  max-width: 4.75rem;
+  min-width: 4.75rem;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
 }
 
 .monitoring-companies-table__actions-col {
@@ -7547,28 +7598,6 @@ button.monthly-location-hero-status-badge:focus-visible {
   font-size: 0.8125rem;
   font-weight: 600;
   border-color: #d7dee8;
-}
-
-.monitoring-companies-status {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.12rem 0.45rem;
-  border-radius: 999px;
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  line-height: 1.25;
-  white-space: nowrap;
-}
-
-.monitoring-companies-status--active {
-  background: #ecfdf5;
-  color: #047857;
-}
-
-.monitoring-companies-status--inactive {
-  background: #f1f5f9;
-  color: #64748b;
 }
 
 .monitoring-companies-modal .modal-content {
@@ -7862,6 +7891,11 @@ button.monthly-location-hero-status-badge:focus-visible {
 
 .monthly-billing-table-toolbar__select--quarter-value option {
   color: #0f172a;
+}
+
+.monthly-page .monthly-locations-table-wrap .monthly-billing-table {
+  margin-bottom: 0;
+  --bs-table-border-color: #eef1f5;
 }
 
 .monthly-page .monthly-billing-table {

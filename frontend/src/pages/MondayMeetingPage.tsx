@@ -1,6 +1,12 @@
 import { Suspense, useCallback } from 'react'
 import { Card, Nav, Tab } from 'react-bootstrap'
 import { useSearchParams } from 'react-router-dom'
+import {
+  MondayMeetingProcessingHistoryTabSkeleton,
+  MondayMeetingProcessingTabSkeleton,
+  MondayMeetingSchedulingTabSkeleton,
+  MondayMeetingServiceTabSkeleton,
+} from '../features/mondayMeeting/MondayMeetingTabSkeletons'
 import { lazyWithChunkRetry } from '../lib/lazyWithChunkRetry'
 import '../features/mondayMeeting/mondayMeeting.css'
 
@@ -16,16 +22,6 @@ const MondayMeetingSchedulingEmbed = lazyWithChunkRetry(
 const MondayMeetingServiceTab = lazyWithChunkRetry(
   () => import('../features/mondayMeeting/MondayMeetingServiceTab'),
 )
-
-function MondayMeetingTabFallback() {
-  return (
-    <div className="monday-meeting-service-loading" aria-busy="true" aria-label="Loading tab">
-      <div className="spinner-border text-primary" role="status">
-        <span className="visually-hidden">Loading…</span>
-      </div>
-    </div>
-  )
-}
 
 type MondayMeetingTabKey = 'processing' | 'processing-history' | 'scheduling' | 'service'
 
@@ -79,22 +75,22 @@ export default function MondayMeetingPage() {
           </Nav>
           <Tab.Content className="processing-tabs-shell__panel">
             <Tab.Pane eventKey="processing" mountOnEnter unmountOnExit>
-              <Suspense fallback={<MondayMeetingTabFallback />}>
+              <Suspense fallback={<MondayMeetingProcessingTabSkeleton />}>
                 <MondayMeetingProcessingEmbed />
               </Suspense>
             </Tab.Pane>
             <Tab.Pane eventKey="scheduling" mountOnEnter unmountOnExit>
-              <Suspense fallback={<MondayMeetingTabFallback />}>
+              <Suspense fallback={<MondayMeetingSchedulingTabSkeleton />}>
                 <MondayMeetingSchedulingEmbed />
               </Suspense>
             </Tab.Pane>
             <Tab.Pane eventKey="service" mountOnEnter unmountOnExit>
-              <Suspense fallback={<MondayMeetingTabFallback />}>
+              <Suspense fallback={<MondayMeetingServiceTabSkeleton />}>
                 <MondayMeetingServiceTab />
               </Suspense>
             </Tab.Pane>
             <Tab.Pane eventKey="processing-history" mountOnEnter unmountOnExit>
-              <Suspense fallback={<MondayMeetingTabFallback />}>
+              <Suspense fallback={<MondayMeetingProcessingHistoryTabSkeleton />}>
                 <MondayMeetingProcessingHistoryEmbed />
               </Suspense>
             </Tab.Pane>

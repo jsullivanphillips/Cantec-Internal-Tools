@@ -6,6 +6,7 @@ import CollapsibleAppSidebar from './CollapsibleAppSidebar'
 import { SidebarNav } from './SidebarNav'
 import MonthlyLocationHeaderSearch from './MonthlyLocationHeaderSearch'
 import AppRenderErrorBoundary from '../components/AppRenderErrorBoundary'
+import AppRouteSuspenseFallback from '../components/AppRouteSuspenseFallback'
 
 export default function AppLayout() {
   const nav = useNavigate()
@@ -115,15 +116,7 @@ export default function AppLayout() {
         <main
           className={`app-main flex-grow-1 min-w-0 overflow-auto${isMonthlyRoutesMapRoute ? ' app-main--monthly-map' : ''}${isMonthlyRouteDetailRoute ? ' app-main--monthly-route-detail' : ''}${isWorksheetRoute ? ' app-main--flush' : ''}`}
         >
-          <Suspense
-            fallback={
-              <div className="d-flex justify-content-center align-items-center py-5">
-                <div className="spinner-border text-primary" role="status">
-                  <span className="visually-hidden">Loading…</span>
-                </div>
-              </div>
-            }
-          >
+          <Suspense fallback={<AppRouteSuspenseFallback />}>
             <AppRenderErrorBoundary>
               <Outlet />
             </AppRenderErrorBoundary>

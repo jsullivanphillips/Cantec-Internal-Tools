@@ -135,11 +135,11 @@ function BillingBoardTableSkeleton({ monthDates }: { monthDates: string[] }) {
   const monthCols = monthDates.length > 0 ? monthDates.length : 3
   return (
     <div
-      className="monthly-billing-table-skeleton home-skeleton"
+      className="monthly-locations-table-wrap home-skeleton"
       aria-busy="true"
       aria-label="Loading billing locations"
     >
-      <Table responsive striped className="mb-0 align-middle monthly-billing-table">
+      <Table striped className="mb-0 align-middle monthly-billing-table">
         <thead>
           <tr>
             <th style={{ minWidth: '11rem' }}>Address</th>
@@ -258,8 +258,8 @@ function BillingBoardPaginationBar({
 }) {
   return (
     <div
-      className={`d-flex flex-wrap justify-content-between align-items-center gap-2 py-2 ${
-        position === 'top' ? 'border-bottom' : 'border-top'
+      className={`d-flex flex-wrap justify-content-between align-items-center gap-2 py-2${
+        position === 'bottom' ? ' border-top' : ''
       }`}
     >
       {loading ? (
@@ -643,7 +643,8 @@ export default function MonthlyBillingPage() {
                 <BillingBoardTableSkeleton monthDates={monthDates} />
               ) : (
                 <>
-                  <Table responsive striped hover className="mb-0 align-middle monthly-billing-table">
+                  <div className="monthly-locations-table-wrap">
+                    <Table striped hover className="mb-0 align-middle monthly-billing-table">
                   <thead>
                     <tr>
                         <th style={{ minWidth: '11rem' }}>Address</th>
@@ -807,6 +808,7 @@ export default function MonthlyBillingPage() {
                       )}
                     </tbody>
                   </Table>
+                  </div>
                   <BillingBoardPaginationBar
                     loading={loading}
                     paginationSummary={paginationSummary}
