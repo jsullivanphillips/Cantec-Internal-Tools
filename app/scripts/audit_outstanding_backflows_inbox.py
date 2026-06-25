@@ -5,8 +5,14 @@ import msal
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 from app import create_app
+from app.scripts.backflow_asset_resolution import (
+    BackflowSerialIndexCache,
+    asset_location_id,
+    normalize,
+    resolve_backflow_assets,
+    unique_assets_by_id,
+)
 from dotenv import load_dotenv
-import unicodedata
 
 load_dotenv()
 
@@ -164,14 +170,6 @@ def extract_street_search(address: str) -> str:
         return f"{street_num} {street_name}"
     return address
 
-def normalize(s):
-    """Safely normalize and uppercase serial numbers or strings."""
-    if s is None:
-        return ""
-    if not isinstance(s, str):
-        s = str(s)
-    return unicodedata.normalize("NFKC", s).strip().upper()
-
 # ---------------------------------------------------------------------------
 #  📨 EMAIL HANDLERS
 # ---------------------------------------------------------------------------
@@ -275,6 +273,16 @@ def main():
 
         authenticate(username, password)
 
+        def list_locations_page(params):
+            locations_resp = call_service_trade_api("location", params=params)
+            return locations_resp.get("data", {}).get("locations", [])
+
+        def fetch_location_assets(location_id: int):
+            assets_resp = call_service_trade_api("asset", params={"locationId": location_id})
+            return assets_resp.get("data", {}).get("assets", [])
+
+        serial_index_cache = BackflowSerialIndexCache(list_locations_page, fetch_location_assets)
+
         for item in filtered_data:
             address = item.get("Address")
             if not address:
@@ -286,57 +294,59 @@ def main():
             locations = resp.get("data", {}).get("locations", [])
             item["ServiceTradeLocations"] = locations
 
-            for loc in locations:
-                loc_id = loc.get("id")
-                if not loc_id:
+            if not locations:
+                continue
+
+            wanted_serials = [normalize(sn) for sn in item.get("SerialNumbers", [])]
+            resolution = resolve_backflow_assets(
+                wanted_serials,
+                locations,
+                serial_index=serial_index_cache,
+                fetch_location_assets=fetch_location_assets,
+                create_missing=False,
+            )
+
+            matched_assets = unique_assets_by_id(list(resolution.resolved.values()))
+            missing_serials = resolution.still_missing
+
+            if not matched_assets:
+                continue
+
+            job_found = False
+            jobs_found = 0
+            job_ids = []
+            for asset in matched_assets:
+                asset_loc_id = asset_location_id(asset)
+                if not asset_loc_id:
                     continue
+                resp = call_service_trade_api(
+                    "job",
+                    params={
+                        "locationId": asset_loc_id,
+                        "scheduleDateFrom": datetime.timestamp(item["ReceivedAt"]),
+                        "scheduleDateTo": datetime.timestamp(datetime.now() + timedelta(days=90)),
+                        "status": "all",
+                        "assetId": asset.get("id"),
+                    },
+                )
+                jobs = resp.get("data", {}).get("jobs", [])
+                if jobs:
+                    job_ids.extend([job.get("id") for job in jobs])
+                    job_found = True
+                    jobs_found += 1
 
-                # Fetch all existing assets for this location
-                assets_resp = call_service_trade_api("asset", params={"locationId": loc_id})
-                assets = assets_resp.get("data", {}).get("assets", [])
-
-                # Normalize serials for comparison
-                wanted_serials = [normalize(sn) for sn in item.get("SerialNumbers", [])]
-                matched_assets = [
-                    asset for asset in assets
-                    if normalize(asset.get("properties", {}).get("serial", "")) in wanted_serials
-                ]
-                existing_serials = [normalize(asset.get("properties", {}).get("serial", "")) for asset in assets]
-
-                # Find serials that do not yet exist as assets
-                missing_serials = [sn for sn in wanted_serials if sn not in existing_serials]
-
-                if not matched_assets:
-                    continue
-                
-                job_found = False
-                jobs_found = 0
-                job_ids = []
-                for asset in matched_assets:
-                    # See if there is a job on this location with this asset attached
-                    resp = call_service_trade_api("job", params={"locationId": loc_id,
-                            "scheduleDateFrom": datetime.timestamp(item["ReceivedAt"]),
-                            "scheduleDateTo": datetime.timestamp((datetime.now()) + timedelta(days=90) ),
-                            "status": "all",
-                            "assetId": asset.get("id")})
-                    jobs = resp.get("data", {}).get("jobs", [])
-                    if jobs:
-                        job_ids.extend([job.get("id") for job in jobs])
-                        job_found = True
-                        jobs_found += 1
-                
-                if jobs_found == len(matched_assets) and not missing_serials:
-                    print(f"\n------\n{item["Address"]}: All assets have jobs scheduled.")
-                    for job_id in job_ids:
-                        print(f" - Job ID: {job_id}")
-                elif jobs_found == len(matched_assets) and missing_serials:
-                    print(f"\n------\n{item["Address"]}: All found assets have jobs scheduled, but missing assets")
-                    for job_id in job_ids:
-                        print(f" - Job ID: {job_id}")
-                elif job_found:
-                    print(f"\n------\n{item["Address"]}: Some assets have jobs scheduled.")
-                    for job_id in job_ids:
-                        print(f" - Job ID: {job_id}")
+            if jobs_found == len(matched_assets) and not missing_serials:
+                print(f"\n------\n{item['Address']}: All assets have jobs scheduled.")
+                for job_id in job_ids:
+                    print(f" - Job ID: {job_id}")
+            elif jobs_found == len(matched_assets) and missing_serials:
+                print(f"\n------\n{item['Address']}: All found assets have jobs scheduled, but missing assets")
+                for job_id in job_ids:
+                    print(f" - Job ID: {job_id}")
+            elif job_found:
+                print(f"\n------\n{item['Address']}: Some assets have jobs scheduled.")
+                for job_id in job_ids:
+                    print(f" - Job ID: {job_id}")
 
                     
 

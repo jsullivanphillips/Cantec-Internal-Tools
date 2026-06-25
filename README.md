@@ -82,6 +82,16 @@ From the **Excluded deficiencies** modal on the Service tab, you can **Include i
 - Performance summary: date filter, both tabs (charts load)
 - Webhook status JSON; Update DB table + POST update
 
+## CRD backflow automation
+
+[`app/scripts/backflow_automation.py`](app/scripts/backflow_automation.py) processes CRD backflow assignment and test-result emails into ServiceTrade. Asset matching is shared with [`app/scripts/backflow_asset_resolution.py`](app/scripts/backflow_asset_resolution.py): after an address matches one or more locations, serials are resolved locally first, then across all ServiceTrade `backflow` assets by serial before creating a new asset on the first matched location. [`app/scripts/audit_outstanding_backflows_inbox.py`](app/scripts/audit_outstanding_backflows_inbox.py) uses the same resolution for job-scheduling audits.
+
+Dry-run (read-only against Graph/ServiceTrade; no creates, comments, moves, or metrics):
+
+```bash
+python -m app.scripts.backflow_automation --dry-run
+```
+
 ## Removed
 
 - **Fleet overview** (blueprint, templates, and related static assets) has been removed.

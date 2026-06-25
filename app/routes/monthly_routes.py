@@ -2643,6 +2643,15 @@ def _run_details_counts_for_month(route_id: int, month_first: date) -> dict[str,
     return run_details_counts_from_stop_months(route_id, month_first)
 
 
+def _sync_st_annual_on_paperwork_view(route_id: int, month_first: date) -> None:
+    """Refresh ServiceTrade annual flags when office or portal paperwork is opened."""
+    from app.monthly.service_trade_annual_schedule import (
+        sync_route_annual_schedule_for_paperwork_view,
+    )
+
+    sync_route_annual_schedule_for_paperwork_view(route_id, month_first)
+
+
 def _location_display_label(loc: MonthlyLocation | None, location_id: int) -> str:
     if loc is None:
         return f"Location {location_id}"
@@ -2762,6 +2771,9 @@ def get_monthly_route_run_details(route_id: int):
         return jsonify({"error": "Invalid or missing month query param (use YYYY-MM-DD, first of month)"}), 400
 
     month_first = date(month_dt.year, month_dt.month, 1)
+    if _get_monthly_route(route_id) is None:
+        return jsonify({"error": "Route not found"}), 404
+    _sync_st_annual_on_paperwork_view(route_id, month_first)
     payload = _serialize_monthly_run_details_payload(route_id, month_first)
     if payload is None:
         return jsonify({"error": "Route not found"}), 404
@@ -2769,9 +2781,8 @@ def get_monthly_route_run_details(route_id: int):
 
 
 @monthly_routes_bp.get("/api/monthly_routes/routes/<int:route_id>/runs/annual_schedule_check")
-@cached_json_response(prefix="monthly:annual_schedule_check", ttl_seconds=3600)
 def get_monthly_route_annual_schedule_check(route_id: int):
-    """ServiceTrade annual inspection schedule flags for office run prep (cached 1 hour)."""
+    """ServiceTrade annual inspection schedule flags for office run prep."""
     if not session.get("authenticated"):
         return jsonify({"error": "Unauthorized"}), 401
 
@@ -2785,22 +2796,23 @@ def get_monthly_route_annual_schedule_check(route_id: int):
     month_first = date(month_dt.year, month_dt.month, 1)
     from app.monthly.service_trade_annual_schedule import (
         build_route_annual_schedule_payload_from_db,
-        route_annual_schedule_has_db_cache,
-        sync_route_annual_schedule,
+        sync_route_annual_schedule_for_paperwork_view,
     )
 
-    force_sync = (request.args.get("sync") or "").strip().lower() in {"1", "true", "yes"}
     cache_bust = (request.args.get("cache_bust") or "").strip().lower() in {"1", "true", "yes"}
-    use_live_sync = force_sync or cache_bust or not route_annual_schedule_has_db_cache(
-        route_id,
-        month_first,
-    )
+    force_sync = cache_bust or (request.args.get("sync") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
 
     try:
-        if use_live_sync:
-            payload = sync_route_annual_schedule(route_id, month_first)
-        else:
-            payload = build_route_annual_schedule_payload_from_db(route_id, month_first)
+        sync_route_annual_schedule_for_paperwork_view(
+            route_id,
+            month_first,
+            force=force_sync,
+        )
+        payload = build_route_annual_schedule_payload_from_db(route_id, month_first)
     except RuntimeError as exc:
         return jsonify({"error": str(exc), "code": "service_trade_config"}), 503
     except Exception as exc:
@@ -3589,6 +3601,7 @@ def get_monthly_route_worksheet(route_id: int):
     month_first = date(month_dt.year, month_dt.month, 1)
     if _get_monthly_route(route_id) is None:
         return jsonify({"error": "Route not found"}), 404
+    _sync_st_annual_on_paperwork_view(route_id, month_first)
     portal_lazy = _portal_worksheet_lazy_request()
     if _portal_current_month_materialize_on_read(month_first):
         portal_lazy = False

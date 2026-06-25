@@ -47,8 +47,17 @@ def test_canonical_empty_for_no_key_sentinel():
 
 def test_access_instruction_no_key_phrases():
     assert monthly_keys_field_indicates_no_key("On Site") is True
-    assert monthly_keys_field_indicates_no_key("Key at Front Desk") is True
+    assert monthly_keys_field_indicates_no_key("At Reception") is True
+    assert monthly_keys_field_indicates_no_key("  AT RECEPTION  ") is True
+    assert monthly_keys_field_indicates_no_key("W/ Parking Attendant") is True
+    assert monthly_keys_field_indicates_no_key("w/ parking attendant") is True
+    assert monthly_keys_field_indicates_no_key("Manager on site") is True
+    assert monthly_keys_field_indicates_no_key("  MANAGER ON SITE  ") is True
+    assert monthly_keys_field_indicates_no_key("Staff on site") is True
+    assert monthly_keys_field_indicates_no_key("Ask Front Desk on site") is True
     assert monthly_keys_field_indicates_no_key("NO KEYS - CONTACT ON SITE") is True
+    assert monthly_keys_field_indicates_no_key("Staff on-site") is True
+    assert monthly_keys_field_indicates_no_key("Key at Front Desk") is True
     assert monthly_keys_field_indicates_no_key("Call Site Contact") is True
     assert monthly_keys_field_indicates_no_key("Contact Front Desk to gain Access") is True
     assert monthly_keys_field_indicates_no_key("Call Ken Cooper") is True

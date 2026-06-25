@@ -39,10 +39,16 @@ _NO_KEY_PHRASES_CF = frozenset(
         "none",
         "n/a",
         "na",
-        "on site",
+        "at reception",
+        "w/ parking attendant",
         "key at front desk",
-        "no keys - contact on site",
     }
+)
+
+# Access-instruction substrings anywhere in KEYS text — not a physical keycode.
+_NO_KEY_SUBSTRINGS_CF = (
+    "on site",
+    "on-site",
 )
 
 # Access-instruction prefixes (call/contact site — not a physical keycode).
@@ -67,6 +73,8 @@ def monthly_keys_field_indicates_no_key(raw: str | None) -> bool:
         return True
     cf = text.casefold()
     if cf in _NO_KEY_PHRASES_CF:
+        return True
+    if any(sub in cf for sub in _NO_KEY_SUBSTRINGS_CF):
         return True
     return any(cf.startswith(prefix) for prefix in _NO_KEY_PREFIXES_CF)
 

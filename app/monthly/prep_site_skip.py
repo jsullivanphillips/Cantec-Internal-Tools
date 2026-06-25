@@ -78,6 +78,11 @@ def _stop_is_prep_skipped(mlm: MonthlyLocationMonth) -> bool:
     return outcome == "skipped"
 
 
+def office_manual_prep_skip_locks_st_annual_sync(mlm: MonthlyLocationMonth) -> bool:
+    """True when office prep manually skipped a site (ST sync must not overwrite)."""
+    return _stop_is_prep_skipped(mlm) and (mlm.history_source or "").strip() == HISTORY_SOURCE_OFFICE_PREP
+
+
 def office_prep_skip_site(
     route_id: int,
     location_id: int,

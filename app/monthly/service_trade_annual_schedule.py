@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import os
+import logging
+import threading
+import time
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any
@@ -22,6 +25,13 @@ from app.monthly.worksheet_locations import (
 )
 
 PACIFIC_TZ = ZoneInfo("America/Vancouver")
+
+logger = logging.getLogger(__name__)
+
+# Coalesce parallel paperwork requests (run_details + annual_schedule_check + worksheet).
+_paperwork_st_sync_lock = threading.Lock()
+_paperwork_st_sync_recent: dict[tuple[int, str], float] = {}
+PAPERWORK_ST_SYNC_DEDUP_SECONDS = 15.0
 
 QUALIFYING_JOB_TYPES = frozenset({"inspection", "replacement", "upgrade", "installation"})
 
@@ -690,6 +700,15 @@ def _snapshot_row_to_mlm_cache(row: dict[str, object], synced_at: datetime) -> d
     }
 
 
+def mlm_st_annual_sync_locked(mlm: MonthlyLocationMonth) -> bool:
+    """Office manual test/skip decisions that ServiceTrade sync must not overwrite."""
+    if mlm.annual_test_override:
+        return True
+    from app.monthly.prep_site_skip import office_manual_prep_skip_locks_st_annual_sync
+
+    return office_manual_prep_skip_locks_st_annual_sync(mlm)
+
+
 def persist_route_annual_schedule_snapshot(
     route_id: int,
     month_first: date,
@@ -734,6 +753,8 @@ def persist_route_annual_schedule_snapshot(
         location_id = int(loc_key)
         mlm = rows.get(location_id)
         if mlm is None:
+            continue
+        if mlm_st_annual_sync_locked(mlm):
             continue
         cache_fields = _snapshot_row_to_mlm_cache(row, synced_at)
         for attr, value in cache_fields.items():
@@ -794,10 +815,44 @@ def build_route_annual_schedule_payload_from_db(
 
 
 def sync_route_annual_schedule(route_id: int, month_first: date) -> dict[str, object]:
-    """Live ServiceTrade sync, persist to DB, and return the snapshot payload."""
+    """Live ServiceTrade sync, persist to DB (respecting manual locks), return DB payload."""
     snapshot = build_route_annual_schedule_snapshot(route_id, month_first)
     persist_route_annual_schedule_snapshot(route_id, month_first, snapshot)
-    return snapshot
+    return build_route_annual_schedule_payload_from_db(route_id, month_first)
+
+
+def sync_route_annual_schedule_for_paperwork_view(
+    route_id: int,
+    month_first: date,
+    *,
+    force: bool = False,
+) -> bool:
+    """Best-effort live ST sync when office or portal paperwork is opened."""
+    key = (int(route_id), month_first.isoformat())
+    now = time.monotonic()
+    if not force:
+        with _paperwork_st_sync_lock:
+            last = _paperwork_st_sync_recent.get(key)
+            if last is not None and (now - last) < PAPERWORK_ST_SYNC_DEDUP_SECONDS:
+                return False
+            _paperwork_st_sync_recent[key] = now
+    else:
+        with _paperwork_st_sync_lock:
+            _paperwork_st_sync_recent[key] = now
+
+    try:
+        sync_route_annual_schedule(route_id, month_first)
+        return True
+    except Exception as exc:
+        logger.warning(
+            "ServiceTrade annual sync on paperwork view failed for route %s month %s: %s",
+            route_id,
+            month_first.isoformat(),
+            exc,
+        )
+        with _paperwork_st_sync_lock:
+            _paperwork_st_sync_recent.pop(key, None)
+        return False
 
 
 def annual_schedule_row_from_mlm(

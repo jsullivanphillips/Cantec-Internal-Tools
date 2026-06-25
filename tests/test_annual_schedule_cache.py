@@ -11,9 +11,11 @@ from app import create_app
 from app.db_models import MonthlyLocation, MonthlyLocationMonth, MonthlyRouteRun, db
 from app.monthly.service_trade_annual_schedule import (
     annual_schedule_location_rows_by_id,
+    mlm_st_annual_sync_locked,
     persist_route_annual_schedule_snapshot,
     sync_route_annual_schedule,
 )
+from app.monthly.history_source import HISTORY_SOURCE_OFFICE_PREP
 from app.monthly.worksheet_locations import serialize_worksheet_location
 from tests.monthly_location_helpers import WORKSHEET_TABLES
 from tests.test_worksheet_stops_api import _seed_route_with_two_stops
@@ -24,6 +26,9 @@ PACIFIC_TZ = ZoneInfo("America/Vancouver")
 @pytest.fixture
 def cache_client(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    from app.monthly.service_trade_annual_schedule import _paperwork_st_sync_recent
+
+    _paperwork_st_sync_recent.clear()
     app = create_app()
     app.config["TESTING"] = True
     app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///:memory:"
@@ -255,37 +260,120 @@ def test_sync_route_annual_schedule_calls_live_and_persist(cache_client, monkeyp
         assert calls == [(1, month_first)]
 
 
-def test_annual_schedule_check_reads_db_without_live_sync(cache_client, monkeypatch):
+def test_persist_skips_st_sync_for_annual_test_override(cache_client):
+    _client, app = cache_client
+    month_first = date(2026, 6, 1)
+    with app.app_context():
+        _route_id, primary_id, _secondary_id = _seed_route_with_two_stops()
+        ts_id = int(primary_id)
+        mlm = MonthlyLocationMonth(
+            id=99010,
+            monthly_location_id=ts_id,
+            month_date=month_first,
+            test_monthly_route_id=1,
+            st_annual_skip_recommended=False,
+            st_has_scheduled_annual_in_month=False,
+            st_annual_synced_at=datetime(2026, 6, 1, 7, 0, tzinfo=PACIFIC_TZ),
+            annual_test_override=True,
+        )
+        db.session.add(mlm)
+        db.session.commit()
+        synced_before = mlm.st_annual_synced_at
+
+        persist_route_annual_schedule_snapshot(
+            1,
+            month_first,
+            _sample_snapshot(1, month_first, ts_id),
+        )
+        db.session.refresh(mlm)
+        assert mlm.st_annual_skip_recommended is False
+        assert mlm.st_has_scheduled_annual_in_month is False
+        assert mlm.st_annual_synced_at == synced_before
+
+
+def test_persist_skips_st_sync_for_office_prep_skip(cache_client):
+    _client, app = cache_client
+    month_first = date(2026, 6, 1)
+    with app.app_context():
+        _route_id, primary_id, _secondary_id = _seed_route_with_two_stops()
+        ts_id = int(primary_id)
+        mlm = MonthlyLocationMonth(
+            id=99011,
+            monthly_location_id=ts_id,
+            month_date=month_first,
+            test_monthly_route_id=1,
+            st_annual_skip_recommended=False,
+            st_has_scheduled_annual_in_month=False,
+            st_annual_synced_at=datetime(2026, 6, 1, 7, 0, tzinfo=PACIFIC_TZ),
+            test_outcome="skipped",
+            history_source=HISTORY_SOURCE_OFFICE_PREP,
+        )
+        db.session.add(mlm)
+        db.session.commit()
+
+        persist_route_annual_schedule_snapshot(
+            1,
+            month_first,
+            _sample_snapshot(1, month_first, ts_id),
+        )
+        db.session.refresh(mlm)
+        assert mlm.st_annual_skip_recommended is False
+        assert mlm.st_has_scheduled_annual_in_month is False
+
+
+def test_mlm_st_annual_sync_locked(cache_client):
+    _client, app = cache_client
+    with app.app_context():
+        mlm = MonthlyLocationMonth(
+            id=99012,
+            monthly_location_id=101,
+            month_date=date(2026, 6, 1),
+            test_monthly_route_id=1,
+        )
+        assert mlm_st_annual_sync_locked(mlm) is False
+        mlm.annual_test_override = True
+        assert mlm_st_annual_sync_locked(mlm) is True
+        mlm.annual_test_override = False
+        mlm.test_outcome = "skipped"
+        mlm.history_source = HISTORY_SOURCE_OFFICE_PREP
+        assert mlm_st_annual_sync_locked(mlm) is True
+
+
+def test_annual_schedule_check_syncs_on_paperwork_view(cache_client, monkeypatch):
     client, app = cache_client
     month_first = date(2026, 6, 1)
+    sync_calls: list[tuple[int, date, bool]] = []
 
-    def _fail_live_sync(*_args, **_kwargs):
-        raise AssertionError("live ServiceTrade sync should not run when DB cache exists")
+    def _fake_paperwork_sync(route_id: int, month: date, *, force: bool = False) -> bool:
+        sync_calls.append((route_id, month, force))
+        return True
 
     monkeypatch.setattr(
-        "app.monthly.service_trade_annual_schedule.build_route_annual_schedule_snapshot",
-        _fail_live_sync,
+        "app.monthly.service_trade_annual_schedule.sync_route_annual_schedule_for_paperwork_view",
+        _fake_paperwork_sync,
     )
 
     with app.app_context():
         _route_id, primary_id, secondary_id = _seed_route_with_two_stops()
         for location_id in (int(primary_id), int(secondary_id)):
-            mlm = MonthlyLocationMonth(
-                id=99003 if location_id == int(primary_id) else 99004,
-                monthly_location_id=location_id,
-                month_date=month_first,
-                test_monthly_route_id=1,
-                st_annual_skip_recommended=location_id == int(primary_id),
-                st_has_scheduled_annual_in_month=location_id == int(primary_id),
-                st_annual_synced_at=datetime(2026, 6, 1, 8, 0, tzinfo=PACIFIC_TZ),
+            db.session.add(
+                MonthlyLocationMonth(
+                    id=99003 if location_id == int(primary_id) else 99004,
+                    monthly_location_id=location_id,
+                    month_date=month_first,
+                    test_monthly_route_id=1,
+                    st_annual_skip_recommended=location_id == int(primary_id),
+                    st_has_scheduled_annual_in_month=location_id == int(primary_id),
+                    st_annual_synced_at=datetime(2026, 6, 1, 8, 0, tzinfo=PACIFIC_TZ),
+                )
             )
-            db.session.add(mlm)
         db.session.commit()
 
     res = client.get(
         f"/api/monthly_routes/routes/1/runs/annual_schedule_check?month_date={month_first.isoformat()}"
     )
     assert res.status_code == 200
+    assert sync_calls == [(1, month_first, False)]
     body = res.get_json()
     assert body["locations"][str(primary_id)]["annual_skip_recommended"] is True
 
@@ -295,13 +383,13 @@ def test_annual_schedule_check_live_sync_when_cache_incomplete(cache_client, mon
     month_first = date(2026, 7, 1)
     calls: list[tuple[int, date]] = []
 
-    def _fake_sync(route_id: int, month: date) -> dict[str, object]:
+    def _fake_build(route_id: int, month: date) -> dict[str, object]:
         calls.append((route_id, month))
         return _sample_snapshot(route_id, month, 101)
 
     monkeypatch.setattr(
-        "app.monthly.service_trade_annual_schedule.sync_route_annual_schedule",
-        _fake_sync,
+        "app.monthly.service_trade_annual_schedule.build_route_annual_schedule_snapshot",
+        _fake_build,
     )
 
     with app.app_context():

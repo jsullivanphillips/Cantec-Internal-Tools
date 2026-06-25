@@ -17,9 +17,16 @@ EDGE CASE HANDLING
     - If no location matches the parsed address, the code skips cleanly.
     - No API errors occur; a summary line shows "0 location matches".
 
-✅ Asset does not exist on ServiceTrade
-    - If a location contains no assets, the code safely skips asset processing.
-    - No posting or deletion attempts are made.
+✅ Asset does not exist at the matched location
+    - If a serial is not found on address-matched location(s), the code searches all
+      ServiceTrade backflow assets by serial before creating a new asset or skipping.
+    - Multi-building sites that share one CRD address can still match assets on the
+      correct building location elsewhere in ServiceTrade.
+
+✅ Asset does not exist anywhere on ServiceTrade
+    - DeviceAssignment: creates a new backflow asset on the first matched location only.
+    - TestResult: posts comments only for resolved serials; email is not moved if any
+      serial remains unresolved after the global search.
 
 ✅ No comments on an asset
     - If an asset has no existing comments, a new comment is posted normally.
@@ -51,14 +58,21 @@ NOTE: Secret Key for GRAPH API will expire October, 20, 2026
 
 import os
 import re
+import argparse
 import msal
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 from app import create_app
 from app.db_models import db, BackflowAutomationMetric
+from app.scripts.backflow_asset_resolution import (
+    BackflowSerialIndexCache,
+    asset_location_id,
+    normalize,
+    resolve_backflow_assets,
+    unique_assets_by_id,
+)
 from dotenv import load_dotenv
-import unicodedata
 
 
 # ---------------------------------------------------------------------------
@@ -150,15 +164,6 @@ def get_full_message(headers, message_id):
 # ---------------------------------------------------------------------------
 #  🧠 EMAIL PARSING
 # ---------------------------------------------------------------------------
-
-def normalize(s):
-    """Safely normalize and uppercase serial numbers or strings."""
-    if s is None:
-        return ""
-    if not isinstance(s, str):
-        s = str(s)
-    return unicodedata.normalize("NFKC", s).strip().upper()
-
 
 def parse_crd_test_result(html_content):
     """Extract address, all device details, serials, and properly formatted test results from a CRD test email."""
@@ -368,9 +373,36 @@ def handle_device_assignment(message, body_html):
 #  🚀 MAIN
 # ---------------------------------------------------------------------------
 
-def main():
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Process CRD backflow emails and update ServiceTrade assets.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Resolve matches and log planned actions only; no creates, comments, email moves, or metrics.",
+    )
+    return parser.parse_args()
+
+
+def _log_resolution_summary(item, address, locations, resolution) -> None:
+    print(f"\n--- {item.get('Subject')} ({item.get('Type')}) ---")
+    print(f" Address: {address}")
+    print(f" Matched locations: {[loc.get('id') for loc in locations]}")
+    for serial, asset in resolution.resolved.items():
+        loc_id = asset_location_id(asset)
+        print(f" Serial {serial} -> asset {asset.get('id')} (location {loc_id})")
+    if resolution.still_missing:
+        print(f" Unresolved serials: {', '.join(resolution.still_missing)}")
+    if resolution.created:
+        print(f" Created assets: {[asset.get('id') for asset in resolution.created]}")
+
+
+def main(dry_run: bool = False):
     """Main entrypoint for CRD email processing and ServiceTrade integration."""
     processed_emails = 0
+    if dry_run:
+        print("\n*** DRY RUN — no assets, comments, emails, or metrics will be modified ***\n")
     # -----------------------------------------------------------------------
     #  Step 1. Authenticate with Microsoft Graph
     # -----------------------------------------------------------------------
@@ -449,6 +481,31 @@ def main():
 
         authenticate(username, password)
 
+        def list_locations_page(params):
+            locations_resp = call_service_trade_api("location", params=params)
+            return locations_resp.get("data", {}).get("locations", [])
+
+        def fetch_location_assets(location_id: int):
+            assets_resp = call_service_trade_api("asset", params={"locationId": location_id})
+            return assets_resp.get("data", {}).get("assets", [])
+
+        serial_index_cache = BackflowSerialIndexCache(list_locations_page, fetch_location_assets)
+
+        def create_backflow_asset(payload):
+            try:
+                url = f"{SERVICE_TRADE_API_BASE}/asset"
+                post_resp = api_session.post(url, json=payload)
+                post_resp.raise_for_status()
+                new_asset = post_resp.json().get("data", {})
+                serial = payload.get("properties", {}).get("serial")
+                location_id = payload.get("locationId")
+                print(f" ✅ Created new asset for serial {serial} at location {location_id}")
+                return new_asset
+            except Exception as e:
+                serial = payload.get("properties", {}).get("serial")
+                print(f"  Error creating asset for serial {serial}: {e}")
+                return None
+
         # -------------------------------------------------------------------
         #  Step 5. Query ServiceTrade for matching locations and assets
         # -------------------------------------------------------------------
@@ -463,143 +520,124 @@ def main():
             locations = resp.get("data", {}).get("locations", [])
             item["ServiceTradeLocations"] = locations
 
-            for loc in locations:
-                loc_id = loc.get("id")
-                if not loc_id:
-                    continue
+            if not locations:
+                continue
 
-                # Fetch all existing assets for this location
-                assets_resp = call_service_trade_api("asset", params={"locationId": loc_id})
-                assets = assets_resp.get("data", {}).get("assets", [])
+            wanted_serials = [normalize(sn) for sn in item.get("SerialNumbers", [])]
+            create_missing = item["Type"] == "DeviceAssignment" and not dry_run
+            resolution = resolve_backflow_assets(
+                wanted_serials,
+                locations,
+                serial_index=serial_index_cache,
+                fetch_location_assets=fetch_location_assets,
+                create_missing=create_missing,
+                devices=item.get("Devices", {}),
+                create_asset=create_backflow_asset if create_missing else None,
+            )
 
-                # Normalize serials for comparison
-                wanted_serials = [normalize(sn) for sn in item.get("SerialNumbers", [])]
-                matched_assets = [
-                    asset for asset in assets
-                    if normalize(asset.get("properties", {}).get("serial", "")) in wanted_serials
-                ]
-                existing_serials = [normalize(asset.get("properties", {}).get("serial", "")) for asset in assets]
+            _log_resolution_summary(item, address, locations, resolution)
 
-                # Find serials that do not yet exist as assets
-                missing_serials = [sn for sn in wanted_serials if sn not in existing_serials]
+            if dry_run and item["Type"] == "DeviceAssignment" and resolution.still_missing:
+                first_loc_id = locations[0].get("id")
+                for serial in resolution.still_missing:
+                    print(
+                        f" [DRY RUN] Would create backflow asset for serial {serial} "
+                        f"at location {first_loc_id}"
+                    )
 
-                # ----------------------------------------------------------
-                #  Handle asset creation logic
-                # ----------------------------------------------------------
-                newly_created_assets = []
+            if item["Type"] == "TestResult" and resolution.still_missing:
+                print(
+                    f" ⚠️ Test Result for '{address}' — unresolved serials after global search: "
+                    f"{', '.join(resolution.still_missing)}"
+                )
+                item["SkipProcessing"] = True
 
-                # ❗️Only create new assets for DeviceAssignment emails
-                if item["Type"] == "DeviceAssignment" and missing_serials:
-                    for serial in missing_serials:
-                        device_info = item.get("Devices", {}).get(serial, {})
-                        if not device_info:
-                            print(f" ⚠️ No device info found for serial {serial}")
-                            continue
-                        print(f"device info: ", device_info)
+            if resolution.created:
+                item.setdefault("CreatedAssets", []).extend(resolution.created)
 
-                        payload = {
-                            "locationId": loc_id,
-                            "name": f"Backflow {device_info.get('Model', '')} ({serial})",
-                            "type": "backflow",
-                            "properties": {
-                                "manufacturer": (device_info.get("Make") or "").split()[0] if device_info.get("Make") else "",
-                                "model": (device_info.get("Model") or "").split()[0] if device_info.get("Model") else "",
-                                "serial": serial,
-                                "size": " ".join(re.findall(r"[\d/]+", device_info.get("FixtureSize", ""))) or None,
-                                "water_one_hazard": device_info.get("HazardType"),
-                                "location_in_site": device_info.get("Location"),
-                                "feed": (device_info.get("HazardType") or "").split()[0] if device_info.get("HazardType") else "",
-                                "type": device_info.get("Type"),
-                                "application": (device_info.get("HazardType") or "").split()[0] if device_info.get("HazardType") else ""
-                            },
-                        }
+            created_ids = {asset.get("id") for asset in resolution.created}
+            matched_assets = [
+                asset for asset in resolution.resolved.values() if asset.get("id") not in created_ids
+            ]
+            if matched_assets:
+                item.setdefault("MatchedAssets", []).extend(matched_assets)
 
-                        try:
-                            url = f"{SERVICE_TRADE_API_BASE}/asset"
-                            post_resp = api_session.post(url, json=payload)
-                            post_resp.raise_for_status()
-                            new_asset = post_resp.json().get("data", {})
-                            newly_created_assets.append(new_asset)
-                            print(f" ✅ Created new asset for serial {serial} at location {loc_id}")
-                        except Exception as e:
-                            print(f"  Error creating asset for serial {serial}: {e}")
-
-                # ----------------------------------------------------------
-                #  Handle Test Result emails: skip if no existing assets
-                # ----------------------------------------------------------
-                if item["Type"] == "TestResult" and not matched_assets:
+            all_assets = unique_assets_by_id(list(resolution.resolved.values()))
+            if not all_assets:
+                if item["Type"] == "TestResult":
                     print(f" ⚠️ Skipping Test Result for '{address}' — no existing ServiceTrade assets found.")
-                    # Don’t move or process comments
                     item["SkipProcessing"] = True
+                continue
+
+            # ----------------------------------------------------------
+            #  Process all resolved assets with updates/comments
+            # ----------------------------------------------------------
+            for asset in all_assets:
+                asset_id = asset.get("id")
+                entity_type = 2  # Asset
+
+                has_new_comment = False
+                new_comment_text = None
+
+                if item["Type"] == "DeviceAssignment" and item.get("LoginId") and item.get("PortalLink"):
+                    has_new_comment = True
+                    new_comment_text = (
+                        "[BACKFLOW AUTOMATION]\n"
+                        f"Login ID: {item['LoginId']}\n"
+                        f"Online CRD Test Portal Link: {item['PortalLink']}"
+                    )
+
+                elif item["Type"] == "TestResult" and item.get("TestResultsInfo"):
+                    has_new_comment = True
+                    new_comment_text = (
+                        "[BACKFLOW AUTOMATION]\n"
+                        "CRD Test Results:\n" + item["TestResultsInfo"]
+                    )
+
+                # Fetch and filter existing comments
+                resp = call_service_trade_api("comment", params={"entityId": asset_id, "entityType": entity_type})
+                comments = resp.get("data", {}).get("comments", [])
+                existing_contents = [c.get("content", "").strip() for c in comments]
+
+                if new_comment_text and new_comment_text.strip() in existing_contents:
+                    print(f" Skipping asset {asset_id} — identical comment already exists.")
                     continue
 
-                # Combine matched + newly created assets for unified update logic
-                all_assets = matched_assets + newly_created_assets
-                if newly_created_assets:
-                    item.setdefault("CreatedAssets", []).extend(newly_created_assets)
-                if matched_assets:
-                    item.setdefault("MatchedAssets", []).extend(matched_assets)
-
-                # ----------------------------------------------------------
-                #  Process all assets (new + existing) with updates/comments
-                # ----------------------------------------------------------
-                for asset in all_assets:
-                    asset_id = asset.get("id")
-                    entity_type = 2  # Asset
-
-                    has_new_comment = False
-                    new_comment_text = None
-
-                    if item["Type"] == "DeviceAssignment" and item.get("LoginId") and item.get("PortalLink"):
-                        has_new_comment = True
-                        new_comment_text = (
-                            "[BACKFLOW AUTOMATION]\n"
-                            f"Login ID: {item['LoginId']}\n"
-                            f"Online CRD Test Portal Link: {item['PortalLink']}"
-                        )
-
-                    elif item["Type"] == "TestResult" and item.get("TestResultsInfo"):
-                        has_new_comment = True
-                        new_comment_text = (
-                            "[BACKFLOW AUTOMATION]\n"
-                            "CRD Test Results:\n" + item["TestResultsInfo"]
-                        )
-
-                    # Fetch and filter existing comments
-                    resp = call_service_trade_api("comment", params={"entityId": asset_id, "entityType": entity_type})
-                    comments = resp.get("data", {}).get("comments", [])
-                    existing_contents = [c.get("content", "").strip() for c in comments]
-
-                    if new_comment_text and new_comment_text.strip() in existing_contents:
-                        print(f" Skipping asset {asset_id} — identical comment already exists.")
-                        continue
-
-                    # Delete outdated login ID comments
-                    for comment in comments:
-                        if has_new_comment and "login id" in comment.get("content", "").lower():
-                            try:
-                                del_url = f"{SERVICE_TRADE_API_BASE}/comment/{comment['id']}"
-                                del_resp = api_session.delete(del_url)
-                                del_resp.raise_for_status()
-                                print(f"  Deleted outdated login ID comment (ID {comment['id']}) for asset {asset_id}")
-                            except Exception as e:
-                                print(f"  Error deleting comment {comment['id']}: {e}")
-
-                    # Post new comment
-                    if has_new_comment and new_comment_text:
+                # Delete outdated login ID comments
+                for comment in comments:
+                    if has_new_comment and "login id" in comment.get("content", "").lower():
+                        if dry_run:
+                            print(
+                                f" [DRY RUN] Would delete outdated login ID comment "
+                                f"(ID {comment['id']}) for asset {asset_id}"
+                            )
+                            continue
                         try:
-                            comment_url = f"{SERVICE_TRADE_API_BASE}/comment"
-                            payload = {
-                                "entityId": asset_id,
-                                "entityType": entity_type,
-                                "content": new_comment_text,
-                                "visibility": ["tech"],
-                            }
-                            post_resp = api_session.post(comment_url, json=payload)
-                            post_resp.raise_for_status()
-                            print(f" Posted new comment for asset {asset_id}")
+                            del_url = f"{SERVICE_TRADE_API_BASE}/comment/{comment['id']}"
+                            del_resp = api_session.delete(del_url)
+                            del_resp.raise_for_status()
+                            print(f"  Deleted outdated login ID comment (ID {comment['id']}) for asset {asset_id}")
                         except Exception as e:
-                            print(f"  Error posting comment for asset {asset_id}: {e}")
+                            print(f"  Error deleting comment {comment['id']}: {e}")
+
+                # Post new comment
+                if has_new_comment and new_comment_text:
+                    if dry_run:
+                        print(f" [DRY RUN] Would post comment for asset {asset_id}")
+                        continue
+                    try:
+                        comment_url = f"{SERVICE_TRADE_API_BASE}/comment"
+                        payload = {
+                            "entityId": asset_id,
+                            "entityType": entity_type,
+                            "content": new_comment_text,
+                            "visibility": ["tech"],
+                        }
+                        post_resp = api_session.post(comment_url, json=payload)
+                        post_resp.raise_for_status()
+                        print(f" Posted new comment for asset {asset_id}")
+                    except Exception as e:
+                        print(f"  Error posting comment for asset {asset_id}: {e}")
 
 
         # ----------------------------------------------------------------
@@ -619,6 +657,16 @@ def main():
 
             # Only move if we found all expected assets
             if item.get("ServiceTradeLocations"):
+                if dry_run:
+                    dest_label = (
+                        "OUTSTANDING_BACKFLOWS"
+                        if item["Type"] == "DeviceAssignment"
+                        else "ASSIGNED_COMPLETED_BACKFLOWS"
+                    )
+                    print(f" [DRY RUN] Would move email '{item['Subject']}' -> {dest_label}")
+                    processed_emails += 1
+                    continue
+
                 try:
                     if item["Type"] == "DeviceAssignment":
                         dest_folder = os.getenv("OUTSTANDING_BACKFLOWS_FOLDER_ID")
@@ -670,10 +718,14 @@ def main():
         # -----------------------------------------------------------------------
         #  Step 7. Summary
         # -----------------------------------------------------------------------
-        total_count = increment_metric("backflow_emails_processed", processed_emails)
-        print(f"\n📈 Processed {processed_emails} emails this run.")
-        print(f"🏁 Total emails processed since start: {total_count}\n")
+        if dry_run:
+            print(f"\n[DRY RUN] Would have processed {processed_emails} emails this run.\n")
+        else:
+            total_count = increment_metric("backflow_emails_processed", processed_emails)
+            print(f"\n📈 Processed {processed_emails} emails this run.")
+            print(f"🏁 Total emails processed since start: {total_count}\n")
 
 
 if __name__ == "__main__":
-    main()
+    args = parse_args()
+    main(dry_run=args.dry_run)
