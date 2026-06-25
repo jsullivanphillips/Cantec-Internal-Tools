@@ -937,7 +937,9 @@ export default function RunDetailsPrepareTable({
   )
 
   return (
-    <div className="run-details-history-section run-details-prep-section">
+    <div
+      className={`run-details-history-section run-details-prep-section${readyEditLocked ? ' run-details-prep-section--ready-locked' : ''}`}
+    >
       {(prepEditsDisabled || orderError || error || skipError || annualTestError) && (
         <div className="run-details-prep-section__alerts">
           {prepEditsDisabled ? (

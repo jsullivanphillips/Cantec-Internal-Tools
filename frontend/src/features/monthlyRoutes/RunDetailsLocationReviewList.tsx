@@ -6,10 +6,12 @@ import RunDetailsFieldChangesTable from './RunDetailsFieldChangesTable'
 import RunDetailsHistoryTable from './RunDetailsHistoryTable'
 import RunDetailsPrepareTable from './RunDetailsPrepareTable'
 import RunDetailsReviewTable from './RunDetailsReviewTable'
+import RunDetailsAnnualScheduleSyncPill from './RunDetailsAnnualScheduleSyncPill'
 
 import type {
   AnnualScheduleCheckLocation,
   AnnualScheduleCheckStatus,
+  AnnualScheduleSyncProgress,
   MonthlyRunDetailDeficiencySummary,
   MonthlyRunDetailLocation,
   TechnicianWorksheetRun,
@@ -114,6 +116,8 @@ export default function RunDetailsLocationReviewList({
   onRouteOrderChanged,
   annualScheduleStatus = 'idle',
   annualScheduleByLocationId = null,
+  annualScheduleSyncProgress = null,
+  annualScheduleError = null,
   onAnnualScheduleRefresh,
 }: {
   locations: MonthlyRunDetailLocation[]
@@ -150,6 +154,8 @@ export default function RunDetailsLocationReviewList({
   onRouteOrderChanged?: (orderedLocationIds: number[]) => void | Promise<void>
   annualScheduleStatus?: AnnualScheduleCheckStatus
   annualScheduleByLocationId?: Record<number, AnnualScheduleCheckLocation> | null
+  annualScheduleSyncProgress?: AnnualScheduleSyncProgress | null
+  annualScheduleError?: string | null
   onAnnualScheduleRefresh?: () => void | Promise<void>
 }) {
   const [autoBillingBusy, setAutoBillingBusy] = useState(false)
@@ -277,6 +283,13 @@ export default function RunDetailsLocationReviewList({
         className="monthly-run-detail-locations"
         aria-label="Sites on this run"
       >
+        <h2 className="monthly-run-detail-section__title">Sites on this run</h2>
+        <RunDetailsAnnualScheduleSyncPill
+          status={annualScheduleStatus}
+          syncProgress={annualScheduleSyncProgress}
+          error={annualScheduleError}
+          onRetry={onAnnualScheduleRefresh}
+        />
         <RunDetailsPrepareTable
           rows={prepRows}
           routeId={routeId}

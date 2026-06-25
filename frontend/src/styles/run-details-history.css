@@ -567,6 +567,14 @@
   font-weight: 700;
 }
 
+.monthly-run-detail-page .run-details-prep-section--ready-locked .tw-office-stop-table td.tw-office-sticky-order {
+  vertical-align: middle;
+}
+
+.monthly-run-detail-page .run-details-prep-section--ready-locked .run-details-prep-office-stop-order-cell {
+  justify-content: center;
+}
+
 .monthly-run-detail-page .run-details-prep-office-stop-order-cell {
   display: flex;
   align-items: center;
@@ -614,6 +622,42 @@
   line-height: 1.2;
   text-transform: uppercase;
   white-space: nowrap;
+}
+
+.monthly-run-detail-page .run-details-annual-sync-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.monthly-run-detail-page .run-details-annual-sync-status__pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  background: var(--ml-surface-muted, #eef2f7);
+  color: var(--ml-muted-strong, #475569);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.monthly-run-detail-page .run-details-annual-sync-status__pill--error {
+  background: #fff4f4;
+  color: #b42318;
+}
+
+.monthly-run-detail-page .run-details-annual-sync-status__spinner {
+  width: 0.65rem;
+  height: 0.65rem;
+  border-width: 0.12em;
+}
+
+.monthly-run-detail-page .run-details-annual-sync-status__retry {
+  font-size: 0.625rem;
 }
 
 .monthly-run-detail-page .run-details-prep-office-deficiency-cell {

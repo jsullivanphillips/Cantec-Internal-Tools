@@ -571,6 +571,136 @@ def _location_flags_from_contexts(
     )
 
 
+def _service_trade_credentials(
+    *,
+    username: str | None = None,
+    password: str | None = None,
+) -> tuple[str, str]:
+    user = username or os.getenv("PROCESSING_USERNAME")
+    pwd = password or os.getenv("PROCESSING_PASSWORD")
+    if not user or not pwd:
+        raise RuntimeError("Missing ServiceTrade creds. Set PROCESSING_USERNAME/PROCESSING_PASSWORD.")
+    return user, pwd
+
+
+def _route_schedule_params(route_id: int) -> tuple[int, int]:
+    route = MonthlyRoute.query.get(int(route_id))
+    if route is None:
+        raise ValueError(f"Route {route_id} not found")
+    weekday_iso = int(route.weekday_iso) if route.weekday_iso is not None else 0
+    week_occurrence = int(route.week_occurrence) if route.week_occurrence is not None else 1
+    return weekday_iso, week_occurrence
+
+
+def _location_annual_schedule_row(
+    loc: MonthlyLocation,
+    month_first: date,
+    *,
+    weekday_iso: int,
+    week_occurrence: int,
+    contexts: list[_JobAnnualContext],
+) -> dict[str, object]:
+    location_id = int(loc.id)
+    st_site_id = loc.service_trade_site_location_id
+    has_service_trade_link = st_site_id is not None
+    st_url = (
+        service_trade_site_location_url(int(st_site_id))
+        if st_site_id is not None
+        else None
+    )
+    (
+        has_scheduled,
+        spans_months,
+        skip_recommended,
+        test_recommended,
+        spanning_job_id,
+        skip_tie,
+    ) = _location_flags_from_contexts(
+        contexts,
+        month_first,
+        weekday_iso=weekday_iso,
+        week_occurrence=week_occurrence,
+    )
+    prep_warning = derive_prep_warning(
+        has_service_trade_link=has_service_trade_link,
+        has_scheduled_annual_in_month=has_scheduled,
+        annual_spans_months=spans_months,
+        annual_skip_tie=skip_tie,
+    )
+    return AnnualScheduleLocationSnapshot(
+        location_id=location_id,
+        has_service_trade_link=has_service_trade_link,
+        service_trade_site_location_url=st_url,
+        has_scheduled_annual_in_month=has_scheduled,
+        annual_spans_months=spans_months,
+        annual_skip_recommended=skip_recommended,
+        annual_test_recommended=test_recommended,
+        spanning_job_id=spanning_job_id,
+        prep_warning=prep_warning,
+    ).to_dict()
+
+
+def build_location_annual_schedule_row(
+    loc: MonthlyLocation,
+    month_first: date,
+    *,
+    weekday_iso: int,
+    week_occurrence: int,
+    http: requests.Session | None = None,
+    username: str | None = None,
+    password: str | None = None,
+) -> dict[str, object]:
+    """Build annual schedule flags for one library location (one ServiceTrade site when linked)."""
+    st_site_id = loc.service_trade_site_location_id
+    if st_site_id is None:
+        return _location_annual_schedule_row(
+            loc,
+            month_first,
+            weekday_iso=weekday_iso,
+            week_occurrence=week_occurrence,
+            contexts=[],
+        )
+
+    start_ts, end_ts = month_window_pacific(month_first)
+    own_session = http is None
+    if own_session:
+        user, pwd = _service_trade_credentials(username=username, password=password)
+        http = requests.Session()
+        _authenticate_service_trade(http, username=user, password=pwd)
+
+    try:
+        jobs = _fetch_jobs_for_location_chunk(
+            http,
+            [int(st_site_id)],
+            start_ts=start_ts,
+            end_ts=end_ts,
+        )
+        for job in jobs:
+            job_id = _job_id_int(job)
+            if job_id is not None:
+                job["_appointments"] = _fetch_appointments_for_job(http, job_id)
+
+        contexts_by_st_id = _build_job_contexts_for_month(
+            http,
+            jobs,
+            st_location_ids={int(st_site_id)},
+            month_first=month_first,
+            start_ts=start_ts,
+            end_ts=end_ts,
+        )
+        contexts = contexts_by_st_id.get(int(st_site_id), [])
+        return _location_annual_schedule_row(
+            loc,
+            month_first,
+            weekday_iso=weekday_iso,
+            week_occurrence=week_occurrence,
+            contexts=contexts,
+        )
+    finally:
+        if own_session and http is not None:
+            http.close()
+
+
 def build_route_annual_schedule_snapshot(
     route_id: int,
     month_first: date,
@@ -580,19 +710,8 @@ def build_route_annual_schedule_snapshot(
     session: requests.Session | None = None,
 ) -> dict[str, object]:
     """Build per-location annual schedule flags for office run prep."""
-    user = username or os.getenv("PROCESSING_USERNAME")
-    pwd = password or os.getenv("PROCESSING_PASSWORD")
-    if not user or not pwd:
-        raise RuntimeError("Missing ServiceTrade creds. Set PROCESSING_USERNAME/PROCESSING_PASSWORD.")
-
-    route = MonthlyRoute.query.get(int(route_id))
-    if route is None:
-        raise ValueError(f"Route {route_id} not found")
-    weekday_iso = int(route.weekday_iso) if route.weekday_iso is not None else 0
-    week_occurrence = int(route.week_occurrence) if route.week_occurrence is not None else 1
-
+    weekday_iso, week_occurrence = _route_schedule_params(route_id)
     locs = _route_location_rows(route_id, month_first)
-    start_ts, end_ts = month_window_pacific(month_first)
 
     st_location_ids = {
         int(loc.service_trade_site_location_id)
@@ -600,79 +719,32 @@ def build_route_annual_schedule_snapshot(
         if loc.service_trade_site_location_id is not None
     }
 
-    http = session or requests.Session()
-    _authenticate_service_trade(http, username=user, password=pwd)
-
-    st_ids_sorted = sorted(st_location_ids)
-    jobs: list[dict[str, Any]] = []
-    for offset in range(0, len(st_ids_sorted), _LOCATION_ID_CHUNK_SIZE):
-        chunk = st_ids_sorted[offset : offset + _LOCATION_ID_CHUNK_SIZE]
-        jobs.extend(_fetch_jobs_for_location_chunk(http, chunk, start_ts=start_ts, end_ts=end_ts))
-
-    # Pre-fetch in-month appointments for job filtering (avoid duplicate fetches later).
-    for job in jobs:
-        job_id = _job_id_int(job)
-        if job_id is not None:
-            job["_appointments"] = _fetch_appointments_for_job(http, job_id)
-
-    contexts_by_st_id = _build_job_contexts_for_month(
-        http,
-        jobs,
-        st_location_ids=st_location_ids,
-        month_first=month_first,
-        start_ts=start_ts,
-        end_ts=end_ts,
-    )
+    http = session
+    own_session = http is None
+    if own_session and st_location_ids:
+        user, pwd = _service_trade_credentials(username=username, password=password)
+        http = requests.Session()
+        _authenticate_service_trade(http, username=user, password=pwd)
 
     locations: dict[str, dict[str, object]] = {}
     warning_count = 0
-    for loc in locs:
-        location_id = int(loc.id)
-        st_site_id = loc.service_trade_site_location_id
-        has_service_trade_link = st_site_id is not None
-        st_url = (
-            service_trade_site_location_url(int(st_site_id))
-            if st_site_id is not None
-            else None
-        )
-        contexts = (
-            contexts_by_st_id.get(int(st_site_id), [])
-            if st_site_id is not None
-            else []
-        )
-        (
-            has_scheduled,
-            spans_months,
-            skip_recommended,
-            test_recommended,
-            spanning_job_id,
-            skip_tie,
-        ) = _location_flags_from_contexts(
-            contexts,
-            month_first,
-            weekday_iso=weekday_iso,
-            week_occurrence=week_occurrence,
-        )
-        prep_warning = derive_prep_warning(
-            has_service_trade_link=has_service_trade_link,
-            has_scheduled_annual_in_month=has_scheduled,
-            annual_spans_months=spans_months,
-            annual_skip_tie=skip_tie,
-        )
-        if prep_warning is not None:
-            warning_count += 1
-        snapshot = AnnualScheduleLocationSnapshot(
-            location_id=location_id,
-            has_service_trade_link=has_service_trade_link,
-            service_trade_site_location_url=st_url,
-            has_scheduled_annual_in_month=has_scheduled,
-            annual_spans_months=spans_months,
-            annual_skip_recommended=skip_recommended,
-            annual_test_recommended=test_recommended,
-            spanning_job_id=spanning_job_id,
-            prep_warning=prep_warning,
-        )
-        locations[str(location_id)] = snapshot.to_dict()
+    try:
+        for loc in locs:
+            row = build_location_annual_schedule_row(
+                loc,
+                month_first,
+                weekday_iso=weekday_iso,
+                week_occurrence=week_occurrence,
+                http=http,
+                username=username,
+                password=password,
+            )
+            locations[str(int(loc.id))] = row
+            if row.get("prep_warning"):
+                warning_count += 1
+    finally:
+        if own_session and http is not None:
+            http.close()
 
     checked_at = datetime.now(PACIFIC_TZ).isoformat()
     return {
@@ -766,20 +838,142 @@ def persist_route_annual_schedule_snapshot(
     db.session.commit()
 
 
+def _ensure_route_month_mlm(
+    route_id: int,
+    month_first: date,
+    location_id: int,
+) -> tuple[MonthlyLocationMonth, MonthlyRouteRun]:
+    from app.monthly.runs import get_or_create_monthly_route_run
+    from app.monthly.worksheet_locations import ensure_worksheet_stops_for_route_month
+
+    run = get_or_create_monthly_route_run(
+        route_id,
+        month_first,
+        source="office_manual",
+    )
+    ensure_worksheet_stops_for_route_month(route_id, month_first, run)
+    mlm = MonthlyLocationMonth.query.filter_by(
+        monthly_location_id=int(location_id),
+        month_date=month_first,
+    ).one_or_none()
+    if mlm is None:
+        raise ValueError(f"No worksheet row for location {location_id}")
+    return mlm, run
+
+
+def persist_location_annual_schedule_row(
+    route_id: int,
+    month_first: date,
+    location_id: int,
+    row: dict[str, object],
+    *,
+    synced_at: datetime | None = None,
+) -> None:
+    """Write ServiceTrade annual schedule flags for one ``monthly_location_month`` row."""
+    mlm, run = _ensure_route_month_mlm(route_id, month_first, location_id)
+    if mlm_st_annual_sync_locked(mlm):
+        return
+    when = synced_at or datetime.now(PACIFIC_TZ)
+    cache_fields = _snapshot_row_to_mlm_cache(row, when)
+    for attr, value in cache_fields.items():
+        setattr(mlm, attr, value)
+    if mlm.test_monthly_route_id is None:
+        mlm.test_monthly_route_id = int(route_id)
+    if mlm.run_id is None:
+        mlm.run_id = int(run.id)
+    db.session.commit()
+
+
+def annual_schedule_sync_progress(
+    route_id: int,
+    month_first: date,
+) -> dict[str, object]:
+    """Counts and pending location ids for incremental ServiceTrade annual sync."""
+    pairs = _worksheet_location_pairs_for_route_month(route_id, month_first)
+    pending: list[int] = []
+    synced = 0
+    for mlm, loc in pairs:
+        lid = int(loc.id)
+        if mlm is not None and mlm_st_annual_sync_locked(mlm):
+            synced += 1
+            continue
+        if mlm is None or mlm.st_annual_synced_at is None:
+            pending.append(lid)
+        else:
+            synced += 1
+    total = len(pairs)
+    return {
+        "total": total,
+        "synced": synced,
+        "pending_location_ids": pending,
+        "complete": len(pending) == 0,
+    }
+
+
+def sync_location_annual_schedule(
+    route_id: int,
+    month_first: date,
+    location_id: int,
+    *,
+    force: bool = False,
+) -> dict[str, object]:
+    """Live ServiceTrade sync for one route stop; persist and return the location row."""
+    locs = _resolve_worksheet_route_locations(route_id, month_first)
+    loc_by_id = {int(loc.id): loc for loc in locs}
+    loc = loc_by_id.get(int(location_id))
+    if loc is None:
+        raise ValueError(f"Location {location_id} not on route {route_id}")
+
+    mlm, _run = _ensure_route_month_mlm(route_id, month_first, location_id)
+    if mlm_st_annual_sync_locked(mlm):
+        row = annual_schedule_row_from_mlm(mlm, loc)
+        if row is not None:
+            return row
+        weekday_iso, week_occurrence = _route_schedule_params(route_id)
+        return _location_annual_schedule_row(
+            loc,
+            month_first,
+            weekday_iso=weekday_iso,
+            week_occurrence=week_occurrence,
+            contexts=[],
+        )
+
+    if not force and mlm.st_annual_synced_at is not None:
+        row = annual_schedule_row_from_mlm(mlm, loc)
+        if row is not None:
+            return row
+
+    weekday_iso, week_occurrence = _route_schedule_params(route_id)
+    row = build_location_annual_schedule_row(
+        loc,
+        month_first,
+        weekday_iso=weekday_iso,
+        week_occurrence=week_occurrence,
+    )
+    synced_at = datetime.now(PACIFIC_TZ)
+    persist_location_annual_schedule_row(
+        route_id,
+        month_first,
+        location_id,
+        row,
+        synced_at=synced_at,
+    )
+    db.session.refresh(mlm)
+    cached = annual_schedule_row_from_mlm(mlm, loc)
+    return cached if cached is not None else row
+
+
 def route_annual_schedule_has_db_cache(route_id: int, month_first: date) -> bool:
     """True when every worksheet stop for the route/month has persisted ST annual flags."""
-    pairs = _worksheet_location_pairs_for_route_month(route_id, month_first)
-    if not pairs:
-        return False
-    for mlm, _loc in pairs:
-        if mlm is None or mlm.st_annual_synced_at is None:
-            return False
-    return True
+    progress = annual_schedule_sync_progress(route_id, month_first)
+    return bool(progress.get("complete"))
 
 
 def build_route_annual_schedule_payload_from_db(
     route_id: int,
     month_first: date,
+    *,
+    include_sync_progress: bool = True,
 ) -> dict[str, object]:
     """Build annual schedule check JSON from cached ``monthly_location_month`` columns."""
     pairs = _worksheet_location_pairs_for_route_month(route_id, month_first)
@@ -805,13 +999,16 @@ def build_route_annual_schedule_payload_from_db(
         if latest_synced_at is not None
         else datetime.now(PACIFIC_TZ).isoformat()
     )
-    return {
+    payload: dict[str, object] = {
         "route_id": int(route_id),
         "month_date": month_first.isoformat(),
         "checked_at": checked_at,
         "warning_count": warning_count,
         "locations": locations,
     }
+    if include_sync_progress:
+        payload["sync_progress"] = annual_schedule_sync_progress(route_id, month_first)
+    return payload
 
 
 def sync_route_annual_schedule(route_id: int, month_first: date) -> dict[str, object]:

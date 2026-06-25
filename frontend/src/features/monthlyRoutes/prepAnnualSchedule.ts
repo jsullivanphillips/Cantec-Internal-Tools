@@ -17,17 +17,26 @@ export function derivePrepAnnualScheduleWarning(
   return null
 }
 
+function annualScheduleRowReady(
+  scheduleStatus: AnnualScheduleCheckStatus,
+  scheduleRow: AnnualScheduleCheckLocation | null | undefined,
+): boolean {
+  if (scheduleStatus === 'ready') return scheduleRow != null
+  if (scheduleStatus === 'syncing') return scheduleRow != null
+  return false
+}
+
 export function prepRowAnnualDue(
   locationId: number,
   scheduleStatus: AnnualScheduleCheckStatus,
   locationsById: Record<number, AnnualScheduleCheckLocation> | null,
   stop: Pick<TechnicianWorksheetLocation, 'annual_test_override'> | null | undefined,
 ): boolean {
-  if (scheduleStatus !== 'ready' || locationsById == null) return false
+  if (locationsById == null) return false
   const row = locationsById[locationId]
-  if (!row) return false
+  if (!annualScheduleRowReady(scheduleStatus, row)) return false
   if (stop?.annual_test_override) return false
-  return row.annual_skip_recommended
+  return row!.annual_skip_recommended
 }
 
 export function prepRowAnnualDueForStop(
@@ -35,9 +44,9 @@ export function prepRowAnnualDueForStop(
   scheduleRow: AnnualScheduleCheckLocation | null | undefined,
   stop: Pick<TechnicianWorksheetLocation, 'annual_test_override'> | null | undefined,
 ): boolean {
-  if (scheduleStatus !== 'ready' || !scheduleRow) return false
+  if (!annualScheduleRowReady(scheduleStatus, scheduleRow)) return false
   if (stop?.annual_test_override) return false
-  return scheduleRow.annual_skip_recommended
+  return scheduleRow!.annual_skip_recommended
 }
 
 export function annualScheduleRowHasActivity(
@@ -55,7 +64,7 @@ export function prepRowHasAnnualScheduleActivity(
   scheduleStatus: AnnualScheduleCheckStatus,
   scheduleRow: AnnualScheduleCheckLocation | null | undefined,
 ): boolean {
-  if (scheduleStatus !== 'ready') return false
+  if (!annualScheduleRowReady(scheduleStatus, scheduleRow)) return false
   return annualScheduleRowHasActivity(scheduleRow)
 }
 
@@ -64,7 +73,7 @@ export function prepRowShowsAnnualOverriddenPill(
   scheduleRow: AnnualScheduleCheckLocation | null | undefined,
   stop: Pick<TechnicianWorksheetLocation, 'annual_test_override'> | null | undefined,
 ): boolean {
-  if (scheduleStatus !== 'ready') return false
+  if (!annualScheduleRowReady(scheduleStatus, scheduleRow)) return false
   if (!stop?.annual_test_override) return false
   return annualScheduleRowHasActivity(scheduleRow)
 }

@@ -2773,7 +2773,6 @@ def get_monthly_route_run_details(route_id: int):
     month_first = date(month_dt.year, month_dt.month, 1)
     if _get_monthly_route(route_id) is None:
         return jsonify({"error": "Route not found"}), 404
-    _sync_st_annual_on_paperwork_view(route_id, month_first)
     payload = _serialize_monthly_run_details_payload(route_id, month_first)
     if payload is None:
         return jsonify({"error": "Route not found"}), 404
@@ -2796,7 +2795,7 @@ def get_monthly_route_annual_schedule_check(route_id: int):
     month_first = date(month_dt.year, month_dt.month, 1)
     from app.monthly.service_trade_annual_schedule import (
         build_route_annual_schedule_payload_from_db,
-        sync_route_annual_schedule_for_paperwork_view,
+        sync_location_annual_schedule,
     )
 
     cache_bust = (request.args.get("cache_bust") or "").strip().lower() in {"1", "true", "yes"}
@@ -2805,14 +2804,23 @@ def get_monthly_route_annual_schedule_check(route_id: int):
         "true",
         "yes",
     }
+    location_id_raw = (request.args.get("location_id") or "").strip()
 
     try:
-        sync_route_annual_schedule_for_paperwork_view(
-            route_id,
-            month_first,
-            force=force_sync,
-        )
+        if force_sync and location_id_raw:
+            try:
+                location_id = int(location_id_raw)
+            except ValueError:
+                return jsonify({"error": "Invalid location_id"}), 400
+            sync_location_annual_schedule(
+                route_id,
+                month_first,
+                location_id,
+                force=cache_bust,
+            )
         payload = build_route_annual_schedule_payload_from_db(route_id, month_first)
+    except ValueError as exc:
+        return jsonify({"error": str(exc), "code": "location_not_found"}), 404
     except RuntimeError as exc:
         return jsonify({"error": str(exc), "code": "service_trade_config"}), 503
     except Exception as exc:

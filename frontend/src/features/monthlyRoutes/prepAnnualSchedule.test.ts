@@ -29,6 +29,16 @@ describe('prepRowAnnualDue', () => {
     expect(prepRowAnnualDue(1, 'loading', null)).toBe(false)
   })
 
+  it('returns true while syncing once the location row is available', () => {
+    const byId = {
+      1: baseRow({
+        annual_skip_recommended: true,
+        has_scheduled_annual_in_month: true,
+      }),
+    }
+    expect(prepRowAnnualDue(1, 'syncing', byId)).toBe(true)
+  })
+
   it('returns true when ServiceTrade recommends annual skip', () => {
     const byId = {
       1: baseRow({

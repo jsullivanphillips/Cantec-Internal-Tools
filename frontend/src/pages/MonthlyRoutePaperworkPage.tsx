@@ -177,13 +177,23 @@ export default function MonthlyRoutePaperworkPage() {
 
   const annualScheduleCheckEnabled =
     paperworkViewMode === 'preparation' && Number.isFinite(idNum) && payload != null
+  const worksheetLocationIds = useMemo(
+    () => (payload?.locations ?? []).map((loc) => loc.location_id),
+    [payload?.locations],
+  )
   const {
     status: annualScheduleStatus,
     locationsById: annualScheduleByLocationId,
+    syncProgress: annualScheduleSyncProgress,
     warningCount: annualScheduleWarningCount,
     error: annualScheduleError,
     refresh: refreshAnnualScheduleCheck,
-  } = useAnnualScheduleCheck(idNum, monthQuery, annualScheduleCheckEnabled)
+  } = useAnnualScheduleCheck(
+    idNum,
+    monthQuery,
+    annualScheduleCheckEnabled,
+    worksheetLocationIds,
+  )
 
   const futurePrepBlocked = useMemo(
     () => isFutureMonthPrepBlocked(monthQuery, currentMonthIso, routeMeta?.runs_by_month ?? {}),
@@ -1246,22 +1256,6 @@ export default function MonthlyRoutePaperworkPage() {
                 </Link>
               </Alert>
             ) : null}
-            {prepPhase && annualScheduleStatus === 'loading' ? (
-              <p className="small text-muted mb-0 mt-2">Checking ServiceTrade annual schedules…</p>
-            ) : null}
-            {prepPhase && annualScheduleStatus === 'error' && annualScheduleError ? (
-              <Alert variant="warning" className="py-2 small mb-0 mt-2">
-                {annualScheduleError}{' '}
-                <Button
-                  variant="link"
-                  size="sm"
-                  className="p-0 align-baseline"
-                  onClick={() => void refreshAnnualScheduleCheck()}
-                >
-                  Retry
-                </Button>
-              </Alert>
-            ) : null}
           </div>
         </section>
 
@@ -1312,6 +1306,8 @@ export default function MonthlyRoutePaperworkPage() {
             onRouteOrderChanged={(orderedLocationIds) => void onRouteOrderChanged(orderedLocationIds)}
             annualScheduleStatus={annualScheduleStatus}
             annualScheduleByLocationId={annualScheduleByLocationId}
+            annualScheduleSyncProgress={annualScheduleSyncProgress}
+            annualScheduleError={annualScheduleError}
             onAnnualScheduleRefresh={() => void refreshAnnualScheduleCheck()}
             outcomeCounts={
               paperworkViewMode === 'run_review'

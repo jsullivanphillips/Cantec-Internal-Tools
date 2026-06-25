@@ -139,12 +139,13 @@ def test_annual_schedule_check_endpoint_persists_snapshot(cache_client, monkeypa
         ts_id = int(primary_id)
 
     monkeypatch.setattr(
-        "app.monthly.service_trade_annual_schedule.build_route_annual_schedule_snapshot",
-        lambda route_id, month: _sample_snapshot(route_id, month, ts_id),
+        "app.monthly.service_trade_annual_schedule.build_location_annual_schedule_row",
+        lambda loc, month, **kwargs: _sample_snapshot(1, month, ts_id)["locations"][str(ts_id)],
     )
 
     res = client.get(
-        f"/api/monthly_routes/routes/1/runs/annual_schedule_check?month_date={month_first.isoformat()}&sync=1"
+        f"/api/monthly_routes/routes/1/runs/annual_schedule_check?"
+        f"month_date={month_first.isoformat()}&sync=1&location_id={ts_id}"
     )
     assert res.status_code == 200
     body = res.get_json()
@@ -339,18 +340,18 @@ def test_mlm_st_annual_sync_locked(cache_client):
         assert mlm_st_annual_sync_locked(mlm) is True
 
 
-def test_annual_schedule_check_syncs_on_paperwork_view(cache_client, monkeypatch):
+def test_annual_schedule_check_db_only_by_default(cache_client, monkeypatch):
     client, app = cache_client
     month_first = date(2026, 6, 1)
-    sync_calls: list[tuple[int, date, bool]] = []
+    sync_calls: list[tuple[int, date, int]] = []
 
-    def _fake_paperwork_sync(route_id: int, month: date, *, force: bool = False) -> bool:
-        sync_calls.append((route_id, month, force))
-        return True
+    def _fake_location_sync(route_id: int, month: date, location_id: int, *, force: bool = False):
+        sync_calls.append((route_id, month, location_id))
+        return _sample_snapshot(route_id, month, location_id)["locations"][str(location_id)]
 
     monkeypatch.setattr(
-        "app.monthly.service_trade_annual_schedule.sync_route_annual_schedule_for_paperwork_view",
-        _fake_paperwork_sync,
+        "app.monthly.service_trade_annual_schedule.sync_location_annual_schedule",
+        _fake_location_sync,
     )
 
     with app.app_context():
@@ -373,41 +374,50 @@ def test_annual_schedule_check_syncs_on_paperwork_view(cache_client, monkeypatch
         f"/api/monthly_routes/routes/1/runs/annual_schedule_check?month_date={month_first.isoformat()}"
     )
     assert res.status_code == 200
-    assert sync_calls == [(1, month_first, False)]
+    assert sync_calls == []
     body = res.get_json()
     assert body["locations"][str(primary_id)]["annual_skip_recommended"] is True
+    assert body["sync_progress"]["complete"] is True
 
 
-def test_annual_schedule_check_live_sync_when_cache_incomplete(cache_client, monkeypatch):
+def test_annual_schedule_check_reports_pending_without_live_sync(cache_client, monkeypatch):
     client, app = cache_client
     month_first = date(2026, 7, 1)
-    calls: list[tuple[int, date]] = []
+    calls: list[tuple[int, date, int]] = []
 
-    def _fake_build(route_id: int, month: date) -> dict[str, object]:
-        calls.append((route_id, month))
-        return _sample_snapshot(route_id, month, 101)
+    def _fake_location_sync(route_id: int, month: date, location_id: int, *, force: bool = False):
+        calls.append((route_id, month, location_id))
+        return _sample_snapshot(route_id, month, location_id)["locations"][str(location_id)]
 
     monkeypatch.setattr(
-        "app.monthly.service_trade_annual_schedule.build_route_annual_schedule_snapshot",
-        _fake_build,
+        "app.monthly.service_trade_annual_schedule.sync_location_annual_schedule",
+        _fake_location_sync,
     )
 
     with app.app_context():
-        _route_id, primary_id, _secondary_id = _seed_route_with_two_stops()
-        mlm = MonthlyLocationMonth(
-            id=99005,
-            monthly_location_id=int(primary_id),
-            month_date=month_first,
-            test_monthly_route_id=1,
-            st_annual_skip_recommended=True,
-            st_has_scheduled_annual_in_month=True,
-            st_annual_synced_at=datetime(2026, 6, 1, 8, 0, tzinfo=PACIFIC_TZ),
+        _route_id, primary_id, secondary_id = _seed_route_with_two_stops()
+        db.session.add(
+            MonthlyLocationMonth(
+                id=99005,
+                monthly_location_id=int(primary_id),
+                month_date=month_first,
+                test_monthly_route_id=1,
+            )
         )
-        db.session.add(mlm)
         db.session.commit()
 
     res = client.get(
         f"/api/monthly_routes/routes/1/runs/annual_schedule_check?month_date={month_first.isoformat()}"
     )
     assert res.status_code == 200
-    assert calls == [(1, month_first)]
+    assert calls == []
+    body = res.get_json()
+    assert body["sync_progress"]["complete"] is False
+    assert int(primary_id) in body["sync_progress"]["pending_location_ids"]
+
+    res_sync = client.get(
+        f"/api/monthly_routes/routes/1/runs/annual_schedule_check?"
+        f"month_date={month_first.isoformat()}&sync=1&location_id={int(primary_id)}"
+    )
+    assert res_sync.status_code == 200
+    assert calls == [(1, month_first, int(primary_id))]

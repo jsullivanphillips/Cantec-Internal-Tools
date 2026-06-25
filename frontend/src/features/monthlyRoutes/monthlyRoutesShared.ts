@@ -604,9 +604,17 @@ export type AnnualScheduleCheckResponse = {
   checked_at: string
   warning_count: number
   locations: Record<string, AnnualScheduleCheckLocation>
+  sync_progress?: AnnualScheduleSyncProgress
 }
 
-export type AnnualScheduleCheckStatus = 'idle' | 'loading' | 'ready' | 'error'
+export type AnnualScheduleSyncProgress = {
+  total: number
+  synced: number
+  pending_location_ids: number[]
+  complete: boolean
+}
+
+export type AnnualScheduleCheckStatus = 'idle' | 'loading' | 'syncing' | 'ready' | 'error'
 
 export type RunReviewStopSummary = {
   location_id: number
