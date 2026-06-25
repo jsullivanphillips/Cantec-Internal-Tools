@@ -135,7 +135,7 @@ function BillingBoardTableSkeleton({ monthDates }: { monthDates: string[] }) {
   const monthCols = monthDates.length > 0 ? monthDates.length : 3
   return (
     <div
-      className="monthly-billing-table-skeleton"
+      className="monthly-billing-table-skeleton home-skeleton"
       aria-busy="true"
       aria-label="Loading billing locations"
     >

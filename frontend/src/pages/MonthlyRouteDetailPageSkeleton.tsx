@@ -37,7 +37,11 @@ function SkeletonAccordionSection({ titleWidth }: { titleWidth: string }) {
 
 function RouteDetailAccordionSkeleton() {
   return (
-    <div className="monthly-route-detail-accordion d-flex flex-column gap-3" aria-busy="true" aria-label="Loading route sections">
+    <div
+      className="monthly-route-detail-accordion home-skeleton d-flex flex-column gap-3"
+      aria-busy="true"
+      aria-label="Loading route sections"
+    >
       <SkeletonAccordionSection titleWidth="5.5rem" />
       <SkeletonAccordionSection titleWidth="8.5rem" />
       <SkeletonAccordionSection titleWidth="3.25rem" />

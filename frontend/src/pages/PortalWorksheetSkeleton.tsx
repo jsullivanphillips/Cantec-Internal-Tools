@@ -59,7 +59,7 @@ function DetailSkeleton() {
 export default function PortalWorksheetSkeleton({ detailOnly = false }: PortalWorksheetSkeletonProps) {
   if (detailOnly) {
     return (
-      <div className="pw-mock-shell pw-skeleton-shell--detail-only">
+      <div className="pw-mock-shell pw-skeleton-shell--detail-only home-skeleton">
         <DetailSkeleton />
       </div>
     )

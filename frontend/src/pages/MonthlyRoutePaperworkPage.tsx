@@ -32,6 +32,13 @@ import {
   isFutureMonthPrepBlocked,
   resolvePaperworkMonthQuery,
 } from '../features/monthlyRoutes/paperworkViewMode'
+import { OfficePaperworkLifecycleBanner } from '../features/monthlyRoutes/OfficePaperworkLifecycleTransition'
+import {
+  completeOfficePaperworkLifecycleStep,
+  createOfficePaperworkLifecycleProgress,
+  updateOfficePaperworkLifecycleTargetView,
+  type OfficePaperworkLifecycleProgress,
+} from '../features/monthlyRoutes/officePaperworkLifecycleProgress'
 import {
   deficiencyPatchFromWorksheetStop,
   detailPatchFromWorksheetStop,
@@ -128,9 +135,8 @@ export default function MonthlyRoutePaperworkPage() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [runLifecycleAction, setRunLifecycleAction] = useState<
-    'prepare' | 'unprepare' | 'complete' | 'reopen' | null
-  >(null)
+  const [runLifecycleProgress, setRunLifecycleProgress] =
+    useState<OfficePaperworkLifecycleProgress | null>(null)
   const [resetRunModalOpen, setResetRunModalOpen] = useState(false)
   const [resetRunBusy, setResetRunBusy] = useState(false)
   const [regenerateLibraryBusy, setRegenerateLibraryBusy] = useState(false)
@@ -599,10 +605,11 @@ export default function MonthlyRoutePaperworkPage() {
 
   const onMarkPrepared = useCallback(async () => {
     if (!Number.isFinite(idNum)) return
-    if (runLifecycleAction != null) return
-    setRunLifecycleAction('prepare')
+    if (runLifecycleProgress != null) return
+    let progress = createOfficePaperworkLifecycleProgress('prepare', paperworkViewMode)
+    setRunLifecycleProgress(progress)
     try {
-      await apiJson<{ run: TechnicianWorksheetRun }>(
+      const data = await apiJson<{ run: TechnicianWorksheetRun }>(
         `/api/monthly_routes/routes/${idNum}/runs/prepare`,
         {
           method: 'POST',
@@ -610,12 +617,16 @@ export default function MonthlyRoutePaperworkPage() {
           body: JSON.stringify({ month_date: monthQuery }),
         },
       )
+      progress = completeOfficePaperworkLifecycleStep(progress)
+      setRunLifecycleProgress(progress)
       clearWorksheetCache(idNum, monthQuery)
-      invalidatePaperworkRouteMonth(idNum, monthQuery)
-      runDetailsFetchSeqRef.current += 1
-      abortPaperworkRunDetailsFetch(idNum, monthQuery)
-      await loadRunDetails()
-      await loadRouteMeta()
+      applyWorkflowRunUpdate(data.run)
+      progress = updateOfficePaperworkLifecycleTargetView(
+        progress,
+        derivePaperworkViewMode(data.run, monthQuery, currentMonthIso),
+      )
+      progress = completeOfficePaperworkLifecycleStep(progress)
+      setRunLifecycleProgress(progress)
     } catch (e) {
       const msg =
         typeof e === 'object' && e != null && 'error' in (e as Record<string, unknown>)
@@ -623,13 +634,20 @@ export default function MonthlyRoutePaperworkPage() {
           : 'Could not mark route prepared. Try again.'
       window.alert(msg)
     } finally {
-      setRunLifecycleAction(null)
+      setRunLifecycleProgress(null)
     }
-  }, [idNum, monthQuery, loadRunDetails, loadRouteMeta, runLifecycleAction])
+  }, [
+    idNum,
+    monthQuery,
+    runLifecycleProgress,
+    paperworkViewMode,
+    currentMonthIso,
+    applyWorkflowRunUpdate,
+  ])
 
   const onReturnToPrep = useCallback(async () => {
     if (!Number.isFinite(idNum) || !payload?.run) return
-    if (runLifecycleAction != null) return
+    if (runLifecycleProgress != null) return
     if (
       !window.confirm(
         'Return this run to prep? Technicians will not be able to start field work until you mark it prepared again.',
@@ -637,7 +655,8 @@ export default function MonthlyRoutePaperworkPage() {
     ) {
       return
     }
-    setRunLifecycleAction('unprepare')
+    let progress = createOfficePaperworkLifecycleProgress('unprepare', paperworkViewMode)
+    setRunLifecycleProgress(progress)
     try {
       const data = await apiJson<{ run: TechnicianWorksheetRun }>(
         `/api/monthly_routes/routes/${idNum}/runs/unprepare`,
@@ -647,8 +666,16 @@ export default function MonthlyRoutePaperworkPage() {
           body: JSON.stringify({ month_date: monthQuery }),
         },
       )
+      progress = completeOfficePaperworkLifecycleStep(progress)
+      setRunLifecycleProgress(progress)
       clearWorksheetCache(idNum, monthQuery)
       applyWorkflowRunUpdate(data.run)
+      progress = updateOfficePaperworkLifecycleTargetView(
+        progress,
+        derivePaperworkViewMode(data.run, monthQuery, currentMonthIso),
+      )
+      progress = completeOfficePaperworkLifecycleStep(progress)
+      setRunLifecycleProgress(progress)
     } catch (e) {
       const msg =
         typeof e === 'object' && e != null && 'error' in (e as Record<string, unknown>)
@@ -656,15 +683,24 @@ export default function MonthlyRoutePaperworkPage() {
           : 'Could not return run to prep. Try again.'
       window.alert(msg)
     } finally {
-      setRunLifecycleAction(null)
+      setRunLifecycleProgress(null)
     }
-  }, [idNum, monthQuery, payload?.run, applyWorkflowRunUpdate, runLifecycleAction])
+  }, [
+    idNum,
+    monthQuery,
+    payload?.run,
+    applyWorkflowRunUpdate,
+    runLifecycleProgress,
+    paperworkViewMode,
+    currentMonthIso,
+  ])
 
   const onCompleteJob = useCallback(async () => {
     if (!Number.isFinite(idNum) || !payload?.run) return
     if (worksheetRunExplicitlyCompleted(payload.run)) return
-    if (runLifecycleAction != null) return
-    setRunLifecycleAction('complete')
+    if (runLifecycleProgress != null) return
+    let progress = createOfficePaperworkLifecycleProgress('complete', paperworkViewMode)
+    setRunLifecycleProgress(progress)
     try {
       const data = await apiJson<{ run: TechnicianWorksheetRun }>(
         `/api/monthly_routes/routes/${idNum}/runs/complete`,
@@ -674,8 +710,16 @@ export default function MonthlyRoutePaperworkPage() {
           body: JSON.stringify({ month_date: monthQuery }),
         },
       )
+      progress = completeOfficePaperworkLifecycleStep(progress)
+      setRunLifecycleProgress(progress)
       clearWorksheetCache(idNum, monthQuery)
       applyWorkflowRunUpdate(data.run)
+      progress = updateOfficePaperworkLifecycleTargetView(
+        progress,
+        derivePaperworkViewMode(data.run, monthQuery, currentMonthIso),
+      )
+      progress = completeOfficePaperworkLifecycleStep(progress)
+      setRunLifecycleProgress(progress)
     } catch (e) {
       const msg =
         typeof e === 'object' && e != null && 'error' in (e as Record<string, unknown>)
@@ -683,15 +727,24 @@ export default function MonthlyRoutePaperworkPage() {
           : 'Could not complete job. Try again.'
       window.alert(msg)
     } finally {
-      setRunLifecycleAction(null)
+      setRunLifecycleProgress(null)
     }
-  }, [idNum, monthQuery, payload?.run, applyWorkflowRunUpdate, runLifecycleAction])
+  }, [
+    idNum,
+    monthQuery,
+    payload?.run,
+    applyWorkflowRunUpdate,
+    runLifecycleProgress,
+    paperworkViewMode,
+    currentMonthIso,
+  ])
 
   const onReopenJob = useCallback(async () => {
     if (!Number.isFinite(idNum) || !payload?.run) return
     if (!worksheetRunExplicitlyCompleted(payload.run)) return
-    if (runLifecycleAction != null) return
-    setRunLifecycleAction('reopen')
+    if (runLifecycleProgress != null) return
+    let progress = createOfficePaperworkLifecycleProgress('reopen', paperworkViewMode)
+    setRunLifecycleProgress(progress)
     try {
       const data = await apiJson<{ run: TechnicianWorksheetRun }>(
         `/api/monthly_routes/routes/${idNum}/runs/reopen`,
@@ -701,14 +754,30 @@ export default function MonthlyRoutePaperworkPage() {
           body: JSON.stringify({ month_date: monthQuery }),
         },
       )
+      progress = completeOfficePaperworkLifecycleStep(progress)
+      setRunLifecycleProgress(progress)
       clearWorksheetCache(idNum, monthQuery)
       applyWorkflowRunUpdate(data.run)
+      progress = updateOfficePaperworkLifecycleTargetView(
+        progress,
+        derivePaperworkViewMode(data.run, monthQuery, currentMonthIso),
+      )
+      progress = completeOfficePaperworkLifecycleStep(progress)
+      setRunLifecycleProgress(progress)
     } catch {
       window.alert('Could not reopen job. Try again.')
     } finally {
-      setRunLifecycleAction(null)
+      setRunLifecycleProgress(null)
     }
-  }, [idNum, monthQuery, payload?.run, applyWorkflowRunUpdate, runLifecycleAction])
+  }, [
+    idNum,
+    monthQuery,
+    payload?.run,
+    applyWorkflowRunUpdate,
+    runLifecycleProgress,
+    paperworkViewMode,
+    currentMonthIso,
+  ])
 
   const onConfirmResetRun = useCallback(async () => {
     if (!Number.isFinite(idNum) || payload?.run == null) return
@@ -744,7 +813,7 @@ export default function MonthlyRoutePaperworkPage() {
 
   const onRegenerateFromLibrary = useCallback(async () => {
     if (!Number.isFinite(idNum)) return
-    if (regenerateLibraryBusy || runLifecycleAction != null) return
+    if (regenerateLibraryBusy || runLifecycleProgress != null) return
     if (
       !window.confirm(
         'Rebuild this month\'s paperwork from the library route? ' +
@@ -780,7 +849,7 @@ export default function MonthlyRoutePaperworkPage() {
     } finally {
       setRegenerateLibraryBusy(false)
     }
-  }, [idNum, monthQuery, loadRunDetails, loadRouteMeta, regenerateLibraryBusy, runLifecycleAction])
+  }, [idNum, monthQuery, loadRunDetails, loadRouteMeta, regenerateLibraryBusy, runLifecycleProgress])
 
   const openSkipRouteConfirm = useCallback(() => {
     setSkipRouteError(null)
@@ -834,7 +903,7 @@ export default function MonthlyRoutePaperworkPage() {
   const onConfirmSkipRoute = useCallback(
     async (payload: OfficeSkipRunPayload) => {
       if (!Number.isFinite(idNum)) return
-      if (skipRouteSubmitting || regenerateLibraryBusy || runLifecycleAction != null) return
+      if (skipRouteSubmitting || regenerateLibraryBusy || runLifecycleProgress != null) return
       setSkipRouteSubmitting(true)
       setSkipRouteError(null)
       try {
@@ -872,7 +941,7 @@ export default function MonthlyRoutePaperworkPage() {
       monthQuery,
       skipRouteSubmitting,
       regenerateLibraryBusy,
-      runLifecycleAction,
+      runLifecycleProgress,
       applyWorkflowRunUpdate,
       loadRunDetails,
       loadRouteMeta,
@@ -947,7 +1016,9 @@ export default function MonthlyRoutePaperworkPage() {
     prepPhase && runInOfficePrepPhase(run) && !runCompleted && !futurePrepBlocked
   const showUploadCsv =
     prepPhase && runInOfficePrepPhase(run) && !runCompleted && !futurePrepBlocked
-  const lifecycleBusy = runLifecycleAction != null
+  const lifecycleBusy = runLifecycleProgress != null
+  const runLifecycleAction = runLifecycleProgress?.operation ?? null
+  const lifecycleBannerActive = lifecycleBusy
   const prepActionBusy = lifecycleBusy || regenerateLibraryBusy || skipRouteSubmitting
   const serviceTradeJobUrl = (service_trade_run_job?.service_trade_job_url || '').trim()
   const hasServiceTradeJob =
@@ -982,10 +1053,22 @@ export default function MonthlyRoutePaperworkPage() {
           selectedMonthIso={monthQuery}
           currentMonthIso={currentMonthIso}
           refreshing={refreshing}
+          disabled={lifecycleBusy}
           onChange={onMonthChange}
           onMonthHover={onMonthHover}
         />
 
+        <OfficePaperworkLifecycleBanner progress={runLifecycleProgress} />
+
+        <div
+          className={[
+            'monthly-paperwork-lifecycle-shell',
+            lifecycleBannerActive ? 'monthly-paperwork-lifecycle-shell--dimmed' : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+          aria-hidden={lifecycleBannerActive ? true : undefined}
+        >
         <section className="monthly-route-detail-hero monthly-location-detail-surface monthly-run-detail-hero monthly-paperwork-hero">
           <div className="monthly-route-detail-hero__copy monthly-paperwork-hero__copy-top">
             <h1 className="monthly-location-detail-title">
@@ -1246,6 +1329,7 @@ export default function MonthlyRoutePaperworkPage() {
             <p className="monthly-run-detail-empty mb-0">No worksheet locations for this run yet.</p>
           </section>
         )}
+        </div>
       </div>
       <Modal
         show={resetRunModalOpen}

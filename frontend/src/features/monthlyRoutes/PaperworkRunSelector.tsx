@@ -27,6 +27,7 @@ export default function PaperworkRunSelector({
   selectedMonthIso,
   currentMonthIso,
   refreshing = false,
+  disabled = false,
   onChange,
   onMonthHover,
 }: {
@@ -34,6 +35,7 @@ export default function PaperworkRunSelector({
   selectedMonthIso: string
   currentMonthIso: string
   refreshing?: boolean
+  disabled?: boolean
   onChange: (monthIso: string) => void
   onMonthHover?: (monthIso: string) => void
 }) {
@@ -59,6 +61,7 @@ export default function PaperworkRunSelector({
         size="sm"
         className="paperwork-run-selector__select"
         value={selectedMonthIso}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
         aria-label="Select run month"
       >

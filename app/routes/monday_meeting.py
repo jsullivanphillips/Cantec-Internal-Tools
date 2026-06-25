@@ -186,7 +186,7 @@ def _days_since_approval(quote: Quote, as_of: date) -> int | None:
 
 
 def _quote_detail_url(quote_id: int) -> str:
-    return f"https://app.servicetrade.com/quotes/view/id/{quote_id}"
+    return f"https://app.servicetrade.com/quotes/{quote_id}"
 
 
 def _quote_has_repair_job(quote: Quote) -> bool:

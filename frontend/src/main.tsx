@@ -12,12 +12,15 @@ import './styles/run-details-history.css'
 import { router } from './router'
 import { registerCharts } from './lib/chartRegister'
 import { registerPortalServiceWorkerIfNeeded } from './lib/registerPortalServiceWorker'
+import BrandSkeletonStylesProvider from './components/BrandSkeletonStylesProvider'
 
 registerCharts()
 registerPortalServiceWorkerIfNeeded()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <RouterProvider router={router} />
+    <BrandSkeletonStylesProvider>
+      <RouterProvider router={router} />
+    </BrandSkeletonStylesProvider>
   </StrictMode>,
 )
