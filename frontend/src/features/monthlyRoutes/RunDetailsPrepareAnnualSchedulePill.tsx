@@ -11,8 +11,9 @@ export default function RunDetailsPrepareAnnualSchedulePill({
   const warning = schedule?.prep_warning ?? null
   const warningLabel = prepAnnualScheduleWarningLabel(warning)
   const showOverridePill = annualTestOverride
+  const showUnreleasedPill = schedule?.has_unreleased_annual_in_month === true
 
-  if (!warningLabel && !showOverridePill) return null
+  if (!warningLabel && !showOverridePill && !showUnreleasedPill) return null
 
   const serviceTradeUrl = schedule?.service_trade_site_location_url ?? null
   const showServiceTradeButton =
@@ -23,6 +24,11 @@ export default function RunDetailsPrepareAnnualSchedulePill({
       {showOverridePill ? (
         <span className="badge run-details-prepare-annual-schedule__pill run-details-prepare-annual-schedule__pill--override">
           Annual overridden
+        </span>
+      ) : null}
+      {showUnreleasedPill ? (
+        <span className="badge run-details-prepare-annual-schedule__pill run-details-prepare-annual-schedule__pill--unreleased">
+          Unreleased annual
         </span>
       ) : null}
       {warningLabel ? (

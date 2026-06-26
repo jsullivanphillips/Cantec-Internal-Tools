@@ -10,7 +10,11 @@ import pytest
 from app import create_app
 from app.db_models import MonthlyLocation, MonthlyLocationMonth, MonthlyRouteRun, db
 from app.monthly.service_trade_annual_schedule import (
+    _JobAnnualContext,
+    _location_flags_from_contexts,
     annual_schedule_location_rows_by_id,
+    annual_schedule_row_from_mlm,
+    mlm_has_explicit_annual_skip_recorded,
     mlm_st_annual_sync_locked,
     persist_route_annual_schedule_snapshot,
     sync_route_annual_schedule,
@@ -421,3 +425,164 @@ def test_annual_schedule_check_reports_pending_without_live_sync(cache_client, m
     )
     assert res_sync.status_code == 200
     assert calls == [(1, month_first, int(primary_id))]
+
+
+def test_mlm_has_explicit_annual_skip_recorded():
+    assert mlm_has_explicit_annual_skip_recorded(
+        MonthlyLocationMonth(
+            id=1,
+            monthly_location_id=1,
+            month_date=date(2026, 6, 1),
+            result_status="skipped",
+            skip_category="annual",
+        )
+    )
+    assert mlm_has_explicit_annual_skip_recorded(
+        MonthlyLocationMonth(
+            id=2,
+            monthly_location_id=1,
+            month_date=date(2026, 6, 1),
+            result_status="skipped",
+            skip_reason="annual_booked",
+        )
+    )
+    assert not mlm_has_explicit_annual_skip_recorded(
+        MonthlyLocationMonth(
+            id=3,
+            monthly_location_id=1,
+            month_date=date(2026, 6, 1),
+            result_status="skipped",
+            skip_category="access_issues",
+        )
+    )
+    assert not mlm_has_explicit_annual_skip_recorded(
+        MonthlyLocationMonth(
+            id=4,
+            monthly_location_id=1,
+            month_date=date(2026, 6, 1),
+            result_status=None,
+            skip_category="annual",
+        )
+    )
+
+
+def test_spanning_july_flags_suppressed_when_june_has_explicit_annual(cache_client):
+    _client, app = cache_client
+    june = date(2026, 6, 1)
+    july = date(2026, 7, 1)
+    with app.app_context():
+        _route_id, primary_id, _secondary_id = _seed_route_with_two_stops()
+        loc_id = int(primary_id)
+        db.session.add(
+            MonthlyLocationMonth(
+                id=99100,
+                monthly_location_id=loc_id,
+                month_date=june,
+                test_monthly_route_id=1,
+                result_status="skipped",
+                skip_category="annual",
+            )
+        )
+        db.session.commit()
+
+        ctx = _JobAnnualContext(
+            job_id=999,
+            st_location_id=1,
+            appointment_dates=(date(2026, 6, 15), date(2026, 7, 10)),
+            spanned_month_firsts=(june, july),
+            has_in_target_month=True,
+        )
+        july_flags = _location_flags_from_contexts(
+            [ctx],
+            july,
+            weekday_iso=0,
+            week_occurrence=1,
+            location_id=loc_id,
+        )
+        assert july_flags == (False, False, False, False, None, False)
+
+
+def test_annual_schedule_row_from_mlm_suppresses_spanning_sibling_month(cache_client):
+    _client, app = cache_client
+    june = date(2026, 6, 1)
+    july = date(2026, 7, 1)
+    with app.app_context():
+        _route_id, primary_id, _secondary_id = _seed_route_with_two_stops()
+        loc_id = int(primary_id)
+        loc = MonthlyLocation.query.get(loc_id)
+        db.session.add(
+            MonthlyLocationMonth(
+                id=99101,
+                monthly_location_id=loc_id,
+                month_date=june,
+                test_monthly_route_id=1,
+                result_status="skipped",
+                skip_reason="annual",
+            )
+        )
+        july_mlm = MonthlyLocationMonth(
+            id=99102,
+            monthly_location_id=loc_id,
+            month_date=july,
+            test_monthly_route_id=1,
+            st_annual_spans_months=True,
+            st_annual_skip_recommended=False,
+            st_annual_test_recommended=True,
+            st_has_scheduled_annual_in_month=True,
+            st_spanning_job_id=999,
+            st_annual_prep_warning="annual_spans_months",
+            st_annual_synced_at=datetime(2026, 7, 1, 8, 0, tzinfo=PACIFIC_TZ),
+        )
+        db.session.add(july_mlm)
+        db.session.commit()
+
+        row = annual_schedule_row_from_mlm(july_mlm, loc)
+        assert row is not None
+        assert row["annual_spans_months"] is False
+        assert row["annual_skip_recommended"] is False
+        assert row["annual_test_recommended"] is False
+        assert row["has_scheduled_annual_in_month"] is False
+        assert row["prep_warning"] is None
+
+
+def test_worksheet_stop_not_auto_annual_when_spanning_sibling_already_annual(cache_client):
+    _client, app = cache_client
+    june = date(2026, 6, 1)
+    july = date(2026, 7, 1)
+    with app.app_context():
+        _route_id, primary_id, _secondary_id = _seed_route_with_two_stops()
+        loc_id = int(primary_id)
+        loc = MonthlyLocation.query.get(loc_id)
+        db.session.add(
+            MonthlyLocationMonth(
+                id=99103,
+                monthly_location_id=loc_id,
+                month_date=june,
+                test_monthly_route_id=1,
+                result_status="skipped",
+                skip_category="annual",
+            )
+        )
+        july_mlm = MonthlyLocationMonth(
+            id=99104,
+            monthly_location_id=loc_id,
+            month_date=july,
+            test_monthly_route_id=1,
+            st_annual_spans_months=True,
+            st_annual_skip_recommended=True,
+            st_has_scheduled_annual_in_month=True,
+            st_spanning_job_id=999,
+            st_annual_synced_at=datetime(2026, 7, 1, 8, 0, tzinfo=PACIFIC_TZ),
+        )
+        db.session.add(july_mlm)
+        db.session.commit()
+
+        stop = serialize_worksheet_location(
+            loc,
+            july_mlm,
+            route_id=1,
+            month_first=july,
+            stop_number=1,
+            annual_schedule_by_location_id=annual_schedule_location_rows_by_id(1, july),
+        )
+        assert stop["scheduled_annual_auto_skip"] is False

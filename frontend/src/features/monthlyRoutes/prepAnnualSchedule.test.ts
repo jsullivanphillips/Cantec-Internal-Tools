@@ -16,6 +16,7 @@ const baseRow = (overrides: Partial<AnnualScheduleCheckLocation>): AnnualSchedul
   has_service_trade_link: true,
   service_trade_site_location_url: 'https://app.servicetrade.com/locations/1',
   has_scheduled_annual_in_month: false,
+  has_unreleased_annual_in_month: false,
   annual_spans_months: false,
   annual_skip_recommended: false,
   annual_test_recommended: false,

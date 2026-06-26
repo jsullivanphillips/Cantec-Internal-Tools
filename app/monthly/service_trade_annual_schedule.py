@@ -50,6 +50,7 @@ class AnnualScheduleLocationSnapshot:
     has_service_trade_link: bool
     service_trade_site_location_url: str | None
     has_scheduled_annual_in_month: bool
+    has_unreleased_annual_in_month: bool
     annual_spans_months: bool
     annual_skip_recommended: bool
     annual_test_recommended: bool
@@ -62,6 +63,7 @@ class AnnualScheduleLocationSnapshot:
             "has_service_trade_link": self.has_service_trade_link,
             "service_trade_site_location_url": self.service_trade_site_location_url,
             "has_scheduled_annual_in_month": self.has_scheduled_annual_in_month,
+            "has_unreleased_annual_in_month": self.has_unreleased_annual_in_month,
             "annual_spans_months": self.annual_spans_months,
             "annual_skip_recommended": self.annual_skip_recommended,
             "annual_test_recommended": self.annual_test_recommended,
@@ -131,6 +133,14 @@ def _skip_month_from_spanned(
     return skip_month
 
 
+def _annual_month_first_from_job_appointments(appt_dates: list[date]) -> date | None:
+    """Calendar month of the earliest qualifying appointment on an annual job."""
+    if not appt_dates:
+        return None
+    earliest = min(appt_dates)
+    return date(earliest.year, earliest.month, 1)
+
+
 def _pick_saved_annual_month(
     skip_months: list[date],
     *,
@@ -162,12 +172,6 @@ def sync_saved_annual_month_for_location(
             "saved_annual_month": None,
             "synced_at": None,
         }
-
-    route = loc.monthly_route
-    if route is None and loc.monthly_route_id is not None:
-        route = MonthlyRoute.query.get(int(loc.monthly_route_id))
-    weekday_iso = int(route.weekday_iso) if route and route.weekday_iso is not None else 0
-    week_occurrence = int(route.week_occurrence) if route and route.week_occurrence is not None else 1
 
     today = datetime.now(PACIFIC_TZ).date()
     current_month = date(today.year, today.month, 1)
@@ -203,22 +207,14 @@ def sync_saved_annual_month_for_location(
             all_appointments = _fetch_appointments_for_job(http, job_id)
             appt_dates: list[date] = []
             for appointment in all_appointments:
-                day = _appointment_pacific_date(appointment)
+                day = _appointment_pacific_date(appointment, require_released=True)
                 if day is not None:
                     appt_dates.append(day)
-            if not appt_dates:
+            annual_month = _annual_month_first_from_job_appointments(appt_dates)
+            if annual_month is None:
                 continue
-            spanned = _distinct_month_firsts(appt_dates)
-            if not spanned:
-                continue
-            skip_month = _skip_month_from_spanned(
-                spanned,
-                appointment_dates=tuple(appt_dates),
-                weekday_iso=weekday_iso,
-                week_occurrence=week_occurrence,
-            )
-            if window_start <= skip_month <= window_end:
-                skip_month_candidates.append(skip_month)
+            if window_start <= annual_month <= window_end:
+                skip_month_candidates.append(annual_month)
 
         synced_at = datetime.now(PACIFIC_TZ).isoformat()
         return {
@@ -248,16 +244,28 @@ def job_qualifies(job: dict[str, Any]) -> bool:
     return job_type in QUALIFYING_JOB_TYPES
 
 
+def _appointment_released(appointment: dict[str, Any]) -> bool:
+    released_raw = appointment.get("released")
+    if released_raw is None:
+        return False
+    if isinstance(released_raw, bool):
+        return released_raw
+    return bool(released_raw)
+
+
 def appointment_qualifies(
     appointment: dict[str, Any],
     *,
     start_ts: int | None = None,
     end_ts: int | None = None,
+    require_released: bool = False,
 ) -> bool:
     status = (str(appointment.get("status") or "")).strip().lower()
     if status in _CANCELLED_STATUSES:
         return False
     if status not in _QUALIFYING_APPOINTMENT_STATUSES:
+        return False
+    if require_released and not _appointment_released(appointment):
         return False
     window_start = appointment.get("windowStart")
     if window_start is None:
@@ -271,8 +279,12 @@ def appointment_qualifies(
     return True
 
 
-def _appointment_pacific_date(appointment: dict[str, Any]) -> date | None:
-    if not appointment_qualifies(appointment):
+def _appointment_pacific_date(
+    appointment: dict[str, Any],
+    *,
+    require_released: bool = False,
+) -> date | None:
+    if not appointment_qualifies(appointment, require_released=require_released):
         return None
     window_start = appointment.get("windowStart")
     if window_start is None:
@@ -492,7 +504,12 @@ def _build_job_contexts_for_month(
 
         has_in_month = False
         for appointment in job.get("_appointments") or []:
-            if appointment_qualifies(appointment, start_ts=start_ts, end_ts=end_ts):
+            if appointment_qualifies(
+                appointment,
+                start_ts=start_ts,
+                end_ts=end_ts,
+                require_released=True,
+            ):
                 has_in_month = True
                 break
         if not has_in_month:
@@ -502,7 +519,7 @@ def _build_job_contexts_for_month(
         all_appointments = _fetch_appointments_for_job(http, job_id)
         appt_dates: list[date] = []
         for appointment in all_appointments:
-            day = _appointment_pacific_date(appointment)
+            day = _appointment_pacific_date(appointment, require_released=True)
             if day is not None:
                 appt_dates.append(day)
         if not appt_dates:
@@ -519,7 +536,12 @@ def _build_job_contexts_for_month(
             appointment_dates=tuple(appt_dates),
             spanned_month_firsts=tuple(spanned),
             has_in_target_month=any(
-                appointment_qualifies(a, start_ts=start_ts, end_ts=end_ts)
+                appointment_qualifies(
+                    a,
+                    start_ts=start_ts,
+                    end_ts=end_ts,
+                    require_released=True,
+                )
                 for a in all_appointments
             ),
         )
@@ -528,14 +550,167 @@ def _build_job_contexts_for_month(
     return by_location
 
 
+def _job_has_unreleased_annual_for_month(
+    appointments: list[dict[str, Any]],
+    *,
+    start_ts: int,
+    end_ts: int,
+) -> bool:
+    """True when a qualifying annual job touches the month but has no released appointments."""
+    has_qualifying_in_month = any(
+        appointment_qualifies(appointment, start_ts=start_ts, end_ts=end_ts)
+        for appointment in appointments
+    )
+    if not has_qualifying_in_month:
+        return False
+    has_any_released = any(
+        appointment_qualifies(appointment, require_released=True)
+        for appointment in appointments
+    )
+    return not has_any_released
+
+
+def _location_has_unreleased_annual_in_month(
+    jobs: list[dict[str, Any]],
+    *,
+    st_location_id: int,
+    start_ts: int,
+    end_ts: int,
+) -> bool:
+    for job in jobs:
+        if not job_qualifies(job):
+            continue
+        job_location_id = _job_location_id(job)
+        if job_location_id != st_location_id:
+            continue
+        appointments = list(job.get("_appointments") or [])
+        if _job_has_unreleased_annual_for_month(
+            appointments,
+            start_ts=start_ts,
+            end_ts=end_ts,
+        ):
+            return True
+    return False
+
+
+def _should_suppress_spanning_annual_for_month(
+    location_id: int,
+    month_first: date,
+    spanned_month_firsts: tuple[date, ...] | list[date],
+) -> bool:
+    """True when another month of the same spanning job already has an explicit annual skip."""
+    if len(spanned_month_firsts) < 2:
+        return False
+    months = tuple(spanned_month_firsts)
+    if month_first not in months:
+        return False
+    for sibling in months:
+        if sibling == month_first:
+            continue
+        if location_has_explicit_annual_skip_recorded(location_id, sibling):
+            return True
+    return False
+
+
+def mlm_has_explicit_annual_skip_recorded(mlm: MonthlyLocationMonth | None) -> bool:
+    """Recorded paperwork skip classified as annual (not inferred from ServiceTrade sync)."""
+    if mlm is None:
+        return False
+    outcome = (mlm.test_outcome or "").strip().lower()
+    result = (mlm.result_status or "").strip().lower()
+    if outcome != "skipped" and result != "skipped":
+        return False
+    cat = (mlm.skip_category or "").strip().lower()
+    if cat == "annual":
+        return True
+    reason = (mlm.skip_reason or "").strip().lower()
+    return reason in {"annual", "annual_booked"}
+
+
+def location_has_explicit_annual_skip_recorded(
+    location_id: int,
+    month_first: date,
+) -> bool:
+    mlm = MonthlyLocationMonth.query.filter_by(
+        monthly_location_id=int(location_id),
+        month_date=month_first,
+    ).one_or_none()
+    return mlm_has_explicit_annual_skip_recorded(mlm)
+
+
+def _cleared_annual_schedule_row(row: dict[str, object]) -> dict[str, object]:
+    return {
+        **row,
+        "has_scheduled_annual_in_month": False,
+        "annual_spans_months": False,
+        "annual_skip_recommended": False,
+        "annual_test_recommended": False,
+        "spanning_job_id": None,
+        "prep_warning": None,
+    }
+
+
+def adjust_annual_schedule_row_for_recorded_sibling_skip(
+    row: dict[str, object],
+    *,
+    location_id: int,
+    month_first: date,
+) -> dict[str, object]:
+    """Drop ST annual auto flags when a sibling month of the same spanning job is already annual."""
+    if not (
+        row.get("annual_spans_months")
+        or row.get("spanning_job_id") is not None
+    ):
+        return row
+
+    spanning_job_id = row.get("spanning_job_id")
+    if spanning_job_id is not None:
+        siblings = MonthlyLocationMonth.query.filter(
+            MonthlyLocationMonth.monthly_location_id == int(location_id),
+            MonthlyLocationMonth.month_date != month_first,
+            MonthlyLocationMonth.st_spanning_job_id == int(spanning_job_id),
+        ).all()
+        for sibling_mlm in siblings:
+            if mlm_has_explicit_annual_skip_recorded(sibling_mlm):
+                return _cleared_annual_schedule_row(row)
+
+    if row.get("annual_spans_months"):
+        for delta in (-1, 1):
+            sibling_month = _add_month_first(month_first, delta)
+            if location_has_explicit_annual_skip_recorded(location_id, sibling_month):
+                return _cleared_annual_schedule_row(row)
+
+    return row
+
+
+def _suppressed_spanning_annual_flags() -> tuple[bool, bool, bool, bool, int | None, bool]:
+    return False, False, False, False, None, False
+
+
 def _location_flags_from_contexts(
     contexts: list[_JobAnnualContext],
     month_first: date,
     *,
     weekday_iso: int,
     week_occurrence: int,
+    location_id: int | None = None,
 ) -> tuple[bool, bool, bool, bool, int | None, bool]:
     """Return flags for one location in ``month_first``."""
+
+    def _maybe_suppress(
+        spanned_month_firsts: tuple[date, ...],
+        flags: tuple[bool, bool, bool, bool, int | None, bool],
+    ) -> tuple[bool, bool, bool, bool, int | None, bool]:
+        if location_id is None:
+            return flags
+        if _should_suppress_spanning_annual_for_month(
+            int(location_id),
+            month_first,
+            spanned_month_firsts,
+        ):
+            return _suppressed_spanning_annual_flags()
+        return flags
+
     if not contexts:
         return False, False, False, False, None, False
 
@@ -544,13 +719,16 @@ def _location_flags_from_contexts(
     primary = spanning[0] if spanning else contexts[0]
 
     if len(primary.spanned_month_firsts) < 2:
-        return (
-            has_scheduled,
-            False,
-            has_scheduled,
-            False,
-            primary.job_id if has_scheduled else None,
-            False,
+        return _maybe_suppress(
+            primary.spanned_month_firsts,
+            (
+                has_scheduled,
+                False,
+                has_scheduled,
+                False,
+                primary.job_id if has_scheduled else None,
+                False,
+            ),
         )
 
     skip_month, is_tie = _skip_month_for_spanning_job(
@@ -561,13 +739,16 @@ def _location_flags_from_contexts(
     )
     skip_recommended = month_first == skip_month
     test_recommended = has_scheduled and not skip_recommended
-    return (
-        has_scheduled,
-        True,
-        skip_recommended,
-        test_recommended,
-        primary.job_id,
-        is_tie,
+    return _maybe_suppress(
+        primary.spanned_month_firsts,
+        (
+            has_scheduled,
+            True,
+            skip_recommended,
+            test_recommended,
+            primary.job_id,
+            is_tie,
+        ),
     )
 
 
@@ -599,6 +780,7 @@ def _location_annual_schedule_row(
     weekday_iso: int,
     week_occurrence: int,
     contexts: list[_JobAnnualContext],
+    has_unreleased_annual_in_month: bool = False,
 ) -> dict[str, object]:
     location_id = int(loc.id)
     st_site_id = loc.service_trade_site_location_id
@@ -620,6 +802,7 @@ def _location_annual_schedule_row(
         month_first,
         weekday_iso=weekday_iso,
         week_occurrence=week_occurrence,
+        location_id=location_id,
     )
     prep_warning = derive_prep_warning(
         has_service_trade_link=has_service_trade_link,
@@ -632,6 +815,7 @@ def _location_annual_schedule_row(
         has_service_trade_link=has_service_trade_link,
         service_trade_site_location_url=st_url,
         has_scheduled_annual_in_month=has_scheduled,
+        has_unreleased_annual_in_month=has_unreleased_annual_in_month,
         annual_spans_months=spans_months,
         annual_skip_recommended=skip_recommended,
         annual_test_recommended=test_recommended,
@@ -689,12 +873,19 @@ def build_location_annual_schedule_row(
             end_ts=end_ts,
         )
         contexts = contexts_by_st_id.get(int(st_site_id), [])
+        has_unreleased = _location_has_unreleased_annual_in_month(
+            jobs,
+            st_location_id=int(st_site_id),
+            start_ts=start_ts,
+            end_ts=end_ts,
+        )
         return _location_annual_schedule_row(
             loc,
             month_first,
             weekday_iso=weekday_iso,
             week_occurrence=week_occurrence,
             contexts=contexts,
+            has_unreleased_annual_in_month=has_unreleased,
         )
     finally:
         if own_session and http is not None:
@@ -764,6 +955,7 @@ def _snapshot_row_to_mlm_cache(row: dict[str, object], synced_at: datetime) -> d
         "st_annual_test_recommended": bool(row.get("annual_test_recommended")),
         "st_annual_spans_months": bool(row.get("annual_spans_months")),
         "st_has_scheduled_annual_in_month": bool(row.get("has_scheduled_annual_in_month")),
+        "st_has_unreleased_annual_in_month": bool(row.get("has_unreleased_annual_in_month")),
         "st_annual_prep_warning": (
             str(prep_warning).strip() if prep_warning not in (None, "") else None
         ),
@@ -1066,17 +1258,22 @@ def annual_schedule_row_from_mlm(
         if st_site_id is not None
         else None
     )
-    return {
-        "location_id": int(mlm.monthly_location_id),
-        "has_service_trade_link": has_service_trade_link,
-        "service_trade_site_location_url": st_url,
-        "has_scheduled_annual_in_month": bool(mlm.st_has_scheduled_annual_in_month),
-        "annual_spans_months": bool(mlm.st_annual_spans_months),
-        "annual_skip_recommended": bool(mlm.st_annual_skip_recommended),
-        "annual_test_recommended": bool(mlm.st_annual_test_recommended),
-        "spanning_job_id": mlm.st_spanning_job_id,
-        "prep_warning": mlm.st_annual_prep_warning,
-    }
+    return adjust_annual_schedule_row_for_recorded_sibling_skip(
+        {
+            "location_id": int(mlm.monthly_location_id),
+            "has_service_trade_link": has_service_trade_link,
+            "service_trade_site_location_url": st_url,
+            "has_scheduled_annual_in_month": bool(mlm.st_has_scheduled_annual_in_month),
+            "has_unreleased_annual_in_month": bool(mlm.st_has_unreleased_annual_in_month),
+            "annual_spans_months": bool(mlm.st_annual_spans_months),
+            "annual_skip_recommended": bool(mlm.st_annual_skip_recommended),
+            "annual_test_recommended": bool(mlm.st_annual_test_recommended),
+            "spanning_job_id": mlm.st_spanning_job_id,
+            "prep_warning": mlm.st_annual_prep_warning,
+        },
+        location_id=int(mlm.monthly_location_id),
+        month_first=mlm.month_date,
+    )
 
 
 def annual_schedule_location_rows_from_db(

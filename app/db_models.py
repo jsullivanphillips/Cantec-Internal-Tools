@@ -1288,6 +1288,7 @@ class MonthlyLocationMonth(db.Model):
     st_annual_test_recommended = db.Column(db.Boolean, nullable=True)
     st_annual_spans_months = db.Column(db.Boolean, nullable=True)
     st_has_scheduled_annual_in_month = db.Column(db.Boolean, nullable=True)
+    st_has_unreleased_annual_in_month = db.Column(db.Boolean, nullable=True)
     st_annual_prep_warning = db.Column(db.String(64), nullable=True)
     st_spanning_job_id = db.Column(db.BigInteger, nullable=True)
     st_annual_synced_at = db.Column(db.DateTime(timezone=True), nullable=True)

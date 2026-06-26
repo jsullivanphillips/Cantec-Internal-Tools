@@ -591,6 +591,7 @@ export type AnnualScheduleCheckLocation = {
   has_service_trade_link: boolean
   service_trade_site_location_url: string | null
   has_scheduled_annual_in_month: boolean
+  has_unreleased_annual_in_month: boolean
   annual_spans_months: boolean
   annual_skip_recommended: boolean
   annual_test_recommended: boolean

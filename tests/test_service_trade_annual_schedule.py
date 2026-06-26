@@ -9,6 +9,8 @@ import pytest
 
 from app.monthly.route_test_day import effective_route_test_day
 from app.monthly.service_trade_annual_schedule import (
+    _annual_month_first_from_job_appointments,
+    _job_has_unreleased_annual_for_month,
     _pick_saved_annual_month,
     _skip_month_for_spanning_job,
     appointment_qualifies,
@@ -68,6 +70,65 @@ def test_appointment_rejects_cancelled():
     )
 
 
+def test_appointment_qualifies_released_only_when_required():
+    start_ts, end_ts = month_window_pacific(date(2026, 6, 1))
+    mid_june = int(datetime(2026, 6, 15, 10, 0, tzinfo=PACIFIC).timestamp())
+    unreleased = {"status": "scheduled", "windowStart": mid_june, "released": False}
+    released = {"status": "scheduled", "windowStart": mid_june, "released": True}
+    assert appointment_qualifies(unreleased, start_ts=start_ts, end_ts=end_ts)
+    assert not appointment_qualifies(
+        unreleased,
+        start_ts=start_ts,
+        end_ts=end_ts,
+        require_released=True,
+    )
+    assert appointment_qualifies(
+        released,
+        start_ts=start_ts,
+        end_ts=end_ts,
+        require_released=True,
+    )
+
+
+def test_appointment_rejects_missing_released_when_required():
+    start_ts, end_ts = month_window_pacific(date(2026, 6, 1))
+    mid_june = int(datetime(2026, 6, 15, 10, 0, tzinfo=PACIFIC).timestamp())
+    assert not appointment_qualifies(
+        {"status": "scheduled", "windowStart": mid_june},
+        start_ts=start_ts,
+        end_ts=end_ts,
+        require_released=True,
+    )
+
+
+def test_job_has_unreleased_annual_for_month_when_only_unreleased_in_month():
+    start_ts, end_ts = month_window_pacific(date(2026, 6, 1))
+    mid_june = int(datetime(2026, 6, 15, 10, 0, tzinfo=PACIFIC).timestamp())
+    appointments = [
+        {"status": "scheduled", "windowStart": mid_june, "released": False},
+    ]
+    assert _job_has_unreleased_annual_for_month(
+        appointments,
+        start_ts=start_ts,
+        end_ts=end_ts,
+    )
+
+
+def test_job_has_unreleased_annual_for_month_false_when_released_exists():
+    start_ts, end_ts = month_window_pacific(date(2026, 6, 1))
+    mid_june = int(datetime(2026, 6, 15, 10, 0, tzinfo=PACIFIC).timestamp())
+    july = int(datetime(2026, 7, 2, 10, 0, tzinfo=PACIFIC).timestamp())
+    appointments = [
+        {"status": "scheduled", "windowStart": mid_june, "released": False},
+        {"status": "scheduled", "windowStart": july, "released": True},
+    ]
+    assert not _job_has_unreleased_annual_for_month(
+        appointments,
+        start_ts=start_ts,
+        end_ts=end_ts,
+    )
+
+
 def test_job_qualifies_allowed_types():
     assert job_qualifies({"type": "inspection", "status": "scheduled"})
     assert job_qualifies({"type": "replacement", "status": "new"})
@@ -99,6 +160,13 @@ def test_derive_prep_warning(has_link, has_scheduled, spans, tie, expected):
         )
         == expected
     )
+
+
+def test_annual_month_first_from_job_appointments_uses_earliest():
+    assert _annual_month_first_from_job_appointments(
+        [date(2026, 7, 3), date(2026, 6, 28)],
+    ) == date(2026, 6, 1)
+    assert _annual_month_first_from_job_appointments([]) is None
 
 
 def test_skip_month_for_spanning_job_closer_to_july():

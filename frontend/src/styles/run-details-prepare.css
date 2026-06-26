@@ -1528,6 +1528,12 @@
   border-color: #93c5fd;
 }
 
+.monthly-run-detail-page .run-details-prepare-annual-schedule__pill--unreleased {
+  background: #e0e7ff;
+  color: #3730a3;
+  border-color: #a5b4fc;
+}
+
 .monthly-run-detail-page .run-details-prepare-annual-schedule__pill--servicetrade {
   background: #1e3a5f;
   color: #fff;
