@@ -330,6 +330,7 @@ def seed_location_month_fields(
         base["run_comments"] = None
         base["office_job_comment"] = None
         base["office_attention"] = False
+        base["replaced_part_flag"] = False
         base["prior_month_out_of_order_dismissed"] = False
         base["billing_status"] = None
 
@@ -338,12 +339,15 @@ def seed_location_month_fields(
     base["run_id"] = run_id
     if existing_row is not None:
         base["office_attention"] = bool(existing_row.office_attention)
+        base["replaced_part_flag"] = bool(existing_row.replaced_part_flag)
         base["prior_month_out_of_order_dismissed"] = bool(
             existing_row.prior_month_out_of_order_dismissed
         )
         base["billing_status"] = existing_row.billing_status
     elif "office_attention" not in base:
         base["office_attention"] = False
+    if "replaced_part_flag" not in base:
+        base["replaced_part_flag"] = False
     if "prior_month_out_of_order_dismissed" not in base:
         base["prior_month_out_of_order_dismissed"] = False
     base.pop("building_name", None)
@@ -784,6 +788,7 @@ def refresh_worksheet_stops_for_route_month(
         row = existing.get(loc_id)
         preserve_office_prep = row is not None and (
             bool(row.office_attention)
+            or bool(row.replaced_part_flag)
             or bool(_normalize_text(row.run_comments))
             or bool(_normalize_text(row.office_job_comment))
         )
@@ -801,6 +806,7 @@ def refresh_worksheet_stops_for_route_month(
             fresh["run_comments"] = row.run_comments
             fresh["office_job_comment"] = row.office_job_comment
             fresh["office_attention"] = bool(row.office_attention)
+            fresh["replaced_part_flag"] = bool(row.replaced_part_flag)
             fresh["prior_month_out_of_order_dismissed"] = bool(
                 row.prior_month_out_of_order_dismissed
             )
@@ -1171,6 +1177,7 @@ def serialize_worksheet_location(
     run_comments = None
     office_job_comment = None
     office_attention = False
+    replaced_part_flag = False
     prior_month_out_of_order_dismissed = False
     result_status = None
     skip_reason = None
@@ -1192,6 +1199,7 @@ def serialize_worksheet_location(
         run_comments = mlm.run_comments
         office_job_comment = mlm.office_job_comment
         office_attention = bool(mlm.office_attention)
+        replaced_part_flag = bool(mlm.replaced_part_flag)
         prior_month_out_of_order_dismissed = bool(mlm.prior_month_out_of_order_dismissed)
         result_status = mlm.result_status
         skip_reason = mlm.skip_reason
@@ -1229,6 +1237,7 @@ def serialize_worksheet_location(
         run_comments = None
         office_job_comment = None
         office_attention = False
+        replaced_part_flag = False
         prior_month_out_of_order_dismissed = False
         pmc = _normalize_text(preview.get("property_management_company"))
         panel_loc = preview.get("panel_location")
@@ -1285,6 +1294,7 @@ def serialize_worksheet_location(
         "run_comments": run_comments,
         "office_job_comment": office_job_comment,
         "office_attention": office_attention,
+        "replaced_part_flag": replaced_part_flag,
         "prior_month_out_of_order_dismissed": prior_month_out_of_order_dismissed,
         "time_in": time_in,
         "time_out": time_out,
@@ -1540,6 +1550,7 @@ def serialize_worksheet_stop_office_prep_patch(
         "run_comments": mlm.run_comments,
         "office_job_comment": mlm.office_job_comment,
         "office_attention": bool(mlm.office_attention),
+        "replaced_part_flag": bool(mlm.replaced_part_flag),
         "prior_month_out_of_order_dismissed": bool(mlm.prior_month_out_of_order_dismissed),
         "result_status": mlm.result_status,
         "test_outcome": mlm.test_outcome,
@@ -2202,6 +2213,7 @@ STOP_PATCH_FIELD_MAP: dict[str, str] = {
     "run_comments": "run_comments",
     "office_job_comment": "office_job_comment",
     "office_attention": "office_attention",
+    "replaced_part_flag": "replaced_part_flag",
     "prior_month_out_of_order_dismissed": "prior_month_out_of_order_dismissed",
     "time_in": "sheet_time_in_raw",
     "time_out": "sheet_time_out_raw",
@@ -2319,6 +2331,18 @@ def apply_worksheet_stop_field_change(
         if bool(mlm.office_attention) == new_bool:
             return False, None
         mlm.office_attention = new_bool
+        return True, None
+
+    if field_name == "replaced_part_flag":
+        if raw_value in (None, "", False, 0, "0", "false", "False"):
+            new_bool = False
+        elif raw_value in (True, 1, "1", "true", "True"):
+            new_bool = True
+        else:
+            new_bool = bool(raw_value)
+        if bool(mlm.replaced_part_flag) == new_bool:
+            return False, None
+        mlm.replaced_part_flag = new_bool
         return True, None
 
     if field_name == "prior_month_out_of_order_dismissed":

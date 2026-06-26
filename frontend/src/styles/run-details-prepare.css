@@ -1084,6 +1084,10 @@
   border-color: #4d8429;
 }
 
+.monthly-run-detail-page .run-details-review-location-result-card--replaced-part {
+  border-color: #4D91D1;
+}
+
 .monthly-run-detail-page .run-details-review-location-result-card--failed {
   border-color: #991b1b;
 }
@@ -1262,6 +1266,14 @@
   tr.run-details-review-table-row
   td.run-details-prepare-sticky-address.run-details-review-location-cell--passed-problems {
   background-color: #70ad47;
+}
+
+.monthly-run-detail-page
+  .run-details-review-table
+  tbody
+  tr.run-details-review-table-row
+  td.run-details-prepare-sticky-address.run-details-review-location-cell--replaced-part {
+  background-color: #4D91D1;
 }
 
 .monthly-run-detail-page

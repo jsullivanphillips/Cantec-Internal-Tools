@@ -8298,6 +8298,11 @@ button.monthly-location-hero-status-badge:focus-visible {
 }
 
 .billing-board-paperwork-modal
+  .tw-office-billing-test-result-cell.run-details-review-location-cell--replaced-part {
+  background-color: #4D91D1;
+}
+
+.billing-board-paperwork-modal
   .tw-office-billing-test-result-cell.run-details-review-location-cell--failed {
   background-color: var(--pw-failed, #dc2626);
 }
@@ -8472,6 +8477,11 @@ button.monthly-location-hero-status-badge:focus-visible {
 .portal-site-history-modal
   .tw-office-billing-test-result-cell.run-details-review-location-cell--passed-problems {
   background-color: #70ad47;
+}
+
+.portal-site-history-modal
+  .tw-office-billing-test-result-cell.run-details-review-location-cell--replaced-part {
+  background-color: #4D91D1;
 }
 
 .portal-site-history-modal

@@ -5,6 +5,7 @@ import RunDetailsFieldChangePrepCell from './RunDetailsFieldChangePrepCell'
 import type { MonthlyRunDetailLocation, MonthlyRunDetailReviewStopDetailPayload } from './monthlyRoutesShared'
 import type { NotableChangeItem } from './notableStopChanges'
 import { auditedFieldChangeItems } from './notableStopChanges'
+import { officeReplacedPartRowClass, officeStopHasReplacedPart } from './officeRunReviewShared'
 import {
   FIELD_CHANGE_PREP_COLUMN_ORDER,
   groupChangesByPrepColumn,
@@ -106,7 +107,12 @@ function FieldChangeStopPairRows({
   pairIndex: number
 }) {
   const grouped = groupChangesByPrepColumn(entry.changes)
-  const pairClass = `run-details-field-change-pair run-details-field-change-pair--${pairIndex % 2 === 0 ? 'even' : 'odd'}`
+  const pairClass = [
+    `run-details-field-change-pair run-details-field-change-pair--${pairIndex % 2 === 0 ? 'even' : 'odd'}`,
+    officeReplacedPartRowClass(officeStopHasReplacedPart(entry.location)),
+  ]
+    .filter(Boolean)
+    .join(' ')
 
   return (
     <>

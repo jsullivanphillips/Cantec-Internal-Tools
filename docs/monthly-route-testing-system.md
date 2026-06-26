@@ -479,6 +479,7 @@ Ambiguous ``h:mm`` values without AM/PM infer meridiem for field-route visits: *
 **Route-level timing fallback:** When per-stop times are missing or partial, ``revenue_per_route_hour`` and month expense/net use ``MonthlyRouteRunTimingMonth.duration_minutes`` (ServiceTrade testing-job onsite clocks, ``sync_status=ok``). Expense matches the Metrics dashboard: labour (\$45/hr × ``tech_count`` × billed hours, with the 7.5–8 hr cap) + \$25 truck. ``unaccounted_minutes`` = route duration minus the sum of stop visit minutes (drive/admin overhead).
 - ``MonthlyRouteRun.pre_run_message`` — per-month note on the paperwork/run-details page; shown on the technician route hub below **Open run**; cleared on run reset.
 - ``MonthlyTestingSiteMonth.office_attention`` — purple stop styling on the portal worksheet until any ``test_outcome`` is recorded; pair with **Job comment** (`run_comments`) when needed.
+- ``MonthlyLocationMonth.replaced_part_flag`` — set when a technician logs a **Replaced part** while clocked in (portal dock). Appends the note to **Job comments** (`run_comments`) as blue rich text. Office worksheet rows for that site/month use a light blue row highlight (prep, review, exact history, field changes) for the rest of the month; the flag persists through stop reset and is not auto-cleared.
 
 **Annual schedule cache:** ServiceTrade annual flags are persisted on ``monthly_location_month`` (``st_annual_skip_recommended``, ``st_annual_prep_warning``, ``st_annual_synced_at``, etc.). **Live ServiceTrade sync** runs whenever office **run details** or the technician **worksheet** is opened, and when the prep UI calls ``annual_schedule_check`` (parallel requests within ~15s are deduplicated). Manual office decisions are not overwritten: ``annual_test_override`` (forced test) and office prep skip (``history_source=office_prep``). Bulk backfill: ``python -m app.scripts.sync_monthly_route_annual_schedules``. Dashboard ``annual_count`` and read-only views use the DB cache only.
 
@@ -520,6 +521,8 @@ Logic: ``app/monthly/run_workflow.py``. UI stepper: ``RunWorkflowStepper.tsx``.
 ```
 
 **Portal vs office worksheet:** Field technicians use `TechnicianPortalWorksheetPage` at `/tech/route/:routeId/worksheet/:monthIso` (stop-by-stop UI). Office staff keep `TechnicianWorksheetPage` (location-grain table) until a later office cutover.
+
+**Replaced part (portal):** While clocked into a stop (dock band B), **Replaced part** opens a modal for free text. Submit PATCHes ``run_comments`` (append blue ``rt-blue`` segment) and ``replaced_part_flag=true``. Requires an open clock event on that stop; technicians cannot clear the flag. Office views highlight flagged rows in blue.
 
 **Dual-write (transition):** Primary testing site PATCH outcomes sync to `MonthlyRouteTestHistory` for that location so worksheet audit events keep `history_row_id` and office `rows[]` stay roughly aligned for single-panel sites.
 

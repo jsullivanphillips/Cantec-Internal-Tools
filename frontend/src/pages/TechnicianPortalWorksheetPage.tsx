@@ -42,6 +42,8 @@ import PortalWorksheetSkeleton from './PortalWorksheetSkeleton'
 import PortalClockEventsCard from '../features/monthlyRoutes/PortalClockEventsCard'
 import PortalOfficeJobCommentCard from '../features/monthlyRoutes/PortalOfficeJobCommentCard'
 import PortalSkipModal from '../features/monthlyRoutes/PortalSkipModal'
+import PortalReplacedPartModal from '../features/monthlyRoutes/PortalReplacedPartModal'
+import { appendBlueRichTextSegment } from '../features/richText/appendRichTextSegment'
 import PortalMapsChoiceModal from '../features/monthlyRoutes/PortalMapsChoiceModal'
 import {
   getPortalMapsProvider,
@@ -341,6 +343,7 @@ export default function TechnicianPortalWorksheetPage() {
   )
   const [keyViewOpen, setKeyViewOpen] = useState(false)
   const [skipModalOpen, setSkipModalOpen] = useState(false)
+  const [replacedPartModalOpen, setReplacedPartModalOpen] = useState(false)
   const [resultsModalOpen, setResultsModalOpen] = useState(false)
   const [resultsForClockOut, setResultsForClockOut] = useState(false)
   const [defModalOpen, setDefModalOpen] = useState(false)
@@ -539,6 +542,7 @@ export default function TechnicianPortalWorksheetPage() {
     setInteractiveBusy(
       keyViewOpen ||
         skipModalOpen ||
+        replacedPartModalOpen ||
         resultsModalOpen ||
         defModalOpen ||
         historyModalOpen ||
@@ -547,6 +551,7 @@ export default function TechnicianPortalWorksheetPage() {
   }, [
     keyViewOpen,
     skipModalOpen,
+    replacedPartModalOpen,
     resultsModalOpen,
     defModalOpen,
     historyModalOpen,
@@ -645,6 +650,19 @@ export default function TechnicianPortalWorksheetPage() {
       }
     },
     [active, workflowReadOnly, workflowActions, projectedStops],
+  )
+
+  const handleReplacedPartConfirm = useCallback(
+    (text: string) => {
+      if (!active || workflowReadOnly) return
+      setReplacedPartModalOpen(false)
+      const nextComments = appendBlueRichTextSegment(active.run_comments, text)
+      applyStopPatch({
+        run_comments: nextComments.length > 0 ? nextComments : null,
+        replaced_part_flag: true,
+      })
+    },
+    [active, workflowReadOnly, applyStopPatch],
   )
 
   const handleReset = useCallback(() => {
@@ -887,6 +905,13 @@ export default function TechnicianPortalWorksheetPage() {
             onClick={handleClockOut}
           >
             Clock out
+          </Button>
+          <Button
+            variant="outline-primary"
+            className="pw-mock-dock-btn pw-mock-dock-normal-btn"
+            onClick={() => setReplacedPartModalOpen(true)}
+          >
+            Replace part
           </Button>
           <Button
             variant="outline-danger"
@@ -1529,6 +1554,12 @@ export default function TechnicianPortalWorksheetPage() {
             stopNumber={active.stop_number}
             onHide={() => setSkipModalOpen(false)}
             onConfirm={handleSkipConfirm}
+          />
+          <PortalReplacedPartModal
+            show={replacedPartModalOpen}
+            stopNumber={active.stop_number}
+            onHide={() => setReplacedPartModalOpen(false)}
+            onConfirm={handleReplacedPartConfirm}
           />
           <PortalRecordResultsModal
             show={resultsModalOpen}

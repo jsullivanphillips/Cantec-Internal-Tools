@@ -43,6 +43,8 @@ import {
   runReviewLocationCellClass,
   runReviewLocationCellTone,
   runReviewLocationResultCardClass,
+  officeReplacedPartRowClass,
+  officeStopHasReplacedPart,
 } from './officeRunReviewShared'
 
 export type OfficeWorksheetTableLayoutVariant = 'default' | 'billing'
@@ -332,9 +334,18 @@ function OfficeStopTableRow({
     : 'tw-office-sticky tw-office-sticky-order tabular-nums'
   const resolvedBillingStatus =
     (stop.billing_status ?? billingStatus ?? 'unset').trim().toLowerCase() || 'unset'
+  const replacedPartRowClass = officeReplacedPartRowClass(officeStopHasReplacedPart(stop))
 
   return (
-    <tr className={`tw-office-table-row tw-office-table-row--${status}`} title={inclusionTitle}>
+    <tr
+      className={[
+        `tw-office-table-row tw-office-table-row--${status}`,
+        replacedPartRowClass,
+      ]
+        .filter(Boolean)
+        .join(' ')}
+      title={inclusionTitle}
+    >
       {showStopColumn ? <td className={orderCellClass}>{stop.stop_number}</td> : null}
       {showBillingColumn ? (
         <OfficeBillingStatusCell billingStatus={resolvedBillingStatus} />

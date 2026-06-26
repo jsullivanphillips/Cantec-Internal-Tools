@@ -834,6 +834,21 @@
   background: #f5f0ff !important;
 }
 
+.monthly-run-detail-page .run-details-prep-section .tw-office-table-row.run-details-office-row--replaced-part td,
+.monthly-run-detail-page .run-details-review-section .run-details-review-table-row.run-details-office-row--replaced-part td,
+.monthly-run-detail-page .run-details-history-section .tw-office-table-row.run-details-office-row--replaced-part td,
+.technician-worksheet-page .tw-office-table-row.run-details-office-row--replaced-part td,
+.monthly-run-detail-page .run-details-field-changes-section .run-details-field-change-pair.run-details-office-row--replaced-part td {
+  background: #4D91D1 !important;
+}
+
+.monthly-run-detail-page .run-details-prep-section .tw-office-table-row.run-details-office-row--replaced-part .tw-office-sticky,
+.monthly-run-detail-page .run-details-history-section .tw-office-table-row.run-details-office-row--replaced-part .tw-office-sticky,
+.technician-worksheet-page .tw-office-table-row.run-details-office-row--replaced-part .tw-office-sticky,
+.monthly-run-detail-page .run-details-field-changes-section .run-details-field-change-pair.run-details-office-row--replaced-part .run-details-prepare-sticky-order {
+  background: #4D91D1 !important;
+}
+
 .monthly-run-detail-page .run-details-prep-section .tw-office-table-row.run-details-prep-office-row--annual td {
   background: #f9ae6e !important;
   background: color-mix(in srgb, #f79442 52%, #ffffff) !important;

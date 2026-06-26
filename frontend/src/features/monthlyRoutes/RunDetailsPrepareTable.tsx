@@ -49,6 +49,7 @@ import { useMonitoringCompanies } from './useMonitoringCompanies'
 import { apiJson } from '../../lib/apiClient'
 import { locationDisplaySubline, locationPrimaryLabel } from './locationDisplay'
 import { officeWorksheetPrepTableCssVars, stopIsOfficePrepSkipped } from './officeWorksheetTableShared'
+import { officeStopHasReplacedPart } from './officeRunReviewShared'
 import OfficeSkipSiteModal, { type OfficeSkipSitePayload } from './OfficeSkipSiteModal'
 import { deletePrepSiteSkip, postPrepSiteSkip } from './prepSiteSkipApi'
 import { deletePrepAnnualTest, postPrepAnnualTest } from './prepAnnualTestApi'
@@ -91,7 +92,7 @@ function PrepTableHeaderRow() {
   )
 }
 
-type PrepRowTone = 'skipped' | 'annual-due' | 'on-hold' | 'attention'
+type PrepRowTone = 'skipped' | 'annual-due' | 'on-hold' | 'attention' | 'replaced-part'
 
 function prepRowTone(
   stop: RunDetailPrepRow['location'],
@@ -100,6 +101,7 @@ function prepRowTone(
   onHold: boolean,
 ): PrepRowTone | null {
   if (stopIsOfficePrepSkipped(stop)) return 'skipped'
+  if (officeStopHasReplacedPart(stop)) return 'replaced-part'
   if (highlighted) return 'attention'
   if (annualDue) return 'annual-due'
   if (onHold) return 'on-hold'
@@ -117,7 +119,9 @@ function prepRowClassName(tone: PrepRowTone | null): string | undefined {
           ? 'run-details-prep-office-row--on-hold'
           : tone === 'attention'
             ? 'run-details-prep-office-row--attention'
-            : ''
+            : tone === 'replaced-part'
+              ? 'run-details-office-row--replaced-part'
+              : ''
   return ['tw-office-table-row', modifier].filter(Boolean).join(' ')
 }
 

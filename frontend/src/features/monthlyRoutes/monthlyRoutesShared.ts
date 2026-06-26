@@ -523,6 +523,7 @@ export type MonthlyRunDetailLocationAttentionFlags = {
   has_active_deficiencies: boolean
   has_job_comment: boolean
   has_office_job_comment?: boolean
+  has_replaced_part?: boolean
   open_tickets?: number
   needs_attention: boolean
 }
@@ -554,6 +555,7 @@ export type MonthlyRunDetailLocation = {
   run_comments: string | null
   office_job_comment?: string | null
   office_attention?: boolean
+  replaced_part_flag?: boolean
   prior_month_out_of_order?: boolean
   prior_month_tested_after_address?: string | null
   prior_month_out_of_order_dismissed?: boolean
@@ -826,6 +828,7 @@ export type TechnicianWorksheetLocation = {
   new_comment_fields?: string[]
   office_job_comment?: string | null
   office_attention?: boolean
+  replaced_part_flag?: boolean
   prior_month_out_of_order_dismissed?: boolean
   time_in: string | null
   time_out: string | null

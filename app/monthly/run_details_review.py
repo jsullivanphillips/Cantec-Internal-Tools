@@ -876,6 +876,7 @@ def _serialize_run_detail_location(
         "run_comments": stop.get("run_comments"),
         "office_job_comment": stop.get("office_job_comment"),
         "office_attention": bool(stop.get("office_attention")),
+        "replaced_part_flag": bool(stop.get("replaced_part_flag")),
         "prior_month_out_of_order": bool(stop.get("prior_month_out_of_order")),
         "prior_month_tested_after_address": (
             str(stop["prior_month_tested_after_address"]).strip()
@@ -943,6 +944,7 @@ def _location_attention_flags(
         has_any_open_deficiencies = _location_has_any_open_deficiencies(lid)
     has_job_comment = _stop_has_run_comments(stop)
     has_office_job_comment = _normalize_text(stop.get("office_job_comment")) is not None
+    has_replaced_part = bool(stop.get("replaced_part_flag"))
     if open_tickets_by_loc is not None:
         open_tickets = int(open_tickets_by_loc.get(lid, 0))
     else:
@@ -963,6 +965,7 @@ def _location_attention_flags(
         "has_active_deficiencies": has_active_deficiencies,
         "has_job_comment": has_job_comment,
         "has_office_job_comment": has_office_job_comment,
+        "has_replaced_part": has_replaced_part,
         "open_tickets": open_tickets,
         "needs_attention": needs_attention,
     }

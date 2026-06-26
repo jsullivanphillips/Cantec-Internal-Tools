@@ -135,6 +135,7 @@ export type RunReviewLocationCellTone =
   | 'annual'
   | 'on_hold'
   | 'pending'
+  | 'replaced_part'
 
 const RUN_REVIEW_LOCATION_CELL_CLASS: Record<RunReviewLocationCellTone, string> = {
   all_good: 'run-details-review-location-cell--all-good',
@@ -144,6 +145,7 @@ const RUN_REVIEW_LOCATION_CELL_CLASS: Record<RunReviewLocationCellTone, string> 
   annual: 'run-details-review-location-cell--annual',
   on_hold: 'run-details-review-location-cell--on-hold',
   pending: 'run-details-review-location-cell--pending',
+  replaced_part: 'run-details-review-location-cell--replaced-part',
 }
 
 /** Outcome tone for full-cell background in run review Location & Result column. */
@@ -151,22 +153,32 @@ export function runReviewLocationCellTone(
   stop: TechnicianWorksheetLocation,
   monthDate: string,
 ): RunReviewLocationCellTone {
+  let tone: RunReviewLocationCellTone
   const outcome = stopPortalOutcome(stop)
-  if (outcome === 'all_good') return 'all_good'
-  if (outcome === 'passed_with_problems') return 'passed_with_problems'
-  if (outcome === 'failed') return 'failed'
-  if (outcome === 'skipped') {
-    return runReviewStopIsAnnualSkip(stop, monthDate) ? 'annual' : 'skipped'
+  if (outcome === 'all_good') tone = 'all_good'
+  else if (outcome === 'passed_with_problems') tone = 'passed_with_problems'
+  else if (outcome === 'failed') tone = 'failed'
+  else if (outcome === 'skipped') {
+    tone = runReviewStopIsAnnualSkip(stop, monthDate) ? 'annual' : 'skipped'
+  } else {
+    const rs = norm(stop.result_status).toLowerCase()
+    if (rs === 'tested') tone = 'all_good'
+    else if (rs === 'skipped') {
+      tone = runReviewStopIsAnnualSkip(stop, monthDate) ? 'annual' : 'skipped'
+    } else {
+      const status = officeStopStatus(stop, monthDate)
+      if (status === 'annual') tone = 'annual'
+      else if (status === 'on_hold') tone = 'on_hold'
+      else tone = 'pending'
+    }
   }
-  const rs = norm(stop.result_status).toLowerCase()
-  if (rs === 'tested') return 'all_good'
-  if (rs === 'skipped') {
-    return runReviewStopIsAnnualSkip(stop, monthDate) ? 'annual' : 'skipped'
+  if (
+    officeStopHasReplacedPart(stop) &&
+    (tone === 'all_good' || tone === 'passed_with_problems')
+  ) {
+    return 'replaced_part'
   }
-  const status = officeStopStatus(stop, monthDate)
-  if (status === 'annual') return 'annual'
-  if (status === 'on_hold') return 'on_hold'
-  return 'pending'
+  return tone
 }
 
 export function runReviewLocationCellClass(tone: RunReviewLocationCellTone): string {
@@ -293,4 +305,14 @@ export function stopHasOutcomeOnlyReview(stop: TechnicianWorksheetLocation, mont
 /** Stops with no recorded test outcome (excludes annual-month and on-hold pending). */
 export function stopHasNoTestResult(stop: TechnicianWorksheetLocation, monthDate: string): boolean {
   return runReviewLocationCellTone(stop, monthDate) === 'pending'
+}
+
+export function officeStopHasReplacedPart(stop: { replaced_part_flag?: boolean }): boolean {
+  return Boolean(stop.replaced_part_flag)
+}
+
+export const OFFICE_REPLACED_PART_ROW_CLASS = 'run-details-office-row--replaced-part'
+
+export function officeReplacedPartRowClass(hasFlag: boolean): string | undefined {
+  return hasFlag ? OFFICE_REPLACED_PART_ROW_CLASS : undefined
 }

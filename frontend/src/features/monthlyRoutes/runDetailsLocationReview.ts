@@ -64,6 +64,7 @@ export function runDetailLocationAsWorksheetLocation(
     testing_procedures: loc.testing_procedures,
     inspection_tech_notes: loc.inspection_tech_notes,
     run_comments: loc.run_comments,
+    replaced_part_flag: loc.replaced_part_flag,
     time_in: null,
     time_out: null,
     route_stop_order: null,
@@ -660,6 +661,7 @@ export function recomputeLocationAttentionFlags(
   const billing_unset = billingNorm === '' || billingNorm === 'unset' || billingStatus == null
   const has_active_deficiencies = locationHasActiveDeficiencies(location)
   const has_job_comment = normComment(location.run_comments).length > 0
+  const has_replaced_part = Boolean(location.replaced_part_flag)
   let needs_attention = billing_unset || has_active_deficiencies
   if (!needs_attention) {
     needs_attention = locationNeedsAttentionExcludingBilling(location, monthDate)
@@ -669,6 +671,7 @@ export function recomputeLocationAttentionFlags(
     has_field_edits: location.attention_flags.has_field_edits,
     has_active_deficiencies,
     has_job_comment,
+    has_replaced_part,
     needs_attention,
   }
 }

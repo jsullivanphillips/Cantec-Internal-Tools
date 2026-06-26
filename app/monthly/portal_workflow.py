@@ -324,6 +324,15 @@ def list_clock_events(mlm: MonthlyLocationMonth) -> list[dict[str, object]]:
     return [serialize_clock_event(e) for e in events]
 
 
+def mlm_has_open_clock_event(mlm: MonthlyLocationMonth) -> bool:
+    return (
+        MonthlyStopClockEvent.query.filter_by(monthly_location_month_id=int(mlm.id))
+        .filter(MonthlyStopClockEvent.time_out_raw.is_(None))
+        .first()
+        is not None
+    )
+
+
 def clock_in_stop(
     mlm: MonthlyLocationMonth,
     *,
@@ -905,6 +914,7 @@ def reset_stop_on_run(
     run: MonthlyRouteRun | None,
 ) -> None:
     run_id = int(run.id) if run is not None else None
+    preserved_replaced_part_flag = bool(mlm.replaced_part_flag)
 
     MonthlyStopClockEvent.query.filter_by(
         monthly_location_month_id=int(mlm.id),
@@ -932,6 +942,8 @@ def reset_stop_on_run(
 
     for key, val in _cleared_outcome_fields().items():
         setattr(mlm, key, val)
+    if preserved_replaced_part_flag:
+        mlm.replaced_part_flag = True
     sync_legacy_times_from_clock_events(mlm)
 
     audit_ids = WorksheetAuditEventIdAllocator()

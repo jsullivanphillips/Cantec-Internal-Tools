@@ -4188,6 +4188,31 @@ def patch_monthly_route_worksheet_stop(route_id: int, location_id: int):
                 409,
             )
 
+    if "replaced_part_flag" in changes and _tech_portal_patch_request():
+        flag_val = changes.get("replaced_part_flag")
+        if flag_val in (None, "", False, 0, "0", "false", "False"):
+            return (
+                jsonify(
+                    {
+                        "error": "Technicians cannot clear the replaced-part flag.",
+                        "code": "replaced_part_flag_read_only",
+                    }
+                ),
+                403,
+            )
+        from app.monthly.portal_workflow import mlm_has_open_clock_event
+
+        if not mlm_has_open_clock_event(mtsm):
+            return (
+                jsonify(
+                    {
+                        "error": "Clock in to this stop before logging a replaced part.",
+                        "code": "replaced_part_requires_clock_in",
+                    }
+                ),
+                409,
+            )
+
     changes_eff: dict[str, object] = dict(changes)
     clocking_in = "time_in" in changes_eff and _normalize_ws_text(changes_eff.get("time_in")) is not None
     if clocking_in:

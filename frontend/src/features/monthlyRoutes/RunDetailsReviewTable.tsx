@@ -26,6 +26,8 @@ import {
   runReviewLocationResultCardClass,
   runReviewOutcomeBadgeClass,
   runReviewOutcomeHeadline,
+  officeReplacedPartRowClass,
+  officeStopHasReplacedPart,
   type OfficeBillingStatus,
   type RunReviewLocationCellTone,
 } from './officeRunReviewShared'
@@ -365,7 +367,12 @@ export default function RunDetailsReviewTable({
                 return (
                   <tr
                     key={sid}
-                    className={`run-details-review-table-row run-details-review-table-row--${locationRowCounter % 2 === 0 ? 'even' : 'odd'}`}
+                    className={[
+                      `run-details-review-table-row run-details-review-table-row--${locationRowCounter % 2 === 0 ? 'even' : 'odd'}`,
+                      officeReplacedPartRowClass(officeStopHasReplacedPart(stop)),
+                    ]
+                      .filter(Boolean)
+                      .join(' ')}
                   >
                     <td className="run-details-prepare-sticky-order tabular-nums align-top run-details-review-stop-cell-td">
                       <div className="run-details-review-stop-cell">

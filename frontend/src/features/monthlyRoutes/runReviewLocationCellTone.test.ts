@@ -55,6 +55,56 @@ describe('runReviewLocationCellTone', () => {
     expect(runReviewLocationCellTone(baseStop({ test_outcome: 'failed' }), MONTH)).toBe('failed')
   })
 
+  it('uses blue replaced-part tone instead of green when a part was replaced', () => {
+    expect(
+      runReviewLocationCellTone(
+        baseStop({ test_outcome: 'all_good', replaced_part_flag: true }),
+        MONTH,
+      ),
+    ).toBe('replaced_part')
+    expect(
+      runReviewLocationCellTone(
+        baseStop({ test_outcome: 'passed_with_problems', replaced_part_flag: true }),
+        MONTH,
+      ),
+    ).toBe('replaced_part')
+    expect(
+      runReviewLocationCellTone(
+        baseStop({ test_outcome: 'failed', replaced_part_flag: true }),
+        MONTH,
+      ),
+    ).toBe('failed')
+    expect(runReviewLocationCellClass('replaced_part')).toBe(
+      'run-details-review-location-cell--replaced-part',
+    )
+    const ws = runDetailLocationAsWorksheetLocation({
+      location_id: 1,
+      location_label: '123 Main St',
+      stop_number: 1,
+      display_address: '123 Main St',
+      label: null,
+      month_date: MONTH,
+      result_status: 'tested',
+      test_outcome: 'all_good',
+      run_comments: null,
+      testing_procedures: null,
+      inspection_tech_notes: null,
+      has_field_edits: false,
+      review_kind: 'tested_only',
+      deficiency_summaries: [],
+      has_active_deficiencies: false,
+      replaced_part_flag: true,
+      attention_flags: {
+        billing_unset: false,
+        has_field_edits: false,
+        has_active_deficiencies: false,
+        has_job_comment: false,
+        needs_attention: false,
+      },
+    })
+    expect(runReviewLocationCellTone(ws, MONTH)).toBe('replaced_part')
+  })
+
   it('maps legacy tested to all_good', () => {
     expect(runReviewLocationCellTone(baseStop({ result_status: 'tested' }), MONTH)).toBe('all_good')
   })

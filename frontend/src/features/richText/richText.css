@@ -25,7 +25,7 @@
 
 .rich-text-display .rt-blue,
 .rich-text-display.rt-blue {
-  color: #1864ab;
+  color: #4D91D1;
 }
 
 .rich-text-display .rt-orange,
@@ -70,7 +70,7 @@
 }
 
 .rich-text-editor .rt-blue {
-  color: #1864ab;
+  color: #4D91D1;
 }
 
 .rich-text-editor .rt-orange {
@@ -166,7 +166,7 @@
 }
 
 .rich-text-toolbar__color--blue {
-  color: #1864ab;
+  color: #4D91D1;
 }
 
 .rich-text-toolbar__color--orange {

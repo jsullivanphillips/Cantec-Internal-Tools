@@ -1940,3 +1940,194 @@ def test_portal_worksheet_get_uses_bounded_query_count(stops_client, monkeypatch
     stops = res.get_json().get("stops") or []
     assert len(stops) >= 20
     assert query_count < 120, f"portal worksheet GET issued {query_count} SQL queries"
+
+
+def test_patch_replaced_part_flag_requires_clock_in(stops_client, monkeypatch):
+    from app.monthly.worksheet_locations import ensure_worksheet_stops_for_route_month
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
+
+    client, app = stops_client
+    with app.app_context():
+        _seed_route_with_two_stops()
+        ts_id = int(MonthlyLocation.query.order_by(MonthlyLocation.id.asc()).first().id)
+        run = MonthlyRouteRun(
+            id=5020,
+            monthly_route_id=1,
+            month_date=date(2026, 5, 1),
+            started_at=datetime(2026, 5, 2, 8, 0, tzinfo=PACIFIC_TZ),
+            status="open",
+            source="technician_app",
+        )
+        db.session.add(run)
+        db.session.commit()
+        ensure_worksheet_stops_for_route_month(1, date(2026, 5, 1), run)
+        db.session.commit()
+
+    qs = "month=2026-05-01&tech_portal=1"
+    blocked = client.patch(
+        f"/api/monthly_routes/routes/1/worksheet/locations/{ts_id}?{qs}",
+        json={
+            "changes": {
+                "run_comments": '<span class="rt-blue">Battery</span>',
+                "replaced_part_flag": True,
+            }
+        },
+    )
+    assert blocked.status_code == 409
+    assert blocked.get_json().get("code") == "replaced_part_requires_clock_in"
+
+
+def test_patch_replaced_part_flag_sets_flag_and_comments(stops_client, monkeypatch):
+    from app.monthly.worksheet_locations import ensure_worksheet_stops_for_route_month
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
+
+    client, app = stops_client
+    with app.app_context():
+        _seed_route_with_two_stops()
+        ts_id = int(MonthlyLocation.query.order_by(MonthlyLocation.id.asc()).first().id)
+        run = MonthlyRouteRun(
+            id=5021,
+            monthly_route_id=1,
+            month_date=date(2026, 5, 1),
+            started_at=datetime(2026, 5, 2, 8, 0, tzinfo=PACIFIC_TZ),
+            status="open",
+            source="technician_app",
+        )
+        db.session.add(run)
+        db.session.commit()
+        ensure_worksheet_stops_for_route_month(1, date(2026, 5, 1), run)
+        mtsm = MonthlyLocationMonth.query.filter_by(
+            monthly_location_id=ts_id,
+            month_date=date(2026, 5, 1),
+        ).one()
+        db.session.add(
+            MonthlyStopClockEvent(
+                id=5021,
+                monthly_location_month_id=int(mtsm.id),
+                sort_order=0,
+                time_in_raw="8:00 AM",
+                time_out_raw=None,
+            )
+        )
+        db.session.commit()
+
+    qs = "month=2026-05-01&tech_portal=1"
+    res = client.patch(
+        f"/api/monthly_routes/routes/1/worksheet/locations/{ts_id}?{qs}",
+        json={
+            "changes": {
+                "run_comments": '<span class="rt-blue">Battery</span>',
+                "replaced_part_flag": True,
+            }
+        },
+    )
+    assert res.status_code == 200
+    stop = res.get_json()["stop"]
+    assert stop["replaced_part_flag"] is True
+    assert stop["run_comments"] == '<span class="rt-blue">Battery</span>'
+
+    append = client.patch(
+        f"/api/monthly_routes/routes/1/worksheet/locations/{ts_id}?{qs}",
+        json={
+            "changes": {
+                "run_comments": (
+                    '<span class="rt-blue">Battery</span><br>'
+                    '<span class="rt-blue">Door holder</span>'
+                ),
+                "replaced_part_flag": True,
+            }
+        },
+    )
+    assert append.status_code == 200
+    assert append.get_json()["stop"]["run_comments"].endswith(
+        '<span class="rt-blue">Door holder</span>'
+    )
+
+
+def test_patch_replaced_part_flag_read_only_for_tech(stops_client, monkeypatch):
+    from app.monthly.worksheet_locations import ensure_worksheet_stops_for_route_month
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
+
+    client, app = stops_client
+    with app.app_context():
+        _seed_route_with_two_stops()
+        ts_id = int(MonthlyLocation.query.order_by(MonthlyLocation.id.asc()).first().id)
+        run = MonthlyRouteRun(
+            id=5022,
+            monthly_route_id=1,
+            month_date=date(2026, 5, 1),
+            started_at=datetime(2026, 5, 2, 8, 0, tzinfo=PACIFIC_TZ),
+            status="open",
+            source="technician_app",
+        )
+        db.session.add(run)
+        db.session.commit()
+        ensure_worksheet_stops_for_route_month(1, date(2026, 5, 1), run)
+        mtsm = MonthlyLocationMonth.query.filter_by(
+            monthly_location_id=ts_id,
+            month_date=date(2026, 5, 1),
+        ).one()
+        mtsm.replaced_part_flag = True
+        db.session.add(
+            MonthlyStopClockEvent(
+                id=5022,
+                monthly_location_month_id=int(mtsm.id),
+                sort_order=0,
+                time_in_raw="8:00 AM",
+                time_out_raw=None,
+            )
+        )
+        db.session.commit()
+
+    qs = "month=2026-05-01&tech_portal=1"
+    res = client.patch(
+        f"/api/monthly_routes/routes/1/worksheet/locations/{ts_id}?{qs}",
+        json={"changes": {"replaced_part_flag": False}},
+    )
+    assert res.status_code == 403
+    assert res.get_json().get("code") == "replaced_part_flag_read_only"
+
+
+def test_reset_stop_preserves_replaced_part_flag(stops_client, monkeypatch):
+    from app.monthly.portal_workflow import reset_stop_on_run
+    from app.monthly.worksheet_locations import ensure_worksheet_stops_for_route_month
+    from app.routes import monthly_routes as mr_mod
+
+    monkeypatch.setattr(mr_mod, "_current_pacific_month_first", lambda: date(2026, 5, 1))
+
+    client, app = stops_client
+    with app.app_context():
+        route_id, ts_id, _ = _seed_route_with_two_stops()
+        run = MonthlyRouteRun(
+            id=5023,
+            monthly_route_id=route_id,
+            month_date=date(2026, 5, 1),
+            started_at=datetime(2026, 5, 2, 8, 0, tzinfo=PACIFIC_TZ),
+            status="open",
+            source="technician_app",
+        )
+        db.session.add(run)
+        db.session.commit()
+        ensure_worksheet_stops_for_route_month(route_id, date(2026, 5, 1), run)
+        mtsm = MonthlyLocationMonth.query.filter_by(
+            monthly_location_id=ts_id,
+            month_date=date(2026, 5, 1),
+        ).one()
+        loc = db.session.get(MonthlyLocation, ts_id)
+        mtsm.replaced_part_flag = True
+        mtsm.run_comments = '<span class="rt-blue">Battery</span>'
+        mtsm.test_outcome = "all_good"
+        db.session.commit()
+        reset_stop_on_run(route_id, date(2026, 5, 1), mtsm, loc, run)
+        db.session.commit()
+        refreshed = MonthlyLocationMonth.query.filter_by(
+            monthly_location_id=ts_id,
+            month_date=date(2026, 5, 1),
+        ).one()
+        assert refreshed.replaced_part_flag is True

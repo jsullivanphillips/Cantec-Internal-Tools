@@ -1297,6 +1297,7 @@ class MonthlyLocationMonth(db.Model):
     run_comments = db.Column(db.Text, nullable=True)
     office_job_comment = db.Column(db.Text, nullable=True)
     office_attention = db.Column(db.Boolean, nullable=False, default=False)
+    replaced_part_flag = db.Column(db.Boolean, nullable=False, default=False)
     prior_month_out_of_order_dismissed = db.Column(db.Boolean, nullable=False, default=False)
     sheet_time_in_raw = db.Column(db.String(64), nullable=True)
     sheet_time_out_raw = db.Column(db.String(64), nullable=True)
